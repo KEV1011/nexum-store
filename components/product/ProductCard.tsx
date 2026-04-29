@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { ShoppingCart, Zap } from 'lucide-react'
 import { type Product, formatPrice } from '@/lib/mockData'
+import { useCart } from '@/context/CartContext'
 import { clsx } from 'clsx'
 
 interface ProductCardProps {
@@ -13,6 +14,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, priority = false, className }: ProductCardProps) {
+  const { addItem } = useCart()
   const hasDiscount = product.comparePrice && product.comparePrice > product.price
   const discount    = hasDiscount
     ? Math.round((1 - product.price / product.comparePrice!) * 100)
@@ -66,8 +68,7 @@ export function ProductCard({ product, priority = false, className }: ProductCar
             className="w-full btn-primary py-2.5 text-xs gap-1.5"
             onClick={e => {
               e.preventDefault()
-              // TODO: conectar con cart context en Sprint 2
-              console.log('[Cart] Add:', product.id)
+              addItem(product)
             }}
           >
             <ShoppingCart className="w-3.5 h-3.5" />

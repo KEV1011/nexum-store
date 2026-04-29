@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
+import { CartProvider } from '@/context/CartContext'
+import { CartDrawer } from '@/components/cart/CartDrawer'
 
 export const metadata: Metadata = {
   title: {
@@ -22,18 +24,11 @@ export const metadata: Metadata = {
     card:  'summary_large_image',
     title: 'Nexum — Tecnología de Alto Estatus',
   },
-  robots: {
-    index:  true,
-    follow: true,
-  },
+  robots: { index: true, follow: true },
   themeColor: '#0D0D0D',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es-CO" className="scroll-smooth">
       <head>
@@ -41,9 +36,12 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="bg-obsidian text-ghost antialiased">
-        <Navbar />
-        <main>{children}</main>
-        <Footer />
+        <CartProvider>
+          <Navbar />
+          <CartDrawer />
+          <main>{children}</main>
+          <Footer />
+        </CartProvider>
       </body>
     </html>
   )

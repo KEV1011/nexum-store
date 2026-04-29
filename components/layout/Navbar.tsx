@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ShoppingCart, Menu, X, Search } from 'lucide-react'
+import { useCart } from '@/context/CartContext'
 
 const NAV_LINKS = [
   { label: 'Pet Tracking',  href: '/colecciones/pet-tracking' },
@@ -12,9 +13,9 @@ const NAV_LINKS = [
 ]
 
 export function Navbar() {
-  const [scrolled,    setScrolled]    = useState(false)
-  const [mobileOpen,  setMobileOpen]  = useState(false)
-  const cartCount = 0 // TODO: conectar con CartContext en Sprint 2
+  const [scrolled,   setScrolled]   = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const { itemCount, openCart }     = useCart()
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 20)
@@ -37,15 +38,11 @@ export function Navbar() {
 
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="relative">
-                <div className="w-8 h-8 rounded-[6px] bg-gradient-gold flex items-center justify-center
-                               shadow-nexum-gold group-hover:shadow-nexum transition-shadow duration-300">
-                  <span className="text-obsidian font-heading font-black text-sm">N</span>
-                </div>
+              <div className="w-8 h-8 rounded-[6px] bg-gradient-gold flex items-center justify-center
+                             shadow-nexum-gold group-hover:shadow-nexum transition-shadow duration-300">
+                <span className="text-obsidian font-heading font-black text-sm">N</span>
               </div>
-              <span className="font-heading font-bold text-xl text-ghost tracking-tight">
-                NEXUM
-              </span>
+              <span className="font-heading font-bold text-xl text-ghost tracking-tight">NEXUM</span>
             </Link>
 
             {/* Desktop Nav */}
@@ -65,37 +62,31 @@ export function Navbar() {
             </nav>
 
             {/* Actions */}
-            <div className="flex items-center gap-2">
-
-              {/* Search */}
+            <div className="flex items-center gap-1">
               <button
-                className="p-2 rounded-nexum text-ghost-muted hover:text-ghost
-                           hover:bg-white/5 transition-all duration-200"
+                className="p-2 rounded-nexum text-ghost-muted hover:text-ghost hover:bg-white/5 transition-all"
                 aria-label="Buscar"
               >
-                <Search className="w-4.5 h-4.5" />
+                <Search className="w-[18px] h-[18px]" />
               </button>
 
-              {/* Cart */}
-              <Link
-                href="/cart"
-                className="relative p-2 rounded-nexum text-ghost-muted hover:text-ghost
-                           hover:bg-white/5 transition-all duration-200"
-                aria-label={`Carrito (${cartCount} items)`}
+              {/* Cart — abre el drawer */}
+              <button
+                onClick={openCart}
+                className="relative p-2 rounded-nexum text-ghost-muted hover:text-ghost hover:bg-white/5 transition-all"
+                aria-label={`Carrito (${itemCount} items)`}
               >
-                <ShoppingCart className="w-4.5 h-4.5" />
-                {cartCount > 0 && (
+                <ShoppingCart className="w-[18px] h-[18px]" />
+                {itemCount > 0 && (
                   <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-gold
                                    text-obsidian text-[9px] font-bold flex items-center justify-center">
-                    {cartCount}
+                    {itemCount > 9 ? '9+' : itemCount}
                   </span>
                 )}
-              </Link>
+              </button>
 
-              {/* Mobile menu button */}
               <button
-                className="md:hidden p-2 rounded-nexum text-ghost-muted hover:text-ghost
-                           hover:bg-white/5 transition-all duration-200"
+                className="md:hidden p-2 rounded-nexum text-ghost-muted hover:text-ghost hover:bg-white/5 transition-all"
                 onClick={() => setMobileOpen(v => !v)}
                 aria-label="Menu"
               >
@@ -110,12 +101,10 @@ export function Navbar() {
       {/* Mobile Menu */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 md:hidden">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-obsidian/80 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          {/* Panel */}
           <div className="absolute top-16 inset-x-0 bg-obsidian-50 border-b border-white/5 animate-slide-up">
             <nav className="px-4 py-6 flex flex-col gap-1">
               {NAV_LINKS.map(link => (
