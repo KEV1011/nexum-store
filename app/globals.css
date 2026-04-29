@@ -1,0 +1,150 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design Tokens ─────────────────────────────── */
+:root {
+  --color-obsidian:    #0D0D0D;
+  --color-obsidian-50: #1A1A1A;
+  --color-ghost:       #F8F9FA;
+  --color-ghost-muted: #A0A4A8;
+  --color-gold:        #D4AF37;
+  --color-gold-glow:   rgba(212, 175, 55, 0.15);
+
+  --radius-base: 10px;
+  --radius-lg:   14px;
+  --radius-xl:   18px;
+
+  --transition-base:   150ms ease;
+  --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Base Reset ────────────────────────────────── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--color-obsidian);
+  color: var(--color-ghost);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── Scrollbar ─────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: #0D0D0D; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #D4AF37; }
+
+/* ── Selection ─────────────────────────────────── */
+::selection {
+  background: rgba(212, 175, 55, 0.25);
+  color: #F8F9FA;
+}
+
+/* ── Typography ────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Montserrat', system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+/* ── Components ────────────────────────────────── */
+@layer components {
+
+  /* Gold accent line */
+  .gold-line {
+    display: block;
+    width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, #D4AF37, #B8961E);
+    border-radius: 1px;
+  }
+
+  /* Pill badge */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium tracking-wide;
+  }
+  .badge-gold {
+    @apply badge bg-gold-glow text-gold border border-gold/30;
+  }
+  .badge-ghost {
+    @apply badge bg-white/5 text-ghost-muted border border-white/10;
+  }
+
+  /* Product card */
+  .product-card {
+    @apply relative rounded-nexum-lg bg-gradient-card border border-white/5 overflow-hidden
+           transition-all duration-300 cursor-pointer;
+  }
+  .product-card:hover {
+    @apply border-gold/30 shadow-nexum-gold -translate-y-1;
+  }
+
+  /* Button variants */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-nexum
+           bg-gradient-gold text-obsidian font-heading font-semibold text-sm tracking-wide
+           transition-all duration-200 shadow-nexum-gold;
+  }
+  .btn-primary:hover {
+    @apply brightness-110 shadow-nexum scale-[1.02];
+  }
+  .btn-primary:active {
+    @apply scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-nexum
+           bg-white/5 text-ghost border border-white/10 font-medium text-sm
+           transition-all duration-200;
+  }
+  .btn-ghost:hover {
+    @apply bg-white/10 border-white/20;
+  }
+
+  .btn-outline-gold {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-nexum
+           bg-transparent text-gold border border-gold/50 font-medium text-sm
+           transition-all duration-200;
+  }
+  .btn-outline-gold:hover {
+    @apply bg-gold-glow border-gold;
+  }
+
+  /* Section heading */
+  .section-heading {
+    @apply font-heading text-display-sm text-ghost;
+  }
+  .section-heading span {
+    @apply text-gold;
+  }
+
+  /* Divider */
+  .divider {
+    @apply border-t border-white/5 my-16;
+  }
+}
+
+/* ── Utilities ─────────────────────────────────── */
+@layer utilities {
+  .text-balance    { text-wrap: balance; }
+  .bg-glass        { background: rgba(255,255,255,0.03); backdrop-filter: blur(12px); }
+  .border-subtle   { border-color: rgba(255,255,255,0.07); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar    { -ms-overflow-style: none; scrollbar-width: none; }
+}
