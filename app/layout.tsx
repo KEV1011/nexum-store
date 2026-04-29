@@ -1,9 +1,23 @@
 import type { Metadata } from 'next'
+import { Inter, Montserrat } from 'next/font/google'
 import './globals.css'
-import { Navbar } from '@/components/layout/Navbar'
-import { Footer } from '@/components/layout/Footer'
+import { Navbar }      from '@/components/layout/Navbar'
+import { Footer }      from '@/components/layout/Footer'
 import { CartProvider } from '@/context/CartContext'
-import { CartDrawer } from '@/components/cart/CartDrawer'
+import { CartDrawer }  from '@/components/cart/CartDrawer'
+
+const inter = Inter({
+  subsets:  ['latin'],
+  variable: '--font-inter',
+  display:  'swap',
+})
+
+const montserrat = Montserrat({
+  subsets:  ['latin'],
+  variable: '--font-montserrat',
+  weight:   ['600', '700', '800'],
+  display:  'swap',
+})
 
 export const metadata: Metadata = {
   title: {
@@ -25,16 +39,11 @@ export const metadata: Metadata = {
     title: 'Nexum — Tecnología de Alto Estatus',
   },
   robots: { index: true, follow: true },
-  themeColor: '#0D0D0D',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es-CO" className="scroll-smooth">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      </head>
+    <html lang="es-CO" className={`scroll-smooth ${inter.variable} ${montserrat.variable}`}>
       <body className="bg-obsidian text-ghost antialiased">
         <CartProvider>
           <Navbar />
