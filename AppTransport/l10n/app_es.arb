@@ -1,0 +1,220 @@
+{
+  "@@locale": "es",
+  "@@last_modified": "2025-05-27",
+
+  "appName": "Nexum Driver",
+  "@appName": { "description": "Nombre de la aplicación" },
+
+  "loginTitle": "Iniciar sesión",
+  "@loginTitle": { "description": "Título de la pantalla de login" },
+
+  "phoneInputTitle": "Ingresa tu número de celular",
+  "@phoneInputTitle": { "description": "Título de la pantalla de ingreso de teléfono" },
+
+  "phoneInputSubtitle": "Te enviaremos un código de verificación",
+  "@phoneInputSubtitle": { "description": "Subtítulo de la pantalla de ingreso de teléfono" },
+
+  "phoneInputHint": "3XX XXX XXXX",
+  "@phoneInputHint": { "description": "Placeholder del campo de teléfono" },
+
+  "phoneInputContinue": "Continuar",
+  "@phoneInputContinue": { "description": "Botón continuar en login" },
+
+  "phoneInputError": "Ingresa un número colombiano válido",
+  "@phoneInputError": { "description": "Error de validación del teléfono" },
+
+  "otpTitle": "Código de verificación",
+  "@otpTitle": { "description": "Título de la pantalla OTP" },
+
+  "otpSubtitle": "Ingresa el código de 6 dígitos enviado a {phone}",
+  "@otpSubtitle": {
+    "description": "Subtítulo de la pantalla OTP con número de teléfono",
+    "placeholders": { "phone": { "type": "String" } }
+  },
+
+  "otpVerify": "Verificar",
+  "@otpVerify": { "description": "Botón verificar OTP" },
+
+  "otpResend": "Reenviar código",
+  "@otpResend": { "description": "Botón reenviar OTP" },
+
+  "otpResendIn": "Reenviar en {seconds}s",
+  "@otpResendIn": {
+    "description": "Contador regresivo para reenvío de OTP",
+    "placeholders": { "seconds": { "type": "int" } }
+  },
+
+  "otpTestCode": "Código de prueba: 123456",
+  "@otpTestCode": { "description": "Nota de código de prueba MVP" },
+
+  "otpInvalid": "Código OTP inválido. Intenta de nuevo.",
+  "@otpInvalid": { "description": "Error de OTP inválido" },
+
+  "homeTitle": "Nexum Driver",
+  "@homeTitle": { "description": "Título de la pantalla principal" },
+
+  "statusOnline": "En línea",
+  "@statusOnline": { "description": "Estado conductor en línea" },
+
+  "statusOffline": "Desconectado",
+  "@statusOffline": { "description": "Estado conductor desconectado" },
+
+  "statusBusy": "En viaje",
+  "@statusBusy": { "description": "Estado conductor en viaje" },
+
+  "goOnline": "PONERSE EN LÍNEA",
+  "@goOnline": { "description": "Botón ponerse en línea" },
+
+  "goOffline": "DESCONECTARSE",
+  "@goOffline": { "description": "Botón desconectarse" },
+
+  "dailyTrips": "Viajes",
+  "@dailyTrips": { "description": "Label viajes del día" },
+
+  "dailyEarnings": "Ganancias",
+  "@dailyEarnings": { "description": "Label ganancias del día" },
+
+  "tripRequestTitle": "Nueva solicitud de viaje",
+  "@tripRequestTitle": { "description": "Título del modal de solicitud" },
+
+  "tripRequestPickup": "Recoger en:",
+  "@tripRequestPickup": { "description": "Label punto de recogida" },
+
+  "tripRequestDestination": "Destino:",
+  "@tripRequestDestination": { "description": "Label destino" },
+
+  "tripRequestAccept": "ACEPTAR",
+  "@tripRequestAccept": { "description": "Botón aceptar viaje" },
+
+  "tripRequestReject": "RECHAZAR",
+  "@tripRequestReject": { "description": "Botón rechazar viaje" },
+
+  "tripRequestExpired": "Solicitud expirada",
+  "@tripRequestExpired": { "description": "Mensaje cuando expira la solicitud" },
+
+  "activeTripToPickup": "Camino al pasajero",
+  "@activeTripToPickup": { "description": "Estado yendo al pasajero" },
+
+  "activeTripWaiting": "Esperando pasajero",
+  "@activeTripWaiting": { "description": "Estado esperando pasajero" },
+
+  "activeTripInProgress": "Viaje en curso",
+  "@activeTripInProgress": { "description": "Estado viaje en curso" },
+
+  "activeTripArrive": "He llegado",
+  "@activeTripArrive": { "description": "Botón llegué al pasajero" },
+
+  "activeTripStart": "Iniciar viaje",
+  "@activeTripStart": { "description": "Botón iniciar viaje" },
+
+  "activeTripFinish": "Finalizar viaje",
+  "@activeTripFinish": { "description": "Botón finalizar viaje" },
+
+  "activeTripCancel": "Cancelar viaje",
+  "@activeTripCancel": { "description": "Botón cancelar viaje" },
+
+  "activeTripCall": "Llamar",
+  "@activeTripCall": { "description": "Botón llamar al pasajero" },
+
+  "activeTripMessage": "Mensaje",
+  "@activeTripMessage": { "description": "Botón mensaje al pasajero" },
+
+  "tripSummaryTitle": "¡Viaje completado!",
+  "@tripSummaryTitle": { "description": "Título pantalla resumen de viaje" },
+
+  "tripSummaryDistance": "Distancia",
+  "@tripSummaryDistance": { "description": "Label distancia recorrida" },
+
+  "tripSummaryDuration": "Duración",
+  "@tripSummaryDuration": { "description": "Label duración del viaje" },
+
+  "tripSummaryGrossFare": "Tarifa bruta",
+  "@tripSummaryGrossFare": { "description": "Label tarifa bruta" },
+
+  "tripSummaryCommission": "Comisión (15%)",
+  "@tripSummaryCommission": { "description": "Label comisión plataforma" },
+
+  "tripSummaryNetEarning": "Tu ganancia",
+  "@tripSummaryNetEarning": { "description": "Label ganancia neta" },
+
+  "tripSummaryGoHome": "Volver al inicio",
+  "@tripSummaryGoHome": { "description": "Botón volver al home" },
+
+  "earningsTitle": "Mis ganancias",
+  "@earningsTitle": { "description": "Título pantalla de ganancias" },
+
+  "earningsToday": "Hoy",
+  "@earningsToday": { "description": "Label hoy en ganancias" },
+
+  "earningsWeekHistory": "Historial de la semana",
+  "@earningsWeekHistory": { "description": "Sección historial semanal" },
+
+  "earningsTripsToday": "Viajes de hoy",
+  "@earningsTripsToday": { "description": "Sección viajes del día" },
+
+  "earningsNoTrips": "Sin viajes aún",
+  "@earningsNoTrips": { "description": "Mensaje sin viajes" },
+
+  "earningsHoursOnline": "Horas en línea",
+  "@earningsHoursOnline": { "description": "Label horas en línea" },
+
+  "earningsAvgFare": "Tarifa promedio",
+  "@earningsAvgFare": { "description": "Label tarifa promedio" },
+
+  "earningsBestTrip": "Mejor viaje",
+  "@earningsBestTrip": { "description": "Label mejor viaje" },
+
+  "profileTitle": "Mi perfil",
+  "@profileTitle": { "description": "Título pantalla perfil" },
+
+  "profileVehicleInfo": "Información del vehículo",
+  "@profileVehicleInfo": { "description": "Sección info del vehículo" },
+
+  "profileBankInfo": "Datos bancarios",
+  "@profileBankInfo": { "description": "Sección datos bancarios" },
+
+  "profileAccount": "Cuenta",
+  "@profileAccount": { "description": "Sección cuenta" },
+
+  "profileTerms": "Términos y condiciones",
+  "@profileTerms": { "description": "Item términos" },
+
+  "profilePrivacy": "Política de privacidad",
+  "@profilePrivacy": { "description": "Item privacidad" },
+
+  "profileLogout": "Cerrar sesión",
+  "@profileLogout": { "description": "Botón cerrar sesión" },
+
+  "profileLogoutConfirm": "¿Estás seguro que deseas cerrar sesión?",
+  "@profileLogoutConfirm": { "description": "Confirmación de cierre de sesión" },
+
+  "profileVerified": "Conductor verificado",
+  "@profileVerified": { "description": "Badge conductor verificado" },
+
+  "errorGeneric": "Algo salió mal. Intenta de nuevo.",
+  "@errorGeneric": { "description": "Error genérico" },
+
+  "errorNetwork": "Sin conexión a internet",
+  "@errorNetwork": { "description": "Error de red" },
+
+  "errorRetry": "Reintentar",
+  "@errorRetry": { "description": "Botón reintentar" },
+
+  "errorLocationPermission": "Se requieren permisos de ubicación",
+  "@errorLocationPermission": { "description": "Error permisos de ubicación" },
+
+  "loading": "Cargando...",
+  "@loading": { "description": "Texto de carga" },
+
+  "cancel": "Cancelar",
+  "@cancel": { "description": "Botón cancelar" },
+
+  "confirm": "Confirmar",
+  "@confirm": { "description": "Botón confirmar" },
+
+  "yes": "Sí",
+  "@yes": { "description": "Respuesta sí" },
+
+  "no": "No",
+  "@no": { "description": "Respuesta no" }
+}

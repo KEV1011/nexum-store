@@ -1,0 +1,77 @@
+name: nexum_driver
+description: App del conductor - Plataforma MaaS Nexum (Pamplona, Norte de Santander, Colombia)
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.5.1
+
+  # Navigation
+  go_router: ^14.2.7
+
+  # Maps & Location
+  google_maps_flutter: ^2.9.0
+  geolocator: ^13.0.1
+
+  # HTTP client
+  dio: ^5.7.0
+
+  # Storage
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.3.2
+
+  # UI & Fonts
+  google_fonts: ^6.2.1
+
+  # Internationalization
+  intl: ^0.20.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.13
+
+# ── Launcher Icons ────────────────────────────────────────────────────────────
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icons/app_icon.png"
+  adaptive_icon_background: "#00C853"
+  adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: "assets/icons/app_icon.png"
+
+# ── Native Splash ─────────────────────────────────────────────────────────────
+flutter_native_splash:
+  color: "#00C853"
+  image: assets/icons/splash_logo.png
+  android: true
+  ios: false
+  web: false
+  android_12:
+    color: "#00C853"
+    image: assets/icons/splash_logo.png
+    icon_background_color: "#00C853"
+  fullscreen: true
+
+flutter:
+  uses-material-design: true
+  generate: true
+
+  assets:
+    - assets/icons/

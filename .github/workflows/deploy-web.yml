@@ -1,0 +1,96 @@
+name: Deploy Web to GitHub Pages
+
+on:
+  push:
+    branches: [main, claude/driver-app-maas-pamplona-LYIfo]
+    paths:
+      - 'AppTransport/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: Build & Deploy Flutter Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      - name: Install Python tools
+        run: pip install Pillow
+
+      - name: Generate assets
+        working-directory: AppTransport
+        run: |
+          python3 - <<'PYEOF'
+          from PIL import Image, ImageDraw
+          import os
+          os.makedirs('assets/icons', exist_ok=True)
+          size = 1024
+          primary = (0, 200, 83, 255)
+          white = (255, 255, 255, 240)
+          glass = (180, 255, 210, 200)
+          wc = (26, 35, 126, 255)
+          def car(draw, ox=0, oy=0, sc=1.0):
+              def x(v): return int(ox + v*sc)
+              def y(v): return int(oy + v*sc)
+              wr = int(58*sc)
+              draw.rounded_rectangle([x(180),y(380),x(844),y(660)],radius=int(60*sc),fill=white)
+              draw.rounded_rectangle([x(270),y(280),x(754),y(460)],radius=int(50*sc),fill=white)
+              draw.rounded_rectangle([x(300),y(300),x(724),y(440)],radius=int(30*sc),fill=glass)
+              for xo,yo in [(x(180)-wr+10,y(380)+30),(x(844)-3*wr-10,y(380)+30),(x(180)-wr+10,y(660)-30-wr*2),(x(844)-3*wr-10,y(660)-30-wr*2)]:
+                  draw.ellipse([xo,yo,xo+wr*2,yo+wr*2],fill=wc)
+          img = Image.new('RGBA',(size,size),(0,0,0,0))
+          d = ImageDraw.Draw(img); d.ellipse([0,0,size-1,size-1],fill=primary); car(d)
+          img.save('assets/icons/app_icon.png')
+          img2 = Image.new('RGBA',(size,size),(0,0,0,0)); car(ImageDraw.Draw(img2)); img2.save('assets/icons/app_icon_foreground.png')
+          img3 = Image.new('RGBA',(size,size),(0,0,0,0)); car(ImageDraw.Draw(img3),int(size*.225),int(size*.225),.55); img3.save('assets/icons/splash_logo.png')
+          print('Icons OK')
+          PYEOF
+
+      - name: Get dependencies
+        working-directory: AppTransport
+        run: flutter pub get
+
+      - name: Build Flutter Web
+        working-directory: AppTransport
+        run: |
+          flutter build web --release \
+            --dart-define=GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY || 'PLACEHOLDER' }}
+
+      - name: Fix base href for GitHub Pages
+        run: |
+          sed -i 's|<base href="/">|<base href="/nexum-store/">|' AppTransport/build/web/index.html
+
+      - name: Fix CanvasKit to use local files
+        run: |
+          python3 - <<'EOF'
+          with open('AppTransport/build/web/flutter_bootstrap.js','r') as f:
+              c = f.read()
+          old = '_flutter.loader.load({'
+          new = '_flutter.loader.load({\n  config: { canvasKitBaseUrl: "canvaskit/" },'
+          if old in c and 'canvasKitBaseUrl' not in c:
+              with open('AppTransport/build/web/flutter_bootstrap.js','w') as f:
+                  f.write(c.replace(old, new, 1))
+              print('Patched bootstrap')
+          else:
+              print('Already patched or not needed')
+          EOF
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: AppTransport/build/web
+          force_orphan: true
+          commit_message: "deploy: Nexum Driver web ${{ github.sha }}"

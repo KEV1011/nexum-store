@@ -1,0 +1,168 @@
+name: Build Nexum Driver APK
+
+on:
+  push:
+    branches: [main, claude/driver-app-maas-pamplona-LYIfo]
+    paths:
+      - 'AppTransport/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'AppTransport/**'
+  workflow_dispatch:   # Permite ejecución manual desde GitHub UI
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Java 17 ───────────────────────────────────────────────────────────
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ── 3. Flutter ───────────────────────────────────────────────────────────
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      # ── 4. Dependencies ──────────────────────────────────────────────────────
+      - name: Get Flutter dependencies
+        working-directory: AppTransport
+        run: flutter pub get
+
+      # ── 5. Generate launcher icons & splash ──────────────────────────────────
+      - name: Install Python image tools
+        run: pip install Pillow
+
+      - name: Generate app icons
+        working-directory: AppTransport
+        run: |
+          python3 - <<'PYEOF'
+          from PIL import Image, ImageDraw
+          import os, math
+
+          os.makedirs('assets/icons', exist_ok=True)
+          size = 1024
+          primary = (0, 200, 83, 255)
+          white = (255, 255, 255, 240)
+          glass = (180, 255, 210, 200)
+          wheel_color = (26, 35, 126, 255)
+
+          def draw_car(draw, ox=0, oy=0, scale=1.0):
+              def sx(v): return int(ox + v * scale)
+              def sy(v): return int(oy + v * scale)
+              bx1,by1,bx2,by2 = sx(180),sy(380),sx(844),sy(660)
+              rx1,ry1,rx2,ry2 = sx(270),sy(280),sx(754),sy(460)
+              wr = int(58 * scale)
+              draw.rounded_rectangle([bx1,by1,bx2,by2], radius=int(60*scale), fill=white)
+              draw.rounded_rectangle([rx1,ry1,rx2,ry2], radius=int(50*scale), fill=white)
+              draw.rounded_rectangle([sx(300),sy(300),sx(724),sy(440)], radius=int(30*scale), fill=glass)
+              for xo, yo in [(bx1-wr+10,by1+30),(bx2-3*wr-10,by1+30),(bx1-wr+10,by2-30-wr*2),(bx2-3*wr-10,by2-30-wr*2)]:
+                  draw.ellipse([xo,yo,xo+wr*2,yo+wr*2], fill=wheel_color)
+
+          # Full icon
+          img = Image.new('RGBA', (size, size), (0,0,0,0))
+          draw = ImageDraw.Draw(img)
+          draw.ellipse([0,0,size-1,size-1], fill=primary)
+          draw_car(draw)
+          img.save('assets/icons/app_icon.png')
+
+          # Foreground (transparent bg)
+          img2 = Image.new('RGBA', (size, size), (0,0,0,0))
+          draw_car(ImageDraw.Draw(img2))
+          img2.save('assets/icons/app_icon_foreground.png')
+
+          # Splash logo
+          img3 = Image.new('RGBA', (size, size), (0,0,0,0))
+          ox = int(size * 0.225); oy = int(size * 0.225)
+          draw_car(ImageDraw.Draw(img3), ox, oy, 0.55)
+          img3.save('assets/icons/splash_logo.png')
+          print("Icons generated ✓")
+          PYEOF
+
+      - name: Generate launcher icons
+        working-directory: AppTransport
+        run: flutter pub run flutter_launcher_icons
+
+      - name: Generate native splash
+        working-directory: AppTransport
+        run: flutter pub run flutter_native_splash:create
+
+      # ── 6. Decode keystore ───────────────────────────────────────────────────
+      - name: Decode release keystore
+        working-directory: AppTransport/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > nexum-driver-release.keystore
+            echo "Keystore loaded from secret"
+          else
+            echo "No keystore secret — using debug signing"
+          fi
+
+      - name: Write key.properties
+        working-directory: AppTransport/android
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -f nexum-driver-release.keystore ]; then
+            cat > key.properties <<EOF
+          storePassword=${STORE_PASSWORD:-nexum2024}
+          keyPassword=${KEY_PASSWORD:-nexum2024}
+          keyAlias=nexum-driver
+          storeFile=../nexum-driver-release.keystore
+          EOF
+          fi
+
+      # ── 7. Build APK ─────────────────────────────────────────────────────────
+      - name: Build release APK
+        working-directory: AppTransport
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || 'PLACEHOLDER' }}
+        run: |
+          flutter build apk --release \
+            --dart-define=GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+
+      # ── 8. Build App Bundle (para Play Store) ────────────────────────────────
+      - name: Build App Bundle (AAB)
+        working-directory: AppTransport
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY || 'PLACEHOLDER' }}
+        run: |
+          flutter build appbundle --release \
+            --dart-define=GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+
+      # ── 9. Upload artifacts ──────────────────────────────────────────────────
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexum-driver-apk
+          path: AppTransport/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      - name: Upload AAB (Play Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexum-driver-aab
+          path: AppTransport/build/app/outputs/bundle/release/app-release.aab
+          retention-days: 30
+
+      # ── 10. Build info ───────────────────────────────────────────────────────
+      - name: Show build info
+        run: |
+          echo "✅ Build complete!"
+          ls -lh AppTransport/build/app/outputs/flutter-apk/ 2>/dev/null || true
+          ls -lh AppTransport/build/app/outputs/bundle/release/ 2>/dev/null || true

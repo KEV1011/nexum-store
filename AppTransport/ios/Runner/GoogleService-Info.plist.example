@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    INSTRUCCIONES:
+    1. Copia este archivo como GoogleService-Info.plist
+    2. Agrega tu Google Maps API Key obtenida en console.cloud.google.com
+    3. NO subas el archivo real al repositorio (está en .gitignore)
+  -->
+  <key>GMSApiKey</key>
+  <string>YOUR_GOOGLE_MAPS_API_KEY_HERE</string>
+</dict>
+</plist>
