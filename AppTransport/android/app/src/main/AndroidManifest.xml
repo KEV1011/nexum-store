@@ -1,34 +1,41 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml
+    version="1.0"
+    encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nexum.driver_app">
-
     <!-- ─── Permisos de red ─────────────────────────────────────────────── -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
+    <uses-permission
+        android:name="android.permission.INTERNET"/>
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- ─── Permisos de ubicación ──────────────────────────────────────── -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <!--
         ACCESS_BACKGROUND_LOCATION es necesario para mostrar el conductor
         disponible incluso cuando la app está en segundo plano.
         Requiere justificación adicional en la Play Store.
     -->
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-
+    <uses-permission
+        android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <!-- ─── Permisos de servicio en primer plano ───────────────────────── -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"/>
     <!--
         FOREGROUND_SERVICE_LOCATION (API 34+) requerido para servicios de
         ubicación en primer plano en Android 14 y superior.
     -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <!-- ─── Permisos de dispositivo ────────────────────────────────────── -->
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
+    <uses-permission
+        android:name="android.permission.VIBRATE"/>
+    <uses-permission
+        android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application
         android:label="Nexum Driver"
         android:name="${applicationName}"
@@ -40,12 +47,10 @@
         android:hardwareAccelerated="true"
         android:largeHeap="true"
         android:networkSecurityConfig="@xml/network_security_config">
-
         <!-- ─── Flutter embedding v2 ────────────────────────────────────── -->
         <meta-data
             android:name="flutterEmbedding"
-            android:value="2" />
-
+            android:value="2"/>
         <!-- ─── Google Maps API Key ──────────────────────────────────────── -->
         <!--
             El valor se inyecta desde el archivo local.properties o
@@ -56,8 +61,7 @@
         -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="${GOOGLE_MAPS_API_KEY}" />
-
+            android:value="${GOOGLE_MAPS_API_KEY}"/>
         <!-- ─── Actividad principal Flutter ─────────────────────────────── -->
         <activity
             android:name=".MainActivity"
@@ -67,31 +71,31 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize"
-            android:screenOrientation="portrait">
-
+            android:windowSoftInputMode="adjustResize">
             <!-- Especifica el tema normal después del splash -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme" />
-
+                android:resource="@style/NormalTheme"/>
             <!-- Deep links / intent filters -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+            <intent-filter
+                android:autoVerify="true">
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-
             <!-- Flutter deep links (GoRouter) -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
+            <intent-filter
+                android:autoVerify="true">
+                <action
+                    android:name="android.intent.action.VIEW"/>
+                <category
+                    android:name="android.intent.category.DEFAULT"/>
+                <category
+                    android:name="android.intent.category.BROWSABLE"/>
                 <data
                     android:scheme="nexumdriver"
-                    android:host="app" />
+                    android:host="app"/>
             </intent-filter>
         </activity>
-
         <!-- ─── Servicio de ubicación en primer plano ────────────────────── -->
         <!--
             Usado por el servicio de tracking activo del conductor.
@@ -103,8 +107,7 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location"
-            android:permission="android.permission.FOREGROUND_SERVICE_LOCATION" />
-
+            android:permission="android.permission.FOREGROUND_SERVICE_LOCATION"/>
         <!-- ─── Boot receiver ────────────────────────────────────────────── -->
         <!--
             Permite reiniciar servicios persistentes tras un reinicio del
@@ -115,11 +118,12 @@
             android:enabled="true"
             android:exported="false">
             <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action
+                    android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action
+                    android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
             </intent-filter>
         </receiver>
-
         <!-- ─── Proveedor de archivos (para capturas/docs) ──────────────── -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -128,9 +132,7 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
+                android:resource="@xml/file_paths"/>
         </provider>
-
     </application>
-
 </manifest>
