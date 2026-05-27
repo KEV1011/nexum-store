@@ -66,13 +66,13 @@ final _tripRequestsRepositoryProvider =
 });
 
 final _acceptTripUseCaseProvider = Provider<AcceptTripUseCase>((ref) {
-  return AcceptTripUseCase(
-      repository: ref.watch(_tripRequestsRepositoryProvider));
+  return AcceptTripUseCase(ref.watch(_tripRequestsRepositoryProvider));
 });
 
 final _rejectTripUseCaseProvider = Provider<RejectTripUseCase>((ref) {
   return RejectTripUseCase(
-      repository: ref.watch(_tripRequestsRepositoryProvider));
+    repository: ref.watch(_tripRequestsRepositoryProvider),
+  );
 });
 
 // ── TripRequestNotifier ───────────────────────────────────────────────────────

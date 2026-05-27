@@ -73,7 +73,17 @@ class AuthRepositoryImpl implements AuthRepository {
         value: token,
       );
 
-      final driver = DriverMock.entity;
+      final driver = DriverEntity(
+        id: DriverMock.id,
+        name: DriverMock.name,
+        phone: DriverMock.phone,
+        rating: DriverMock.rating,
+        totalTrips: DriverMock.totalTrips,
+        vehiclePlate: DriverMock.vehiclePlate,
+        vehicleDescription: DriverMock.vehicleFullName,
+        isVerified: DriverMock.isVerified,
+        photoUrl: DriverMock.photoUrl,
+      );
       return (driver: driver, failure: null);
     } on InvalidOtpException {
       return (
@@ -130,6 +140,16 @@ class AuthRepositoryImpl implements AuthRepository {
     if (!authenticated) return null;
     // In mock mode, always return the static mock driver entity.
     // Replace with a real API call or local DB lookup in production.
-    return DriverMock.entity;
+    return DriverEntity(
+      id: DriverMock.id,
+      name: DriverMock.name,
+      phone: DriverMock.phone,
+      rating: DriverMock.rating,
+      totalTrips: DriverMock.totalTrips,
+      vehiclePlate: DriverMock.vehiclePlate,
+      vehicleDescription: DriverMock.vehicleFullName,
+      isVerified: DriverMock.isVerified,
+      photoUrl: DriverMock.photoUrl,
+    );
   }
 }

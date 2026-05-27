@@ -97,3 +97,4 @@ lcov.info
 # Miscellaneous
 *.log
 *.lock
+*.deb

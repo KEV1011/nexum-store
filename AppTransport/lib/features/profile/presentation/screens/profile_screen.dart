@@ -45,7 +45,7 @@ class _DriverProfile {
   String get vehicleFullName => '$vehicleBrand $vehicleModel $vehicleYear';
 }
 
-const _mockDriver = _DriverProfile(
+final _mockDriver = _DriverProfile(
   fullName: 'Juan Carlos Villamizar Contreras',
   phone: '+57 312 456 7890',
   rating: 4.87,
@@ -55,7 +55,7 @@ const _mockDriver = _DriverProfile(
   vehicleYear: 2020,
   plate: 'KGB-742',
   vehicleColor: 'Blanco perla',
-  memberSince: Duration.zero, // placeholder, set below
+  memberSince: DateTime(2024, 3, 15),
 );
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -71,18 +71,7 @@ class ProfileScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     // Use fixed mock data (real data would come from a provider)
-    const driver = _DriverProfile(
-      fullName: 'Juan Carlos Villamizar Contreras',
-      phone: AppConstants.mockDriverPhone,
-      rating: 4.87,
-      totalTrips: 312,
-      vehicleBrand: 'Chevrolet',
-      vehicleModel: 'Spark GT',
-      vehicleYear: 2020,
-      plate: 'KGB-742',
-      vehicleColor: 'Blanco perla',
-      memberSince: Duration.zero,
-    );
+    final driver = _mockDriver;
 
     return Scaffold(
       appBar: AppBar(
