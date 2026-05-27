@@ -99,7 +99,7 @@ class EarningsMockDataSource {
 
   List<TripModel> _buildHistoricalTrips(int count, DateTime date) {
     // Tarifas netas mock realistas (después del 15% de comisión)
-    const fares = [4_751.0, 5_440.0, 5_074.5, 6_115.25, 4_335.0, 5_762.5, 6_032.75, 4_675.0, 5_185.5, 5_948.0, 4_547.25, 6_183.75];
+    const fares = [4751.0, 5440.0, 5074.5, 6115.25, 4335.0, 5762.5, 6032.75, 4675.0, 5185.5, 5948.0, 4547.25, 6183.75];
     const origins = [
       'Parque Águeda Gallardo',
       'Terminal de Transportes',

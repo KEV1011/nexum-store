@@ -2,32 +2,21 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
 import 'package:nexum_driver/core/errors/failures.dart';
-import 'package:nexum_driver/core/mock_data/driver_mock.dart';
-import 'package:nexum_driver/features/auth/data/datasources/auth_mock_datasource.dart';
+import 'package:nexum_driver/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:nexum_driver/features/auth/domain/entities/driver_entity.dart';
 import 'package:nexum_driver/features/auth/domain/repositories/auth_repository.dart';
 
-/// Implementación mock de [AuthRepository].
-///
-/// Delega las llamadas de red a [AuthMockDataSource] y persiste el JWT
-/// en [FlutterSecureStorage] con la clave [AppConstants.authTokenKey].
-///
-/// Conversión de excepciones → fallos:
-/// - [InvalidOtpException]  →  [InvalidOtpFailure]
-/// - [NetworkException]     →  [NetworkFailure]
-/// - [StorageException]     →  [StorageFailure]
-/// - Cualquier otra         →  [UnexpectedFailure]
 class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl({
-    required AuthMockDataSource dataSource,
+    required AuthRemoteDataSource dataSource,
     required FlutterSecureStorage secureStorage,
   })  : _dataSource = dataSource,
         _secureStorage = secureStorage;
 
-  final AuthMockDataSource _dataSource;
+  final AuthRemoteDataSource _dataSource;
   final FlutterSecureStorage _secureStorage;
 
-  // ── sendOtp ──────────────────────────────────────────────────────────────
+  // ── sendOtp ────────────────────────────────────────────────────────────────
 
   @override
   Future<({bool success, Failure? failure})> sendOtp(
@@ -37,24 +26,15 @@ class AuthRepositoryImpl implements AuthRepository {
       final ok = await _dataSource.sendOtp(phoneNumber);
       return (success: ok, failure: null);
     } on NetworkException catch (e) {
-      return (
-        success: false,
-        failure: NetworkFailure(message: e.message),
-      );
+      return (success: false, failure: NetworkFailure(message: e.message));
     } on AppException catch (e) {
-      return (
-        success: false,
-        failure: UnexpectedFailure(message: e.message),
-      );
+      return (success: false, failure: UnexpectedFailure(message: e.message));
     } catch (e) {
-      return (
-        success: false,
-        failure: UnexpectedFailure(message: e.toString()),
-      );
+      return (success: false, failure: UnexpectedFailure(message: e.toString()));
     }
   }
 
-  // ── verifyOtp ─────────────────────────────────────────────────────────────
+  // ── verifyOtp ──────────────────────────────────────────────────────────────
 
   @override
   Future<({DriverEntity? driver, Failure? failure})> verifyOtp({
@@ -62,65 +42,50 @@ class AuthRepositoryImpl implements AuthRepository {
     required String otpCode,
   }) async {
     try {
-      final token = await _dataSource.verifyOtp(
+      final data = await _dataSource.verifyOtp(
         phoneNumber: phoneNumber,
         otpCode: otpCode,
       );
 
-      // Persist JWT in secure storage
-      await _secureStorage.write(
-        key: AppConstants.authTokenKey,
-        value: token,
-      );
+      final token = data['token'] as String;
+      await _secureStorage.write(key: AppConstants.authTokenKey, value: token);
+
+      final d = data['driver'] as Map<String, dynamic>;
+      final vehicle = d['vehicle'] as Map<String, dynamic>;
 
       final driver = DriverEntity(
-        id: DriverMock.id,
-        name: DriverMock.name,
-        phone: DriverMock.phone,
-        rating: DriverMock.rating,
-        totalTrips: DriverMock.totalTrips,
-        vehiclePlate: DriverMock.vehiclePlate,
-        vehicleDescription: DriverMock.vehicleFullName,
-        isVerified: DriverMock.isVerified,
-        photoUrl: DriverMock.photoUrl,
+        id: d['id'] as String,
+        name: d['name'] as String,
+        phone: d['phone'] as String,
+        rating: (d['rating'] as num).toDouble(),
+        totalTrips: (d['totalTrips'] as num).toInt(),
+        vehiclePlate: vehicle['plate'] as String,
+        vehicleDescription:
+            '${vehicle['brand']} ${vehicle['model']} ${vehicle['year']} · ${vehicle['color']}',
+        isVerified: true,
       );
       return (driver: driver, failure: null);
     } on InvalidOtpException {
-      return (
-        driver: null,
-        failure: const InvalidOtpFailure(),
-      );
+      return (driver: null, failure: const InvalidOtpFailure());
     } on NetworkException catch (e) {
-      return (
-        driver: null,
-        failure: NetworkFailure(message: e.message),
-      );
+      return (driver: null, failure: NetworkFailure(message: e.message));
     } on StorageException catch (e) {
-      return (
-        driver: null,
-        failure: StorageFailure(message: e.message),
-      );
+      return (driver: null, failure: StorageFailure(message: e.message));
     } on AppException catch (e) {
-      return (
-        driver: null,
-        failure: UnexpectedFailure(message: e.message),
-      );
+      return (driver: null, failure: UnexpectedFailure(message: e.message));
     } catch (e) {
-      return (
-        driver: null,
-        failure: UnexpectedFailure(message: e.toString()),
-      );
+      return (driver: null, failure: UnexpectedFailure(message: e.toString()));
     }
   }
 
-  // ── logout ────────────────────────────────────────────────────────────────
+  // ── logout ─────────────────────────────────────────────────────────────────
 
   @override
   Future<void> logout() async {
     await _secureStorage.delete(key: AppConstants.authTokenKey);
   }
 
-  // ── isAuthenticated ───────────────────────────────────────────────────────
+  // ── isAuthenticated ────────────────────────────────────────────────────────
 
   @override
   Future<bool> isAuthenticated() async {
@@ -132,24 +97,12 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
-  // ── getCurrentDriver ──────────────────────────────────────────────────────
+  // ── getCurrentDriver ───────────────────────────────────────────────────────
 
   @override
   Future<DriverEntity?> getCurrentDriver() async {
     final authenticated = await isAuthenticated();
     if (!authenticated) return null;
-    // In mock mode, always return the static mock driver entity.
-    // Replace with a real API call or local DB lookup in production.
-    return DriverEntity(
-      id: DriverMock.id,
-      name: DriverMock.name,
-      phone: DriverMock.phone,
-      rating: DriverMock.rating,
-      totalTrips: DriverMock.totalTrips,
-      vehiclePlate: DriverMock.vehiclePlate,
-      vehicleDescription: DriverMock.vehicleFullName,
-      isVerified: DriverMock.isVerified,
-      photoUrl: DriverMock.photoUrl,
-    );
+    return null; // Driver data loaded on login; no local cache needed yet.
   }
 }

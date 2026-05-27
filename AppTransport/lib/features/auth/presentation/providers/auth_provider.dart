@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_driver/core/errors/failures.dart';
-import 'package:nexum_driver/features/auth/data/datasources/auth_mock_datasource.dart';
+import 'package:nexum_driver/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:nexum_driver/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:nexum_driver/features/auth/domain/entities/driver_entity.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/send_otp_usecase.dart';
@@ -64,9 +64,9 @@ final _secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   );
 });
 
-/// Proveedor del datasource mock.
-final _authDataSourceProvider = Provider<AuthMockDataSource>((ref) {
-  return AuthMockDataSource();
+/// Proveedor del datasource remoto de auth.
+final _authDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
+  return AuthRemoteDataSource();
 });
 
 /// Proveedor del repositorio de autenticación.

@@ -34,6 +34,13 @@ dependencies:
 
   # Internationalization
   intl: ^0.20.0
+
+  # Real-time communication
+  web_socket_channel: ^3.0.1
+
+  # Audio
+  audioplayers: ^6.1.0
+
   flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.7
 
@@ -75,3 +82,4 @@ flutter:
 
   assets:
     - assets/icons/
+    - assets/sounds/

@@ -1,15 +1,9 @@
 import 'package:dio/dio.dart';
+import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
 import 'package:nexum_driver/core/network/interceptors/auth_interceptor.dart';
 import 'package:nexum_driver/core/network/interceptors/logging_interceptor.dart';
-
-/// Base URL del API de Nexum.
-///
-/// TODO(backend): Reemplazar con la URL real del servidor cuando esté
-/// disponible. En MVP se usa un placeholder — todas las llamadas de red
-/// son simuladas con mock data.
-const String _kBaseUrl = 'https://api.nexum.com.co/v1';
 
 /// Cliente HTTP centralizado para la app del conductor.
 ///
@@ -24,7 +18,7 @@ class DioClient {
   DioClient._()
       : _dio = Dio(
           BaseOptions(
-            baseUrl: _kBaseUrl,
+            baseUrl: ApiConfig.baseUrl,
             connectTimeout: const Duration(
               milliseconds: AppConstants.connectTimeoutMs,
             ),

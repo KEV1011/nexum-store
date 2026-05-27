@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,175 +10,15 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
-import 'package:nexum_driver/core/utils/fare_calculator.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
+import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/widgets/status_indicator_bar.dart';
 import 'package:nexum_driver/features/driver_status/presentation/widgets/status_toggle_button.dart';
-import 'package:nexum_driver/features/trip_requests/data/datasources/trip_requests_datasource.dart';
-import 'package:nexum_driver/features/trip_requests/presentation/providers/trip_requests_provider.dart';
-import 'package:nexum_driver/features/trip_requests/presentation/widgets/trip_request_bottom_sheet.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
+import 'package:nexum_driver/shared/services/audio_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
-
-// ── Entidades mock ──────────────────────────────────────────────────────────
-
-/// Solicitud de viaje mock con coordenadas reales de Pamplona.
-class _TripRequest {
-  const _TripRequest({
-    required this.id,
-    required this.passengerName,
-    required this.passengerRating,
-    required this.pickupAddress,
-    required this.pickupLat,
-    required this.pickupLng,
-    required this.destinationAddress,
-    required this.destinationLat,
-    required this.destinationLng,
-    required this.distanceKm,
-  });
-
-  final String id;
-  final String passengerName;
-  final double passengerRating;
-  final String pickupAddress;
-  final double pickupLat;
-  final double pickupLng;
-  final String destinationAddress;
-  final double destinationLat;
-  final double destinationLng;
-  final double distanceKm;
-
-  int get durationMinutes => FareCalculator.estimateDurationMinutes(distanceKm);
-  double get fare => FareCalculator.calculateFare(
-        distanceKm: distanceKm,
-        durationMinutes: durationMinutes,
-      );
-  double get netEarning => FareCalculator.calculateNetEarning(fare);
-}
-
-// 10 solicitudes mock con coordenadas reales del casco urbano de Pamplona
-final _mockTripRequests = <_TripRequest>[
-  const _TripRequest(
-    id: 'trip_001',
-    passengerName: 'María Fernanda Pérez',
-    passengerRating: 4.9,
-    pickupAddress: 'Parque Águeda Gallardo',
-    pickupLat: MapConstants.parquePrincipalLat,
-    pickupLng: MapConstants.parquePrincipalLng,
-    destinationAddress: 'Universidad de Pamplona',
-    destinationLat: MapConstants.universidadLat,
-    destinationLng: MapConstants.universidadLng,
-    distanceKm: 0.8,
-  ),
-  const _TripRequest(
-    id: 'trip_002',
-    passengerName: 'Carlos Andrés Díaz',
-    passengerRating: 4.7,
-    pickupAddress: 'Terminal de Transportes',
-    pickupLat: MapConstants.terminalLat,
-    pickupLng: MapConstants.terminalLng,
-    destinationAddress: 'Hospital San Juan de Dios',
-    destinationLat: MapConstants.hospitalLat,
-    destinationLng: MapConstants.hospitalLng,
-    distanceKm: 1.5,
-  ),
-  const _TripRequest(
-    id: 'trip_003',
-    passengerName: 'Luisa Valentina Gómez',
-    passengerRating: 5.0,
-    pickupAddress: 'Catedral Santa Clara',
-    pickupLat: MapConstants.catedralLat,
-    pickupLng: MapConstants.catedralLng,
-    destinationAddress: 'Terminal de Transportes',
-    destinationLat: MapConstants.terminalLat,
-    destinationLng: MapConstants.terminalLng,
-    distanceKm: 1.2,
-  ),
-  const _TripRequest(
-    id: 'trip_004',
-    passengerName: 'Jorge Enrique Ruiz',
-    passengerRating: 4.5,
-    pickupAddress: 'Barrio El Buque',
-    pickupLat: MapConstants.elBuqueLat,
-    pickupLng: MapConstants.elBuqueLng,
-    destinationAddress: 'Parque Principal',
-    destinationLat: MapConstants.parquePrincipalLat,
-    destinationLng: MapConstants.parquePrincipalLng,
-    distanceKm: 1.8,
-  ),
-  const _TripRequest(
-    id: 'trip_005',
-    passengerName: 'Natalia Esperanza Torres',
-    passengerRating: 4.8,
-    pickupAddress: 'Barrio Cariongo',
-    pickupLat: MapConstants.cariongoLat,
-    pickupLng: MapConstants.cariongoLng,
-    destinationAddress: 'Universidad de Pamplona',
-    destinationLat: MapConstants.universidadLat,
-    destinationLng: MapConstants.universidadLng,
-    distanceKm: 0.9,
-  ),
-  const _TripRequest(
-    id: 'trip_006',
-    passengerName: 'Andrés Felipe Martínez',
-    passengerRating: 4.6,
-    pickupAddress: 'Barrio San Francisco',
-    pickupLat: MapConstants.sanFranciscoLat,
-    pickupLng: MapConstants.sanFranciscoLng,
-    destinationAddress: 'Hospital San Juan de Dios',
-    destinationLat: MapConstants.hospitalLat,
-    destinationLng: MapConstants.hospitalLng,
-    distanceKm: 1.1,
-  ),
-  const _TripRequest(
-    id: 'trip_007',
-    passengerName: 'Sandra Patricia López',
-    passengerRating: 4.9,
-    pickupAddress: 'Cristo Rey',
-    pickupLat: MapConstants.cristoReyLat,
-    pickupLng: MapConstants.cristoReyLng,
-    destinationAddress: 'Catedral Santa Clara',
-    destinationLat: MapConstants.catedralLat,
-    destinationLng: MapConstants.catedralLng,
-    distanceKm: 2.1,
-  ),
-  const _TripRequest(
-    id: 'trip_008',
-    passengerName: 'David Esteban Vargas',
-    passengerRating: 4.4,
-    pickupAddress: 'Centro Comercial',
-    pickupLat: MapConstants.centroComericalLat,
-    pickupLng: MapConstants.centroComericalLng,
-    destinationAddress: 'Barrio Chapinero',
-    destinationLat: MapConstants.chapineroLat,
-    destinationLng: MapConstants.chapineroLng,
-    distanceKm: 0.7,
-  ),
-  const _TripRequest(
-    id: 'trip_009',
-    passengerName: 'Camila Alejandra Niño',
-    passengerRating: 4.8,
-    pickupAddress: 'Barrio Ciudad Jardín',
-    pickupLat: MapConstants.ciudadJardinLat,
-    pickupLng: MapConstants.ciudadJardinLng,
-    destinationAddress: 'Terminal de Transportes',
-    destinationLat: MapConstants.terminalLat,
-    destinationLng: MapConstants.terminalLng,
-    distanceKm: 0.6,
-  ),
-  const _TripRequest(
-    id: 'trip_010',
-    passengerName: 'Juan Pablo Suárez',
-    passengerRating: 4.7,
-    pickupAddress: 'Hospital San Juan de Dios',
-    pickupLat: MapConstants.hospitalLat,
-    pickupLng: MapConstants.hospitalLng,
-    destinationAddress: 'Cristo Rey',
-    destinationLat: MapConstants.cristoReyLat,
-    destinationLng: MapConstants.cristoReyLng,
-    distanceKm: 2.4,
-  ),
-];
+import 'package:nexum_driver/shared/services/ws_service.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -196,14 +35,14 @@ class _HomeState {
   final bool isOnline;
   final double todayEarnings;
   final int todayTrips;
-  final _TripRequest? pendingRequest;
+  final TripRequestEntity? pendingRequest;
   final int requestSecondsLeft;
 
   _HomeState copyWith({
     bool? isOnline,
     double? todayEarnings,
     int? todayTrips,
-    _TripRequest? pendingRequest,
+    TripRequestEntity? pendingRequest,
     bool clearPending = false,
     int? requestSecondsLeft,
   }) {
@@ -233,10 +72,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   _HomeState _state = const _HomeState();
   GoogleMapController? _mapController;
 
-  Timer? _requestTimer;
+  StreamSubscription<TripRequestEntity>? _wsSub;
   Timer? _countdownTimer;
-
-  final _rng = math.Random();
 
   static const _initialPosition = CameraPosition(
     target: LatLng(MapConstants.pamplonaCenterLat, MapConstants.pamplonaCenterLng),
@@ -245,7 +82,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
-    _requestTimer?.cancel();
+    _wsSub?.cancel();
+    WsService().disconnect();
     _countdownTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
@@ -261,42 +99,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     if (goingOnline) {
       AppSnackbar.showSuccess(context, 'Estás en línea. Buscando viajes...');
-      _scheduleNextRequest();
+      _connectWs();
     } else {
-      _requestTimer?.cancel();
+      _wsSub?.cancel();
+      WsService().disconnect();
       _countdownTimer?.cancel();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
   }
 
-  // ── Trip request simulation ────────────────────────────────────────────
+  // ── WebSocket trip dispatch ────────────────────────────────────────────
 
-  void _scheduleNextRequest() {
-    if (!_state.isOnline) return;
-    final delay = Duration(
-      seconds: AppConstants.minTripRequestIntervalSeconds +
-          _rng.nextInt(
-            AppConstants.maxTripRequestIntervalSeconds -
-                AppConstants.minTripRequestIntervalSeconds,
-          ),
-    );
-    _requestTimer = Timer(delay, _showNewRequest);
+  Future<void> _connectWs() async {
+    await WsService().connect();
+    _wsSub?.cancel();
+    _wsSub = WsService().tripRequests.listen(_onTripRequest);
   }
 
-  void _showNewRequest() {
+  void _onTripRequest(TripRequestEntity request) {
     if (!mounted || !_state.isOnline) return;
-    final trip = _mockTripRequests[_rng.nextInt(_mockTripRequests.length)];
-
+    AudioService().playTripRequest();
     setState(() {
       _state = _state.copyWith(
-        pendingRequest: trip,
+        pendingRequest: request,
         requestSecondsLeft: AppConstants.tripRequestTimeoutSeconds,
       );
     });
-    _startCountdown();
+    _startCountdown(request);
   }
 
-  void _startCountdown() {
+  void _startCountdown(TripRequestEntity request) {
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
@@ -306,25 +138,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final newLeft = _state.requestSecondsLeft - 1;
       if (newLeft <= 0) {
         timer.cancel();
+        WsService().rejectTrip(request.id);
         setState(() => _state = _state.copyWith(clearPending: true));
-        if (_state.isOnline) _scheduleNextRequest();
       } else {
         setState(() => _state = _state.copyWith(requestSecondsLeft: newLeft));
       }
     });
   }
 
-  void _acceptTrip(_TripRequest trip) {
+  Future<void> _acceptTrip(TripRequestEntity request) async {
     _countdownTimer?.cancel();
-    _requestTimer?.cancel();
+    WsService().acceptTrip(request.id);
     setState(() => _state = _state.copyWith(clearPending: true));
-    context.push('/active-trip', extra: trip);
+    await ref.read(activeTripProvider.notifier).beginTrip(request);
+    if (mounted) context.push('/active-trip');
   }
 
-  void _rejectTrip() {
+  void _rejectTrip(TripRequestEntity request) {
     _countdownTimer?.cancel();
+    WsService().rejectTrip(request.id);
     setState(() => _state = _state.copyWith(clearPending: true));
-    if (_state.isOnline) _scheduleNextRequest();
   }
 
   // ── Build ──────────────────────────────────────────────────────────────
@@ -358,7 +191,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               trip: _state.pendingRequest!,
               secondsLeft: _state.requestSecondsLeft,
               onAccept: () => _acceptTrip(_state.pendingRequest!),
-              onReject: _rejectTrip,
+              onReject: () => _rejectTrip(_state.pendingRequest!),
             ),
         ],
       ),
@@ -639,7 +472,7 @@ class _TripRequestModal extends StatelessWidget {
     required this.onReject,
   });
 
-  final _TripRequest trip;
+  final TripRequestEntity trip;
   final int secondsLeft;
   final VoidCallback onAccept;
   final VoidCallback onReject;
@@ -684,7 +517,7 @@ class _TripRequestModal extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    trip.passengerName,
+                                    trip.passenger.name,
                                     style: theme.textTheme.titleMedium
                                         ?.copyWith(fontWeight: FontWeight.w700),
                                   ),
@@ -697,7 +530,7 @@ class _TripRequestModal extends StatelessWidget {
                                       ),
                                       const SizedBox(width: 2),
                                       Text(
-                                        trip.passengerRating
+                                        trip.passenger.rating
                                             .toStringAsFixed(1),
                                         style: theme.textTheme.bodySmall,
                                       ),
@@ -738,14 +571,14 @@ class _TripRequestModal extends StatelessWidget {
                           icon: Icons.radio_button_checked_rounded,
                           color: AppColors.pickupMarker,
                           label: 'Origen',
-                          address: trip.pickupAddress,
+                          address: trip.origin.address,
                         ),
                         const SizedBox(height: AppConstants.spacingS),
                         _RouteRow(
                           icon: Icons.location_on_rounded,
                           color: AppColors.destinationMarker,
                           label: 'Destino',
-                          address: trip.destinationAddress,
+                          address: trip.destination.address,
                         ),
                         const Divider(height: AppConstants.spacingL),
                         // Fare info
@@ -764,7 +597,7 @@ class _TripRequestModal extends StatelessWidget {
                             ),
                             _FareChip(
                               label: 'Ganancia',
-                              value: CurrencyFormatter.format(trip.netEarning),
+                              value: CurrencyFormatter.format(trip.estimatedFare),
                               icon: Icons.payments_outlined,
                               highlight: true,
                             ),
