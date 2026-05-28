@@ -11,6 +11,7 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
+import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/mock_data/passengers_mock.dart';
 import 'package:nexum_driver/core/mock_data/trips_mock.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
@@ -27,7 +28,6 @@ import 'package:nexum_driver/shared/services/ws_service.dart';
 class _HomeState {
   const _HomeState({
     this.isOnline = false,
-    this.selectedServiceType = ServiceType.moto,
     this.todayEarnings = 0.0,
     this.todayTrips = 0,
     this.pendingRequest,
@@ -35,7 +35,6 @@ class _HomeState {
   });
 
   final bool isOnline;
-  final ServiceType selectedServiceType;
   final double todayEarnings;
   final int todayTrips;
   final TripRequestEntity? pendingRequest;
@@ -43,7 +42,6 @@ class _HomeState {
 
   _HomeState copyWith({
     bool? isOnline,
-    ServiceType? selectedServiceType,
     double? todayEarnings,
     int? todayTrips,
     TripRequestEntity? pendingRequest,
@@ -52,7 +50,6 @@ class _HomeState {
   }) {
     return _HomeState(
       isOnline: isOnline ?? this.isOnline,
-      selectedServiceType: selectedServiceType ?? this.selectedServiceType,
       todayEarnings: todayEarnings ?? this.todayEarnings,
       todayTrips: todayTrips ?? this.todayTrips,
       pendingRequest:
@@ -104,9 +101,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     if (goingOnline) {
+      final serviceType = ref.read(selectedServiceTypeProvider);
       AppSnackbar.showSuccess(
         context,
-        'En línea como ${_state.selectedServiceType.displayName}. Buscando viajes...',
+        'En línea como ${serviceType.displayName}. Buscando viajes...',
       );
       _connectWs();
     } else {
@@ -121,8 +119,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // ── Service type ───────────────────────────────────────────────────────
 
   void _selectServiceType(ServiceType type) {
-    if (_state.isOnline) return; // can't change while online
-    setState(() => _state = _state.copyWith(selectedServiceType: type));
+    if (_state.isOnline) return;
+    ref.read(selectedServiceTypeProvider.notifier).state = type;
   }
 
   // ── WebSocket / web mock dispatch ─────────────────────────────────────
@@ -157,8 +155,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         .passengers[_rng.nextInt(PassengersMock.passengers.length)];
     final dist = tripData.distanceKm;
     final dur = tripData.durationMinutes;
-    final fare = _state.selectedServiceType.estimateFare(dist, dur.toDouble()) *
-        (1 - _state.selectedServiceType.platformCommission);
+    final serviceType = ref.read(selectedServiceTypeProvider);
+    final fare = serviceType.estimateFare(dist, dur.toDouble()) *
+        (1 - serviceType.platformCommission);
 
     final request = TripRequestEntity(
       id: '${tripData.id}_${DateTime.now().millisecondsSinceEpoch}',
@@ -231,35 +230,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // ── Build ──────────────────────────────────────────────────────────────
 
+  static const _driverLatLng = LatLng(
+    MapConstants.pamplonaCenterLat,
+    MapConstants.pamplonaCenterLng,
+  );
+
   @override
   Widget build(BuildContext context) {
+    final serviceType = ref.watch(selectedServiceTypeProvider);
+
     return Scaffold(
-      drawer: _AppDrawer(selectedServiceType: _state.selectedServiceType),
+      drawer: _AppDrawer(selectedServiceType: serviceType),
       body: Stack(
         children: [
           // Map
           GoogleMap(
             initialCameraPosition: _initialPosition,
             onMapCreated: (controller) => _mapController = controller,
-            myLocationEnabled: true,
+            myLocationEnabled: false,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
+            markers: _state.isOnline
+                ? {
+                    Marker(
+                      markerId: const MarkerId('driver'),
+                      position: _driverLatLng,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                          serviceType.markerHue),
+                      infoWindow: InfoWindow(
+                        title: 'Tu posición',
+                        snippet: serviceType.displayName,
+                      ),
+                    ),
+                  }
+                : {},
           ),
           // Top bar
-          SafeArea(child: _buildTopBar()),
+          SafeArea(child: _buildTopBar(serviceType)),
           // Bottom panel
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: _buildBottomPanel(),
+            child: _buildBottomPanel(serviceType),
           ),
           // Trip request modal
           if (_state.pendingRequest != null)
             _TripRequestModal(
               trip: _state.pendingRequest!,
-              serviceType: _state.selectedServiceType,
+              serviceType: serviceType,
               secondsLeft: _state.requestSecondsLeft,
               onAccept: () => _acceptTrip(_state.pendingRequest!),
               onReject: () => _rejectTrip(_state.pendingRequest!),
@@ -269,7 +289,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildTopBar() {
+  Widget _buildTopBar(ServiceType serviceType) {
     return Padding(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       child: Row(
@@ -285,7 +305,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Online toggle
           _OnlineToggle(
             isOnline: _state.isOnline,
-            serviceType: _state.selectedServiceType,
+            serviceType: serviceType,
             onTap: _toggleOnline,
           ),
           const Spacer(),
@@ -304,7 +324,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildBottomPanel() {
+  Widget _buildBottomPanel(ServiceType serviceType) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -345,7 +365,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Service type selector (only when offline)
           if (!_state.isOnline) ...[
             _ServiceTypeSelector(
-              selected: _state.selectedServiceType,
+              selected: serviceType,
               onSelect: _selectServiceType,
             ),
             const SizedBox(height: AppConstants.spacingM),
@@ -370,7 +390,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _StatCard(
                 label: 'Viajes',
                 value: _state.todayTrips.toString(),
-                icon: _state.selectedServiceType.icon,
+                icon: serviceType.icon,
               ),
             ],
           ),
@@ -385,16 +405,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: _state.isOnline
-                      ? AppColors.online
-                      : AppColors.offline,
+                  color: _state.isOnline ? AppColors.online : AppColors.offline,
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: AppConstants.spacingS),
               Text(
                 _state.isOnline
-                    ? 'En línea como ${_state.selectedServiceType.displayName} · Buscando...'
+                    ? 'En línea como ${serviceType.displayName} · Buscando...'
                     : 'Desconectado · Selecciona servicio y activa el toggle',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: _state.isOnline

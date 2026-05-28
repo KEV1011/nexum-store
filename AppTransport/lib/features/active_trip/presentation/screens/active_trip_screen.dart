@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
+import 'package:nexum_driver/core/domain/service_type.dart';
+import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
@@ -14,17 +18,8 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/trip_in_p
 import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_passenger_card.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 
-/// Pantalla principal de viaje activo.
-///
-/// Muestra el mapa con la ruta como polilínea y la tarjeta de acción inferior
-/// que cambia según el estado del viaje (toPickup / waiting / inProgress).
-///
-/// Recibe el [ActiveTripEntity] desde [activeTripProvider] y reacciona a cambios
-/// en tiempo real.
 class ActiveTripScreen extends ConsumerStatefulWidget {
   const ActiveTripScreen({this.tripExtra, super.key});
-
-  /// Datos del viaje pasados como `extra` desde el router (legacy compat).
   final Object? tripExtra;
 
   @override
@@ -34,137 +29,120 @@ class ActiveTripScreen extends ConsumerStatefulWidget {
 class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   GoogleMapController? _mapController;
   bool _isLoading = false;
+  bool _autoFollow = true;
 
-  // Posición del conductor (mock: centro de Pamplona — Parque Águeda Gallardo)
-  static const LatLng _driverPosition = LatLng(
+  // Simulated driver position — starts at Pamplona center
+  LatLng _driverPos = const LatLng(
     MapConstants.pamplonaCenterLat,
     MapConstants.pamplonaCenterLng,
   );
 
+  Timer? _movementTimer;
+  Timer? _etaTimer;
+  int _etaSeconds = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final trip = ref.read(activeTripProvider);
+      if (trip != null) {
+        _startSimulatedMovement(trip);
+        _startEtaCountdown(trip);
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _movementTimer?.cancel();
+    _etaTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final trip = ref.watch(activeTripProvider);
+  // ── Simulated driver movement ────────────────────────────────────────────
 
-    // Cuando no hay viaje activo (cancelado o finalizado), volver al home.
-    if (trip == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go('/home');
-      });
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-      );
+  void _startSimulatedMovement(ActiveTripEntity trip) {
+    _movementTimer?.cancel();
+    _movementTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      final current = ref.read(activeTripProvider);
+      if (current == null) return;
+
+      final target = current.isInProgress
+          ? current.request.destination.latLng
+          : current.request.origin.latLng;
+
+      final newLat = _lerp(_driverPos.latitude, target.latitude, 0.10);
+      final newLng = _lerp(_driverPos.longitude, target.longitude, 0.10);
+      final updated = LatLng(newLat, newLng);
+
+      setState(() => _driverPos = updated);
+
+      if (_autoFollow && _mapController != null) {
+        _mapController!.animateCamera(CameraUpdate.newLatLng(updated));
+      }
+    });
+  }
+
+  void _startEtaCountdown(ActiveTripEntity trip) {
+    _etaTimer?.cancel();
+    _etaSeconds = trip.isInProgress
+        ? trip.request.durationMinutes * 60
+        : trip.request.etaToPickupMinutes * 60;
+
+    _etaTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_etaSeconds > 0) setState(() => _etaSeconds--);
+    });
+  }
+
+  static double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+  String get _etaLabel {
+    if (_etaSeconds <= 0) return '< 1 min';
+    final mins = _etaSeconds ~/ 60;
+    final secs = _etaSeconds % 60;
+    if (mins > 0) return '$mins min ${secs}s';
+    return '${secs}s';
+  }
+
+  // ── Trip state transition handler ────────────────────────────────────────
+
+  void _onTripStateChanged(ActiveTripEntity? prev, ActiveTripEntity? next) {
+    if (next == null || prev == null) return;
+    if (prev.state == next.state) return;
+
+    // toPickup → waiting: zoom in on pickup marker
+    if (prev.isToPickup && next.isWaiting) {
+      _zoomTo(next.request.origin.latLng, zoom: 17);
+      _startEtaCountdown(next);
     }
 
-    return PopScope(
-      canPop: !trip.isInProgress,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && trip.isInProgress) {
-          _showCannotLeaveDialog();
-        }
-      },
-      child: Scaffold(
-        body: Stack(
-          children: [
-            // ── Map ─────────────────────────────────────────────────────
-            _buildMap(trip),
-
-            // ── AppBar overlay ───────────────────────────────────────────
-            _buildTopBar(trip),
-
-            // ── Loading overlay ──────────────────────────────────────────
-            if (_isLoading)
-              Container(
-                color: AppColors.overlay,
-                child: const Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
-                ),
-              ),
-          ],
-        ),
-
-        // ── Bottom card ──────────────────────────────────────────────────
-        bottomSheet: _buildBottomCard(trip),
-      ),
-    );
+    // waiting → inProgress: reset position to origin, re-fit for full route
+    if (prev.isWaiting && next.isInProgress) {
+      setState(() {
+        _driverPos = next.request.origin.latLng;
+        _autoFollow = true;
+      });
+      _startSimulatedMovement(next);
+      _startEtaCountdown(next);
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) _fitBoundsToRoute([_driverPos, next.request.destination.latLng]);
+      });
+    }
   }
 
-  // ── Map ──────────────────────────────────────────────────────────────────────
-
-  Widget _buildMap(ActiveTripEntity trip) {
-    final originLatLng = trip.request.origin.latLng;
-    final destinationLatLng = trip.request.destination.latLng;
-
-    // Durante toPickup/waiting: driver → origin; durante inProgress: origin → destination
-    final polylinePoints = trip.isInProgress
-        ? [originLatLng, destinationLatLng]
-        : [_driverPosition, originLatLng];
-
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: trip.isInProgress ? originLatLng : _driverPosition,
-        zoom: MapConstants.tripZoom,
-      ),
-      onMapCreated: (controller) {
-        _mapController = controller;
-        _fitBoundsToRoute(polylinePoints);
-      },
-      markers: _buildMarkers(trip),
-      polylines: {
-        Polyline(
-          polylineId: const PolylineId('active_route'),
-          points: polylinePoints,
-          color: AppColors.routeColor,
-          width: 5,
-          // Dashed line while going to pickup to differentiate from trip route
-          patterns: trip.isToPickup
-              ? [PatternItem.dash(20), PatternItem.gap(10)]
-              : [],
-        ),
-      },
-      myLocationEnabled: true,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: true,
-    );
-  }
-
-  Set<Marker> _buildMarkers(ActiveTripEntity trip) {
-    return {
-      Marker(
-        markerId: const MarkerId('origin'),
-        position: trip.request.origin.latLng,
-        infoWindow: InfoWindow(
-          title: 'Punto de recogida',
-          snippet: trip.request.origin.address,
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      ),
-      Marker(
-        markerId: const MarkerId('destination'),
-        position: trip.request.destination.latLng,
-        infoWindow: InfoWindow(
-          title: 'Destino',
-          snippet: trip.request.destination.address,
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-      ),
-    };
-  }
+  // ── Camera helpers ───────────────────────────────────────────────────────
 
   void _fitBoundsToRoute(List<LatLng> points) {
     if (points.length < 2 || _mapController == null) return;
 
-    double minLat = points.first.latitude;
-    double maxLat = points.first.latitude;
-    double minLng = points.first.longitude;
-    double maxLng = points.first.longitude;
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLng = points.first.longitude;
+    var maxLng = points.first.longitude;
 
     for (final p in points) {
       if (p.latitude < minLat) minLat = p.latitude;
@@ -176,25 +154,201 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     _mapController!.animateCamera(
       CameraUpdate.newLatLngBounds(
         LatLngBounds(
-          southwest: LatLng(minLat, minLng),
-          northeast: LatLng(maxLat, maxLng),
+          southwest: LatLng(minLat - 0.002, minLng - 0.002),
+          northeast: LatLng(maxLat + 0.002, maxLng + 0.002),
         ),
-        80.0,
+        72.0,
       ),
     );
   }
 
-  // ── Top bar overlay ──────────────────────────────────────────────────────────
+  void _zoomTo(LatLng target, {double zoom = 16}) {
+    _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: target, zoom: zoom),
+      ),
+    );
+  }
 
-  Widget _buildTopBar(ActiveTripEntity trip) {
-    final label = switch (trip.state) {
-      ActiveTripState.toPickup =>
-        'Yendo al pasajero · ${trip.request.etaToPickupMinutes} min',
-      ActiveTripState.waiting => 'Esperando al pasajero',
-      ActiveTripState.inProgress =>
-        'En camino al destino · ${trip.request.durationMinutes} min est.',
+  void _recenter(ActiveTripEntity trip) {
+    setState(() => _autoFollow = true);
+    final points = trip.isInProgress
+        ? [_driverPos, trip.request.destination.latLng]
+        : [_driverPos, trip.request.origin.latLng];
+    _fitBoundsToRoute(points);
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    // Listen for state transitions
+    ref.listen<ActiveTripEntity?>(activeTripProvider, (prev, next) {
+      _onTripStateChanged(prev, next);
+    });
+
+    final trip = ref.watch(activeTripProvider);
+    final serviceType = ref.watch(selectedServiceTypeProvider);
+
+    if (trip == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/home');
+      });
+      return const Scaffold(
+        body: Center(
+            child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
+    return PopScope(
+      canPop: !trip.isInProgress,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && trip.isInProgress) _showCannotLeaveDialog();
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            _buildMap(trip, serviceType),
+            _buildTopBar(trip, serviceType),
+            if (_isLoading)
+              Container(
+                color: AppColors.overlay,
+                child: const Center(
+                  child:
+                      CircularProgressIndicator(color: AppColors.primary),
+                ),
+              ),
+          ],
+        ),
+        floatingActionButton: _buildRecentFab(trip, serviceType),
+        floatingActionButtonLocation:
+            FloatingActionButtonLocation.miniEndFloat,
+        bottomSheet: _buildBottomCard(trip),
+      ),
+    );
+  }
+
+  // ── Map ──────────────────────────────────────────────────────────────────
+
+  Widget _buildMap(ActiveTripEntity trip, ServiceType serviceType) {
+    final originLatLng = trip.request.origin.latLng;
+    final destinationLatLng = trip.request.destination.latLng;
+
+    final polylinePoints = trip.isInProgress
+        ? [_driverPos, originLatLng, destinationLatLng]
+        : [_driverPos, originLatLng];
+
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: _driverPos,
+        zoom: MapConstants.tripZoom,
+      ),
+      onMapCreated: (controller) {
+        _mapController = controller;
+        _fitBoundsToRoute(polylinePoints);
+      },
+      onCameraMoveStarted: () {
+        // User manually moved the map — disable auto-follow
+        if (_autoFollow) setState(() => _autoFollow = false);
+      },
+      markers: _buildMarkers(trip, serviceType),
+      polylines: _buildPolylines(trip, serviceType, polylinePoints),
+      myLocationEnabled: false,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: true,
+    );
+  }
+
+  Set<Marker> _buildMarkers(
+      ActiveTripEntity trip, ServiceType serviceType) {
+    final originLatLng = trip.request.origin.latLng;
+
+    return {
+      // Driver marker
+      Marker(
+        markerId: const MarkerId('driver'),
+        position: _driverPos,
+        icon: BitmapDescriptor.defaultMarkerWithHue(serviceType.markerHue),
+        infoWindow: InfoWindow(
+          title: serviceType.displayName,
+          snippet: 'Tu posición actual',
+        ),
+        zIndex: 2,
+      ),
+      // Pickup marker — with pulse stack via ground overlay trick
+      Marker(
+        markerId: const MarkerId('origin'),
+        position: originLatLng,
+        infoWindow: InfoWindow(
+          title: 'Punto de recogida',
+          snippet: trip.request.origin.address,
+        ),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        zIndex: 1,
+      ),
+      // Destination marker
+      Marker(
+        markerId: const MarkerId('destination'),
+        position: trip.request.destination.latLng,
+        infoWindow: InfoWindow(
+          title: 'Destino',
+          snippet: trip.request.destination.address,
+        ),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        zIndex: 1,
+      ),
     };
+  }
 
+  Set<Polyline> _buildPolylines(
+    ActiveTripEntity trip,
+    ServiceType serviceType,
+    List<LatLng> points,
+  ) {
+    return {
+      Polyline(
+        polylineId: const PolylineId('route_shadow'),
+        points: points,
+        color: Colors.black.withValues(alpha: 0.15),
+        width: 9,
+      ),
+      Polyline(
+        polylineId: const PolylineId('active_route'),
+        points: points,
+        color: serviceType.color,
+        width: 5,
+        patterns: trip.isToPickup
+            ? [PatternItem.dash(18), PatternItem.gap(8)]
+            : [],
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+        jointType: JointType.round,
+      ),
+    };
+  }
+
+  // ── FAB: recenter ────────────────────────────────────────────────────────
+
+  Widget? _buildRecentFab(ActiveTripEntity trip, ServiceType serviceType) {
+    if (_autoFollow) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 220),
+      child: FloatingActionButton.small(
+        onPressed: () => _recenter(trip),
+        backgroundColor: Colors.white,
+        foregroundColor: serviceType.color,
+        elevation: 4,
+        tooltip: 'Recentrar mapa',
+        child: const Icon(Icons.my_location_rounded),
+      ),
+    );
+  }
+
+  // ── Top bar ──────────────────────────────────────────────────────────────
+
+  Widget _buildTopBar(ActiveTripEntity trip, ServiceType serviceType) {
     return Positioned(
       top: 0,
       left: 0,
@@ -207,15 +361,16 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
           ),
           child: Row(
             children: [
-              // Back / cancel button
+              // Back button
               Material(
                 color: Colors.white,
                 elevation: 4,
+                shadowColor: AppColors.shadow,
                 shape: const CircleBorder(),
                 child: InkWell(
                   onTap: trip.isInProgress
                       ? _showCannotLeaveDialog
-                      : () => _confirmGoBack(),
+                      : _confirmGoBack,
                   customBorder: const CircleBorder(),
                   child: const Padding(
                     padding: EdgeInsets.all(8),
@@ -225,7 +380,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
               ),
               const SizedBox(width: AppConstants.spacingS),
 
-              // State label
+              // Status pill
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -237,18 +392,60 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
                     borderRadius:
                         BorderRadius.circular(AppConstants.radiusCircular),
                     boxShadow: const [
-                      BoxShadow(color: AppColors.shadow, blurRadius: 8),
+                      BoxShadow(
+                          color: AppColors.shadow,
+                          blurRadius: 8,
+                          offset: Offset(0, 2))
                     ],
                   ),
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: AppColors.textPrimary,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(serviceType.icon,
+                          size: 14, color: serviceType.color),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          _statusLabel(trip),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: AppColors.textPrimary,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: AppConstants.spacingS),
+
+              // ETA badge
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: serviceType.color,
+                  borderRadius:
+                      BorderRadius.circular(AppConstants.radiusCircular),
+                  boxShadow: [
+                    BoxShadow(
+                      color: serviceType.color.withValues(alpha: 0.4),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
+                  ],
+                ),
+                child: Text(
+                  _etaLabel,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -259,14 +456,20 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     );
   }
 
-  // ── Bottom card ──────────────────────────────────────────────────────────────
+  String _statusLabel(ActiveTripEntity trip) => switch (trip.state) {
+        ActiveTripState.toPickup => 'Yendo al pasajero',
+        ActiveTripState.waiting => 'Esperando al pasajero',
+        ActiveTripState.inProgress => 'En camino al destino',
+      };
+
+  // ── Bottom card ──────────────────────────────────────────────────────────
 
   Widget _buildBottomCard(ActiveTripEntity trip) {
     return switch (trip.state) {
       ActiveTripState.toPickup => GoingToPassengerCard(
           trip: trip,
           onArrived: _isLoading ? null : _handleArrived,
-          onCancelled: () => _handleCancelled(),
+          onCancelled: _handleCancelled,
         ),
       ActiveTripState.waiting => WaitingPassengerCard(
           trip: trip,
@@ -279,16 +482,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     };
   }
 
-  // ── Action handlers ──────────────────────────────────────────────────────────
+  // ── Action handlers ──────────────────────────────────────────────────────
 
   Future<void> _handleArrived() async {
     setState(() => _isLoading = true);
     try {
       await ref.read(activeTripProvider.notifier).arrivedAtPassenger();
     } catch (_) {
-      if (mounted) {
-        AppSnackbar.showError(context, 'Error al actualizar estado');
-      }
+      if (mounted) AppSnackbar.showError(context, 'Error al actualizar estado');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -298,19 +499,8 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     setState(() => _isLoading = true);
     try {
       await ref.read(activeTripProvider.notifier).startTrip();
-
-      // Re-fit map to show origin → destination once trip starts
-      final trip = ref.read(activeTripProvider);
-      if (trip != null && mounted) {
-        _fitBoundsToRoute([
-          trip.request.origin.latLng,
-          trip.request.destination.latLng,
-        ]);
-      }
     } catch (_) {
-      if (mounted) {
-        AppSnackbar.showError(context, 'Error al iniciar el viaje');
-      }
+      if (mounted) AppSnackbar.showError(context, 'Error al iniciar el viaje');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -321,15 +511,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     try {
       final tripModel =
           await ref.read(activeTripProvider.notifier).finishTrip();
-
-      // Register earnings in driver status
       await ref
           .read(driverStatusProvider.notifier)
           .updateEarnings(tripModel.netEarning);
-
-      if (mounted) {
-        context.go('/trip-summary', extra: tripModel);
-      }
+      if (mounted) context.go('/trip-summary', extra: tripModel);
     } catch (_) {
       if (mounted) {
         AppSnackbar.showError(context, 'Error al finalizar el viaje');
@@ -339,12 +524,13 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   }
 
   void _handleCancelled() {
-    // Reset the active trip state and go back to home
+    _movementTimer?.cancel();
+    _etaTimer?.cancel();
     ref.read(activeTripProvider.notifier).state = null;
     if (mounted) context.go('/home');
   }
 
-  // ── Dialogs ──────────────────────────────────────────────────────────────────
+  // ── Dialogs ──────────────────────────────────────────────────────────────
 
   Future<void> _showCannotLeaveDialog() async {
     if (!mounted) return;
@@ -359,10 +545,6 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-            ),
             child: const Text('Entendido'),
           ),
         ],
@@ -390,8 +572,6 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
         ],
       ),
     );
-    if (confirmed == true && mounted) {
-      _handleCancelled();
-    }
+    if (confirmed == true && mounted) _handleCancelled();
   }
 }

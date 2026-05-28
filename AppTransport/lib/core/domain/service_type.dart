@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 
@@ -92,7 +93,17 @@ enum ServiceType {
         ServiceType.envios => 0,
       };
 
-  /// Porcentaje de comisión de la plataforma.
+  // ── Map marker hue (BitmapDescriptor) ─────────────────────────────────
+
+  double get markerHue => switch (this) {
+        ServiceType.particular => BitmapDescriptor.hueBlue,
+        ServiceType.taxi => BitmapDescriptor.hueOrange,
+        ServiceType.moto => BitmapDescriptor.hueRose,
+        ServiceType.motocarro => BitmapDescriptor.hueViolet,
+        ServiceType.envios => BitmapDescriptor.hueCyan,
+      };
+
+  // ── Porcentaje de comisión de la plataforma ────────────────────────────
   double get platformCommission => switch (this) {
         ServiceType.particular => 0.15,
         ServiceType.taxi => 0.12,
