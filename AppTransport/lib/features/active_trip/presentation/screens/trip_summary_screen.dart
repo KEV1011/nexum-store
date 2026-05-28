@@ -27,15 +27,18 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   @override
   void initState() {
     super.initState();
-    // Auto-present the passenger rating sheet shortly after arriving,
-    // mirroring the post-trip flow drivers expect.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted) {
-          PassengerRatingSheet.show(context, passengerName: trip.passengerName);
-        }
+    if (!trip.isDeliveryTrip) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted) {
+            PassengerRatingSheet.show(
+              context,
+              passengerName: trip.passengerName,
+            );
+          }
+        });
       });
-    });
+    }
   }
 
   @override
@@ -60,12 +63,16 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                 child: Container(
                   width: 84,
                   height: 84,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primary,
+                  decoration: BoxDecoration(
+                    color: trip.isDeliveryTrip
+                        ? AppColors.serviceEnvios
+                        : AppColors.primary,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.check_rounded,
+                  child: Icon(
+                    trip.isDeliveryTrip
+                        ? Icons.inventory_2_rounded
+                        : Icons.check_rounded,
                     color: Colors.white,
                     size: 48,
                   ),
@@ -74,7 +81,9 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
               const SizedBox(height: AppConstants.spacingM),
 
               Text(
-                '¡Viaje completado!',
+                trip.isDeliveryTrip
+                    ? '¡Entrega completada!'
+                    : '¡Viaje completado!',
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
@@ -153,7 +162,9 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                       const SizedBox(height: AppConstants.spacingM),
                       _DetailRow(
                         icon: Icons.person_rounded,
-                        label: 'Pasajero',
+                        label: trip.isDeliveryTrip
+                            ? 'Destinatario'
+                            : 'Pasajero',
                         value: trip.passengerName,
                       ),
                       _DetailRow(
@@ -185,6 +196,54 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
 
               const SizedBox(height: AppConstants.spacingM),
 
+              // ── Prueba de entrega ────────────────────────────────────────
+              if (trip.isDeliveryTrip)
+                Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(AppConstants.radiusMedium),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppConstants.spacingM),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.verified_rounded,
+                              color: AppColors.serviceEnvios,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Prueba de entrega',
+                              style: theme.textTheme.titleSmall
+                                  ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppConstants.spacingM),
+                        _ProofItem(
+                          icon: Icons.photo_camera_rounded,
+                          label: 'Foto del paquete',
+                          captured: trip.hasDeliveryPhoto,
+                        ),
+                        _ProofItem(
+                          icon: Icons.draw_rounded,
+                          label: 'Firma del destinatario',
+                          captured: trip.hasSignature,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              if (trip.isDeliveryTrip)
+                const SizedBox(height: AppConstants.spacingM),
+
               // ── Sesión de hoy ────────────────────────────────────────────
               if (driverStatus.dailyTrips > 0)
                 Container(
@@ -197,7 +256,8 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                     borderRadius:
                         BorderRadius.circular(AppConstants.radiusMedium),
                     border: Border.all(
-                        color: AppColors.primary.withValues(alpha: 0.25)),
+                      color: AppColors.primary.withValues(alpha: 0.25),
+                    ),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -208,14 +268,16 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                         value: driverStatus.dailyTrips.toString(),
                       ),
                       Container(
-                          width: 1,
-                          height: 36,
-                          color: AppColors.primary.withValues(alpha: 0.2)),
+                        width: 1,
+                        height: 36,
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                      ),
                       _SessionStat(
                         icon: Icons.payments_outlined,
                         label: 'Ganancias hoy',
                         value: CurrencyFormatter.format(
-                            driverStatus.dailyEarnings),
+                          driverStatus.dailyEarnings,
+                        ),
                       ),
                     ],
                   ),
@@ -223,19 +285,23 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
 
               const SizedBox(height: AppConstants.spacingXL),
 
-              // ── Calificar pasajero ──────────────────────────────────────
-              OutlinedButton.icon(
-                onPressed: () => PassengerRatingSheet.show(
-                  context,
-                  passengerName: trip.passengerName,
+              // ── Calificar pasajero (solo viajes de personas) ─────────────
+              if (!trip.isDeliveryTrip) ...[
+                OutlinedButton.icon(
+                  onPressed: () => PassengerRatingSheet.show(
+                    context,
+                    passengerName: trip.passengerName,
+                  ),
+                  icon: const Icon(Icons.star_outline_rounded),
+                  label: const Text('Calificar pasajero'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(
+                      AppConstants.minTouchTarget,
+                    ),
+                  ),
                 ),
-                icon: const Icon(Icons.star_outline_rounded),
-                label: const Text('Calificar pasajero'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(AppConstants.minTouchTarget),
-                ),
-              ),
-              const SizedBox(height: AppConstants.spacingM),
+                const SizedBox(height: AppConstants.spacingM),
+              ],
 
               // ── Volver al inicio ─────────────────────────────────────────
               ElevatedButton.icon(
@@ -273,7 +339,10 @@ class _FareRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+            ),
           ),
           Text(
             value,
@@ -347,13 +416,72 @@ class _DetailRow extends StatelessWidget {
           const SizedBox(width: AppConstants.spacingS),
           Text(
             '$label: ',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+            ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProofItem extends StatelessWidget {
+  const _ProofItem({
+    required this.icon,
+    required this.label,
+    required this.captured,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool captured;
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        captured ? AppColors.serviceEnvios : AppColors.textSecondary;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 3,
+            ),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              captured ? '✓ Capturado' : 'Sin captura',
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],

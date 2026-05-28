@@ -14,6 +14,7 @@ import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
+import 'package:nexum_driver/features/active_trip/presentation/widgets/delivery_proof_sheet.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/going_to_passenger_card.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/trip_in_progress_card.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_passenger_card.dart';
@@ -647,7 +648,26 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
       await ref
           .read(driverStatusProvider.notifier)
           .updateEarnings(tripModel.netEarning);
-      if (mounted) context.go('/trip-summary', extra: tripModel);
+      if (!mounted) return;
+
+      final serviceType = ref.read(selectedServiceTypeProvider);
+      if (serviceType == ServiceType.envios) {
+        final proof = await DeliveryProofSheet.show(
+          context,
+          recipientName: tripModel.passengerName,
+        );
+        if (!mounted) return;
+        context.go(
+          '/trip-summary',
+          extra: tripModel.copyWith(
+            isDeliveryTrip: true,
+            deliveryPhotoPath: proof?.photoPath,
+            hasSignature: proof?.hasSignature ?? false,
+          ),
+        );
+      } else {
+        context.go('/trip-summary', extra: tripModel);
+      }
     } catch (_) {
       if (mounted) {
         AppSnackbar.showError(context, 'Error al finalizar el viaje');

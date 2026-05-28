@@ -46,6 +46,9 @@ dependencies:
   # Audio
   audioplayers: ^6.1.0
 
+  # Camera / media
+  image_picker: ^1.1.2
+
   # Push notifications (Firebase Cloud Messaging)
   firebase_core: ^3.6.0
   firebase_messaging: ^15.1.3

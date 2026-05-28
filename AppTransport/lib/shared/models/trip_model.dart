@@ -21,7 +21,39 @@ class TripModel {
     required this.startedAt,
     required this.finishedAt,
     this.rating,
+    this.isDeliveryTrip = false,
+    this.deliveryPhotoPath,
+    this.hasSignature = false,
   });
+
+  factory TripModel.fromJson(Map<String, dynamic> json) => TripModel(
+        id: json['id'] as String,
+        passengerId: json['passenger_id'] as String,
+        passengerName: json['passenger_name'] as String,
+        origin: LocationModel.fromJson(
+          json['origin'] as Map<String, dynamic>,
+        ),
+        destination: LocationModel.fromJson(
+          json['destination'] as Map<String, dynamic>,
+        ),
+        distanceKm: (json['distance_km'] as num).toDouble(),
+        durationMinutes: json['duration_minutes'] as int,
+        grossFare: (json['gross_fare'] as num).toDouble(),
+        netEarning: (json['net_earning'] as num).toDouble(),
+        commission: (json['commission'] as num).toDouble(),
+        startedAt: DateTime.parse(json['started_at'] as String),
+        finishedAt: DateTime.parse(json['finished_at'] as String),
+        rating: json['rating'] != null
+            ? (json['rating'] as num).toDouble()
+            : null,
+        isDeliveryTrip:
+            (json['is_delivery_trip'] as bool?) ?? false,
+        deliveryPhotoPath:
+            json['delivery_photo_path'] as String?,
+        hasSignature: (json['has_signature'] as bool?) ?? false,
+      );
+
+  // ── Fields ───────────────────────────────────────────────────────────────
 
   /// Unique trip identifier.
   final String id;
@@ -29,7 +61,7 @@ class TripModel {
   /// Identifier of the passenger who requested the trip.
   final String passengerId;
 
-  /// Display name of the passenger.
+  /// Display name of the passenger (or recipient for delivery trips).
   final String passengerName;
 
   /// Pickup location.
@@ -47,7 +79,7 @@ class TripModel {
   /// Gross fare charged to the passenger (COP).
   final double grossFare;
 
-  /// Net earning for the driver after the 15 % platform commission (COP).
+  /// Net earning for the driver after the platform commission (COP).
   final double netEarning;
 
   /// Platform commission deducted from the gross fare (COP).
@@ -62,6 +94,15 @@ class TripModel {
   /// Optional rating given by the passenger to the driver (1.0 – 5.0).
   final double? rating;
 
+  /// Whether this trip is a delivery (Envíos) rather than a passenger trip.
+  final bool isDeliveryTrip;
+
+  /// File path of the delivery photo captured at drop-off, if any.
+  final String? deliveryPhotoPath;
+
+  /// Whether the recipient signed digitally at delivery.
+  final bool hasSignature;
+
   // ── Derived helpers ──────────────────────────────────────────────────────
 
   /// Total elapsed time from start to finish as a [Duration].
@@ -69,6 +110,13 @@ class TripModel {
 
   /// Whether the passenger left a rating.
   bool get hasRating => rating != null;
+
+  /// Whether a delivery photo was captured.
+  bool get hasDeliveryPhoto => deliveryPhotoPath != null;
+
+  /// Whether at least one proof was collected for this delivery.
+  bool get isVerifiedDelivery =>
+      isDeliveryTrip && (hasDeliveryPhoto || hasSignature);
 
   // ── copyWith ─────────────────────────────────────────────────────────────
 
@@ -86,6 +134,9 @@ class TripModel {
     DateTime? startedAt,
     DateTime? finishedAt,
     double? rating,
+    bool? isDeliveryTrip,
+    String? deliveryPhotoPath,
+    bool? hasSignature,
   }) {
     return TripModel(
       id: id ?? this.id,
@@ -101,6 +152,10 @@ class TripModel {
       startedAt: startedAt ?? this.startedAt,
       finishedAt: finishedAt ?? this.finishedAt,
       rating: rating ?? this.rating,
+      isDeliveryTrip: isDeliveryTrip ?? this.isDeliveryTrip,
+      deliveryPhotoPath:
+          deliveryPhotoPath ?? this.deliveryPhotoPath,
+      hasSignature: hasSignature ?? this.hasSignature,
     );
   }
 
@@ -120,27 +175,10 @@ class TripModel {
         'started_at': startedAt.toIso8601String(),
         'finished_at': finishedAt.toIso8601String(),
         'rating': rating,
+        'is_delivery_trip': isDeliveryTrip,
+        'delivery_photo_path': deliveryPhotoPath,
+        'has_signature': hasSignature,
       };
-
-  factory TripModel.fromJson(Map<String, dynamic> json) => TripModel(
-        id: json['id'] as String,
-        passengerId: json['passenger_id'] as String,
-        passengerName: json['passenger_name'] as String,
-        origin: LocationModel.fromJson(
-            json['origin'] as Map<String, dynamic>),
-        destination: LocationModel.fromJson(
-            json['destination'] as Map<String, dynamic>),
-        distanceKm: (json['distance_km'] as num).toDouble(),
-        durationMinutes: json['duration_minutes'] as int,
-        grossFare: (json['gross_fare'] as num).toDouble(),
-        netEarning: (json['net_earning'] as num).toDouble(),
-        commission: (json['commission'] as num).toDouble(),
-        startedAt: DateTime.parse(json['started_at'] as String),
-        finishedAt: DateTime.parse(json['finished_at'] as String),
-        rating: json['rating'] != null
-            ? (json['rating'] as num).toDouble()
-            : null,
-      );
 
   // ── Equality ─────────────────────────────────────────────────────────────
 
@@ -157,5 +195,5 @@ class TripModel {
   @override
   String toString() => 'TripModel(id: $id, passenger: $passengerName, '
       'distance: ${distanceKm}km, netEarning: \$$netEarning, '
-      'rating: $rating)';
+      'isDelivery: $isDeliveryTrip, rating: $rating)';
 }
