@@ -6,18 +6,40 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
+import 'package:nexum_driver/features/active_trip/presentation/widgets/passenger_rating_sheet.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 
 /// Pantalla de resumen de viaje completado.
 /// Recibe un [TripModel] como `extra` desde el router tras finalizar el viaje.
-class TripSummaryScreen extends ConsumerWidget {
+class TripSummaryScreen extends ConsumerStatefulWidget {
   const TripSummaryScreen({required this.trip, super.key});
 
   final TripModel trip;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TripSummaryScreen> createState() => _TripSummaryScreenState();
+}
+
+class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
+  TripModel get trip => widget.trip;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-present the passenger rating sheet shortly after arriving,
+    // mirroring the post-trip flow drivers expect.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) {
+          PassengerRatingSheet.show(context, passengerName: trip.passengerName);
+        }
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final driverStatus = ref.watch(driverStatusProvider);
 
@@ -203,7 +225,10 @@ class TripSummaryScreen extends ConsumerWidget {
 
               // ── Calificar pasajero ──────────────────────────────────────
               OutlinedButton.icon(
-                onPressed: () => _showRatingDialog(context, ref),
+                onPressed: () => PassengerRatingSheet.show(
+                  context,
+                  passengerName: trip.passengerName,
+                ),
                 icon: const Icon(Icons.star_outline_rounded),
                 label: const Text('Calificar pasajero'),
                 style: OutlinedButton.styleFrom(
@@ -229,59 +254,6 @@ class TripSummaryScreen extends ConsumerWidget {
     );
   }
 
-  void _showRatingDialog(BuildContext context, WidgetRef ref) {
-    var selectedRating = 5;
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Calificar pasajero'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('¿Cómo fue tu experiencia con ${trip.passengerName}?'),
-              const SizedBox(height: AppConstants.spacingM),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (i) {
-                  return IconButton(
-                    onPressed: () => setState(() => selectedRating = i + 1),
-                    icon: Icon(
-                      i < selectedRating
-                          ? Icons.star_rounded
-                          : Icons.star_outline_rounded,
-                      color: AppColors.star,
-                      size: 32,
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    constraints: const BoxConstraints(),
-                  );
-                }),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('¡Calificación enviada! Gracias.'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              },
-              child: const Text('Enviar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
