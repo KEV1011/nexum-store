@@ -62,9 +62,72 @@ jobs:
         working-directory: AppTransport
         run: flutter pub get
 
+      # --no-tree-shake-icons evita que falten íconos de Cupertino en runtime
       - name: Build Flutter Web
         working-directory: AppTransport
-        run: flutter build web --release
+        run: flutter build web --release --no-tree-shake-icons
+
+      # ── Post-build patches ────────────────────────────────────────────────────
+
+      - name: Fix base href for GitHub Pages
+        run: |
+          sed -i 's|<base href="/">|<base href="/nexum-store/">|g' AppTransport/build/web/index.html
+          echo "Base href fixed"
+
+      - name: Force local CanvasKit (evita cargar desde CDN externa)
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+
+          path = 'AppTransport/build/web/flutter_bootstrap.js'
+          with open(path, 'r') as f:
+              content = f.read()
+
+          # Patch 1: inyectar useLocalCanvasKit en buildConfig
+          if '"useLocalCanvasKit"' not in content:
+              content = content.replace(
+                  '"engineRevision"',
+                  '"useLocalCanvasKit":true,"engineRevision"',
+                  1
+              )
+              print('Patch 1 applied: useLocalCanvasKit=true in buildConfig')
+
+          # Patch 2: pasar canvasKitBaseUrl en la llamada al loader
+          if 'canvasKitBaseUrl' not in content:
+              content = content.replace(
+                  '_flutter.loader.load({',
+                  '_flutter.loader.load({\n  config: { canvasKitBaseUrl: "canvaskit/" },',
+                  1
+              )
+              print('Patch 2 applied: canvasKitBaseUrl in loader call')
+
+          with open(path, 'w') as f:
+              f.write(content)
+
+          print('flutter_bootstrap.js patched successfully')
+          EOF
+
+      - name: Remove Flutter service worker (evita cache stale)
+        run: |
+          # El service worker de Flutter está deprecado y causa problemas de caché.
+          # Lo desactivamos reemplazando serviceWorkerSettings por config vacío.
+          python3 - <<'EOF'
+          import re
+
+          path = 'AppTransport/build/web/flutter_bootstrap.js'
+          with open(path, 'r') as f:
+              content = f.read()
+
+          # Eliminar serviceWorkerSettings del loader call
+          content = re.sub(
+              r',?\s*serviceWorkerSettings\s*:\s*\{[^}]*\}',
+              '',
+              content
+          )
+          with open(path, 'w') as f:
+              f.write(content)
+          print('Service worker settings removed from loader')
+          EOF
 
       - name: Inject Google Maps API key
         env:
@@ -74,29 +137,9 @@ jobs:
             sed -i "s|__GOOGLE_MAPS_API_KEY__|${GMAPS_KEY}|g" AppTransport/build/web/index.html
             echo "Google Maps API key injected"
           else
-            # Remove the script tag entirely if no key is available (avoids InvalidKeyMapError in console)
             sed -i '/maps.googleapis.com/d' AppTransport/build/web/index.html
-            echo "No GOOGLE_MAPS_API_KEY secret — Maps script removed from index.html"
+            echo "No Maps key — script tag removed"
           fi
-
-      - name: Fix base href for GitHub Pages
-        run: |
-          sed -i 's|<base href="/">|<base href="/nexum-store/">|' AppTransport/build/web/index.html
-
-      - name: Fix CanvasKit to use local files
-        run: |
-          python3 - <<'EOF'
-          with open('AppTransport/build/web/flutter_bootstrap.js','r') as f:
-              c = f.read()
-          old = '_flutter.loader.load({'
-          new = '_flutter.loader.load({\n  config: { canvasKitBaseUrl: "canvaskit/" },'
-          if old in c and 'canvasKitBaseUrl' not in c:
-              with open('AppTransport/build/web/flutter_bootstrap.js','w') as f:
-                  f.write(c.replace(old, new, 1))
-              print('Patched bootstrap')
-          else:
-              print('Already patched or not needed')
-          EOF
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
@@ -104,4 +147,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: AppTransport/build/web
           force_orphan: true
-          commit_message: "deploy: Nexum Driver web ${{ github.sha }}"
+          commit_message: "deploy: ${{ github.sha }}"

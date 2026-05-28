@@ -7,28 +7,59 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Nexum Driver — App del conductor MaaS Pamplona">
   <meta name="theme-color" content="#00C853">
-
-  <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Nexum Driver">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
   <title>Nexum Driver</title>
   <link rel="manifest" href="manifest.json">
 
-  <!--
-    Google Maps JavaScript API
-    Reemplaza __GOOGLE_MAPS_API_KEY__ por tu key real en build time:
-      sed -i "s|__GOOGLE_MAPS_API_KEY__|$KEY|g" build/web/index.html
-    El workflow .github/workflows/deploy-web.yml lo hace automáticamente.
-  -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__&libraries=places&loading=async" async defer></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #ffffff; }
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      font-family: sans-serif;
+      gap: 20px;
+      z-index: 9999;
+    }
+    #loading svg { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { color: #1A237E; font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+    #loading small { color: #757575; font-size: 13px; }
+  </style>
 </head>
 <body>
+  <!-- Pantalla de carga visible mientras Flutter inicializa -->
+  <div id="loading">
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+      <circle cx="28" cy="28" r="24" stroke="#E0E0E0" stroke-width="4"/>
+      <path d="M28 4a24 24 0 0 1 24 24" stroke="#00C853" stroke-width="4" stroke-linecap="round"/>
+    </svg>
+    <p>Nexum Driver</p>
+    <small>Cargando...</small>
+  </div>
+
   <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+    // Oculta la pantalla de carga cuando Flutter toma el control
+    window.addEventListener('flutter-first-frame', function () {
+      var loader = document.getElementById('loading');
+      if (loader) {
+        loader.style.transition = 'opacity 0.3s';
+        loader.style.opacity = '0';
+        setTimeout(function () { loader.remove(); }, 350);
+      }
+    });
+  </script>
 </body>
 </html>
