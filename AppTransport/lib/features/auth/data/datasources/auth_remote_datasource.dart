@@ -39,4 +39,23 @@ class AuthRemoteDataSource implements AuthDataSource {
       throw const InvalidOtpException();
     }
   }
+
+  /// Registers a new driver via POST /auth/register.
+  ///
+  /// Returns a map with `{ token: String, driver: Map, isRegistered: bool }` on success.
+  /// Throws [ServerException] on failure.
+  @override
+  Future<Map<String, dynamic>> registerDriver(
+    Map<String, dynamic> data,
+  ) async {
+    final response = await _client.post<Map<String, dynamic>>(
+      '/auth/register',
+      data: data,
+    );
+    final responseData = response.data?['data'] as Map<String, dynamic>?;
+    if (responseData == null) {
+      throw const ServerException(message: 'Respuesta vacía del servidor');
+    }
+    return responseData;
+  }
 }

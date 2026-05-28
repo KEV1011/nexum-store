@@ -137,8 +137,24 @@ export interface DailyEarningsDTO {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export interface JwtPayload {
-  driverId: string;
+  driverId: string;  // documentNumber for new (unregistered) drivers during registration
   phone: string;
+}
+
+export interface RegisterDriverDTO {
+  phone: string;
+  fullName: string;
+  documentType: 'CC' | 'CE' | 'PA';  // Cédula, Cédula Extranjería, Pasaporte
+  documentNumber: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  vehicleYear: number;
+  vehiclePlate: string;      // Formato colombiano ABC-123
+  vehicleColor: string;
+  vehicleType: 'particular' | 'taxi';
+  bankName: string;
+  bankAccountType: 'Ahorros' | 'Corriente';
+  bankAccountNumber: string;
 }
 
 // ─── API Responses ────────────────────────────────────────────────────────────

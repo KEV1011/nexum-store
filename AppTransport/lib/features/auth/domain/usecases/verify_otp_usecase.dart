@@ -8,7 +8,7 @@ class VerifyOtpUseCase {
   const VerifyOtpUseCase(this._repository);
   final AuthRepository _repository;
 
-  Future<({DriverEntity? driver, Failure? failure})> call({
+  Future<({DriverEntity? driver, Failure? failure, bool isRegistered})> call({
     required String phoneNumber,
     required String otpCode,
   }) async {
@@ -19,6 +19,7 @@ class VerifyOtpUseCase {
           message: 'El código debe tener ${AppConstants.otpLength} dígitos',
           code: 'OTP_INCOMPLETE',
         ),
+        isRegistered: false,
       );
     }
     return _repository.verifyOtp(

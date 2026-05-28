@@ -7,6 +7,7 @@ abstract final class AppConstants {
   // Storage keys
   static const String authTokenKey = 'auth_token';
   static const String driverIdKey = 'driver_id';
+  static const String needsRegistrationKey = 'needs_registration';
   static const String onboardingCompleteKey = 'onboarding_complete';
 
   // OTP mock (hardcoded para fase MVP)

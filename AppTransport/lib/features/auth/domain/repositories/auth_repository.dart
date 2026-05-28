@@ -1,5 +1,7 @@
+import 'package:dartz/dartz.dart';
 import 'package:nexum_driver/core/errors/failures.dart';
 import 'package:nexum_driver/features/auth/domain/entities/driver_entity.dart';
+import 'package:nexum_driver/features/auth/domain/usecases/register_driver_usecase.dart';
 
 /// Interfaz abstracta del repositorio de autenticación.
 /// La implementación mock está en data/repositories/auth_repository_impl.dart.
@@ -12,11 +14,17 @@ abstract interface class AuthRepository {
 
   /// Verifica el OTP ingresado por el conductor.
   /// Si es correcto, genera y almacena el JWT.
-  /// Retorna el [DriverEntity] autenticado o un [Failure].
-  Future<({DriverEntity? driver, Failure? failure})> verifyOtp({
+  /// [isRegistered] indica si debe ir al home o al registro.
+  Future<({DriverEntity? driver, Failure? failure, bool isRegistered})> verifyOtp({
     required String phoneNumber,
     required String otpCode,
   });
+
+  /// Registra un nuevo conductor con su información personal, de vehículo y bancaria.
+  /// Almacena el JWT resultante y retorna el [DriverEntity] creado o un [Failure].
+  Future<Either<Failure, DriverEntity>> registerDriver(
+    RegisterDriverParams params,
+  );
 
   /// Cierra la sesión: elimina el token del secure storage.
   Future<void> logout();

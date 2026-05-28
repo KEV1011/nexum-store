@@ -6,6 +6,7 @@ import 'package:nexum_driver/features/auth/data/datasources/auth_mock_datasource
 import 'package:nexum_driver/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:nexum_driver/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:nexum_driver/features/auth/domain/entities/driver_entity.dart';
+import 'package:nexum_driver/features/auth/domain/usecases/register_driver_usecase.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/send_otp_usecase.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/verify_otp_usecase.dart';
 
@@ -49,6 +50,12 @@ final class AuthError extends AuthState {
   final Failure failure;
 }
 
+/// OTP verificado pero el conductor no está registrado aún.
+final class AuthRegistrationRequired extends AuthState {
+  const AuthRegistrationRequired({required this.phone});
+  final String phone;
+}
+
 /// Sesión cerrada o no existe sesión activa.
 final class AuthUnauthenticated extends AuthState {
   const AuthUnauthenticated();
@@ -85,6 +92,10 @@ final _verifyOtpUseCaseProvider = Provider<VerifyOtpUseCase>((ref) {
   return VerifyOtpUseCase(ref.watch(authRepositoryProvider));
 });
 
+final _registerDriverUseCaseProvider = Provider<RegisterDriverUseCase>((ref) {
+  return RegisterDriverUseCase(ref.watch(authRepositoryProvider));
+});
+
 // ── AuthNotifier ──────────────────────────────────────────────────────────────
 
 /// Notifier central para el flujo de autenticación de conductores.
@@ -99,14 +110,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required AuthRepositoryImpl repository,
     required SendOtpUseCase sendOtpUseCase,
     required VerifyOtpUseCase verifyOtpUseCase,
+    required RegisterDriverUseCase registerDriverUseCase,
   })  : _repository = repository,
         _sendOtpUseCase = sendOtpUseCase,
         _verifyOtpUseCase = verifyOtpUseCase,
+        _registerDriverUseCase = registerDriverUseCase,
         super(const AuthInitial());
 
   final AuthRepositoryImpl _repository;
   final SendOtpUseCase _sendOtpUseCase;
   final VerifyOtpUseCase _verifyOtpUseCase;
+  final RegisterDriverUseCase _registerDriverUseCase;
 
   // ── sendOtp ────────────────────────────────────────────────────────────────
 
@@ -146,7 +160,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return;
     }
 
+    if (!result.isRegistered) {
+      state = AuthRegistrationRequired(phone: phone);
+      return;
+    }
+
     state = AuthAuthenticated(driver: result.driver!);
+  }
+
+  // ── registerDriver ─────────────────────────────────────────────────────────
+
+  /// Completa el registro del nuevo conductor con sus datos.
+  ///
+  /// Emite [AuthLoading] → [AuthAuthenticated] | [AuthError].
+  Future<void> registerDriver(RegisterDriverParams params) async {
+    state = const AuthLoading();
+
+    final result = await _registerDriverUseCase(params);
+
+    result.fold(
+      (failure) => state = AuthError(failure: failure),
+      (driver) => state = AuthAuthenticated(driver: driver),
+    );
   }
 
   // ── logout ─────────────────────────────────────────────────────────────────
@@ -191,6 +226,7 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
     repository: ref.watch(authRepositoryProvider),
     sendOtpUseCase: ref.watch(_sendOtpUseCaseProvider),
     verifyOtpUseCase: ref.watch(_verifyOtpUseCaseProvider),
+    registerDriverUseCase: ref.watch(_registerDriverUseCaseProvider),
   );
 });
 

@@ -10,6 +10,12 @@ class DriverEntity {
     required this.vehicleDescription,
     required this.isVerified,
     this.photoUrl,
+    this.documentType,
+    this.documentNumber,
+    this.vehicleType,
+    this.bankName,
+    this.bankAccountType,
+    this.bankAccountNumber,
   });
 
   final String id;
@@ -22,6 +28,16 @@ class DriverEntity {
   final bool isVerified;
   final String? photoUrl;
 
+  /// Tipo de documento: 'CC' | 'CE' | 'PA'
+  final String? documentType;
+  final String? documentNumber;
+
+  /// Tipo de vehículo: 'particular' | 'taxi'
+  final String? vehicleType;
+  final String? bankName;
+  final String? bankAccountType;
+  final String? bankAccountNumber;
+
   DriverEntity copyWith({
     String? id,
     String? name,
@@ -32,6 +48,12 @@ class DriverEntity {
     String? vehicleDescription,
     bool? isVerified,
     String? photoUrl,
+    String? documentType,
+    String? documentNumber,
+    String? vehicleType,
+    String? bankName,
+    String? bankAccountType,
+    String? bankAccountNumber,
   }) {
     return DriverEntity(
       id: id ?? this.id,
@@ -43,6 +65,12 @@ class DriverEntity {
       vehicleDescription: vehicleDescription ?? this.vehicleDescription,
       isVerified: isVerified ?? this.isVerified,
       photoUrl: photoUrl ?? this.photoUrl,
+      documentType: documentType ?? this.documentType,
+      documentNumber: documentNumber ?? this.documentNumber,
+      vehicleType: vehicleType ?? this.vehicleType,
+      bankName: bankName ?? this.bankName,
+      bankAccountType: bankAccountType ?? this.bankAccountType,
+      bankAccountNumber: bankAccountNumber ?? this.bankAccountNumber,
     );
   }
 

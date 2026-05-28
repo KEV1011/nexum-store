@@ -7,6 +7,7 @@ import 'package:nexum_driver/features/active_trip/presentation/screens/active_tr
 import 'package:nexum_driver/features/active_trip/presentation/screens/trip_summary_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/otp_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/phone_input_screen.dart';
+import 'package:nexum_driver/features/auth/presentation/screens/register_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/screens/home_screen.dart';
 import 'package:nexum_driver/features/earnings/presentation/screens/earnings_screen.dart';
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
@@ -16,6 +17,7 @@ abstract final class AppRoutes {
   static const String splash = '/';
   static const String login = '/login';
   static const String otp = '/otp';
+  static const String register = '/register';
   static const String home = '/home';
   static const String activeTrip = '/active-trip';
   static const String tripSummary = '/trip-summary';
@@ -42,6 +44,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final phone = state.uri.queryParameters['phone'] ?? '';
           return OtpScreen(phone: phone);
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.register,
+        builder: (context, state) {
+          final phone = state.uri.queryParameters['phone'] ?? '';
+          return RegisterScreen(phone: phone);
         },
       ),
       GoRoute(
@@ -80,14 +89,27 @@ Future<String?> _authRedirect(BuildContext context, GoRouterState state) async {
   );
   final token = await storage.read(key: AppConstants.authTokenKey);
   final isAuthenticated = token != null && token.isNotEmpty;
-  final isOnAuthRoute = state.matchedLocation == AppRoutes.login ||
-      state.matchedLocation == AppRoutes.otp;
 
-  if (!isAuthenticated && !isOnAuthRoute) return AppRoutes.login;
-  if (isAuthenticated && state.matchedLocation == AppRoutes.splash) {
-    return AppRoutes.home;
+  if (!isAuthenticated) {
+    final isOnAuthRoute = state.matchedLocation == AppRoutes.login ||
+        state.matchedLocation == AppRoutes.otp;
+    return isOnAuthRoute ? null : AppRoutes.login;
   }
-  if (isAuthenticated && isOnAuthRoute) return AppRoutes.home;
+
+  // Conductor autenticado pero pendiente de completar registro.
+  final pendingPhone =
+      await storage.read(key: AppConstants.needsRegistrationKey);
+  if (pendingPhone != null && pendingPhone.isNotEmpty) {
+    if (state.matchedLocation == AppRoutes.register) return null;
+    return '${AppRoutes.register}?phone=${Uri.encodeComponent(pendingPhone)}';
+  }
+
+  // Conductor autenticado y registrado → redirigir desde pantallas de auth.
+  final isOnAuthRoute = state.matchedLocation == AppRoutes.login ||
+      state.matchedLocation == AppRoutes.otp ||
+      state.matchedLocation == AppRoutes.splash;
+  if (isOnAuthRoute) return AppRoutes.home;
+
   return null;
 }
 

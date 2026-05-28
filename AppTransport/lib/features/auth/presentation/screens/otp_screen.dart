@@ -169,8 +169,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
     if (!mounted) return;
 
     if (current is AuthAuthenticated) {
-      // Replace the entire navigation stack with the home screen
       context.go('/home');
+      return;
+    }
+
+    if (current is AuthRegistrationRequired) {
+      context.go(
+        '/register?phone=${Uri.encodeComponent(current.phone)}',
+      );
       return;
     }
 
