@@ -74,6 +74,7 @@ abstract final class AppColors {
   static const Color shadow = Color(0x14000000);
   static const Color shadowMedium = Color(0x29000000);
   static const Color star = Color(0xFFFBBF24);
+  static const Color starContainer = Color(0xFFFEF9C3);
   static const Color overlay = Color(0x80000000);
   static const Color overlayLight = Color(0x33000000);
 }
