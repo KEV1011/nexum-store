@@ -12,6 +12,7 @@ import 'package:nexum_driver/features/auth/presentation/screens/phone_input_scre
 import 'package:nexum_driver/features/auth/presentation/screens/register_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/screens/home_screen.dart';
 import 'package:nexum_driver/features/earnings/presentation/screens/earnings_screen.dart';
+import 'package:nexum_driver/features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nexum_driver/features/promotions/presentation/screens/promotions_screen.dart';
 import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
@@ -21,9 +22,11 @@ import 'package:nexum_driver/features/support/presentation/screens/support_scree
 import 'package:nexum_driver/features/trip_history/presentation/screens/trip_history_screen.dart';
 import 'package:nexum_driver/features/wallet/presentation/screens/wallet_screen.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 abstract final class AppRoutes {
   static const String splash = '/';
+  static const String onboarding = '/onboarding';
   static const String login = '/login';
   static const String otp = '/otp';
   static const String register = '/register';
@@ -52,6 +55,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.fade(
           pageKey: state.pageKey,
           child: const SplashScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const OnboardingScreen(),
         ),
       ),
       GoRoute(
@@ -171,6 +181,15 @@ final routerProvider = Provider<GoRouter>((ref) {
 
 Future<String?> _authRedirect(
     BuildContext context, GoRouterState state) async {
+  final prefs = await SharedPreferences.getInstance();
+  final onboardingDone =
+      prefs.getBool(AppConstants.onboardingCompleteKey) ?? false;
+
+  if (!onboardingDone) {
+    if (state.matchedLocation == AppRoutes.onboarding) return null;
+    return AppRoutes.onboarding;
+  }
+
   const storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
@@ -192,7 +211,8 @@ Future<String?> _authRedirect(
 
   final isOnAuthRoute = state.matchedLocation == AppRoutes.login ||
       state.matchedLocation == AppRoutes.otp ||
-      state.matchedLocation == AppRoutes.splash;
+      state.matchedLocation == AppRoutes.splash ||
+      state.matchedLocation == AppRoutes.onboarding;
   if (isOnAuthRoute) return AppRoutes.home;
 
   return null;
