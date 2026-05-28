@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
+import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 
 /// Pantalla de resumen de viaje completado.
 /// Recibe un [TripModel] como `extra` desde el router tras finalizar el viaje.
-class TripSummaryScreen extends StatelessWidget {
+class TripSummaryScreen extends ConsumerWidget {
   const TripSummaryScreen({required this.trip, super.key});
 
   final TripModel trip;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final driverStatus = ref.watch(driverStatusProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -158,11 +161,49 @@ class TripSummaryScreen extends StatelessWidget {
                 ),
               ),
 
+              const SizedBox(height: AppConstants.spacingM),
+
+              // ── Sesión de hoy ────────────────────────────────────────────
+              if (driverStatus.dailyTrips > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spacingM,
+                    vertical: AppConstants.spacingM,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius:
+                        BorderRadius.circular(AppConstants.radiusMedium),
+                    border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.25)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _SessionStat(
+                        icon: Icons.two_wheeler_rounded,
+                        label: 'Viajes hoy',
+                        value: driverStatus.dailyTrips.toString(),
+                      ),
+                      Container(
+                          width: 1,
+                          height: 36,
+                          color: AppColors.primary.withValues(alpha: 0.2)),
+                      _SessionStat(
+                        icon: Icons.payments_outlined,
+                        label: 'Ganancias hoy',
+                        value: CurrencyFormatter.format(
+                            driverStatus.dailyEarnings),
+                      ),
+                    ],
+                  ),
+                ),
+
               const SizedBox(height: AppConstants.spacingXL),
 
               // ── Calificar pasajero ──────────────────────────────────────
               OutlinedButton.icon(
-                onPressed: () => _showRatingDialog(context),
+                onPressed: () => _showRatingDialog(context, ref),
                 icon: const Icon(Icons.star_outline_rounded),
                 label: const Text('Calificar pasajero'),
                 style: OutlinedButton.styleFrom(
@@ -188,7 +229,7 @@ class TripSummaryScreen extends StatelessWidget {
     );
   }
 
-  void _showRatingDialog(BuildContext context) {
+  void _showRatingDialog(BuildContext context, WidgetRef ref) {
     var selectedRating = 5;
     showDialog<void>(
       context: context,
@@ -272,6 +313,42 @@ class _FareRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SessionStat extends StatelessWidget {
+  const _SessionStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 16, color: AppColors.primary),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 15,
+            color: AppColors.primary,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
     );
   }
 }

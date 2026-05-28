@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,40 +17,32 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
+import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
-import 'package:nexum_driver/shared/services/ws_service.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
 class _HomeState {
   const _HomeState({
     this.isOnline = false,
-    this.todayEarnings = 0.0,
-    this.todayTrips = 0,
     this.pendingRequest,
     this.requestSecondsLeft = AppConstants.tripRequestTimeoutSeconds,
   });
 
   final bool isOnline;
-  final double todayEarnings;
-  final int todayTrips;
   final TripRequestEntity? pendingRequest;
   final int requestSecondsLeft;
 
   _HomeState copyWith({
     bool? isOnline,
-    double? todayEarnings,
-    int? todayTrips,
     TripRequestEntity? pendingRequest,
     bool clearPending = false,
     int? requestSecondsLeft,
   }) {
     return _HomeState(
       isOnline: isOnline ?? this.isOnline,
-      todayEarnings: todayEarnings ?? this.todayEarnings,
-      todayTrips: todayTrips ?? this.todayTrips,
       pendingRequest:
           clearPending ? null : (pendingRequest ?? this.pendingRequest),
       requestSecondsLeft: requestSecondsLeft ?? this.requestSecondsLeft,
@@ -72,7 +63,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   _HomeState _state = const _HomeState();
   GoogleMapController? _mapController;
 
-  StreamSubscription<TripRequestEntity>? _wsSub;
   Timer? _countdownTimer;
   Timer? _webMockTimer;
   final _rng = math.Random();
@@ -84,8 +74,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
-    _wsSub?.cancel();
-    WsService().disconnect();
     _countdownTimer?.cancel();
     _webMockTimer?.cancel();
     _mapController?.dispose();
@@ -108,9 +96,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
       _connectWs();
     } else {
-      _wsSub?.cancel();
       _webMockTimer?.cancel();
-      WsService().disconnect();
       _countdownTimer?.cancel();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
@@ -123,16 +109,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(selectedServiceTypeProvider.notifier).state = type;
   }
 
-  // ── WebSocket / web mock dispatch ─────────────────────────────────────
+  // ── Mock trip dispatch ─────────────────────────────────────────────────
 
   Future<void> _connectWs() async {
-    if (kIsWeb) {
-      _scheduleWebMockRequest();
-      return;
-    }
-    await WsService().connect();
-    _wsSub?.cancel();
-    _wsSub = WsService().tripRequests.listen(_onTripRequest);
+    _scheduleWebMockRequest();
   }
 
   void _scheduleWebMockRequest() {
@@ -204,9 +184,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final newLeft = _state.requestSecondsLeft - 1;
       if (newLeft <= 0) {
         timer.cancel();
-        WsService().rejectTrip(request.id);
         setState(() => _state = _state.copyWith(clearPending: true));
-        if (kIsWeb && _state.isOnline) _scheduleWebMockRequest();
+        if (_state.isOnline) _scheduleWebMockRequest();
       } else {
         setState(() => _state = _state.copyWith(requestSecondsLeft: newLeft));
       }
@@ -215,7 +194,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _acceptTrip(TripRequestEntity request) async {
     _countdownTimer?.cancel();
-    WsService().acceptTrip(request.id);
     setState(() => _state = _state.copyWith(clearPending: true));
     await ref.read(activeTripProvider.notifier).beginTrip(request);
     if (mounted) context.push('/active-trip');
@@ -223,9 +201,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _rejectTrip(TripRequestEntity request) {
     _countdownTimer?.cancel();
-    WsService().rejectTrip(request.id);
     setState(() => _state = _state.copyWith(clearPending: true));
-    if (kIsWeb && _state.isOnline) _scheduleWebMockRequest();
+    if (_state.isOnline) _scheduleWebMockRequest();
   }
 
   // ── Build ──────────────────────────────────────────────────────────────
@@ -327,6 +304,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildBottomPanel(ServiceType serviceType) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final driverStatus = ref.watch(driverStatusProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -382,14 +360,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(width: AppConstants.spacingM),
               _StatCard(
                 label: 'Ganancias',
-                value: CurrencyFormatter.format(_state.todayEarnings),
+                value: CurrencyFormatter.format(driverStatus.dailyEarnings),
                 icon: Icons.payments_outlined,
                 highlight: true,
               ),
               const SizedBox(width: AppConstants.spacingM),
               _StatCard(
                 label: 'Viajes',
-                value: _state.todayTrips.toString(),
+                value: driverStatus.dailyTrips.toString(),
                 icon: serviceType.icon,
               ),
             ],

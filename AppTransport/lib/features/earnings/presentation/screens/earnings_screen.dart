@@ -7,6 +7,7 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/utils/fare_calculator.dart';
+import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 
 // ── Mock data ────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,23 @@ class EarningsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final earnings = _generateMockEarnings();
+    final status = ref.watch(driverStatusProvider);
+
+    // Inject live session data into today's slot when trips have been done
+    final mockEarnings = _generateMockEarnings();
+    final hasLiveData = status.dailyTrips > 0;
+    final liveNet = status.dailyEarnings;
+    // Back-calculate gross from net using 12% average commission
+    final liveGross = hasLiveData ? liveNet / 0.88 : mockEarnings.first.grossEarnings;
+    final liveTrips = hasLiveData ? status.dailyTrips : mockEarnings.first.totalTrips;
+
+    final todayEntry = _DayEarning(
+      date: mockEarnings.first.date,
+      totalTrips: liveTrips,
+      grossEarnings: liveGross,
+    );
+    final earnings = [todayEntry, ...mockEarnings.skip(1)];
+
     final today = earnings.first;
     final weekTotal = earnings.fold<double>(0, (sum, e) => sum + e.netEarnings);
     final weekTrips = earnings.fold<int>(0, (sum, e) => sum + e.totalTrips);
@@ -103,11 +120,37 @@ class EarningsScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(AppConstants.spacingL),
                 child: Column(
                   children: [
-                    Text(
-                      'Hoy, ${DateFormatter.formatDate(today.date)}',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Hoy, ${DateFormatter.formatDate(today.date)}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        if (hasLiveData) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(
+                                  AppConstants.radiusCircular),
+                            ),
+                            child: Text(
+                              'EN VIVO',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: AppConstants.spacingS),
                     Text(
