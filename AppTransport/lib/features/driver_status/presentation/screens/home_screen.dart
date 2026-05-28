@@ -18,6 +18,7 @@ import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
+import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
@@ -291,6 +292,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: Icons.monetization_on_outlined,
             onTap: () => context.push('/earnings'),
           ),
+          const SizedBox(width: AppConstants.spacingS),
+          _NotifBell(onTap: () => context.push('/notifications')),
           const SizedBox(width: AppConstants.spacingS),
           _MapActionButton(
             icon: Icons.person_outline_rounded,
@@ -873,6 +876,55 @@ class _MapActionButton extends StatelessWidget {
           child: Icon(icon, size: 22, color: AppColors.textPrimary),
         ),
       ),
+    );
+  }
+}
+
+class _NotifBell extends ConsumerWidget {
+  const _NotifBell({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = ref.watch(
+      notificationProvider.select(
+        (list) => list.where((n) => !n.isRead).length,
+      ),
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _MapActionButton(
+          icon: unread > 0
+              ? Icons.notifications_rounded
+              : Icons.notifications_outlined,
+          onTap: onTap,
+        ),
+        if (unread > 0)
+          Positioned(
+            top: -4,
+            right: -4,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                color: AppColors.error,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+              child: Text(
+                unread > 9 ? '9+' : '$unread',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

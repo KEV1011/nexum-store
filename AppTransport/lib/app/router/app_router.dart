@@ -16,6 +16,7 @@ import 'package:nexum_driver/features/onboarding/presentation/screens/onboarding
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nexum_driver/features/promotions/presentation/screens/promotions_screen.dart';
 import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
+import 'package:nexum_driver/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nexum_driver/features/safety/presentation/screens/safety_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nexum_driver/features/support/presentation/screens/support_screen.dart';
@@ -42,6 +43,7 @@ abstract final class AppRoutes {
   static const String settings = '/settings';
   static const String support = '/support';
   static const String promotions = '/promotions';
+  static const String notifications = '/notifications';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -172,6 +174,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const PromotionsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.notifications,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const NotificationsScreen(),
         ),
       ),
     ],
