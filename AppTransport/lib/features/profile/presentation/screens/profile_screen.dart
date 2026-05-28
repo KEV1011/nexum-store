@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +12,7 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/driver_status/domain/entities/driver_status_entity.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
+import 'package:nexum_driver/features/profile/presentation/providers/editable_profile_provider.dart';
 
 // ── Document model ────────────────────────────────────────────────────────────
 
@@ -87,6 +89,7 @@ class ProfileScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final driverStatus = ref.watch(driverStatusProvider);
+    final profile = ref.watch(editableProfileProvider);
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
@@ -97,6 +100,11 @@ class ProfileScreen extends ConsumerWidget {
           onPressed: () => context.pop(),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Editar perfil',
+            onPressed: () => _showEditProfileSheet(context, ref, profile),
+          ),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Cerrar sesión',
@@ -113,7 +121,7 @@ class ProfileScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // ── Avatar + identity ──────────────────────────────────────────
-            _buildAvatarCard(context, theme),
+            _buildAvatarCard(context, ref, theme, profile),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Rating breakdown ───────────────────────────────────────────
@@ -125,7 +133,7 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Vehicle ────────────────────────────────────────────────────
-            _buildVehicleCard(context, theme),
+            _buildVehicleCard(context, ref, theme, profile),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Documents ──────────────────────────────────────────────────
@@ -147,15 +155,12 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Avatar card ─────────────────────────────────────────────────────────────
 
-  Widget _buildAvatarCard(BuildContext context, ThemeData theme) {
-    final initials = DriverMock.name
-        .trim()
-        .split(' ')
-        .take(2)
-        .map((p) => p[0])
-        .join()
-        .toUpperCase();
-
+  Widget _buildAvatarCard(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+    EditableProfile profile,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.spacingL),
@@ -169,7 +174,7 @@ class ProfileScreen extends ConsumerWidget {
                   radius: 48,
                   backgroundColor: AppColors.primaryContainer,
                   child: Text(
-                    initials,
+                    profile.initials,
                     style: theme.textTheme.headlineMedium?.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w800,
@@ -205,7 +210,7 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 Flexible(
                   child: Text(
-                    DriverMock.name,
+                    profile.fullName,
                     style: theme.textTheme.titleLarge
                         ?.copyWith(fontWeight: FontWeight.w700),
                     textAlign: TextAlign.center,
@@ -220,8 +225,15 @@ class ProfileScreen extends ConsumerWidget {
             ),
             const SizedBox(height: AppConstants.spacingXS),
             Text(
-              DriverMock.phone,
+              profile.phone,
               style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              profile.email,
+              style: theme.textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
             ),
@@ -230,6 +242,17 @@ class ProfileScreen extends ConsumerWidget {
               '${DriverMock.city}, ${DriverMock.department}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+            // Edit identity button
+            OutlinedButton.icon(
+              onPressed: () => _showEditProfileSheet(context, ref, profile),
+              icon: const Icon(Icons.edit_rounded, size: 16),
+              label: const Text('Editar perfil'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(40),
+                textStyle: const TextStyle(fontSize: 13),
               ),
             ),
             const SizedBox(height: AppConstants.spacingM),
@@ -406,7 +429,12 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Vehicle card ─────────────────────────────────────────────────────────────
 
-  Widget _buildVehicleCard(BuildContext context, ThemeData theme) {
+  Widget _buildVehicleCard(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+    EditableProfile profile,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.spacingM),
@@ -419,23 +447,20 @@ class ProfileScreen extends ConsumerWidget {
               iconColor: AppColors.primary,
             ),
             const SizedBox(height: AppConstants.spacingM),
-            _InfoRow(label: 'Marca', value: DriverMock.vehicleBrand),
-            _InfoRow(label: 'Modelo', value: DriverMock.vehicleModel),
-            _InfoRow(label: 'Año', value: DriverMock.vehicleYear.toString()),
+            _InfoRow(label: 'Marca', value: profile.vehicleBrand),
+            _InfoRow(label: 'Modelo', value: profile.vehicleModel),
+            _InfoRow(label: 'Año', value: profile.vehicleYear.toString()),
             _InfoRow(
               label: 'Placa',
-              value: DriverMock.vehiclePlate,
+              value: profile.vehiclePlate,
               valueBold: true,
               letterSpacing: 2.0,
             ),
-            _InfoRow(label: 'Color', value: DriverMock.vehicleColor),
-            _InfoRow(label: 'Tipo', value: DriverMock.vehicleType),
+            _InfoRow(label: 'Color', value: profile.vehicleColor),
+            _InfoRow(label: 'Tipo', value: profile.vehicleType),
             const SizedBox(height: AppConstants.spacingS),
             OutlinedButton.icon(
-              onPressed: () => AppSnackbar.showInfo(
-                context,
-                'Edición de datos disponible próximamente.',
-              ),
+              onPressed: () => _showEditVehicleSheet(context, ref, profile),
               icon: const Icon(Icons.edit_rounded, size: 16),
               label: const Text('Editar información'),
               style: OutlinedButton.styleFrom(
@@ -446,6 +471,36 @@ class ProfileScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  // ── Edit sheets ──────────────────────────────────────────────────────────────
+
+  void _showEditProfileSheet(
+    BuildContext context,
+    WidgetRef ref,
+    EditableProfile profile,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditProfileSheet(profile: profile, ref: ref),
+    );
+  }
+
+  void _showEditVehicleSheet(
+    BuildContext context,
+    WidgetRef ref,
+    EditableProfile profile,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditVehicleSheet(profile: profile, ref: ref),
     );
   }
 
@@ -859,6 +914,384 @@ class _AlertChip extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           color: color,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Edit profile sheet ──────────────────────────────────────────────────────────
+
+class _EditProfileSheet extends StatefulWidget {
+  const _EditProfileSheet({required this.profile, required this.ref});
+  final EditableProfile profile;
+  final WidgetRef ref;
+
+  @override
+  State<_EditProfileSheet> createState() => _EditProfileSheetState();
+}
+
+class _EditProfileSheetState extends State<_EditProfileSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _firstName;
+  late final TextEditingController _lastName;
+  late final TextEditingController _phone;
+  late final TextEditingController _email;
+
+  @override
+  void initState() {
+    super.initState();
+    _firstName = TextEditingController(text: widget.profile.firstName);
+    _lastName = TextEditingController(text: widget.profile.lastName);
+    _phone = TextEditingController(text: widget.profile.phone);
+    _email = TextEditingController(text: widget.profile.email);
+  }
+
+  @override
+  void dispose() {
+    _firstName.dispose();
+    _lastName.dispose();
+    _phone.dispose();
+    _email.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+    widget.ref.read(editableProfileProvider.notifier).updateIdentity(
+          firstName: _firstName.text,
+          lastName: _lastName.text,
+          phone: _phone.text,
+          email: _email.text,
+        );
+    Navigator.of(context).pop();
+    AppSnackbar.showSuccess(context, 'Perfil actualizado correctamente');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      title: 'Editar perfil',
+      icon: Icons.person_rounded,
+      onSave: _save,
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _SheetField(
+              controller: _firstName,
+              label: 'Nombres',
+              icon: Icons.badge_outlined,
+              textCapitalization: TextCapitalization.words,
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Ingresa tus nombres' : null,
+            ),
+            _SheetField(
+              controller: _lastName,
+              label: 'Apellidos',
+              icon: Icons.badge_outlined,
+              textCapitalization: TextCapitalization.words,
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? 'Ingresa tus apellidos'
+                  : null,
+            ),
+            _SheetField(
+              controller: _phone,
+              label: 'Teléfono',
+              icon: Icons.phone_outlined,
+              keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp('[0-9+ ]')),
+              ],
+              validator: (v) {
+                final digits = (v ?? '').replaceAll(RegExp(r'\D'), '');
+                if (digits.length < 10) return 'Teléfono inválido';
+                return null;
+              },
+            ),
+            _SheetField(
+              controller: _email,
+              label: 'Correo electrónico',
+              icon: Icons.email_outlined,
+              keyboardType: TextInputType.emailAddress,
+              validator: (v) {
+                final value = (v ?? '').trim();
+                if (value.isEmpty) return 'Ingresa tu correo';
+                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
+                  return 'Correo inválido';
+                }
+                return null;
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Edit vehicle sheet ───────────────────────────────────────────────────────
+
+class _EditVehicleSheet extends StatefulWidget {
+  const _EditVehicleSheet({required this.profile, required this.ref});
+  final EditableProfile profile;
+  final WidgetRef ref;
+
+  @override
+  State<_EditVehicleSheet> createState() => _EditVehicleSheetState();
+}
+
+class _EditVehicleSheetState extends State<_EditVehicleSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _brand;
+  late final TextEditingController _model;
+  late final TextEditingController _year;
+  late final TextEditingController _plate;
+  late final TextEditingController _color;
+  late final TextEditingController _type;
+
+  @override
+  void initState() {
+    super.initState();
+    _brand = TextEditingController(text: widget.profile.vehicleBrand);
+    _model = TextEditingController(text: widget.profile.vehicleModel);
+    _year = TextEditingController(text: widget.profile.vehicleYear.toString());
+    _plate = TextEditingController(text: widget.profile.vehiclePlate);
+    _color = TextEditingController(text: widget.profile.vehicleColor);
+    _type = TextEditingController(text: widget.profile.vehicleType);
+  }
+
+  @override
+  void dispose() {
+    _brand.dispose();
+    _model.dispose();
+    _year.dispose();
+    _plate.dispose();
+    _color.dispose();
+    _type.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+    final year = int.tryParse(_year.text) ?? widget.profile.vehicleYear;
+    widget.ref.read(editableProfileProvider.notifier).updateVehicle(
+          brand: _brand.text,
+          model: _model.text,
+          year: year,
+          plate: _plate.text,
+          color: _color.text,
+          type: _type.text,
+        );
+    Navigator.of(context).pop();
+    AppSnackbar.showSuccess(context, 'Vehículo actualizado correctamente');
+  }
+
+  String? _required(String? v) =>
+      (v == null || v.trim().isEmpty) ? 'Campo requerido' : null;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentYear = DateTime.now().year;
+    return _SheetScaffold(
+      title: 'Editar vehículo',
+      icon: Icons.directions_car_rounded,
+      onSave: _save,
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _SheetField(
+              controller: _brand,
+              label: 'Marca',
+              icon: Icons.factory_outlined,
+              textCapitalization: TextCapitalization.words,
+              validator: _required,
+            ),
+            _SheetField(
+              controller: _model,
+              label: 'Modelo',
+              icon: Icons.directions_car_outlined,
+              textCapitalization: TextCapitalization.words,
+              validator: _required,
+            ),
+            _SheetField(
+              controller: _year,
+              label: 'Año',
+              icon: Icons.calendar_today_outlined,
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(4),
+              ],
+              validator: (v) {
+                final year = int.tryParse(v ?? '');
+                if (year == null) return 'Año inválido';
+                if (year < 1990 || year > currentYear + 1) {
+                  return 'Entre 1990 y ${currentYear + 1}';
+                }
+                return null;
+              },
+            ),
+            _SheetField(
+              controller: _plate,
+              label: 'Placa',
+              icon: Icons.pin_outlined,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9-]')),
+                LengthLimitingTextInputFormatter(7),
+              ],
+              validator: _required,
+            ),
+            _SheetField(
+              controller: _color,
+              label: 'Color',
+              icon: Icons.palette_outlined,
+              textCapitalization: TextCapitalization.words,
+              validator: _required,
+            ),
+            _SheetField(
+              controller: _type,
+              label: 'Tipo',
+              icon: Icons.category_outlined,
+              textCapitalization: TextCapitalization.words,
+              validator: _required,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shared sheet widgets ─────────────────────────────────────────────────────
+
+class _SheetScaffold extends StatelessWidget {
+  const _SheetScaffold({
+    required this.title,
+    required this.icon,
+    required this.onSave,
+    required this.child,
+  });
+  final String title;
+  final IconData icon;
+  final VoidCallback onSave;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surfaceLight,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppConstants.radiusXLarge),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        AppConstants.spacingL,
+        AppConstants.spacingS,
+        AppConstants.spacingL,
+        AppConstants.spacingL + bottomInset,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Drag handle
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: AppConstants.spacingM),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Row(
+              children: [
+                Icon(icon, color: AppColors.primary, size: 22),
+                const SizedBox(width: AppConstants.spacingS),
+                Text(
+                  title,
+                  style: theme.textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppConstants.spacingL),
+            child,
+            const SizedBox(height: AppConstants.spacingL),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+                const SizedBox(width: AppConstants.spacingM),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: onSave,
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    child: const Text('Guardar'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SheetField extends StatelessWidget {
+  const _SheetField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.keyboardType,
+    this.inputFormatters,
+    this.textCapitalization = TextCapitalization.none,
+    this.validator,
+  });
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
+  final TextCapitalization textCapitalization;
+  final String? Function(String?)? validator;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppConstants.spacingM),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
+        textCapitalization: textCapitalization,
+        validator: validator,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, size: 20),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+          ),
         ),
       ),
     );
