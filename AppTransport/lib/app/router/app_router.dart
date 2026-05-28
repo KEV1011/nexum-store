@@ -11,6 +11,13 @@ import 'package:nexum_driver/features/auth/presentation/screens/register_screen.
 import 'package:nexum_driver/features/driver_status/presentation/screens/home_screen.dart';
 import 'package:nexum_driver/features/earnings/presentation/screens/earnings_screen.dart';
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
+import 'package:nexum_driver/features/promotions/presentation/screens/promotions_screen.dart';
+import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
+import 'package:nexum_driver/features/safety/presentation/screens/safety_screen.dart';
+import 'package:nexum_driver/features/settings/presentation/screens/settings_screen.dart';
+import 'package:nexum_driver/features/support/presentation/screens/support_screen.dart';
+import 'package:nexum_driver/features/trip_history/presentation/screens/trip_history_screen.dart';
+import 'package:nexum_driver/features/wallet/presentation/screens/wallet_screen.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 
 abstract final class AppRoutes {
@@ -23,6 +30,14 @@ abstract final class AppRoutes {
   static const String tripSummary = '/trip-summary';
   static const String earnings = '/earnings';
   static const String profile = '/profile';
+  // Phase 2A routes
+  static const String wallet = '/wallet';
+  static const String tripHistory = '/trip-history';
+  static const String ratings = '/ratings';
+  static const String safety = '/safety';
+  static const String settings = '/settings';
+  static const String support = '/support';
+  static const String promotions = '/promotions';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -78,6 +93,34 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.profile,
         builder: (context, state) => const ProfileScreen(),
       ),
+      GoRoute(
+        path: AppRoutes.wallet,
+        builder: (context, state) => const WalletScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.tripHistory,
+        builder: (context, state) => const TripHistoryScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.ratings,
+        builder: (context, state) => const RatingsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.safety,
+        builder: (context, state) => const SafetyScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.settings,
+        builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.support,
+        builder: (context, state) => const SupportScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.promotions,
+        builder: (context, state) => const PromotionsScreen(),
+      ),
     ],
     errorBuilder: (context, state) => _RouterErrorScreen(error: state.error),
   );
@@ -96,7 +139,6 @@ Future<String?> _authRedirect(BuildContext context, GoRouterState state) async {
     return isOnAuthRoute ? null : AppRoutes.login;
   }
 
-  // Conductor autenticado pero pendiente de completar registro.
   final pendingPhone =
       await storage.read(key: AppConstants.needsRegistrationKey);
   if (pendingPhone != null && pendingPhone.isNotEmpty) {
@@ -104,7 +146,6 @@ Future<String?> _authRedirect(BuildContext context, GoRouterState state) async {
     return '${AppRoutes.register}?phone=${Uri.encodeComponent(pendingPhone)}';
   }
 
-  // Conductor autenticado y registrado → redirigir desde pantallas de auth.
   final isOnAuthRoute = state.matchedLocation == AppRoutes.login ||
       state.matchedLocation == AppRoutes.otp ||
       state.matchedLocation == AppRoutes.splash;
@@ -130,7 +171,7 @@ class _SplashScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1A237E),
+                color: Color(0xFF1565C0),
               ),
             ),
             SizedBox(height: 32),
