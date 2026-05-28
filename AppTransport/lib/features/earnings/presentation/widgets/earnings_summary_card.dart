@@ -27,7 +27,7 @@ class EarningsSummaryCard extends StatelessWidget {
           gradient: LinearGradient(
             colors: isDark
                 ? [const Color(0xFF1B5E20), const Color(0xFF2E7D32)]
-                : [AppColors.primary, AppColors.primaryDark],
+                : [AppColors.primary, AppColors.primaryDim],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
