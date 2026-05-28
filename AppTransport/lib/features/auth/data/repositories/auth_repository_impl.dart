@@ -2,18 +2,18 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
 import 'package:nexum_driver/core/errors/failures.dart';
-import 'package:nexum_driver/features/auth/data/datasources/auth_remote_datasource.dart';
+import 'package:nexum_driver/features/auth/data/datasources/auth_datasource.dart';
 import 'package:nexum_driver/features/auth/domain/entities/driver_entity.dart';
 import 'package:nexum_driver/features/auth/domain/repositories/auth_repository.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl({
-    required AuthRemoteDataSource dataSource,
+    required AuthDataSource dataSource,
     required FlutterSecureStorage secureStorage,
   })  : _dataSource = dataSource,
         _secureStorage = secureStorage;
 
-  final AuthRemoteDataSource _dataSource;
+  final AuthDataSource _dataSource;
   final FlutterSecureStorage _secureStorage;
 
   // ── sendOtp ────────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,11 +13,15 @@ import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
+import 'package:nexum_driver/core/mock_data/passengers_mock.dart';
+import 'package:nexum_driver/core/mock_data/trips_mock.dart';
+import 'package:nexum_driver/core/utils/fare_calculator.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/widgets/status_indicator_bar.dart';
 import 'package:nexum_driver/features/driver_status/presentation/widgets/status_toggle_button.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
+import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/ws_service.dart';
@@ -74,6 +80,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   StreamSubscription<TripRequestEntity>? _wsSub;
   Timer? _countdownTimer;
+  Timer? _webMockTimer; // only used on web
+  final _rng = math.Random();
 
   static const _initialPosition = CameraPosition(
     target: LatLng(MapConstants.pamplonaCenterLat, MapConstants.pamplonaCenterLng),
@@ -85,6 +93,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _wsSub?.cancel();
     WsService().disconnect();
     _countdownTimer?.cancel();
+    _webMockTimer?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -102,18 +111,68 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _connectWs();
     } else {
       _wsSub?.cancel();
+      _webMockTimer?.cancel();
       WsService().disconnect();
       _countdownTimer?.cancel();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
   }
 
-  // ── WebSocket trip dispatch ────────────────────────────────────────────
+  // ── WebSocket / web mock dispatch ─────────────────────────────────────
 
   Future<void> _connectWs() async {
+    if (kIsWeb) {
+      _scheduleWebMockRequest();
+      return;
+    }
     await WsService().connect();
     _wsSub?.cancel();
     _wsSub = WsService().tripRequests.listen(_onTripRequest);
+  }
+
+  void _scheduleWebMockRequest() {
+    _webMockTimer?.cancel();
+    final delay = Duration(
+      seconds: AppConstants.minTripRequestIntervalSeconds +
+          _rng.nextInt(
+            AppConstants.maxTripRequestIntervalSeconds -
+                AppConstants.minTripRequestIntervalSeconds,
+          ),
+    );
+    _webMockTimer = Timer(delay, _fireWebMockRequest);
+  }
+
+  void _fireWebMockRequest() {
+    if (!mounted || !_state.isOnline) return;
+    final tripData = TripsMock.tripRequests[_rng.nextInt(TripsMock.tripRequests.length)];
+    final passenger = PassengersMock.passengers[_rng.nextInt(PassengersMock.passengers.length)];
+    final dist = tripData.distanceKm;
+    final dur = tripData.durationMinutes;
+    final fare = FareCalculator.calculateNetEarning(
+      FareCalculator.calculateFare(distanceKm: dist, durationMinutes: dur),
+    );
+
+    final request = TripRequestEntity(
+      id: '${tripData.id}_${DateTime.now().millisecondsSinceEpoch}',
+      passenger: passenger,
+      origin: LocationModel(
+        latitude: tripData.originLat,
+        longitude: tripData.originLng,
+        address: tripData.originAddress,
+      ),
+      destination: LocationModel(
+        latitude: tripData.destinationLat,
+        longitude: tripData.destinationLng,
+        address: tripData.destinationAddress,
+      ),
+      distanceKm: dist,
+      durationMinutes: dur,
+      estimatedFare: fare,
+      distanceToPickupKm: 0.5,
+      etaToPickupMinutes: 3,
+      requestedAt: DateTime.now(),
+    );
+    _onTripRequest(request);
   }
 
   void _onTripRequest(TripRequestEntity request) {
@@ -140,6 +199,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         timer.cancel();
         WsService().rejectTrip(request.id);
         setState(() => _state = _state.copyWith(clearPending: true));
+        if (kIsWeb && _state.isOnline) _scheduleWebMockRequest();
       } else {
         setState(() => _state = _state.copyWith(requestSecondsLeft: newLeft));
       }
@@ -158,6 +218,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _countdownTimer?.cancel();
     WsService().rejectTrip(request.id);
     setState(() => _state = _state.copyWith(clearPending: true));
+    if (kIsWeb && _state.isOnline) _scheduleWebMockRequest();
   }
 
   // ── Build ──────────────────────────────────────────────────────────────
