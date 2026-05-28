@@ -37,7 +37,7 @@ abstract final class AppTheme {
   // ── Texto base ───────────────────────────────────────────────────────────
 
   static TextTheme _buildTextTheme(TextTheme base) =>
-      GoogleFonts.poppinsTextTheme(base);
+      GoogleFonts.interTextTheme(base);
 
   // ── Tema claro ───────────────────────────────────────────────────────────
 
@@ -45,8 +45,6 @@ abstract final class AppTheme {
   static ThemeData lightTheme() {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: AppColors.primary,
-      brightness: Brightness.light,
-      surface: AppColors.surfaceLight,
     );
 
     return ThemeData(
@@ -61,7 +59,7 @@ abstract final class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 1,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.poppins(
+        titleTextStyle: GoogleFonts.inter(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: AppColors.textPrimary,
@@ -75,7 +73,7 @@ abstract final class AppTheme {
         color: AppColors.cardLight,
         surfaceTintColor: Colors.transparent,
         shadowColor: AppColors.shadow,
-        margin: const EdgeInsets.all(0),
+        margin: EdgeInsets.zero,
       ),
       // Elevated button
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -85,7 +83,7 @@ abstract final class AppTheme {
           minimumSize: const Size.fromHeight(AppConstants.minTouchTarget),
           shape: _buttonShape,
           elevation: 0,
-          textStyle: GoogleFonts.poppins(
+          textStyle: GoogleFonts.inter(
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -98,7 +96,7 @@ abstract final class AppTheme {
           minimumSize: const Size.fromHeight(AppConstants.minTouchTarget),
           shape: _buttonShape,
           side: const BorderSide(color: AppColors.primary, width: 1.5),
-          textStyle: GoogleFonts.poppins(
+          textStyle: GoogleFonts.inter(
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -108,10 +106,12 @@ abstract final class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.primary,
-          minimumSize: const Size(AppConstants.minTouchTarget,
-              AppConstants.minTouchTarget),
+          minimumSize: const Size(
+            AppConstants.minTouchTarget,
+            AppConstants.minTouchTarget,
+          ),
           shape: _buttonShape,
-          textStyle: GoogleFonts.poppins(
+          textStyle: GoogleFonts.inter(
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
@@ -141,15 +141,15 @@ abstract final class AppTheme {
           horizontal: AppConstants.spacingM,
           vertical: AppConstants.spacingM,
         ),
-        hintStyle: GoogleFonts.poppins(
+        hintStyle: GoogleFonts.inter(
           color: AppColors.textSecondary,
           fontSize: 14,
         ),
-        labelStyle: GoogleFonts.poppins(
+        labelStyle: GoogleFonts.inter(
           color: AppColors.textSecondary,
           fontSize: 14,
         ),
-        floatingLabelStyle: GoogleFonts.poppins(
+        floatingLabelStyle: GoogleFonts.inter(
           color: AppColors.primary,
           fontSize: 14,
           fontWeight: FontWeight.w500,
@@ -176,7 +176,7 @@ abstract final class AppTheme {
       // Chip
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surfaceLight,
-        labelStyle: GoogleFonts.poppins(fontSize: 12),
+        labelStyle: GoogleFonts.inter(fontSize: 12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
         ),
@@ -224,7 +224,7 @@ abstract final class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 2,
         centerTitle: true,
-        titleTextStyle: GoogleFonts.poppins(
+        titleTextStyle: GoogleFonts.inter(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: AppColors.textOnDark,
@@ -238,7 +238,7 @@ abstract final class AppTheme {
         color: AppColors.cardDark,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.black54,
-        margin: const EdgeInsets.all(0),
+        margin: EdgeInsets.zero,
       ),
       // Elevated button
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -248,7 +248,7 @@ abstract final class AppTheme {
           minimumSize: const Size.fromHeight(AppConstants.minTouchTarget),
           shape: _buttonShape,
           elevation: 0,
-          textStyle: GoogleFonts.poppins(
+          textStyle: GoogleFonts.inter(
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -261,7 +261,7 @@ abstract final class AppTheme {
           minimumSize: const Size.fromHeight(AppConstants.minTouchTarget),
           shape: _buttonShape,
           side: const BorderSide(color: AppColors.primaryLight, width: 1.5),
-          textStyle: GoogleFonts.poppins(
+          textStyle: GoogleFonts.inter(
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -271,10 +271,12 @@ abstract final class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.primaryLight,
-          minimumSize: const Size(AppConstants.minTouchTarget,
-              AppConstants.minTouchTarget),
+          minimumSize: const Size(
+            AppConstants.minTouchTarget,
+            AppConstants.minTouchTarget,
+          ),
           shape: _buttonShape,
-          textStyle: GoogleFonts.poppins(
+          textStyle: GoogleFonts.inter(
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
@@ -307,15 +309,15 @@ abstract final class AppTheme {
           horizontal: AppConstants.spacingM,
           vertical: AppConstants.spacingM,
         ),
-        hintStyle: GoogleFonts.poppins(
+        hintStyle: GoogleFonts.inter(
           color: Colors.white38,
           fontSize: 14,
         ),
-        labelStyle: GoogleFonts.poppins(
+        labelStyle: GoogleFonts.inter(
           color: Colors.white54,
           fontSize: 14,
         ),
-        floatingLabelStyle: GoogleFonts.poppins(
+        floatingLabelStyle: GoogleFonts.inter(
           color: AppColors.primaryLight,
           fontSize: 14,
           fontWeight: FontWeight.w500,
@@ -342,7 +344,10 @@ abstract final class AppTheme {
       // Chip
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.cardDark,
-        labelStyle: GoogleFonts.poppins(fontSize: 12, color: AppColors.textOnDark),
+        labelStyle: GoogleFonts.inter(
+          fontSize: 12,
+          color: AppColors.textOnDark,
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
         ),
