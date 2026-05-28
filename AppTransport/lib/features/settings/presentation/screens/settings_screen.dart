@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 
@@ -17,10 +18,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _soundEnabled = true;
   bool _vibrationEnabled = true;
-  bool _darkModeEnabled = false;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = ref.watch(themeProvider) == ThemeMode.dark;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Configuración')),
       body: ListView(
@@ -64,8 +66,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: 'Modo oscuro',
             subtitle: 'Cambia el tema de la aplicación',
             trailing: Switch(
-              value: _darkModeEnabled,
-              onChanged: (v) => setState(() => _darkModeEnabled = v),
+              value: isDark,
+              onChanged: (v) =>
+                  ref.read(themeProvider.notifier).setDark(dark: v),
             ),
           ),
           const Divider(),
@@ -153,7 +156,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});
-
   final String title;
 
   @override

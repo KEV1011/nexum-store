@@ -725,7 +725,7 @@ class _DrawerItem extends StatelessWidget {
 
 // ── Sub-widgets ─────────────────────────────────────────────────────────────
 
-class _OnlineToggle extends StatelessWidget {
+class _OnlineToggle extends StatefulWidget {
   const _OnlineToggle({
     required this.isOnline,
     required this.serviceType,
@@ -737,46 +737,117 @@ class _OnlineToggle extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_OnlineToggle> createState() => _OnlineToggleState();
+}
+
+class _OnlineToggleState extends State<_OnlineToggle>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseCtrl;
+  late final Animation<double> _pulseScale;
+  late final Animation<double> _pulseOpacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+    _pulseScale = Tween<double>(begin: 1.0, end: 2.4).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeOut),
+    );
+    _pulseOpacity = Tween<double>(begin: 0.5, end: 0.0).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeOut),
+    );
+    if (widget.isOnline) _pulseCtrl.repeat();
+  }
+
+  @override
+  void didUpdateWidget(_OnlineToggle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isOnline && !oldWidget.isOnline) {
+      _pulseCtrl.repeat();
+    } else if (!widget.isOnline && oldWidget.isOnline) {
+      _pulseCtrl.stop();
+      _pulseCtrl.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final color = isOnline ? AppColors.online : AppColors.offline;
+    final color = widget.isOnline ? AppColors.online : AppColors.offline;
     return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: AppConstants.shortAnimation,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppConstants.spacingM,
-          vertical: AppConstants.spacingS,
-        ),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.4),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+      onTap: widget.onTap,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          // Pulse ring (only when online)
+          if (widget.isOnline)
+            AnimatedBuilder(
+              animation: _pulseCtrl,
+              builder: (context, _) {
+                return Opacity(
+                  opacity: _pulseOpacity.value,
+                  child: Transform.scale(
+                    scale: _pulseScale.value,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.online.withValues(alpha: 0.3),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-              color: Colors.white,
-              size: 18,
+          // Toggle pill
+          AnimatedContainer(
+            duration: AppConstants.shortAnimation,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppConstants.spacingM,
+              vertical: AppConstants.spacingS,
             ),
-            const SizedBox(width: AppConstants.spacingXS),
-            Text(
-              isOnline ? 'En línea' : 'Desconectado',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.45),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-          ],
-        ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  widget.isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: AppConstants.spacingXS),
+                Text(
+                  widget.isOnline ? 'En línea' : 'Desconectado',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

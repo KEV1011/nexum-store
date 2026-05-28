@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexum_driver/app/router/app_transitions.dart';
+import 'package:nexum_driver/app/router/splash_screen.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/active_trip/presentation/screens/active_trip_screen.dart';
 import 'package:nexum_driver/features/active_trip/presentation/screens/trip_summary_screen.dart';
@@ -30,7 +32,6 @@ abstract final class AppRoutes {
   static const String tripSummary = '/trip-summary';
   static const String earnings = '/earnings';
   static const String profile = '/profile';
-  // Phase 2A routes
   static const String wallet = '/wallet';
   static const String tripHistory = '/trip-history';
   static const String ratings = '/ratings';
@@ -48,85 +49,128 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.splash,
         redirect: (context, state) async => _authRedirect(context, state),
-        builder: (context, state) => const _SplashScreen(),
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const SplashScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.login,
-        builder: (context, state) => const PhoneInputScreen(),
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const PhoneInputScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.otp,
-        builder: (context, state) {
-          final phone = state.uri.queryParameters['phone'] ?? '';
-          return OtpScreen(phone: phone);
-        },
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: OtpScreen(phone: state.uri.queryParameters['phone'] ?? ''),
+        ),
       ),
       GoRoute(
         path: AppRoutes.register,
-        builder: (context, state) {
-          final phone = state.uri.queryParameters['phone'] ?? '';
-          return RegisterScreen(phone: phone);
-        },
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: RegisterScreen(
+              phone: state.uri.queryParameters['phone'] ?? ''),
+        ),
       ),
       GoRoute(
         path: AppRoutes.home,
-        builder: (context, state) => const HomeScreen(),
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const HomeScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.activeTrip,
-        builder: (context, state) => const ActiveTripScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const ActiveTripScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.tripSummary,
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final trip = state.extra as TripModel?;
-          return trip == null
-              ? const HomeScreen()
-              : TripSummaryScreen(trip: trip);
+          return AppTransitions.slideUp(
+            pageKey: state.pageKey,
+            child:
+                trip == null ? const HomeScreen() : TripSummaryScreen(trip: trip),
+          );
         },
       ),
       GoRoute(
         path: AppRoutes.earnings,
-        builder: (context, state) => const EarningsScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const EarningsScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.profile,
-        builder: (context, state) => const ProfileScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const ProfileScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.wallet,
-        builder: (context, state) => const WalletScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const WalletScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.tripHistory,
-        builder: (context, state) => const TripHistoryScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const TripHistoryScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.ratings,
-        builder: (context, state) => const RatingsScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const RatingsScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.safety,
-        builder: (context, state) => const SafetyScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const SafetyScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.settings,
-        builder: (context, state) => const SettingsScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const SettingsScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.support,
-        builder: (context, state) => const SupportScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const SupportScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.promotions,
-        builder: (context, state) => const PromotionsScreen(),
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const PromotionsScreen(),
+        ),
       ),
     ],
     errorBuilder: (context, state) => _RouterErrorScreen(error: state.error),
   );
 });
 
-Future<String?> _authRedirect(BuildContext context, GoRouterState state) async {
+Future<String?> _authRedirect(
+    BuildContext context, GoRouterState state) async {
   const storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
@@ -152,35 +196,6 @@ Future<String?> _authRedirect(BuildContext context, GoRouterState state) async {
   if (isOnAuthRoute) return AppRoutes.home;
 
   return null;
-}
-
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.local_taxi_rounded, size: 80, color: Color(0xFF00C853)),
-            SizedBox(height: 16),
-            Text(
-              'Nexum Driver',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1565C0),
-              ),
-            ),
-            SizedBox(height: 32),
-            CircularProgressIndicator(color: Color(0xFF00C853)),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _RouterErrorScreen extends StatelessWidget {
