@@ -64,9 +64,20 @@ jobs:
 
       - name: Build Flutter Web
         working-directory: AppTransport
+        run: flutter build web --release
+
+      - name: Inject Google Maps API key
+        env:
+          GMAPS_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
-          flutter build web --release \
-            --dart-define=GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY || 'PLACEHOLDER' }}
+          if [ -n "$GMAPS_KEY" ]; then
+            sed -i "s|__GOOGLE_MAPS_API_KEY__|${GMAPS_KEY}|g" AppTransport/build/web/index.html
+            echo "Google Maps API key injected"
+          else
+            # Remove the script tag entirely if no key is available (avoids InvalidKeyMapError in console)
+            sed -i '/maps.googleapis.com/d' AppTransport/build/web/index.html
+            echo "No GOOGLE_MAPS_API_KEY secret — Maps script removed from index.html"
+          fi
 
       - name: Fix base href for GitHub Pages
         run: |

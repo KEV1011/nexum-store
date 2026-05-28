@@ -25,6 +25,12 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
+// Firebase Google Services plugin — solo si google-services.json existe.
+// Esto permite que la app compile sin Firebase mientras se obtiene el archivo.
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}
+
 // ── Release signing ───────────────────────────────────────────────────────────
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
@@ -57,9 +63,12 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
 
-        // Google Maps API Key inyectada desde dart-define o variable de entorno
+        // Google Maps API Key — busca en (1) gradle property, (2) env var, (3) local.properties, (4) vacío
         manifestPlaceholders = [
-            GOOGLE_MAPS_API_KEY: project.findProperty("GOOGLE_MAPS_API_KEY") ?: ""
+            GOOGLE_MAPS_API_KEY: project.findProperty("GOOGLE_MAPS_API_KEY")
+                ?: System.getenv("GOOGLE_MAPS_API_KEY")
+                ?: localProperties.getProperty("google.maps.api.key")
+                ?: ""
         ]
     }
 
