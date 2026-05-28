@@ -20,7 +20,7 @@ class NexumDriverApp extends ConsumerWidget {
       // Tema Material 3
       theme: AppTheme.lightTheme(),
       darkTheme: AppTheme.darkTheme(),
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.light,
 
       // Navegación
       routerConfig: router,
