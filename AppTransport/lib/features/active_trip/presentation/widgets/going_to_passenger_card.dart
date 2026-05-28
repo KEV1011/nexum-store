@@ -4,7 +4,6 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
-import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 
 /// Tarjeta inferior para el estado (a): conductor yendo al punto de recogida.
 ///
@@ -14,11 +13,13 @@ class GoingToPassengerCard extends ConsumerWidget {
   const GoingToPassengerCard({
     super.key,
     required this.trip,
+    this.routeProgress = 0.0,
     this.onArrived,
     this.onCancelled,
   });
 
   final ActiveTripEntity trip;
+  final double routeProgress;
   final VoidCallback? onArrived;
   final VoidCallback? onCancelled;
 
@@ -63,6 +64,38 @@ class GoingToPassengerCard extends ConsumerWidget {
               ),
             ),
           ),
+
+          // ── Route progress bar ───────────────────────────────────────────
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: routeProgress),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOut,
+            builder: (_, value, __) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: value,
+                    backgroundColor: AppColors.outlineLight,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppColors.pickupMarker),
+                    minHeight: 5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${(value * 100).round()}% hacia el pasajero',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppConstants.spacingM),
 
           // ── Passenger info row ───────────────────────────────────────────
           Row(

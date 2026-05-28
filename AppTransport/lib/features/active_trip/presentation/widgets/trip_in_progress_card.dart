@@ -12,10 +12,12 @@ class TripInProgressCard extends StatelessWidget {
   const TripInProgressCard({
     super.key,
     required this.trip,
+    this.routeProgress = 0.0,
     this.onFinishTrip,
   });
 
   final ActiveTripEntity trip;
+  final double routeProgress;
   final VoidCallback? onFinishTrip;
 
   @override
@@ -62,6 +64,38 @@ class TripInProgressCard extends StatelessWidget {
               ),
             ),
           ),
+
+          // ── Route progress bar ───────────────────────────────────────────
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: routeProgress),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOut,
+            builder: (_, value, __) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: value,
+                    backgroundColor: AppColors.outlineLight,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppColors.primary),
+                    minHeight: 5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${(value * 100).round()}% del trayecto recorrido',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: AppConstants.spacingM),
 
           // ── Status chip ──────────────────────────────────────────────────
           Container(

@@ -41,6 +41,15 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   Timer? _etaTimer;
   int _etaSeconds = 0;
 
+  // Waypoint-based route simulation
+  LatLng _routeStart = const LatLng(
+    MapConstants.pamplonaCenterLat,
+    MapConstants.pamplonaCenterLng,
+  );
+  List<LatLng> _waypoints = const [];
+  int _waypointIndex = 0;
+  bool _nearDestinationShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -64,27 +73,98 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   // ── Simulated driver movement ────────────────────────────────────────────
 
   void _startSimulatedMovement(ActiveTripEntity trip) {
+    final target = trip.isInProgress
+        ? trip.request.destination.latLng
+        : trip.request.origin.latLng;
+
+    _routeStart = _driverPos;
+    _waypoints = _generateWaypoints(_driverPos, target);
+    _waypointIndex = 0;
+    _nearDestinationShown = false;
+
     _movementTimer?.cancel();
-    _movementTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _movementTimer = Timer.periodic(const Duration(milliseconds: 1800), (_) {
       if (!mounted) return;
-      final current = ref.read(activeTripProvider);
-      if (current == null) return;
+      if (_waypointIndex >= _waypoints.length) return;
 
-      final target = current.isInProgress
-          ? current.request.destination.latLng
-          : current.request.origin.latLng;
+      // Near-destination alert at 85% of route
+      final progress = _waypointIndex / _waypoints.length;
+      if (progress >= 0.85 && !_nearDestinationShown) {
+        _nearDestinationShown = true;
+        final current = ref.read(activeTripProvider);
+        if (current != null && mounted) {
+          AppSnackbar.showInfo(
+            context,
+            current.isInProgress
+                ? '¡Llegando al destino!'
+                : '¡El pasajero está cerca!',
+          );
+        }
+      }
 
-      final newLat = _lerp(_driverPos.latitude, target.latitude, 0.10);
-      final newLng = _lerp(_driverPos.longitude, target.longitude, 0.10);
-      final updated = LatLng(newLat, newLng);
-
-      setState(() => _driverPos = updated);
+      final next = _waypoints[_waypointIndex];
+      setState(() {
+        _driverPos = next;
+        _waypointIndex++;
+      });
 
       if (_autoFollow && _mapController != null) {
-        _mapController!.animateCamera(CameraUpdate.newLatLng(updated));
+        final current = ref.read(activeTripProvider);
+        // Driving-mode camera (tilted + bearing) when in progress
+        if (current?.isInProgress == true &&
+            _waypointIndex < _waypoints.length) {
+          final bearing = _bearing(_driverPos, _waypoints[_waypointIndex]);
+          _mapController!.animateCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: next,
+                zoom: 16.5,
+                tilt: 45,
+                bearing: bearing,
+              ),
+            ),
+          );
+        } else {
+          _mapController!.animateCamera(CameraUpdate.newLatLng(next));
+        }
       }
     });
   }
+
+  List<LatLng> _generateWaypoints(LatLng from, LatLng to) {
+    // L-shaped path: horizontal leg first, then vertical leg.
+    // Simulates turning at a street corner rather than cutting diagonally.
+    const steps = 6;
+    final corner = LatLng(from.latitude, to.longitude);
+    final result = <LatLng>[];
+    for (int i = 1; i <= steps; i++) {
+      result.add(LatLng(
+        _lerp(from.latitude, corner.latitude, i / steps),
+        _lerp(from.longitude, corner.longitude, i / steps),
+      ));
+    }
+    for (int i = 1; i <= steps; i++) {
+      result.add(LatLng(
+        _lerp(corner.latitude, to.latitude, i / steps),
+        _lerp(corner.longitude, to.longitude, i / steps),
+      ));
+    }
+    return result;
+  }
+
+  static double _bearing(LatLng from, LatLng to) {
+    final dLng = (to.longitude - from.longitude) * math.pi / 180;
+    final lat1 = from.latitude * math.pi / 180;
+    final lat2 = to.latitude * math.pi / 180;
+    final y = math.sin(dLng) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  }
+
+  double get _routeProgress => _waypoints.isEmpty
+      ? 0.0
+      : (_waypointIndex / _waypoints.length).clamp(0.0, 1.0);
 
   void _startEtaCountdown(ActiveTripEntity trip) {
     _etaTimer?.cancel();
@@ -124,6 +204,8 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     if (prev.isWaiting && next.isInProgress) {
       setState(() {
         _driverPos = next.request.origin.latLng;
+        _waypoints = const [];
+        _waypointIndex = 0;
         _autoFollow = true;
       });
       _startSimulatedMovement(next);
@@ -234,7 +316,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     final originLatLng = trip.request.origin.latLng;
     final destinationLatLng = trip.request.destination.latLng;
 
-    final polylinePoints = trip.isInProgress
+    final boundsPoints = trip.isInProgress
         ? [_driverPos, originLatLng, destinationLatLng]
         : [_driverPos, originLatLng];
 
@@ -245,14 +327,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
       ),
       onMapCreated: (controller) {
         _mapController = controller;
-        _fitBoundsToRoute(polylinePoints);
+        _fitBoundsToRoute(boundsPoints);
       },
       onCameraMoveStarted: () {
         // User manually moved the map — disable auto-follow
         if (_autoFollow) setState(() => _autoFollow = false);
       },
       markers: _buildMarkers(trip, serviceType),
-      polylines: _buildPolylines(trip, serviceType, polylinePoints),
+      polylines: _buildPolylines(trip, serviceType),
       myLocationEnabled: false,
       myLocationButtonEnabled: false,
       zoomControlsEnabled: false,
@@ -302,21 +384,59 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     };
   }
 
-  Set<Polyline> _buildPolylines(
-    ActiveTripEntity trip,
-    ServiceType serviceType,
-    List<LatLng> points,
-  ) {
+  Set<Polyline> _buildPolylines(ActiveTripEntity trip, ServiceType serviceType) {
+    // Fallback: single straight line before waypoints are generated
+    if (_waypoints.isEmpty) {
+      final target = trip.isInProgress
+          ? trip.request.destination.latLng
+          : trip.request.origin.latLng;
+      return {
+        Polyline(
+          polylineId: const PolylineId('active_route'),
+          points: [_driverPos, target],
+          color: serviceType.color,
+          width: 5,
+          patterns: trip.isToPickup
+              ? [PatternItem.dash(18), PatternItem.gap(8)]
+              : [],
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+        ),
+      };
+    }
+
+    // Full route = starting position + all waypoints
+    final fullRoute = [_routeStart, ..._waypoints];
+    final splitAt = (_waypointIndex + 1).clamp(0, fullRoute.length);
+    final consumed = fullRoute.take(splitAt).toList();
+    // Share the current position point between consumed and remaining (no gap)
+    final remaining =
+        fullRoute.skip(splitAt > 0 ? splitAt - 1 : 0).toList();
+
     return {
-      Polyline(
-        polylineId: const PolylineId('route_shadow'),
-        points: points,
-        color: Colors.black.withValues(alpha: 0.15),
-        width: 9,
-      ),
+      // Greyed-out consumed portion
+      if (consumed.length >= 2)
+        Polyline(
+          polylineId: const PolylineId('consumed_route'),
+          points: consumed,
+          color: Colors.grey.withValues(alpha: 0.45),
+          width: 5,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+        ),
+      // Shadow under remaining route
+      if (remaining.length >= 2)
+        Polyline(
+          polylineId: const PolylineId('route_shadow'),
+          points: remaining,
+          color: Colors.black.withValues(alpha: 0.15),
+          width: 9,
+        ),
+      // Colored remaining route
       Polyline(
         polylineId: const PolylineId('active_route'),
-        points: points,
+        points: remaining.length >= 2 ? remaining : [_driverPos, _driverPos],
         color: serviceType.color,
         width: 5,
         patterns: trip.isToPickup
@@ -424,17 +544,27 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
               const SizedBox(width: AppConstants.spacingS),
 
-              // ETA badge
-              Container(
+              // ETA badge — changes color as time runs out
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 500),
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: serviceType.color,
+                  color: _etaSeconds < 60
+                      ? AppColors.error
+                      : _etaSeconds < 180
+                          ? AppColors.warning
+                          : serviceType.color,
                   borderRadius:
                       BorderRadius.circular(AppConstants.radiusCircular),
                   boxShadow: [
                     BoxShadow(
-                      color: serviceType.color.withValues(alpha: 0.4),
+                      color: (_etaSeconds < 60
+                              ? AppColors.error
+                              : _etaSeconds < 180
+                                  ? AppColors.warning
+                                  : serviceType.color)
+                          .withValues(alpha: 0.4),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -468,6 +598,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     return switch (trip.state) {
       ActiveTripState.toPickup => GoingToPassengerCard(
           trip: trip,
+          routeProgress: _routeProgress,
           onArrived: _isLoading ? null : _handleArrived,
           onCancelled: _handleCancelled,
         ),
@@ -477,6 +608,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
         ),
       ActiveTripState.inProgress => TripInProgressCard(
           trip: trip,
+          routeProgress: _routeProgress,
           onFinishTrip: _isLoading ? null : _handleFinishTrip,
         ),
     };
