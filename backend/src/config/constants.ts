@@ -18,6 +18,7 @@ export const MOCK_OTP = '123456';
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
 export const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? '*';
+export const PORTAL_BASE_URL = process.env['PORTAL_BASE_URL'] ?? 'https://nexum.app';
 
 // ─── Fare Rates (COP) ─────────────────────────────────────────────────────────
 

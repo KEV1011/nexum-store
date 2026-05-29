@@ -11,6 +11,7 @@ import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
 import tripsRouter from './routes/trips.routes';
 import earningsRouter from './routes/earnings.routes';
+import businessRouter from './routes/business.routes';
 
 // ─── Express App ──────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ app.use('/auth', authRouter);
 app.use('/driver', driverRouter);
 app.use('/trips', tripsRouter);
 app.use('/earnings', earningsRouter);
+app.use('/business', businessRouter);
 
 // ─── 404 Catch-all ───────────────────────────────────────────────────────────
 

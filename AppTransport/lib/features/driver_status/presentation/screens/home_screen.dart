@@ -1126,6 +1126,15 @@ class _AppDrawer extends ConsumerWidget {
                       context.push('/business-portal');
                     },
                   ),
+                  _DrawerItem(
+                    icon: Icons.add_business_rounded,
+                    label: 'Registrar negocio',
+                    iconColor: AppColors.serviceEnvios,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/business-registration');
+                    },
+                  ),
                   _DrawerSection(label: 'CUENTA'),
                   _DrawerItem(
                     icon: Icons.person_outline_rounded,

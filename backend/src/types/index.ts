@@ -218,3 +218,121 @@ export interface WsTripCancelledMessage {
   tripId: string;
   reason: string;
 }
+
+// ─── Business ─────────────────────────────────────────────────────────────────
+
+export type BusinessCategory = 'restaurant' | 'supermarket' | 'pharmacy' | 'other';
+
+export interface Business {
+  id: string;
+  name: string;
+  ownerName: string;
+  phone: string;
+  address: string;
+  category: BusinessCategory;
+  accessToken: string;     // short unique token for portal URL /negocio/[token]
+  whatsapp?: string;       // optional WhatsApp number for notifications
+  createdAt: Date;
+  isActive: boolean;
+}
+
+export interface RegisterBusinessDTO {
+  name: string;
+  ownerName: string;
+  phone: string;
+  address: string;
+  category: BusinessCategory;
+  whatsapp?: string;
+}
+
+// ─── Delivery Orders ──────────────────────────────────────────────────────────
+
+export type DeliveryOrderStatus =
+  | 'pending'     // driver heading to business
+  | 'at_pickup'   // driver arrived at business
+  | 'in_transit'  // picked up with photo, heading to customer
+  | 'delivered';  // delivered with proof
+
+export interface DeliveryOrder {
+  id: string;
+  businessId: string;
+  orderRef: string;           // e.g. "#4521"
+  customerName: string;
+  customerAddress: string;
+  driverId: string;
+  driverName: string;
+  driverPhone: string;
+  status: DeliveryOrderStatus;
+  grossFare: number;
+  createdAt: Date;
+  pickedUpAt?: Date;
+  deliveredAt?: Date;
+  pickupPhotoUrl?: string;
+  deliveryPhotoUrl?: string;
+  hasSignature: boolean;
+}
+
+export interface CreateDeliveryOrderDTO {
+  businessId: string;
+  orderRef: string;
+  customerName: string;
+  customerAddress: string;
+  grossFare: number;
+}
+
+export interface OrderStatusUpdateDTO {
+  status: DeliveryOrderStatus;
+  pickupPhotoUrl?: string;
+  deliveryPhotoUrl?: string;
+  hasSignature?: boolean;
+}
+
+export interface DeliveryOrderSummaryDTO {
+  id: string;
+  orderRef: string;
+  customerName: string;
+  customerAddress: string;
+  status: DeliveryOrderStatus;
+  grossFare: number;
+  createdAt: string;
+  pickedUpAt?: string;
+  deliveredAt?: string;
+  pickupPhotoUrl?: string;
+  deliveryPhotoUrl?: string;
+  hasSignature: boolean;
+  driverName: string;
+  driverPhone: string;
+  hasPickupProof: boolean;
+  hasDeliveryProof: boolean;
+  hasFullCustody: boolean;
+}
+
+// ─── WhatsApp Notifications ───────────────────────────────────────────────────
+
+export type WhatsAppTemplateId =
+  | 'driver_arriving'      // conductor en camino al local
+  | 'order_picked_up'      // pedido recogido (con foto)
+  | 'order_delivered';     // pedido entregado al cliente
+
+export interface WhatsAppNotification {
+  to: string;              // +57XXXXXXXXXX
+  templateId: WhatsAppTemplateId;
+  variables: Record<string, string>;
+  sentAt: Date;
+}
+
+// ─── Business WebSocket Messages ──────────────────────────────────────────────
+
+export type BusinessWsMessageType =
+  | 'business_auth'
+  | 'business_auth_ok'
+  | 'business_auth_error'
+  | 'order_status_update'
+  | 'new_order'
+  | 'ping'
+  | 'pong';
+
+export interface BusinessWsMessage {
+  type: BusinessWsMessageType;
+  [key: string]: unknown;
+}

@@ -27,6 +27,8 @@ import 'package:nexum_driver/features/business_portal/domain/entities/'
 import 'package:nexum_driver/features/business_portal/presentation/screens/'
     'business_portal_screen.dart';
 import 'package:nexum_driver/features/business_portal/presentation/screens/'
+    'business_registration_screen.dart';
+import 'package:nexum_driver/features/business_portal/presentation/screens/'
     'order_detail_screen.dart';
 import 'package:nexum_driver/features/trip_history/presentation/screens/trip_history_screen.dart';
 import 'package:nexum_driver/features/wallet/presentation/screens/wallet_screen.dart';
@@ -56,6 +58,7 @@ abstract final class AppRoutes {
   static const String documents = '/documents';
   static const String businessPortal = '/business-portal';
   static const String orderDetail = '/business-portal/order/:id';
+  static const String businessRegistration = '/business-registration';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -231,6 +234,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             child: OrderDetailScreen(order: order),
           );
         },
+      ),
+      GoRoute(
+        path: AppRoutes.businessRegistration,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const BusinessRegistrationScreen(),
+        ),
       ),
     ],
     errorBuilder: (context, state) => _RouterErrorScreen(error: state.error),
