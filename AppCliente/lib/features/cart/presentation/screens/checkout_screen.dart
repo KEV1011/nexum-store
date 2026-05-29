@@ -71,10 +71,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     await Future<void>.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
 
-    final orderId = ref.read(ordersProvider.notifier).placeOrder(
+    final orderId = await ref.read(ordersProvider.notifier).placeOrder(
           cart: cart,
           deliveryAddress: _addressController.text.trim(),
         );
+    if (!mounted) return;
     ref.read(cartProvider.notifier).clear();
 
     context.go(AppRoutes.orderPath(orderId));

@@ -3,6 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_transitions.dart';
 import 'package:nexum_client/app/router/splash_screen.dart';
+import 'package:nexum_client/features/auth/presentation/providers/'
+    'auth_provider.dart';
+import 'package:nexum_client/features/auth/presentation/screens/'
+    'otp_screen.dart';
+import 'package:nexum_client/features/auth/presentation/screens/'
+    'phone_input_screen.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/screens/'
@@ -19,6 +25,8 @@ import 'package:nexum_client/features/shell/presentation/screens/'
 /// Rutas con nombre de la app Nexum Cliente.
 abstract final class AppRoutes {
   static const String splash = '/';
+  static const String login = '/login';
+  static const String otp = '/otp';
   static const String home = '/home';
   static const String cart = '/cart';
   static const String checkout = '/checkout';
@@ -40,6 +48,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.fade(
           pageKey: state.pageKey,
           child: const _SplashGate(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.login,
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const PhoneInputScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.otp,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: OtpScreen(phone: state.extra as String? ?? ''),
         ),
       ),
       GoRoute(
@@ -90,21 +112,29 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-/// Muestra el splash brevemente y luego entra a la app.
-class _SplashGate extends StatefulWidget {
+/// Muestra el splash brevemente y luego redirige según estado de auth.
+class _SplashGate extends ConsumerStatefulWidget {
   const _SplashGate();
 
   @override
-  State<_SplashGate> createState() => _SplashGateState();
+  ConsumerState<_SplashGate> createState() => _SplashGateState();
 }
 
-class _SplashGateState extends State<_SplashGate> {
+class _SplashGateState extends ConsumerState<_SplashGate> {
   @override
   void initState() {
     super.initState();
-    Future<void>.delayed(const Duration(milliseconds: 1600), () {
-      if (mounted) context.go(AppRoutes.home);
-    });
+    Future<void>.delayed(const Duration(milliseconds: 1600), _navigate);
+  }
+
+  void _navigate() {
+    if (!mounted) return;
+    final auth = ref.read(authProvider);
+    if (auth is AuthAuthenticated) {
+      context.go(AppRoutes.home);
+    } else {
+      context.go(AppRoutes.login);
+    }
   }
 
   @override

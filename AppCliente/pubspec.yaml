@@ -8,30 +8,18 @@ environment:
   sdk: ^3.12.0
 
 dependencies:
+  cupertino_icons: ^1.0.8
+  dio: ^5.7.0
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-
-  # State management
   flutter_riverpod: ^2.5.1
-
-  # Navigation
+  flutter_secure_storage: ^9.2.2
   go_router: ^14.2.7
-
-  # HTTP client
-  dio: ^5.7.0
-
-  # Storage
-  shared_preferences: ^2.3.2
-
-  # Internationalization
   intl: ^0.20.0
-
-  # Real-time communication (tracking del pedido en vivo)
+  shared_preferences: ^2.3.2
   web_socket_channel: ^3.0.1
-
-  cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:

@@ -8,8 +8,9 @@ import 'package:nexum_client/features/orders/data/datasources/'
     'orders_datasource.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
+import 'package:nexum_client/shared/services/order_ws_service.dart';
 
-/// Conductores mock asignados a los pedidos (rotan por cada nuevo pedido).
+/// Conductores mock para la simulación de demo.
 const _mockDrivers = <(String, String)>[
   ('Andrés Villamizar', '+57 312 678 9012'),
   ('Laura Sepúlveda', '+57 318 234 5678'),
@@ -52,15 +53,25 @@ class OrdersState {
 }
 
 class OrdersNotifier extends StateNotifier<OrdersState> {
-  OrdersNotifier(this._dataSource) : super(const OrdersState()) {
+  OrdersNotifier(this._dataSource, this._wsService)
+      : super(const OrdersState()) {
     _loadHistory();
+    _listenToWs();
   }
 
   final OrdersDataSource _dataSource;
+  final OrderWsService _wsService;
   final _random = Random();
 
-  /// Timers de simulación de cada pedido activo, para poder cancelarlos.
+  /// Timers de simulación por pedido (fallback cuando WS no conecta).
   final _timers = <String, List<Timer>>{};
+
+  /// Pedidos actualmente suscritos via WS (para no duplicar suscripción).
+  final _wsSubscribed = <String>{};
+
+  StreamSubscription<OrderUpdateEvent>? _wsSub;
+
+  // ── init ───────────────────────────────────────────────────────────────────
 
   Future<void> _loadHistory() async {
     final history = await _dataSource.fetchOrderHistory();
@@ -68,13 +79,20 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     state = state.copyWith(orders: history, isLoading: false);
   }
 
-  /// Crea un pedido a partir del carrito y arranca la simulación en vivo.
+  void _listenToWs() {
+    _wsSub = _wsService.updates.listen(_applyWsUpdate);
+  }
+
+  // ── placeOrder ─────────────────────────────────────────────────────────────
+
+  /// Crea un pedido desde el carrito, intenta conectar WS y cae en simulación
+  /// por Timer si el backend no está disponible.
   ///
-  /// Devuelve el id del nuevo pedido para navegar a su seguimiento.
-  String placeOrder({
+  /// Devuelve el id del nuevo pedido para navegar al tracking.
+  Future<String> placeOrder({
     required CartState cart,
     required String deliveryAddress,
-  }) {
+  }) async {
     final business = cart.business!;
     final ref = 'NX-${1000 + _random.nextInt(8000)}';
     final id = 'ord-${DateTime.now().millisecondsSinceEpoch}';
@@ -102,11 +120,62 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     );
 
     state = state.copyWith(orders: [order, ...state.orders]);
-    _startSimulation(id);
+
+    // Intentar WS real; si falla usar simulación local.
+    final wsOk = await _wsService.connect();
+    if (wsOk && !_wsSubscribed.contains(id)) {
+      _wsSubscribed.add(id);
+      _wsService.subscribeOrder(id);
+    } else {
+      _startSimulation(id);
+    }
+
     return id;
   }
 
-  /// Simula la cadena de custodia avanzando en el tiempo (modo demo).
+  // ── WS update handler ──────────────────────────────────────────────────────
+
+  void _applyWsUpdate(OrderUpdateEvent event) {
+    if (!mounted) return;
+    final payload = event.payload;
+
+    _updateOrder(event.orderId, (order) {
+      final statusStr = payload['status'] as String?;
+      final status = statusStr != null
+          ? CustomerOrderStatus.values.firstWhere(
+              (s) => s.name == statusStr,
+              orElse: () => order.status,
+            )
+          : order.status;
+
+      final pickedUpAtStr = payload['pickedUpAt'] as String?;
+      final deliveredAtStr = payload['deliveredAt'] as String?;
+
+      return order.copyWith(
+        status: status,
+        driverName: payload['driverName'] as String? ?? order.driverName,
+        driverPhone:
+            payload['driverPhone'] as String? ?? order.driverPhone,
+        etaMinutes:
+            payload['etaMinutes'] as int? ?? order.etaMinutes,
+        pickedUpAt: pickedUpAtStr != null
+            ? DateTime.tryParse(pickedUpAtStr)
+            : order.pickedUpAt,
+        deliveredAt: deliveredAtStr != null
+            ? DateTime.tryParse(deliveredAtStr)
+            : order.deliveredAt,
+        pickupPhotoPath: payload['pickupPhotoUrl'] as String? ??
+            order.pickupPhotoPath,
+        deliveryPhotoPath: payload['deliveryPhotoUrl'] as String? ??
+            order.deliveryPhotoPath,
+        hasSignature:
+            payload['hasSignature'] as bool? ?? order.hasSignature,
+      );
+    });
+  }
+
+  // ── Timer simulation (fallback) ────────────────────────────────────────────
+
   void _startSimulation(String id) {
     final driver = _mockDrivers[_random.nextInt(_mockDrivers.length)];
 
@@ -121,7 +190,6 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       _timers.putIfAbsent(id, () => []).add(timer);
     }
 
-    // 1. Conductor asignado y en camino al local.
     schedule(
       5,
       (o) => o.copyWith(
@@ -130,34 +198,30 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         driverPhone: driver.$2,
       ),
     );
-
-    // 2. Conductor en el local recogiendo (toma la foto del pedido).
     schedule(
       12,
       (o) => o.copyWith(status: CustomerOrderStatus.atPickup),
     );
-
-    // 3. Pedido recogido con foto de custodia, en camino al cliente.
     schedule(
       18,
       (o) => o.copyWith(
         status: CustomerOrderStatus.inTransit,
         pickedUpAt: DateTime.now(),
-        pickupPhotoPath: 'assets://pickup/$id',
+        pickupPhotoPath: 'mock://pickup/$id',
       ),
     );
-
-    // 4. Entregado con prueba (foto + firma).
     schedule(
       28,
       (o) => o.copyWith(
         status: CustomerOrderStatus.delivered,
         deliveredAt: DateTime.now(),
-        deliveryPhotoPath: 'assets://delivery/$id',
+        deliveryPhotoPath: 'mock://delivery/$id',
         hasSignature: true,
       ),
     );
   }
+
+  // ── helpers ────────────────────────────────────────────────────────────────
 
   void _updateOrder(
     String id,
@@ -177,20 +241,30 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         t.cancel();
       }
     }
+    _wsSub?.cancel();
     super.dispose();
   }
 }
+
+// ── Providers ────────────────────────────────────────────────────────────────
 
 final _ordersDataSourceProvider = Provider<OrdersDataSource>((ref) {
   return OrdersDataSource();
 });
 
-final ordersProvider =
-    StateNotifierProvider<OrdersNotifier, OrdersState>((ref) {
-  return OrdersNotifier(ref.read(_ordersDataSourceProvider));
+final _orderWsServiceProvider = Provider<OrderWsService>((ref) {
+  return OrderWsService();
 });
 
-/// Observa un pedido individual por id (para la pantalla de seguimiento).
+final ordersProvider =
+    StateNotifierProvider<OrdersNotifier, OrdersState>((ref) {
+  return OrdersNotifier(
+    ref.read(_ordersDataSourceProvider),
+    ref.read(_orderWsServiceProvider),
+  );
+});
+
+/// Observa un pedido individual por id (para la pantalla de tracking).
 final orderByIdProvider =
     Provider.family<CustomerOrderEntity?, String>((ref, id) {
   return ref.watch(ordersProvider).byId(id);
