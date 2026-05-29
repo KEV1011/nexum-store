@@ -221,6 +221,19 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     );
   }
 
+  // ── rateOrder ──────────────────────────────────────────────────────────────
+
+  void rateOrder(String id, int stars, {String? comment}) {
+    _updateOrder(
+      id,
+      (o) => o.copyWith(
+        rating: stars,
+        ratingComment: comment,
+        ratedAt: DateTime.now(),
+      ),
+    );
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   void _updateOrder(

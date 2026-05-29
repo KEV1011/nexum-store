@@ -91,6 +91,9 @@ class CustomerOrderEntity {
     this.pickupPhotoPath,
     this.deliveryPhotoPath,
     this.hasSignature = false,
+    this.rating,
+    this.ratingComment,
+    this.ratedAt,
   });
 
   final String id;
@@ -120,10 +123,16 @@ class CustomerOrderEntity {
   /// Si el cliente firmó al recibir.
   final bool hasSignature;
 
+  /// Calificación del cliente (1-5 estrellas). Null si aún no ha calificado.
+  final int? rating;
+  final String? ratingComment;
+  final DateTime? ratedAt;
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
   double get total => subtotal + deliveryFee;
 
+  bool get isRated => rating != null;
   bool get hasPickupProof => pickupPhotoPath != null;
   bool get hasDeliveryProof => deliveryPhotoPath != null || hasSignature;
   bool get isDelivered => status == CustomerOrderStatus.delivered;
@@ -142,6 +151,9 @@ class CustomerOrderEntity {
     String? pickupPhotoPath,
     String? deliveryPhotoPath,
     bool? hasSignature,
+    int? rating,
+    String? ratingComment,
+    DateTime? ratedAt,
   }) {
     return CustomerOrderEntity(
       id: id,
@@ -162,6 +174,9 @@ class CustomerOrderEntity {
       pickupPhotoPath: pickupPhotoPath ?? this.pickupPhotoPath,
       deliveryPhotoPath: deliveryPhotoPath ?? this.deliveryPhotoPath,
       hasSignature: hasSignature ?? this.hasSignature,
+      rating: rating ?? this.rating,
+      ratingComment: ratingComment ?? this.ratingComment,
+      ratedAt: ratedAt ?? this.ratedAt,
     );
   }
 }

@@ -10,6 +10,8 @@ import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
+import 'package:nexum_client/features/orders/presentation/widgets/'
+    'rating_bottom_sheet.dart';
 import 'package:nexum_client/shared/widgets/skeleton_loader.dart';
 
 /// Pestaña "Pedidos": activos arriba, historial debajo.
@@ -172,25 +174,31 @@ class _OrderCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (order.hasFullCustody) ...[
+              if (order.hasFullCustody || order.isRated) ...[
                 const SizedBox(height: AppConstants.spacingS),
-                const Row(
+                Row(
                   children: [
-                    Icon(
-                      Icons.verified_user_rounded,
-                      size: 14,
-                      color: AppColors.primary,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'Custodia verificada',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                    if (order.hasFullCustody) ...[
+                      const Icon(
+                        Icons.verified_user_rounded,
+                        size: 14,
                         color: AppColors.primary,
                       ),
-                    ),
+                      const SizedBox(width: 4),
+                      const Text(
+                        'Custodia verificada',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      if (order.isRated)
+                        const SizedBox(width: AppConstants.spacingM),
+                    ],
+                    if (order.isRated)
+                      RatingDisplay(rating: order.rating!, small: true),
                   ],
                 ),
               ],

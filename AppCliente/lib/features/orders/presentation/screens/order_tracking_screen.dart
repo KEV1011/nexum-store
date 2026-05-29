@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
@@ -14,16 +15,44 @@ import 'package:nexum_client/features/orders/presentation/widgets/'
     'custody_proof_card.dart';
 import 'package:nexum_client/features/orders/presentation/widgets/'
     'order_status_timeline.dart';
+import 'package:nexum_client/features/orders/presentation/widgets/'
+    'rating_bottom_sheet.dart';
 
 /// Seguimiento en vivo del pedido con su cadena de custodia.
-class OrderTrackingScreen extends ConsumerWidget {
+class OrderTrackingScreen extends ConsumerStatefulWidget {
   const OrderTrackingScreen({required this.orderId, super.key});
 
   final String orderId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final order = ref.watch(orderByIdProvider(orderId));
+  ConsumerState<OrderTrackingScreen> createState() =>
+      _OrderTrackingScreenState();
+}
+
+class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
+  bool _ratingShown = false;
+  CustomerOrderEntity? _pendingRatingOrder;
+
+  @override
+  Widget build(BuildContext context) {
+    final order = ref.watch(orderByIdProvider(widget.orderId));
+
+    ref.listen(orderByIdProvider(widget.orderId), (prev, next) {
+      if (next == null || !next.isDelivered || next.isRated) return;
+      if (prev != null && prev.isDelivered) return;
+      if (_ratingShown) return;
+      _ratingShown = true;
+      _pendingRatingOrder = next;
+    });
+
+    if (_pendingRatingOrder != null) {
+      final pending = _pendingRatingOrder!;
+      _pendingRatingOrder = null;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        showRatingSheet(context, pending);
+      });
+    }
 
     if (order == null) {
       return Scaffold(
@@ -54,8 +83,100 @@ class OrderTrackingScreen extends ConsumerWidget {
           _Card(
             child: OrderStatusTimeline(status: order.status),
           ),
+          if (order.isDelivered) ...[
+            const SizedBox(height: AppConstants.spacingL),
+            _RatingCard(order: order),
+          ],
           const SizedBox(height: AppConstants.spacingL),
           _OrderSummary(order: order),
+        ],
+      ),
+    );
+  }
+}
+
+class _RatingCard extends StatelessWidget {
+  const _RatingCard({required this.order});
+
+  final CustomerOrderEntity order;
+
+  @override
+  Widget build(BuildContext context) {
+    if (order.isRated) {
+      return _Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.star_rounded,
+                  color: AppColors.star,
+                  size: 18,
+                ),
+                SizedBox(width: AppConstants.spacingS),
+                Text(
+                  'Tu calificación',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppConstants.spacingS),
+            RatingDisplay(rating: order.rating!),
+            if (order.ratingComment != null) ...[
+              const SizedBox(height: AppConstants.spacingS),
+              Text(
+                order.ratingComment!,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return _Card(
+      child: Row(
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '¿Cómo estuvo tu pedido?',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Tu opinión ayuda a mejorar el servicio',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppConstants.spacingM),
+          Builder(
+            builder: (ctx) => OutlinedButton(
+              onPressed: () => showRatingSheet(ctx, order),
+              child: const Text('Calificar'),
+            ),
+          ),
         ],
       ),
     );
@@ -183,10 +304,8 @@ class _DriverCard extends StatelessWidget {
           const SizedBox(width: AppConstants.spacingS),
           _CircleAction(
             icon: Icons.chat_rounded,
-            onTap: () => AppSnackbar.showInfo(
-              context,
-              'Chat no disponible en demo',
-            ),
+            onTap: () =>
+                AppSnackbar.showInfo(context, 'Chat no disponible en demo'),
           ),
         ],
       ),
