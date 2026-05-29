@@ -3,6 +3,7 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
+import 'package:nexum_driver/shared/widgets/skeleton_loader.dart';
 
 // ── Trip record model ─────────────────────────────────────────────────────────
 
@@ -203,10 +204,19 @@ class TripHistoryScreen extends StatefulWidget {
 }
 
 class _TripHistoryScreenState extends State<TripHistoryScreen> {
+  bool _loading = true;
   int _dateFilterIndex = 0;
   ServiceType? _serviceTypeFilter;
 
   static const _dateFilters = ['Todos', 'Hoy', 'Semana', 'Mes'];
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 750), () {
+      if (mounted) setState(() => _loading = false);
+    });
+  }
 
   List<_TripRecord> get _filtered {
     var list = switch (_dateFilterIndex) {
@@ -225,6 +235,21 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final filtered = _filtered;
+
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Historial de viajes')),
+        body: SkeletonLoader(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(AppConstants.spacingM),
+            itemCount: 5,
+            separatorBuilder: (_, __) =>
+                const SizedBox(height: AppConstants.spacingS),
+            itemBuilder: (_, __) => const SkeletonTripTile(),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Historial de viajes')),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/shared/widgets/skeleton_loader.dart';
 
 // ── Comment model ─────────────────────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ class RatingsScreen extends StatefulWidget {
 }
 
 class _RatingsScreenState extends State<RatingsScreen> {
+  bool _loading = true;
   static const double _overallRating = 4.87;
   static const int _totalRatings = 287;
 
@@ -107,8 +109,45 @@ class _RatingsScreenState extends State<RatingsScreen> {
   static const _periods = ['Esta semana', 'Este mes', 'Total'];
 
   @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _loading = false);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Calificaciones')),
+        body: SkeletonLoader(
+          child: ListView(
+            padding: const EdgeInsets.all(AppConstants.spacingM),
+            children: [
+              // Overall card skeleton
+              const SkeletonBox(height: 130, radius: 12),
+              const SizedBox(height: AppConstants.spacingM),
+              // Trend bar skeleton
+              const SkeletonBox(height: 80, radius: 12),
+              const SizedBox(height: AppConstants.spacingM),
+              // Comment cards
+              ...List.generate(
+                5,
+                (_) => const Padding(
+                  padding: EdgeInsets.only(
+                    bottom: AppConstants.spacingS,
+                  ),
+                  child: SkeletonCommentCard(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Calificaciones')),

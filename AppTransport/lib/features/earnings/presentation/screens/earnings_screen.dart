@@ -10,6 +10,7 @@ import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/utils/fare_calculator.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/'
     'driver_status_provider.dart';
+import 'package:nexum_driver/shared/widgets/skeleton_loader.dart';
 
 // ── Models ───────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,7 @@ class EarningsScreen extends ConsumerStatefulWidget {
 
 class _EarningsScreenState extends ConsumerState<EarningsScreen>
     with SingleTickerProviderStateMixin {
+  bool _loading = true;
   int _period = 0; // 0 = semana, 1 = mes
   int? _selectedBar;
   double _dailyGoal = 100000;
@@ -114,7 +116,13 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
     _chartAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
-    )..forward();
+    );
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        setState(() => _loading = false);
+        _chartAnim.forward();
+      }
+    });
   }
 
   @override
@@ -140,6 +148,28 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final status = ref.watch(driverStatusProvider);
+
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Ganancias')),
+        body: SkeletonLoader(
+          child: ListView(
+            padding: const EdgeInsets.all(AppConstants.spacingM),
+            children: [
+              const SkeletonBox(height: 40, radius: 12),
+              const SizedBox(height: AppConstants.spacingM),
+              const SkeletonStatRow(),
+              const SizedBox(height: AppConstants.spacingM),
+              const SkeletonBox(height: 160, radius: 12),
+              const SizedBox(height: AppConstants.spacingM),
+              const SkeletonBarChart(),
+              const SizedBox(height: AppConstants.spacingM),
+              const SkeletonBox(height: 80, radius: 12),
+            ],
+          ),
+        ),
+      );
+    }
 
     // Inject live session data into today's slot
     final rawWeek = _generateWeekEarnings();
