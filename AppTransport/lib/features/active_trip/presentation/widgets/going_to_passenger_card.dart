@@ -7,19 +7,21 @@ import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_en
 
 /// Tarjeta inferior para el estado (a): conductor yendo al punto de recogida.
 ///
-/// Muestra: nombre + rating del pasajero, dirección de recogida,
-/// botones de acción (llamar, mensaje, cancelar) y CTA "He llegado".
+/// Para envíos: muestra el restaurante/local como destino de recogida.
+/// Para transporte: muestra al pasajero.
 class GoingToPassengerCard extends ConsumerWidget {
   const GoingToPassengerCard({
     super.key,
     required this.trip,
     this.routeProgress = 0.0,
+    this.isEnvios = false,
     this.onArrived,
     this.onCancelled,
   });
 
   final ActiveTripEntity trip;
   final double routeProgress;
+  final bool isEnvios;
   final VoidCallback? onArrived;
   final VoidCallback? onCancelled;
 
@@ -78,14 +80,18 @@ class GoingToPassengerCard extends ConsumerWidget {
                   child: LinearProgressIndicator(
                     value: value,
                     backgroundColor: AppColors.outlineLight,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                        AppColors.pickupMarker),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      isEnvios
+                          ? AppColors.serviceEnvios
+                          : AppColors.pickupMarker,
+                    ),
                     minHeight: 5,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${(value * 100).round()}% hacia el pasajero',
+                  '${(value * 100).round()}% hacia '
+                  '${isEnvios ? 'el local' : 'el pasajero'}',
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppColors.textSecondary,
@@ -97,84 +103,22 @@ class GoingToPassengerCard extends ConsumerWidget {
 
           const SizedBox(height: AppConstants.spacingM),
 
-          // ── Passenger info row ───────────────────────────────────────────
-          Row(
-            children: [
-              // Avatar
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-                child: Text(
-                  passenger.firstName.isNotEmpty
-                      ? passenger.firstName[0].toUpperCase()
-                      : 'P',
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+          // ── Info row (passenger OR business) ─────────────────────────────
+          if (isEnvios)
+            _EnviosPickupInfo(trip: trip, theme: theme)
+          else
+            _PassengerInfo(
+              passenger: passenger,
+              theme: theme,
+              onCall: () => AppSnackbar.showInfo(
+                context,
+                'Llamando a ${passenger.firstName}...',
               ),
-              const SizedBox(width: AppConstants.spacingM),
-
-              // Name + rating
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      passenger.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.star_rounded,
-                          color: AppColors.star,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          passenger.rating.toStringAsFixed(1),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+              onMessage: () => AppSnackbar.showInfo(
+                context,
+                'Mensajes próximamente',
               ),
-
-              // Action buttons
-              _ActionButton(
-                icon: Icons.phone_outlined,
-                color: AppColors.primary,
-                tooltip: 'Llamar',
-                onTap: () => AppSnackbar.showInfo(
-                  context,
-                  'Llamando a ${passenger.firstName}...',
-                ),
-              ),
-              const SizedBox(width: AppConstants.spacingS),
-              _ActionButton(
-                icon: Icons.chat_bubble_outline_rounded,
-                color: AppColors.info,
-                tooltip: 'Mensajes',
-                onTap: () => AppSnackbar.showInfo(
-                  context,
-                  'Mensajes próximamente',
-                ),
-              ),
-            ],
-          ),
+            ),
 
           const SizedBox(height: AppConstants.spacingM),
           const Divider(color: AppColors.divider, height: 1),
@@ -184,9 +128,13 @@ class GoingToPassengerCard extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.radio_button_checked,
-                color: AppColors.primary,
+              Icon(
+                isEnvios
+                    ? Icons.storefront_rounded
+                    : Icons.radio_button_checked,
+                color: isEnvios
+                    ? AppColors.serviceEnvios
+                    : AppColors.primary,
                 size: 20,
               ),
               const SizedBox(width: AppConstants.spacingS),
@@ -195,7 +143,9 @@ class GoingToPassengerCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Punto de recogida',
+                      isEnvios
+                          ? 'Dirección del local'
+                          : 'Punto de recogida',
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: AppColors.textSecondary,
                         letterSpacing: 0.5,
@@ -245,24 +195,35 @@ class GoingToPassengerCard extends ConsumerWidget {
 
           const SizedBox(height: AppConstants.spacingS),
 
-          // ── CTA: He llegado ──────────────────────────────────────────────
+          // ── CTA ──────────────────────────────────────────────────────────
           SizedBox(
             width: double.infinity,
             height: 56,
-            child: ElevatedButton(
+            child: ElevatedButton.icon(
               onPressed: onArrived,
+              icon: Icon(
+                isEnvios
+                    ? Icons.storefront_rounded
+                    : Icons.location_on_rounded,
+                size: 20,
+              ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: isEnvios
+                    ? AppColors.serviceEnvios
+                    : AppColors.primary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(AppConstants.radiusMedium),
+                  borderRadius: BorderRadius.circular(
+                    AppConstants.radiusMedium,
+                  ),
                 ),
                 elevation: 2,
               ),
-              child: const Text(
-                'He llegado',
-                style: TextStyle(
+              label: Text(
+                isEnvios
+                    ? 'Llegué al local'
+                    : 'He llegado',
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
@@ -300,6 +261,165 @@ class GoingToPassengerCard extends ConsumerWidget {
     if (confirmed == true) {
       onCancelled?.call();
     }
+  }
+}
+
+// ── _PassengerInfo ────────────────────────────────────────────────────────────
+
+class _PassengerInfo extends StatelessWidget {
+  const _PassengerInfo({
+    required this.passenger,
+    required this.theme,
+    required this.onCall,
+    required this.onMessage,
+  });
+
+  final dynamic passenger;
+  final ThemeData theme;
+  final VoidCallback onCall;
+  final VoidCallback onMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 24,
+          backgroundColor:
+              AppColors.primary.withValues(alpha: 0.15),
+          child: Text(
+            (passenger.firstName as String).isNotEmpty
+                ? (passenger.firstName as String)[0]
+                    .toUpperCase()
+                : 'P',
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const SizedBox(width: AppConstants.spacingM),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                passenger.name as String,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.star_rounded,
+                    color: AppColors.star,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    (passenger.rating as double)
+                        .toStringAsFixed(1),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        _ActionButton(
+          icon: Icons.phone_outlined,
+          color: AppColors.primary,
+          tooltip: 'Llamar',
+          onTap: onCall,
+        ),
+        const SizedBox(width: AppConstants.spacingS),
+        _ActionButton(
+          icon: Icons.chat_bubble_outline_rounded,
+          color: AppColors.info,
+          tooltip: 'Mensajes',
+          onTap: onMessage,
+        ),
+      ],
+    );
+  }
+}
+
+// ── _EnviosPickupInfo ─────────────────────────────────────────────────────────
+
+class _EnviosPickupInfo extends StatelessWidget {
+  const _EnviosPickupInfo({
+    required this.trip,
+    required this.theme,
+  });
+
+  final ActiveTripEntity trip;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = AppColors.serviceEnvios;
+    return Row(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(
+            Icons.storefront_rounded,
+            color: accent,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: AppConstants.spacingM),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                trip.request.passenger.name,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.inventory_2_outlined,
+                    size: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Al llegar: fotografía el pedido',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: accent.withValues(alpha: 0.8),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
