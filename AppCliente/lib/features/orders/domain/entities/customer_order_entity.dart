@@ -60,17 +60,26 @@ class OrderLineEntity {
     required this.unitPrice,
   });
 
+  factory OrderLineEntity.fromJson(Map<String, dynamic> j) => OrderLineEntity(
+        productName: j['productName'] as String,
+        quantity: j['quantity'] as int,
+        unitPrice: (j['unitPrice'] as num).toDouble(),
+      );
+
   final String productName;
   final int quantity;
   final double unitPrice;
 
   double get subtotal => unitPrice * quantity;
+
+  Map<String, dynamic> toJson() => {
+        'productName': productName,
+        'quantity': quantity,
+        'unitPrice': unitPrice,
+      };
 }
 
 /// Pedido del cliente con su cadena de custodia visible en tiempo real.
-///
-/// Esta es la diferencia frente a Rappi: el cliente ve la foto de que su
-/// pedido salió completo del local y la prueba de entrega.
 class CustomerOrderEntity {
   const CustomerOrderEntity({
     required this.id,
@@ -95,6 +104,40 @@ class CustomerOrderEntity {
     this.ratingComment,
     this.ratedAt,
   });
+
+  factory CustomerOrderEntity.fromJson(Map<String, dynamic> j) =>
+      CustomerOrderEntity(
+        id: j['id'] as String,
+        orderRef: j['orderRef'] as String,
+        businessName: j['businessName'] as String,
+        businessAddress: j['businessAddress'] as String,
+        deliveryAddress: j['deliveryAddress'] as String,
+        status: CustomerOrderStatus.values
+            .firstWhere((s) => s.name == j['status']),
+        lines: (j['lines'] as List)
+            .map((l) => OrderLineEntity.fromJson(l as Map<String, dynamic>))
+            .toList(),
+        subtotal: (j['subtotal'] as num).toDouble(),
+        deliveryFee: (j['deliveryFee'] as num).toDouble(),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        driverName: j['driverName'] as String?,
+        driverPhone: j['driverPhone'] as String?,
+        etaMinutes: j['etaMinutes'] as int?,
+        pickedUpAt: j['pickedUpAt'] != null
+            ? DateTime.parse(j['pickedUpAt'] as String)
+            : null,
+        deliveredAt: j['deliveredAt'] != null
+            ? DateTime.parse(j['deliveredAt'] as String)
+            : null,
+        pickupPhotoPath: j['pickupPhotoPath'] as String?,
+        deliveryPhotoPath: j['deliveryPhotoPath'] as String?,
+        hasSignature: j['hasSignature'] as bool? ?? false,
+        rating: j['rating'] as int?,
+        ratingComment: j['ratingComment'] as String?,
+        ratedAt: j['ratedAt'] != null
+            ? DateTime.parse(j['ratedAt'] as String)
+            : null,
+      );
 
   final String id;
   final String orderRef;
@@ -179,4 +222,28 @@ class CustomerOrderEntity {
       ratedAt: ratedAt ?? this.ratedAt,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'orderRef': orderRef,
+        'businessName': businessName,
+        'businessAddress': businessAddress,
+        'deliveryAddress': deliveryAddress,
+        'status': status.name,
+        'lines': lines.map((l) => l.toJson()).toList(),
+        'subtotal': subtotal,
+        'deliveryFee': deliveryFee,
+        'createdAt': createdAt.toIso8601String(),
+        'driverName': driverName,
+        'driverPhone': driverPhone,
+        'etaMinutes': etaMinutes,
+        'pickedUpAt': pickedUpAt?.toIso8601String(),
+        'deliveredAt': deliveredAt?.toIso8601String(),
+        'pickupPhotoPath': pickupPhotoPath,
+        'deliveryPhotoPath': deliveryPhotoPath,
+        'hasSignature': hasSignature,
+        'rating': rating,
+        'ratingComment': ratingComment,
+        'ratedAt': ratedAt?.toIso8601String(),
+      };
 }

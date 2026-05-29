@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
@@ -76,6 +78,11 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
           const SizedBox(height: AppConstants.spacingL),
           if (order.driverName != null) ...[
             _DriverCard(order: order),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
+          if (order.status != CustomerOrderStatus.confirmed &&
+              !order.isDelivered) ...[
+            _TrackingMap(order: order),
             const SizedBox(height: AppConstants.spacingM),
           ],
           CustodyProofCard(order: order),
@@ -429,6 +436,170 @@ class _SummaryRow extends StatelessWidget {
         Text(label, style: style),
         Text(CurrencyFormatter.format(value), style: style),
       ],
+    );
+  }
+}
+
+// ── Mapa de seguimiento ──────────────────────────────────────────────────────
+
+class _TrackingMap extends StatelessWidget {
+  const _TrackingMap({required this.order});
+
+  final CustomerOrderEntity order;
+
+  static const _pamplonaCenter = LatLng(7.3762, -72.6465);
+
+  LatLng get _businessLatLng {
+    final h = order.businessName.hashCode.abs();
+    return LatLng(
+      7.3762 + (h % 100) * 0.00008,
+      -72.6465 - (h % 137) * 0.00007,
+    );
+  }
+
+  LatLng get _deliveryLatLng {
+    final h = order.deliveryAddress.hashCode.abs();
+    return LatLng(
+      7.3820 + (h % 60) * 0.00008,
+      -72.6512 - (h % 50) * 0.00006,
+    );
+  }
+
+  LatLng get _driverLatLng {
+    final b = _businessLatLng;
+    final d = _deliveryLatLng;
+    return switch (order.status) {
+      CustomerOrderStatus.driverToPickup =>
+        LatLng((b.latitude + _pamplonaCenter.latitude) / 2,
+            (b.longitude + _pamplonaCenter.longitude) / 2),
+      CustomerOrderStatus.atPickup => b,
+      _ => LatLng((b.latitude + d.latitude) / 2,
+          (b.longitude + d.longitude) / 2),
+    };
+  }
+
+  LatLng get _mapCenter {
+    final b = _businessLatLng;
+    final d = _deliveryLatLng;
+    return LatLng(
+      (b.latitude + d.latitude) / 2,
+      (b.longitude + d.longitude) / 2,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final businessPos = _businessLatLng;
+    final deliveryPos = _deliveryLatLng;
+    final driverPos = _driverLatLng;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+      child: SizedBox(
+        height: 220,
+        child: FlutterMap(
+          options: MapOptions(
+            initialCenter: _mapCenter,
+            initialZoom: 15.2,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+            ),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate:
+                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.nexum.cliente',
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: businessPos,
+                  width: 36,
+                  height: 36,
+                  child: const _MapPin(
+                    icon: Icons.restaurant_rounded,
+                    color: AppColors.primaryDim,
+                    bgColor: AppColors.primaryContainer,
+                  ),
+                ),
+                Marker(
+                  point: deliveryPos,
+                  width: 36,
+                  height: 36,
+                  child: const _MapPin(
+                    icon: Icons.home_rounded,
+                    color: AppColors.error,
+                    bgColor: AppColors.errorContainer,
+                  ),
+                ),
+                Marker(
+                  point: driverPos,
+                  width: 40,
+                  height: 40,
+                  child: const _DriverPin(),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapPin extends StatelessWidget {
+  const _MapPin({
+    required this.icon,
+    required this.color,
+    required this.bgColor,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color bgColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: bgColor,
+        shape: BoxShape.circle,
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.shadow,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Icon(icon, size: 20, color: color),
+    );
+  }
+}
+
+class _DriverPin extends StatelessWidget {
+  const _DriverPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.primary,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.shadowMedium,
+            blurRadius: 6,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.delivery_dining_rounded,
+        size: 24,
+        color: Colors.white,
+      ),
     );
   }
 }

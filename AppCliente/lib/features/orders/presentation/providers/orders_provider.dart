@@ -119,7 +119,9 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       etaMinutes: business.etaMinutes,
     );
 
-    state = state.copyWith(orders: [order, ...state.orders]);
+    final newOrders = [order, ...state.orders];
+    state = state.copyWith(orders: newOrders);
+    unawaited(_dataSource.saveOrders(newOrders));
 
     // Intentar WS real; si falla usar simulación local.
     final wsOk = await _wsService.connect();
@@ -245,6 +247,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         if (o.id == id) update(o) else o,
     ];
     state = state.copyWith(orders: updated);
+    unawaited(_dataSource.saveOrders(updated));
   }
 
   @override
