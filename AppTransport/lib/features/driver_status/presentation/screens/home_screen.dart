@@ -7,10 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/domain/service_type_provider.dart';
+import 'package:nexum_driver/core/mock_data/driver_mock.dart';
 import 'package:nexum_driver/core/mock_data/passengers_mock.dart';
 import 'package:nexum_driver/core/mock_data/trips_mock.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
@@ -64,6 +66,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   _HomeState _state = const _HomeState();
   GoogleMapController? _mapController;
   bool _showHeatmap = false;
+
+  static const _kDailyTripGoal = 10;
+
+  static String _greeting() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Buenos días';
+    if (h < 18) return 'Buenas tardes';
+    return 'Buenas noches';
+  }
 
   Timer? _countdownTimer;
   Timer? _webMockTimer;
@@ -280,7 +291,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final serviceType = ref.watch(selectedServiceTypeProvider);
 
     return Scaffold(
-      drawer: _AppDrawer(selectedServiceType: serviceType),
+      drawer: _AppDrawer(
+        selectedServiceType: serviceType,
+        isOnline: _state.isOnline,
+      ),
       body: Stack(
         children: [
           // Map
@@ -411,6 +425,89 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             decoration: BoxDecoration(
               color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
               borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+
+          // Greeting + daily goal
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${_greeting()}, '
+                '${DriverMock.firstName.split(' ').first}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (driverStatus.dailyTrips >= _kDailyTripGoal)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.successContainer,
+                    borderRadius: BorderRadius.circular(
+                      AppConstants.radiusSmall,
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_rounded,
+                        size: 12,
+                        color: AppColors.success,
+                      ),
+                      SizedBox(width: 2),
+                      Text(
+                        'Meta lograda',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${driverStatus.dailyTrips}/$_kDailyTripGoal viajes hoy',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              Text(
+                '${((driverStatus.dailyTrips / _kDailyTripGoal) * 100).round().clamp(0, 100)}%',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (driverStatus.dailyTrips / _kDailyTripGoal)
+                  .clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: isDark
+                  ? AppColors.outlineDark
+                  : AppColors.outlineLight,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                driverStatus.dailyTrips >= _kDailyTripGoal
+                    ? AppColors.success
+                    : AppColors.primary,
+              ),
             ),
           ),
           const SizedBox(height: AppConstants.spacingM),
@@ -588,95 +685,160 @@ class _ServiceTypeChip extends StatelessWidget {
 
 // ── Drawer ───────────────────────────────────────────────────────────────────
 
-class _AppDrawer extends StatelessWidget {
-  const _AppDrawer({required this.selectedServiceType});
+class _AppDrawer extends ConsumerWidget {
+  const _AppDrawer({
+    required this.selectedServiceType,
+    required this.isOnline,
+  });
 
   final ServiceType selectedServiceType;
+  final bool isOnline;
+
+  static String _initials() {
+    final first = DriverMock.firstName.split(' ').first;
+    final last = DriverMock.lastName.split(' ').first;
+    return '${first[0]}${last[0]}';
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final themeDark = ref.watch(
+      themeProvider.select((m) => m == ThemeMode.dark),
+    );
 
     return Drawer(
-      backgroundColor: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+      backgroundColor:
+          isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
       child: SafeArea(
         child: Column(
           children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(AppConstants.spacingL),
-              child: Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryContainer,
-                      borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
-                    ),
-                    child: const Icon(Icons.person_rounded,
-                        color: AppColors.primary, size: 28),
-                  ),
-                  const SizedBox(width: AppConstants.spacingM),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            // ── Header ─────────────────────────────────────────────
+            InkWell(
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/profile');
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(AppConstants.spacingL),
+                child: Row(
+                  children: [
+                    Stack(
                       children: [
-                        Text(
-                          'Mi cuenta',
-                          style: theme.textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        Row(
-                          children: [
-                            Icon(
-                              selectedServiceType.icon,
-                              size: 12,
-                              color: selectedServiceType.color,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              selectedServiceType.displayName,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: selectedServiceType.color,
-                                fontWeight: FontWeight.w600,
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              _initials(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                          ],
+                          ),
+                        ),
+                        Positioned(
+                          right: 2,
+                          bottom: 2,
+                          child: Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: isOnline
+                                  ? AppColors.online
+                                  : AppColors.offline,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDark
+                                    ? AppColors.surfaceDark
+                                    : Colors.white,
+                                width: 2,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    const SizedBox(width: AppConstants.spacingM),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${DriverMock.firstName} '
+                            '${DriverMock.lastName.split(' ').first}',
+                            style: theme.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.star_rounded,
+                                color: AppColors.star,
+                                size: 14,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                DriverMock.rating.toStringAsFixed(2),
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '(${DriverMock.totalRatings})',
+                                style: theme.textTheme.bodySmall
+                                    ?.copyWith(
+                                  color: AppColors.textTertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
+                ),
               ),
             ),
             Divider(
-              color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+              height: 1,
+              color:
+                  isDark ? AppColors.outlineDark : AppColors.outlineLight,
             ),
-            // Navigation items
+            // ── Navigation items ────────────────────────────────────
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(
-                  vertical: AppConstants.spacingS,
+                padding: const EdgeInsets.only(
+                  bottom: AppConstants.spacingS,
                 ),
                 children: [
+                  _DrawerSection(label: 'VIAJES'),
                   _DrawerItem(
                     icon: Icons.home_rounded,
                     label: 'Inicio',
+                    iconColor: AppColors.primary,
                     onTap: () => Navigator.of(context).pop(),
-                  ),
-                  _DrawerItem(
-                    icon: Icons.account_balance_wallet_rounded,
-                    label: 'Billetera',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      context.push('/wallet');
-                    },
                   ),
                   _DrawerItem(
                     icon: Icons.history_rounded,
                     label: 'Historial de viajes',
+                    iconColor: const Color(0xFF1565C0),
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/trip-history');
@@ -685,30 +847,45 @@ class _AppDrawer extends StatelessWidget {
                   _DrawerItem(
                     icon: Icons.star_rounded,
                     label: 'Calificaciones',
+                    iconColor: AppColors.star,
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/ratings');
                     },
                   ),
+                  _DrawerSection(label: 'FINANZAS'),
                   _DrawerItem(
                     icon: Icons.monetization_on_rounded,
                     label: 'Ganancias',
+                    iconColor: const Color(0xFF00897B),
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/earnings');
                     },
                   ),
                   _DrawerItem(
+                    icon: Icons.account_balance_wallet_rounded,
+                    label: 'Billetera',
+                    iconColor: const Color(0xFF7B1FA2),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/wallet');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.local_offer_rounded,
                     label: 'Promociones',
+                    iconColor: const Color(0xFFE65100),
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/promotions');
                     },
                   ),
+                  _DrawerSection(label: 'HERRAMIENTAS'),
                   _DrawerItem(
                     icon: Icons.bar_chart_rounded,
                     label: 'Rendimiento',
+                    iconColor: const Color(0xFF283593),
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/performance');
@@ -717,47 +894,96 @@ class _AppDrawer extends StatelessWidget {
                   _DrawerItem(
                     icon: Icons.folder_rounded,
                     label: 'Mis documentos',
+                    iconColor: const Color(0xFF01579B),
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/documents');
                     },
                   ),
-                  Divider(
-                    color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
-                    indent: AppConstants.spacingM,
-                    endIndent: AppConstants.spacingM,
-                  ),
                   _DrawerItem(
                     icon: Icons.shield_rounded,
                     label: 'Centro de seguridad',
-                    color: AppColors.error,
+                    iconColor: AppColors.error,
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/safety');
                     },
                   ),
-                  _DrawerItem(
-                    icon: Icons.help_outline_rounded,
-                    label: 'Soporte y FAQ',
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      context.push('/support');
-                    },
-                  ),
+                  _DrawerSection(label: 'CUENTA'),
                   _DrawerItem(
                     icon: Icons.person_outline_rounded,
                     label: 'Mi perfil',
+                    iconColor: const Color(0xFF2E7D32),
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/profile');
                     },
                   ),
                   _DrawerItem(
+                    icon: Icons.help_outline_rounded,
+                    label: 'Soporte y FAQ',
+                    iconColor: const Color(0xFF37474F),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/support');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.settings_outlined,
                     label: 'Configuración',
+                    iconColor: const Color(0xFF4A148C),
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/settings');
+                    },
+                  ),
+                  Divider(
+                    color: isDark
+                        ? AppColors.outlineDark
+                        : AppColors.outlineLight,
+                    indent: AppConstants.spacingM,
+                    endIndent: AppConstants.spacingM,
+                  ),
+                  ListTile(
+                    leading: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF546E7A)
+                            .withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(
+                          AppConstants.radiusSmall,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.dark_mode_rounded,
+                        size: 20,
+                        color: Color(0xFF546E7A),
+                      ),
+                    ),
+                    title: Text(
+                      'Modo oscuro',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    trailing: Switch.adaptive(
+                      value: themeDark,
+                      onChanged: (v) => ref
+                          .read(themeProvider.notifier)
+                          .setDark(dark: v),
+                      activeTrackColor: AppColors.primary,
+                    ),
+                    horizontalTitleGap: 12,
+                  ),
+                  _DrawerItem(
+                    icon: Icons.logout_rounded,
+                    label: 'Cerrar sesión',
+                    iconColor: AppColors.error,
+                    isAccent: true,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.go('/login');
                     },
                   ),
                 ],
@@ -779,29 +1005,66 @@ class _AppDrawer extends StatelessWidget {
   }
 }
 
+class _DrawerSection extends StatelessWidget {
+  const _DrawerSection({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.spacingL,
+        AppConstants.spacingM,
+        AppConstants.spacingL,
+        AppConstants.spacingXS,
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.textTertiary,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+            ),
+      ),
+    );
+  }
+}
+
 class _DrawerItem extends StatelessWidget {
   const _DrawerItem({
     required this.icon,
     required this.label,
     required this.onTap,
-    this.color,
+    required this.iconColor,
+    this.isAccent = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final Color? color;
+  final Color iconColor;
+  final bool isAccent;
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = color ?? AppColors.textPrimary;
+    final labelColor =
+        isAccent ? iconColor : AppColors.textPrimary;
     return ListTile(
-      leading: Icon(icon, size: 22, color: effectiveColor),
+      leading: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: iconColor.withValues(alpha: 0.12),
+          borderRadius:
+              BorderRadius.circular(AppConstants.radiusSmall),
+        ),
+        child: Icon(icon, size: 20, color: iconColor),
+      ),
       title: Text(
         label,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w500,
-              color: effectiveColor,
+              color: labelColor,
             ),
       ),
       onTap: onTap,
