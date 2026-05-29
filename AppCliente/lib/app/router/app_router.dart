@@ -1,0 +1,149 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:nexum_client/app/router/app_transitions.dart';
+import 'package:nexum_client/app/router/splash_screen.dart';
+import 'package:nexum_client/features/businesses/domain/entities/'
+    'business_entity.dart';
+import 'package:nexum_client/features/businesses/presentation/screens/'
+    'business_detail_screen.dart';
+import 'package:nexum_client/features/cart/presentation/screens/'
+    'cart_screen.dart';
+import 'package:nexum_client/features/cart/presentation/screens/'
+    'checkout_screen.dart';
+import 'package:nexum_client/features/orders/presentation/screens/'
+    'order_tracking_screen.dart';
+import 'package:nexum_client/features/shell/presentation/screens/'
+    'home_shell.dart';
+
+/// Rutas con nombre de la app Nexum Cliente.
+abstract final class AppRoutes {
+  static const String splash = '/';
+  static const String home = '/home';
+  static const String cart = '/cart';
+  static const String checkout = '/checkout';
+
+  // Rutas paramétricas
+  static const String business = '/business/:id';
+  static const String order = '/order/:id';
+
+  static String businessPath(String id) => '/business/$id';
+  static String orderPath(String id) => '/order/$id';
+}
+
+final routerProvider = Provider<GoRouter>((ref) {
+  return GoRouter(
+    initialLocation: AppRoutes.splash,
+    routes: [
+      GoRoute(
+        path: AppRoutes.splash,
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const _SplashGate(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.home,
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const HomeShell(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.business,
+        pageBuilder: (context, state) {
+          final business = state.extra as BusinessEntity?;
+          return AppTransitions.slideLeft(
+            pageKey: state.pageKey,
+            child: BusinessDetailScreen(
+              businessId: state.pathParameters['id'] ?? '',
+              initialBusiness: business,
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.cart,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const CartScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.checkout,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const CheckoutScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.order,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: OrderTrackingScreen(
+            orderId: state.pathParameters['id'] ?? '',
+          ),
+        ),
+      ),
+    ],
+    errorBuilder: (context, state) => _RouterErrorScreen(error: state.error),
+  );
+});
+
+/// Muestra el splash brevemente y luego entra a la app.
+class _SplashGate extends StatefulWidget {
+  const _SplashGate();
+
+  @override
+  State<_SplashGate> createState() => _SplashGateState();
+}
+
+class _SplashGateState extends State<_SplashGate> {
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.delayed(const Duration(milliseconds: 1600), () {
+      if (mounted) context.go(AppRoutes.home);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SplashScreen();
+}
+
+class _RouterErrorScreen extends StatelessWidget {
+  const _RouterErrorScreen({this.error});
+
+  final Exception? error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Página no encontrada')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            const Text(
+              'Ruta no encontrada',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error?.toString() ?? 'Error desconocido',
+              style: const TextStyle(color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => context.go(AppRoutes.home),
+              child: const Text('Ir al inicio'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
