@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -66,6 +67,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   _HomeState _state = const _HomeState();
   GoogleMapController? _mapController;
   bool _showHeatmap = false;
+  bool _bannerDismissed = false;
 
   static const _kDailyTripGoal = 10;
 
@@ -74,6 +76,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (h < 12) return 'Buenos días';
     if (h < 18) return 'Buenas tardes';
     return 'Buenas noches';
+  }
+
+  /// Contextual earning opportunity based on the current hour.
+  static _Opportunity _currentOpportunity() {
+    final h = DateTime.now().hour;
+    if (h >= 6 && h < 9) {
+      return const _Opportunity(
+        icon: Icons.wb_twilight_rounded,
+        title: 'Hora pico matutina',
+        subtitle: 'Alta demanda hacia el centro · +25% tarifa',
+        color: AppColors.warning,
+        badge: '+25%',
+      );
+    }
+    if (h >= 11 && h < 14) {
+      return const _Opportunity(
+        icon: Icons.restaurant_rounded,
+        title: 'Hora del almuerzo',
+        subtitle: 'Más viajes cerca de restaurantes',
+        color: AppColors.serviceTaxi,
+        badge: 'Alta',
+      );
+    }
+    if (h >= 17 && h < 20) {
+      return const _Opportunity(
+        icon: Icons.local_fire_department_rounded,
+        title: 'Hora pico · tarifa dinámica',
+        subtitle: 'Demanda elevada en toda Pamplona · +30%',
+        color: AppColors.error,
+        badge: '+30%',
+      );
+    }
+    if (h >= 20 && h < 23) {
+      return const _Opportunity(
+        icon: Icons.nightlife_rounded,
+        title: 'Demanda nocturna',
+        subtitle: 'Zona universitaria activa ahora',
+        color: AppColors.serviceParticular,
+        badge: 'Media',
+      );
+    }
+    return const _Opportunity(
+      icon: Icons.insights_rounded,
+      title: 'Explora zonas de demanda',
+      subtitle: 'Activa el mapa de calor para ver puntos calientes',
+      color: AppColors.primary,
+      badge: 'Mapa',
+    );
   }
 
   Timer? _countdownTimer;
@@ -322,8 +372,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   }
                 : {},
           ),
-          // Top bar
-          SafeArea(child: _buildTopBar(serviceType)),
+          // Top bar + opportunity banner
+          SafeArea(
+            child: Column(
+              children: [
+                _buildTopBar(serviceType),
+                if (!_bannerDismissed)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppConstants.spacingM,
+                      0,
+                      AppConstants.spacingM,
+                      AppConstants.spacingS,
+                    ),
+                    child: _OpportunityBanner(
+                      opportunity: _currentOpportunity(),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _showHeatmap = true);
+                      },
+                      onDismiss: () =>
+                          setState(() => _bannerDismissed = true),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           // Bottom panel
           Positioned(
             left: 0,
@@ -677,6 +751,139 @@ class _ServiceTypeChip extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Opportunity banner ───────────────────────────────────────────────────────
+
+class _Opportunity {
+  const _Opportunity({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.badge,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final String badge;
+}
+
+class _OpportunityBanner extends StatelessWidget {
+  const _OpportunityBanner({
+    required this.opportunity,
+    required this.onTap,
+    required this.onDismiss,
+  });
+
+  final _Opportunity opportunity;
+  final VoidCallback onTap;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Material(
+      color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+      borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+      elevation: 3,
+      shadowColor: AppColors.shadowMedium,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppConstants.spacingM,
+            vertical: AppConstants.spacingS + 2,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: opportunity.color.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  opportunity.icon,
+                  color: opportunity.color,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingS),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            opportunity.title,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: opportunity.color,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            opportunity.badge,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      opportunity.subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: onDismiss,
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
