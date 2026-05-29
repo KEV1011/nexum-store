@@ -25,6 +25,12 @@ class BusinessPortalDataSource {
   List<BusinessOrderEntity> _mockOrders() {
     final now = DateTime.now();
 
+    // Rutas de foto de ejemplo. En el mock no existen los archivos físicos,
+    // así que el visor cae con elegancia al ícono de cámara; lo importante
+    // es que `pickupPhotoPath != null` marque la cadena como verificada.
+    const pickupPhoto = '/mock/pickup_proof.jpg';
+    const deliveryPhoto = '/mock/delivery_proof.jpg';
+
     return [
       // ── Pedido entregado · cadena completa (firma) ──────────────────────
       BusinessOrderEntity(
@@ -41,6 +47,7 @@ class BusinessPortalDataSource {
         deliveredAt: now.subtract(
           const Duration(hours: 2, minutes: 42),
         ),
+        pickupPhotoPath: pickupPhoto,
         hasSignature: true,
         grossFare: 8500,
         driverName: 'Carlos Ruiz',
@@ -58,6 +65,8 @@ class BusinessPortalDataSource {
         createdAt: now.subtract(const Duration(hours: 2, minutes: 45)),
         pickedUpAt: now.subtract(const Duration(hours: 2, minutes: 30)),
         deliveredAt: now.subtract(const Duration(hours: 2, minutes: 5)),
+        pickupPhotoPath: pickupPhoto,
+        deliveryPhotoPath: deliveryPhoto,
         grossFare: 7200,
         driverName: 'José Ramírez',
         driverPhone: '+57 311 555 0202',
@@ -73,6 +82,7 @@ class BusinessPortalDataSource {
         status: BusinessOrderStatus.inTransit,
         createdAt: now.subtract(const Duration(minutes: 35)),
         pickedUpAt: now.subtract(const Duration(minutes: 20)),
+        pickupPhotoPath: pickupPhoto,
         grossFare: 6800,
         driverName: 'Pedro Torres',
         driverPhone: '+57 312 555 0303',
@@ -123,6 +133,7 @@ class BusinessPortalDataSource {
         createdAt: now.subtract(const Duration(hours: 5, minutes: 30)),
         pickedUpAt: now.subtract(const Duration(hours: 5, minutes: 15)),
         deliveredAt: now.subtract(const Duration(hours: 4, minutes: 50)),
+        pickupPhotoPath: pickupPhoto,
         hasSignature: true,
         grossFare: 8200,
         driverName: 'Sandra Mora',
