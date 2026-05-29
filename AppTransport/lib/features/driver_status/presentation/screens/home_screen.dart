@@ -1116,6 +1116,16 @@ class _AppDrawer extends ConsumerWidget {
                       context.push('/safety');
                     },
                   ),
+                  _DrawerSection(label: 'ENVÍOS'),
+                  _DrawerItem(
+                    icon: Icons.storefront_rounded,
+                    label: 'Portal del Negocio',
+                    iconColor: AppColors.serviceEnvios,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/business-portal');
+                    },
+                  ),
                   _DrawerSection(label: 'CUENTA'),
                   _DrawerItem(
                     icon: Icons.person_outline_rounded,

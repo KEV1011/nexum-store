@@ -22,6 +22,12 @@ import 'package:nexum_driver/features/notifications/presentation/screens/notific
 import 'package:nexum_driver/features/safety/presentation/screens/safety_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nexum_driver/features/support/presentation/screens/support_screen.dart';
+import 'package:nexum_driver/features/business_portal/domain/entities/'
+    'business_order_entity.dart';
+import 'package:nexum_driver/features/business_portal/presentation/screens/'
+    'business_portal_screen.dart';
+import 'package:nexum_driver/features/business_portal/presentation/screens/'
+    'order_detail_screen.dart';
 import 'package:nexum_driver/features/trip_history/presentation/screens/trip_history_screen.dart';
 import 'package:nexum_driver/features/wallet/presentation/screens/wallet_screen.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
@@ -48,6 +54,8 @@ abstract final class AppRoutes {
   static const String notifications = '/notifications';
   static const String performance = '/performance';
   static const String documents = '/documents';
+  static const String businessPortal = '/business-portal';
+  static const String orderDetail = '/business-portal/order/:id';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -200,6 +208,29 @@ final routerProvider = Provider<GoRouter>((ref) {
           pageKey: state.pageKey,
           child: const DocumentsScreen(),
         ),
+      ),
+      GoRoute(
+        path: AppRoutes.businessPortal,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const BusinessPortalScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.orderDetail,
+        pageBuilder: (context, state) {
+          final order = state.extra as BusinessOrderEntity?;
+          if (order == null) {
+            return AppTransitions.fade(
+              pageKey: state.pageKey,
+              child: const BusinessPortalScreen(),
+            );
+          }
+          return AppTransitions.slideLeft(
+            pageKey: state.pageKey,
+            child: OrderDetailScreen(order: order),
+          );
+        },
       ),
     ],
     errorBuilder: (context, state) => _RouterErrorScreen(error: state.error),
