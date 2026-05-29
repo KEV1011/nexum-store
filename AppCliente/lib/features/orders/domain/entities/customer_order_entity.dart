@@ -17,39 +17,30 @@ enum CustomerOrderStatus {
 
   /// Entregado al cliente con prueba.
   delivered,
+
+  /// Cancelado por el cliente antes de que el conductor llegue al local.
+  cancelled,
 }
 
 extension CustomerOrderStatusX on CustomerOrderStatus {
-  String get label {
-    switch (this) {
-      case CustomerOrderStatus.confirmed:
-        return 'Pedido confirmado';
-      case CustomerOrderStatus.driverToPickup:
-        return 'Conductor en camino al local';
-      case CustomerOrderStatus.atPickup:
-        return 'Recogiendo tu pedido';
-      case CustomerOrderStatus.inTransit:
-        return 'En camino hacia ti';
-      case CustomerOrderStatus.delivered:
-        return 'Entregado';
-    }
-  }
+  String get label => switch (this) {
+        CustomerOrderStatus.confirmed => 'Pedido confirmado',
+        CustomerOrderStatus.driverToPickup => 'Conductor en camino al local',
+        CustomerOrderStatus.atPickup => 'Recogiendo tu pedido',
+        CustomerOrderStatus.inTransit => 'En camino hacia ti',
+        CustomerOrderStatus.delivered => 'Entregado',
+        CustomerOrderStatus.cancelled => 'Pedido cancelado',
+      };
 
   /// Índice 0-4 para pintar la barra de progreso del seguimiento.
-  int get step {
-    switch (this) {
-      case CustomerOrderStatus.confirmed:
-        return 0;
-      case CustomerOrderStatus.driverToPickup:
-        return 1;
-      case CustomerOrderStatus.atPickup:
-        return 2;
-      case CustomerOrderStatus.inTransit:
-        return 3;
-      case CustomerOrderStatus.delivered:
-        return 4;
-    }
-  }
+  int get step => switch (this) {
+        CustomerOrderStatus.confirmed => 0,
+        CustomerOrderStatus.driverToPickup => 1,
+        CustomerOrderStatus.atPickup => 2,
+        CustomerOrderStatus.inTransit => 3,
+        CustomerOrderStatus.delivered => 4,
+        CustomerOrderStatus.cancelled => 0,
+      };
 }
 
 /// Una línea del pedido (producto + cantidad).
@@ -179,7 +170,8 @@ class CustomerOrderEntity {
   bool get hasPickupProof => pickupPhotoPath != null;
   bool get hasDeliveryProof => deliveryPhotoPath != null || hasSignature;
   bool get isDelivered => status == CustomerOrderStatus.delivered;
-  bool get isActive => status != CustomerOrderStatus.delivered;
+  bool get isCancelled => status == CustomerOrderStatus.cancelled;
+  bool get isActive => !isDelivered && !isCancelled;
 
   /// Cadena de custodia completa: foto en el local + prueba de entrega.
   bool get hasFullCustody => hasPickupProof && hasDeliveryProof;

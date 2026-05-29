@@ -96,9 +96,48 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
           ],
           const SizedBox(height: AppConstants.spacingL),
           _OrderSummary(order: order),
+          if (order.status == CustomerOrderStatus.confirmed) ...[
+            const SizedBox(height: AppConstants.spacingM),
+            _CancelButton(onCancel: () => _confirmCancel(context)),
+          ],
         ],
       ),
     );
+  }
+
+  void _confirmCancel(BuildContext context) {
+    final router = GoRouter.of(context);
+    showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Cancelar pedido',
+          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
+        ),
+        content: const Text(
+          '¿Seguro que deseas cancelar tu pedido?',
+          style: TextStyle(fontFamily: 'Inter'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No, mantener'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Sí, cancelar',
+              style: TextStyle(color: AppColors.error),
+            ),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed ?? false) {
+        ref.read(ordersProvider.notifier).cancelOrder(widget.orderId);
+        router.go(AppRoutes.home);
+      }
+    });
   }
 }
 
@@ -442,57 +481,91 @@ class _SummaryRow extends StatelessWidget {
 
 // ── Mapa de seguimiento ──────────────────────────────────────────────────────
 
-class _TrackingMap extends StatelessWidget {
+class _TrackingMap extends StatefulWidget {
   const _TrackingMap({required this.order});
 
   final CustomerOrderEntity order;
 
+  @override
+  State<_TrackingMap> createState() => _TrackingMapState();
+}
+
+class _TrackingMapState extends State<_TrackingMap>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final LatLng _businessPos;
+  late final LatLng _deliveryPos;
+  late final LatLng _mapCenter;
+
   static const _pamplonaCenter = LatLng(7.3762, -72.6465);
 
-  LatLng get _businessLatLng {
-    final h = order.businessName.hashCode.abs();
-    return LatLng(
-      7.3762 + (h % 100) * 0.00008,
-      -72.6465 - (h % 137) * 0.00007,
-    );
-  }
+  static const _animDurations = {
+    CustomerOrderStatus.driverToPickup: Duration(seconds: 7),
+    CustomerOrderStatus.inTransit: Duration(seconds: 10),
+  };
 
-  LatLng get _deliveryLatLng {
-    final h = order.deliveryAddress.hashCode.abs();
-    return LatLng(
-      7.3820 + (h % 60) * 0.00008,
-      -72.6512 - (h % 50) * 0.00006,
+  @override
+  void initState() {
+    super.initState();
+    final bh = widget.order.businessName.hashCode.abs();
+    final dh = widget.order.deliveryAddress.hashCode.abs();
+    _businessPos = LatLng(
+      7.3762 + (bh % 100) * 0.00008,
+      -72.6465 - (bh % 137) * 0.00007,
     );
-  }
-
-  LatLng get _driverLatLng {
-    final b = _businessLatLng;
-    final d = _deliveryLatLng;
-    return switch (order.status) {
-      CustomerOrderStatus.driverToPickup =>
-        LatLng((b.latitude + _pamplonaCenter.latitude) / 2,
-            (b.longitude + _pamplonaCenter.longitude) / 2),
-      CustomerOrderStatus.atPickup => b,
-      _ => LatLng((b.latitude + d.latitude) / 2,
-          (b.longitude + d.longitude) / 2),
-    };
-  }
-
-  LatLng get _mapCenter {
-    final b = _businessLatLng;
-    final d = _deliveryLatLng;
-    return LatLng(
-      (b.latitude + d.latitude) / 2,
-      (b.longitude + d.longitude) / 2,
+    _deliveryPos = LatLng(
+      7.3820 + (dh % 60) * 0.00008,
+      -72.6512 - (dh % 50) * 0.00006,
     );
+    _mapCenter = LatLng(
+      (_businessPos.latitude + _deliveryPos.latitude) / 2,
+      (_businessPos.longitude + _deliveryPos.longitude) / 2,
+    );
+    final dur = _animDurations[widget.order.status] ??
+        const Duration(seconds: 10);
+    _ctrl = AnimationController(vsync: this, duration: dur);
+    _startForStatus(widget.order.status);
   }
 
   @override
-  Widget build(BuildContext context) {
-    final businessPos = _businessLatLng;
-    final deliveryPos = _deliveryLatLng;
-    final driverPos = _driverLatLng;
+  void didUpdateWidget(_TrackingMap old) {
+    super.didUpdateWidget(old);
+    final s = widget.order.status;
+    if (s == old.order.status) return;
+    final dur = _animDurations[s];
+    if (dur != null) {
+      _ctrl
+        ..duration = dur
+        ..forward(from: 0);
+    } else {
+      _ctrl.stop();
+    }
+  }
 
+  void _startForStatus(CustomerOrderStatus s) {
+    if (_animDurations.containsKey(s)) _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  LatLng _lerp(LatLng a, LatLng b, double t) => LatLng(
+        a.latitude + (b.latitude - a.latitude) * t,
+        a.longitude + (b.longitude - a.longitude) * t,
+      );
+
+  LatLng _driverPos(double t) => switch (widget.order.status) {
+        CustomerOrderStatus.driverToPickup =>
+          _lerp(_pamplonaCenter, _businessPos, t),
+        CustomerOrderStatus.atPickup => _businessPos,
+        _ => _lerp(_businessPos, _deliveryPos, t),
+      };
+
+  @override
+  Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
       child: SizedBox(
@@ -511,35 +584,38 @@ class _TrackingMap extends StatelessWidget {
                   'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.nexum.cliente',
             ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: businessPos,
-                  width: 36,
-                  height: 36,
-                  child: const _MapPin(
-                    icon: Icons.restaurant_rounded,
-                    color: AppColors.primaryDim,
-                    bgColor: AppColors.primaryContainer,
+            AnimatedBuilder(
+              animation: _ctrl,
+              builder: (_, __) => MarkerLayer(
+                markers: [
+                  Marker(
+                    point: _businessPos,
+                    width: 36,
+                    height: 36,
+                    child: const _MapPin(
+                      icon: Icons.restaurant_rounded,
+                      color: AppColors.primaryDim,
+                      bgColor: AppColors.primaryContainer,
+                    ),
                   ),
-                ),
-                Marker(
-                  point: deliveryPos,
-                  width: 36,
-                  height: 36,
-                  child: const _MapPin(
-                    icon: Icons.home_rounded,
-                    color: AppColors.error,
-                    bgColor: AppColors.errorContainer,
+                  Marker(
+                    point: _deliveryPos,
+                    width: 36,
+                    height: 36,
+                    child: const _MapPin(
+                      icon: Icons.home_rounded,
+                      color: AppColors.error,
+                      bgColor: AppColors.errorContainer,
+                    ),
                   ),
-                ),
-                Marker(
-                  point: driverPos,
-                  width: 40,
-                  height: 40,
-                  child: const _DriverPin(),
-                ),
-              ],
+                  Marker(
+                    point: _driverPos(_ctrl.value),
+                    width: 40,
+                    height: 40,
+                    child: const _DriverPin(),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -599,6 +675,35 @@ class _DriverPin extends StatelessWidget {
         Icons.delivery_dining_rounded,
         size: 24,
         color: Colors.white,
+      ),
+    );
+  }
+}
+
+class _CancelButton extends StatelessWidget {
+  const _CancelButton({required this.onCancel});
+
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: AppConstants.minTouchTarget + 8,
+      child: OutlinedButton.icon(
+        onPressed: onCancel,
+        icon: const Icon(Icons.cancel_outlined, color: AppColors.error),
+        label: const Text(
+          'Cancelar pedido',
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+            color: AppColors.error,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: AppColors.error),
+        ),
       ),
     );
   }

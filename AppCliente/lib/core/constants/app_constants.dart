@@ -7,6 +7,7 @@ abstract final class AppConstants {
   // Storage keys
   static const String authTokenKey = 'auth_token';
   static const String ordersStorageKey = 'nexum_orders_v1';
+  static const String onboardingCompleteKey = 'onboarding_complete';
 
   // OTP mock (hardcoded para fase MVP)
   static const String mockOtpCode = '123456';

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_transitions.dart';
 import 'package:nexum_client/app/router/splash_screen.dart';
+import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/features/auth/presentation/providers/'
     'auth_provider.dart';
 import 'package:nexum_client/features/auth/presentation/screens/'
@@ -17,14 +18,18 @@ import 'package:nexum_client/features/cart/presentation/screens/'
     'cart_screen.dart';
 import 'package:nexum_client/features/cart/presentation/screens/'
     'checkout_screen.dart';
+import 'package:nexum_client/features/onboarding/presentation/screens/'
+    'onboarding_screen.dart';
 import 'package:nexum_client/features/orders/presentation/screens/'
     'order_tracking_screen.dart';
 import 'package:nexum_client/features/shell/presentation/screens/'
     'home_shell.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Rutas con nombre de la app Nexum Cliente.
 abstract final class AppRoutes {
   static const String splash = '/';
+  static const String onboarding = '/onboarding';
   static const String login = '/login';
   static const String otp = '/otp';
   static const String home = '/home';
@@ -48,6 +53,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.fade(
           pageKey: state.pageKey,
           child: const _SplashGate(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const OnboardingScreen(),
         ),
       ),
       GoRoute(
@@ -127,14 +139,21 @@ class _SplashGateState extends ConsumerState<_SplashGate> {
     Future<void>.delayed(const Duration(milliseconds: 1600), _navigate);
   }
 
-  void _navigate() {
+  Future<void> _navigate() async {
     if (!mounted) return;
-    final auth = ref.read(authProvider);
-    if (auth is AuthAuthenticated) {
-      context.go(AppRoutes.home);
-    } else {
-      context.go(AppRoutes.login);
+    final router = GoRouter.of(context);
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final done =
+        prefs.getBool(AppConstants.onboardingCompleteKey) ?? false;
+    if (!done) {
+      router.go(AppRoutes.onboarding);
+      return;
     }
+    final auth = ref.read(authProvider);
+    router.go(
+      auth is AuthAuthenticated ? AppRoutes.home : AppRoutes.login,
+    );
   }
 
   @override

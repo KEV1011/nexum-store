@@ -217,11 +217,19 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final delivered = order.isDelivered;
-    final bg = delivered
-        ? AppColors.surfaceVariantLight
-        : AppColors.primaryContainer;
-    final fg = delivered ? AppColors.textSecondary : AppColors.primaryDim;
+    final (label, bg, fg) = switch (true) {
+      _ when order.isCancelled => (
+          'Cancelado',
+          AppColors.errorContainer,
+          AppColors.error,
+        ),
+      _ when order.isDelivered => (
+          'Entregado',
+          AppColors.surfaceVariantLight,
+          AppColors.textSecondary,
+        ),
+      _ => ('En curso', AppColors.primaryContainer, AppColors.primaryDim),
+    };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -230,7 +238,7 @@ class _StatusBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        delivered ? 'Entregado' : 'En curso',
+        label,
         style: TextStyle(
           fontFamily: 'Inter',
           fontSize: 11,

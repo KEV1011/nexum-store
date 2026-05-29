@@ -32,7 +32,7 @@ class OrdersState {
       orders.where((o) => o.isActive).toList();
 
   List<CustomerOrderEntity> get past =>
-      orders.where((o) => o.isDelivered).toList();
+      orders.where((o) => !o.isActive).toList();
 
   CustomerOrderEntity? byId(String id) {
     for (final o in orders) {
@@ -221,6 +221,17 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         hasSignature: true,
       ),
     );
+  }
+
+  // ── cancelOrder ────────────────────────────────────────────────────────────
+
+  void cancelOrder(String id) {
+    for (final t in _timers[id] ?? <Timer>[]) {
+      t.cancel();
+    }
+    _timers.remove(id);
+    _wsService.unsubscribeOrder(id);
+    _updateOrder(id, (o) => o.copyWith(status: CustomerOrderStatus.cancelled));
   }
 
   // ── rateOrder ──────────────────────────────────────────────────────────────
