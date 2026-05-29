@@ -26,6 +26,42 @@ class _Transaction {
   final _TxType type;
 }
 
+// ── Payment method model ──────────────────────────────────────────────────────
+
+class _PaymentMethod {
+  const _PaymentMethod({
+    required this.name,
+    required this.accountInfo,
+    required this.icon,
+    required this.color,
+  });
+  final String name;
+  final String accountInfo;
+  final IconData icon;
+  final Color color;
+}
+
+const _paymentMethods = [
+  _PaymentMethod(
+    name: 'Bancolombia',
+    accountInfo: 'Cuenta Ahorros ****4521',
+    icon: Icons.account_balance_rounded,
+    color: Color(0xFF1A237E),
+  ),
+  _PaymentMethod(
+    name: 'Nequi',
+    accountInfo: '+57 312 *** **89',
+    icon: Icons.phone_android_rounded,
+    color: Color(0xFF6200EA),
+  ),
+  _PaymentMethod(
+    name: 'Daviplata',
+    accountInfo: '+57 312 *** **89',
+    icon: Icons.account_balance_wallet_rounded,
+    color: Color(0xFFE53935),
+  ),
+];
+
 // ── Mock data ─────────────────────────────────────────────────────────────────
 
 final _initialTransactions = [
@@ -130,13 +166,13 @@ class _WalletScreenState extends State<WalletScreen> {
     return _transactions.where((t) => t.type == type).toList();
   }
 
-  void _onWithdraw(double amount) {
+  void _onWithdraw(double amount, String methodName) {
     setState(() {
       _balance -= amount;
       _transactions.insert(
         0,
         _Transaction(
-          description: 'Retiro a ${DriverMock.bankName}',
+          description: 'Retiro a $methodName',
           amount: amount,
           date: 'Ahora',
           isCredit: false,
@@ -146,8 +182,8 @@ class _WalletScreenState extends State<WalletScreen> {
     });
     AppSnackbar.showSuccess(
       context,
-      'Retiro de ${CurrencyFormatter.format(amount)} solicitado. '
-      'Llegará en 1–2 días hábiles.',
+      'Retiro de ${CurrencyFormatter.format(amount)} a $methodName '
+      'solicitado. Llegará en 1–2 días hábiles.',
     );
   }
 
@@ -333,9 +369,9 @@ class _WalletScreenState extends State<WalletScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => _WithdrawSheet(
         balance: _balance,
-        onConfirm: (amount) {
+        onConfirm: (amount, methodName) {
           Navigator.of(ctx).pop();
-          _onWithdraw(amount);
+          _onWithdraw(amount, methodName);
         },
       ),
     );
@@ -380,7 +416,7 @@ class _WithdrawSheet extends StatefulWidget {
     required this.onConfirm,
   });
   final double balance;
-  final ValueChanged<double> onConfirm;
+  final void Function(double amount, String methodName) onConfirm;
 
   @override
   State<_WithdrawSheet> createState() => _WithdrawSheetState();
@@ -391,6 +427,7 @@ class _WithdrawSheetState extends State<_WithdrawSheet> {
   final _focusNode = FocusNode();
   double _amount = 0;
   String? _error;
+  int _selectedMethodIndex = 0;
 
   @override
   void dispose() {
@@ -417,7 +454,10 @@ class _WithdrawSheetState extends State<_WithdrawSheet> {
       setState(() => _error = 'Saldo insuficiente');
       return;
     }
-    widget.onConfirm(_amount);
+    widget.onConfirm(
+      _amount,
+      _paymentMethods[_selectedMethodIndex].name,
+    );
   }
 
   @override
@@ -522,40 +562,81 @@ class _WithdrawSheetState extends State<_WithdrawSheet> {
           ),
           const SizedBox(height: AppConstants.spacingL),
 
-          // Destination bank
-          Container(
-            padding: const EdgeInsets.all(AppConstants.spacingM),
-            decoration: BoxDecoration(
-              color: AppColors.primaryContainer,
-              borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.account_balance_rounded,
-                    color: AppColors.primary, size: 18),
-                const SizedBox(width: AppConstants.spacingS),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${DriverMock.bankName} · ${DriverMock.bankAccountType}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 13),
-                      ),
-                      Text(
-                        DriverMock.bankAccountNumber,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.lock_rounded,
-                    size: 14, color: AppColors.textTertiary),
-              ],
+          // Payment method selector
+          Text(
+            'Método de retiro',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
             ),
           ),
+          const SizedBox(height: AppConstants.spacingS),
+          ..._paymentMethods.asMap().entries.map((entry) {
+            final i = entry.key;
+            final method = entry.value;
+            final isSelected = _selectedMethodIndex == i;
+            return GestureDetector(
+              onTap: () =>
+                  setState(() => _selectedMethodIndex = i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.only(
+                  bottom: AppConstants.spacingS,
+                ),
+                padding: const EdgeInsets.all(AppConstants.spacingM),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? method.color.withValues(alpha: 0.08)
+                      : AppColors.surfaceVariantLight,
+                  borderRadius: BorderRadius.circular(
+                    AppConstants.radiusMedium,
+                  ),
+                  border: Border.all(
+                    color: isSelected
+                        ? method.color
+                        : AppColors.outlineLight,
+                    width: isSelected ? 2 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(method.icon, color: method.color, size: 20),
+                    const SizedBox(width: AppConstants.spacingM),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            method.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: isSelected
+                                  ? method.color
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            method.accountInfo,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isSelected)
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: method.color,
+                        size: 18,
+                      ),
+                  ],
+                ),
+              ),
+            );
+          }),
           const SizedBox(height: AppConstants.spacingL),
 
           ElevatedButton(

@@ -10,9 +10,11 @@ import 'package:nexum_driver/features/active_trip/presentation/screens/trip_summ
 import 'package:nexum_driver/features/auth/presentation/screens/otp_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/phone_input_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/register_screen.dart';
+import 'package:nexum_driver/features/documents/presentation/screens/documents_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/screens/home_screen.dart';
 import 'package:nexum_driver/features/earnings/presentation/screens/earnings_screen.dart';
 import 'package:nexum_driver/features/onboarding/presentation/screens/onboarding_screen.dart';
+import 'package:nexum_driver/features/performance/presentation/screens/performance_screen.dart';
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nexum_driver/features/promotions/presentation/screens/promotions_screen.dart';
 import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
@@ -44,6 +46,8 @@ abstract final class AppRoutes {
   static const String support = '/support';
   static const String promotions = '/promotions';
   static const String notifications = '/notifications';
+  static const String performance = '/performance';
+  static const String documents = '/documents';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -181,6 +185,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const NotificationsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.performance,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const PerformanceScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.documents,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const DocumentsScreen(),
         ),
       ),
     ],

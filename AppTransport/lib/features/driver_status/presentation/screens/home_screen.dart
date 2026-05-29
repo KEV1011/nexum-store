@@ -63,6 +63,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   _HomeState _state = const _HomeState();
   GoogleMapController? _mapController;
+  bool _showHeatmap = false;
 
   Timer? _countdownTimer;
   Timer? _webMockTimer;
@@ -206,6 +207,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (_state.isOnline) _scheduleWebMockRequest();
   }
 
+  Set<Circle> _buildHeatmapCircles() {
+    return {
+      Circle(
+        circleId: const CircleId('parque_principal'),
+        center: const LatLng(7.3752, -72.6479),
+        radius: 200,
+        fillColor: AppColors.error.withValues(alpha: 0.25),
+        strokeColor: AppColors.error.withValues(alpha: 0.6),
+        strokeWidth: 2,
+      ),
+      Circle(
+        circleId: const CircleId('terminal'),
+        center: const LatLng(7.3694, -72.6521),
+        radius: 250,
+        fillColor: AppColors.error.withValues(alpha: 0.25),
+        strokeColor: AppColors.error.withValues(alpha: 0.6),
+        strokeWidth: 2,
+      ),
+      Circle(
+        circleId: const CircleId('universidad'),
+        center: const LatLng(7.3783, -72.6451),
+        radius: 200,
+        fillColor: AppColors.warning.withValues(alpha: 0.25),
+        strokeColor: AppColors.warning.withValues(alpha: 0.6),
+        strokeWidth: 2,
+      ),
+      Circle(
+        circleId: const CircleId('hospital'),
+        center: const LatLng(7.3741, -72.6498),
+        radius: 150,
+        fillColor: AppColors.warning.withValues(alpha: 0.25),
+        strokeColor: AppColors.warning.withValues(alpha: 0.6),
+        strokeWidth: 2,
+      ),
+      Circle(
+        circleId: const CircleId('centro_comercial'),
+        center: const LatLng(7.3758, -72.6472),
+        radius: 150,
+        fillColor: AppColors.warning.withValues(alpha: 0.25),
+        strokeColor: AppColors.warning.withValues(alpha: 0.6),
+        strokeWidth: 2,
+      ),
+      Circle(
+        circleId: const CircleId('el_buque'),
+        center: const LatLng(7.3715, -72.6543),
+        radius: 150,
+        fillColor: AppColors.primary.withValues(alpha: 0.2),
+        strokeColor: AppColors.primary.withValues(alpha: 0.5),
+        strokeWidth: 1,
+      ),
+      Circle(
+        circleId: const CircleId('ciudad_jardin'),
+        center: const LatLng(7.3769, -72.6505),
+        radius: 150,
+        fillColor: AppColors.primary.withValues(alpha: 0.2),
+        strokeColor: AppColors.primary.withValues(alpha: 0.5),
+        strokeWidth: 1,
+      ),
+    };
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────
 
   static const _driverLatLng = LatLng(
@@ -229,6 +291,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
+            circles:
+                _showHeatmap ? _buildHeatmapCircles() : {},
             markers: _state.isOnline
                 ? {
                     Marker(
@@ -291,6 +355,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _MapActionButton(
             icon: Icons.monetization_on_outlined,
             onTap: () => context.push('/earnings'),
+          ),
+          const SizedBox(width: AppConstants.spacingS),
+          _MapActionButton(
+            icon: _showHeatmap
+                ? Icons.layers_rounded
+                : Icons.layers_outlined,
+            onTap: () =>
+                setState(() => _showHeatmap = !_showHeatmap),
           ),
           const SizedBox(width: AppConstants.spacingS),
           _NotifBell(onTap: () => context.push('/notifications')),
@@ -632,6 +704,22 @@ class _AppDrawer extends StatelessWidget {
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/promotions');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.bar_chart_rounded,
+                    label: 'Rendimiento',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/performance');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.folder_rounded,
+                    label: 'Mis documentos',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/documents');
                     },
                   ),
                   Divider(
