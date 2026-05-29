@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -196,53 +198,11 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
 
               const SizedBox(height: AppConstants.spacingM),
 
-              // ── Prueba de entrega ────────────────────────────────────────
-              if (trip.isDeliveryTrip)
-                Card(
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppConstants.radiusMedium),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppConstants.spacingM),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.verified_rounded,
-                              color: AppColors.serviceEnvios,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Prueba de entrega',
-                              style: theme.textTheme.titleSmall
-                                  ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: AppConstants.spacingM),
-                        _ProofItem(
-                          icon: Icons.photo_camera_rounded,
-                          label: 'Foto del paquete',
-                          captured: trip.hasDeliveryPhoto,
-                        ),
-                        _ProofItem(
-                          icon: Icons.draw_rounded,
-                          label: 'Firma del destinatario',
-                          captured: trip.hasSignature,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              if (trip.isDeliveryTrip)
+              // ── Cadena de custodia ───────────────────────────────────────
+              if (trip.isDeliveryTrip) ...[
+                _ChainOfCustodyCard(trip: trip),
                 const SizedBox(height: AppConstants.spacingM),
+              ],
 
               // ── Sesión de hoy ────────────────────────────────────────────
               if (driverStatus.dailyTrips > 0)
@@ -435,53 +395,390 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-class _ProofItem extends StatelessWidget {
-  const _ProofItem({
-    required this.icon,
-    required this.label,
-    required this.captured,
-  });
+// ── Chain of custody ──────────────────────────────────────────────────────────
 
-  final IconData icon;
-  final String label;
-  final bool captured;
+/// Amazon-style proof timeline for Envíos: shows the order photographed
+/// at the store (pickup) and the proof captured at the customer's door
+/// (delivery), each with a real photo thumbnail and timestamp.
+///
+/// This is the anti-Rappi differentiator: an immutable audit trail that
+/// certifies the order left the establishment complete and arrived.
+class _ChainOfCustodyCard extends StatelessWidget {
+  const _ChainOfCustodyCard({required this.trip});
+  final TripModel trip;
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        captured ? AppColors.serviceEnvios : AppColors.textSecondary;
+    final theme = Theme.of(context);
+    const accent = AppColors.serviceEnvios;
+    final verified = trip.hasFullChainOfCustody;
+
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(AppConstants.radiusMedium),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.spacingM),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header with verified badge ─────────────────────────
+            Row(
+              children: [
+                const Icon(
+                  Icons.shield_rounded,
+                  color: accent,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Cadena de custodia',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (verified
+                            ? AppColors.success
+                            : AppColors.warning)
+                        .withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        verified
+                            ? Icons.verified_rounded
+                            : Icons.info_outline_rounded,
+                        size: 12,
+                        color: verified
+                            ? AppColors.success
+                            : AppColors.warning,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        verified ? 'Verificada' : 'Parcial',
+                        style: TextStyle(
+                          color: verified
+                              ? AppColors.success
+                              : AppColors.warning,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: AppConstants.spacingM),
+
+            // ── Step 1: pickup at store ────────────────────────────
+            _CustodyStep(
+              icon: Icons.storefront_rounded,
+              title: 'Recogido en el local',
+              subtitle: trip.origin.address,
+              timestamp: trip.pickedUpAt,
+              photoPath: trip.pickupPhotoPath,
+              orderRef: trip.pickupOrderRef,
+              accent: accent,
+              isFirst: true,
+            ),
+
+            // ── Connector ──────────────────────────────────────────
+            const _CustodyConnector(accent: accent),
+
+            // ── Step 2: delivery to customer ───────────────────────
+            _CustodyStep(
+              icon: Icons.home_rounded,
+              title: 'Entregado al cliente',
+              subtitle: trip.destination.address,
+              timestamp: trip.finishedAt,
+              photoPath: trip.deliveryPhotoPath,
+              hasSignature: trip.hasSignature,
+              accent: accent,
+              isLast: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CustodyConnector extends StatelessWidget {
+  const _CustodyConnector({required this.accent});
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.only(left: 17),
       child: Row(
         children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w500,
+          Container(
+            width: 2,
+            height: 22,
+            color: accent.withValues(alpha: 0.3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustodyStep extends StatelessWidget {
+  const _CustodyStep({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.timestamp,
+    required this.accent,
+    this.photoPath,
+    this.orderRef,
+    this.hasSignature = false,
+    this.isFirst = false,
+    this.isLast = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final DateTime? timestamp;
+  final Color accent;
+  final String? photoPath;
+  final String? orderRef;
+  final bool hasSignature;
+  final bool isFirst;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasPhoto = photoPath != null;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Timeline node ──────────────────────────────────────────
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 18, color: accent),
+        ),
+        const SizedBox(width: AppConstants.spacingM),
+
+        // ── Content ────────────────────────────────────────────────
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (timestamp != null)
+                    Text(
+                      DateFormatter.formatTime(timestamp!),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: accent,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: const [
+                          FontFeature.tabularFigures(),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (orderRef != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.receipt_long_rounded,
+                      size: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      orderRef!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: AppConstants.spacingS),
+
+              // ── Photo + signature chips ──────────────────────────
+              Row(
+                children: [
+                  if (hasPhoto)
+                    _PhotoThumb(path: photoPath!, accent: accent)
+                  else
+                    _MissingProofChip(
+                      label: 'Sin foto',
+                    ),
+                  if (hasSignature) ...[
+                    const SizedBox(width: AppConstants.spacingS),
+                    _SignatureChip(accent: accent),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PhotoThumb extends StatelessWidget {
+  const _PhotoThumb({required this.path, required this.accent});
+  final String path;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Stack(
+        children: [
+          Image.file(
+            File(path),
+            width: 64,
+            height: 64,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              width: 64,
+              height: 64,
+              color: accent.withValues(alpha: 0.1),
+              child: Icon(
+                Icons.image_rounded,
+                color: accent,
+                size: 24,
               ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 3,
-            ),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              captured ? '✓ Capturado' : 'Sin captura',
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+          Positioned(
+            right: 2,
+            bottom: 2,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                color: AppColors.success,
+                shape: BoxShape.circle,
               ),
+              child: const Icon(
+                Icons.check_rounded,
+                size: 10,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignatureChip extends StatelessWidget {
+  const _SignatureChip({required this.accent});
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: accent.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.draw_rounded, size: 20, color: accent),
+          const SizedBox(height: 2),
+          Text(
+            'Firmado',
+            style: TextStyle(
+              color: accent,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MissingProofChip extends StatelessWidget {
+  const _MissingProofChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      width: 64,
+      decoration: BoxDecoration(
+        color: AppColors.textSecondary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.textSecondary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.image_not_supported_outlined,
+            size: 18,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],

@@ -91,6 +91,10 @@ class ActiveTripDataSource {
       commission: commission,
       startedAt: tripStart,
       finishedAt: now,
+      pickupPhotoPath: trip.pickupPhotoPath,
+      pickupOrderRef: trip.pickupOrderRef,
+      // En envíos el pedido sale del local al iniciar el viaje.
+      pickedUpAt: trip.pickupPhotoPath != null ? tripStart : null,
     );
   }
 }

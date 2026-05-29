@@ -24,6 +24,9 @@ class TripModel {
     this.isDeliveryTrip = false,
     this.deliveryPhotoPath,
     this.hasSignature = false,
+    this.pickupPhotoPath,
+    this.pickupOrderRef,
+    this.pickedUpAt,
   });
 
   factory TripModel.fromJson(Map<String, dynamic> json) => TripModel(
@@ -51,6 +54,11 @@ class TripModel {
         deliveryPhotoPath:
             json['delivery_photo_path'] as String?,
         hasSignature: (json['has_signature'] as bool?) ?? false,
+        pickupPhotoPath: json['pickup_photo_path'] as String?,
+        pickupOrderRef: json['pickup_order_ref'] as String?,
+        pickedUpAt: json['picked_up_at'] != null
+            ? DateTime.parse(json['picked_up_at'] as String)
+            : null,
       );
 
   // ── Fields ───────────────────────────────────────────────────────────────
@@ -103,6 +111,15 @@ class TripModel {
   /// Whether the recipient signed digitally at delivery.
   final bool hasSignature;
 
+  /// (Envíos) File path of the order photo taken at the store at pickup.
+  final String? pickupPhotoPath;
+
+  /// (Envíos) Optional order reference noted at pickup (e.g. "#4521").
+  final String? pickupOrderRef;
+
+  /// (Envíos) Timestamp when the order was photographed / left the store.
+  final DateTime? pickedUpAt;
+
   // ── Derived helpers ──────────────────────────────────────────────────────
 
   /// Total elapsed time from start to finish as a [Duration].
@@ -114,9 +131,20 @@ class TripModel {
   /// Whether a delivery photo was captured.
   bool get hasDeliveryPhoto => deliveryPhotoPath != null;
 
+  /// Whether an order photo was captured at the store at pickup.
+  bool get hasPickupPhoto => pickupPhotoPath != null;
+
   /// Whether at least one proof was collected for this delivery.
   bool get isVerifiedDelivery =>
       isDeliveryTrip && (hasDeliveryPhoto || hasSignature);
+
+  /// Whether the full chain of custody is complete: order photographed
+  /// at the store AND proof captured at drop-off. This is the strongest
+  /// guarantee for the restaurant/local and the differentiator vs Rappi.
+  bool get hasFullChainOfCustody =>
+      isDeliveryTrip &&
+      hasPickupPhoto &&
+      (hasDeliveryPhoto || hasSignature);
 
   // ── copyWith ─────────────────────────────────────────────────────────────
 
@@ -137,6 +165,9 @@ class TripModel {
     bool? isDeliveryTrip,
     String? deliveryPhotoPath,
     bool? hasSignature,
+    String? pickupPhotoPath,
+    String? pickupOrderRef,
+    DateTime? pickedUpAt,
   }) {
     return TripModel(
       id: id ?? this.id,
@@ -156,6 +187,9 @@ class TripModel {
       deliveryPhotoPath:
           deliveryPhotoPath ?? this.deliveryPhotoPath,
       hasSignature: hasSignature ?? this.hasSignature,
+      pickupPhotoPath: pickupPhotoPath ?? this.pickupPhotoPath,
+      pickupOrderRef: pickupOrderRef ?? this.pickupOrderRef,
+      pickedUpAt: pickedUpAt ?? this.pickedUpAt,
     );
   }
 
@@ -178,6 +212,9 @@ class TripModel {
         'is_delivery_trip': isDeliveryTrip,
         'delivery_photo_path': deliveryPhotoPath,
         'has_signature': hasSignature,
+        'pickup_photo_path': pickupPhotoPath,
+        'pickup_order_ref': pickupOrderRef,
+        'picked_up_at': pickedUpAt?.toIso8601String(),
       };
 
   // ── Equality ─────────────────────────────────────────────────────────────

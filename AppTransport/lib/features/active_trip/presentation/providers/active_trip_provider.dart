@@ -114,6 +114,34 @@ class ActiveTripNotifier extends StateNotifier<ActiveTripEntity?> {
     _startFareAccumulationTimer();
   }
 
+  // ── confirmPickupAndStart ──────────────────────────────────────────────────
+
+  /// (Envíos) Registra la prueba de recogida (foto del pedido en el local)
+  /// y luego inicia el viaje hacia el cliente.
+  ///
+  /// Persiste [photoPath] y [orderRef] en la entidad para que viajen hasta
+  /// el [TripModel] final y queden en el historial / comprobante.
+  Future<void> confirmPickupAndStart({
+    required String photoPath,
+    String? orderRef,
+  }) async {
+    final current = state;
+    if (current == null) return;
+
+    _stopWaitingTimer();
+
+    // Adjuntar la prueba de recogida antes de transicionar.
+    final withProof = current.copyWith(
+      pickupPhotoPath: photoPath,
+      pickupOrderRef: orderRef,
+    );
+
+    final updated = await _startTripUseCase(withProof);
+    state = updated;
+
+    _startFareAccumulationTimer();
+  }
+
   // ── finishTrip ────────────────────────────────────────────────────────────
 
   /// Finaliza el viaje activo y retorna el [TripModel] con la tarifa real.

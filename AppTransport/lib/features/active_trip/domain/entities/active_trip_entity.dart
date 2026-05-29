@@ -18,6 +18,8 @@ class ActiveTripEntity {
     this.waitingSeconds = 0,
     this.accumulatedFare = 0.0,
     this.elapsedTripMinutes = 0,
+    this.pickupPhotoPath,
+    this.pickupOrderRef,
   });
 
   final TripRequestEntity request;
@@ -28,6 +30,12 @@ class ActiveTripEntity {
   final int waitingSeconds;       // Segundos esperando al pasajero
   final double accumulatedFare;   // Tarifa acumulada en tiempo real
   final int elapsedTripMinutes;   // Minutos transcurridos del viaje
+
+  /// (Envíos) Ruta de la foto del pedido tomada al salir del local.
+  final String? pickupPhotoPath;
+
+  /// (Envíos) Referencia opcional del pedido (ej. "#4521").
+  final String? pickupOrderRef;
 
   bool get isToPickup => state == ActiveTripState.toPickup;
   bool get isWaiting => state == ActiveTripState.waiting;
@@ -42,6 +50,8 @@ class ActiveTripEntity {
     int? waitingSeconds,
     double? accumulatedFare,
     int? elapsedTripMinutes,
+    String? pickupPhotoPath,
+    String? pickupOrderRef,
   }) {
     return ActiveTripEntity(
       request: request ?? this.request,
@@ -52,6 +62,8 @@ class ActiveTripEntity {
       waitingSeconds: waitingSeconds ?? this.waitingSeconds,
       accumulatedFare: accumulatedFare ?? this.accumulatedFare,
       elapsedTripMinutes: elapsedTripMinutes ?? this.elapsedTripMinutes,
+      pickupPhotoPath: pickupPhotoPath ?? this.pickupPhotoPath,
+      pickupOrderRef: pickupOrderRef ?? this.pickupOrderRef,
     );
   }
 }

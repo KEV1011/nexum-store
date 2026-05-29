@@ -671,7 +671,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
     setState(() => _isLoading = true);
     try {
-      await ref.read(activeTripProvider.notifier).startTrip();
+      await ref.read(activeTripProvider.notifier).confirmPickupAndStart(
+            photoPath: proof.photoPath,
+            orderRef: proof.orderRef,
+          );
       if (mounted) {
         AppSnackbar.showSuccess(
           context,
