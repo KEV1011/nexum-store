@@ -8,7 +8,11 @@ import {
   placeClientOrder,
   getClientOrders,
   getClientOrderById,
+  requestClientTrip,
+  getActiveClientTrip,
+  cancelClientTrip,
 } from '../services/client.service';
+import { createPaymentLink } from '../services/payment.service';
 
 const router = Router();
 
@@ -91,6 +95,81 @@ router.get('/orders/:id', clientAuthMiddleware, (req, res) => {
   const order = getClientOrderById(req.clientId!, req.params['id']!);
   if (!order) { res.status(404).json({ success: false, error: 'Order not found' }); return; }
   res.json({ success: true, data: order });
+});
+
+// ─── Trips (auth required) ────────────────────────────────────────────────────
+
+router.post('/trips/request', clientAuthMiddleware, (req, res) => {
+  const dto = req.body as {
+    serviceType?: string;
+    originAddress?: string;
+    destinationAddress?: string;
+    estimatedFare?: number;
+    distanceKm?: number;
+    etaMinutes?: number;
+    recipientName?: string;
+    recipientPhone?: string;
+    packageDescription?: string;
+  };
+
+  if (!dto.serviceType || !dto.originAddress || !dto.destinationAddress) {
+    res.status(400).json({ success: false, error: 'serviceType, originAddress, destinationAddress required' });
+    return;
+  }
+
+  try {
+    const trip = requestClientTrip(req.clientId!, {
+      serviceType: dto.serviceType as import('../types').TransportServiceType,
+      originAddress: dto.originAddress,
+      destinationAddress: dto.destinationAddress,
+      estimatedFare: dto.estimatedFare ?? 0,
+      distanceKm: dto.distanceKm ?? 0,
+      etaMinutes: dto.etaMinutes ?? 0,
+      recipientName: dto.recipientName,
+      recipientPhone: dto.recipientPhone,
+      packageDescription: dto.packageDescription,
+    });
+    res.status(201).json({ success: true, data: trip });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to request trip';
+    res.status(400).json({ success: false, error: msg });
+  }
+});
+
+router.get('/trips/active', clientAuthMiddleware, (req, res) => {
+  const trip = getActiveClientTrip(req.clientId!);
+  res.json({ success: true, data: trip });
+});
+
+router.post('/trips/:id/cancel', clientAuthMiddleware, (req, res) => {
+  const ok = cancelClientTrip(req.clientId!, req.params['id']!);
+  if (!ok) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
+  res.json({ success: true });
+});
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+router.post('/payments/init', clientAuthMiddleware, (req, res) => {
+  const { amount, description, orderId, tripId, customerEmail } = req.body as {
+    amount?: number;
+    description?: string;
+    orderId?: string;
+    tripId?: string;
+    customerEmail?: string;
+  };
+
+  if (!amount || !description) {
+    res.status(400).json({ success: false, error: 'amount and description are required' });
+    return;
+  }
+
+  try {
+    const result = createPaymentLink(req.clientId!, { amount, description, orderId, tripId, customerEmail });
+    res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to create payment';
+    res.status(400).json({ success: false, error: msg });
+  }
 });
 
 export default router;

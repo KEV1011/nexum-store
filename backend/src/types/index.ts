@@ -190,6 +190,12 @@ export type WsMessageType =
   | 'trip_accepted'
   | 'trip_rejected'
   | 'status_update'
+  | 'subscribe_trip'
+  | 'unsubscribe_trip'
+  | 'trip_update'
+  | 'location_update'
+  | 'driver_location'
+  | 'trip_request_client'
   | 'ping'
   | 'pong'
   | 'error';
@@ -420,4 +426,69 @@ export interface ClientOrderSummaryDTO {
   createdAt: string;
   pickedUpAt?: string;
   deliveredAt?: string;
+}
+
+// ─── Client Trips ─────────────────────────────────────────────────────────────
+
+export type ClientTripStatus =
+  | 'searching'
+  | 'accepted'
+  | 'arriving'
+  | 'arrived'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
+export type TransportServiceType = 'taxi' | 'moto' | 'particular' | 'envios';
+
+export interface ClientTripDTO {
+  id: string;
+  requestRef: string;
+  serviceType: TransportServiceType;
+  originAddress: string;
+  destinationAddress: string;
+  estimatedFare: number;
+  distanceKm: number;
+  etaMinutes: number;
+  status: ClientTripStatus;
+  driverName?: string;
+  driverPhone?: string;
+  driverVehicle?: string;
+  driverLat?: number;
+  driverLng?: number;
+  createdAt: string;
+  acceptedAt?: string;
+  completedAt?: string;
+  recipientName?: string;
+  recipientPhone?: string;
+  packageDescription?: string;
+}
+
+export interface RequestClientTripDTO {
+  serviceType: TransportServiceType;
+  originAddress: string;
+  destinationAddress: string;
+  estimatedFare: number;
+  distanceKm: number;
+  etaMinutes: number;
+  recipientName?: string;
+  recipientPhone?: string;
+  packageDescription?: string;
+}
+
+// ─── Wompi Payments ───────────────────────────────────────────────────────────
+
+export interface PaymentInitDTO {
+  amount: number;
+  description: string;
+  orderId?: string;
+  tripId?: string;
+  customerEmail?: string;
+}
+
+export interface PaymentLinkResponseDTO {
+  paymentId: string;
+  referenceCode: string;
+  paymentUrl: string;
+  amount: number;
 }

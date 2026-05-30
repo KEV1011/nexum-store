@@ -103,6 +103,8 @@ class TransportRequestEntity {
     this.packageDescription,
     this.rating,
     this.ratingComment,
+    this.driverLat,
+    this.driverLng,
   });
 
   factory TransportRequestEntity.fromJson(Map<String, dynamic> json) =>
@@ -135,6 +137,8 @@ class TransportRequestEntity {
         packageDescription: json['packageDescription'] as String?,
         rating: json['rating'] as int?,
         ratingComment: json['ratingComment'] as String?,
+        driverLat: (json['driverLat'] as num?)?.toDouble(),
+        driverLng: (json['driverLng'] as num?)?.toDouble(),
       );
 
   final String id;
@@ -157,6 +161,8 @@ class TransportRequestEntity {
   final String? packageDescription;
   final int? rating;
   final String? ratingComment;
+  final double? driverLat;
+  final double? driverLng;
 
   bool get isActive => status.isActive;
   bool get isCompleted => status.isCompleted;
@@ -184,6 +190,8 @@ class TransportRequestEntity {
     String? packageDescription,
     int? rating,
     String? ratingComment,
+    double? driverLat,
+    double? driverLng,
   }) {
     return TransportRequestEntity(
       id: id ?? this.id,
@@ -206,6 +214,8 @@ class TransportRequestEntity {
       packageDescription: packageDescription ?? this.packageDescription,
       rating: rating ?? this.rating,
       ratingComment: ratingComment ?? this.ratingComment,
+      driverLat: driverLat ?? this.driverLat,
+      driverLng: driverLng ?? this.driverLng,
     );
   }
 
@@ -230,5 +240,7 @@ class TransportRequestEntity {
         if (packageDescription != null) 'packageDescription': packageDescription,
         if (rating != null) 'rating': rating,
         if (ratingComment != null) 'ratingComment': ratingComment,
+        if (driverLat != null) 'driverLat': driverLat,
+        if (driverLng != null) 'driverLng': driverLng,
       };
 }

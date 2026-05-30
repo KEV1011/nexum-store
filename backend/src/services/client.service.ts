@@ -6,6 +6,10 @@ import {
   ClientJwtPayload,
   ClientPlaceOrderDTO,
   ClientOrderSummaryDTO,
+  ClientTripDTO,
+  ClientTripStatus,
+  RequestClientTripDTO,
+  TransportServiceType,
 } from '../types';
 import {
   getAllBusinessesPublic,
@@ -196,5 +200,159 @@ function _toSummary(o: ClientOrder, businessName: string): ClientOrderSummaryDTO
     pickupPhotoUrl: o.pickupPhotoUrl, deliveryPhotoUrl: o.deliveryPhotoUrl,
     hasSignature: o.hasSignature, createdAt: o.createdAt.toISOString(),
     pickedUpAt: o.pickedUpAt?.toISOString(), deliveredAt: o.deliveredAt?.toISOString(),
+  };
+}
+
+// ─── Client Trips ─────────────────────────────────────────────────────────────
+
+interface ClientTrip {
+  id: string;
+  requestRef: string;
+  clientId: string;
+  serviceType: string;
+  originAddress: string;
+  destinationAddress: string;
+  estimatedFare: number;
+  distanceKm: number;
+  etaMinutes: number;
+  status: ClientTripStatus;
+  driverName?: string;
+  driverPhone?: string;
+  driverVehicle?: string;
+  driverLat?: number;
+  driverLng?: number;
+  createdAt: Date;
+  acceptedAt?: Date;
+  completedAt?: Date;
+  recipientName?: string;
+  recipientPhone?: string;
+  packageDescription?: string;
+}
+
+const clientTripStore = new Map<string, ClientTrip>();
+const clientActiveTrip = new Map<string, string>(); // clientId → tripId
+
+type TripCallback = (tripId: string, trip: ClientTripDTO) => void;
+const tripListeners = new Map<string, Set<TripCallback>>();
+
+export function requestClientTrip(clientId: string, dto: RequestClientTripDTO): ClientTripDTO {
+  const id = `ctrip-${randomUUID().slice(0, 8)}`;
+  const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;
+
+  const trip: ClientTrip = {
+    id, requestRef, clientId,
+    serviceType: dto.serviceType,
+    originAddress: dto.originAddress,
+    destinationAddress: dto.destinationAddress,
+    estimatedFare: dto.estimatedFare,
+    distanceKm: dto.distanceKm,
+    etaMinutes: dto.etaMinutes,
+    status: 'searching',
+    createdAt: new Date(),
+    recipientName: dto.recipientName,
+    recipientPhone: dto.recipientPhone,
+    packageDescription: dto.packageDescription,
+  };
+
+  clientTripStore.set(id, trip);
+  clientActiveTrip.set(clientId, id);
+  return _toTripDTO(trip);
+}
+
+export function acceptClientTrip(
+  tripId: string,
+  driverName: string,
+  driverPhone: string,
+  driverVehicle?: string,
+): ClientTripDTO | null {
+  const trip = clientTripStore.get(tripId);
+  if (!trip || trip.status !== 'searching') return null;
+  trip.status = 'accepted';
+  trip.acceptedAt = new Date();
+  trip.driverName = driverName;
+  trip.driverPhone = driverPhone;
+  trip.driverVehicle = driverVehicle;
+  _notifyTripListeners(tripId, trip);
+  _startTripSimulation(tripId);
+  return _toTripDTO(trip);
+}
+
+export function updateClientTripLocation(tripId: string, lat: number, lng: number): string | null {
+  const trip = clientTripStore.get(tripId);
+  if (!trip) return null;
+  trip.driverLat = lat;
+  trip.driverLng = lng;
+  return trip.clientId;
+}
+
+export function cancelClientTrip(clientId: string, tripId: string): boolean {
+  const trip = clientTripStore.get(tripId);
+  if (!trip || trip.clientId !== clientId) return false;
+  if (!['searching', 'accepted', 'arriving', 'arrived'].includes(trip.status)) return false;
+  trip.status = 'cancelled';
+  _notifyTripListeners(tripId, trip);
+  return true;
+}
+
+export function getActiveClientTrip(clientId: string): ClientTripDTO | null {
+  const tripId = clientActiveTrip.get(clientId);
+  if (!tripId) return null;
+  const trip = clientTripStore.get(tripId);
+  if (!trip) return null;
+  const active: ClientTripStatus[] = ['searching', 'accepted', 'arriving', 'arrived', 'in_progress'];
+  if (!active.includes(trip.status)) return null;
+  return _toTripDTO(trip);
+}
+
+export function getClientTripRaw(tripId: string): ClientTrip | undefined {
+  return clientTripStore.get(tripId);
+}
+
+export function subscribeClientTrip(tripId: string, cb: TripCallback): () => void {
+  if (!tripListeners.has(tripId)) tripListeners.set(tripId, new Set());
+  tripListeners.get(tripId)!.add(cb);
+  return () => tripListeners.get(tripId)?.delete(cb);
+}
+
+export function getClientTripSnapshot(tripId: string): ClientTripDTO | null {
+  const trip = clientTripStore.get(tripId);
+  if (!trip) return null;
+  return _toTripDTO(trip);
+}
+
+function _notifyTripListeners(tripId: string, trip: ClientTrip): void {
+  const dto = _toTripDTO(trip);
+  for (const cb of tripListeners.get(tripId) ?? []) cb(tripId, dto);
+}
+
+function _startTripSimulation(tripId: string): void {
+  const step = (status: ClientTripStatus) => {
+    const trip = clientTripStore.get(tripId);
+    const active: ClientTripStatus[] = ['accepted', 'arriving', 'arrived', 'in_progress'];
+    if (!trip || !active.includes(trip.status)) return;
+    trip.status = status;
+    if (status === 'completed') trip.completedAt = new Date();
+    _notifyTripListeners(tripId, trip);
+  };
+  setTimeout(() => step('arriving'), 8_000);
+  setTimeout(() => step('arrived'), 20_000);
+  setTimeout(() => step('in_progress'), 30_000);
+  setTimeout(() => step('completed'), 55_000);
+}
+
+function _toTripDTO(trip: ClientTrip): ClientTripDTO {
+  return {
+    id: trip.id, requestRef: trip.requestRef,
+    serviceType: trip.serviceType as TransportServiceType,
+    originAddress: trip.originAddress, destinationAddress: trip.destinationAddress,
+    estimatedFare: trip.estimatedFare, distanceKm: trip.distanceKm, etaMinutes: trip.etaMinutes,
+    status: trip.status,
+    driverName: trip.driverName, driverPhone: trip.driverPhone, driverVehicle: trip.driverVehicle,
+    driverLat: trip.driverLat, driverLng: trip.driverLng,
+    createdAt: trip.createdAt.toISOString(),
+    acceptedAt: trip.acceptedAt?.toISOString(),
+    completedAt: trip.completedAt?.toISOString(),
+    recipientName: trip.recipientName, recipientPhone: trip.recipientPhone,
+    packageDescription: trip.packageDescription,
   };
 }
