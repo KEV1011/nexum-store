@@ -1,0 +1,100 @@
+name: Deploy Cliente Web to GitHub Pages
+
+on:
+  push:
+    branches: [main, claude/driver-app-maas-pamplona-LYIfo]
+    paths:
+      - 'AppCliente/**'
+      - '.github/workflows/deploy-web-cliente.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Despliega en el subdirectorio /cliente/ usando keep_files para no borrar
+# la app de conductor (publicada en la raíz de gh-pages).
+concurrency:
+  group: gh-pages-cliente
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & Deploy Flutter Web (Cliente)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        working-directory: AppCliente
+        run: flutter pub get
+
+      # --no-tree-shake-icons evita que falten íconos de Cupertino en runtime.
+      # --base-href reemplaza $FLUTTER_BASE_HREF en index.html.
+      - name: Build Flutter Web
+        working-directory: AppCliente
+        run: flutter build web --release --no-tree-shake-icons --base-href /nexum-store/cliente/
+
+      # ── Post-build patches ────────────────────────────────────────────────────
+
+      - name: Force local CanvasKit (evita cargar desde CDN externa)
+        run: |
+          python3 - <<'EOF'
+          path = 'AppCliente/build/web/flutter_bootstrap.js'
+          with open(path, 'r') as f:
+              content = f.read()
+
+          if '"useLocalCanvasKit"' not in content:
+              content = content.replace(
+                  '"engineRevision"',
+                  '"useLocalCanvasKit":true,"engineRevision"',
+                  1
+              )
+              print('Patch 1 applied: useLocalCanvasKit=true in buildConfig')
+
+          if 'canvasKitBaseUrl' not in content:
+              content = content.replace(
+                  '_flutter.loader.load({',
+                  '_flutter.loader.load({\n  config: { canvasKitBaseUrl: "canvaskit/" },',
+                  1
+              )
+              print('Patch 2 applied: canvasKitBaseUrl in loader call')
+
+          with open(path, 'w') as f:
+              f.write(content)
+          print('flutter_bootstrap.js patched successfully')
+          EOF
+
+      - name: Remove Flutter service worker (evita cache stale)
+        run: |
+          python3 - <<'EOF'
+          import re
+          path = 'AppCliente/build/web/flutter_bootstrap.js'
+          with open(path, 'r') as f:
+              content = f.read()
+          content = re.sub(
+              r',?\s*serviceWorkerSettings\s*:\s*\{[^}]*\}',
+              '',
+              content
+          )
+          with open(path, 'w') as f:
+              f.write(content)
+          print('Service worker settings removed from loader')
+          EOF
+
+      - name: Deploy to GitHub Pages (subdir /cliente/)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: AppCliente/build/web
+          destination_dir: cliente
+          keep_files: true
+          commit_message: "deploy(cliente): ${{ github.sha }}"
