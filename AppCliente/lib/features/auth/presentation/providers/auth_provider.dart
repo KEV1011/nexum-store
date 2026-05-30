@@ -1,8 +1,13 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_client/core/errors/failures.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/features/auth/data/datasources/'
+    'auth_datasource.dart';
+import 'package:nexum_client/features/auth/data/datasources/'
+    'auth_mock_datasource.dart';
 import 'package:nexum_client/features/auth/data/datasources/'
     'auth_real_datasource.dart';
 import 'package:nexum_client/features/auth/data/repositories/auth_repository.dart';
@@ -56,9 +61,11 @@ final _secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  final dio = ref.watch(apiClientProvider);
+  final AuthDataSource dataSource = kIsWeb
+      ? AuthMockDataSource()
+      : AuthRealDataSource(dio: ref.watch(apiClientProvider));
   return AuthRepository(
-    dataSource: AuthRealDataSource(dio: dio),
+    dataSource: dataSource,
     secureStorage: ref.watch(_secureStorageProvider),
   );
 });
