@@ -6,6 +6,8 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/theme_provider.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
+import 'package:nexum_client/features/addresses/presentation/providers/'
+    'addresses_provider.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 
@@ -35,11 +37,9 @@ class AccountScreen extends ConsumerWidget {
               _SettingTile(
                 icon: Icons.location_on_rounded,
                 title: 'Mis direcciones',
-                subtitle: 'Calle 6 #2-30, Barrio Belén',
-                onTap: () => AppSnackbar.showInfo(
-                  context,
-                  'Gestión de direcciones próximamente',
-                ),
+                subtitle: ref.watch(defaultAddressProvider)?.fullAddress ??
+                    'Sin dirección guardada',
+                onTap: () => context.push(AppRoutes.addresses),
               ),
               _SettingTile(
                 icon: Icons.account_balance_wallet_rounded,

@@ -5,6 +5,8 @@ import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
+import 'package:nexum_client/features/addresses/presentation/providers/'
+    'addresses_provider.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
 import 'package:nexum_client/features/cart/presentation/widgets/'
@@ -48,22 +50,20 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 }
 
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
-  final _addressController =
-      TextEditingController(text: 'Calle 6 #2-30, Barrio Belén');
   final _notesController = TextEditingController();
   PaymentMethod _payment = PaymentMethod.cash;
   bool _placing = false;
 
   @override
   void dispose() {
-    _addressController.dispose();
     _notesController.dispose();
     super.dispose();
   }
 
   Future<void> _placeOrder(CartState cart) async {
-    if (_addressController.text.trim().isEmpty) {
-      AppSnackbar.showError(context, 'Ingresa una dirección de entrega');
+    final address = ref.read(defaultAddressProvider);
+    if (address == null) {
+      AppSnackbar.showError(context, 'Agrega una dirección de entrega');
       return;
     }
 
@@ -73,7 +73,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
     final orderId = await ref.read(ordersProvider.notifier).placeOrder(
           cart: cart,
-          deliveryAddress: _addressController.text.trim(),
+          deliveryAddress: address.fullAddress,
         );
     if (!mounted) return;
     ref.read(cartProvider.notifier).clear();
@@ -86,7 +86,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final cart = ref.watch(cartProvider);
 
     if (cart.isEmpty) {
-      // El carrito quedó vacío (p. ej. tras enviar el pedido).
       return Scaffold(
         appBar: AppBar(title: const Text('Confirmar pedido')),
         body: const Center(child: Text('No hay nada por confirmar')),
@@ -103,12 +102,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             title: 'Dirección de entrega',
           ),
           const SizedBox(height: AppConstants.spacingS),
-          TextField(
-            controller: _addressController,
-            decoration: const InputDecoration(
-              hintText: 'Calle, número, barrio',
-            ),
-          ),
+          const _AddressTile(),
           const SizedBox(height: AppConstants.spacingS),
           TextField(
             controller: _notesController,
@@ -164,6 +158,74 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   : const Text('Realizar pedido'),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddressTile extends ConsumerWidget {
+  const _AddressTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final address = ref.watch(defaultAddressProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (address == null) {
+      return OutlinedButton.icon(
+        onPressed: () => context.push(AppRoutes.addresses),
+        icon: const Icon(Icons.add_location_alt_rounded),
+        label: const Text('Agregar dirección'),
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(
+          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.spacingM),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.location_on_rounded,
+              color: AppColors.primary,
+              size: 20,
+            ),
+            const SizedBox(width: AppConstants.spacingS),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    address.alias,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    address.fullAddress,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () => context.push(AppRoutes.addresses),
+              child: const Text('Cambiar'),
+            ),
+          ],
         ),
       ),
     );

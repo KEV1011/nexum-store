@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
+import 'package:nexum_client/features/businesses/presentation/providers/'
+    'favorites_provider.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'business_visuals.dart';
 
@@ -86,6 +89,8 @@ class BusinessCard extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        const SizedBox(width: AppConstants.spacingS),
+                        _FavoriteButton(businessId: business.id),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -118,6 +123,25 @@ class BusinessCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FavoriteButton extends ConsumerWidget {
+  const _FavoriteButton({required this.businessId});
+
+  final String businessId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isFav = ref.watch(favoritesProvider).contains(businessId);
+    return GestureDetector(
+      onTap: () => ref.read(favoritesProvider.notifier).toggle(businessId),
+      child: Icon(
+        isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+        color: isFav ? AppColors.error : AppColors.textTertiary,
+        size: 18,
       ),
     );
   }

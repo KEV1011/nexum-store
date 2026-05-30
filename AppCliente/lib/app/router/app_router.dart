@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_transitions.dart';
 import 'package:nexum_client/app/router/splash_screen.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/features/addresses/presentation/screens/'
+    'addresses_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/'
     'auth_provider.dart';
 import 'package:nexum_client/features/auth/presentation/screens/'
@@ -35,6 +37,7 @@ abstract final class AppRoutes {
   static const String home = '/home';
   static const String cart = '/cart';
   static const String checkout = '/checkout';
+  static const String addresses = '/addresses';
 
   // Rutas paramétricas
   static const String business = '/business/:id';
@@ -117,6 +120,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: OrderTrackingScreen(
             orderId: state.pathParameters['id'] ?? '',
           ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.addresses,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const AddressesScreen(),
         ),
       ),
     ],

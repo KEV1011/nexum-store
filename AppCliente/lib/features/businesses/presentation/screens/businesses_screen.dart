@@ -8,10 +8,14 @@ import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/providers/'
     'businesses_provider.dart';
+import 'package:nexum_client/features/businesses/presentation/providers/'
+    'favorites_provider.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'business_card.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'business_visuals.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'promo_banner.dart';
 import 'package:nexum_client/shared/widgets/skeleton_loader.dart';
 
 /// Pestaña principal: catálogo de negocios aliados en Pamplona.
@@ -25,10 +29,12 @@ class BusinessesScreen extends ConsumerStatefulWidget {
 class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
   BusinessCategory? _filter;
   String _query = '';
+  bool _favoritesSelected = false;
 
   @override
   Widget build(BuildContext context) {
     final businessesAsync = ref.watch(businessesProvider);
+    final favorites = ref.watch(favoritesProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -42,16 +48,25 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),
+              const SliverToBoxAdapter(child: PromoBanner()),
               SliverToBoxAdapter(
                 child: _CategoryFilters(
                   selected: _filter,
-                  onSelected: (c) => setState(() => _filter = c),
+                  favoritesSelected: _favoritesSelected,
+                  onSelected: (c) => setState(() {
+                    _filter = c;
+                    _favoritesSelected = false;
+                  }),
+                  onFavoritesTap: () => setState(() {
+                    _favoritesSelected = !_favoritesSelected;
+                    _filter = null;
+                  }),
                 ),
               ),
               businessesAsync.when(
                 loading: _buildLoading,
                 error: (e, _) => _buildError(),
-                data: _buildList,
+                data: (all) => _buildList(all, favorites),
               ),
               const SliverToBoxAdapter(
                 child: SizedBox(height: AppConstants.spacingXL),
@@ -63,12 +78,14 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
     );
   }
 
-  Widget _buildList(List<BusinessEntity> all) {
+  Widget _buildList(List<BusinessEntity> all, Set<String> favorites) {
     final filtered = all.where((b) {
       final matchesCategory = _filter == null || b.category == _filter;
       final matchesQuery = _query.isEmpty ||
           b.name.toLowerCase().contains(_query.toLowerCase());
-      return matchesCategory && matchesQuery;
+      final matchesFavorites =
+          !_favoritesSelected || favorites.contains(b.id);
+      return matchesCategory && matchesQuery && matchesFavorites;
     }).toList();
 
     if (filtered.isEmpty) {
@@ -211,10 +228,17 @@ class _SearchBar extends StatelessWidget {
 }
 
 class _CategoryFilters extends StatelessWidget {
-  const _CategoryFilters({required this.selected, required this.onSelected});
+  const _CategoryFilters({
+    required this.selected,
+    required this.favoritesSelected,
+    required this.onSelected,
+    required this.onFavoritesTap,
+  });
 
   final BusinessCategory? selected;
+  final bool favoritesSelected;
   final ValueChanged<BusinessCategory?> onSelected;
+  final VoidCallback onFavoritesTap;
 
   @override
   Widget build(BuildContext context) {
@@ -228,7 +252,7 @@ class _CategoryFilters extends StatelessWidget {
           horizontal: AppConstants.spacingM,
           vertical: AppConstants.spacingS,
         ),
-        itemCount: categories.length + 1,
+        itemCount: categories.length + 2,
         separatorBuilder: (_, __) =>
             const SizedBox(width: AppConstants.spacingS),
         itemBuilder: (context, i) {
@@ -237,11 +261,20 @@ class _CategoryFilters extends StatelessWidget {
               icon: Icons.apps_rounded,
               label: 'Todos',
               color: AppColors.primary,
-              selected: selected == null,
+              selected: selected == null && !favoritesSelected,
               onTap: () => onSelected(null),
             );
           }
-          final category = categories[i - 1];
+          if (i == 1) {
+            return _FilterChip(
+              icon: Icons.favorite_rounded,
+              label: 'Favoritos',
+              color: AppColors.error,
+              selected: favoritesSelected,
+              onTap: onFavoritesTap,
+            );
+          }
+          final category = categories[i - 2];
           return _FilterChip(
             icon: category.icon,
             label: category.label,
