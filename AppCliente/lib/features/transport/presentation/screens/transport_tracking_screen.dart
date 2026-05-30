@@ -12,9 +12,8 @@ import 'package:nexum_client/features/transport/presentation/providers/transport
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
 Color _colorOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.taxi => AppColors.serviceTaxi,
+      TransportServiceType.transporte => AppColors.serviceParticular,
       TransportServiceType.moto => AppColors.serviceMoto,
-      TransportServiceType.particular => AppColors.serviceParticular,
       TransportServiceType.envios => AppColors.serviceEnvios,
     };
 

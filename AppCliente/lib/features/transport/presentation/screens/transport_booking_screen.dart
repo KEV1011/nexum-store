@@ -407,23 +407,20 @@ class _FareEstimateCard extends StatelessWidget {
 // ── Shared UI helpers ─────────────────────────────────────────────────────────
 
 IconData _iconOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.taxi => Icons.local_taxi_rounded,
+      TransportServiceType.transporte => Icons.directions_car_rounded,
       TransportServiceType.moto => Icons.two_wheeler_rounded,
-      TransportServiceType.particular => Icons.directions_car_rounded,
       TransportServiceType.envios => Icons.inventory_2_rounded,
     };
 
 Color _colorOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.taxi => AppColors.serviceTaxi,
+      TransportServiceType.transporte => AppColors.serviceParticular,
       TransportServiceType.moto => AppColors.serviceMoto,
-      TransportServiceType.particular => AppColors.serviceParticular,
       TransportServiceType.envios => AppColors.serviceEnvios,
     };
 
 Color _containerColorOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.taxi => AppColors.serviceTaxiContainer,
+      TransportServiceType.transporte => AppColors.serviceParticularContainer,
       TransportServiceType.moto => AppColors.serviceMotoContainer,
-      TransportServiceType.particular => AppColors.serviceParticularContainer,
       TransportServiceType.envios => AppColors.serviceEnviosContainer,
     };
 

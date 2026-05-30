@@ -1,35 +1,30 @@
 /// Tipos de servicio de transporte ofrecidos al cliente.
 enum TransportServiceType {
-  taxi,
+  transporte,
   moto,
-  particular,
   envios;
 
   String get label => switch (this) {
-        TransportServiceType.taxi => 'Taxi',
+        TransportServiceType.transporte => 'Transporte',
         TransportServiceType.moto => 'Moto',
-        TransportServiceType.particular => 'Particular',
         TransportServiceType.envios => 'Envíos',
       };
 
   String get description => switch (this) {
-        TransportServiceType.taxi => 'Taxi tradicional, tarifa regulada',
+        TransportServiceType.transporte => 'Carro o taxi, cómodo y seguro',
         TransportServiceType.moto => 'Mototaxi rápido y económico',
-        TransportServiceType.particular => 'Vehículo particular cómodo',
         TransportServiceType.envios => 'Envío de paquetes a domicilio',
       };
 
   double get baseFare => switch (this) {
-        TransportServiceType.taxi => 4000,
+        TransportServiceType.transporte => 4000,
         TransportServiceType.moto => 3000,
-        TransportServiceType.particular => 5000,
         TransportServiceType.envios => 5000,
       };
 
   double get perKmRate => switch (this) {
-        TransportServiceType.taxi => 800,
+        TransportServiceType.transporte => 900,
         TransportServiceType.moto => 600,
-        TransportServiceType.particular => 1000,
         TransportServiceType.envios => 800,
       };
 
