@@ -9,6 +9,7 @@ abstract final class AppConstants {
   static const String driverIdKey = 'driver_id';
   static const String needsRegistrationKey = 'needs_registration';
   static const String onboardingCompleteKey = 'onboarding_complete';
+  static const String tripHistoryKey = 'nexum_trip_history_v1';
 
   // OTP mock (hardcoded para fase MVP)
   static const String mockOtpCode = '123456';

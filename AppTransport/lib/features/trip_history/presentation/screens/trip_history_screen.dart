@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
+import 'package:nexum_driver/features/trip_history/presentation/providers/trip_history_provider.dart';
+import 'package:nexum_driver/shared/models/trip_model.dart';
 import 'package:nexum_driver/shared/widgets/skeleton_loader.dart';
 
-// ── Trip record model ─────────────────────────────────────────────────────────
+// ── Trip record view model ────────────────────────────────────────────────────
 
 class _TripRecord {
   const _TripRecord({
@@ -18,9 +22,6 @@ class _TripRecord {
     required this.durationMin,
     required this.earnings,
     required this.rating,
-    required this.isToday,
-    required this.isThisWeek,
-    required this.isThisMonth,
     required this.passengerName,
   });
 
@@ -33,177 +34,78 @@ class _TripRecord {
   final int durationMin;
   final double earnings;
   final double rating;
-  final bool isToday;
-  final bool isThisWeek;
-  final bool isThisMonth;
   final String passengerName;
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
+// ── Date helpers ──────────────────────────────────────────────────────────────
 
-const _mockTrips = [
-  _TripRecord(
-    id: '#1042',
-    serviceType: ServiceType.moto,
-    dateTime: 'Hoy, 14:32',
-    origin: 'Parque Agueda Gallardo',
-    destination: 'Terminal de Transportes',
-    distanceKm: 2.3,
-    durationMin: 8,
-    earnings: 7200,
-    rating: 5.0,
-    isToday: true,
-    isThisWeek: true,
-    isThisMonth: true,
-    passengerName: 'Valentina R.',
-  ),
-  _TripRecord(
-    id: '#1041',
-    serviceType: ServiceType.moto,
-    dateTime: 'Hoy, 11:15',
-    origin: 'Mercado Central',
-    destination: 'Colegio Nacional',
-    distanceKm: 1.8,
-    durationMin: 6,
-    earnings: 5800,
-    rating: 4.8,
-    isToday: true,
-    isThisWeek: true,
-    isThisMonth: true,
-    passengerName: 'Luis M.',
-  ),
-  _TripRecord(
-    id: '#1040',
-    serviceType: ServiceType.envios,
-    dateTime: 'Ayer, 16:44',
-    origin: 'Droguería La Economía',
-    destination: 'Barrio El Centro',
-    distanceKm: 1.2,
-    durationMin: 5,
-    earnings: 5200,
-    rating: 5.0,
-    isToday: false,
-    isThisWeek: true,
-    isThisMonth: true,
-    passengerName: 'Carolina P.',
-  ),
-  _TripRecord(
-    id: '#1039',
-    serviceType: ServiceType.motocarro,
-    dateTime: 'Ayer, 09:30',
-    origin: 'Plaza de Mercado',
-    destination: 'Barrio La Esperanza',
-    distanceKm: 3.1,
-    durationMin: 12,
-    earnings: 9300,
-    rating: 4.5,
-    isToday: false,
-    isThisWeek: true,
-    isThisMonth: true,
-    passengerName: 'Jorge H.',
-  ),
-  _TripRecord(
-    id: '#1038',
-    serviceType: ServiceType.moto,
-    dateTime: 'Lun, 15:20',
-    origin: 'Hospital San Juan de Dios',
-    destination: 'Urbanización El Pinar',
-    distanceKm: 2.7,
-    durationMin: 10,
-    earnings: 8100,
-    rating: 4.9,
-    isToday: false,
-    isThisWeek: true,
-    isThisMonth: true,
-    passengerName: 'Marcela T.',
-  ),
-  _TripRecord(
-    id: '#1037',
-    serviceType: ServiceType.taxi,
-    dateTime: 'Lun, 08:45',
-    origin: 'Hotel Orquídea',
-    destination: 'Alcaldía Municipal',
-    distanceKm: 1.5,
-    durationMin: 7,
-    earnings: 6400,
-    rating: 5.0,
-    isToday: false,
-    isThisWeek: true,
-    isThisMonth: true,
-    passengerName: 'Andrés F.',
-  ),
-  _TripRecord(
-    id: '#1036',
-    serviceType: ServiceType.particular,
-    dateTime: 'Dom, 19:00',
-    origin: 'Aeropuerto Camilo Daza',
-    destination: 'Hotel Cúcuta Plaza',
-    distanceKm: 8.4,
-    durationMin: 22,
-    earnings: 22800,
-    rating: 5.0,
-    isToday: false,
-    isThisWeek: false,
-    isThisMonth: true,
-    passengerName: 'Claudia V.',
-  ),
-  _TripRecord(
-    id: '#1035',
-    serviceType: ServiceType.moto,
-    dateTime: '20 may, 13:10',
-    origin: 'Parroquia Jesús de Nazaret',
-    destination: 'Supertiendas Olímpica',
-    distanceKm: 1.9,
-    durationMin: 7,
-    earnings: 6000,
-    rating: 4.7,
-    isToday: false,
-    isThisWeek: false,
-    isThisMonth: true,
-    passengerName: 'Sebastián C.',
-  ),
-  _TripRecord(
-    id: '#1034',
-    serviceType: ServiceType.envios,
-    dateTime: '18 may, 17:30',
-    origin: 'Farmacia Salud Total',
-    destination: 'Lomas del Norte',
-    distanceKm: 2.2,
-    durationMin: 9,
-    earnings: 7500,
-    rating: 5.0,
-    isToday: false,
-    isThisWeek: false,
-    isThisMonth: true,
-    passengerName: 'Isabel R.',
-  ),
-  _TripRecord(
-    id: '#1033',
-    serviceType: ServiceType.motocarro,
-    dateTime: '15 may, 10:00',
-    origin: 'Bodega Zona Industrial',
-    destination: 'Depósito Central',
-    distanceKm: 4.8,
-    durationMin: 18,
-    earnings: 13200,
-    rating: 4.6,
-    isToday: false,
-    isThisWeek: false,
-    isThisMonth: true,
-    passengerName: 'Ricardo B.',
-  ),
-];
+bool _isToday(DateTime dt) {
+  final now = DateTime.now();
+  return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+}
+
+bool _isThisWeek(DateTime dt) {
+  final now = DateTime.now();
+  final todayStart = DateTime(now.year, now.month, now.day);
+  final weekStart =
+      todayStart.subtract(Duration(days: todayStart.weekday - 1));
+  return !dt.isBefore(weekStart);
+}
+
+bool _isThisMonth(DateTime dt) {
+  final now = DateTime.now();
+  return dt.year == now.year && dt.month == now.month;
+}
+
+String _formatDateTime(DateTime dt) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final tripDay = DateTime(dt.year, dt.month, dt.day);
+  final diff = today.difference(tripDay).inDays;
+  final h = dt.hour.toString().padLeft(2, '0');
+  final m = dt.minute.toString().padLeft(2, '0');
+  final time = '$h:$m';
+  if (diff == 0) return 'Hoy, $time';
+  if (diff == 1) return 'Ayer, $time';
+  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  if (diff < 7) return '${dayNames[dt.weekday % 7]}, $time';
+  const monthNames = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'sep', 'oct', 'nov', 'dic',
+  ];
+  return '${dt.day} ${monthNames[dt.month - 1]}, $time';
+}
+
+_TripRecord _toRecord(TripModel trip) {
+  final dt = trip.finishedAt;
+  final rawId = trip.id;
+  final displayId = rawId.startsWith('seed-')
+      ? '#${rawId.replaceFirst('seed-', '')}'
+      : '#${rawId.length > 6 ? rawId.substring(0, 6).toUpperCase() : rawId.toUpperCase()}';
+  return _TripRecord(
+    id: displayId,
+    serviceType: trip.isDeliveryTrip ? ServiceType.envios : ServiceType.moto,
+    dateTime: _formatDateTime(dt),
+    origin: trip.origin.address,
+    destination: trip.destination.address,
+    distanceKm: trip.distanceKm,
+    durationMin: trip.durationMinutes,
+    earnings: trip.netEarning,
+    rating: trip.rating ?? 5.0,
+    passengerName: trip.passengerName,
+  );
+}
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-class TripHistoryScreen extends StatefulWidget {
+class TripHistoryScreen extends ConsumerStatefulWidget {
   const TripHistoryScreen({super.key});
 
   @override
-  State<TripHistoryScreen> createState() => _TripHistoryScreenState();
+  ConsumerState<TripHistoryScreen> createState() => _TripHistoryScreenState();
 }
 
-class _TripHistoryScreenState extends State<TripHistoryScreen> {
+class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
   bool _loading = true;
   int _dateFilterIndex = 0;
   ServiceType? _serviceTypeFilter;
@@ -218,23 +120,27 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
     });
   }
 
-  List<_TripRecord> get _filtered {
+  List<_TripRecord> _filterTrips(List<TripModel> all) {
     var list = switch (_dateFilterIndex) {
-      1 => _mockTrips.where((t) => t.isToday).toList(),
-      2 => _mockTrips.where((t) => t.isThisWeek).toList(),
-      3 => _mockTrips.where((t) => t.isThisMonth).toList(),
-      _ => _mockTrips.toList(),
+      1 => all.where((t) => _isToday(t.finishedAt)).toList(),
+      2 => all.where((t) => _isThisWeek(t.finishedAt)).toList(),
+      3 => all.where((t) => _isThisMonth(t.finishedAt)).toList(),
+      _ => all.toList(),
     };
     if (_serviceTypeFilter != null) {
-      list = list.where((t) => t.serviceType == _serviceTypeFilter).toList();
+      list = list.where((t) {
+        if (_serviceTypeFilter == ServiceType.envios) return t.isDeliveryTrip;
+        return !t.isDeliveryTrip;
+      }).toList();
     }
-    return list;
+    return list.map(_toRecord).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final filtered = _filtered;
+    final allTrips = ref.watch(tripHistoryProvider);
+    final filtered = _filterTrips(allTrips);
 
     if (_loading) {
       return Scaffold(
@@ -294,7 +200,6 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
                 horizontal: AppConstants.spacingM,
               ),
               children: [
-                // "Todos los tipos" chip
                 Padding(
                   padding:
                       const EdgeInsets.only(right: AppConstants.spacingS),
@@ -324,7 +229,9 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
                     child: FilterChip(
                       avatar: Icon(type.icon,
                           size: 14,
-                          color: isSelected ? type.color : AppColors.textSecondary),
+                          color: isSelected
+                              ? type.color
+                              : AppColors.textSecondary),
                       label: Text(type.displayName),
                       selected: isSelected,
                       onSelected: (_) =>
@@ -333,7 +240,9 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
                       showCheckmark: false,
                       labelStyle: TextStyle(
                         fontSize: 12,
-                        color: isSelected ? type.color : AppColors.textSecondary,
+                        color: isSelected
+                            ? type.color
+                            : AppColors.textSecondary,
                         fontWeight: isSelected
                             ? FontWeight.w600
                             : FontWeight.w400,

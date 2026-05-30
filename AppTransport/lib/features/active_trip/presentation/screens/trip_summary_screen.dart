@@ -10,6 +10,7 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/passenger_rating_sheet.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
+import 'package:nexum_driver/features/trip_history/presentation/providers/trip_history_provider.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 
 /// Pantalla de resumen de viaje completado.
@@ -29,8 +30,9 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   @override
   void initState() {
     super.initState();
-    if (!trip.isDeliveryTrip) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(tripHistoryProvider.notifier).add(trip);
+      if (!trip.isDeliveryTrip) {
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted) {
             PassengerRatingSheet.show(
@@ -39,8 +41,8 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
             );
           }
         });
-      });
-    }
+      }
+    });
   }
 
   @override

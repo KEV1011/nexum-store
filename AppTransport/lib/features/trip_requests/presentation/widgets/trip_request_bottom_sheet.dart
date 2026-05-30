@@ -170,29 +170,67 @@ class _TripRequestBottomSheet extends ConsumerWidget {
                       const Divider(color: AppColors.divider, height: 1),
                       const SizedBox(height: 16),
 
-                      // ── Trip stats row ────────────────────────────────────
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _TripStat(
-                            icon: Icons.straighten_rounded,
-                            value:
-                                '${request.distanceKm.toStringAsFixed(1)} km',
-                            label: 'Distancia',
+                      // ── Fare hero + secondary stats ───────────────────────
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.18),
                           ),
-                          _TripStat(
-                            icon: Icons.schedule_rounded,
-                            value: '${request.durationMinutes} min',
-                            label: 'Duración',
-                          ),
-                          _TripStat(
-                            icon: Icons.payments_rounded,
-                            value: CurrencyFormatter.format(
-                                request.estimatedFare),
-                            label: 'Tarifa',
-                            valueColor: AppColors.primary,
-                          ),
-                        ],
+                        ),
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                        child: Column(
+                          children: [
+                            Text(
+                              CurrencyFormatter.format(request.estimatedFare),
+                              style: const TextStyle(
+                                fontSize: 30,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const Text(
+                              'tarifa estimada',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textSecondary,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Center(
+                                    child: _TripStat(
+                                      icon: Icons.straighten_rounded,
+                                      value:
+                                          '${request.distanceKm.toStringAsFixed(1)} km',
+                                      label: 'Distancia',
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  width: 1,
+                                  height: 36,
+                                  color: AppColors.primary
+                                      .withValues(alpha: 0.15),
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: _TripStat(
+                                      icon: Icons.schedule_rounded,
+                                      value: '${request.durationMinutes} min',
+                                      label: 'Duración',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
 
                       const SizedBox(height: 24),
@@ -290,13 +328,11 @@ class _TripStat extends StatelessWidget {
     required this.icon,
     required this.value,
     required this.label,
-    this.valueColor = AppColors.textPrimary,
   });
 
   final IconData icon;
   final String value;
   final String label;
-  final Color valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -306,10 +342,10 @@ class _TripStat extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           value,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w700,
-            color: valueColor,
+            color: AppColors.textPrimary,
           ),
         ),
         const SizedBox(height: 2),
