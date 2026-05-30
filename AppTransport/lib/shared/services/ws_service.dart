@@ -29,10 +29,16 @@ class WsService {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
 
+  String? _activeTripId;
+
   final _tripCtrl = StreamController<TripRequestEntity>.broadcast();
 
   /// Emits every incoming trip request dispatched by the backend.
   Stream<TripRequestEntity> get tripRequests => _tripCtrl.stream;
+
+  /// The ID of the currently active trip, or `null` when no trip is in progress.
+  String? get activeTripId => _activeTripId;
+  void setActiveTripId(String? tripId) => _activeTripId = tripId;
 
   bool get isConnected => _channel != null;
 
@@ -83,6 +89,15 @@ class WsService {
   void rejectTrip(String tripId) =>
       _send({'type': 'reject', 'tripId': tripId});
 
+  void sendLocationUpdate(double lat, double lng, String? tripId) {
+    _send({
+      'type': 'location_update',
+      'lat': lat,
+      'lng': lng,
+      if (tripId != null) 'tripId': tripId,
+    });
+  }
+
   void _send(Map<String, dynamic> msg) {
     if (_channel == null) return;
     try {
@@ -95,10 +110,21 @@ class WsService {
   void _onMessage(dynamic raw) {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
-      if (msg['type'] == 'trip_request') {
+      final type = msg['type'] as String?;
+
+      if (type == 'trip_request') {
         final trip =
             _parseTripRequest(msg['trip'] as Map<String, dynamic>);
         if (trip != null) _tripCtrl.add(trip);
+      } else if (type == 'trip_accepted') {
+        // Extract trip ID from either trip.id or top-level tripId
+        final tripData = msg['trip'];
+        if (tripData is Map) {
+          _activeTripId = tripData['id'] as String?;
+        }
+        _activeTripId ??= msg['tripId'] as String?;
+      } else if (type == 'trip_completed' || type == 'trip_cancelled') {
+        _activeTripId = null;
       }
     } catch (_) {}
   }

@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
+import 'package:nexum_driver/shared/services/ws_service.dart';
 
 /// Servicio de geolocalización para el app del conductor.
 ///
@@ -19,6 +20,7 @@ class LocationService {
   factory LocationService() => _instance;
 
   Timer? _batchTimer;
+  StreamSubscription<Position>? _positionSub;
   Position? _lastPosition;
   bool _isTracking = false;
 
@@ -89,6 +91,16 @@ class LocationService {
     if (_isTracking) return;
     _isTracking = true;
 
+    // Listen to the position stream to keep _lastPosition fresh
+    _positionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+      ),
+    ).listen((pos) {
+      _lastPosition = pos;
+    });
+
     _batchTimer = Timer.periodic(
       Duration(seconds: AppConstants.locationBatchIntervalSeconds),
       (_) => _sendLocationBatch(),
@@ -105,6 +117,8 @@ class LocationService {
   void stopTracking() {
     _batchTimer?.cancel();
     _batchTimer = null;
+    _positionSub?.cancel();
+    _positionSub = null;
     _isTracking = false;
     // ignore: avoid_print
     print('[LocationService] Tracking detenido.');
@@ -120,18 +134,13 @@ class LocationService {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   void _sendLocationBatch() {
-    if (_lastPosition != null) {
-      // ignore: avoid_print
-      print(
-        '[LocationBatch] Enviando: '
-        'lat=${_lastPosition!.latitude.toStringAsFixed(6)}, '
-        'lng=${_lastPosition!.longitude.toStringAsFixed(6)}, '
-        'ts=${DateTime.now().toIso8601String()}',
-      );
-    } else {
-      // ignore: avoid_print
-      print('[LocationBatch] Sin posición GPS disponible aún.');
-    }
+    if (_lastPosition == null) return;
+    final ws = WsService();
+    ws.sendLocationUpdate(
+      _lastPosition!.latitude,
+      _lastPosition!.longitude,
+      ws.activeTripId,
+    );
   }
 
   /// Cancels any active timer and releases resources.
