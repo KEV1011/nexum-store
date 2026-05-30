@@ -17,18 +17,16 @@ const _pamplona = LatLng(1.2136, -77.2811);
 
 // Vehículos cercanos simulados (se animan periódicamente)
 final _seedVehicles = <_NearbyVehicle>[
-  _NearbyVehicle(TransportServiceType.taxi, const LatLng(1.2155, -77.2838)),
-  _NearbyVehicle(TransportServiceType.taxi, const LatLng(1.2112, -77.2792)),
-  _NearbyVehicle(TransportServiceType.taxi, const LatLng(1.2148, -77.2770)),
-  _NearbyVehicle(TransportServiceType.taxi, const LatLng(1.2172, -77.2822)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2155, -77.2838)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2112, -77.2792)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2148, -77.2770)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2172, -77.2822)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2108, -77.2847)),
   _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2162, -77.2802)),
   _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2129, -77.2829)),
   _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2141, -77.2768)),
-  _NearbyVehicle(
-      TransportServiceType.particular, const LatLng(1.2108, -77.2847)),
-  _NearbyVehicle(
-      TransportServiceType.particular, const LatLng(1.2175, -77.2759)),
   _NearbyVehicle(TransportServiceType.envios, const LatLng(1.2143, -77.2862)),
+  _NearbyVehicle(TransportServiceType.envios, const LatLng(1.2175, -77.2759)),
 ];
 
 class _NearbyVehicle {
@@ -50,7 +48,7 @@ class TransportHomeScreen extends ConsumerStatefulWidget {
 class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
     with TickerProviderStateMixin {
   final _mapController = MapController();
-  TransportServiceType _selected = TransportServiceType.taxi;
+  TransportServiceType _selected = TransportServiceType.transporte;
   Timer? _vehicleTimer;
   final _rng = math.Random();
   late final List<_NearbyVehicle> _vehicles;
@@ -58,10 +56,9 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
   late final Animation<double> _panelAnim;
 
   static const Map<TransportServiceType, int> _driverCounts = {
-    TransportServiceType.taxi: 4,
+    TransportServiceType.transporte: 5,
     TransportServiceType.moto: 3,
-    TransportServiceType.particular: 2,
-    TransportServiceType.envios: 1,
+    TransportServiceType.envios: 2,
   };
 
   @override
@@ -382,7 +379,7 @@ class _ActiveTripBanner extends StatelessWidget {
   }
 }
 
-// ── Panel inferior ────────────────────────────────────────────────────────────
+// ── Panel inferior (siempre oscuro, estilo InDriver) ─────────────────────────
 
 class _BottomPanel extends StatelessWidget {
   const _BottomPanel({
@@ -397,24 +394,20 @@ class _BottomPanel extends StatelessWidget {
   final List<TransportRequestEntity> history;
   final ValueChanged<TransportServiceType> onServiceTap;
 
+  // Colores fijos dark panel
+  static const _panelBg = Color(0xFF1A1D27);
+  static const _cardBg = Color(0xFF252836);
+  static const _handleColor = Color(0xFF2E3347);
+  static const _subText = Color(0xFF94A3B8);
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF1A1D27) : Colors.white;
-    final subColor =
-        isDark ? const Color(0xFF94A3B8) : AppColors.textSecondary;
-    final inputBg =
-        isDark ? const Color(0xFF252836) : const Color(0xFFF0F2F5);
-
     return Container(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-        boxShadow: const [
-          BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 24,
-              offset: Offset(0, -5)),
+      decoration: const BoxDecoration(
+        color: _panelBg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        boxShadow: [
+          BoxShadow(color: Color(0x55000000), blurRadius: 28, offset: Offset(0, -6)),
         ],
       ),
       child: Column(
@@ -423,13 +416,11 @@ class _BottomPanel extends StatelessWidget {
           // Handle
           Center(
             child: Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 6),
-              width: 38,
+              margin: const EdgeInsets.only(top: 10, bottom: 8),
+              width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: isDark
-                    ? const Color(0xFF2E3347)
-                    : const Color(0xFFDDE1E7),
+                color: _handleColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -437,7 +428,7 @@ class _BottomPanel extends StatelessWidget {
 
           // Tabs de servicio
           SizedBox(
-            height: 92,
+            height: 114,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -449,14 +440,14 @@ class _BottomPanel extends StatelessWidget {
                   service: svc,
                   isSelected: svc == selected,
                   count: driverCounts[svc] ?? 0,
-                  isDark: isDark,
                   onTap: () => onServiceTap(svc),
                 );
+
               },
             ),
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
           // Barra de búsqueda / destino
           Padding(
@@ -468,12 +459,12 @@ class _BottomPanel extends StatelessWidget {
               ),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
+                    horizontal: 16, vertical: 15),
                 decoration: BoxDecoration(
-                  color: inputBg,
+                  color: _cardBg,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: _colorOf(selected).withValues(alpha: 0.4),
+                    color: _colorOf(selected).withValues(alpha: 0.5),
                     width: 1.5,
                   ),
                 ),
@@ -485,9 +476,9 @@ class _BottomPanel extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '¿A dónde y por cuánto?',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 15,
-                          color: subColor,
+                          color: _subText,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -522,14 +513,14 @@ class _BottomPanel extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Icon(Icons.history_rounded, size: 14, color: subColor),
+                  const Icon(Icons.history_rounded, size: 14, color: _subText),
                   const SizedBox(width: 6),
-                  Text(
+                  const Text(
                     'Recientes',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: subColor,
+                      color: _subText,
                     ),
                   ),
                 ],
@@ -537,11 +528,7 @@ class _BottomPanel extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             ...history.map(
-              (r) => _RecentTile(
-                request: r,
-                isDark: isDark,
-                subColor: subColor,
-              ),
+              (r) => _RecentTile(request: r),
             ),
           ],
 
@@ -559,46 +546,38 @@ class _ServiceTab extends StatelessWidget {
     required this.service,
     required this.isSelected,
     required this.count,
-    required this.isDark,
     required this.onTap,
   });
 
   final TransportServiceType service;
   final bool isSelected;
   final int count;
-  final bool isDark;
   final VoidCallback onTap;
+
+  static const _cardBg = Color(0xFF252836);
+  static const _borderColor = Color(0xFF2E3347);
+  static const _subText = Color(0xFF94A3B8);
 
   @override
   Widget build(BuildContext context) {
     final color = _colorOf(service);
-    final bg = isSelected
-        ? color
-        : (isDark ? const Color(0xFF252836) : const Color(0xFFF0F2F5));
+    final bg = isSelected ? color : _cardBg;
     final iconColor = isSelected ? Colors.white : color;
-    final labelColor = isSelected
-        ? Colors.white
-        : (isDark ? const Color(0xFFE2E8F0) : AppColors.textPrimary);
-    final subTextColor = isDark
-        ? const Color(0xFF94A3B8)
-        : AppColors.textSecondary;
+    final labelColor =
+        isSelected ? Colors.white : const Color(0xFFE2E8F0);
 
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
-        width: 88,
+        width: 110,
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(18),
           border: isSelected
               ? null
-              : Border.all(
-                  color: isDark
-                      ? const Color(0xFF2E3347)
-                      : const Color(0xFFDDE1E7),
-                ),
+              : Border.all(color: _borderColor),
           boxShadow: isSelected
               ? [
                   BoxShadow(
@@ -612,47 +591,48 @@ class _ServiceTab extends StatelessWidget {
         child: Stack(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(_iconOf(service), size: 26, color: iconColor),
-                  const SizedBox(height: 6),
+                  Icon(_iconOf(service), size: 32, color: iconColor),
+                  const SizedBox(height: 8),
                   Text(
                     service.label,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: labelColor,
                     ),
                   ),
-                  if (!isSelected)
-                    Text(
-                      'Desde ${CurrencyFormatter.format(service.baseFare)}',
-                      style: TextStyle(fontSize: 9, color: subTextColor),
-                    ),
+                  Text(
+                    service.description,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 9, color: _subText),
+                  ),
                 ],
               ),
             ),
             if (count > 0)
               Positioned(
-                top: 7,
-                right: 7,
+                top: 8,
+                right: 8,
                 child: Container(
-                  width: 19,
-                  height: 19,
+                  width: 21,
+                  height: 21,
                   decoration: BoxDecoration(
                     color: isSelected
                         ? Colors.white.withValues(alpha: 0.22)
-                        : color.withValues(alpha: 0.14),
+                        : color.withValues(alpha: 0.18),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
                     child: Text(
                       '$count',
                       style: TextStyle(
-                        fontSize: 10,
+                        fontSize: 11,
                         fontWeight: FontWeight.w800,
                         color: isSelected ? Colors.white : color,
                       ),
@@ -670,23 +650,16 @@ class _ServiceTab extends StatelessWidget {
 // ── Tile de viaje reciente ────────────────────────────────────────────────────
 
 class _RecentTile extends StatelessWidget {
-  const _RecentTile({
-    required this.request,
-    required this.isDark,
-    required this.subColor,
-  });
+  const _RecentTile({required this.request});
 
   final TransportRequestEntity request;
-  final bool isDark;
-  final Color subColor;
+
+  static const _textColor = Color(0xFFE2E8F0);
+  static const _subText = Color(0xFF94A3B8);
+  static const _iconBg = Color(0xFF252836);
 
   @override
   Widget build(BuildContext context) {
-    final textColor =
-        isDark ? const Color(0xFFE2E8F0) : AppColors.textPrimary;
-    final iconBg =
-        isDark ? const Color(0xFF252836) : const Color(0xFFF0F2F5);
-
     return InkWell(
       onTap: () =>
           context.push(AppRoutes.transportTrackingPath(request.id)),
@@ -697,12 +670,12 @@ class _RecentTile extends StatelessWidget {
             Container(
               width: 38,
               height: 38,
-              decoration: BoxDecoration(
-                color: iconBg,
+              decoration: const BoxDecoration(
+                color: _iconBg,
                 shape: BoxShape.circle,
               ),
-              child:
-                  Icon(Icons.history_rounded, size: 18, color: subColor),
+              child: const Icon(Icons.history_rounded,
+                  size: 18, color: _subText),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -713,21 +686,22 @@ class _RecentTile extends StatelessWidget {
                     request.destinationAddress,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: textColor,
+                      color: _textColor,
                     ),
                   ),
                   Text(
                     '${request.serviceType.label} · '
                     '${CurrencyFormatter.format(request.estimatedFare)}',
-                    style: TextStyle(fontSize: 11, color: subColor),
+                    style: const TextStyle(fontSize: 11, color: _subText),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.north_west_rounded, size: 17, color: subColor),
+            const Icon(Icons.north_west_rounded,
+                size: 17, color: _subText),
           ],
         ),
       ),
@@ -738,15 +712,13 @@ class _RecentTile extends StatelessWidget {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 IconData _iconOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.taxi => Icons.local_taxi_rounded,
+      TransportServiceType.transporte => Icons.directions_car_rounded,
       TransportServiceType.moto => Icons.two_wheeler_rounded,
-      TransportServiceType.particular => Icons.directions_car_rounded,
       TransportServiceType.envios => Icons.inventory_2_rounded,
     };
 
 Color _colorOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.taxi => AppColors.serviceTaxi,
+      TransportServiceType.transporte => AppColors.serviceParticular,
       TransportServiceType.moto => AppColors.serviceMoto,
-      TransportServiceType.particular => AppColors.serviceParticular,
       TransportServiceType.envios => AppColors.serviceEnvios,
     };

@@ -14,6 +14,8 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/domain/service_type_provider.dart';
+import 'package:nexum_driver/core/domain/work_mode.dart';
+import 'package:nexum_driver/core/domain/work_mode_provider.dart';
 import 'package:nexum_driver/core/mock_data/driver_mock.dart';
 import 'package:nexum_driver/core/mock_data/passengers_mock.dart';
 import 'package:nexum_driver/core/mock_data/trips_mock.dart';
@@ -153,10 +155,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     if (goingOnline) {
-      final serviceType = ref.read(selectedServiceTypeProvider);
+      final workMode = ref.read(selectedWorkModeProvider);
       AppSnackbar.showSuccess(
         context,
-        'En línea como ${serviceType.displayName}. Buscando viajes...',
+        'En línea · Buscando ${workMode.seekingLabel}...',
       );
       _connectWs();
     } else {
@@ -166,11 +168,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  // ── Service type ───────────────────────────────────────────────────────
+  // ── Work mode ──────────────────────────────────────────────────────────
 
-  void _selectServiceType(ServiceType type) {
+  void _selectWorkMode(WorkMode mode) {
     if (_state.isOnline) return;
-    ref.read(selectedServiceTypeProvider.notifier).state = type;
+    ref.read(selectedWorkModeProvider.notifier).state = mode;
   }
 
   // ── Mock trip dispatch ─────────────────────────────────────────────────
@@ -199,9 +201,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         .passengers[_rng.nextInt(PassengersMock.passengers.length)];
     final dist = tripData.distanceKm;
     final dur = tripData.durationMinutes;
-    final serviceType = ref.read(selectedServiceTypeProvider);
-    final fare = serviceType.estimateFare(dist, dur.toDouble()) *
-        (1 - serviceType.platformCommission);
+    final workMode = ref.read(selectedWorkModeProvider);
+    final fare = workMode.estimateFare(dist, dur.toDouble()) *
+        (1 - workMode.platformCommission);
 
     final request = TripRequestEntity(
       id: '${tripData.id}_${DateTime.now().millisecondsSinceEpoch}',
@@ -340,6 +342,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final serviceType = ref.watch(selectedServiceTypeProvider);
+    final workMode = ref.watch(selectedWorkModeProvider);
 
     return Scaffold(
       drawer: _AppDrawer(
@@ -372,19 +375,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       height: 48,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: serviceType.color,
+                          color: workMode.color,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 3),
                           boxShadow: [
                             BoxShadow(
-                              color: serviceType.color.withValues(alpha: 0.45),
+                              color: workMode.color.withValues(alpha: 0.45),
                               blurRadius: 12,
                               offset: const Offset(0, 3),
                             ),
                           ],
                         ),
                         child: Icon(
-                          serviceType.icon,
+                          workMode.icon,
                           color: Colors.white,
                           size: 22,
                         ),
@@ -431,7 +434,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (_state.pendingRequest != null)
             _TripRequestModal(
               trip: _state.pendingRequest!,
-              serviceType: serviceType,
+              workMode: workMode,
               secondsLeft: _state.requestSecondsLeft,
               onAccept: () => _acceptTrip(_state.pendingRequest!),
               onReject: () => _rejectTrip(_state.pendingRequest!),
@@ -442,6 +445,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildTopBar(ServiceType serviceType) {
+    final workMode = ref.watch(selectedWorkModeProvider);
     return Padding(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       child: Row(
@@ -457,7 +461,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Online toggle
           _OnlineToggle(
             isOnline: _state.isOnline,
-            serviceType: serviceType,
+            workMode: workMode,
             onTap: _toggleOnline,
           ),
           const Spacer(),
@@ -486,22 +490,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  static const _panelBg = Color(0xFF1A1D27);
+  static const _panelHandle = Color(0xFF2E3347);
+  static const _panelSubText = Color(0xFF94A3B8);
+  static const _panelText = Color(0xFFE2E8F0);
+
   Widget _buildBottomPanel(ServiceType serviceType) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final workMode = ref.watch(selectedWorkModeProvider);
     final driverStatus = ref.watch(driverStatusProvider);
 
     return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-        borderRadius: const BorderRadius.vertical(
+      decoration: const BoxDecoration(
+        color: _panelBg,
+        borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppConstants.radiusXLarge),
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: AppColors.shadowMedium,
-            blurRadius: 16,
-            offset: Offset(0, -4),
+            color: Color(0x55000000),
+            blurRadius: 20,
+            offset: Offset(0, -5),
           ),
         ],
       ),
@@ -519,7 +527,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+              color: _panelHandle,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -532,8 +540,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Text(
                 '${_greeting()}, '
                 '${DriverMock.firstName.split(' ').first}',
-                style: theme.textTheme.titleMedium?.copyWith(
+                style: const TextStyle(
+                  color: _panelText,
                   fontWeight: FontWeight.w700,
+                  fontSize: 16,
                 ),
               ),
               if (driverStatus.dailyTrips >= _kDailyTripGoal)
@@ -576,14 +586,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: [
               Text(
                 '${driverStatus.dailyTrips}/$_kDailyTripGoal viajes hoy',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
+                style: const TextStyle(
+                  color: _panelSubText,
+                  fontSize: 12,
                 ),
               ),
               Text(
                 '${((driverStatus.dailyTrips / _kDailyTripGoal) * 100).round().clamp(0, 100)}%',
-                style: theme.textTheme.bodySmall?.copyWith(
+                style: const TextStyle(
                   color: AppColors.primary,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -596,9 +608,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               value: (driverStatus.dailyTrips / _kDailyTripGoal)
                   .clamp(0.0, 1.0),
               minHeight: 6,
-              backgroundColor: isDark
-                  ? AppColors.outlineDark
-                  : AppColors.outlineLight,
+              backgroundColor: _panelHandle,
               valueColor: AlwaysStoppedAnimation<Color>(
                 driverStatus.dailyTrips >= _kDailyTripGoal
                     ? AppColors.success
@@ -608,11 +618,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
 
-          // Service type selector (only when offline)
+          // Work mode selector (only when offline)
           if (!_state.isOnline) ...[
-            _ServiceTypeSelector(
-              selected: serviceType,
-              onSelect: _selectServiceType,
+            _WorkModeSelector(
+              selected: workMode,
+              onSelect: _selectWorkMode,
             ),
             const SizedBox(height: AppConstants.spacingM),
           ],
@@ -636,7 +646,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _StatCard(
                 label: 'Viajes',
                 value: driverStatus.dailyTrips.toString(),
-                icon: serviceType.icon,
+                icon: workMode.icon,
               ),
             ],
           ),
@@ -656,17 +666,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
               const SizedBox(width: AppConstants.spacingS),
-              Text(
-                _state.isOnline
-                    ? 'En línea como ${serviceType.displayName} · Buscando...'
-                    : 'Desconectado · Selecciona servicio y activa el toggle',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: _state.isOnline
-                      ? AppColors.online
-                      : AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
+              Flexible(
+                child: Text(
+                  _state.isOnline
+                      ? 'En línea · Buscando ${workMode.seekingLabel}...'
+                      : 'Desconectado · Elige qué quieres hacer y activa el toggle',
+                  style: TextStyle(
+                    color: _state.isOnline
+                        ? AppColors.online
+                        : _panelSubText,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -676,100 +689,126 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-// ── Service type selector ────────────────────────────────────────────────────
+// ── Work mode selector ────────────────────────────────────────────────────────
 
-class _ServiceTypeSelector extends StatelessWidget {
-  const _ServiceTypeSelector({
+class _WorkModeSelector extends StatelessWidget {
+  const _WorkModeSelector({
     required this.selected,
     required this.onSelect,
   });
 
-  final ServiceType selected;
-  final ValueChanged<ServiceType> onSelect;
+  final WorkMode selected;
+  final ValueChanged<WorkMode> onSelect;
+
+  static const _subText = Color(0xFF94A3B8);
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Tipo de servicio',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
+        const Text(
+          '¿Qué quieres hacer?',
+          style: TextStyle(
+            color: _subText,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: AppConstants.spacingS),
-        SizedBox(
-          height: 72,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            clipBehavior: Clip.none,
-            children: ServiceType.values
-                .map(
-                  (type) => Padding(
-                    padding: const EdgeInsets.only(right: AppConstants.spacingS),
-                    child: _ServiceTypeChip(
-                      type: type,
-                      isSelected: type == selected,
-                      onTap: () => onSelect(type),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
+        Row(
+          children: WorkMode.values.map((mode) {
+            final isSelected = mode == selected;
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  right: mode != WorkMode.values.last
+                      ? AppConstants.spacingS
+                      : 0,
+                ),
+                child: _WorkModeCard(
+                  mode: mode,
+                  isSelected: isSelected,
+                  onTap: () => onSelect(mode),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );
   }
 }
 
-class _ServiceTypeChip extends StatelessWidget {
-  const _ServiceTypeChip({
-    required this.type,
+class _WorkModeCard extends StatelessWidget {
+  const _WorkModeCard({
+    required this.mode,
     required this.isSelected,
     required this.onTap,
   });
 
-  final ServiceType type;
+  final WorkMode mode;
   final bool isSelected;
   final VoidCallback onTap;
 
+  static const _cardBg = Color(0xFF252836);
+  static const _borderColor = Color(0xFF2E3347);
+  static const _subText = Color(0xFF94A3B8);
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final bg = isSelected ? mode.color : _cardBg;
+    final iconColor = isSelected ? Colors.white : mode.color;
+    final labelColor =
+        isSelected ? Colors.white : const Color(0xFFE2E8F0);
+    final subColor = isSelected
+        ? Colors.white.withValues(alpha: 0.8)
+        : _subText;
 
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: AppConstants.shortAnimation,
-        width: 82,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected ? type.color : type.containerColor.withValues(alpha: 0.5),
+          color: bg,
           borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-          border: Border.all(
-            color: isSelected ? type.color : type.color.withValues(alpha: 0.25),
-            width: isSelected ? 2 : 1,
-          ),
+          border: isSelected
+              ? null
+              : Border.all(color: _borderColor),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: mode.color.withValues(alpha: 0.38),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              type.icon,
-              size: 22,
-              color: isSelected ? Colors.white : type.color,
-            ),
-            const SizedBox(height: 4),
+            Icon(mode.icon, size: 28, color: iconColor),
+            const SizedBox(height: 6),
             Text(
-              type.displayName,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 10,
+              mode.displayName,
+              style: TextStyle(
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: isSelected ? Colors.white : type.color,
+                color: labelColor,
               ),
               textAlign: TextAlign.center,
-              maxLines: 1,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              mode.subtitle,
+              style: TextStyle(
+                fontSize: 9,
+                color: subColor,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
           ],
@@ -1326,12 +1365,12 @@ class _DrawerItem extends StatelessWidget {
 class _OnlineToggle extends StatefulWidget {
   const _OnlineToggle({
     required this.isOnline,
-    required this.serviceType,
+    required this.workMode,
     required this.onTap,
   });
 
   final bool isOnline;
-  final ServiceType serviceType;
+  final WorkMode workMode;
   final VoidCallback onTap;
 
   @override
@@ -1541,11 +1580,14 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final bool highlight;
 
+  static const _cardBg = Color(0xFF252836);
+  static const _highlightBg = Color(0x1A3B82F6);
+  static const _borderColor = Color(0xFF2E3347);
+  static const _subText = Color(0xFF94A3B8);
+  static const _textColor = Color(0xFFE2E8F0);
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(
@@ -1553,17 +1595,11 @@ class _StatCard extends StatelessWidget {
           vertical: AppConstants.spacingS,
         ),
         decoration: BoxDecoration(
-          color: highlight
-              ? AppColors.primary.withValues(alpha: 0.1)
-              : (isDark
-                  ? AppColors.surfaceVariantDark
-                  : AppColors.surfaceVariantLight),
+          color: highlight ? _highlightBg : _cardBg,
           borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
           border: highlight
               ? Border.all(color: AppColors.primary.withValues(alpha: 0.3))
-              : Border.all(
-                  color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
-                ),
+              : Border.all(color: _borderColor),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1571,14 +1607,14 @@ class _StatCard extends StatelessWidget {
             Icon(
               icon,
               size: 16,
-              color: highlight ? AppColors.primary : AppColors.textSecondary,
+              color: highlight ? AppColors.primary : _subText,
             ),
             const SizedBox(height: 2),
             Text(
               value,
-              style: theme.textTheme.titleSmall?.copyWith(
+              style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: highlight ? AppColors.primary : AppColors.textPrimary,
+                color: highlight ? AppColors.primary : _textColor,
                 fontSize: 13,
               ),
               maxLines: 1,
@@ -1586,8 +1622,8 @@ class _StatCard extends StatelessWidget {
             ),
             Text(
               label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
+              style: const TextStyle(
+                color: _subText,
                 fontSize: 10,
               ),
             ),
@@ -1602,14 +1638,14 @@ class _StatCard extends StatelessWidget {
 class _TripRequestModal extends StatelessWidget {
   const _TripRequestModal({
     required this.trip,
-    required this.serviceType,
+    required this.workMode,
     required this.secondsLeft,
     required this.onAccept,
     required this.onReject,
   });
 
   final TripRequestEntity trip;
-  final ServiceType serviceType;
+  final WorkMode workMode;
   final int secondsLeft;
   final VoidCallback onAccept;
   final VoidCallback onReject;
@@ -1640,7 +1676,7 @@ class _TripRequestModal extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Service type badge
+                        // Work mode badge
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Container(
@@ -1649,22 +1685,22 @@ class _TripRequestModal extends StatelessWidget {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: serviceType.containerColor,
+                              color: workMode.containerColor,
                               borderRadius: BorderRadius.circular(
                                   AppConstants.radiusSmall),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(serviceType.icon,
-                                    size: 12, color: serviceType.color),
+                                Icon(workMode.icon,
+                                    size: 12, color: workMode.color),
                                 const SizedBox(width: 4),
                                 Text(
-                                  serviceType.displayName,
+                                  workMode.displayName,
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
-                                    color: serviceType.color,
+                                    color: workMode.color,
                                   ),
                                 ),
                               ],
