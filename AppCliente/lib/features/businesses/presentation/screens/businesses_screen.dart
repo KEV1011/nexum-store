@@ -89,9 +89,9 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
     }).toList();
 
     if (filtered.isEmpty) {
-      return const SliverFillRemaining(
+      return SliverFillRemaining(
         hasScrollBody: false,
-        child: _EmptyState(),
+        child: _EmptyState(favoritesMode: _favoritesSelected),
       );
     }
 
@@ -341,21 +341,44 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({this.favoritesMode = false});
+
+  final bool favoritesMode;
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.search_off_rounded,
+            favoritesMode
+                ? Icons.favorite_border_rounded
+                : Icons.search_off_rounded,
             size: 56,
             color: AppColors.textTertiary,
           ),
-          SizedBox(height: AppConstants.spacingM),
-          Text('No encontramos negocios con ese filtro'),
+          const SizedBox(height: AppConstants.spacingM),
+          Text(
+            favoritesMode
+                ? 'Aún no tienes favoritos'
+                : 'No encontramos negocios con ese filtro',
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (favoritesMode) ...[
+            const SizedBox(height: AppConstants.spacingXS),
+            const Text(
+              'Toca el corazón en un negocio para guardarlo',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
         ],
       ),
     );
