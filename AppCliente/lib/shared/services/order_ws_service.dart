@@ -22,15 +22,14 @@ class OrderUpdateEvent {
 /// en tiempo real desde el backend Nexum.
 ///
 /// Protocolo cliente → servidor:
-///   {"type": "auth", "token": "..."}
+///   {"type": "client_auth", "token": "..."}   ← autenticación
 ///   {"type": "subscribe_order", "orderId": "..."}
 ///   {"type": "unsubscribe_order", "orderId": "..."}
 ///
 /// Protocolo servidor → cliente:
+///   {"type": "client_auth_ok", "clientId": "..."}
+///   {"type": "client_auth_error", "message": "..."}
 ///   {"type": "order_update", "orderId": "...", ...campos del pedido}
-///
-/// En web/demo (sin backend), connect() retorna false y el caller
-/// debe usar la simulación por Timer como fallback.
 class OrderWsService {
   factory OrderWsService() => _instance;
   OrderWsService._();
@@ -43,21 +42,20 @@ class OrderWsService {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
   bool _authenticated = false;
+  bool _waitingForAuth = false;
+  Completer<bool>? _authCompleter;
 
-  final _updateCtrl =
-      StreamController<OrderUpdateEvent>.broadcast();
+  final _updateCtrl = StreamController<OrderUpdateEvent>.broadcast();
 
-  /// Stream de actualizaciones de pedidos.
   Stream<OrderUpdateEvent> get updates => _updateCtrl.stream;
 
   bool get isConnected => _channel != null && _authenticated;
 
   // ── connect ────────────────────────────────────────────────────────────────
 
-  /// Intenta conectar al backend y autenticar con el token guardado.
+  /// Intenta conectar al backend y autenticar con el token de cliente guardado.
   ///
-  /// Devuelve `true` si la conexión se establece, `false` en caso contrario
-  /// (web, sin token, sin backend, timeout).
+  /// Devuelve `true` si `client_auth_ok` llega en menos de 3 s.
   Future<bool> connect() async {
     if (kIsWeb) return false;
     if (_channel != null) return _authenticated;
@@ -67,23 +65,35 @@ class OrderWsService {
 
     try {
       _channel = WebSocketChannel.connect(Uri.parse(ApiConfig.wsUrl));
-
-      // Esperar ready con timeout de 3 s para no bloquear la UI.
       await _channel!.ready.timeout(const Duration(seconds: 3));
 
-      _channel!.sink.add(jsonEncode({'type': 'auth', 'token': token}));
-      _authenticated = true;
+      _waitingForAuth = true;
+      _authCompleter = Completer<bool>();
 
       _sub = _channel!.stream.listen(
         _onMessage,
-        onError: (_) => _cleanup(),
-        onDone: _cleanup,
+        onError: (_) {
+          _authCompleter?.complete(false);
+          _cleanup();
+        },
+        onDone: () {
+          _authCompleter?.complete(false);
+          _cleanup();
+        },
         cancelOnError: true,
       );
-      return true;
+
+      // Use 'client_auth' — not 'auth' which is the driver message type.
+      _channel!.sink.add(jsonEncode({'type': 'client_auth', 'token': token}));
+
+      final ok = await _authCompleter!.future.timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => false,
+      );
+      if (!ok) _cleanup();
+      return ok;
     } catch (_) {
-      _channel = null;
-      _authenticated = false;
+      _cleanup();
       return false;
     }
   }
@@ -110,6 +120,7 @@ class OrderWsService {
     _channel = null;
     _sub = null;
     _authenticated = false;
+    _waitingForAuth = false;
   }
 
   // ── message handler ────────────────────────────────────────────────────────
@@ -117,7 +128,23 @@ class OrderWsService {
   void _onMessage(dynamic raw) {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
-      if (msg['type'] == 'order_update') {
+      final type = msg['type'] as String?;
+
+      // Handshake phase
+      if (_waitingForAuth) {
+        if (type == 'client_auth_ok') {
+          _authenticated = true;
+          _waitingForAuth = false;
+          _authCompleter?.complete(true);
+        } else if (type == 'client_auth_error') {
+          _waitingForAuth = false;
+          _authCompleter?.complete(false);
+        }
+        return;
+      }
+
+      // Normal messages
+      if (type == 'order_update') {
         final orderId = msg['orderId'] as String?;
         if (orderId != null) {
           _updateCtrl.add(OrderUpdateEvent(orderId: orderId, payload: msg));

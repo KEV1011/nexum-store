@@ -177,6 +177,12 @@ export type WsMessageType =
   | 'auth'
   | 'auth_ok'
   | 'auth_error'
+  | 'client_auth'
+  | 'client_auth_ok'
+  | 'client_auth_error'
+  | 'subscribe_order'
+  | 'unsubscribe_order'
+  | 'order_update'
   | 'trip_request'
   | 'accept'
   | 'reject'
@@ -335,4 +341,83 @@ export type BusinessWsMessageType =
 export interface BusinessWsMessage {
   type: BusinessWsMessageType;
   [key: string]: unknown;
+}
+
+// ─── Client ───────────────────────────────────────────────────────────────────
+
+export interface ClientDTO {
+  id: string;
+  phone: string;
+  name: string;
+}
+
+export interface ClientJwtPayload {
+  clientId: string;
+  phone: string;
+  role: 'client';
+}
+
+// ─── Products & Public Business ──────────────────────────────────────────────
+
+export interface ProductDTO {
+  id: string;
+  businessId: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  isAvailable: boolean;
+}
+
+export interface BusinessPublicDTO {
+  id: string;
+  name: string;
+  category: BusinessCategory;
+  address: string;
+  rating: number;
+  etaMinutes: number;
+  deliveryFee: number;
+  isOpen: boolean;
+  products: ProductDTO[];
+}
+
+// ─── Client Orders ────────────────────────────────────────────────────────────
+
+export interface ClientOrderLineDTO {
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface ClientPlaceOrderDTO {
+  businessId: string;
+  deliveryAddress: string;
+  items: ClientOrderLineDTO[];
+}
+
+export interface ClientOrderSummaryDTO {
+  id: string;
+  orderRef: string;
+  businessId: string;
+  businessName: string;
+  status: string;
+  subtotal: number;
+  deliveryFee: number;
+  total: number;
+  etaMinutes: number;
+  items: Array<{
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+  }>;
+  deliveryAddress: string;
+  driverName?: string;
+  driverPhone?: string;
+  pickupPhotoUrl?: string;
+  deliveryPhotoUrl?: string;
+  hasSignature: boolean;
+  createdAt: string;
+  pickedUpAt?: string;
+  deliveredAt?: string;
 }

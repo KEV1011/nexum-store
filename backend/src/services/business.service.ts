@@ -6,42 +6,92 @@ import {
   CreateDeliveryOrderDTO,
   OrderStatusUpdateDTO,
   DeliveryOrderSummaryDTO,
+  ProductDTO,
+  BusinessPublicDTO,
 } from '../types';
 
 // ─── Mock data: pre-registered businesses ────────────────────────────────────
 
 const businesses = new Map<string, Business>([
-  [
-    'biz-001',
-    {
-      id: 'biz-001',
-      name: 'Restaurante El Sabor Pamplonés',
-      ownerName: 'Hernán Suárez',
-      phone: '+573101234567',
-      address: 'Cra. 6 #8-45, Centro, Pamplona',
-      category: 'restaurant',
-      accessToken: 'sabor-pamp-2024',
-      whatsapp: '+573101234567',
-      createdAt: new Date('2024-01-15'),
-      isActive: true,
-    },
-  ],
-  [
-    'biz-002',
-    {
-      id: 'biz-002',
-      name: 'Droguería San Juan',
-      ownerName: 'Claudia Rincón',
-      phone: '+573119876543',
-      address: 'Calle 7 #5-12, Centro, Pamplona',
-      category: 'pharmacy',
-      accessToken: 'drogueria-sj-2024',
-      whatsapp: '+573119876543',
-      createdAt: new Date('2024-02-10'),
-      isActive: true,
-    },
-  ],
+  ['biz-001', {
+    id: 'biz-001', name: 'Restaurante El Sabor Pamplonés',
+    ownerName: 'Hernán Suárez', phone: '+573101234567',
+    address: 'Cra. 6 #8-45, Centro, Pamplona', category: 'restaurant',
+    accessToken: 'sabor-pamp-2024', whatsapp: '+573101234567',
+    createdAt: new Date('2024-01-15'), isActive: true,
+  }],
+  ['biz-002', {
+    id: 'biz-002', name: 'Droguería San Juan',
+    ownerName: 'Claudia Rincón', phone: '+573119876543',
+    address: 'Calle 7 #5-12, Centro, Pamplona', category: 'pharmacy',
+    accessToken: 'drogueria-sj-2024', whatsapp: '+573119876543',
+    createdAt: new Date('2024-02-10'), isActive: true,
+  }],
+  ['biz-003', {
+    id: 'biz-003', name: 'Supermercado La Económica',
+    ownerName: 'Roberto Cáceres', phone: '+573121111111',
+    address: 'Av. Santander #14-30, Pamplona', category: 'supermarket',
+    accessToken: 'la-economica-2024',
+    createdAt: new Date('2024-03-01'), isActive: true,
+  }],
+  ['biz-004', {
+    id: 'biz-004', name: 'Pizzería Don Lucho',
+    ownerName: 'Lucho García', phone: '+573122222222',
+    address: 'Cra. 5 #9-18, Centro, Pamplona', category: 'restaurant',
+    accessToken: 'pizzeria-lucho-2024',
+    createdAt: new Date('2024-02-20'), isActive: true,
+  }],
 ]);
+
+// ─── Products ─────────────────────────────────────────────────────────────────
+
+const productsMap = new Map<string, ProductDTO[]>([
+  ['biz-001', [
+    { id: 'p-101', businessId: 'biz-001', name: 'Bandeja Paisa', description: 'Frijoles, arroz, carne molida, chicharrón, huevo', price: 18000, category: 'Almuerzos', isAvailable: true },
+    { id: 'p-102', businessId: 'biz-001', name: 'Mute Santandereano', description: 'Sopa típica con maíz pelao y carnes', price: 15000, category: 'Almuerzos', isAvailable: true },
+    { id: 'p-103', businessId: 'biz-001', name: 'Pechuga a la plancha', description: 'Con ensalada y papas a la francesa', price: 16000, category: 'Almuerzos', isAvailable: true },
+    { id: 'p-104', businessId: 'biz-001', name: 'Jugo natural', description: 'Mora, lulo, maracuyá o guanábana', price: 5000, category: 'Bebidas', isAvailable: true },
+  ]],
+  ['biz-002', [
+    { id: 'p-201', businessId: 'biz-002', name: 'Acetaminofén 500mg x10', description: 'Caja de 10 tabletas', price: 4500, category: 'Medicamentos', isAvailable: true },
+    { id: 'p-202', businessId: 'biz-002', name: 'Alcohol antiséptico 700ml', description: 'Frasco familiar', price: 8000, category: 'Cuidado', isAvailable: true },
+    { id: 'p-203', businessId: 'biz-002', name: 'Termómetro digital', description: 'Lectura rápida en 10 segundos', price: 22000, category: 'Dispositivos', isAvailable: true },
+  ]],
+  ['biz-003', [
+    { id: 'p-301', businessId: 'biz-003', name: 'Canasta básica', description: 'Arroz, aceite, panela, huevos, pasta', price: 45000, category: 'Mercado', isAvailable: true },
+    { id: 'p-302', businessId: 'biz-003', name: 'Leche entera 1L x6', description: 'Six pack', price: 21000, category: 'Lácteos', isAvailable: true },
+    { id: 'p-303', businessId: 'biz-003', name: 'Pan tajado integral', description: 'Bolsa de 500g', price: 6500, category: 'Panadería', isAvailable: true },
+  ]],
+  ['biz-004', [
+    { id: 'p-401', businessId: 'biz-004', name: 'Pizza familiar mixta', description: 'Pollo, carne, champiñones, extra queso', price: 38000, category: 'Pizzas', isAvailable: true },
+    { id: 'p-402', businessId: 'biz-004', name: 'Pizza personal hawaiana', description: 'Jamón y piña', price: 14000, category: 'Pizzas', isAvailable: true },
+    { id: 'p-403', businessId: 'biz-004', name: 'Gaseosa 1.5L', description: 'Surtida', price: 6000, category: 'Bebidas', isAvailable: true },
+  ]],
+]);
+
+// ─── Business meta (rating / ETA / delivery fee) ──────────────────────────────
+
+const bizMeta: Record<string, { rating: number; etaMinutes: number; deliveryFee: number }> = {
+  'biz-001': { rating: 4.8, etaMinutes: 25, deliveryFee: 3500 },
+  'biz-002': { rating: 4.6, etaMinutes: 18, deliveryFee: 3000 },
+  'biz-003': { rating: 4.5, etaMinutes: 35, deliveryFee: 4000 },
+  'biz-004': { rating: 4.7, etaMinutes: 30, deliveryFee: 3500 },
+};
+
+// ─── Order-update notification subscriptions ──────────────────────────────────
+
+type OrderUpdateCallback = (orderId: string, update: DeliveryOrderSummaryDTO) => void;
+const orderUpdateListeners = new Map<string, Set<OrderUpdateCallback>>();
+
+export function onOrderUpdate(orderId: string, cb: OrderUpdateCallback): () => void {
+  if (!orderUpdateListeners.has(orderId)) {
+    orderUpdateListeners.set(orderId, new Set());
+  }
+  orderUpdateListeners.get(orderId)!.add(cb);
+  return () => {
+    orderUpdateListeners.get(orderId)?.delete(cb);
+  };
+}
 
 const tokenIndex = new Map<string, string>(); // token → businessId
 
@@ -254,7 +304,15 @@ const service = {
     }
 
     deliveryOrders.set(orderId, order);
-    return toSummaryDTO(order);
+    const summary = toSummaryDTO(order);
+
+    // Notify subscribed WS clients
+    const listeners = orderUpdateListeners.get(orderId);
+    if (listeners) {
+      for (const cb of listeners) cb(orderId, summary);
+    }
+
+    return summary;
   },
 
   // ── Stats ─────────────────────────────────────────────────────────────────
@@ -279,4 +337,44 @@ const service = {
 
 export function getBusinessService() {
   return service;
+}
+
+// ─── Public helpers used by client.service ────────────────────────────────────
+
+export function getProductsForBusiness(businessId: string): ProductDTO[] {
+  return productsMap.get(businessId) ?? [];
+}
+
+export function getProductById(productId: string): ProductDTO | undefined {
+  for (const prods of productsMap.values()) {
+    const found = prods.find((p) => p.id === productId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+export function getAllBusinessesPublic(): BusinessPublicDTO[] {
+  return Array.from(businesses.values())
+    .filter((b) => b.isActive)
+    .map((b) => {
+      const meta = bizMeta[b.id] ?? { rating: 4.5, etaMinutes: 30, deliveryFee: 3500 };
+      return {
+        id: b.id, name: b.name, category: b.category, address: b.address,
+        rating: meta.rating, etaMinutes: meta.etaMinutes,
+        deliveryFee: meta.deliveryFee, isOpen: b.isActive,
+        products: getProductsForBusiness(b.id),
+      };
+    });
+}
+
+export function getBusinessPublicById(id: string): BusinessPublicDTO {
+  const b = businesses.get(id);
+  if (!b) throw new Error(`Business ${id} not found`);
+  const meta = bizMeta[id] ?? { rating: 4.5, etaMinutes: 30, deliveryFee: 3500 };
+  return {
+    id: b.id, name: b.name, category: b.category, address: b.address,
+    rating: meta.rating, etaMinutes: meta.etaMinutes,
+    deliveryFee: meta.deliveryFee, isOpen: b.isActive,
+    products: getProductsForBusiness(b.id),
+  };
 }

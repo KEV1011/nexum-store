@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/errors/exceptions.dart';
@@ -14,6 +16,8 @@ class AuthRepository {
 
   final AuthDataSource _dataSource;
   final FlutterSecureStorage _storage;
+
+  static const _clientJsonKey = 'client_profile_json';
 
   Future<({bool success, Failure? failure})> sendOtp(String phone) async {
     try {
@@ -51,8 +55,15 @@ class AuthRepository {
       final client = ClientEntity(
         id: c['id'] as String,
         phone: c['phone'] as String,
-        name: c['name'] as String,
+        name: c['name'] as String? ?? 'Usuario Nexum',
       );
+
+      // Persist profile so checkAuth() can restore it without an API call.
+      await _storage.write(
+        key: _clientJsonKey,
+        value: jsonEncode({'id': client.id, 'phone': client.phone, 'name': client.name}),
+      );
+
       return (client: client, failure: null);
     } on InvalidOtpException {
       return (client: null, failure: const InvalidOtpFailure());
@@ -75,6 +86,22 @@ class AuthRepository {
 
   Future<void> logout() async {
     await _storage.delete(key: AppConstants.authTokenKey);
+    await _storage.delete(key: _clientJsonKey);
+  }
+
+  Future<ClientEntity?> getStoredClient() async {
+    try {
+      final json = await _storage.read(key: _clientJsonKey);
+      if (json == null) return null;
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      return ClientEntity(
+        id: map['id'] as String,
+        phone: map['phone'] as String,
+        name: map['name'] as String? ?? 'Usuario Nexum',
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<bool> isAuthenticated() async {

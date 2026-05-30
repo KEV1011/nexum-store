@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
 import 'package:nexum_client/features/orders/data/datasources/'
@@ -53,7 +55,7 @@ class OrdersState {
 }
 
 class OrdersNotifier extends StateNotifier<OrdersState> {
-  OrdersNotifier(this._dataSource, this._wsService)
+  OrdersNotifier(this._dataSource, this._wsService, this._dio)
       : super(const OrdersState()) {
     _loadHistory();
     _listenToWs();
@@ -61,6 +63,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
   final OrdersDataSource _dataSource;
   final OrderWsService _wsService;
+  final Dio _dio;
   final _random = Random();
 
   /// Timers de simulación por pedido (fallback cuando WS no conecta).
@@ -85,21 +88,51 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
   // ── placeOrder ─────────────────────────────────────────────────────────────
 
-  /// Crea un pedido desde el carrito, intenta conectar WS y cae en simulación
-  /// por Timer si el backend no está disponible.
+  /// Crea un pedido desde el carrito.
   ///
-  /// Devuelve el id del nuevo pedido para navegar al tracking.
+  /// 1. Llama al backend real (POST /client/orders).
+  /// 2. Si tiene éxito → usa el ID y ref del servidor, luego conecta WS.
+  /// 3. Si falla (sin red) → genera IDs locales y cae en simulación por Timer.
+  ///
+  /// Devuelve el id del pedido para navegar al tracking.
   Future<String> placeOrder({
     required CartState cart,
     required String deliveryAddress,
   }) async {
     final business = cart.business!;
-    final ref = 'NX-${1000 + _random.nextInt(8000)}';
-    final id = 'ord-${DateTime.now().millisecondsSinceEpoch}';
+
+    String id;
+    String orderRef;
+
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/client/orders',
+        data: {
+          'businessId': business.id,
+          'deliveryAddress': deliveryAddress,
+          'items': cart.items
+              .map(
+                (item) => {
+                  'productId': item.product.id,
+                  'quantity': item.quantity,
+                  'unitPrice': item.product.price,
+                },
+              )
+              .toList(),
+        },
+      );
+      final data = res.data!['data'] as Map<String, dynamic>;
+      id = data['id'] as String;
+      orderRef = data['orderRef'] as String;
+    } catch (_) {
+      // Fallback: IDs locales si no hay backend disponible.
+      id = 'ord-${DateTime.now().millisecondsSinceEpoch}';
+      orderRef = 'NX-${1000 + _random.nextInt(8000)}';
+    }
 
     final order = CustomerOrderEntity(
       id: id,
-      orderRef: ref,
+      orderRef: orderRef,
       businessName: business.name,
       businessAddress: business.address,
       deliveryAddress: deliveryAddress,
@@ -123,12 +156,13 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     state = state.copyWith(orders: newOrders);
     unawaited(_dataSource.saveOrders(newOrders));
 
-    // Intentar WS real; si falla usar simulación local.
+    // Intentar WS real (el backend ya inició la simulación server-side).
     final wsOk = await _wsService.connect();
     if (wsOk && !_wsSubscribed.contains(id)) {
       _wsSubscribed.add(id);
       _wsService.subscribeOrder(id);
     } else {
+      // Fallback local si no hay WS disponible.
       _startSimulation(id);
     }
 
@@ -288,6 +322,7 @@ final ordersProvider =
   return OrdersNotifier(
     ref.read(_ordersDataSourceProvider),
     ref.read(_orderWsServiceProvider),
+    ref.read(apiClientProvider),
   );
 });
 

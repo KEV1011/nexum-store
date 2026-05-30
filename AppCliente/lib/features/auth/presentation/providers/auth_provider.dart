@@ -1,7 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_client/core/errors/failures.dart';
-import 'package:nexum_client/features/auth/data/datasources/auth_mock_datasource.dart';
+import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/features/auth/data/datasources/'
+    'auth_real_datasource.dart';
 import 'package:nexum_client/features/auth/data/repositories/auth_repository.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
 
@@ -53,11 +56,16 @@ final _secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
+  final dio = ref.watch(apiClientProvider);
   return AuthRepository(
-    dataSource: AuthMockDataSource(), // kIsWeb o MVP: siempre mock
+    dataSource: AuthRealDataSource(dio: dio),
     secureStorage: ref.watch(_secureStorageProvider),
   );
 });
+
+/// Provider de diagnóstico — expone el Dio usado en auth para poder mockear
+/// en tests sin romper el grafo.
+final authDioProvider = Provider<Dio>((ref) => ref.watch(apiClientProvider));
 
 // ── AuthNotifier ─────────────────────────────────────────────────────────────
 
@@ -100,14 +108,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = const AuthUnauthenticated();
       return;
     }
-    // En el MVP el perfil del cliente se regenera desde el token mock.
-    state = const AuthAuthenticated(
-      client: ClientEntity(
-        id: 'client-demo',
-        phone: '+57 312 456 7890',
-        name: 'Cliente Nexum',
-      ),
-    );
+    final client = await _repository.getStoredClient();
+    if (client == null) {
+      state = const AuthUnauthenticated();
+      return;
+    }
+    state = AuthAuthenticated(client: client);
   }
 }
 
@@ -118,8 +124,8 @@ final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
 });
 
 final currentClientProvider = Provider<ClientEntity?>((ref) {
-  final state = ref.watch(authProvider);
-  return switch (state) {
+  final s = ref.watch(authProvider);
+  return switch (s) {
     AuthAuthenticated(:final client) => client,
     _ => null,
   };
