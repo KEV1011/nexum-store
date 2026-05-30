@@ -480,3 +480,169 @@ class _AddressPicker extends StatelessWidget {
     );
   }
 }
+
+// ── Payment sheet ─────────────────────────────────────────────────────────────
+
+class _PaymentSheet extends StatefulWidget {
+  const _PaymentSheet({
+    required this.tripId,
+    required this.fare,
+    required this.serviceType,
+    required this.ref,
+  });
+
+  final String tripId;
+  final double fare;
+  final TransportServiceType serviceType;
+  final WidgetRef ref;
+
+  @override
+  State<_PaymentSheet> createState() => _PaymentSheetState();
+}
+
+class _PaymentSheetState extends State<_PaymentSheet> {
+  bool _loading = false;
+  String? _error;
+
+  Future<void> _payWithWompi() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final dio = widget.ref.read(apiClientProvider);
+      final res = await dio.post<Map<String, dynamic>>(
+        '/client/payments/init',
+        data: {
+          'tripId': widget.tripId,
+          'amount': widget.fare.round(),
+          'description': 'Pago viaje ${widget.serviceType.label}',
+        },
+      );
+      final responseData = res.data ?? {};
+      final innerData = responseData['data'] as Map<String, dynamic>?;
+      final paymentUrl = innerData?['paymentUrl'] as String? ??
+          responseData['paymentUrl'] as String?;
+
+      if (paymentUrl == null || paymentUrl.isEmpty) {
+        throw Exception('No se recibió URL de pago');
+      }
+
+      final uri = Uri.parse(paymentUrl);
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('No se pudo abrir el enlace de pago');
+      }
+
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = 'No se pudo iniciar el pago. Intenta de nuevo.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _colorOf(widget.serviceType);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+              color: AppColors.outlineLight,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const Text(
+            'Método de pago',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Tarifa estimada',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            CurrencyFormatter.format(widget.fare),
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(color: AppColors.error, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF00B4D8),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _loading ? null : _payWithWompi,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.credit_card_rounded),
+              label: const Text(
+                'Pagar con Wompi',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _loading
+                  ? null
+                  : () => Navigator.of(context).pop(false),
+              icon: const Icon(Icons.payments_outlined),
+              label: const Text(
+                'Pagar en efectivo',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
