@@ -50,6 +50,9 @@ const clientOrderIndex = new Map<string, string[]>();
 type OrderCallback = (orderId: string, summary: ClientOrderSummaryDTO) => void;
 const orderListeners = new Map<string, Set<OrderCallback>>();
 
+type BusinessNewOrderCallback = (order: ClientOrderSummaryDTO) => void;
+const businessOrderListeners = new Map<string, Set<BusinessNewOrderCallback>>();
+
 const OTP_TTL = 5 * 60 * 1000;
 const MOCK_DRIVERS = [
   { name: 'Andrés Villamizar', phone: '+57 312 678 9012' },
@@ -126,7 +129,10 @@ export function placeClientOrder(
   orderStore.set(id, order);
   clientOrderIndex.set(clientId, [id, ...(clientOrderIndex.get(clientId) ?? [])]);
   _startSimulation(id, biz.name);
-  return _toSummary(order, biz.name);
+  // Notify business portal listeners
+  const summary = _toSummary(order, biz.name);
+  for (const cb of businessOrderListeners.get(dto.businessId) ?? []) cb(summary);
+  return summary;
 }
 
 export function getClientOrders(clientId: string): ClientOrderSummaryDTO[] {
@@ -145,6 +151,22 @@ export function getClientOrderById(clientId: string, orderId: string): ClientOrd
   if (!o || o.clientId !== clientId) return null;
   const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
   return _toSummary(o, biz?.name ?? 'Negocio');
+}
+
+export function getClientOrdersForBusiness(businessId: string): ClientOrderSummaryDTO[] {
+  return [...orderStore.values()]
+    .filter((o) => o.businessId === businessId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map((o) => {
+      const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
+      return _toSummary(o, biz?.name ?? 'Negocio');
+    });
+}
+
+export function onNewClientOrderForBusiness(businessId: string, cb: BusinessNewOrderCallback): () => void {
+  if (!businessOrderListeners.has(businessId)) businessOrderListeners.set(businessId, new Set());
+  businessOrderListeners.get(businessId)!.add(cb);
+  return () => businessOrderListeners.get(businessId)?.delete(cb);
 }
 
 // ─── WS subscriptions ─────────────────────────────────────────────────────────

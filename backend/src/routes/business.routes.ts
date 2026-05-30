@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getBusinessService } from '../services/business.service';
 import { getNotificationService } from '../services/notification.service';
+import { getClientOrdersForBusiness } from '../services/client.service';
 import { RegisterBusinessDTO, OrderStatusUpdateDTO, CreateDeliveryOrderDTO } from '../types';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { PORTAL_BASE_URL } from '../config/constants';
@@ -161,5 +162,19 @@ router.patch(
     }
   },
 );
+
+// ─── Client orders from AppCliente ───────────────────────────────────────────
+
+router.get('/:token/client-orders', (req: Request, res: Response): void => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = getBusinessService().getBusinessByToken(token);
+    const orders = getClientOrdersForBusiness(business.id);
+    res.status(200).json({ success: true, data: orders });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Could not load orders';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
 
 export default router;

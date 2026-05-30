@@ -198,7 +198,11 @@ export type WsMessageType =
   | 'trip_request_client'
   | 'ping'
   | 'pong'
-  | 'error';
+  | 'error'
+  | 'business_auth'
+  | 'business_auth_ok'
+  | 'business_auth_error'
+  | 'new_order';
 
 export interface WsMessage {
   type: WsMessageType;

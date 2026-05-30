@@ -17,7 +17,9 @@ import {
   subscribeClientTrip,
   getClientTripSnapshot,
   getClientTripRaw,
+  onNewClientOrderForBusiness,
 } from '../services/client.service';
+import { getBusinessService } from '../services/business.service';
 import { WsMessage } from '../types';
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -31,6 +33,10 @@ const clientSubscriptions = new Map<WebSocket, Array<() => void>>();
 const clientTripSubs = new Map<WebSocket, Map<string, () => void>>();
 // Track which client trip the driver is currently serving (for GPS relay)
 let driverActiveTripId: string | null = null;
+// businessId → WebSocket (one active connection per business portal)
+const businessSockets = new Map<string, WebSocket>();
+// WebSocket → list of unsubscribe functions for business subscriptions
+const businessSubscriptions = new Map<WebSocket, Array<() => void>>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -153,6 +159,29 @@ function handleSubscribeTrip(ws: WebSocket, tripId: string): void {
   clientTripSubs.set(ws, map);
 }
 
+function handleBusinessAuth(ws: WebSocket, token: string): void {
+  try {
+    const business = getBusinessService().getBusinessByToken(token);
+
+    const old = businessSockets.get(business.id);
+    if (old && old !== ws && old.readyState === WebSocket.OPEN) old.close();
+    businessSockets.set(business.id, ws);
+
+    sendTo(ws, { type: 'business_auth_ok', businessId: business.id, businessName: business.name });
+    console.log(`[WS] Business portal ${business.name} authenticated`);
+
+    // Subscribe to new client orders for this business
+    const unsubscribe = onNewClientOrderForBusiness(business.id, (order) => {
+      sendTo(ws, { type: 'new_order', order });
+    });
+    const existing = businessSubscriptions.get(ws) ?? [];
+    businessSubscriptions.set(ws, [...existing, unsubscribe]);
+  } catch {
+    sendTo(ws, { type: 'business_auth_error', message: 'Invalid or expired business token' });
+    ws.close();
+  }
+}
+
 function handleLocationUpdate(lat: number, lng: number, tripId: string | null): void {
   const effectiveTripId = tripId ?? driverActiveTripId;
   if (!effectiveTripId) return;
@@ -254,6 +283,16 @@ function onMessage(ws: WebSocket, raw: string): void {
       break;
     }
 
+    case 'business_auth': {
+      const token = msg['token'];
+      if (typeof token !== 'string' || !token) {
+        sendTo(ws, { type: 'business_auth_error', message: 'token field is required' });
+        return;
+      }
+      handleBusinessAuth(ws, token);
+      break;
+    }
+
     case 'ping':
       sendTo(ws, { type: 'pong' });
       break;
@@ -286,6 +325,17 @@ function onClose(ws: WebSocket): void {
     // Remove from clientSockets
     for (const [cid, sock] of clientSockets.entries()) {
       if (sock === ws) { clientSockets.delete(cid); break; }
+    }
+
+    // Cancel business order subscriptions
+    const bizUnsubs = businessSubscriptions.get(ws);
+    if (bizUnsubs) {
+      for (const fn of bizUnsubs) fn();
+      businessSubscriptions.delete(ws);
+    }
+    // Remove from businessSockets
+    for (const [bid, sock] of businessSockets.entries()) {
+      if (sock === ws) { businessSockets.delete(bid); break; }
     }
   }
 }
