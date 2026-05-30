@@ -2,9 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
@@ -30,7 +31,7 @@ class ActiveTripScreen extends ConsumerStatefulWidget {
 }
 
 class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
-  GoogleMapController? _mapController;
+  final _mapController = MapController();
   bool _isLoading = false;
   bool _autoFollow = true;
 
@@ -69,7 +70,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   void dispose() {
     _movementTimer?.cancel();
     _etaTimer?.cancel();
-    _mapController?.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -111,25 +112,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
         _waypointIndex++;
       });
 
-      if (_autoFollow && _mapController != null) {
+      if (_autoFollow) {
         final current = ref.read(activeTripProvider);
-        // Driving-mode camera (tilted + bearing) when in progress
-        if (current?.isInProgress == true &&
-            _waypointIndex < _waypoints.length) {
-          final bearing = _bearing(_driverPos, _waypoints[_waypointIndex]);
-          _mapController!.animateCamera(
-            CameraUpdate.newCameraPosition(
-              CameraPosition(
-                target: next,
-                zoom: 16.5,
-                tilt: 45,
-                bearing: bearing,
-              ),
-            ),
-          );
-        } else {
-          _mapController!.animateCamera(CameraUpdate.newLatLng(next));
-        }
+        final zoom = current?.isInProgress == true ? 16.5 : MapConstants.tripZoom;
+        _mapController.move(next, zoom);
       }
     });
   }
@@ -153,16 +139,6 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
       ));
     }
     return result;
-  }
-
-  static double _bearing(LatLng from, LatLng to) {
-    final dLng = (to.longitude - from.longitude) * math.pi / 180;
-    final lat1 = from.latitude * math.pi / 180;
-    final lat2 = to.latitude * math.pi / 180;
-    final y = math.sin(dLng) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) -
-        math.sin(lat1) * math.cos(lat2) * math.cos(dLng);
-    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
   }
 
   double get _routeProgress => _waypoints.isEmpty
@@ -222,37 +198,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   // ── Camera helpers ───────────────────────────────────────────────────────
 
   void _fitBoundsToRoute(List<LatLng> points) {
-    if (points.length < 2 || _mapController == null) return;
-
-    var minLat = points.first.latitude;
-    var maxLat = points.first.latitude;
-    var minLng = points.first.longitude;
-    var maxLng = points.first.longitude;
-
-    for (final p in points) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
-    }
-
-    _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat - 0.002, minLng - 0.002),
-          northeast: LatLng(maxLat + 0.002, maxLng + 0.002),
-        ),
-        72.0,
+    if (points.length < 2) return;
+    _mapController.fitCamera(
+      CameraFit.coordinates(
+        coordinates: points,
+        padding: const EdgeInsets.all(72),
       ),
     );
   }
 
   void _zoomTo(LatLng target, {double zoom = 16}) {
-    _mapController?.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: zoom),
-      ),
-    );
+    _mapController.move(target, zoom);
   }
 
   void _recenter(ActiveTripEntity trip) {
@@ -323,133 +279,139 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
         ? [_driverPos, originLatLng, destinationLatLng]
         : [_driverPos, originLatLng];
 
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: _driverPos,
-        zoom: MapConstants.tripZoom,
+    return FlutterMap(
+      mapController: _mapController,
+      options: MapOptions(
+        initialCenter: _driverPos,
+        initialZoom: MapConstants.tripZoom,
+        onMapReady: () => _fitBoundsToRoute(boundsPoints),
+        onPositionChanged: (camera, hasGesture) {
+          if (hasGesture && _autoFollow) {
+            setState(() => _autoFollow = false);
+          }
+        },
       ),
-      onMapCreated: (controller) {
-        _mapController = controller;
-        _fitBoundsToRoute(boundsPoints);
-      },
-      onCameraMoveStarted: () {
-        // User manually moved the map — disable auto-follow
-        if (_autoFollow) setState(() => _autoFollow = false);
-      },
-      markers: _buildMarkers(trip, serviceType),
-      polylines: _buildPolylines(trip, serviceType),
-      myLocationEnabled: false,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: true,
+      children: [
+        TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.nexum.driver',
+        ),
+        PolylineLayer(polylines: _buildPolylines(trip, serviceType)),
+        MarkerLayer(markers: _buildMarkers(trip, serviceType)),
+      ],
     );
   }
 
-  Set<Marker> _buildMarkers(
-      ActiveTripEntity trip, ServiceType serviceType) {
+  List<Marker> _buildMarkers(ActiveTripEntity trip, ServiceType serviceType) {
     final originLatLng = trip.request.origin.latLng;
 
-    return {
-      // Driver marker
+    return [
       Marker(
-        markerId: const MarkerId('driver'),
-        position: _driverPos,
-        icon: BitmapDescriptor.defaultMarkerWithHue(serviceType.markerHue),
-        infoWindow: InfoWindow(
-          title: serviceType.displayName,
-          snippet: 'Tu posición actual',
+        point: _driverPos,
+        width: 48,
+        height: 48,
+        child: Container(
+          decoration: BoxDecoration(
+            color: serviceType.color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: serviceType.color.withValues(alpha: 0.45),
+                blurRadius: 12,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Icon(serviceType.icon, color: Colors.white, size: 22),
         ),
-        zIndex: 2,
       ),
-      // Pickup marker — with pulse stack via ground overlay trick
       Marker(
-        markerId: const MarkerId('origin'),
-        position: originLatLng,
-        infoWindow: InfoWindow(
-          title: 'Punto de recogida',
-          snippet: trip.request.origin.address,
+        point: originLatLng,
+        width: 44,
+        height: 44,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.pickupMarker,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.person_pin_rounded,
+            color: Colors.white,
+            size: 22,
+          ),
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        zIndex: 1,
       ),
-      // Destination marker
       Marker(
-        markerId: const MarkerId('destination'),
-        position: trip.request.destination.latLng,
-        infoWindow: InfoWindow(
-          title: 'Destino',
-          snippet: trip.request.destination.address,
+        point: trip.request.destination.latLng,
+        width: 44,
+        height: 44,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.destinationMarker,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.location_on_rounded,
+            color: Colors.white,
+            size: 22,
+          ),
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        zIndex: 1,
       ),
-    };
+    ];
   }
 
-  Set<Polyline> _buildPolylines(ActiveTripEntity trip, ServiceType serviceType) {
-    // Fallback: single straight line before waypoints are generated
+  List<Polyline> _buildPolylines(
+      ActiveTripEntity trip, ServiceType serviceType) {
+    final dashedPattern = StrokePattern.dashed(segments: const [18, 8]);
+    final solidPattern = StrokePattern.solid();
+
     if (_waypoints.isEmpty) {
       final target = trip.isInProgress
           ? trip.request.destination.latLng
           : trip.request.origin.latLng;
-      return {
+      return [
         Polyline(
-          polylineId: const PolylineId('active_route'),
           points: [_driverPos, target],
           color: serviceType.color,
-          width: 5,
-          patterns: trip.isToPickup
-              ? [PatternItem.dash(18), PatternItem.gap(8)]
-              : [],
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
+          strokeWidth: 5,
+          pattern: trip.isToPickup ? dashedPattern : solidPattern,
+          strokeCap: StrokeCap.round,
+          strokeJoin: StrokeJoin.round,
         ),
-      };
+      ];
     }
 
-    // Full route = starting position + all waypoints
     final fullRoute = [_routeStart, ..._waypoints];
     final splitAt = (_waypointIndex + 1).clamp(0, fullRoute.length);
     final consumed = fullRoute.take(splitAt).toList();
-    // Share the current position point between consumed and remaining (no gap)
-    final remaining =
-        fullRoute.skip(splitAt > 0 ? splitAt - 1 : 0).toList();
+    final remaining = fullRoute.skip(splitAt > 0 ? splitAt - 1 : 0).toList();
 
-    return {
-      // Greyed-out consumed portion
+    return [
       if (consumed.length >= 2)
         Polyline(
-          polylineId: const PolylineId('consumed_route'),
           points: consumed,
           color: Colors.grey.withValues(alpha: 0.45),
-          width: 5,
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
-          jointType: JointType.round,
+          strokeWidth: 5,
+          strokeCap: StrokeCap.round,
+          strokeJoin: StrokeJoin.round,
         ),
-      // Shadow under remaining route
-      if (remaining.length >= 2)
+      if (remaining.length >= 2) ...[
         Polyline(
-          polylineId: const PolylineId('route_shadow'),
           points: remaining,
           color: Colors.black.withValues(alpha: 0.15),
-          width: 9,
+          strokeWidth: 9,
         ),
-      // Colored remaining route
-      Polyline(
-        polylineId: const PolylineId('active_route'),
-        points: remaining.length >= 2 ? remaining : [_driverPos, _driverPos],
-        color: serviceType.color,
-        width: 5,
-        patterns: trip.isToPickup
-            ? [PatternItem.dash(18), PatternItem.gap(8)]
-            : [],
-        startCap: Cap.roundCap,
-        endCap: Cap.roundCap,
-        jointType: JointType.round,
-      ),
-    };
+        Polyline(
+          points: remaining,
+          color: serviceType.color,
+          strokeWidth: 5,
+          pattern: trip.isToPickup ? dashedPattern : solidPattern,
+          strokeCap: StrokeCap.round,
+          strokeJoin: StrokeJoin.round,
+        ),
+      ],
+    ];
   }
 
   // ── FAB: recenter ────────────────────────────────────────────────────────

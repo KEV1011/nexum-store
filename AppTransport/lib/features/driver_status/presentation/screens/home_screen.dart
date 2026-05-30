@@ -3,9 +3,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/theme_provider.dart';
@@ -65,7 +66,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   _HomeState _state = const _HomeState();
-  GoogleMapController? _mapController;
+  final _mapController = MapController();
   bool _showHeatmap = false;
   bool _bannerDismissed = false;
 
@@ -130,16 +131,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Timer? _webMockTimer;
   final _rng = math.Random();
 
-  static const _initialPosition = CameraPosition(
-    target: LatLng(MapConstants.pamplonaCenterLat, MapConstants.pamplonaCenterLng),
-    zoom: MapConstants.initialZoom,
+  static const _center = LatLng(
+    MapConstants.pamplonaCenterLat,
+    MapConstants.pamplonaCenterLng,
   );
 
   @override
   void dispose() {
     _countdownTimer?.cancel();
     _webMockTimer?.cancel();
-    _mapController?.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -268,65 +269,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (_state.isOnline) _scheduleWebMockRequest();
   }
 
-  Set<Circle> _buildHeatmapCircles() {
-    return {
-      Circle(
-        circleId: const CircleId('parque_principal'),
-        center: const LatLng(7.3752, -72.6479),
+  List<CircleMarker> _buildHeatmapCircles() {
+    return [
+      CircleMarker(
+        point: const LatLng(7.3752, -72.6479),
         radius: 200,
-        fillColor: AppColors.error.withValues(alpha: 0.25),
-        strokeColor: AppColors.error.withValues(alpha: 0.6),
-        strokeWidth: 2,
+        color: AppColors.error.withValues(alpha: 0.25),
+        borderColor: AppColors.error.withValues(alpha: 0.6),
+        borderStrokeWidth: 2,
+        useRadiusInMeter: true,
       ),
-      Circle(
-        circleId: const CircleId('terminal'),
-        center: const LatLng(7.3694, -72.6521),
+      CircleMarker(
+        point: const LatLng(7.3694, -72.6521),
         radius: 250,
-        fillColor: AppColors.error.withValues(alpha: 0.25),
-        strokeColor: AppColors.error.withValues(alpha: 0.6),
-        strokeWidth: 2,
+        color: AppColors.error.withValues(alpha: 0.25),
+        borderColor: AppColors.error.withValues(alpha: 0.6),
+        borderStrokeWidth: 2,
+        useRadiusInMeter: true,
       ),
-      Circle(
-        circleId: const CircleId('universidad'),
-        center: const LatLng(7.3783, -72.6451),
+      CircleMarker(
+        point: const LatLng(7.3783, -72.6451),
         radius: 200,
-        fillColor: AppColors.warning.withValues(alpha: 0.25),
-        strokeColor: AppColors.warning.withValues(alpha: 0.6),
-        strokeWidth: 2,
+        color: AppColors.warning.withValues(alpha: 0.25),
+        borderColor: AppColors.warning.withValues(alpha: 0.6),
+        borderStrokeWidth: 2,
+        useRadiusInMeter: true,
       ),
-      Circle(
-        circleId: const CircleId('hospital'),
-        center: const LatLng(7.3741, -72.6498),
+      CircleMarker(
+        point: const LatLng(7.3741, -72.6498),
         radius: 150,
-        fillColor: AppColors.warning.withValues(alpha: 0.25),
-        strokeColor: AppColors.warning.withValues(alpha: 0.6),
-        strokeWidth: 2,
+        color: AppColors.warning.withValues(alpha: 0.25),
+        borderColor: AppColors.warning.withValues(alpha: 0.6),
+        borderStrokeWidth: 2,
+        useRadiusInMeter: true,
       ),
-      Circle(
-        circleId: const CircleId('centro_comercial'),
-        center: const LatLng(7.3758, -72.6472),
+      CircleMarker(
+        point: const LatLng(7.3758, -72.6472),
         radius: 150,
-        fillColor: AppColors.warning.withValues(alpha: 0.25),
-        strokeColor: AppColors.warning.withValues(alpha: 0.6),
-        strokeWidth: 2,
+        color: AppColors.warning.withValues(alpha: 0.25),
+        borderColor: AppColors.warning.withValues(alpha: 0.6),
+        borderStrokeWidth: 2,
+        useRadiusInMeter: true,
       ),
-      Circle(
-        circleId: const CircleId('el_buque'),
-        center: const LatLng(7.3715, -72.6543),
+      CircleMarker(
+        point: const LatLng(7.3715, -72.6543),
         radius: 150,
-        fillColor: AppColors.primary.withValues(alpha: 0.2),
-        strokeColor: AppColors.primary.withValues(alpha: 0.5),
-        strokeWidth: 1,
+        color: AppColors.primary.withValues(alpha: 0.2),
+        borderColor: AppColors.primary.withValues(alpha: 0.5),
+        borderStrokeWidth: 1,
+        useRadiusInMeter: true,
       ),
-      Circle(
-        circleId: const CircleId('ciudad_jardin'),
-        center: const LatLng(7.3769, -72.6505),
+      CircleMarker(
+        point: const LatLng(7.3769, -72.6505),
         radius: 150,
-        fillColor: AppColors.primary.withValues(alpha: 0.2),
-        strokeColor: AppColors.primary.withValues(alpha: 0.5),
-        strokeWidth: 1,
+        color: AppColors.primary.withValues(alpha: 0.2),
+        borderColor: AppColors.primary.withValues(alpha: 0.5),
+        borderStrokeWidth: 1,
+        useRadiusInMeter: true,
       ),
-    };
+    ];
   }
 
   // ── Build ──────────────────────────────────────────────────────────────
@@ -348,29 +349,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: Stack(
         children: [
           // Map
-          GoogleMap(
-            initialCameraPosition: _initialPosition,
-            onMapCreated: (controller) => _mapController = controller,
-            myLocationEnabled: false,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            circles:
-                _showHeatmap ? _buildHeatmapCircles() : {},
-            markers: _state.isOnline
-                ? {
+          FlutterMap(
+            mapController: _mapController,
+            options: const MapOptions(
+              initialCenter: _center,
+              initialZoom: MapConstants.initialZoom,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.nexum.driver',
+              ),
+              if (_showHeatmap)
+                CircleLayer(circles: _buildHeatmapCircles()),
+              if (_state.isOnline)
+                MarkerLayer(
+                  markers: [
                     Marker(
-                      markerId: const MarkerId('driver'),
-                      position: _driverLatLng,
-                      icon: BitmapDescriptor.defaultMarkerWithHue(
-                          serviceType.markerHue),
-                      infoWindow: InfoWindow(
-                        title: 'Tu posición',
-                        snippet: serviceType.displayName,
+                      point: _driverLatLng,
+                      width: 48,
+                      height: 48,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: serviceType.color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: serviceType.color.withValues(alpha: 0.45),
+                              blurRadius: 12,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          serviceType.icon,
+                          color: Colors.white,
+                          size: 22,
+                        ),
                       ),
                     ),
-                  }
-                : {},
+                  ],
+                ),
+            ],
           ),
           // Top bar + opportunity banner
           SafeArea(
