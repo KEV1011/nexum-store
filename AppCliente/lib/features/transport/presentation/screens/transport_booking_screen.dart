@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/addresses_provider.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Pantalla de reserva de servicio de transporte o envío.
 class TransportBookingScreen extends ConsumerStatefulWidget {
@@ -204,6 +206,25 @@ class _TransportBookingScreenState
                   : _packageCtrl.text.trim())
               : null,
         );
+
+    if (!mounted) return;
+
+    final trip = ref.read(transportByIdProvider(id));
+    final fare = trip?.estimatedFare ?? widget.serviceType.estimateFare(4);
+
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _PaymentSheet(
+        tripId: id,
+        fare: fare,
+        serviceType: widget.serviceType,
+        ref: ref,
+      ),
+    );
 
     if (!mounted) return;
     context.go(AppRoutes.transportTrackingPath(id));

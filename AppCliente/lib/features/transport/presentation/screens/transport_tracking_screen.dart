@@ -354,6 +354,13 @@ class _TripMap extends StatelessWidget {
                   height: 32,
                   child: const _MapDot(color: AppColors.destinationMarker),
                 ),
+                if (request.driverLat != null && request.driverLng != null)
+                  Marker(
+                    point: LatLng(request.driverLat!, request.driverLng!),
+                    width: 38,
+                    height: 38,
+                    child: const _DriverDot(),
+                  ),
               ],
             ),
           ],
@@ -377,6 +384,29 @@ class _MapDot extends StatelessWidget {
         border: Border.all(color: Colors.white, width: 2.5),
         boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6)],
       ),
+    );
+  }
+}
+
+class _DriverDot extends StatelessWidget {
+  const _DriverDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.primary,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.5),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: const Icon(Icons.directions_car_rounded,
+          color: Colors.white, size: 18),
     );
   }
 }
