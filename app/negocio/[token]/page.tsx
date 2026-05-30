@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   Package,
@@ -9,35 +9,54 @@ import {
   Clock,
   RefreshCw,
   AlertCircle,
-  ShieldCheck,
   Activity,
   ChevronRight,
+  Wifi,
+  WifiOff,
+  ShoppingBag,
+  Bell,
+  UtensilsCrossed,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type OrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
-
-interface CustodyEvent {
-  type: 'pickup' | 'delivery'
-  timestamp: string
-  hasProof: boolean
-}
+type DeliveryOrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
+type ClientOrderStatus = 'confirmed' | 'driverToPickup' | 'atPickup' | 'inTransit' | 'delivered' | 'cancelled'
 
 interface Order {
   id: string
   ref: string
   customerName: string
   customerAddress: string
-  status: OrderStatus
+  status: DeliveryOrderStatus
   fare: number
   createdAt: string
   hasPickupProof: boolean
   hasSignature: boolean
   hasFullCustody: boolean
-  custodyEvents: CustodyEvent[]
+  custodyEvents: Array<{ type: string; timestamp: string; hasProof: boolean }>
   driverName: string
   driverPhone: string
+}
+
+interface ClientOrder {
+  id: string
+  orderRef: string
+  businessId: string
+  businessName: string
+  status: ClientOrderStatus
+  subtotal: number
+  deliveryFee: number
+  total: number
+  etaMinutes: number
+  items: Array<{ productName: string; quantity: number; unitPrice: number; subtotal: number }>
+  deliveryAddress: string
+  driverName?: string
+  driverPhone?: string
+  hasSignature: boolean
+  createdAt: string
+  pickedUpAt?: string
+  deliveredAt?: string
 }
 
 interface BusinessStats {
@@ -48,111 +67,112 @@ interface BusinessStats {
 }
 
 interface ApiResponse {
-  business: {
-    name: string
-    token: string
-  }
+  business: { name: string; token: string }
   orders: Order[]
   stats: BusinessStats
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3001'
 
-function formatCOP(amount: number): string {
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    minimumFractionDigits: 0,
-  }).format(amount)
+const WS_URL = (() => {
+  try {
+    const u = new URL(BACKEND_URL)
+    u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
+    return u.toString()
+  } catch {
+    return 'ws://localhost:3001'
+  }
+})()
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatCOP(n: number) {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
 
-function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat('es-CO', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  }).format(new Date(iso))
+function formatTime(iso: string) {
+  return new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(iso))
 }
 
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  pending: 'Pendiente',
-  at_pickup: 'En recogida',
-  in_transit: 'En camino',
-  delivered: 'Entregado',
+// ─── Client Order Badge ───────────────────────────────────────────────────────
+
+const CLIENT_STATUS: Record<ClientOrderStatus, { label: string; className: string }> = {
+  confirmed:      { label: 'Nuevo pedido',       className: 'bg-orange-100 text-orange-700 ring-1 ring-orange-200' },
+  driverToPickup: { label: 'Driver en camino',   className: 'bg-blue-100 text-blue-700' },
+  atPickup:       { label: 'Driver en local',    className: 'bg-violet-100 text-violet-700' },
+  inTransit:      { label: 'En camino',          className: 'bg-teal-100 text-teal-700' },
+  delivered:      { label: 'Entregado',          className: 'bg-emerald-100 text-emerald-700' },
+  cancelled:      { label: 'Cancelado',          className: 'bg-slate-100 text-slate-500' },
 }
 
-const STATUS_CLASSES: Record<OrderStatus, string> = {
-  pending: 'bg-slate-100 text-slate-600',
-  at_pickup: 'bg-blue-100 text-blue-700',
-  in_transit: 'bg-teal-100 text-teal-700',
-  delivered: 'bg-emerald-100 text-emerald-700',
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: OrderStatus }) {
+function ClientStatusBadge({ status }: { status: ClientOrderStatus }) {
+  const { label, className } = CLIENT_STATUS[status] ?? CLIENT_STATUS.confirmed
   return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_CLASSES[status]}`}
-    >
-      {STATUS_LABELS[status]}
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${className}`}>
+      {label}
     </span>
   )
 }
 
-function CustodyMiniTimeline({ order }: { order: Order }) {
-  const steps: Array<{ label: string; done: boolean; hasProof: boolean }> = [
-    {
-      label: 'Recogido',
-      done: ['at_pickup', 'in_transit', 'delivered'].includes(order.status),
-      hasProof: order.hasPickupProof,
-    },
-    {
-      label: 'Entregado',
-      done: order.status === 'delivered',
-      hasProof: order.hasSignature,
-    },
-  ]
+// ─── Client Order Card ────────────────────────────────────────────────────────
 
+function ClientOrderCard({ order }: { order: ClientOrder }) {
+  const isNew = order.status === 'confirmed'
   return (
-    <div className="flex items-center gap-1.5">
-      {steps.map((step, i) => (
-        <div key={step.label} className="flex items-center gap-1.5">
-          <div className="flex flex-col items-center gap-0.5">
-            <div
-              className={`w-2.5 h-2.5 rounded-full border-2 transition-colors ${
-                step.done
-                  ? step.hasProof
-                    ? 'bg-emerald-500 border-emerald-500'
-                    : 'bg-amber-400 border-amber-400'
-                  : 'bg-white border-slate-300'
-              }`}
-            />
+    <div className={`bg-white border rounded-xl shadow-sm p-4 transition-all ${
+      isNew ? 'border-orange-300 shadow-orange-100' : 'border-slate-200'
+    }`}>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <p className="font-bold text-slate-900 text-sm">#{order.orderRef}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{formatTime(order.createdAt)}</p>
+        </div>
+        <ClientStatusBadge status={order.status} />
+      </div>
+
+      <div className="text-xs text-slate-500 mb-3 flex items-start gap-1.5">
+        <span className="shrink-0 mt-0.5">📍</span>
+        <span className="truncate">{order.deliveryAddress}</span>
+      </div>
+
+      <div className="space-y-1 mb-3 bg-slate-50 rounded-lg p-2.5">
+        {order.items.map((item, i) => (
+          <div key={i} className="flex justify-between items-baseline text-xs">
+            <span className="text-slate-600">
+              <span className="font-semibold text-slate-800">{item.quantity}×</span> {item.productName}
+            </span>
+            <span className="text-slate-500 shrink-0 ml-2">{formatCOP(item.subtotal)}</span>
           </div>
-          {i < steps.length - 1 && (
-            <div
-              className={`h-px w-6 ${
-                steps[i + 1].done ? 'bg-emerald-400' : 'bg-slate-200'
-              }`}
-            />
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <Clock className="w-3 h-3" />
+          <span>~{order.etaMinutes} min</span>
+          {order.deliveryFee > 0 && (
+            <span className="text-slate-400">· Domicilio {formatCOP(order.deliveryFee)}</span>
           )}
         </div>
-      ))}
-      {order.hasFullCustody ? (
-        <span className="ml-1.5 inline-flex items-center gap-0.5 text-xs font-medium text-emerald-600">
-          <ShieldCheck className="w-3 h-3" />
-          Verificada
-        </span>
-      ) : (
-        <span className="ml-1.5 text-xs text-amber-600 font-medium">Parcial</span>
-      )}
+        <p className="text-sm font-bold text-slate-800">{formatCOP(order.total)}</p>
+      </div>
     </div>
   )
 }
 
-function OrderCard({ order, token }: { order: Order; token: string }) {
+// ─── Delivery Order Card (existing) ──────────────────────────────────────────
+
+const DELIVERY_STATUS_LABELS: Record<DeliveryOrderStatus, string> = {
+  pending: 'Pendiente', at_pickup: 'En recogida', in_transit: 'En camino', delivered: 'Entregado',
+}
+const DELIVERY_STATUS_CLASSES: Record<DeliveryOrderStatus, string> = {
+  pending: 'bg-slate-100 text-slate-600', at_pickup: 'bg-blue-100 text-blue-700',
+  in_transit: 'bg-teal-100 text-teal-700', delivered: 'bg-emerald-100 text-emerald-700',
+}
+
+function DeliveryOrderCard({ order, token }: { order: Order; token: string }) {
   return (
     <Link
       href={`/negocio/${token}/pedido/${order.id}`}
@@ -160,50 +180,32 @@ function OrderCard({ order, token }: { order: Order; token: string }) {
                  hover:border-teal-300 hover:shadow-md transition-all duration-200 group"
     >
       <div className="p-4">
-        {/* Header row */}
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="font-semibold text-slate-900 text-sm truncate">
-              #{order.ref}
-            </p>
-            <p className="text-slate-500 text-xs mt-0.5 truncate">
-              {order.customerName}
-            </p>
+          <div>
+            <p className="font-semibold text-slate-900 text-sm truncate">#{order.ref}</p>
+            <p className="text-slate-500 text-xs mt-0.5 truncate">{order.customerName}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <StatusBadge status={order.status} />
-            <ChevronRight
-              className="w-4 h-4 text-slate-300 group-hover:text-teal-600 transition-colors"
-            />
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${DELIVERY_STATUS_CLASSES[order.status]}`}>
+              {DELIVERY_STATUS_LABELS[order.status]}
+            </span>
+            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-teal-600 transition-colors" />
           </div>
         </div>
-
-        {/* Address */}
         <p className="mt-2 text-xs text-slate-400 truncate">{order.customerAddress}</p>
-
-        {/* Footer row */}
         <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-          <CustodyMiniTimeline order={order} />
-          <div className="text-right">
-            <p className="text-xs font-semibold text-slate-700">{formatCOP(order.fare)}</p>
-            <p className="text-xs text-slate-400">{formatTime(order.createdAt)}</p>
-          </div>
+          <span className="text-xs text-slate-400">{formatTime(order.createdAt)}</span>
+          <p className="text-xs font-semibold text-slate-700">{formatCOP(order.fare)}</p>
         </div>
       </div>
     </Link>
   )
 }
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  color,
-}: {
-  icon: React.ElementType
-  label: string
-  value: string | number
-  color: string
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+
+function StatCard({ icon: Icon, label, value, color }: {
+  icon: React.ElementType; label: string; value: string | number; color: string
 }) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
@@ -216,62 +218,146 @@ function StatCard({
   )
 }
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+function Toast({ order, onDismiss }: { order: ClientOrder; onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4000)
+    return () => clearTimeout(t)
+  }, [onDismiss])
+
+  return (
+    <div className="fixed bottom-6 right-4 z-50 max-w-xs w-full bg-white border border-orange-300 rounded-2xl shadow-xl p-4 animate-slide-in">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
+          <Bell className="w-4 h-4 text-orange-600" />
+        </div>
+        <div className="min-w-0">
+          <p className="font-bold text-slate-900 text-sm">¡Nuevo pedido!</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            #{order.orderRef} · {formatCOP(order.total)}
+          </p>
+          <p className="text-xs text-slate-400 truncate">{order.deliveryAddress}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function PortalDashboard({
-  params,
-}: {
-  params: { token: string }
-}) {
+type Tab = 'delivery' | 'online'
+
+export default function PortalDashboard({ params }: { params: { token: string } }) {
   const { token } = params
 
   const [data, setData] = useState<ApiResponse | null>(null)
+  const [clientOrders, setClientOrders] = useState<ClientOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [activeTab, setActiveTab] = useState<Tab>('online')
+  const [wsConnected, setWsConnected] = useState(false)
+  const [toast, setToast] = useState<ClientOrder | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchOrders = useCallback(
-    async (isManual = false) => {
-      if (isManual) setRefreshing(true)
-      try {
-        const res = await fetch(`${BACKEND_URL}/business/${token}/orders`, {
-          cache: 'no-store',
-        })
-        if (res.status === 404) {
-          setError('Portal no encontrado. Verifica que el enlace sea correcto.')
-          return
-        }
-        if (!res.ok) {
-          setError('Error al cargar los pedidos. Intenta de nuevo.')
-          return
-        }
-        const json: ApiResponse = await res.json()
-        setData(json)
-        setError(null)
-        setLastRefresh(new Date())
-      } catch {
-        setError('No se pudo conectar al servidor. Verifica tu conexión a internet.')
-      } finally {
-        setLoading(false)
-        setRefreshing(false)
+  // ── REST fetch ──────────────────────────────────────────────────────────────
+
+  const fetchOrders = useCallback(async (isManual = false) => {
+    if (isManual) setRefreshing(true)
+    try {
+      const [deliveryRes, clientRes] = await Promise.all([
+        fetch(`${BACKEND_URL}/business/${token}/orders`, { cache: 'no-store' }),
+        fetch(`${BACKEND_URL}/business/${token}/client-orders`, { cache: 'no-store' }),
+      ])
+
+      if (deliveryRes.status === 404) { setError('Portal no encontrado. Verifica que el enlace sea correcto.'); return }
+      if (!deliveryRes.ok) { setError('Error al cargar los pedidos. Intenta de nuevo.'); return }
+
+      const deliveryJson = await deliveryRes.json() as { success: boolean; data: ApiResponse }
+      const deliveryData: ApiResponse = (deliveryJson.data ?? deliveryJson) as ApiResponse
+
+      if (clientRes.ok) {
+        const clientJson = await clientRes.json() as { success: boolean; data: ClientOrder[] }
+        setClientOrders((clientJson.data ?? clientJson) as ClientOrder[])
       }
-    },
-    [token],
-  )
 
-  // Initial load + auto-refresh every 60 s
+      setData(deliveryData)
+      setError(null)
+      setLastRefresh(new Date())
+    } catch {
+      setError('No se pudo conectar al servidor.')
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [token])
+
+  // ── WebSocket ───────────────────────────────────────────────────────────────
+
+  const connectWs = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return
+
+    try {
+      const ws = new WebSocket(WS_URL)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'business_auth', token }))
+      }
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data as string) as Record<string, unknown>
+          if (msg['type'] === 'business_auth_ok') {
+            setWsConnected(true)
+          } else if (msg['type'] === 'new_order') {
+            const order = msg['order'] as ClientOrder
+            setClientOrders((prev) => [order, ...prev.filter((o) => o.id !== order.id)])
+            setToast(order)
+            setActiveTab('online')
+          } else if (msg['type'] === 'business_auth_error') {
+            ws.close()
+          }
+        } catch {
+          // ignore malformed messages
+        }
+      }
+
+      ws.onclose = () => {
+        setWsConnected(false)
+        wsRef.current = null
+        reconnectTimer.current = setTimeout(connectWs, 5000)
+      }
+
+      ws.onerror = () => {
+        ws.close()
+      }
+    } catch {
+      // ignore connection errors — onclose will trigger reconnect
+    }
+  }, [token])
+
   useEffect(() => {
     fetchOrders()
-    const interval = setInterval(() => fetchOrders(), 60_000)
-    return () => clearInterval(interval)
-  }, [fetchOrders])
+    connectWs()
+    const pollInterval = setInterval(() => fetchOrders(), 60_000)
 
-  // Count active (non-delivered) orders
-  const activeCount =
-    data?.orders.filter((o) => o.status !== 'delivered').length ?? 0
+    return () => {
+      clearInterval(pollInterval)
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      wsRef.current?.close()
+    }
+  }, [fetchOrders, connectWs])
 
-  // ── Loading skeleton ──
+  // ─── Derived ────────────────────────────────────────────────────────────────
+
+  const activeDeliveryCount = data?.orders.filter((o) => o.status !== 'delivered').length ?? 0
+  const newOnlineCount = clientOrders.filter((o) => o.status === 'confirmed').length
+  const preparingCount = clientOrders.filter((o) => ['confirmed', 'driverToPickup'].includes(o.status)).length
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -283,7 +369,6 @@ export default function PortalDashboard({
     )
   }
 
-  // ── Error state ──
   if (error) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
@@ -293,11 +378,8 @@ export default function PortalDashboard({
           </div>
           <h1 className="font-bold text-slate-900 text-lg mb-2">Acceso no disponible</h1>
           <p className="text-slate-500 text-sm leading-relaxed">{error}</p>
-          <button
-            onClick={() => fetchOrders(true)}
-            className="mt-6 w-full py-2.5 px-4 bg-teal-700 text-white rounded-lg text-sm
-                       font-medium hover:bg-teal-800 transition-colors"
-          >
+          <button onClick={() => fetchOrders(true)}
+            className="mt-6 w-full py-2.5 px-4 bg-teal-700 text-white rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors">
             Reintentar
           </button>
         </div>
@@ -311,7 +393,10 @@ export default function PortalDashboard({
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* ── Header ── */}
+      {/* Toast */}
+      {toast && <Toast order={toast} onDismiss={() => setToast(null)} />}
+
+      {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -323,23 +408,26 @@ export default function PortalDashboard({
               <p className="text-xs text-slate-400">Portal de pedidos</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            {/* Live indicator */}
-            {activeCount > 0 && (
+          <div className="flex items-center gap-2">
+            {/* WS indicator */}
+            <div className={`flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1 border ${
+              wsConnected
+                ? 'text-teal-700 bg-teal-50 border-teal-200'
+                : 'text-slate-400 bg-slate-50 border-slate-200'
+            }`}>
+              {wsConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+              <span className="hidden sm:inline">{wsConnected ? 'En vivo' : 'Offline'}</span>
+            </div>
+            {/* Active orders pill */}
+            {(activeDeliveryCount + preparingCount) > 0 && (
               <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-teal-700
                               bg-teal-50 border border-teal-200 rounded-full px-2.5 py-1">
                 <Activity className="w-3 h-3 animate-pulse" />
-                {activeCount} activo{activeCount !== 1 ? 's' : ''}
+                {activeDeliveryCount + preparingCount} activo{(activeDeliveryCount + preparingCount) !== 1 ? 's' : ''}
               </div>
             )}
-            <button
-              onClick={() => fetchOrders(true)}
-              disabled={refreshing}
-              aria-label="Actualizar pedidos"
-              className="p-2 rounded-lg border border-slate-200 text-slate-500
-                         hover:border-teal-300 hover:text-teal-700 transition-colors disabled:opacity-50"
-            >
+            <button onClick={() => fetchOrders(true)} disabled={refreshing}
+              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:border-teal-300 hover:text-teal-700 transition-colors disabled:opacity-50">
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
@@ -348,78 +436,104 @@ export default function PortalDashboard({
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
 
-        {/* ── Stats grid ── */}
+        {/* Stats */}
         <section>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard
-              icon={Package}
-              label="Pedidos hoy"
-              value={stats.total}
-              color="bg-slate-100 text-slate-600"
-            />
-            <StatCard
-              icon={Truck}
-              label="En tránsito"
-              value={stats.inTransit}
-              color="bg-teal-50 text-teal-700"
-            />
-            <StatCard
-              icon={CheckCircle2}
-              label="Entregados"
-              value={stats.delivered}
-              color="bg-emerald-50 text-emerald-600"
-            />
-            <StatCard
-              icon={ShieldCheck}
-              label="Custodia"
-              value={`${stats.custodyPct}%`}
-              color="bg-blue-50 text-blue-600"
-            />
+            <StatCard icon={ShoppingBag} label="Pedidos online" value={clientOrders.length} color="bg-orange-50 text-orange-600" />
+            <StatCard icon={UtensilsCrossed} label="En preparación" value={preparingCount} color="bg-violet-50 text-violet-600" />
+            <StatCard icon={Truck} label="En tránsito" value={stats.inTransit} color="bg-teal-50 text-teal-700" />
+            <StatCard icon={CheckCircle2} label="Entregados" value={stats.delivered} color="bg-emerald-50 text-emerald-600" />
           </div>
         </section>
 
-        {/* ── Live pulse banner (mobile) ── */}
-        {activeCount > 0 && (
-          <div className="flex sm:hidden items-center gap-2 bg-teal-50 border border-teal-200
-                          rounded-xl px-4 py-3 text-teal-700 text-sm font-medium">
-            <Activity className="w-4 h-4 animate-pulse shrink-0" />
-            <span>{activeCount} pedido{activeCount !== 1 ? 's' : ''} activo{activeCount !== 1 ? 's' : ''} en este momento</span>
-          </div>
+        {/* Tabs */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+          <button
+            onClick={() => setActiveTab('online')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all ${
+              activeTab === 'online'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            Pedidos online
+            {newOnlineCount > 0 && (
+              <span className="bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                {newOnlineCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('delivery')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all ${
+              activeTab === 'delivery'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Truck className="w-4 h-4" />
+            Entregas
+            {activeDeliveryCount > 0 && (
+              <span className="bg-teal-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                {activeDeliveryCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Tab content */}
+        {activeTab === 'online' && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-orange-500" />
+                Pedidos de clientes
+                <span className="text-slate-400 font-normal">({clientOrders.length})</span>
+              </h2>
+              {lastRefresh && <p className="text-xs text-slate-400">Act. {formatTime(lastRefresh.toISOString())}</p>}
+            </div>
+            {clientOrders.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-10 text-center">
+                <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="font-medium text-slate-600">Sin pedidos online por ahora</p>
+                <p className="text-slate-400 text-sm mt-1">Los pedidos aparecerán aquí en tiempo real.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {clientOrders.map((order) => (
+                  <ClientOrderCard key={order.id} order={order} />
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
-        {/* ── Order list ── */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-              <Clock className="w-4 h-4 text-slate-400" />
-              Pedidos de hoy
-              <span className="text-slate-400 font-normal">({orders.length})</span>
-            </h2>
-            {lastRefresh && (
-              <p className="text-xs text-slate-400">
-                Act. {formatTime(lastRefresh.toISOString())}
-              </p>
+        {activeTab === 'delivery' && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                <Clock className="w-4 h-4 text-slate-400" />
+                Entregas de hoy
+                <span className="text-slate-400 font-normal">({orders.length})</span>
+              </h2>
+              {lastRefresh && <p className="text-xs text-slate-400">Act. {formatTime(lastRefresh.toISOString())}</p>}
+            </div>
+            {orders.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-10 text-center">
+                <Package className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                <p className="font-medium text-slate-600">Sin entregas por ahora</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {orders.map((order) => (
+                  <DeliveryOrderCard key={order.id} order={order} token={token} />
+                ))}
+              </div>
             )}
-          </div>
+          </section>
+        )}
 
-          {orders.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-10 text-center">
-              <Package className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-              <p className="font-medium text-slate-600">Sin pedidos por ahora</p>
-              <p className="text-slate-400 text-sm mt-1">
-                Los pedidos aparecerán aquí en tiempo real.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {orders.map((order) => (
-                <OrderCard key={order.id} order={order} token={token} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* ── Footer ── */}
         <footer className="text-center py-4">
           <p className="text-xs text-slate-400">
             Nexum Delivery ·{' '}
