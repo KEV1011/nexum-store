@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/features/addresses/presentation/providers/'
+    'addresses_provider.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/providers/'
@@ -16,6 +18,8 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'business_visuals.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'promo_banner.dart';
+import 'package:nexum_client/features/shell/presentation/providers/'
+    'shell_provider.dart';
 import 'package:nexum_client/shared/widgets/skeleton_loader.dart';
 
 /// Pestaña principal: catálogo de negocios aliados en Pamplona.
@@ -35,22 +39,47 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
   Widget build(BuildContext context) {
     final businessesAsync = ref.watch(businessesProvider);
     final favorites = ref.watch(favoritesProvider);
+    final address = ref.watch(defaultAddressProvider);
 
     return Scaffold(
+      backgroundColor: AppColors.backgroundLight,
       body: SafeArea(
         child: RefreshIndicator(
+          color: AppColors.primary,
           onRefresh: () async => ref.refresh(businessesProvider.future),
           child: CustomScrollView(
             slivers: [
-              const SliverToBoxAdapter(child: _Header()),
               SliverToBoxAdapter(
-                child: _SearchBar(
+                child: _LocationHeader(
+                  address: address?.fullAddress ?? 'Barrio Belén, Pamplona',
+                  onTap: () => context.push(AppRoutes.addresses),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _ProminentSearchBar(
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),
-              const SliverToBoxAdapter(child: PromoBanner()),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
               SliverToBoxAdapter(
-                child: _CategoryFilters(
+                child: _PromoTeaser(
+                  onTap: () {},
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: _ServiceHighlights(
+                  onMobilidadTap: () =>
+                      ref.read(shellTabProvider.notifier).state = 2,
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              const SliverToBoxAdapter(child: PromoBanner()),
+              const SliverToBoxAdapter(child: SizedBox(height: 4)),
+              SliverToBoxAdapter(
+                child: _SectionHeader(title: 'Categorías'),
+              ),
+              SliverToBoxAdapter(
+                child: _CategoryIconRow(
                   selected: _filter,
                   favoritesSelected: _favoritesSelected,
                   onSelected: (c) => setState(() {
@@ -62,6 +91,9 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                     _filter = null;
                   }),
                 ),
+              ),
+              SliverToBoxAdapter(
+                child: _SectionHeader(title: 'Negocios aliados'),
               ),
               businessesAsync.when(
                 loading: _buildLoading,
@@ -96,7 +128,9 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
     }
 
     return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppConstants.spacingM,
+      ),
       sliver: SliverList.separated(
         itemCount: filtered.length,
         separatorBuilder: (_, __) =>
@@ -117,12 +151,15 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
 
   Widget _buildLoading() {
     return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppConstants.spacingM,
+      ),
       sliver: SliverList.separated(
-        itemCount: 5,
+        itemCount: 4,
         separatorBuilder: (_, __) =>
             const SizedBox(height: AppConstants.spacingM),
-        itemBuilder: (_, __) => const SkeletonLoader(child: SkeletonTripTile()),
+        itemBuilder: (_, __) =>
+            const SkeletonLoader(child: SkeletonTripTile()),
       ),
     );
   }
@@ -153,51 +190,217 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header();
+// ── Location header ───────────────────────────────────────────────────────────
+
+class _LocationHeader extends StatelessWidget {
+  const _LocationHeader({
+    required this.address,
+    required this.onTap,
+  });
+
+  final String address;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppConstants.spacingM,
-        AppConstants.spacingM,
-        AppConstants.spacingM,
-        AppConstants.spacingS,
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.location_on_rounded,
+                color: AppColors.primary,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Entregar en',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          address,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.primary,
+                        size: 22,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariantLight,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.notifications_outlined,
+                color: AppColors.textSecondary,
+                size: 20,
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+// ── Search bar ────────────────────────────────────────────────────────────────
+
+class _ProminentSearchBar extends StatelessWidget {
+  const _ProminentSearchBar({required this.onChanged});
+
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 12,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
+        child: TextField(
+          onChanged: onChanged,
+          style: const TextStyle(fontSize: 14),
+          decoration: InputDecoration(
+            hintText: 'Restaurantes, tiendas, domicilios...',
+            hintStyle: const TextStyle(
+              color: AppColors.textTertiary,
+              fontSize: 14,
+            ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AppColors.primary,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.5,
+              ),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Promo teaser ──────────────────────────────────────────────────────────────
+
+class _PromoTeaser extends StatelessWidget {
+  const _PromoTeaser({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_rounded,
-                      color: AppColors.primary,
-                      size: 18,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'Entregar en',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 2),
                 Text(
-                  'Barrio Belén, Pamplona',
+                  'Nexum Fest 🎉',
                   style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.primary,
+                    letterSpacing: -0.3,
                   ),
                 ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Domicilios desde \$0 · Solo este mes',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onTap,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Ver promos',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                SizedBox(width: 2),
+                Icon(Icons.arrow_forward_ios_rounded, size: 11),
               ],
             ),
           ),
@@ -207,28 +410,168 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _SearchBar extends StatelessWidget {
-  const _SearchBar({required this.onChanged});
+// ── Service highlights ────────────────────────────────────────────────────────
 
-  final ValueChanged<String> onChanged;
+class _ServiceHighlights extends StatelessWidget {
+  const _ServiceHighlights({required this.onMobilidadTap, super.key});
+
+  final VoidCallback onMobilidadTap;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM),
-      child: TextField(
-        onChanged: onChanged,
-        decoration: const InputDecoration(
-          hintText: 'Buscar restaurantes, tiendas...',
-          prefixIcon: Icon(Icons.search_rounded),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ServiceCard(
+              emoji: '🍔',
+              title: 'Restaurantes',
+              subtitle: 'Domicilio en 30 min',
+              gradient: const [Color(0xFFFF7043), Color(0xFFBF360C)],
+              shadowColor: const Color(0x40FF7043),
+              onTap: () {},
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _ServiceCard(
+              emoji: '🚗',
+              title: 'Movilidad',
+              subtitle: 'Taxi · Moto · Envíos',
+              gradient: const [AppColors.secondary, AppColors.secondaryDark],
+              shadowColor: const Color(0x401565C0),
+              onTap: onMobilidadTap,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceCard extends StatelessWidget {
+  const _ServiceCard({
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
+    required this.gradient,
+    required this.shadowColor,
+    required this.onTap,
+    super.key,
+  });
+
+  final String emoji;
+  final String title;
+  final String subtitle;
+  final List<Color> gradient;
+  final Color shadowColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 128,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: gradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: shadowColor,
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            Positioned(
+              top: -8,
+              right: -4,
+              child: Text(
+                emoji,
+                style: const TextStyle(fontSize: 56),
+              ),
+            ),
+            Positioned(
+              bottom: 14,
+              left: 14,
+              right: 14,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.82),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _CategoryFilters extends StatelessWidget {
-  const _CategoryFilters({
+// ── Section header ────────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, this.action, super.key});
+
+  final String title;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ),
+          if (action != null) action!,
+        ],
+      ),
+    );
+  }
+}
+
+// ── Category icons ────────────────────────────────────────────────────────────
+
+class _CategoryIconRow extends StatelessWidget {
+  const _CategoryIconRow({
     required this.selected,
     required this.favoritesSelected,
     required this.onSelected,
@@ -245,51 +588,46 @@ class _CategoryFilters extends StatelessWidget {
     const categories = BusinessCategory.values;
 
     return SizedBox(
-      height: 72,
-      child: ListView.separated(
+      height: 88,
+      child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppConstants.spacingM,
-          vertical: AppConstants.spacingS,
-        ),
-        itemCount: categories.length + 2,
-        separatorBuilder: (_, __) =>
-            const SizedBox(width: AppConstants.spacingS),
-        itemBuilder: (context, i) {
-          if (i == 0) {
-            return _FilterChip(
-              icon: Icons.apps_rounded,
-              label: 'Todos',
-              color: AppColors.primary,
-              selected: selected == null && !favoritesSelected,
-              onTap: () => onSelected(null),
-            );
-          }
-          if (i == 1) {
-            return _FilterChip(
-              icon: Icons.favorite_rounded,
-              label: 'Favoritos',
-              color: AppColors.error,
-              selected: favoritesSelected,
-              onTap: onFavoritesTap,
-            );
-          }
-          final category = categories[i - 2];
-          return _FilterChip(
-            icon: category.icon,
-            label: category.label,
-            color: category.color,
-            selected: selected == category,
-            onTap: () => onSelected(category),
-          );
-        },
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _CategoryIcon(
+            icon: Icons.apps_rounded,
+            label: 'Todos',
+            color: AppColors.primary,
+            selected: selected == null && !favoritesSelected,
+            onTap: () => onSelected(null),
+          ),
+          const SizedBox(width: 16),
+          _CategoryIcon(
+            icon: Icons.favorite_rounded,
+            label: 'Favoritos',
+            color: AppColors.error,
+            selected: favoritesSelected,
+            onTap: onFavoritesTap,
+          ),
+          ...categories.map(
+            (cat) => Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: _CategoryIcon(
+                icon: cat.icon,
+                label: cat.label,
+                color: cat.color,
+                selected: selected == cat,
+                onTap: () => onSelected(cat),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
+class _CategoryIcon extends StatelessWidget {
+  const _CategoryIcon({
     required this.icon,
     required this.label,
     required this.color,
@@ -307,38 +645,49 @@ class _FilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: AppConstants.shortAnimation,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppConstants.spacingM,
-        ),
-        decoration: BoxDecoration(
-          color: selected ? color : color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
-        ),
-        child: Row(
-          children: [
-            Icon(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedContainer(
+            duration: AppConstants.shortAnimation,
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: selected ? color : color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+              boxShadow: selected
+                  ? [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Icon(
               icon,
-              size: 18,
               color: selected ? Colors.white : color,
+              size: 24,
             ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: selected ? Colors.white : color,
-              ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight:
+                  selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? color : AppColors.textSecondary,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
+
+// ── Empty state ───────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({this.favoritesMode = false});
@@ -364,7 +713,6 @@ class _EmptyState extends StatelessWidget {
                 ? 'Aún no tienes favoritos'
                 : 'No encontramos negocios con ese filtro',
             style: const TextStyle(
-              fontFamily: 'Inter',
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -373,7 +721,6 @@ class _EmptyState extends StatelessWidget {
             const Text(
               'Toca el corazón en un negocio para guardarlo',
               style: TextStyle(
-                fontFamily: 'Inter',
                 fontSize: 13,
                 color: AppColors.textSecondary,
               ),

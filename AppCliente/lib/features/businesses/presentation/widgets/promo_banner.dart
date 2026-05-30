@@ -8,38 +8,48 @@ class _PromoData {
   const _PromoData({
     required this.title,
     required this.subtitle,
+    required this.cta,
     required this.gradient,
     required this.icon,
+    required this.decorIcon,
   });
 
   final String title;
   final String subtitle;
+  final String cta;
   final List<Color> gradient;
   final IconData icon;
+  final IconData decorIcon;
 }
 
 const _promos = [
   _PromoData(
     title: 'Domicilio gratis',
     subtitle: 'En tus primeros 3 pedidos del mes',
+    cta: 'Pedir ahora',
     gradient: [Color(0xFF00C853), Color(0xFF00963D)],
     icon: Icons.local_shipping_rounded,
+    decorIcon: Icons.delivery_dining_rounded,
   ),
   _PromoData(
     title: 'Restaurantes Pamplona',
     subtitle: 'Platos típicos a tu puerta en 30 min',
-    gradient: [Color(0xFFF57F17), Color(0xFFE65100)],
+    cta: 'Explorar',
+    gradient: [Color(0xFFFF7043), Color(0xFFBF360C)],
     icon: Icons.restaurant_rounded,
+    decorIcon: Icons.ramen_dining_rounded,
   ),
   _PromoData(
-    title: 'Cadena de custodia',
-    subtitle: 'Foto al salir + prueba de entrega. Siempre.',
-    gradient: [Color(0xFF1565C0), Color(0xFF003C8F)],
+    title: 'Custodia garantizada',
+    subtitle: 'Foto al salir + prueba de entrega',
+    cta: 'Saber más',
+    gradient: [AppColors.secondary, AppColors.secondaryDark],
     icon: Icons.verified_user_rounded,
+    decorIcon: Icons.shield_rounded,
   ),
 ];
 
-/// Carrusel animado de promociones en la pantalla de inicio.
+/// Carrusel animado de promociones.
 class PromoBanner extends StatefulWidget {
   const PromoBanner({super.key});
 
@@ -48,7 +58,7 @@ class PromoBanner extends StatefulWidget {
 }
 
 class _PromoBannerState extends State<PromoBanner> {
-  final _pageCtrl = PageController(viewportFraction: 0.92);
+  final _ctrl = PageController();
   int _page = 0;
   Timer? _timer;
 
@@ -58,7 +68,7 @@ class _PromoBannerState extends State<PromoBanner> {
     _timer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (!mounted) return;
       final next = (_page + 1) % _promos.length;
-      _pageCtrl.animateToPage(
+      _ctrl.animateToPage(
         next,
         duration: AppConstants.mediumAnimation,
         curve: Curves.easeInOut,
@@ -69,44 +79,45 @@ class _PromoBannerState extends State<PromoBanner> {
   @override
   void dispose() {
     _timer?.cancel();
-    _pageCtrl.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: AppConstants.spacingS),
-      child: Column(
-        children: [
-          SizedBox(
-            height: 120,
-            child: PageView.builder(
-              controller: _pageCtrl,
-              onPageChanged: (p) => setState(() => _page = p),
-              itemCount: _promos.length,
-              itemBuilder: (_, i) => _PromoCard(data: _promos[i]),
+    return Column(
+      children: [
+        SizedBox(
+          height: 152,
+          child: PageView.builder(
+            controller: _ctrl,
+            onPageChanged: (p) => setState(() => _page = p),
+            itemCount: _promos.length,
+            itemBuilder: (_, i) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: _PromoCard(data: _promos[i]),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(_promos.length, (i) {
-              return AnimatedContainer(
-                duration: AppConstants.shortAnimation,
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: i == _page ? 18 : 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color:
-                      i == _page ? AppColors.primary : AppColors.outlineLight,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(_promos.length, (i) {
+            return AnimatedContainer(
+              duration: AppConstants.shortAnimation,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: i == _page ? 20 : 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: i == _page
+                    ? _promos[i].gradient.first
+                    : AppColors.outlineLight,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }
@@ -118,57 +129,102 @@ class _PromoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: data.gradient,
-          ),
-          borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: data.gradient,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppConstants.spacingM),
-          child: Row(
-            children: [
-              Icon(
-                data.icon,
-                color: Colors.white.withValues(alpha: 0.9),
-                size: 44,
-              ),
-              const SizedBox(width: AppConstants.spacingM),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      data.title,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      data.subtitle,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        color: Colors.white.withValues(alpha: 0.85),
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
+        borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+        boxShadow: [
+          BoxShadow(
+            color: data.gradient.first.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // Decorative background icon
+          Positioned(
+            right: -16,
+            top: -16,
+            child: Icon(
+              data.decorIcon,
+              size: 110,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppConstants.spacingM),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    data.icon,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(width: AppConstants.spacingM),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        data.title,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        data.subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          data.cta,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

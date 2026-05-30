@@ -9,21 +9,16 @@ import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
 import 'package:nexum_client/features/orders/presentation/screens/'
     'orders_screen.dart';
+import 'package:nexum_client/features/shell/presentation/providers/'
+    'shell_provider.dart';
 import 'package:nexum_client/features/transport/presentation/providers/'
     'transport_provider.dart';
 import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_home_screen.dart';
 
 /// Contenedor principal con barra de navegación inferior.
-class HomeShell extends ConsumerStatefulWidget {
+class HomeShell extends ConsumerWidget {
   const HomeShell({super.key});
-
-  @override
-  ConsumerState<HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends ConsumerState<HomeShell> {
-  int _index = 0;
 
   static const _tabs = [
     BusinessesScreen(),
@@ -33,7 +28,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final index = ref.watch(shellTabProvider);
     final ordersActive = ref.watch(
       ordersProvider.select((s) => s.active.length),
     );
@@ -42,10 +38,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     );
 
     return Scaffold(
-      body: IndexedStack(index: _index, children: _tabs),
+      body: IndexedStack(index: index, children: _tabs),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        selectedIndex: index,
+        onDestinationSelected: (i) =>
+            ref.read(shellTabProvider.notifier).state = i,
         destinations: [
           const NavigationDestination(
             icon: Icon(Icons.storefront_outlined),
@@ -94,7 +91,6 @@ class _BadgeIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (badge == 0) return Icon(icon);
-
     return Badge.count(
       count: badge,
       backgroundColor: AppColors.primary,
@@ -102,4 +98,3 @@ class _BadgeIcon extends StatelessWidget {
     );
   }
 }
-

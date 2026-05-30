@@ -10,7 +10,7 @@ import 'package:nexum_client/features/businesses/presentation/providers/'
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'business_visuals.dart';
 
-/// Tarjeta de un negocio en la lista principal.
+/// Tarjeta de negocio con área de imagen y detalles.
 class BusinessCard extends StatelessWidget {
   const BusinessCard({
     required this.business,
@@ -26,37 +26,146 @@ class BusinessCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Material(
-      color: isDark ? AppColors.cardDark : AppColors.cardLight,
+      color: isDark ? AppColors.cardDark : AppColors.surfaceLight,
       borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
         child: Container(
-          padding: const EdgeInsets.all(AppConstants.spacingM),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
             border: Border.all(
               color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
             ),
+            boxShadow: isDark
+                ? null
+                : const [
+                    BoxShadow(
+                      color: AppColors.shadow,
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: business.category.containerColor,
-                  borderRadius:
-                      BorderRadius.circular(AppConstants.radiusMedium),
+              // ── Illustration area ───────────────────────────────────────
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(AppConstants.radiusLarge),
                 ),
-                child: Icon(
-                  business.category.icon,
-                  color: business.category.color,
-                  size: 28,
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 108,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            business.category.color.withValues(alpha: 0.7),
+                            business.category.color,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            right: -12,
+                            bottom: -12,
+                            child: Icon(
+                              business.category.icon,
+                              size: 90,
+                              color: Colors.white.withValues(alpha: 0.15),
+                            ),
+                          ),
+                          Center(
+                            child: Icon(
+                              business.category.icon,
+                              size: 44,
+                              color: Colors.white.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (!business.isOpen)
+                      Container(
+                        height: 108,
+                        color: Colors.black.withValues(alpha: 0.48),
+                        alignment: Alignment.center,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Cerrado',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: _FavoriteButton(businessId: business.id),
+                    ),
+                    if (business.isOpen)
+                      Positioned(
+                        bottom: 8,
+                        left: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.circle,
+                                size: 7,
+                                color: AppColors.success,
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'Abierto',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(width: AppConstants.spacingM),
-              Expanded(
+
+              // ── Details area ────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.spacingM,
+                  AppConstants.spacingS,
+                  AppConstants.spacingM,
+                  AppConstants.spacingM,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -66,7 +175,6 @@ class BusinessCard extends StatelessWidget {
                           child: Text(
                             business.name,
                             style: const TextStyle(
-                              fontFamily: 'Inter',
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
                             ),
@@ -74,46 +182,44 @@ class BusinessCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: AppConstants.spacingS),
+                        const SizedBox(width: 6),
                         const Icon(
                           Icons.star_rounded,
                           color: AppColors.star,
-                          size: 16,
+                          size: 15,
                         ),
                         const SizedBox(width: 2),
                         Text(
                           business.rating.toStringAsFixed(1),
                           style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(width: AppConstants.spacingS),
-                        _FavoriteButton(businessId: business.id),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      business.category.label,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: AppConstants.spacingS),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         _MetaChip(
                           icon: Icons.schedule_rounded,
                           label: '${business.etaMinutes} min',
                         ),
-                        const SizedBox(width: AppConstants.spacingS),
+                        const SizedBox(width: AppConstants.spacingM),
                         _MetaChip(
                           icon: Icons.pedal_bike_rounded,
                           label:
-                              CurrencyFormatter.format(business.deliveryFee),
+                              business.deliveryFee == 0
+                                  ? 'Gratis'
+                                  : CurrencyFormatter.format(
+                                      business.deliveryFee,
+                                    ),
+                          highlight: business.deliveryFee == 0,
+                        ),
+                        const SizedBox(width: AppConstants.spacingM),
+                        _MetaChip(
+                          icon: Icons.storefront_outlined,
+                          label: business.category.label,
                         ),
                       ],
                     ),
@@ -138,35 +244,54 @@ class _FavoriteButton extends ConsumerWidget {
     final isFav = ref.watch(favoritesProvider).contains(businessId);
     return GestureDetector(
       onTap: () => ref.read(favoritesProvider.notifier).toggle(businessId),
-      child: Icon(
-        isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-        color: isFav ? AppColors.error : AppColors.textTertiary,
-        size: 18,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.9),
+          shape: BoxShape.circle,
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.shadow,
+              blurRadius: 6,
+            ),
+          ],
+        ),
+        child: Icon(
+          isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          color: isFav ? AppColors.error : AppColors.textTertiary,
+          size: 17,
+        ),
       ),
     );
   }
 }
 
 class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label});
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+    this.highlight = false,
+  });
 
   final IconData icon;
   final String label;
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
+    final color = highlight ? AppColors.success : AppColors.textSecondary;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: AppColors.textSecondary),
-        const SizedBox(width: 4),
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 3),
         Text(
           label,
-          style: const TextStyle(
-            fontFamily: 'Inter',
+          style: TextStyle(
             fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: AppColors.textSecondary,
+            fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
+            color: color,
           ),
         ),
       ],

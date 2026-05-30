@@ -1,0 +1,341 @@
+// Nexum MaaS — Schema de base de datos
+// Stack: PostgreSQL + PostGIS (geo-queries) + Prisma ORM
+//
+// Para aplicar:
+//   npx prisma migrate dev --name init
+// Para generar el cliente:
+//   npx prisma generate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Usuarios (clientes) ───────────────────────────────────────────────────────
+
+model User {
+  id          String    @id @default(cuid())
+  phone       String    @unique
+  name        String?
+  email       String?   @unique
+  avatarUrl   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isActive    Boolean   @default(true)
+
+  addresses   Address[]
+  orders      Order[]
+  trips       Trip[]    @relation("TripPassenger")
+  ratings     Rating[]  @relation("RatingAuthor")
+  otpSessions OtpSession[]
+
+  @@map("users")
+}
+
+// ── OTP Sessions ──────────────────────────────────────────────────────────────
+
+model OtpSession {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [phone], references: [phone])
+
+  @@index([phone])
+  @@map("otp_sessions")
+}
+
+// ── Conductores ───────────────────────────────────────────────────────────────
+
+model Driver {
+  id            String       @id @default(cuid())
+  phone         String       @unique
+  name          String
+  email         String?      @unique
+  avatarUrl     String?
+  licenseNumber String       @unique
+  status        DriverStatus @default(OFFLINE)
+  isVerified    Boolean      @default(false)
+  rating        Float        @default(5.0)
+  totalTrips    Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Última posición conocida (PostGIS — se guarda como lat/lng en Postgres)
+  lastLat       Float?
+  lastLng       Float?
+  lastSeenAt    DateTime?
+
+  vehicles      Vehicle[]
+  trips         Trip[]
+  otpSessions   OtpSession[]
+  earnings      DriverEarning[]
+
+  @@index([status])
+  @@map("drivers")
+}
+
+enum DriverStatus {
+  OFFLINE
+  ONLINE
+  ON_TRIP
+}
+
+model Vehicle {
+  id           String      @id @default(cuid())
+  driverId     String
+  type         VehicleType
+  brand        String
+  model        String
+  year         Int
+  plate        String      @unique
+  color        String
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+
+  driver       Driver      @relation(fields: [driverId], references: [id])
+  trips        Trip[]
+
+  @@map("vehicles")
+}
+
+enum VehicleType {
+  PARTICULAR
+  TAXI
+  MOTO
+  MOTOCARRO
+}
+
+// ── Negocios aliados ──────────────────────────────────────────────────────────
+
+model Business {
+  id           String           @id @default(cuid())
+  name         String
+  category     BusinessCategory
+  address      String
+  lat          Float
+  lng          Float
+  phone        String?
+  rating       Float            @default(5.0)
+  etaMinutes   Int              @default(30)
+  deliveryFee  Float            @default(2500)
+  isOpen       Boolean          @default(true)
+  token        String           @unique @default(cuid())
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  products     Product[]
+  orders       Order[]
+
+  @@index([category])
+  @@index([lat, lng])
+  @@map("businesses")
+}
+
+enum BusinessCategory {
+  RESTAURANT
+  SUPERMARKET
+  PHARMACY
+  OTHER
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  businessId   String
+  name         String
+  description  String?
+  price        Float
+  category     String   @default("General")
+  imageUrl     String?
+  isAvailable  Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  business     Business    @relation(fields: [businessId], references: [id])
+  orderLines   OrderLine[]
+
+  @@index([businessId])
+  @@map("products")
+}
+
+// ── Pedidos de domicilio ──────────────────────────────────────────────────────
+
+model Order {
+  id               String      @id @default(cuid())
+  orderRef         String      @unique
+  userId           String
+  businessId       String
+  driverId         String?
+  status           OrderStatus @default(CONFIRMED)
+  deliveryAddress  String
+  deliveryLat      Float?
+  deliveryLng      Float?
+  subtotal         Float
+  deliveryFee      Float
+  total            Float
+  etaMinutes       Int?
+  pickupPhotoUrl   String?
+  deliveryPhotoUrl String?
+  hasSignature     Boolean     @default(false)
+  rating           Int?
+  ratingComment    String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  pickedUpAt       DateTime?
+  deliveredAt      DateTime?
+
+  user             User        @relation(fields: [userId], references: [id])
+  business         Business    @relation(fields: [businessId], references: [id])
+  lines            OrderLine[]
+
+  @@index([userId])
+  @@index([driverId])
+  @@index([status])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  CONFIRMED
+  DRIVER_TO_PICKUP
+  AT_PICKUP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+model OrderLine {
+  id          String  @id @default(cuid())
+  orderId     String
+  productId   String
+  productName String
+  quantity    Int
+  unitPrice   Float
+  subtotal    Float
+
+  order       Order   @relation(fields: [orderId], references: [id])
+  product     Product @relation(fields: [productId], references: [id])
+
+  @@map("order_lines")
+}
+
+// ── Viajes de movilidad ───────────────────────────────────────────────────────
+
+model Trip {
+  id                 String          @id @default(cuid())
+  requestRef         String          @unique
+  passengerId        String
+  driverId           String?
+  vehicleId          String?
+  serviceType        TransportType
+  status             TripStatus      @default(SEARCHING)
+  originAddress      String
+  originLat          Float
+  originLng          Float
+  destAddress        String
+  destLat            Float
+  destLng            Float
+  estimatedFare      Float
+  finalFare          Float?
+  distanceKm         Float?
+  etaMinutes         Int?
+  cancelReason       String?
+  // Prueba de entrega (para envíos)
+  pickupPhotoUrl     String?
+  deliveryPhotoUrl   String?
+  // Envíos — datos destinatario
+  recipientName      String?
+  recipientPhone     String?
+  packageDescription String?
+  rating             Int?
+  ratingComment      String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  acceptedAt         DateTime?
+  arrivedAt          DateTime?
+  completedAt        DateTime?
+
+  passenger          User            @relation("TripPassenger", fields: [passengerId], references: [id])
+  driver             Driver?         @relation(fields: [driverId], references: [id])
+  vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
+  ratings            Rating[]
+
+  @@index([passengerId])
+  @@index([driverId])
+  @@index([status])
+  @@map("trips")
+}
+
+enum TransportType {
+  TAXI
+  MOTO
+  PARTICULAR
+  ENVIOS
+}
+
+enum TripStatus {
+  SEARCHING
+  ACCEPTED
+  ARRIVING
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ── Ganancias del conductor ───────────────────────────────────────────────────
+
+model DriverEarning {
+  id          String   @id @default(cuid())
+  driverId    String
+  date        DateTime @db.Date
+  grossFare   Float
+  commission  Float
+  netEarning  Float
+  tripCount   Int
+  createdAt   DateTime @default(now())
+
+  driver      Driver   @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, date])
+  @@index([driverId])
+  @@map("driver_earnings")
+}
+
+// ── Direcciones guardadas del usuario ─────────────────────────────────────────
+
+model Address {
+  id          String  @id @default(cuid())
+  userId      String
+  alias       String
+  fullAddress String
+  lat         Float?
+  lng         Float?
+  isDefault   Boolean @default(false)
+
+  user        User    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// ── Calificaciones ────────────────────────────────────────────────────────────
+
+model Rating {
+  id        String   @id @default(cuid())
+  authorId  String
+  tripId    String?
+  stars     Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  author    User     @relation("RatingAuthor", fields: [authorId], references: [id])
+  trip      Trip?    @relation(fields: [tripId], references: [id])
+
+  @@map("ratings")
+}
