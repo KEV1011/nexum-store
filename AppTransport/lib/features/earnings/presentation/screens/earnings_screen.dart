@@ -8,8 +8,8 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/utils/fare_calculator.dart';
-import 'package:nexum_driver/features/driver_status/presentation/providers/'
-    'driver_status_provider.dart';
+import 'package:nexum_driver/features/earnings/presentation/providers/'
+    'earnings_breakdown_provider.dart';
 import 'package:nexum_driver/shared/widgets/skeleton_loader.dart';
 
 // ── Models ───────────────────────────────────────────────────────────────────
@@ -40,51 +40,14 @@ class _WeekEarning {
   double get commission => FareCalculator.calculateCommission(grossEarnings);
 }
 
-// ── Mock generators ──────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-List<_DayEarning> _generateWeekEarnings() {
-  final now = DateTime.now();
-  return [
-    _DayEarning(date: now, totalTrips: 8, grossEarnings: 68000),
-    _DayEarning(
-      date: now.subtract(const Duration(days: 1)),
-      totalTrips: 11,
-      grossEarnings: 95500,
-    ),
-    _DayEarning(
-      date: now.subtract(const Duration(days: 2)),
-      totalTrips: 6,
-      grossEarnings: 52000,
-    ),
-    _DayEarning(
-      date: now.subtract(const Duration(days: 3)),
-      totalTrips: 14,
-      grossEarnings: 128000,
-    ),
-    _DayEarning(
-      date: now.subtract(const Duration(days: 4)),
-      totalTrips: 9,
-      grossEarnings: 77500,
-    ),
-    _DayEarning(
-      date: now.subtract(const Duration(days: 5)),
-      totalTrips: 12,
-      grossEarnings: 107000,
-    ),
-    _DayEarning(
-      date: now.subtract(const Duration(days: 6)),
-      totalTrips: 7,
-      grossEarnings: 61000,
-    ),
-  ];
-}
-
-const _weeklyEarnings = [
-  _WeekEarning(label: 'Sem 1', totalTrips: 58, grossEarnings: 490000),
-  _WeekEarning(label: 'Sem 2', totalTrips: 64, grossEarnings: 545000),
-  _WeekEarning(label: 'Sem 3', totalTrips: 71, grossEarnings: 598000),
-  _WeekEarning(label: 'Sem 4', totalTrips: 67, grossEarnings: 569000),
+const _monthNames = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
+
+String _monthYearLabel(DateTime d) => '${_monthNames[d.month - 1]} ${d.year}';
 
 String _compactCop(double v) {
   if (v >= 1000000) return '\$${(v / 1000000).toStringAsFixed(1)}M';
@@ -147,7 +110,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final status = ref.watch(driverStatusProvider);
+    final breakdown = ref.watch(earningsBreakdownProvider);
 
     if (_loading) {
       return Scaffold(
@@ -171,21 +134,26 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
       );
     }
 
-    // Inject live session data into today's slot
-    final rawWeek = _generateWeekEarnings();
-    final hasLive = status.dailyTrips > 0;
-    final liveNet = status.dailyEarnings;
-    final liveGross = hasLive
-        ? liveNet / (1 - AppConstants.platformCommissionRate)
-        : rawWeek.first.grossEarnings;
-    final week = [
-      _DayEarning(
-        date: rawWeek.first.date,
-        totalTrips: hasLive ? status.dailyTrips : rawWeek.first.totalTrips,
-        grossEarnings: liveGross,
-      ),
-      ...rawWeek.skip(1),
-    ];
+    // Real data aggregated from persisted trip history (HOY en índice 0).
+    final week = breakdown.days
+        .map(
+          (b) => _DayEarning(
+            date: b.date!,
+            totalTrips: b.trips,
+            grossEarnings: b.grossEarnings,
+          ),
+        )
+        .toList();
+    final months = breakdown.weeks
+        .map(
+          (b) => _WeekEarning(
+            label: b.label,
+            totalTrips: b.trips,
+            grossEarnings: b.grossEarnings,
+          ),
+        )
+        .toList();
+    final hasLive = breakdown.hasTripsToday;
 
     final isWeek = _period == 0;
 
@@ -195,10 +163,10 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
     final weekTrips = week.fold<int>(0, (s, e) => s + e.totalTrips);
 
     final monthGross =
-        _weeklyEarnings.fold<double>(0, (s, e) => s + e.grossEarnings);
+        months.fold<double>(0, (s, e) => s + e.grossEarnings);
     final monthNet = FareCalculator.calculateNetEarning(monthGross);
     final monthTrips =
-        _weeklyEarnings.fold<int>(0, (s, e) => s + e.totalTrips);
+        months.fold<int>(0, (s, e) => s + e.totalTrips);
 
     final todayNet = week.first.netEarnings;
 
@@ -246,6 +214,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
               gross: isWeek ? week.first.grossEarnings : monthGross,
               trips: isWeek ? week.first.totalTrips : monthTrips,
               date: week.first.date,
+              monthLabel: _monthYearLabel(week.first.date),
             ),
             const SizedBox(height: AppConstants.spacingM),
 
@@ -286,7 +255,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
             const SizedBox(height: AppConstants.spacingS),
             _AnimatedBarChart(
               weekEntries: week.reversed.toList(),
-              monthEntries: _weeklyEarnings,
+              monthEntries: months,
               isWeek: isWeek,
               selectedIndex: _selectedBar,
               animation: _chartAnim,
@@ -318,7 +287,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
             if (isWeek)
               ...week.map((e) => _DayRow(earning: e))
             else
-              ..._weeklyEarnings.map((e) => _WeekRow(earning: e)),
+              ...months.map((e) => _WeekRow(earning: e)),
 
             const SizedBox(height: AppConstants.spacingL),
           ],
@@ -510,6 +479,7 @@ class _HeroCard extends StatelessWidget {
     required this.gross,
     required this.trips,
     required this.date,
+    required this.monthLabel,
   });
   final bool isWeek;
   final bool hasLive;
@@ -517,6 +487,7 @@ class _HeroCard extends StatelessWidget {
   final double gross;
   final int trips;
   final DateTime date;
+  final String monthLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -532,7 +503,7 @@ class _HeroCard extends StatelessWidget {
                 Text(
                   isWeek
                       ? 'Hoy, ${DateFormatter.formatDate(date)}'
-                      : 'Mayo 2025',
+                      : monthLabel,
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(color: AppColors.textSecondary),
                 ),
@@ -868,13 +839,15 @@ class _AnimatedBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final count = isWeek ? weekEntries.length : monthEntries.length;
-    final maxGross = isWeek
+    final rawMax = isWeek
         ? weekEntries
             .map((e) => e.grossEarnings)
             .reduce((a, b) => a > b ? a : b)
         : monthEntries
             .map((e) => e.grossEarnings)
             .reduce((a, b) => a > b ? a : b);
+    // Evita división por cero cuando aún no hay ganancias en el período.
+    final maxGross = rawMax <= 0 ? 1.0 : rawMax;
 
     return Column(
       children: [
