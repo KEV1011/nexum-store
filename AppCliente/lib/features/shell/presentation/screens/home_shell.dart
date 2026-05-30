@@ -9,6 +9,10 @@ import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
 import 'package:nexum_client/features/orders/presentation/screens/'
     'orders_screen.dart';
+import 'package:nexum_client/features/transport/presentation/providers/'
+    'transport_provider.dart';
+import 'package:nexum_client/features/transport/presentation/screens/'
+    'transport_home_screen.dart';
 
 /// Contenedor principal con barra de navegación inferior.
 class HomeShell extends ConsumerStatefulWidget {
@@ -24,13 +28,17 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   static const _tabs = [
     BusinessesScreen(),
     OrdersScreen(),
+    TransportHomeScreen(),
     AccountScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final activeCount = ref.watch(
+    final ordersActive = ref.watch(
       ordersProvider.select((s) => s.active.length),
+    );
+    final transportActive = ref.watch(
+      transportProvider.select((s) => s.active.length),
     );
 
     return Scaffold(
@@ -45,15 +53,26 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             label: 'Inicio',
           ),
           NavigationDestination(
-            icon: _OrdersIcon(
+            icon: _BadgeIcon(
               icon: Icons.receipt_long_outlined,
-              badge: activeCount,
+              badge: ordersActive,
             ),
-            selectedIcon: _OrdersIcon(
+            selectedIcon: _BadgeIcon(
               icon: Icons.receipt_long_rounded,
-              badge: activeCount,
+              badge: ordersActive,
             ),
             label: 'Pedidos',
+          ),
+          NavigationDestination(
+            icon: _BadgeIcon(
+              icon: Icons.directions_car_outlined,
+              badge: transportActive,
+            ),
+            selectedIcon: _BadgeIcon(
+              icon: Icons.directions_car_rounded,
+              badge: transportActive,
+            ),
+            label: 'Movilidad',
           ),
           const NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),
@@ -66,8 +85,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 }
 
-class _OrdersIcon extends StatelessWidget {
-  const _OrdersIcon({required this.icon, required this.badge});
+class _BadgeIcon extends StatelessWidget {
+  const _BadgeIcon({required this.icon, required this.badge});
 
   final IconData icon;
   final int badge;
@@ -83,3 +102,4 @@ class _OrdersIcon extends StatelessWidget {
     );
   }
 }
+

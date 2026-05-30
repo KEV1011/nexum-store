@@ -26,6 +26,12 @@ import 'package:nexum_client/features/orders/presentation/screens/'
     'order_tracking_screen.dart';
 import 'package:nexum_client/features/shell/presentation/screens/'
     'home_shell.dart';
+import 'package:nexum_client/features/transport/domain/entities/'
+    'transport_request_entity.dart';
+import 'package:nexum_client/features/transport/presentation/screens/'
+    'transport_booking_screen.dart';
+import 'package:nexum_client/features/transport/presentation/screens/'
+    'transport_tracking_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Rutas con nombre de la app Nexum Cliente.
@@ -42,9 +48,14 @@ abstract final class AppRoutes {
   // Rutas paramétricas
   static const String business = '/business/:id';
   static const String order = '/order/:id';
+  static const String transportTracking = '/transport/tracking/:id';
+
+  // Rutas de transporte
+  static const String transportBooking = '/transport/booking';
 
   static String businessPath(String id) => '/business/$id';
   static String orderPath(String id) => '/order/$id';
+  static String transportTrackingPath(String id) => '/transport/tracking/$id';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -127,6 +138,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const AddressesScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.transportBooking,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: TransportBookingScreen(
+            serviceType: state.extra! as TransportServiceType,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.transportTracking,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: TransportTrackingScreen(
+            requestId: state.pathParameters['id'] ?? '',
+          ),
         ),
       ),
     ],
