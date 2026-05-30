@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/core/domain/work_mode.dart';
 
 /// Proof-of-delivery data collected at the end of an Envíos trip.
 class DeliveryProof {
@@ -18,25 +19,32 @@ class DeliveryProof {
   final bool hasSignature;
 }
 
-/// Bottom sheet that collects delivery proof for Envíos trips:
-/// an optional camera photo of the package and a handwritten
-/// signature drawn by the recipient directly on screen.
+/// Bottom sheet que recoge prueba de entrega para viajes de reparto
+/// (pedido o paquete): foto opcional + firma del destinatario.
 class DeliveryProofSheet extends StatefulWidget {
-  const DeliveryProofSheet({required this.recipientName, super.key});
+  const DeliveryProofSheet({
+    required this.recipientName,
+    required this.workMode,
+    super.key,
+  });
 
   final String recipientName;
+  final WorkMode workMode;
 
   static Future<DeliveryProof?> show(
     BuildContext context, {
     required String recipientName,
+    required WorkMode workMode,
   }) =>
       showModalBottomSheet<DeliveryProof>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
-        builder: (_) =>
-            DeliveryProofSheet(recipientName: recipientName),
+        builder: (_) => DeliveryProofSheet(
+          recipientName: recipientName,
+          workMode: workMode,
+        ),
       );
 
   @override
@@ -92,7 +100,10 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const teal = AppColors.serviceEnvios;
+    final accent = widget.workMode.color;
+    final isPaquete = widget.workMode == WorkMode.paquete;
+    final photoLabel =
+        isPaquete ? 'Foto del paquete entregado' : 'Foto del pedido entregado';
 
     return Container(
       constraints: BoxConstraints(
@@ -129,12 +140,12 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: teal.withValues(alpha: 0.12),
+                    color: accent.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.verified_rounded,
-                    color: teal,
+                    color: accent,
                     size: 22,
                   ),
                 ),
@@ -144,7 +155,9 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Prueba de entrega',
+                        isPaquete
+                            ? 'Prueba de entrega · Paquete'
+                            : 'Prueba de entrega · Pedido',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -175,15 +188,15 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                   // ── Photo section ─────────────────────────────────
                   _SectionHeader(
                     icon: Icons.photo_camera_rounded,
-                    label: 'Foto del paquete entregado',
-                    color: teal,
+                    label: photoLabel,
+                    color: accent,
                     badge: _photoPath != null ? '✓ Capturada' : null,
                   ),
                   const SizedBox(height: AppConstants.spacingM),
                   _PhotoCapture(
                     photoPath: _photoPath,
                     takingPhoto: _takingPhoto,
-                    accentColor: teal,
+                    accentColor: accent,
                     onTap: _capturePhoto,
                     onRetake: _capturePhoto,
                   ),
@@ -197,7 +210,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                         child: _SectionHeader(
                           icon: Icons.draw_rounded,
                           label: 'Firma del destinatario',
-                          color: teal,
+                          color: accent,
                           badge: _hasSignature ? '✓ Firmado' : null,
                         ),
                       ),
@@ -209,13 +222,13 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.refresh_rounded,
                                   size: 14,
                                   color: AppColors.textSecondary,
                                 ),
                                 const SizedBox(width: 4),
-                                Text(
+                                const Text(
                                   'Borrar',
                                   style: TextStyle(
                                     color: AppColors.textSecondary,
@@ -238,7 +251,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                   const SizedBox(height: AppConstants.spacingM),
                   _SignaturePad(
                     strokes: _strokes,
-                    accentColor: teal,
+                    accentColor: accent,
                     onPanStart: (d) {
                       setState(() {
                         _currentStroke = [d.localPosition];
@@ -261,7 +274,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                     child: ElevatedButton.icon(
                       onPressed: _canConfirm ? _confirm : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: teal,
+                        backgroundColor: accent,
                         foregroundColor: Colors.white,
                         minimumSize: const Size.fromHeight(52),
                         shape: RoundedRectangleBorder(

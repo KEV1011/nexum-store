@@ -12,6 +12,8 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/domain/service_type_provider.dart';
+import 'package:nexum_driver/core/domain/work_mode.dart';
+import 'package:nexum_driver/core/domain/work_mode_provider.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
@@ -552,37 +554,44 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   }
 
   String _statusLabel(ActiveTripEntity trip) {
-    final isEnvios =
-        ref.read(selectedServiceTypeProvider) == ServiceType.envios;
+    final workMode = ref.read(selectedWorkModeProvider);
     return switch (trip.state) {
-      ActiveTripState.toPickup =>
-        isEnvios ? 'Yendo al local' : 'Yendo al pasajero',
-      ActiveTripState.waiting =>
-        isEnvios ? 'En el local · recoge el pedido' : 'Esperando pasajero',
-      ActiveTripState.inProgress =>
-        isEnvios ? 'Entregando el pedido' : 'En camino al destino',
+      ActiveTripState.toPickup => switch (workMode) {
+          WorkMode.pedido => 'Yendo al restaurante',
+          WorkMode.paquete => 'Yendo a recoger el paquete',
+          WorkMode.pasajero => 'Yendo al pasajero',
+        },
+      ActiveTripState.waiting => switch (workMode) {
+          WorkMode.pedido => 'En el local · recoge el pedido',
+          WorkMode.paquete => 'Recogiendo el paquete',
+          WorkMode.pasajero => 'Esperando pasajero',
+        },
+      ActiveTripState.inProgress => switch (workMode) {
+          WorkMode.pedido => 'Entregando el pedido',
+          WorkMode.paquete => 'Entregando el paquete',
+          WorkMode.pasajero => 'En camino al destino',
+        },
     };
   }
 
   // ── Bottom card ──────────────────────────────────────────────────────────
 
   Widget _buildBottomCard(ActiveTripEntity trip) {
-    final isEnvios =
-        ref.read(selectedServiceTypeProvider) == ServiceType.envios;
+    final workMode = ref.read(selectedWorkModeProvider);
+    final isDelivery = workMode.isDelivery;
     return switch (trip.state) {
       ActiveTripState.toPickup => GoingToPassengerCard(
           trip: trip,
           routeProgress: _routeProgress,
-          isEnvios: isEnvios,
+          isEnvios: isDelivery,
           onArrived: _isLoading ? null : _handleArrived,
           onCancelled: _handleCancelled,
         ),
       ActiveTripState.waiting => WaitingPassengerCard(
           trip: trip,
-          isEnvios: isEnvios,
-          onStartTrip: isEnvios || _isLoading ? null : _handleStartTrip,
-          onPickupConfirm:
-              isEnvios && !_isLoading ? _handlePickupConfirm : null,
+          isEnvios: isDelivery,
+          onStartTrip: isDelivery || _isLoading ? null : _handleStartTrip,
+          onPickupConfirm: isDelivery && !_isLoading ? _handlePickupConfirm : null,
         ),
       ActiveTripState.inProgress => TripInProgressCard(
           trip: trip,
@@ -618,15 +627,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     }
   }
 
-  /// For envíos: requires pickup photo before starting the trip.
+  /// Para pedido/paquete: requiere foto del paquete antes de salir.
   Future<void> _handlePickupConfirm() async {
     if (!mounted) return;
     final trip = ref.read(activeTripProvider);
     if (trip == null) return;
 
+    final workMode = ref.read(selectedWorkModeProvider);
     final proof = await PickupProofSheet.show(
       context,
       businessName: trip.request.passenger.name,
+      workMode: workMode,
     );
 
     if (!mounted || proof == null) return;
@@ -638,17 +649,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
             orderRef: proof.orderRef,
           );
       if (mounted) {
-        AppSnackbar.showSuccess(
-          context,
-          'Pedido recogido · En camino al cliente',
-        );
+        final msg = workMode == WorkMode.paquete
+            ? 'Paquete recogido · En camino al destinatario'
+            : 'Pedido recogido · En camino al cliente';
+        AppSnackbar.showSuccess(context, msg);
       }
     } catch (_) {
       if (mounted) {
-        AppSnackbar.showError(
-          context,
-          'Error al iniciar la entrega',
-        );
+        AppSnackbar.showError(context, 'Error al iniciar la entrega');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -665,11 +673,12 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
           .updateEarnings(tripModel.netEarning);
       if (!mounted) return;
 
-      final serviceType = ref.read(selectedServiceTypeProvider);
-      if (serviceType == ServiceType.envios) {
+      final workMode = ref.read(selectedWorkModeProvider);
+      if (workMode.isDelivery) {
         final proof = await DeliveryProofSheet.show(
           context,
           recipientName: tripModel.passengerName,
+          workMode: workMode,
         );
         if (!mounted) return;
         context.go(

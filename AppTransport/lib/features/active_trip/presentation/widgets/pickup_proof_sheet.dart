@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/core/domain/work_mode.dart';
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -28,21 +29,29 @@ class PickupProof {
 /// order reference note. This creates an immutable audit trail
 /// that protects both the restaurant and the driver.
 class PickupProofSheet extends StatefulWidget {
-  const PickupProofSheet({required this.businessName, super.key});
+  const PickupProofSheet({
+    required this.businessName,
+    required this.workMode,
+    super.key,
+  });
 
   final String businessName;
+  final WorkMode workMode;
 
   static Future<PickupProof?> show(
     BuildContext context, {
     required String businessName,
+    required WorkMode workMode,
   }) =>
       showModalBottomSheet<PickupProof>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
-        builder: (_) =>
-            PickupProofSheet(businessName: businessName),
+        builder: (_) => PickupProofSheet(
+          businessName: businessName,
+          workMode: workMode,
+        ),
       );
 
   @override
@@ -96,7 +105,25 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const accent = AppColors.serviceEnvios;
+    final isPaquete = widget.workMode == WorkMode.paquete;
+    final accent = widget.workMode.color;
+
+    final photoLabel = isPaquete ? 'Foto del paquete' : 'Foto del pedido';
+    final photoHint = isPaquete
+        ? 'Fotografía el paquete antes de retirarlo.'
+        : 'Fotografía todos los artículos antes de salir del local.';
+    final refLabel =
+        isPaquete ? 'Referencia del paquete' : 'Referencia del pedido';
+    final refHint =
+        isPaquete ? 'Ej: Caja azul · frágil' : 'Ej: #4521 · 2 hamburguesas';
+    final protectMsg = isPaquete
+        ? 'Protege al remitente y a ti. La foto certifica el estado del paquete al retirarlo.'
+        : 'Protege al restaurante y a ti. La foto certifica que el pedido salió completo.';
+    final confirmLabel =
+        isPaquete ? 'Paquete recogido · Iniciar entrega' : 'Pedido recogido · Iniciar entrega';
+    final requireMsg = isPaquete
+        ? 'Debes fotografiar el paquete para continuar.'
+        : 'Debes fotografiar el pedido para continuar.';
 
     return Container(
       constraints: BoxConstraints(
@@ -137,7 +164,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                     color: accent.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.camera_alt_rounded,
                     color: accent,
                     size: 22,
@@ -149,7 +176,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Prueba de recogida',
+                        isPaquete ? 'Prueba de recogida · Paquete' : 'Prueba de recogida · Pedido',
                         style:
                             theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
@@ -202,8 +229,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Protege al restaurante y a ti. La foto '
-                      'certifica que el pedido salió completo.',
+                      protectMsg,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: accent.withValues(alpha: 0.85),
                         fontSize: 11.5,
@@ -229,7 +255,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                   // ── Photo (required) ────────────────────────────
                   _SectionLabel(
                     icon: Icons.photo_camera_rounded,
-                    label: 'Foto del pedido',
+                    label: photoLabel,
                     color: accent,
                     badge: _photoPath != null
                         ? '✓ Capturada'
@@ -238,8 +264,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Fotografía todos los artículos '
-                    'antes de salir del local.',
+                    photoHint,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -255,10 +280,10 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
 
                   const SizedBox(height: AppConstants.spacingXL),
 
-                  // ── Order reference (optional) ──────────────────
+                  // ── Reference (optional) ────────────────────────
                   _SectionLabel(
                     icon: Icons.receipt_long_rounded,
-                    label: 'Referencia del pedido',
+                    label: refLabel,
                     color: accent,
                     badge: 'Opcional',
                   ),
@@ -270,7 +295,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                         TextCapitalization.sentences,
                     maxLength: 60,
                     decoration: InputDecoration(
-                      hintText: 'Ej: #4521 · 2 hamburguesas',
+                      hintText: refHint,
                       prefixIcon: Icon(
                         Icons.tag_rounded,
                         color: accent.withValues(alpha: 0.6),
@@ -281,7 +306,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                         borderRadius: BorderRadius.circular(
                           AppConstants.radiusMedium,
                         ),
-                        borderSide: const BorderSide(
+                        borderSide: BorderSide(
                           color: accent,
                           width: 2,
                         ),
@@ -312,9 +337,9 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                       icon: const Icon(
                         Icons.local_shipping_rounded,
                       ),
-                      label: const Text(
-                        'Pedido recogido · Iniciar entrega',
-                        style: TextStyle(
+                      label: Text(
+                        confirmLabel,
+                        style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                         ),
@@ -328,14 +353,14 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                       mainAxisAlignment:
                           MainAxisAlignment.center,
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.info_outline_rounded,
                           size: 13,
                           color: AppColors.textSecondary,
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Debes fotografiar el pedido para continuar.',
+                          requireMsg,
                           style:
                               theme.textTheme.bodySmall
                                   ?.copyWith(
