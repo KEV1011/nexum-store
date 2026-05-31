@@ -1,0 +1,37 @@
+services:
+  nexum-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://nexum:nexum_dev_secret@nexum-db:5432/nexum_db
+      JWT_SECRET: nexum_jwt_dev_secret_change_in_prod
+      PORT: "3000"
+      NODE_ENV: production
+      CORS_ORIGIN: "*"
+      PORTAL_BASE_URL: http://localhost:3000
+      MOCK_OTP: "123456"
+    depends_on:
+      nexum-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nexum-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nexum_db
+      POSTGRES_USER: nexum
+      POSTGRES_PASSWORD: nexum_dev_secret
+    volumes:
+      - nexum-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexum -d nexum_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  nexum-pg-data:
