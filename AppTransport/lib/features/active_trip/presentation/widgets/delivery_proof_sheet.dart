@@ -102,8 +102,12 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
     final theme = Theme.of(context);
     final accent = widget.workMode.color;
     final isPaquete = widget.workMode == WorkMode.paquete;
-    final photoLabel =
-        isPaquete ? 'Foto del paquete entregado' : 'Foto del pedido entregado';
+    final isMandado = widget.workMode == WorkMode.mandado;
+    final photoLabel = isMandado
+        ? 'Foto de lo entregado'
+        : isPaquete
+            ? 'Foto del paquete entregado'
+            : 'Foto del pedido entregado';
 
     return Container(
       constraints: BoxConstraints(
@@ -155,9 +159,11 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isPaquete
-                            ? 'Prueba de entrega · Paquete'
-                            : 'Prueba de entrega · Pedido',
+                        isMandado
+                            ? 'Prueba de entrega · Mandado'
+                            : isPaquete
+                                ? 'Prueba de entrega · Paquete'
+                                : 'Prueba de entrega · Pedido',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),

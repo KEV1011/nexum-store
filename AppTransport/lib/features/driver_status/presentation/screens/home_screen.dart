@@ -17,6 +17,7 @@ import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/core/domain/work_mode_provider.dart';
 import 'package:nexum_driver/core/mock_data/driver_mock.dart';
+import 'package:nexum_driver/core/mock_data/errands_mock.dart';
 import 'package:nexum_driver/core/mock_data/passengers_mock.dart';
 import 'package:nexum_driver/core/mock_data/trips_mock.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
@@ -25,6 +26,7 @@ import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
@@ -205,6 +207,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final fare = workMode.estimateFare(dist, dur.toDouble()) *
         (1 - workMode.platformCommission);
 
+    // En modo Mandado, adjuntamos un mandado de ejemplo descrito por el
+    // cliente. La tarifa para el conductor es la del servicio (sin las
+    // compras, que las paga aparte el cliente).
+    ErrandDetails? errand;
+    if (workMode.isErrand) {
+      final mock =
+          ErrandsMock.errands[_rng.nextInt(ErrandsMock.errands.length)];
+      errand = mock.toDetails();
+    }
+
     final request = TripRequestEntity(
       id: '${tripData.id}_${DateTime.now().millisecondsSinceEpoch}',
       passenger: passenger,
@@ -224,6 +236,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       distanceToPickupKm: 0.5,
       etaToPickupMinutes: 3,
       requestedAt: DateTime.now(),
+      errand: errand,
     );
     _onTripRequest(request);
   }
@@ -1708,6 +1721,11 @@ class _TripRequestModal extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: AppConstants.spacingM),
+                        // Detalle del mandado (solo en modo Mandado)
+                        if (trip.isErrand) ...[
+                          _ErrandRequestCard(errand: trip.errand!),
+                          const SizedBox(height: AppConstants.spacingM),
+                        ],
                         // Passenger header
                         Row(
                           children: [
@@ -1771,14 +1789,14 @@ class _TripRequestModal extends StatelessWidget {
                         _RouteRow(
                           icon: Icons.radio_button_checked_rounded,
                           color: AppColors.pickupMarker,
-                          label: 'Origen',
+                          label: trip.isErrand ? 'Hacer en' : 'Origen',
                           address: trip.origin.address,
                         ),
                         const SizedBox(height: AppConstants.spacingS),
                         _RouteRow(
                           icon: Icons.location_on_rounded,
                           color: AppColors.destinationMarker,
-                          label: 'Destino',
+                          label: trip.isErrand ? 'Entregar a' : 'Destino',
                           address: trip.destination.address,
                         ),
                         const Divider(height: AppConstants.spacingL),
@@ -1916,6 +1934,122 @@ class _FareChip extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Tarjeta que muestra el detalle del mandado dentro de la solicitud
+/// entrante: categoría, descripción en lenguaje natural, presupuesto
+/// autorizado para compras y notas del cliente.
+class _ErrandRequestCard extends StatelessWidget {
+  const _ErrandRequestCard({required this.errand});
+
+  final ErrandDetails errand;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = errand.category.color;
+
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(color: accent.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(errand.category.icon, size: 17, color: accent),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                errand.category.label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: accent,
+                ),
+              ),
+              const Spacer(),
+              if (errand.hasBudget)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Hasta ${CurrencyFormatter.format(errand.purchaseBudget!)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            errand.description,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              height: 1.35,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          if (errand.notes != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.sticky_note_2_rounded,
+                    size: 14, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    errand.notes!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (errand.hasBudget) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(Icons.account_balance_wallet_rounded,
+                    size: 13, color: accent),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'El cliente paga las compras aparte. '
+                    'Guarda el comprobante.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

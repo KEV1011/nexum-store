@@ -105,25 +105,46 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isPaquete = widget.workMode == WorkMode.paquete;
-    final accent = widget.workMode.color;
+    final mode = widget.workMode;
+    final isPaquete = mode == WorkMode.paquete;
+    final isMandado = mode == WorkMode.mandado;
+    final accent = mode.color;
 
-    final photoLabel = isPaquete ? 'Foto del paquete' : 'Foto del pedido';
-    final photoHint = isPaquete
-        ? 'Fotografía el paquete antes de retirarlo.'
-        : 'Fotografía todos los artículos antes de salir del local.';
-    final refLabel =
-        isPaquete ? 'Referencia del paquete' : 'Referencia del pedido';
-    final refHint =
-        isPaquete ? 'Ej: Caja azul · frágil' : 'Ej: #4521 · 2 hamburguesas';
-    final protectMsg = isPaquete
-        ? 'Protege al remitente y a ti. La foto certifica el estado del paquete al retirarlo.'
-        : 'Protege al restaurante y a ti. La foto certifica que el pedido salió completo.';
-    final confirmLabel =
-        isPaquete ? 'Paquete recogido · Iniciar entrega' : 'Pedido recogido · Iniciar entrega';
-    final requireMsg = isPaquete
-        ? 'Debes fotografiar el paquete para continuar.'
-        : 'Debes fotografiar el pedido para continuar.';
+    final photoLabel = isMandado
+        ? 'Foto de la compra / comprobante'
+        : isPaquete
+            ? 'Foto del paquete'
+            : 'Foto del pedido';
+    final photoHint = isMandado
+        ? 'Fotografía lo comprado y el recibo antes de salir.'
+        : isPaquete
+            ? 'Fotografía el paquete antes de retirarlo.'
+            : 'Fotografía todos los artículos antes de salir del local.';
+    final refLabel = isMandado
+        ? 'Total gastado / referencia'
+        : isPaquete
+            ? 'Referencia del paquete'
+            : 'Referencia del pedido';
+    final refHint = isMandado
+        ? 'Ej: \$32.400 · factura #119'
+        : isPaquete
+            ? 'Ej: Caja azul · frágil'
+            : 'Ej: #4521 · 2 hamburguesas';
+    final protectMsg = isMandado
+        ? 'Protege al cliente y a ti. La foto del recibo certifica lo que se gastó.'
+        : isPaquete
+            ? 'Protege al remitente y a ti. La foto certifica el estado del paquete al retirarlo.'
+            : 'Protege al restaurante y a ti. La foto certifica que el pedido salió completo.';
+    final confirmLabel = isMandado
+        ? 'Mandado realizado · Iniciar entrega'
+        : isPaquete
+            ? 'Paquete recogido · Iniciar entrega'
+            : 'Pedido recogido · Iniciar entrega';
+    final requireMsg = isMandado
+        ? 'Debes fotografiar la compra o el recibo para continuar.'
+        : isPaquete
+            ? 'Debes fotografiar el paquete para continuar.'
+            : 'Debes fotografiar el pedido para continuar.';
 
     return Container(
       constraints: BoxConstraints(
@@ -176,7 +197,11 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isPaquete ? 'Prueba de recogida · Paquete' : 'Prueba de recogida · Pedido',
+                        isMandado
+                            ? 'Prueba del mandado'
+                            : isPaquete
+                                ? 'Prueba de recogida · Paquete'
+                                : 'Prueba de recogida · Pedido',
                         style:
                             theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,

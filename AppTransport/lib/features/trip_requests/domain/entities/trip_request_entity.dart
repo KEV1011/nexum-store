@@ -1,3 +1,4 @@
+import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
 
@@ -24,6 +25,7 @@ class TripRequestEntity {
     required this.etaToPickupMinutes,
     this.status = TripRequestStatus.pending,
     this.requestedAt,
+    this.errand,
   });
 
   /// Identificador único de la solicitud.
@@ -59,8 +61,15 @@ class TripRequestEntity {
   /// Momento en que se generó la solicitud.
   final DateTime? requestedAt;
 
+  /// Detalle del mandado, presente solo cuando la solicitud corresponde
+  /// al modo Mandado (el cliente describe una vuelta a realizar).
+  final ErrandDetails? errand;
+
   bool get isPending => status == TripRequestStatus.pending;
   bool get isAccepted => status == TripRequestStatus.accepted;
+
+  /// Indica si esta solicitud es un mandado.
+  bool get isErrand => errand != null;
 
   TripRequestEntity copyWith({
     String? id,
@@ -74,6 +83,7 @@ class TripRequestEntity {
     int? etaToPickupMinutes,
     TripRequestStatus? status,
     DateTime? requestedAt,
+    ErrandDetails? errand,
   }) {
     return TripRequestEntity(
       id: id ?? this.id,
@@ -87,6 +97,7 @@ class TripRequestEntity {
       etaToPickupMinutes: etaToPickupMinutes ?? this.etaToPickupMinutes,
       status: status ?? this.status,
       requestedAt: requestedAt ?? this.requestedAt,
+      errand: errand ?? this.errand,
     );
   }
 

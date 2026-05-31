@@ -559,16 +559,19 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
       ActiveTripState.toPickup => switch (workMode) {
           WorkMode.pedido => 'Yendo al restaurante',
           WorkMode.paquete => 'Yendo a recoger el paquete',
+          WorkMode.mandado => 'Yendo a realizar el mandado',
           WorkMode.pasajero => 'Yendo al pasajero',
         },
       ActiveTripState.waiting => switch (workMode) {
           WorkMode.pedido => 'En el local · recoge el pedido',
           WorkMode.paquete => 'Recogiendo el paquete',
+          WorkMode.mandado => 'Realizando el mandado',
           WorkMode.pasajero => 'Esperando pasajero',
         },
       ActiveTripState.inProgress => switch (workMode) {
           WorkMode.pedido => 'Entregando el pedido',
           WorkMode.paquete => 'Entregando el paquete',
+          WorkMode.mandado => 'Entregando el mandado',
           WorkMode.pasajero => 'En camino al destino',
         },
     };
