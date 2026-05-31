@@ -163,6 +163,13 @@ class DriverWsService {
     });
   }
 
+  /// Notify the server of a driver-initiated trip status change so the client
+  /// is updated in real-time.
+  ///
+  /// [status] must be one of: `'arriving'`, `'arrived'`, `'in_progress'`, `'completed'`.
+  void sendTripStatus(String tripId, String status) =>
+      _send({'type': 'trip_status', 'tripId': tripId, 'status': status});
+
   /// Send a GPS location update, optionally associated with an active trip.
   void sendLocationUpdate(double lat, double lng, {String? tripId}) {
     _send({

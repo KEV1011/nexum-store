@@ -307,6 +307,15 @@ export function updateClientTripLocation(tripId: string, lat: number, lng: numbe
   return trip.clientId;
 }
 
+export function updateClientTripStatus(tripId: string, status: ClientTripStatus): ClientTripDTO | null {
+  const trip = clientTripStore.get(tripId);
+  if (!trip) return null;
+  trip.status = status;
+  if (status === 'completed') trip.completedAt = new Date();
+  _notifyTripListeners(tripId, trip);
+  return _toTripDTO(trip);
+}
+
 export function cancelClientTrip(clientId: string, tripId: string): boolean {
   const trip = clientTripStore.get(tripId);
   if (!trip || trip.clientId !== clientId) return false;

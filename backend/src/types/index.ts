@@ -203,6 +203,9 @@ export type WsMessageType =
   | 'business_auth_ok'
   | 'business_auth_error'
   | 'new_order'
+  // Trip status updates from driver
+  | 'trip_status'
+  | 'trip_status_ack'
   // Mandado (errand) messages
   | 'driver_mode'
   | 'errand_request'

@@ -16,6 +16,7 @@ import {
   getClientOrderSnapshot,
   acceptClientTrip,
   updateClientTripLocation,
+  updateClientTripStatus,
   subscribeClientTrip,
   getClientTripSnapshot,
   getClientTripRaw,
@@ -379,6 +380,28 @@ function onMessage(ws: WebSocket, raw: string): void {
       const tripId = msg['tripId'];
       if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
       handleReject(tripId);
+      break;
+    }
+
+    // ── Trip status (driver → server → client) ───────────────────────────────
+    case 'trip_status': {
+      if (ws !== driverSocket) { sendDriver({ type: 'error', message: 'Not authenticated' }); return; }
+      const tripId = msg['tripId'];
+      const status = msg['status'];
+      if (typeof tripId !== 'string' || typeof status !== 'string') {
+        sendDriver({ type: 'error', message: 'tripId and status required' }); return;
+      }
+      const updated = updateClientTripStatus(tripId, status as import('../types').ClientTripStatus);
+      if (updated) {
+        const raw = getClientTripRaw(tripId);
+        if (raw) {
+          const clientWs = clientSockets.get(raw.clientId);
+          if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });
+        }
+        sendDriver({ type: 'trip_status_ack', tripId, status });
+      } else {
+        sendDriver({ type: 'error', message: `Trip ${tripId} not found` });
+      }
       break;
     }
 

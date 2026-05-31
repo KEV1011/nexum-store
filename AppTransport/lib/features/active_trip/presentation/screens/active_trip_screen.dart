@@ -23,6 +23,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/pickup_pr
 import 'package:nexum_driver/features/active_trip/presentation/widgets/trip_in_progress_card.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_passenger_card.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
+import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
   const ActiveTripScreen({this.tripExtra, super.key});
@@ -114,8 +115,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
         _waypointIndex++;
       });
 
+      // Relay GPS to server → forwarded to client tracking map
+      final current = ref.read(activeTripProvider);
+      if (current != null) {
+        DriverWsService().sendLocationUpdate(
+          next.latitude,
+          next.longitude,
+          tripId: current.request.id,
+        );
+      }
+
       if (_autoFollow) {
-        final current = ref.read(activeTripProvider);
         final zoom = current?.isInProgress == true ? 16.5 : MapConstants.tripZoom;
         _mapController.move(next, zoom);
       }
@@ -609,7 +619,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   Future<void> _handleArrived() async {
     setState(() => _isLoading = true);
     try {
+      final trip = ref.read(activeTripProvider);
       await ref.read(activeTripProvider.notifier).arrivedAtPassenger();
+      if (trip != null) DriverWsService().sendTripStatus(trip.request.id, 'arrived');
     } catch (_) {
       if (mounted) AppSnackbar.showError(context, 'Error al actualizar estado');
     } finally {
@@ -620,7 +632,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   Future<void> _handleStartTrip() async {
     setState(() => _isLoading = true);
     try {
+      final trip = ref.read(activeTripProvider);
       await ref.read(activeTripProvider.notifier).startTrip();
+      if (trip != null) DriverWsService().sendTripStatus(trip.request.id, 'in_progress');
     } catch (_) {
       if (mounted) {
         AppSnackbar.showError(context, 'Error al iniciar el viaje');
@@ -647,10 +661,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
     setState(() => _isLoading = true);
     try {
+      final tripBeforeStart = ref.read(activeTripProvider);
       await ref.read(activeTripProvider.notifier).confirmPickupAndStart(
             photoPath: proof.photoPath,
             orderRef: proof.orderRef,
           );
+      if (tripBeforeStart != null) {
+        DriverWsService().sendTripStatus(tripBeforeStart.request.id, 'in_progress');
+      }
       if (mounted) {
         final msg = workMode == WorkMode.paquete
             ? 'Paquete recogido · En camino al destinatario'
@@ -669,6 +687,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   Future<void> _handleFinishTrip() async {
     setState(() => _isLoading = true);
     try {
+      final tripBeforeFinish = ref.read(activeTripProvider);
+      if (tripBeforeFinish != null) {
+        DriverWsService().sendTripStatus(tripBeforeFinish.request.id, 'completed');
+      }
       final tripModel =
           await ref.read(activeTripProvider.notifier).finishTrip();
       await ref
