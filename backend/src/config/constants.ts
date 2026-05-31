@@ -137,3 +137,100 @@ export const MOCK_ROUTES: MockRoute[] = [
     estimatedMinutes: 11,
   },
 ];
+
+// ─── Mock Errands (Mandados) ──────────────────────────────────────────────────
+
+import { ErrandCategory, ErrandRequestDTO } from '../types';
+
+export const ERRAND_SERVICE_FEE = 6000;
+
+export const MOCK_ERRANDS: Omit<ErrandRequestDTO, 'id'>[] = [
+  {
+    category: 'pharmacy' as ErrandCategory,
+    description: 'Comprar acetaminofén 500mg x10 y alcohol antiséptico en Farmatodo del centro.',
+    pickupAddress: 'Farmatodo · Calle 5 con Carrera 6',
+    dropoffAddress: 'Barrio Cariongo, Casa 12-34',
+    serviceFee: ERRAND_SERVICE_FEE,
+    purchaseBudget: 35000,
+    notes: 'Si no hay acetaminofén, traer ibuprofeno.',
+  },
+  {
+    category: 'groceries' as ErrandCategory,
+    description: 'Mercado pequeño: 1 docena de huevos, 2 litros de leche, pan tajado y 1 libra de arroz en el Éxito.',
+    pickupAddress: 'Éxito Pamplona · Av. Santander',
+    dropoffAddress: 'Conjunto El Buque, Torre 3 Apto 502',
+    serviceFee: ERRAND_SERVICE_FEE,
+    purchaseBudget: 45000,
+  },
+  {
+    category: 'documents' as ErrandCategory,
+    description: 'Recoger un sobre con documentos donde mi mamá y traerlo a mi oficina. Ella ya lo tiene listo.',
+    pickupAddress: 'Barrio Chapinero, Casa esquinera azul',
+    dropoffAddress: 'Notaría Primera, Calle 6 #4-20',
+    serviceFee: ERRAND_SERVICE_FEE,
+    notes: 'Preguntar por la señora Rosa.',
+  },
+  {
+    category: 'payments' as ErrandCategory,
+    description: 'Pagar la factura de energía (CENS) en Efecty. Llevo el código de pago en la foto del chat.',
+    pickupAddress: 'Efecty · Carrera 5 #7-15',
+    dropoffAddress: 'Barrio San Francisco, Casa 8-90',
+    serviceFee: ERRAND_SERVICE_FEE,
+    purchaseBudget: 120000,
+    notes: 'Guardar el comprobante de pago.',
+  },
+  {
+    category: 'food' as ErrandCategory,
+    description: 'Recoger un almuerzo ejecutivo encargado donde Doña Rosa y llevarlo a la universidad.',
+    pickupAddress: 'Restaurante Doña Rosa · Calle 4',
+    dropoffAddress: 'Universidad de Pamplona, Bloque Jorge Gaitán',
+    serviceFee: ERRAND_SERVICE_FEE,
+    purchaseBudget: 18000,
+  },
+  {
+    category: 'shopping' as ErrandCategory,
+    description: 'Comprar un cargador tipo C de carga rápida y un protector de pantalla para iPhone en el centro.',
+    pickupAddress: 'Centro comercial · locales de tecnología',
+    dropoffAddress: 'Barrio El Escorial, Casa 23',
+    serviceFee: ERRAND_SERVICE_FEE,
+    purchaseBudget: 60000,
+    notes: 'Que el cargador sea de carga rápida.',
+  },
+];
+
+// ─── Intercity Routes ─────────────────────────────────────────────────────────
+
+import { IntercityCity } from '../types';
+
+interface IntercityRouteInfo {
+  distanceKm: number;
+  durationMinutes: number;
+  suggestedFarePerSeat: number;
+  suggestedFareFleet: number;
+}
+
+type RoutePair = `${IntercityCity}-${IntercityCity}`;
+
+export const INTERCITY_ROUTES: Partial<Record<RoutePair, IntercityRouteInfo>> = {
+  'pamplona-cucuta': { distanceKm: 95, durationMinutes: 120, suggestedFarePerSeat: 22000, suggestedFareFleet: 70000 },
+  'cucuta-pamplona': { distanceKm: 95, durationMinutes: 120, suggestedFarePerSeat: 22000, suggestedFareFleet: 70000 },
+  'pamplona-bucaramanga': { distanceKm: 200, durationMinutes: 240, suggestedFarePerSeat: 42000, suggestedFareFleet: 130000 },
+  'bucaramanga-pamplona': { distanceKm: 200, durationMinutes: 240, suggestedFarePerSeat: 42000, suggestedFareFleet: 130000 },
+  'pamplona-chitaga': { distanceKm: 45, durationMinutes: 60, suggestedFarePerSeat: 10000, suggestedFareFleet: 35000 },
+  'chitaga-pamplona': { distanceKm: 45, durationMinutes: 60, suggestedFarePerSeat: 10000, suggestedFareFleet: 35000 },
+  'pamplona-malaga': { distanceKm: 80, durationMinutes: 105, suggestedFarePerSeat: 18000, suggestedFareFleet: 58000 },
+  'malaga-pamplona': { distanceKm: 80, durationMinutes: 105, suggestedFarePerSeat: 18000, suggestedFareFleet: 58000 },
+  'pamplona-ocana': { distanceKm: 120, durationMinutes: 150, suggestedFarePerSeat: 28000, suggestedFareFleet: 90000 },
+  'ocana-pamplona': { distanceKm: 120, durationMinutes: 150, suggestedFarePerSeat: 28000, suggestedFareFleet: 90000 },
+  'pamplona-bogota': { distanceKm: 500, durationMinutes: 540, suggestedFarePerSeat: 90000, suggestedFareFleet: 280000 },
+  'bogota-pamplona': { distanceKm: 500, durationMinutes: 540, suggestedFarePerSeat: 90000, suggestedFareFleet: 280000 },
+  'chitaga-cucuta': { distanceKm: 140, durationMinutes: 170, suggestedFarePerSeat: 30000, suggestedFareFleet: 95000 },
+  'cucuta-chitaga': { distanceKm: 140, durationMinutes: 170, suggestedFarePerSeat: 30000, suggestedFareFleet: 95000 },
+  'malaga-bucaramanga': { distanceKm: 130, durationMinutes: 160, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000 },
+  'bucaramanga-malaga': { distanceKm: 130, durationMinutes: 160, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000 },
+};
+
+export function getIntercityRoute(origin: IntercityCity, dest: IntercityCity): IntercityRouteInfo | null {
+  const key = `${origin}-${dest}` as RoutePair;
+  return INTERCITY_ROUTES[key] ?? null;
+}

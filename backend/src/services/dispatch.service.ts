@@ -5,22 +5,28 @@ import {
   TRIP_REQUEST_TIMEOUT_MS,
   MOCK_PASSENGERS,
   MOCK_ROUTES,
+  MOCK_ERRANDS,
   FARE_BASE,
   FARE_PER_KM,
   FARE_PER_MIN,
   FARE_MINIMUM,
 } from '../config/constants';
-import { TripRequestDTO } from '../types';
+import { TripRequestDTO, ErrandRequestDTO, WorkMode } from '../types';
 
-type DispatchCallback = (trip: TripRequestDTO) => void;
-type TimeoutCallback = (tripId: string) => void;
+type TripDispatchCb = (trip: TripRequestDTO) => void;
+type ErrandDispatchCb = (errand: ErrandRequestDTO) => void;
+type TimeoutCallback = (id: string) => void;
 
-let dispatchCallback: DispatchCallback | null = null;
+let tripCallback: TripDispatchCb | null = null;
+let errandCallback: ErrandDispatchCb | null = null;
 let timeoutCallback: TimeoutCallback | null = null;
 let dispatchTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingTripTimeout: ReturnType<typeof setTimeout> | null = null;
-let currentPendingTripId: string | null = null;
+let pendingTimeout: ReturnType<typeof setTimeout> | null = null;
+let currentPendingId: string | null = null;
 let isOnline = false;
+let currentWorkMode: WorkMode = 'pasajero';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function calcFare(distanceKm: number, minutes: number): number {
   const gross = FARE_BASE + distanceKm * FARE_PER_KM + minutes * FARE_PER_MIN;
@@ -45,46 +51,79 @@ function generateTrip(): TripRequestDTO {
   };
 }
 
+function generateErrand(): ErrandRequestDTO {
+  const template = MOCK_ERRANDS[randomBetween(0, MOCK_ERRANDS.length - 1)]!;
+  return { id: crypto.randomUUID(), ...template };
+}
+
+// ─── Scheduler ────────────────────────────────────────────────────────────────
+
 function scheduleNext(): void {
   if (!isOnline) return;
   const delay = randomBetween(DISPATCH_MIN_INTERVAL_MS, DISPATCH_MAX_INTERVAL_MS);
-  dispatchTimer = setTimeout(() => {
-    if (!isOnline || !dispatchCallback) return;
-    const trip = generateTrip();
-    currentPendingTripId = trip.id;
-    dispatchCallback(trip);
 
-    // Auto-cancel if driver doesn't respond within timeout
-    pendingTripTimeout = setTimeout(() => {
-      if (currentPendingTripId === trip.id) {
-        currentPendingTripId = null;
-        timeoutCallback?.(trip.id);
+  dispatchTimer = setTimeout(() => {
+    if (!isOnline) return;
+
+    if (currentWorkMode === 'mandado') {
+      if (!errandCallback) return;
+      const errand = generateErrand();
+      currentPendingId = errand.id;
+      errandCallback(errand);
+    } else {
+      if (!tripCallback) return;
+      const trip = generateTrip();
+      currentPendingId = trip.id;
+      tripCallback(trip);
+    }
+
+    pendingTimeout = setTimeout(() => {
+      if (currentPendingId) {
+        const id = currentPendingId;
+        currentPendingId = null;
+        timeoutCallback?.(id);
         scheduleNext();
       }
     }, TRIP_REQUEST_TIMEOUT_MS);
   }, delay);
 }
 
-export function startDispatch(onTrip: DispatchCallback, onTimeout: TimeoutCallback): void {
-  dispatchCallback = onTrip;
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export function startDispatch(
+  onTrip: TripDispatchCb,
+  onTimeout: TimeoutCallback,
+  workMode: WorkMode = 'pasajero',
+  onErrand?: ErrandDispatchCb,
+): void {
+  tripCallback = onTrip;
+  errandCallback = onErrand ?? null;
   timeoutCallback = onTimeout;
+  currentWorkMode = workMode;
   isOnline = true;
   scheduleNext();
+}
+
+export function setDriverWorkMode(mode: WorkMode): void {
+  currentWorkMode = mode;
 }
 
 export function stopDispatch(): void {
   isOnline = false;
   if (dispatchTimer) { clearTimeout(dispatchTimer); dispatchTimer = null; }
-  if (pendingTripTimeout) { clearTimeout(pendingTripTimeout); pendingTripTimeout = null; }
-  currentPendingTripId = null;
+  if (pendingTimeout) { clearTimeout(pendingTimeout); pendingTimeout = null; }
+  currentPendingId = null;
 }
 
-export function acknowledgeTripResponse(tripId: string): boolean {
-  if (currentPendingTripId !== tripId) return false;
-  if (pendingTripTimeout) { clearTimeout(pendingTripTimeout); pendingTripTimeout = null; }
-  currentPendingTripId = null;
+export function acknowledgeTripResponse(id: string): boolean {
+  if (currentPendingId !== id) return false;
+  if (pendingTimeout) { clearTimeout(pendingTimeout); pendingTimeout = null; }
+  currentPendingId = null;
   return true;
 }
+
+// Alias for backwards compatibility
+export const acknowledgeErrandResponse = acknowledgeTripResponse;
 
 export function resumeDispatch(): void {
   if (isOnline) scheduleNext();

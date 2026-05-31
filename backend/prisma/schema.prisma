@@ -27,11 +27,13 @@ model User {
   updatedAt   DateTime  @updatedAt
   isActive    Boolean   @default(true)
 
-  addresses   Address[]
-  orders      Order[]
-  trips       Trip[]    @relation("TripPassenger")
-  ratings     Rating[]  @relation("RatingAuthor")
-  otpSessions OtpSession[]
+  addresses         Address[]
+  orders            Order[]
+  trips             Trip[]            @relation("TripPassenger")
+  ratings           Rating[]          @relation("RatingAuthor")
+  otpSessions       OtpSession[]
+  errands           Errand[]
+  intercityBookings IntercityBooking[]
 
   @@map("users")
 }
@@ -110,7 +112,6 @@ enum VehicleType {
   PARTICULAR
   TAXI
   MOTO
-  MOTOCARRO
 }
 
 // ── Negocios aliados ──────────────────────────────────────────────────────────
@@ -276,6 +277,14 @@ enum TransportType {
   MOTO
   PARTICULAR
   ENVIOS
+  MANDADO
+}
+
+enum WorkMode {
+  PASAJERO
+  PEDIDO
+  PAQUETE
+  MANDADO
 }
 
 enum TripStatus {
@@ -322,6 +331,116 @@ model Address {
 
   @@index([userId])
   @@map("addresses")
+}
+
+// ── Mandados ──────────────────────────────────────────────────────────────────
+
+model Errand {
+  id               String        @id @default(cuid())
+  requestRef       String        @unique
+  userId           String
+  driverId         String?
+  category         ErrandCategory
+  description      String
+  pickupAddress    String
+  dropoffAddress   String
+  serviceFee       Float         @default(6000)
+  purchaseBudget   Float?
+  actualCost       Float?
+  notes            String?
+  status           ErrandStatus  @default(SEARCHING)
+  proofPhotoUrl    String?
+  deliveryPhotoUrl String?
+  hasSignature     Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  acceptedAt       DateTime?
+  deliveredAt      DateTime?
+
+  user             User          @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([driverId])
+  @@index([status])
+  @@map("errands")
+}
+
+enum ErrandCategory {
+  PHARMACY
+  GROCERIES
+  DOCUMENTS
+  PAYMENTS
+  FOOD
+  SHOPPING
+  OTHER
+}
+
+enum ErrandStatus {
+  SEARCHING
+  ACCEPTED
+  SHOPPING
+  ON_THE_WAY
+  DELIVERED
+  CANCELLED
+}
+
+// ── Viajes Intermunicipales ────────────────────────────────────────────────────
+
+model IntercityBooking {
+  id             String          @id @default(cuid())
+  requestRef     String          @unique
+  userId         String
+  driverId       String?
+  origin         IntercityCity
+  destination    IntercityCity
+  departureTime  DateTime
+  seats          IntercitySeats
+  offeredFare    Float
+  counterFare    Float?
+  finalFare      Float?
+  status         IntercityStatus @default(SEARCHING)
+  pickupAddress  String?
+  dropoffAddress String?
+  notes          String?
+  driverName     String?
+  driverPhone    String?
+  driverVehicle  String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  confirmedAt    DateTime?
+  completedAt    DateTime?
+
+  user           User            @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("intercity_bookings")
+}
+
+enum IntercityCity {
+  PAMPLONA
+  CUCUTA
+  BUCARAMANGA
+  CHITAGA
+  MALAGA
+  OCANA
+  BOGOTA
+}
+
+enum IntercitySeats {
+  ONE
+  TWO
+  THREE
+  FLEET
+}
+
+enum IntercityStatus {
+  SEARCHING
+  DRIVER_FOUND
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
 // ── Calificaciones ────────────────────────────────────────────────────────────

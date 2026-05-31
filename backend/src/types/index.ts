@@ -202,7 +202,24 @@ export type WsMessageType =
   | 'business_auth'
   | 'business_auth_ok'
   | 'business_auth_error'
-  | 'new_order';
+  | 'new_order'
+  // Mandado (errand) messages
+  | 'driver_mode'
+  | 'errand_request'
+  | 'accept_errand'
+  | 'reject_errand'
+  | 'errand_accepted'
+  | 'errand_rejected'
+  | 'errand_status'
+  | 'errand_status_ack'
+  | 'errand_update'
+  | 'errand_cancelled'
+  | 'subscribe_errand'
+  | 'unsubscribe_errand'
+  // Intercity messages
+  | 'subscribe_intercity'
+  | 'unsubscribe_intercity'
+  | 'intercity_update';
 
 export interface WsMessage {
   type: WsMessageType;
@@ -478,6 +495,121 @@ export interface RequestClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
+}
+
+// ─── Work Mode ────────────────────────────────────────────────────────────────
+
+export type WorkMode = 'pasajero' | 'pedido' | 'paquete' | 'mandado';
+
+// ─── Mandados (Errands) ───────────────────────────────────────────────────────
+
+export type ErrandCategory =
+  | 'pharmacy'
+  | 'groceries'
+  | 'documents'
+  | 'payments'
+  | 'food'
+  | 'shopping'
+  | 'other';
+
+export type ErrandStatus =
+  | 'searching'
+  | 'accepted'
+  | 'shopping'
+  | 'on_the_way'
+  | 'delivered'
+  | 'cancelled';
+
+export interface RequestClientErrandDTO {
+  category: ErrandCategory;
+  description: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  purchaseBudget?: number;
+  notes?: string;
+}
+
+export interface ClientErrandDTO {
+  id: string;
+  requestRef: string;
+  category: ErrandCategory;
+  description: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  serviceFee: number;
+  purchaseBudget?: number;
+  actualPurchaseCost?: number;
+  notes?: string;
+  status: ErrandStatus;
+  driverName?: string;
+  driverPhone?: string;
+  createdAt: string;
+  acceptedAt?: string;
+  deliveredAt?: string;
+}
+
+// Sent to driver when a mandado is dispatched
+export interface ErrandRequestDTO {
+  id: string;
+  category: ErrandCategory;
+  description: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  serviceFee: number;
+  purchaseBudget?: number;
+  notes?: string;
+}
+
+// ─── Intercity Bookings ───────────────────────────────────────────────────────
+
+export type IntercityCity =
+  | 'pamplona'
+  | 'cucuta'
+  | 'bucaramanga'
+  | 'chitaga'
+  | 'malaga'
+  | 'ocana'
+  | 'bogota';
+
+export type IntercitySeats = 'one' | 'two' | 'three' | 'fleet';
+
+export type IntercityStatus =
+  | 'searching'
+  | 'driver_found'
+  | 'confirmed'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
+export interface RequestIntercityDTO {
+  origin: IntercityCity;
+  destination: IntercityCity;
+  departureTime: string;
+  seats: IntercitySeats;
+  offeredFare: number;
+  pickupAddress?: string;
+  dropoffAddress?: string;
+  notes?: string;
+}
+
+export interface IntercityBookingDTO {
+  id: string;
+  requestRef: string;
+  origin: IntercityCity;
+  destination: IntercityCity;
+  departureTime: string;
+  seats: IntercitySeats;
+  offeredFare: number;
+  counterFare?: number;
+  status: IntercityStatus;
+  driverName?: string;
+  driverPhone?: string;
+  driverVehicle?: string;
+  pickupAddress?: string;
+  dropoffAddress?: string;
+  notes?: string;
+  createdAt: string;
+  confirmedAt?: string;
 }
 
 // ─── Wompi Payments ───────────────────────────────────────────────────────────
