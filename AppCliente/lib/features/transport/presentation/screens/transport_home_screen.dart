@@ -9,6 +9,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
+import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
@@ -105,8 +107,10 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
   Widget build(BuildContext context) {
     final state = ref.watch(transportProvider);
     final intercityState = ref.watch(intercityProvider);
+    final errandState = ref.watch(errandProvider);
     final hasActive = !state.isLoading && state.active.isNotEmpty;
     final hasIntercityActive = intercityState.active != null;
+    final hasErrandActive = errandState.active != null;
     final topPad = MediaQuery.of(context).padding.top;
 
     return Scaffold(
@@ -182,6 +186,18 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
               child: _IntercityActiveBanner(
                 request: intercityState.active!,
               ),
+            ),
+
+          // ── Banner de mandado activo ─────────────────────────────────────
+          if (hasErrandActive)
+            Positioned(
+              top: topPad +
+                  64 +
+                  (hasActive ? 66 : 0) +
+                  (hasIntercityActive ? 66 : 0),
+              left: 16,
+              right: 16,
+              child: _ErrandActiveBanner(errand: errandState.active!),
             ),
 
           // ── Panel inferior ───────────────────────────────────────────────
@@ -528,6 +544,14 @@ class _BottomPanel extends StatelessWidget {
             child: _IntercityCard(),
           ),
 
+          const SizedBox(height: 8),
+
+          // Tarjeta de mandados
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _ErrandCard(),
+          ),
+
           const SizedBox(height: 10),
 
           // Recientes
@@ -854,6 +878,153 @@ class _IntercityActiveBanner extends StatelessWidget {
                   ),
                   Text(
                     request.status.label as String,
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const Row(
+              children: [
+                Text(
+                  'Ver',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700),
+                ),
+                SizedBox(width: 2),
+                Icon(Icons.chevron_right_rounded,
+                    size: 18, color: Colors.white),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Tarjeta de mandados en el panel ───────────────────────────────────────────
+
+class _ErrandCard extends StatelessWidget {
+  static const _cardBg = Color(0xFF26201A);
+  static const _accent = Color(0xFFD97706);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.push(AppRoutes.errandBooking),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _accent.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _accent.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.run_circle_rounded,
+                color: Color(0xFFFBBF24),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Mandados',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    'Farmacia, mercado, pagos, recoger algo...',
+                    style: TextStyle(
+                      color: Color(0xFFFBBF24),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _accent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'Pedir',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Banner de mandado activo ──────────────────────────────────────────────────
+
+class _ErrandActiveBanner extends StatelessWidget {
+  const _ErrandActiveBanner({required this.errand});
+
+  final ErrandEntity errand;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = errand.status.color;
+    return GestureDetector(
+      onTap: () => context.push(AppRoutes.errandStatus),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.45),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(errand.category.icon, size: 20, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Mandado · ${errand.category.label}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    errand.status.label,
                     style: const TextStyle(
                         color: Colors.white70, fontSize: 11),
                   ),

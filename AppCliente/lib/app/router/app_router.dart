@@ -20,6 +20,10 @@ import 'package:nexum_client/features/cart/presentation/screens/'
     'cart_screen.dart';
 import 'package:nexum_client/features/cart/presentation/screens/'
     'checkout_screen.dart';
+import 'package:nexum_client/features/errands/presentation/screens/'
+    'errand_booking_screen.dart';
+import 'package:nexum_client/features/errands/presentation/screens/'
+    'errand_status_screen.dart';
 import 'package:nexum_client/features/intercity/presentation/screens/'
     'intercity_booking_screen.dart';
 import 'package:nexum_client/features/intercity/presentation/screens/'
@@ -60,6 +64,10 @@ abstract final class AppRoutes {
   // Rutas intermunicipales
   static const String intercityBooking = '/intercity/booking';
   static const String intercityStatus = '/intercity/status';
+
+  // Rutas de mandados
+  static const String errandBooking = '/errand/booking';
+  static const String errandStatus = '/errand/status';
 
   static String businessPath(String id) => '/business/$id';
   static String orderPath(String id) => '/order/$id';
@@ -178,6 +186,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const IntercityStatusScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.errandBooking,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const ErrandBookingScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.errandStatus,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const ErrandStatusScreen(),
         ),
       ),
     ],
