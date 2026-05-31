@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -27,9 +28,11 @@ import 'package:nexum_driver/features/active_trip/presentation/providers/active_
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
+import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -133,6 +136,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Timer? _countdownTimer;
   Timer? _webMockTimer;
+  StreamSubscription<Map<String, dynamic>>? _wsTripSub;
+  StreamSubscription<Map<String, dynamic>>? _wsErrandSub;
+  StreamSubscription<String>? _wsCancelSub;
+  StreamSubscription<String>? _wsErrandCancelSub;
   final _rng = math.Random();
 
   static const _center = LatLng(
@@ -144,6 +151,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _countdownTimer?.cancel();
     _webMockTimer?.cancel();
+    _wsTripSub?.cancel();
+    _wsErrandSub?.cancel();
+    _wsCancelSub?.cancel();
+    _wsErrandCancelSub?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -166,6 +177,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } else {
       _webMockTimer?.cancel();
       _countdownTimer?.cancel();
+      _wsTripSub?.cancel();
+      _wsErrandSub?.cancel();
+      _wsCancelSub?.cancel();
+      _wsErrandCancelSub?.cancel();
+      DriverWsService().disconnect();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
   }
@@ -177,11 +193,157 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(selectedWorkModeProvider.notifier).state = mode;
   }
 
-  // ── Mock trip dispatch ─────────────────────────────────────────────────
+  // ── WebSocket connection ───────────────────────────────────────────────
+
+  static const _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   Future<void> _connectWs() async {
-    _scheduleWebMockRequest();
+    final token = await _storage.read(key: AppConstants.authTokenKey);
+    if (token == null || token.isEmpty) {
+      _scheduleWebMockRequest();
+      return;
+    }
+
+    final workMode = ref.read(selectedWorkModeProvider);
+    final connected = await DriverWsService().connect(token, workMode);
+
+    if (!connected || !mounted) {
+      _scheduleWebMockRequest();
+      return;
+    }
+
+    // Subscribe to incoming trip requests from the server.
+    _wsTripSub = DriverWsService().tripRequests.listen((tripMap) {
+      if (!mounted) return;
+      final request = _tripRequestFromMap(tripMap);
+      if (request != null) _onTripRequest(request);
+    });
+
+    // Subscribe to incoming errand requests from the server.
+    _wsErrandSub = DriverWsService().errandRequests.listen((errandMap) {
+      if (!mounted) return;
+      final request = _errandRequestFromMap(errandMap);
+      if (request != null) _onTripRequest(request);
+    });
+
+    // Clear the pending request if the server cancels the trip (timeout).
+    _wsCancelSub = DriverWsService().tripCancellations.listen((tripId) {
+      if (!mounted) return;
+      if (_state.pendingRequest?.id == tripId) {
+        _countdownTimer?.cancel();
+        setState(() => _state = _state.copyWith(clearPending: true));
+      }
+    });
+
+    // Clear the pending request if the server cancels the errand (timeout).
+    _wsErrandCancelSub =
+        DriverWsService().errandCancellations.listen((errandId) {
+      if (!mounted) return;
+      if (_state.pendingRequest?.id == errandId) {
+        _countdownTimer?.cancel();
+        setState(() => _state = _state.copyWith(clearPending: true));
+      }
+    });
   }
+
+  /// Build a [TripRequestEntity] from a raw trip JSON map received via WS.
+  TripRequestEntity? _tripRequestFromMap(Map<String, dynamic> t) {
+    try {
+      final p = t['passenger'] as Map<String, dynamic>;
+      final o = t['origin'] as Map<String, dynamic>;
+      final d = t['destination'] as Map<String, dynamic>;
+      final name = p['name'] as String;
+      return TripRequestEntity(
+        id: t['id'] as String,
+        passenger: PassengerEntity(
+          id: (p['id'] as String?) ?? '',
+          name: name,
+          rating: (p['rating'] as num).toDouble(),
+          totalTrips: 0,
+          photoUrl:
+              'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}'
+              '&background=00C853&color=fff&size=128',
+        ),
+        origin: LocationModel(
+          latitude: (o['lat'] as num).toDouble(),
+          longitude: (o['lng'] as num).toDouble(),
+          address: o['address'] as String,
+        ),
+        destination: LocationModel(
+          latitude: (d['lat'] as num).toDouble(),
+          longitude: (d['lng'] as num).toDouble(),
+          address: d['address'] as String,
+        ),
+        distanceKm: (t['distanceKm'] as num).toDouble(),
+        durationMinutes: (t['estimatedMinutes'] as num).toInt(),
+        estimatedFare: (t['estimatedFare'] as num).toDouble(),
+        distanceToPickupKm: 0.5,
+        etaToPickupMinutes: 3,
+        requestedAt: DateTime.now(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Build a [TripRequestEntity] (with [ErrandDetails]) from a raw errand
+  /// JSON map received via WS. Uses Pamplona-centre placeholder coords
+  /// because the WS errand payload does not include coordinates.
+  TripRequestEntity? _errandRequestFromMap(Map<String, dynamic> e) {
+    try {
+      const double pamplonaCenterLat = MapConstants.pamplonaCenterLat;
+      const double pamplonaCenterLng = MapConstants.pamplonaCenterLng;
+
+      final categoryStr = e['category'] as String? ?? 'other';
+      final category = ErrandCategory.values.firstWhere(
+        (c) => c.name == categoryStr,
+        orElse: () => ErrandCategory.other,
+      );
+
+      final errand = ErrandDetails(
+        category: category,
+        description: e['description'] as String? ?? '',
+        purchaseBudget:
+            e['purchaseBudget'] != null ? (e['purchaseBudget'] as num).toDouble() : null,
+        notes: e['notes'] as String?,
+      );
+
+      return TripRequestEntity(
+        id: e['id'] as String,
+        passenger: const PassengerEntity(
+          id: '',
+          name: 'Cliente',
+          rating: 5.0,
+          totalTrips: 0,
+          photoUrl: '',
+        ),
+        origin: LocationModel(
+          latitude: pamplonaCenterLat,
+          longitude: pamplonaCenterLng,
+          address: e['pickupAddress'] as String? ?? '',
+        ),
+        destination: LocationModel(
+          latitude: pamplonaCenterLat,
+          longitude: pamplonaCenterLng,
+          address: e['dropoffAddress'] as String? ?? '',
+        ),
+        distanceKm: 0,
+        durationMinutes: 0,
+        estimatedFare:
+            e['serviceFee'] != null ? (e['serviceFee'] as num).toDouble() : 0,
+        distanceToPickupKm: 0.5,
+        etaToPickupMinutes: 3,
+        requestedAt: DateTime.now(),
+        errand: errand,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ── Mock trip dispatch ─────────────────────────────────────────────────
 
   void _scheduleWebMockRequest() {
     _webMockTimer?.cancel();
@@ -264,7 +426,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (newLeft <= 0) {
         timer.cancel();
         setState(() => _state = _state.copyWith(clearPending: true));
-        if (_state.isOnline) _scheduleWebMockRequest();
+        if (_state.isOnline && !DriverWsService().isConnected) {
+          _scheduleWebMockRequest();
+        }
       } else {
         setState(() => _state = _state.copyWith(requestSecondsLeft: newLeft));
       }
@@ -274,6 +438,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _acceptTrip(TripRequestEntity request) async {
     _countdownTimer?.cancel();
     setState(() => _state = _state.copyWith(clearPending: true));
+    if (DriverWsService().isConnected) {
+      if (request.isErrand) {
+        DriverWsService().sendAcceptErrand(request.id);
+      } else {
+        DriverWsService().sendAccept(request.id);
+      }
+    }
     await ref.read(activeTripProvider.notifier).beginTrip(request);
     if (mounted) context.push('/active-trip');
   }
@@ -281,7 +452,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _rejectTrip(TripRequestEntity request) {
     _countdownTimer?.cancel();
     setState(() => _state = _state.copyWith(clearPending: true));
-    if (_state.isOnline) _scheduleWebMockRequest();
+    if (DriverWsService().isConnected) {
+      if (request.isErrand) {
+        DriverWsService().sendRejectErrand(request.id);
+      } else {
+        DriverWsService().sendReject(request.id);
+      }
+    }
+    if (_state.isOnline && !DriverWsService().isConnected) {
+      _scheduleWebMockRequest();
+    }
   }
 
   List<CircleMarker> _buildHeatmapCircles() {
