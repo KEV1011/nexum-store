@@ -24,17 +24,35 @@ class DriverLocationEvent {
   final double lng;
 }
 
-/// Singleton WS client for real-time trip updates and GPS tracking.
+class ErrandUpdateEvent {
+  const ErrandUpdateEvent({required this.errandId, required this.payload});
+  final String errandId;
+  final Map<String, dynamic> payload;
+}
+
+class IntercityUpdateEvent {
+  const IntercityUpdateEvent({required this.bookingId, required this.payload});
+  final String bookingId;
+  final Map<String, dynamic> payload;
+}
+
+/// Singleton WS client for real-time trip, errand, and intercity updates.
 ///
 /// Protocol client→server:
 ///   {"type":"client_auth","token":"..."}
 ///   {"type":"subscribe_trip","tripId":"..."}
 ///   {"type":"unsubscribe_trip","tripId":"..."}
+///   {"type":"subscribe_errand","errandId":"..."}
+///   {"type":"unsubscribe_errand","errandId":"..."}
+///   {"type":"subscribe_intercity","bookingId":"..."}
+///   {"type":"unsubscribe_intercity","bookingId":"..."}
 ///
 /// Protocol server→client:
 ///   {"type":"client_auth_ok","clientId":"..."}
 ///   {"type":"trip_update","tripId":"...","trip":{...}}
 ///   {"type":"driver_location","tripId":"...","lat":...,"lng":...}
+///   {"type":"errand_update","errandId":"...","errand":{...}}
+///   {"type":"intercity_update","bookingId":"...","booking":{...}}
 class TransportWsService {
   factory TransportWsService() => _instance;
   TransportWsService._();
@@ -52,9 +70,13 @@ class TransportWsService {
 
   final _tripCtrl = StreamController<TripUpdateEvent>.broadcast();
   final _locationCtrl = StreamController<DriverLocationEvent>.broadcast();
+  final _errandCtrl = StreamController<ErrandUpdateEvent>.broadcast();
+  final _intercityCtrl = StreamController<IntercityUpdateEvent>.broadcast();
 
   Stream<TripUpdateEvent> get tripUpdates => _tripCtrl.stream;
   Stream<DriverLocationEvent> get driverLocations => _locationCtrl.stream;
+  Stream<ErrandUpdateEvent> get errandUpdates => _errandCtrl.stream;
+  Stream<IntercityUpdateEvent> get intercityUpdates => _intercityCtrl.stream;
 
   bool get isConnected => _channel != null && _authenticated;
 
@@ -105,6 +127,18 @@ class TransportWsService {
   void unsubscribeTrip(String tripId) =>
       _send({'type': 'unsubscribe_trip', 'tripId': tripId});
 
+  void subscribeErrand(String errandId) =>
+      _send({'type': 'subscribe_errand', 'errandId': errandId});
+
+  void unsubscribeErrand(String errandId) =>
+      _send({'type': 'unsubscribe_errand', 'errandId': errandId});
+
+  void subscribeIntercity(String bookingId) =>
+      _send({'type': 'subscribe_intercity', 'bookingId': bookingId});
+
+  void unsubscribeIntercity(String bookingId) =>
+      _send({'type': 'unsubscribe_intercity', 'bookingId': bookingId});
+
   void disconnect() {
     _sub?.cancel();
     _channel?.sink.close();
@@ -147,6 +181,18 @@ class TransportWsService {
         if (tripId != null && lat != null && lng != null) {
           _locationCtrl.add(
             DriverLocationEvent(tripId: tripId, lat: lat, lng: lng),
+          );
+        }
+      } else if (type == 'errand_update') {
+        final errandId = msg['errandId'] as String?;
+        if (errandId != null) {
+          _errandCtrl.add(ErrandUpdateEvent(errandId: errandId, payload: msg));
+        }
+      } else if (type == 'intercity_update') {
+        final bookingId = msg['bookingId'] as String?;
+        if (bookingId != null) {
+          _intercityCtrl.add(
+            IntercityUpdateEvent(bookingId: bookingId, payload: msg),
           );
         }
       }
