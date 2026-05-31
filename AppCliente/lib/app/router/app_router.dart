@@ -20,6 +20,10 @@ import 'package:nexum_client/features/cart/presentation/screens/'
     'cart_screen.dart';
 import 'package:nexum_client/features/cart/presentation/screens/'
     'checkout_screen.dart';
+import 'package:nexum_client/features/intercity/presentation/screens/'
+    'intercity_booking_screen.dart';
+import 'package:nexum_client/features/intercity/presentation/screens/'
+    'intercity_status_screen.dart';
 import 'package:nexum_client/features/onboarding/presentation/screens/'
     'onboarding_screen.dart';
 import 'package:nexum_client/features/orders/presentation/screens/'
@@ -52,6 +56,10 @@ abstract final class AppRoutes {
 
   // Rutas de transporte
   static const String transportBooking = '/transport/booking';
+
+  // Rutas intermunicipales
+  static const String intercityBooking = '/intercity/booking';
+  static const String intercityStatus = '/intercity/status';
 
   static String businessPath(String id) => '/business/$id';
   static String orderPath(String id) => '/order/$id';
@@ -156,6 +164,20 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: TransportTrackingScreen(
             requestId: state.pathParameters['id'] ?? '',
           ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.intercityBooking,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const IntercityBookingScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.intercityStatus,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const IntercityStatusScreen(),
         ),
       ),
     ],

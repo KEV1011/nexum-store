@@ -1,0 +1,821 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
+import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
+
+const _kInterColor = Color(0xFF1E3A8A);
+
+class IntercityStatusScreen extends ConsumerWidget {
+  const IntercityStatusScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(intercityProvider);
+    final request = state.active;
+
+    if (request == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/home');
+      });
+      return const Scaffold(
+        backgroundColor: Color(0xFF0F172A),
+        body: Center(
+          child: CircularProgressIndicator(color: _kInterColor),
+        ),
+      );
+    }
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (_, __) => _showCancelDialog(context, ref),
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F172A),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF0F172A),
+          foregroundColor: Colors.white,
+          title: const Text(
+            'Estado del viaje',
+            style: TextStyle(fontWeight: FontWeight.w700, color: Colors.white),
+          ),
+          centerTitle: false,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => _showCancelDialog(context, ref),
+          ),
+          actions: [
+            if (request.status.canCancel)
+              TextButton(
+                onPressed: () => _showCancelDialog(context, ref),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(color: AppColors.error),
+                ),
+              ),
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // ── Status header ──────────────────────────────────────────────
+            _StatusHeader(request: request),
+            const SizedBox(height: 16),
+
+            // ── Route summary ──────────────────────────────────────────────
+            _RouteSummaryCard(request: request),
+            const SizedBox(height: 12),
+
+            // ── Driver offer (when found) ──────────────────────────────────
+            if (request.status == IntercityStatus.driverFound)
+              _DriverOfferCard(
+                request: request,
+                onAccept: () {
+                  HapticFeedback.mediumImpact();
+                  ref.read(intercityProvider.notifier).confirmDriver();
+                },
+                onReject: () {
+                  HapticFeedback.selectionClick();
+                  ref.read(intercityProvider.notifier).rejectCounterOffer();
+                },
+              ),
+
+            // ── Driver confirmed ───────────────────────────────────────────
+            if (request.status == IntercityStatus.confirmed &&
+                request.hasDriver)
+              _DriverConfirmedCard(request: request),
+
+            const SizedBox(height: 12),
+
+            // ── Trip details ───────────────────────────────────────────────
+            _TripDetailsCard(request: request),
+
+            const SizedBox(height: 24),
+
+            // ── Safety tip ────────────────────────────────────────────────
+            _SafetyBanner(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCancelDialog(BuildContext context, WidgetRef ref) async {
+    final request = ref.read(intercityProvider).active;
+    if (request == null || !request.status.canCancel) {
+      context.go('/home');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('¿Cancelar el viaje?',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Se cancelará la búsqueda de conductor.',
+          style: TextStyle(color: Color(0xFF94A3B8)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Mantener',
+                style: TextStyle(color: Color(0xFF93C5FD))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Cancelar viaje',
+                style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      ref.read(intercityProvider.notifier).cancelRequest();
+      context.go('/home');
+    }
+  }
+}
+
+// ── Status header ─────────────────────────────────────────────────────────────
+
+class _StatusHeader extends StatelessWidget {
+  const _StatusHeader({required this.request});
+  final IntercityRequestEntity request;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = request.status;
+    final isSearching = status == IntercityStatus.searching;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: status.color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: status.color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          if (isSearching)
+            SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: status.color,
+              ),
+            )
+          else
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: status.color.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                _iconForStatus(status),
+                color: status.color,
+                size: 22,
+              ),
+            ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  status.label,
+                  style: TextStyle(
+                    color: status.color,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+                Text(
+                  _subtitleForStatus(status, request),
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _iconForStatus(IntercityStatus s) => switch (s) {
+        IntercityStatus.driverFound => Icons.person_pin_rounded,
+        IntercityStatus.confirmed => Icons.check_circle_rounded,
+        IntercityStatus.inProgress => Icons.directions_car_rounded,
+        IntercityStatus.completed => Icons.flag_rounded,
+        IntercityStatus.cancelled => Icons.cancel_rounded,
+        _ => Icons.search_rounded,
+      };
+
+  String _subtitleForStatus(
+      IntercityStatus s, IntercityRequestEntity r) =>
+      switch (s) {
+        IntercityStatus.searching =>
+          'Enviando solicitud a conductores disponibles...',
+        IntercityStatus.driverFound =>
+          'Revisa la oferta del conductor y confirma',
+        IntercityStatus.confirmed =>
+          '${r.driverName ?? 'Conductor'} te recogerá a la hora acordada',
+        IntercityStatus.inProgress => 'En camino hacia el destino',
+        IntercityStatus.completed => 'Viaje finalizado · ¡Buen viaje!',
+        IntercityStatus.cancelled => 'Solicitud cancelada',
+      };
+}
+
+// ── Route summary ─────────────────────────────────────────────────────────────
+
+class _RouteSummaryCard extends StatelessWidget {
+  const _RouteSummaryCard({required this.request});
+  final IntercityRequestEntity request;
+
+  @override
+  Widget build(BuildContext context) {
+    final route =
+        IntercityRoute.between(request.origin, request.destination);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.radio_button_checked_rounded,
+                  size: 18, color: AppColors.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      request.origin.displayName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Text(
+                      request.origin.department,
+                      style: const TextStyle(
+                          color: Color(0xFF64748B), fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 9, top: 2, bottom: 2),
+            child: Container(
+              width: 1,
+              height: 20,
+              color: const Color(0xFF334155),
+            ),
+          ),
+          Row(
+            children: [
+              const Icon(Icons.location_on_rounded,
+                  size: 18, color: AppColors.error),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      request.destination.displayName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Text(
+                      request.destination.department,
+                      style: const TextStyle(
+                          color: Color(0xFF64748B), fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (route != null) ...[
+            const SizedBox(height: 12),
+            const Divider(color: Color(0xFF334155), height: 1),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _InfoChip(
+                  icon: Icons.straighten_rounded,
+                  label: '${route.distanceKm.toInt()} km',
+                ),
+                _InfoChip(
+                  icon: Icons.access_time_rounded,
+                  label: route.durationLabel,
+                ),
+                _InfoChip(
+                  icon: Icons.people_alt_rounded,
+                  label: request.seats.label,
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Driver offer card ─────────────────────────────────────────────────────────
+
+class _DriverOfferCard extends StatelessWidget {
+  const _DriverOfferCard({
+    required this.request,
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  final IntercityRequestEntity request;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCounterOffer =
+        request.counterFare != null &&
+        request.counterFare != request.offeredFare;
+    final finalFare = request.counterFare ?? request.offeredFare;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.info.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _kInterColor.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.person_rounded,
+                    color: Color(0xFF93C5FD), size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      request.driverName ?? 'Conductor',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Text(
+                      request.driverVehicle ?? '',
+                      style: const TextStyle(
+                          color: Color(0xFF94A3B8), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (request.driverRating != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.starContainer,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star_rounded,
+                          size: 13, color: AppColors.star),
+                      const SizedBox(width: 3),
+                      Text(
+                        request.driverRating!.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF78350F),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isCounterOffer ? 'Tu oferta' : 'Precio acordado',
+                        style: const TextStyle(
+                            color: Color(0xFF64748B), fontSize: 11),
+                      ),
+                      Text(
+                        CurrencyFormatter.format(request.offeredFare),
+                        style: TextStyle(
+                          color: isCounterOffer
+                              ? const Color(0xFF64748B)
+                              : AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          decoration: isCounterOffer
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isCounterOffer) ...[
+                  const Icon(Icons.arrow_forward_rounded,
+                      color: Color(0xFF334155), size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Contraoferta',
+                          style: TextStyle(
+                              color: Color(0xFF64748B), fontSize: 11),
+                        ),
+                        Text(
+                          CurrencyFormatter.format(finalFare),
+                          style: const TextStyle(
+                            color: AppColors.warning,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onReject,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF334155)),
+                    foregroundColor: const Color(0xFF94A3B8),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Text(
+                    isCounterOffer ? 'Rechazar' : 'Esperar otro',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: onAccept,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kInterColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Text(
+                    isCounterOffer
+                        ? 'Aceptar ${CurrencyFormatter.format(finalFare)}'
+                        : 'Confirmar viaje',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Driver confirmed card ─────────────────────────────────────────────────────
+
+class _DriverConfirmedCard extends StatelessWidget {
+  const _DriverConfirmedCard({required this.request});
+  final IntercityRequestEntity request;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded,
+                    color: AppColors.primary, size: 26),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      request.driverName ?? 'Conductor',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    Text(
+                      request.driverVehicle ?? '',
+                      style: const TextStyle(
+                          color: Color(0xFF94A3B8), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (request.driverPhone != null)
+                GestureDetector(
+                  onTap: () {},
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.phone_rounded,
+                        color: AppColors.primary, size: 20),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.payments_outlined,
+                    color: AppColors.primary, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Total acordado: ${CurrencyFormatter.format(request.offeredFare)}',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Trip details card ─────────────────────────────────────────────────────────
+
+class _TripDetailsCard extends StatelessWidget {
+  const _TripDetailsCard({required this.request});
+  final IntercityRequestEntity request;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'DETALLES DEL VIAJE',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _DetailRow(
+            icon: Icons.calendar_month_rounded,
+            label: 'Salida',
+            value: _formatDateTime(request.departureTime),
+          ),
+          _DetailRow(
+            icon: Icons.people_alt_rounded,
+            label: 'Cupos',
+            value: request.seats.label,
+          ),
+          _DetailRow(
+            icon: Icons.payments_outlined,
+            label: 'Oferta enviada',
+            value: CurrencyFormatter.format(request.offeredFare),
+          ),
+          if (request.pickupAddress != null)
+            _DetailRow(
+              icon: Icons.my_location_rounded,
+              label: 'Recogida',
+              value: request.pickupAddress!,
+            ),
+          if (request.dropoffAddress != null)
+            _DetailRow(
+              icon: Icons.flag_rounded,
+              label: 'Bajada',
+              value: request.dropoffAddress!,
+            ),
+          if (request.notes != null)
+            _DetailRow(
+              icon: Icons.notes_rounded,
+              label: 'Notas',
+              value: request.notes!,
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDateTime(DateTime dt) {
+    const months = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
+    ];
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day} ${months[dt.month - 1]} · $hour:$min';
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF64748B)),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 72,
+            child: Text(
+              label,
+              style: const TextStyle(
+                  color: Color(0xFF64748B), fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFFCBD5E1),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Safety banner ─────────────────────────────────────────────────────────────
+
+class _SafetyBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border:
+            Border.all(color: AppColors.warning.withValues(alpha: 0.25)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.shield_rounded, size: 18, color: AppColors.warning),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Comparte el viaje con alguien de confianza. '
+              'Nexum registra la ruta y los datos del conductor.',
+              style: TextStyle(color: AppColors.warning, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: const Color(0xFF64748B)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFFCBD5E1),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
