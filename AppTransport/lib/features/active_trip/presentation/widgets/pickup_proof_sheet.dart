@@ -11,13 +11,14 @@ import 'package:nexum_driver/core/domain/work_mode.dart';
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 /// Proof of order pickup at the restaurant / local.
-/// [photoPath] is required — the driver must photograph the order
-/// before it leaves the establishment.
+/// [photoPath] is required. For mandado mode [actualCost] captures what
+/// the driver spent so the server can relay it to the client.
 class PickupProof {
-  const PickupProof({required this.photoPath, this.orderRef});
+  const PickupProof({required this.photoPath, this.orderRef, this.actualCost});
 
   final String photoPath;
   final String? orderRef;
+  final double? actualCost;
 }
 
 // ── Sheet ─────────────────────────────────────────────────────────────────────
@@ -63,12 +64,14 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
   String? _photoPath;
   bool _takingPhoto = false;
   final _orderRefCtrl = TextEditingController();
+  final _costCtrl = TextEditingController();
 
   bool get _canConfirm => _photoPath != null;
 
   @override
   void dispose() {
     _orderRefCtrl.dispose();
+    _costCtrl.dispose();
     super.dispose();
   }
 
@@ -92,12 +95,14 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
 
   void _confirm() {
     HapticFeedback.mediumImpact();
+    final rawCost = _costCtrl.text.replaceAll(RegExp(r'[^0-9.]'), '');
     Navigator.of(context).pop(
       PickupProof(
         photoPath: _photoPath!,
         orderRef: _orderRefCtrl.text.trim().isEmpty
             ? null
             : _orderRefCtrl.text.trim(),
+        actualCost: rawCost.isEmpty ? null : double.tryParse(rawCost),
       ),
     );
   }
@@ -304,6 +309,44 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                   ),
 
                   const SizedBox(height: AppConstants.spacingXL),
+
+                  // ── Cost (mandado only) ─────────────────────────
+                  if (isMandado) ...[
+                    _SectionLabel(
+                      icon: Icons.monetization_on_outlined,
+                      label: 'Costo real del mandado',
+                      color: accent,
+                      badge: 'Para el cliente',
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ingresa cuánto gastaste para que el cliente lo vea.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.spacingM),
+                    TextField(
+                      controller: _costCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: false),
+                      decoration: InputDecoration(
+                        hintText: 'Ej: 32400',
+                        prefixText: '\$  ',
+                        prefixIcon: Icon(
+                          Icons.attach_money_rounded,
+                          color: accent.withValues(alpha: 0.6),
+                          size: 18,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppConstants.radiusMedium,
+                          ),
+                          borderSide: BorderSide(color: accent, width: 2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.spacingXL),
+                  ],
 
                   // ── Reference (optional) ────────────────────────
                   _SectionLabel(

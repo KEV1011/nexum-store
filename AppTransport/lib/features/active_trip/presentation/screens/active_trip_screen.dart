@@ -603,6 +603,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
       ActiveTripState.waiting => WaitingPassengerCard(
           trip: trip,
           isEnvios: isDelivery,
+          isMandado: workMode.isErrand,
           onStartTrip: isDelivery || _isLoading ? null : _handleStartTrip,
           onPickupConfirm: isDelivery && !_isLoading ? _handlePickupConfirm : null,
         ),
@@ -621,7 +622,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     try {
       final trip = ref.read(activeTripProvider);
       await ref.read(activeTripProvider.notifier).arrivedAtPassenger();
-      if (trip != null) DriverWsService().sendTripStatus(trip.request.id, 'arrived');
+      if (trip != null) {
+        final workMode = ref.read(selectedWorkModeProvider);
+        if (workMode.isErrand) {
+          DriverWsService().sendErrandStatus(trip.request.id, 'shopping');
+        } else {
+          DriverWsService().sendTripStatus(trip.request.id, 'arrived');
+        }
+      }
     } catch (_) {
       if (mounted) AppSnackbar.showError(context, 'Error al actualizar estado');
     } finally {
@@ -667,12 +675,22 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
             orderRef: proof.orderRef,
           );
       if (tripBeforeStart != null) {
-        DriverWsService().sendTripStatus(tripBeforeStart.request.id, 'in_progress');
+        if (workMode.isErrand) {
+          DriverWsService().sendErrandStatus(
+            tripBeforeStart.request.id,
+            'on_the_way',
+            actualCost: proof.actualCost,
+          );
+        } else {
+          DriverWsService().sendTripStatus(tripBeforeStart.request.id, 'in_progress');
+        }
       }
       if (mounted) {
         final msg = workMode == WorkMode.paquete
             ? 'Paquete recogido · En camino al destinatario'
-            : 'Pedido recogido · En camino al cliente';
+            : workMode == WorkMode.mandado
+                ? 'Mandado realizado · En camino al cliente'
+                : 'Pedido recogido · En camino al cliente';
         AppSnackbar.showSuccess(context, msg);
       }
     } catch (_) {
@@ -689,7 +707,12 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     try {
       final tripBeforeFinish = ref.read(activeTripProvider);
       if (tripBeforeFinish != null) {
-        DriverWsService().sendTripStatus(tripBeforeFinish.request.id, 'completed');
+        final workMode = ref.read(selectedWorkModeProvider);
+        if (workMode.isErrand) {
+          DriverWsService().sendErrandStatus(tripBeforeFinish.request.id, 'delivered');
+        } else {
+          DriverWsService().sendTripStatus(tripBeforeFinish.request.id, 'completed');
+        }
       }
       final tripModel =
           await ref.read(activeTripProvider.notifier).finishTrip();

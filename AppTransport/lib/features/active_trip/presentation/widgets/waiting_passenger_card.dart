@@ -13,12 +13,14 @@ class WaitingPassengerCard extends StatelessWidget {
     super.key,
     required this.trip,
     this.isEnvios = false,
+    this.isMandado = false,
     this.onStartTrip,
     this.onPickupConfirm,
   });
 
   final ActiveTripEntity trip;
   final bool isEnvios;
+  final bool isMandado;
   final VoidCallback? onStartTrip;
   final VoidCallback? onPickupConfirm;
 
@@ -145,7 +147,23 @@ class WaitingPassengerCard extends StatelessWidget {
 
   Widget _buildEnviosCard(BuildContext context) {
     final theme = Theme.of(context);
-    const accent = AppColors.serviceEnvios;
+    final accent = isMandado ? AppColors.warning : AppColors.serviceEnvios;
+    final headerIcon = isMandado ? Icons.run_circle_rounded : Icons.storefront_rounded;
+    final headerTitle = isMandado ? 'Realizando el mandado' : 'En el local';
+    final ctaLabel = isMandado
+        ? 'Confirmar mandado · Iniciar entrega'
+        : 'Fotografiar pedido · Iniciar entrega';
+    final stepLabels = isMandado
+        ? const [
+            'Realiza el mandado / compras',
+            'Fotografía la compra y el recibo',
+            'Entrega al cliente en destino',
+          ]
+        : const [
+            'Recibe el pedido del local',
+            'Fotografía el pedido completo',
+            'Entrega al cliente con firma',
+          ];
 
     return _CardShell(
       child: Column(
@@ -161,11 +179,7 @@ class WaitingPassengerCard extends StatelessWidget {
                   color: accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
-                  Icons.storefront_rounded,
-                  color: accent,
-                  size: 20,
-                ),
+                child: Icon(headerIcon, color: accent, size: 20),
               ),
               const SizedBox(width: AppConstants.spacingS),
               Expanded(
@@ -173,17 +187,15 @@ class WaitingPassengerCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'En el local',
-                      style:
-                          theme.textTheme.titleMedium?.copyWith(
+                      headerTitle,
+                      style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
                       ),
                     ),
                     Text(
                       trip.request.passenger.name,
-                      style:
-                          theme.textTheme.bodySmall?.copyWith(
+                      style: theme.textTheme.bodySmall?.copyWith(
                         color: AppColors.textSecondary,
                       ),
                       maxLines: 1,
@@ -202,36 +214,16 @@ class WaitingPassengerCard extends StatelessWidget {
             padding: const EdgeInsets.all(AppConstants.spacingM),
             decoration: BoxDecoration(
               color: accent.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(
-                AppConstants.radiusMedium,
-              ),
-              border: Border.all(
-                color: accent.withValues(alpha: 0.2),
-              ),
+              borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+              border: Border.all(color: accent.withValues(alpha: 0.2)),
             ),
             child: Column(
               children: [
-                _StepRow(
-                  number: '1',
-                  label: 'Recibe el pedido del local',
-                  done: true,
-                  accent: accent,
-                ),
+                _StepRow(number: '1', label: stepLabels[0], done: true, accent: accent),
                 const SizedBox(height: AppConstants.spacingS),
-                _StepRow(
-                  number: '2',
-                  label: 'Fotografía el pedido completo',
-                  done: false,
-                  accent: accent,
-                ),
+                _StepRow(number: '2', label: stepLabels[1], done: false, accent: accent),
                 const SizedBox(height: AppConstants.spacingS),
-                _StepRow(
-                  number: '3',
-                  label: 'Entrega al cliente con firma',
-                  done: false,
-                  accent: accent,
-                  dimmed: true,
-                ),
+                _StepRow(number: '3', label: stepLabels[2], done: false, accent: accent, dimmed: true),
               ],
             ),
           ),
@@ -249,18 +241,13 @@ class WaitingPassengerCard extends StatelessWidget {
                 backgroundColor: accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    AppConstants.radiusMedium,
-                  ),
+                  borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
                 ),
                 elevation: 2,
               ),
-              label: const Text(
-                'Fotografiar pedido · Iniciar entrega',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
+              label: Text(
+                ctaLabel,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
               ),
             ),
           ),
