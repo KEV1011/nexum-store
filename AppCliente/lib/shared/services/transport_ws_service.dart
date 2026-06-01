@@ -42,6 +42,27 @@ class PooledUpdateEvent {
   final Map<String, dynamic> payload;
 }
 
+class RideUpdateEvent {
+  const RideUpdateEvent({required this.ride});
+  final Map<String, dynamic> ride;
+}
+
+class RideLocationEvent {
+  const RideLocationEvent({
+    required this.rideId,
+    required this.lat,
+    required this.lng,
+  });
+  final String rideId;
+  final double lat;
+  final double lng;
+}
+
+class ChatMessageEvent {
+  const ChatMessageEvent({required this.message});
+  final Map<String, dynamic> message;
+}
+
 /// Singleton WS client for real-time trip, errand, and intercity updates.
 ///
 /// Protocol client→server:
@@ -79,12 +100,18 @@ class TransportWsService {
   final _errandCtrl = StreamController<ErrandUpdateEvent>.broadcast();
   final _intercityCtrl = StreamController<IntercityUpdateEvent>.broadcast();
   final _pooledCtrl = StreamController<PooledUpdateEvent>.broadcast();
+  final _rideCtrl = StreamController<RideUpdateEvent>.broadcast();
+  final _rideLocationCtrl = StreamController<RideLocationEvent>.broadcast();
+  final _chatCtrl = StreamController<ChatMessageEvent>.broadcast();
 
   Stream<TripUpdateEvent> get tripUpdates => _tripCtrl.stream;
   Stream<DriverLocationEvent> get driverLocations => _locationCtrl.stream;
   Stream<ErrandUpdateEvent> get errandUpdates => _errandCtrl.stream;
   Stream<IntercityUpdateEvent> get intercityUpdates => _intercityCtrl.stream;
   Stream<PooledUpdateEvent> get pooledUpdates => _pooledCtrl.stream;
+  Stream<RideUpdateEvent> get rideUpdates => _rideCtrl.stream;
+  Stream<RideLocationEvent> get rideLocations => _rideLocationCtrl.stream;
+  Stream<ChatMessageEvent> get chatMessages => _chatCtrl.stream;
 
   bool get isConnected => _channel != null && _authenticated;
 
@@ -153,6 +180,30 @@ class TransportWsService {
   void unsubscribePooled(String tripId) =>
       _send({'type': 'unsubscribe_pooled', 'tripId': tripId});
 
+  // ── Ride negotiation (inDriver-style) + chat ────────────────────────────────
+
+  void subscribeRide(String rideId) =>
+      _send({'type': 'subscribe_ride', 'rideId': rideId});
+
+  void unsubscribeRide(String rideId) =>
+      _send({'type': 'unsubscribe_ride', 'rideId': rideId});
+
+  /// Accept a driver's bid on the ride.
+  void acceptBid(String rideId, String bidId) =>
+      _send({'type': 'ride_accept_bid', 'rideId': rideId, 'bidId': bidId});
+
+  void cancelRide(String rideId) =>
+      _send({'type': 'ride_cancel', 'rideId': rideId});
+
+  void subscribeChat(String rideId) =>
+      _send({'type': 'subscribe_chat', 'rideId': rideId});
+
+  void unsubscribeChat(String rideId) =>
+      _send({'type': 'unsubscribe_chat', 'rideId': rideId});
+
+  void sendChat(String rideId, String text) =>
+      _send({'type': 'chat_send', 'rideId': rideId, 'text': text});
+
   void disconnect() {
     _sub?.cancel();
     _channel?.sink.close();
@@ -213,6 +264,25 @@ class TransportWsService {
         final tripId = msg['tripId'] as String?;
         if (tripId != null) {
           _pooledCtrl.add(PooledUpdateEvent(tripId: tripId, payload: msg));
+        }
+      } else if (type == 'ride_update') {
+        final ride = msg['ride'];
+        if (ride is Map<String, dynamic>) {
+          _rideCtrl.add(RideUpdateEvent(ride: ride));
+        }
+      } else if (type == 'ride_location') {
+        final rideId = msg['rideId'] as String?;
+        final lat = (msg['lat'] as num?)?.toDouble();
+        final lng = (msg['lng'] as num?)?.toDouble();
+        if (rideId != null && lat != null && lng != null) {
+          _rideLocationCtrl.add(
+            RideLocationEvent(rideId: rideId, lat: lat, lng: lng),
+          );
+        }
+      } else if (type == 'chat_message') {
+        final m = msg['message'];
+        if (m is Map<String, dynamic>) {
+          _chatCtrl.add(ChatMessageEvent(message: m));
         }
       }
     } catch (_) {}

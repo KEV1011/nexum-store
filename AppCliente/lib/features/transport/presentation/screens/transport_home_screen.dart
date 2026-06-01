@@ -538,6 +538,14 @@ class _BottomPanel extends StatelessWidget {
 
           const SizedBox(height: 10),
 
+          // Tarjeta "Pon tu precio" (negociación estilo inDriver)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _NegotiateCard(),
+          ),
+
+          const SizedBox(height: 8),
+
           // Tarjeta viaje intermunicipal
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -907,6 +915,64 @@ class _PooledCard extends StatelessWidget {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Tarjeta "Pon tu precio" (negociación inDriver) ────────────────────────────
+
+class _NegotiateCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.push(AppRoutes.requestRide),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF00C853), Color(0xFF00963D)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.local_offer_rounded,
+                  color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pon tu precio',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Ofrece tu tarifa y los conductores te responden',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded,
+                color: Colors.white, size: 16),
           ],
         ),
       ),
