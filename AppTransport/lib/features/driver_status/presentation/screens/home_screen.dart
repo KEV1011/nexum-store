@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -625,6 +626,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ];
   }
 
+  // ── Map controls ───────────────────────────────────────────────────────
+
+  /// Re-centre the map on the driver's current position with a smooth move.
+  void _recenterMap() {
+    HapticFeedback.selectionClick();
+    _mapController.move(_driverLatLng, MapConstants.initialZoom);
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────
 
   static const _driverLatLng = LatLng(
@@ -716,12 +725,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
-          // Bottom panel
+          // Bottom panel + floating glass map controls.
+          // The FAB lives in the same min-height column so it auto-floats
+          // just above the panel regardless of the panel's dynamic height.
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            child: _buildBottomPanel(serviceType),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(
+                    right: AppConstants.spacingM,
+                    bottom: AppConstants.spacingS,
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _GlassCircleButton(
+                      icon: Icons.my_location_rounded,
+                      onTap: _recenterMap,
+                    ),
+                  ),
+                ),
+                _buildBottomPanel(serviceType),
+              ],
+            ),
           ),
           // Trip request modal
           if (_state.pendingRequest != null)
@@ -1870,6 +1899,8 @@ class _OnlineToggleState extends State<_OnlineToggle>
   }
 }
 
+/// Frosted-glass circular map control (glassmorphism). Used across the top
+/// bar so the controls float crisply above the live map.
 class _MapActionButton extends StatelessWidget {
   const _MapActionButton({
     required this.icon,
@@ -1881,17 +1912,84 @@ class _MapActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).cardColor,
-      borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
-      elevation: 2,
-      shadowColor: AppColors.shadow,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(AppConstants.spacingS + 2),
-          child: Icon(icon, size: 22, color: AppColors.textPrimary),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final glass = isDark
+        ? Colors.black.withValues(alpha: 0.32)
+        : Colors.white.withValues(alpha: 0.55);
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.16)
+        : Colors.white.withValues(alpha: 0.70);
+    final iconColor = isDark ? AppColors.textOnDark : AppColors.textPrimary;
+
+    return ClipOval(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Material(
+          color: glass,
+          shape: CircleBorder(
+            side: BorderSide(color: border, width: 1.2),
+          ),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(AppConstants.spacingS + 2),
+              child: Icon(icon, size: 22, color: iconColor),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Larger primary glass FAB — frosted circle tinted with the brand colour.
+class _GlassCircleButton extends StatelessWidget {
+  const _GlassCircleButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Material(
+            color: Colors.white.withValues(alpha: 0.65),
+            shape: CircleBorder(
+              side: BorderSide(
+                color: Colors.white.withValues(alpha: 0.75),
+                width: 1.4,
+              ),
+            ),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(13),
+                child: Icon(
+                  icon,
+                  size: 24,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
