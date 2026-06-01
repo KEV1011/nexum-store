@@ -2,7 +2,6 @@ services:
   - type: web
     name: nexum-api
     runtime: docker
-    rootDir: backend
     dockerfilePath: Dockerfile
     # Railway/Render auto-injects PORT; server reads process.env.PORT
     healthCheckPath: /health

@@ -1,0 +1,14 @@
+AppTransport
+AppCliente
+app
+components
+context
+docs
+lib
+.github
+.claude
+*.md
+*.log
+backend/node_modules
+backend/dist
+backend/.env
