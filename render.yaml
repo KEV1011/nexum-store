@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: nexum-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: Dockerfile
+    # Railway/Render auto-injects PORT; server reads process.env.PORT
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: JWT_SECRET
+        generateValue: true   # Render generates a random value on first deploy
