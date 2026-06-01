@@ -27,6 +27,7 @@ import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/delivery_details.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
@@ -138,8 +139,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Timer? _webMockTimer;
   StreamSubscription<Map<String, dynamic>>? _wsTripSub;
   StreamSubscription<Map<String, dynamic>>? _wsErrandSub;
+  StreamSubscription<Map<String, dynamic>>? _wsDeliverySub;
   StreamSubscription<String>? _wsCancelSub;
   StreamSubscription<String>? _wsErrandCancelSub;
+  StreamSubscription<String>? _wsDeliveryCancelSub;
   final _rng = math.Random();
 
   static const _center = LatLng(
@@ -153,8 +156,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _webMockTimer?.cancel();
     _wsTripSub?.cancel();
     _wsErrandSub?.cancel();
+    _wsDeliverySub?.cancel();
     _wsCancelSub?.cancel();
     _wsErrandCancelSub?.cancel();
+    _wsDeliveryCancelSub?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -168,10 +173,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     if (goingOnline) {
-      final workMode = ref.read(selectedWorkModeProvider);
+      final modes = ref.read(selectedWorkModesProvider);
       AppSnackbar.showSuccess(
         context,
-        'En línea · Buscando ${workMode.seekingLabel}...',
+        'En línea · Recibiendo ${_modesLabel(modes)}',
       );
       _connectWs();
     } else {
@@ -179,18 +184,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _countdownTimer?.cancel();
       _wsTripSub?.cancel();
       _wsErrandSub?.cancel();
+      _wsDeliverySub?.cancel();
       _wsCancelSub?.cancel();
       _wsErrandCancelSub?.cancel();
+      _wsDeliveryCancelSub?.cancel();
       DriverWsService().disconnect();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
   }
 
-  // ── Work mode ──────────────────────────────────────────────────────────
+  // ── Work mode (multi-select) ───────────────────────────────────────────
 
+  /// Toggle a job category on/off. At least one must stay enabled. When the
+  /// driver is online the new set is pushed to the backend live, so they can
+  /// add or drop categories without disconnecting.
   void _selectWorkMode(WorkMode mode) {
-    if (_state.isOnline) return;
-    ref.read(selectedWorkModeProvider.notifier).state = mode;
+    final current = ref.read(selectedWorkModesProvider);
+    final next = Set<WorkMode>.from(current);
+    if (next.contains(mode)) {
+      if (next.length == 1) return; // keep at least one category
+      next.remove(mode);
+    } else {
+      next.add(mode);
+    }
+    ref.read(selectedWorkModesProvider.notifier).state = next;
+    if (_state.isOnline) {
+      DriverWsService().changeWorkModes(next);
+    }
+  }
+
+  String _modesLabel(Set<WorkMode> modes) {
+    if (modes.length == 1) return '${modes.first.seekingLabel}.';
+    return '${modes.length} categorías de trabajo.';
   }
 
   // ── WebSocket connection ───────────────────────────────────────────────
@@ -206,8 +231,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
 
-    final workMode = ref.read(selectedWorkModeProvider);
-    final connected = await DriverWsService().connect(token, workMode);
+    final modes = ref.read(selectedWorkModesProvider);
+    final connected = await DriverWsService().connect(token, modes);
 
     if (!connected || !mounted) {
       _scheduleWebMockRequest();
@@ -228,6 +253,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (request != null) _onTripRequest(request);
     });
 
+    // Subscribe to incoming delivery requests (pedido / paquete).
+    _wsDeliverySub = DriverWsService().deliveryRequests.listen((deliveryMap) {
+      if (!mounted) return;
+      final request = _deliveryRequestFromMap(deliveryMap);
+      if (request != null) _onTripRequest(request);
+    });
+
     // Clear the pending request if the server cancels the trip (timeout).
     _wsCancelSub = DriverWsService().tripCancellations.listen((tripId) {
       if (!mounted) return;
@@ -242,6 +274,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         DriverWsService().errandCancellations.listen((errandId) {
       if (!mounted) return;
       if (_state.pendingRequest?.id == errandId) {
+        _countdownTimer?.cancel();
+        setState(() => _state = _state.copyWith(clearPending: true));
+      }
+    });
+
+    // Clear the pending request if the server cancels the delivery (timeout).
+    _wsDeliveryCancelSub =
+        DriverWsService().deliveryCancellations.listen((deliveryId) {
+      if (!mounted) return;
+      if (_state.pendingRequest?.id == deliveryId) {
         _countdownTimer?.cancel();
         setState(() => _state = _state.copyWith(clearPending: true));
       }
@@ -337,6 +379,60 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         etaToPickupMinutes: 3,
         requestedAt: DateTime.now(),
         errand: errand,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Build a [TripRequestEntity] (with [DeliveryDetails]) from a raw delivery
+  /// JSON map received via WS (pedido / paquete). Uses Pamplona-centre
+  /// placeholder coords because the payload has no coordinates.
+  TripRequestEntity? _deliveryRequestFromMap(Map<String, dynamic> e) {
+    try {
+      const double pamplonaCenterLat = MapConstants.pamplonaCenterLat;
+      const double pamplonaCenterLng = MapConstants.pamplonaCenterLng;
+
+      final delivery = DeliveryDetails(
+        kind: DeliveryKind.fromApi(e['kind'] as String?),
+        title: e['title'] as String? ?? 'Entrega',
+        itemDescription: e['itemDescription'] as String? ?? '',
+        recipientName: e['recipientName'] as String? ?? 'Cliente',
+        recipientPhone: e['recipientPhone'] as String? ?? '',
+        notes: e['notes'] as String?,
+      );
+
+      return TripRequestEntity(
+        id: e['id'] as String,
+        passenger: PassengerEntity(
+          id: '',
+          name: delivery.recipientName,
+          rating: 5.0,
+          totalTrips: 0,
+          photoUrl: '',
+        ),
+        origin: LocationModel(
+          latitude: pamplonaCenterLat,
+          longitude: pamplonaCenterLng,
+          address: e['pickupAddress'] as String? ?? '',
+        ),
+        destination: LocationModel(
+          latitude: pamplonaCenterLat,
+          longitude: pamplonaCenterLng,
+          address: e['dropoffAddress'] as String? ?? '',
+        ),
+        distanceKm:
+            e['distanceKm'] != null ? (e['distanceKm'] as num).toDouble() : 0,
+        durationMinutes: e['estimatedMinutes'] != null
+            ? (e['estimatedMinutes'] as num).toInt()
+            : 0,
+        estimatedFare: e['estimatedFare'] != null
+            ? (e['estimatedFare'] as num).toDouble()
+            : 0,
+        distanceToPickupKm: 0.5,
+        etaToPickupMinutes: 3,
+        requestedAt: DateTime.now(),
+        delivery: delivery,
       );
     } catch (_) {
       return null;
@@ -441,6 +537,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (DriverWsService().isConnected) {
       if (request.isErrand) {
         DriverWsService().sendAcceptErrand(request.id);
+      } else if (request.isDelivery) {
+        DriverWsService().sendAcceptDelivery(request.id);
       } else {
         DriverWsService().sendAccept(request.id);
       }
@@ -455,6 +553,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (DriverWsService().isConnected) {
       if (request.isErrand) {
         DriverWsService().sendRejectErrand(request.id);
+      } else if (request.isDelivery) {
+        DriverWsService().sendRejectDelivery(request.id);
       } else {
         DriverWsService().sendReject(request.id);
       }
@@ -690,6 +790,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildBottomPanel(ServiceType serviceType) {
     final workMode = ref.watch(selectedWorkModeProvider);
+    final workModes = ref.watch(selectedWorkModesProvider);
     final driverStatus = ref.watch(driverStatusProvider);
 
     return Container(
@@ -811,14 +912,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
 
-          // Work mode selector (only when offline)
-          if (!_state.isOnline) ...[
-            _WorkModeSelector(
-              selected: workMode,
-              onSelect: _selectWorkMode,
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-          ],
+          // Work mode selector — multi-select, editable even while online.
+          _WorkModeSelector(
+            selected: workModes,
+            onSelect: _selectWorkMode,
+          ),
+          const SizedBox(height: AppConstants.spacingM),
 
           // Stats row
           Row(
@@ -912,7 +1011,7 @@ class _WorkModeSelector extends StatelessWidget {
     required this.onSelect,
   });
 
-  final WorkMode selected;
+  final Set<WorkMode> selected;
   final ValueChanged<WorkMode> onSelect;
 
   static const _subText = Color(0xFF94A3B8);
@@ -922,18 +1021,38 @@ class _WorkModeSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '¿Qué quieres hacer?',
-          style: TextStyle(
-            color: _subText,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+        Row(
+          children: [
+            const Text(
+              '¿Qué quieres recibir?',
+              style: TextStyle(
+                color: _subText,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                'Activa varias',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: AppConstants.spacingS),
         Row(
           children: WorkMode.values.map((mode) {
-            final isSelected = mode == selected;
+            final isSelected = selected.contains(mode);
             return Expanded(
               child: Padding(
                 padding: EdgeInsets.only(
@@ -1004,7 +1123,26 @@ class _WorkModeCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(mode.icon, size: 28, color: iconColor),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(mode.icon, size: 28, color: iconColor),
+                if (isSelected)
+                  Positioned(
+                    right: -8,
+                    top: -6,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.check_circle_rounded,
+                          size: 14, color: mode.color),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 6),
             Text(
               mode.displayName,
@@ -1892,10 +2030,23 @@ class _TripRequestModal extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onReject;
 
+  /// The badge must reflect the actual request type, not the driver's primary
+  /// mode (with multi-select the incoming job may be any enabled category).
+  WorkMode get _effectiveMode {
+    if (trip.isErrand) return WorkMode.mandado;
+    if (trip.isDelivery) {
+      return trip.delivery!.kind == DeliveryKind.food
+          ? WorkMode.pedido
+          : WorkMode.paquete;
+    }
+    return WorkMode.pasajero;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final progress = secondsLeft / AppConstants.tripRequestTimeoutSeconds;
+    final mode = _effectiveMode;
 
     return Positioned.fill(
       child: GestureDetector(
@@ -1927,22 +2078,21 @@ class _TripRequestModal extends StatelessWidget {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: workMode.containerColor,
+                              color: mode.containerColor,
                               borderRadius: BorderRadius.circular(
                                   AppConstants.radiusSmall),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(workMode.icon,
-                                    size: 12, color: workMode.color),
+                                Icon(mode.icon, size: 12, color: mode.color),
                                 const SizedBox(width: 4),
                                 Text(
-                                  workMode.displayName,
+                                  mode.displayName,
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
-                                    color: workMode.color,
+                                    color: mode.color,
                                   ),
                                 ),
                               ],
@@ -1953,6 +2103,11 @@ class _TripRequestModal extends StatelessWidget {
                         // Detalle del mandado (solo en modo Mandado)
                         if (trip.isErrand) ...[
                           _ErrandRequestCard(errand: trip.errand!),
+                          const SizedBox(height: AppConstants.spacingM),
+                        ],
+                        // Detalle de la entrega (modo Pedido / Paquete)
+                        if (trip.isDelivery) ...[
+                          _DeliveryRequestCard(delivery: trip.delivery!),
                           const SizedBox(height: AppConstants.spacingM),
                         ],
                         // Passenger header
@@ -2018,14 +2173,18 @@ class _TripRequestModal extends StatelessWidget {
                         _RouteRow(
                           icon: Icons.radio_button_checked_rounded,
                           color: AppColors.pickupMarker,
-                          label: trip.isErrand ? 'Hacer en' : 'Origen',
+                          label: (trip.isErrand || trip.isDelivery)
+                              ? 'Recoger en'
+                              : 'Origen',
                           address: trip.origin.address,
                         ),
                         const SizedBox(height: AppConstants.spacingS),
                         _RouteRow(
                           icon: Icons.location_on_rounded,
                           color: AppColors.destinationMarker,
-                          label: trip.isErrand ? 'Entregar a' : 'Destino',
+                          label: (trip.isErrand || trip.isDelivery)
+                              ? 'Entregar a'
+                              : 'Destino',
                           address: trip.destination.address,
                         ),
                         const Divider(height: AppConstants.spacingL),
@@ -2271,6 +2430,103 @@ class _ErrandRequestCard extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: AppColors.textSecondary,
                       fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Delivery request card (pedido / paquete) ──────────────────────────────────
+
+class _DeliveryRequestCard extends StatelessWidget {
+  const _DeliveryRequestCard({required this.delivery});
+
+  final DeliveryDetails delivery;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = delivery.kind.color;
+
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(color: accent.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(delivery.kind.icon, size: 17, color: accent),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  delivery.title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: accent,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            delivery.itemDescription,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              height: 1.35,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.person_outline_rounded,
+                  size: 14, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${delivery.recipientName} · ${delivery.recipientPhone}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (delivery.hasNotes) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.sticky_note_2_rounded,
+                    size: 14, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    delivery.notes!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
                 ),

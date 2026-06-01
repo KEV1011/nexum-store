@@ -219,6 +219,13 @@ export type WsMessageType =
   | 'errand_cancelled'
   | 'subscribe_errand'
   | 'unsubscribe_errand'
+  // Delivery messages (pedido / domicilio + paquete / envío)
+  | 'delivery_request'
+  | 'accept_delivery'
+  | 'reject_delivery'
+  | 'delivery_accepted'
+  | 'delivery_rejected'
+  | 'delivery_cancelled'
   // Intercity messages
   | 'subscribe_intercity'
   | 'unsubscribe_intercity'
@@ -524,6 +531,27 @@ export interface RequestClientTripDTO {
 // ─── Work Mode ────────────────────────────────────────────────────────────────
 
 export type WorkMode = 'pasajero' | 'pedido' | 'paquete' | 'mandado';
+
+// ─── Deliveries (pedido / domicilio + paquete / envío) ──────────────────────────
+
+/** A pedido is a restaurant/food delivery; a paquete is a parcel shipment. */
+export type DeliveryKind = 'food' | 'parcel';
+
+/** Sent to a driver when a delivery (food or parcel) is dispatched. */
+export interface DeliveryRequestDTO {
+  id: string;
+  kind: DeliveryKind;
+  title: string;             // "Domicilio · Pizzería Napolitana" / "Envío · Paquete mediano"
+  pickupAddress: string;
+  dropoffAddress: string;
+  distanceKm: number;
+  estimatedMinutes: number;
+  estimatedFare: number;     // driver earning for the delivery service
+  itemDescription: string;   // "2 hamburguesas + gaseosa" / "Caja 30x20cm, frágil"
+  recipientName: string;
+  recipientPhone: string;
+  notes?: string;
+}
 
 // ─── Mandados (Errands) ───────────────────────────────────────────────────────
 

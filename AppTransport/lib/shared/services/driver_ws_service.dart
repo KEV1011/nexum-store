@@ -37,8 +37,10 @@ class DriverWsService {
 
   final _tripCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _errandCtrl = StreamController<Map<String, dynamic>>.broadcast();
+  final _deliveryCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelCtrl = StreamController<String>.broadcast();
   final _errandCancelCtrl = StreamController<String>.broadcast();
+  final _deliveryCancelCtrl = StreamController<String>.broadcast();
   // Ride negotiation (inDriver-style) + chat.
   final _rideRequestCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _rideUpdateCtrl = StreamController<Map<String, dynamic>>.broadcast();
@@ -52,11 +54,17 @@ class DriverWsService {
   /// Emits the raw errand JSON map from every `errand_request` server message.
   Stream<Map<String, dynamic>> get errandRequests => _errandCtrl.stream;
 
+  /// Emits the raw delivery JSON map from every `delivery_request` server message.
+  Stream<Map<String, dynamic>> get deliveryRequests => _deliveryCtrl.stream;
+
   /// Emits the `tripId` from every `trip_cancelled` server message.
   Stream<String> get tripCancellations => _tripCancelCtrl.stream;
 
   /// Emits the `errandId` from every `errand_cancelled` server message.
   Stream<String> get errandCancellations => _errandCancelCtrl.stream;
+
+  /// Emits the `deliveryId` from every `delivery_cancelled` server message.
+  Stream<String> get deliveryCancellations => _deliveryCancelCtrl.stream;
 
   /// Emits the raw `ride` JSON for every new open request (`ride_request_new`).
   Stream<Map<String, dynamic>> get rideRequests => _rideRequestCtrl.stream;
@@ -72,11 +80,11 @@ class DriverWsService {
   // ── connect ───────────────────────────────────────────────────────────────
 
   /// Connects to the backend WebSocket, sends an `auth` frame with the
-  /// driver's JWT and [workMode], and waits up to 4 seconds for `auth_ok`.
+  /// driver's JWT and enabled [modes], and waits up to 4 seconds for `auth_ok`.
   ///
   /// If [token] is `null` the JWT is read from [FlutterSecureStorage].
   /// Returns `true` on successful authentication, `false` otherwise.
-  Future<bool> connect(String? token, WorkMode workMode) async {
+  Future<bool> connect(String? token, Set<WorkMode> modes) async {
     if (kIsWeb) return false;
     if (_channel != null) return true;
 
@@ -109,7 +117,7 @@ class DriverWsService {
       _send({
         'type': 'auth',
         'token': jwt,
-        'workMode': workMode.name,
+        'workModes': modes.map((m) => m.name).toList(),
       });
 
       final authenticated = await _authCompleter!.future.timeout(
@@ -193,9 +201,19 @@ class DriverWsService {
     });
   }
 
-  /// Notify the backend that the driver is switching work mode.
-  void changeWorkMode(WorkMode workMode) =>
-      _send({'type': 'driver_mode', 'workMode': workMode.name});
+  /// Accept a delivery request (pedido / paquete).
+  void sendAcceptDelivery(String deliveryId) =>
+      _send({'type': 'accept_delivery', 'deliveryId': deliveryId});
+
+  /// Reject a delivery request (pedido / paquete).
+  void sendRejectDelivery(String deliveryId) =>
+      _send({'type': 'reject_delivery', 'deliveryId': deliveryId});
+
+  /// Notify the backend of the driver's enabled work modes (multi-select).
+  void changeWorkModes(Set<WorkMode> modes) => _send({
+        'type': 'driver_mode',
+        'workModes': modes.map((m) => m.name).toList(),
+      });
 
   // ── Ride negotiation (inDriver-style) ───────────────────────────────────────
 
@@ -282,6 +300,12 @@ class DriverWsService {
             _errandCtrl.add(errand);
           }
 
+        case 'delivery_request':
+          final delivery = msg['delivery'];
+          if (delivery is Map<String, dynamic>) {
+            _deliveryCtrl.add(delivery);
+          }
+
         case 'trip_cancelled':
           final tripId = msg['tripId'] as String?;
           if (tripId != null) _tripCancelCtrl.add(tripId);
@@ -289,6 +313,10 @@ class DriverWsService {
         case 'errand_cancelled':
           final errandId = msg['errandId'] as String?;
           if (errandId != null) _errandCancelCtrl.add(errandId);
+
+        case 'delivery_cancelled':
+          final deliveryId = msg['deliveryId'] as String?;
+          if (deliveryId != null) _deliveryCancelCtrl.add(deliveryId);
 
         case 'ride_request_new':
           final ride = msg['ride'];

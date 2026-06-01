@@ -6,8 +6,10 @@ import {
   stopDispatch,
   acknowledgeTripResponse,
   acknowledgeErrandResponse,
+  acknowledgeDeliveryResponse,
   resumeDispatch,
-  setDriverWorkMode,
+  setDriverModes,
+  PendingKind,
 } from '../services/dispatch.service';
 import { getTripService } from '../services/trip.service';
 import {
@@ -69,9 +71,16 @@ import {
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let driverSocket: WebSocket | null = null;
-let driverWorkMode: WorkMode = 'pasajero';
+// The driver may now have MULTIPLE job categories enabled at once.
+let driverModes: Set<WorkMode> = new Set<WorkMode>(['pasajero']);
 let driverActiveTripId: string | null = null;
 let driverActiveErrandId: string | null = null;
+
+/** Representative single mode (first enabled) for legacy single-value consumers. */
+function primaryMode(): WorkMode {
+  const [first] = [...driverModes];
+  return first ?? 'pasajero';
+}
 
 const clientSockets = new Map<string, WebSocket>();
 const clientSubscriptions = new Map<WebSocket, Array<() => void>>();
@@ -112,30 +121,54 @@ function sendDriver(payload: Record<string, unknown>): void {
   if (driverSocket) sendTo(driverSocket, payload);
 }
 
+const VALID_MODES: WorkMode[] = ['pasajero', 'pedido', 'paquete', 'mandado'];
+
+/**
+ * Extract the driver's enabled work modes from an auth / driver_mode message.
+ * Accepts a `workModes` string array (new multi-select) or a single
+ * `workMode` string (legacy). Falls back to ['pasajero'].
+ */
+function parseModes(msg: WsMessage): WorkMode[] {
+  const raw = msg['workModes'];
+  let modes: WorkMode[] = [];
+  if (Array.isArray(raw)) {
+    modes = raw.filter(
+      (m): m is WorkMode => typeof m === 'string' && VALID_MODES.includes(m as WorkMode),
+    );
+  } else if (typeof msg['workMode'] === 'string' && VALID_MODES.includes(msg['workMode'] as WorkMode)) {
+    modes = [msg['workMode'] as WorkMode];
+  }
+  return modes.length > 0 ? [...new Set(modes)] : ['pasajero'];
+}
+
 // ─── Driver handlers ──────────────────────────────────────────────────────────
 
-function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): void {
+function handleDriverAuth(ws: WebSocket, token: string, modes: WorkMode[]): void {
   try {
     const payload = verifyToken(token);
     driverSocket = ws;
-    driverWorkMode = workMode;
+    driverModes = new Set(modes.length > 0 ? modes : ['pasajero']);
     driverIdByWs.set(ws, payload.driverId);
     getTripService().setDriverStatus('online');
 
-    sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workMode });
+    const workModes = [...driverModes];
+    sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workModes });
 
     startDispatch(
       (trip) => sendDriver({ type: 'trip_request', trip }),
-      (id) => {
-        if (driverWorkMode === 'mandado') {
+      (id, kind: PendingKind) => {
+        if (kind === 'errand') {
           sendDriver({ type: 'errand_cancelled', errandId: id, reason: 'No response within 15 seconds' });
+        } else if (kind === 'delivery') {
+          sendDriver({ type: 'delivery_cancelled', deliveryId: id, reason: 'No response within 15 seconds' });
         } else {
           sendDriver({ type: 'trip_cancelled', tripId: id, reason: 'No response within 15 seconds' });
         }
         resumeDispatch();
       },
-      workMode,
+      workModes,
       (errand) => sendDriver({ type: 'errand_request', errand }),
+      (delivery) => sendDriver({ type: 'delivery_request', delivery }),
     );
   } catch {
     sendTo(ws, { type: 'auth_error', message: 'Invalid or expired token' });
@@ -143,15 +176,15 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
   }
 }
 
-function handleDriverModeChange(ws: WebSocket, mode: WorkMode): void {
-  driverWorkMode = mode;
-  setDriverWorkMode(mode);
+function handleDriverModeChange(ws: WebSocket, modes: WorkMode[]): void {
+  driverModes = new Set(modes.length > 0 ? modes : ['pasajero']);
+  setDriverModes([...driverModes]);
   const driverId = driverIdByWs.get(ws);
   if (driverId) {
     const conn = driverConnections.get(driverId);
-    if (conn) conn.workMode = mode;
+    if (conn) conn.workMode = primaryMode();
   }
-  sendDriver({ type: 'auth_ok', workMode: mode });
+  sendDriver({ type: 'auth_ok', workModes: [...driverModes] });
 }
 
 function handleAccept(tripId: string): void {
@@ -245,6 +278,25 @@ function handleRejectErrand(errandId: string): void {
     return;
   }
   sendDriver({ type: 'errand_rejected', errandId });
+  resumeDispatch();
+}
+
+function handleAcceptDelivery(deliveryId: string): void {
+  const acked = acknowledgeDeliveryResponse(deliveryId);
+  if (!acked) {
+    sendDriver({ type: 'error', message: `Delivery ${deliveryId} is no longer available` });
+    return;
+  }
+  sendDriver({ type: 'delivery_accepted', deliveryId });
+}
+
+function handleRejectDelivery(deliveryId: string): void {
+  const acked = acknowledgeDeliveryResponse(deliveryId);
+  if (!acked) {
+    sendDriver({ type: 'error', message: `Delivery ${deliveryId} is no longer available` });
+    return;
+  }
+  sendDriver({ type: 'delivery_rejected', deliveryId });
   resumeDispatch();
 }
 
@@ -435,7 +487,7 @@ function handleDriverRegister(ws: WebSocket): void {
     return;
   }
 
-  driverConnections.set(driverId, { ws, driverId, workMode: driverWorkMode });
+  driverConnections.set(driverId, { ws, driverId, workMode: primaryMode() });
 
   // Subscribe to new ride requests; fan-out filtered by online presence.
   const unsub = onNewRideRequest((ride) => {
@@ -594,17 +646,16 @@ function onMessage(ws: WebSocket, raw: string): void {
         sendTo(ws, { type: 'auth_error', message: 'token field is required' });
         return;
       }
-      const mode = (msg['workMode'] as WorkMode | undefined) ?? 'pasajero';
-      handleDriverAuth(ws, token, mode);
+      handleDriverAuth(ws, token, parseModes(msg));
       break;
     }
 
     // ── Driver work mode change ──────────────────────────────────────────────
     case 'driver_mode': {
       if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
-      const mode = msg['workMode'];
-      if (typeof mode !== 'string') { sendTo(ws, { type: 'error', message: 'workMode required' }); return; }
-      handleDriverModeChange(ws, mode as WorkMode);
+      const modes = parseModes(msg);
+      if (modes.length === 0) { sendTo(ws, { type: 'error', message: 'workMode(s) required' }); return; }
+      handleDriverModeChange(ws, modes);
       break;
     }
 
@@ -659,6 +710,22 @@ function onMessage(ws: WebSocket, raw: string): void {
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
       handleRejectErrand(errandId);
+      break;
+    }
+
+    // ── Delivery accept / reject (pedido / paquete) ──────────────────────────
+    case 'accept_delivery': {
+      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      const deliveryId = msg['deliveryId'];
+      if (typeof deliveryId !== 'string') { sendTo(ws, { type: 'error', message: 'deliveryId required' }); return; }
+      handleAcceptDelivery(deliveryId);
+      break;
+    }
+    case 'reject_delivery': {
+      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      const deliveryId = msg['deliveryId'];
+      if (typeof deliveryId !== 'string') { sendTo(ws, { type: 'error', message: 'deliveryId required' }); return; }
+      handleRejectDelivery(deliveryId);
       break;
     }
 
@@ -906,7 +973,7 @@ function onClose(ws: WebSocket): void {
     driverSocket = null;
     driverActiveTripId = null;
     driverActiveErrandId = null;
-    driverWorkMode = 'pasajero';
+    driverModes = new Set<WorkMode>(['pasajero']);
     getTripService().setDriverStatus('offline');
     console.log('[WS] Driver disconnected');
     return;

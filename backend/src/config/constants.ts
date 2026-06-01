@@ -140,9 +140,94 @@ export const MOCK_ROUTES: MockRoute[] = [
 
 // ─── Mock Errands (Mandados) ──────────────────────────────────────────────────
 
-import { ErrandCategory, ErrandRequestDTO } from '../types';
+import { ErrandCategory, ErrandRequestDTO, DeliveryRequestDTO } from '../types';
 
 export const ERRAND_SERVICE_FEE = 6000;
+
+// ─── Mock Deliveries (Pedido / Domicilio) ─────────────────────────────────────
+
+export const MOCK_DELIVERIES: Omit<DeliveryRequestDTO, 'id'>[] = [
+  {
+    kind: 'food',
+    title: 'Domicilio · Pizzería Napolitana',
+    pickupAddress: 'Pizzería Napolitana · Calle 6 #5-40',
+    dropoffAddress: 'Barrio Cariongo, Casa 12-34',
+    distanceKm: 1.9,
+    estimatedMinutes: 11,
+    estimatedFare: 5500,
+    itemDescription: '1 pizza familiar pepperoni + 2 gaseosas 1.5L',
+    recipientName: 'Diego Villamizar',
+    recipientPhone: '+57 312 884 1190',
+    notes: 'Apto sin timbre, llamar al llegar.',
+  },
+  {
+    kind: 'food',
+    title: 'Domicilio · Asadero El Buen Sabor',
+    pickupAddress: 'Asadero El Buen Sabor · Av. Santander',
+    dropoffAddress: 'Conjunto El Buque, Torre 3 Apto 502',
+    distanceKm: 2.4,
+    estimatedMinutes: 13,
+    estimatedFare: 6000,
+    itemDescription: '1 pollo asado entero + papas + ensalada',
+    recipientName: 'Marta Sepúlveda',
+    recipientPhone: '+57 320 551 7723',
+  },
+  {
+    kind: 'food',
+    title: 'Domicilio · Café Central',
+    pickupAddress: 'Café Central · Parque Águeda Gallardo',
+    dropoffAddress: 'Universidad de Pamplona, Bloque Jorge Gaitán',
+    distanceKm: 1.3,
+    estimatedMinutes: 8,
+    estimatedFare: 4500,
+    itemDescription: '3 cafés con leche + 3 almojábanas',
+    recipientName: 'Profesor Rincón',
+    recipientPhone: '+57 311 220 4408',
+    notes: 'Entregar en la sala de profesores.',
+  },
+];
+
+// ─── Mock Parcels (Paquete / Envío) ───────────────────────────────────────────
+
+export const MOCK_PARCELS: Omit<DeliveryRequestDTO, 'id'>[] = [
+  {
+    kind: 'parcel',
+    title: 'Envío · Paquete mediano',
+    pickupAddress: 'Papelería La 5 · Calle 5 con Carrera 6',
+    dropoffAddress: 'Barrio San Francisco, Casa 8-90',
+    distanceKm: 2.0,
+    estimatedMinutes: 12,
+    estimatedFare: 5000,
+    itemDescription: 'Caja 30x20cm · resmas de papel · 3kg',
+    recipientName: 'Oficina Contable JR',
+    recipientPhone: '+57 313 776 5521',
+  },
+  {
+    kind: 'parcel',
+    title: 'Envío · Sobre documentos',
+    pickupAddress: 'Notaría Primera · Calle 6 #4-20',
+    dropoffAddress: 'Barrio La Esmeralda, Casa 23',
+    distanceKm: 1.6,
+    estimatedMinutes: 10,
+    estimatedFare: 4500,
+    itemDescription: 'Sobre sellado con escritura · frágil',
+    recipientName: 'Carmen Ulloa',
+    recipientPhone: '+57 314 009 8812',
+    notes: 'No doblar el sobre.',
+  },
+  {
+    kind: 'parcel',
+    title: 'Envío · Encomienda pequeña',
+    pickupAddress: 'Almacén TecnoPamplona · Centro comercial',
+    dropoffAddress: 'Barrio El Escorial, Casa 23',
+    distanceKm: 2.2,
+    estimatedMinutes: 13,
+    estimatedFare: 5500,
+    itemDescription: 'Caja con repuesto electrónico · 1.5kg',
+    recipientName: 'Julián Mora',
+    recipientPhone: '+57 318 442 1097',
+  },
+];
 
 export const MOCK_ERRANDS: Omit<ErrandRequestDTO, 'id'>[] = [
   {
