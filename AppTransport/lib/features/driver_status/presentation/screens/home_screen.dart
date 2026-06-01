@@ -1315,6 +1315,15 @@ class _AppDrawer extends ConsumerWidget {
                     },
                   ),
                   _DrawerItem(
+                    icon: Icons.bolt_rounded,
+                    label: 'Solicitudes en vivo',
+                    iconColor: const Color(0xFF00C853),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/ride-pool');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.groups_rounded,
                     label: 'Viajes compartidos',
                     iconColor: const Color(0xFF1E3A8A),

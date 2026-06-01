@@ -18,6 +18,7 @@ import 'package:nexum_driver/features/performance/presentation/screens/performan
 import 'package:nexum_driver/features/pooled/presentation/screens/my_pooled_trips_screen.dart';
 import 'package:nexum_driver/features/pooled/presentation/screens/publish_pooled_trip_screen.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/screens/verification_screen.dart';
+import 'package:nexum_driver/features/ride_pool/presentation/screens/ride_pool_screen.dart';
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nexum_driver/features/promotions/presentation/screens/promotions_screen.dart';
 import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
@@ -65,6 +66,7 @@ abstract final class AppRoutes {
   static const String pooledTrips = '/pooled-trips';
   static const String pooledPublish = '/pooled-publish';
   static const String verification = '/verification';
+  static const String ridePool = '/ride-pool';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -160,6 +162,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const VerificationScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.ridePool,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const RidePoolScreen(),
         ),
       ),
       GoRoute(

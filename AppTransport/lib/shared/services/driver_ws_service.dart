@@ -39,6 +39,10 @@ class DriverWsService {
   final _errandCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelCtrl = StreamController<String>.broadcast();
   final _errandCancelCtrl = StreamController<String>.broadcast();
+  // Ride negotiation (inDriver-style) + chat.
+  final _rideRequestCtrl = StreamController<Map<String, dynamic>>.broadcast();
+  final _rideUpdateCtrl = StreamController<Map<String, dynamic>>.broadcast();
+  final _chatCtrl = StreamController<Map<String, dynamic>>.broadcast();
 
   // ── Public streams ────────────────────────────────────────────────────────
 
@@ -53,6 +57,15 @@ class DriverWsService {
 
   /// Emits the `errandId` from every `errand_cancelled` server message.
   Stream<String> get errandCancellations => _errandCancelCtrl.stream;
+
+  /// Emits the raw `ride` JSON for every new open request (`ride_request_new`).
+  Stream<Map<String, dynamic>> get rideRequests => _rideRequestCtrl.stream;
+
+  /// Emits the raw `ride` JSON for every `ride_update` (matched ride lifecycle).
+  Stream<Map<String, dynamic>> get rideUpdates => _rideUpdateCtrl.stream;
+
+  /// Emits the raw `message` JSON for every `chat_message`.
+  Stream<Map<String, dynamic>> get chatMessages => _chatCtrl.stream;
 
   bool get isConnected => _channel != null;
 
@@ -184,6 +197,54 @@ class DriverWsService {
   void changeWorkMode(WorkMode workMode) =>
       _send({'type': 'driver_mode', 'workMode': workMode.name});
 
+  // ── Ride negotiation (inDriver-style) ───────────────────────────────────────
+
+  /// Opt into the live ride pool to start receiving open ride requests.
+  void registerForRides() => _send({'type': 'driver_register'});
+
+  /// Bid on an open ride: accept the offered fare or counter-offer with [fare].
+  void placeBid(String rideId, double fare, int etaMinutes) => _send({
+        'type': 'ride_bid',
+        'rideId': rideId,
+        'fare': fare,
+        'etaMinutes': etaMinutes,
+      });
+
+  /// Withdraw a previously-placed bid.
+  void withdrawBid(String rideId) =>
+      _send({'type': 'ride_bid_withdraw', 'rideId': rideId});
+
+  /// Advance the matched ride lifecycle.
+  /// [status] ∈ {arriving, arrived, in_progress, completed}.
+  void sendRideStatus(String rideId, String status) =>
+      _send({'type': 'ride_status', 'rideId': rideId, 'status': status});
+
+  /// Cancel the matched ride.
+  void cancelRide(String rideId) =>
+      _send({'type': 'ride_cancel', 'rideId': rideId});
+
+  /// Stream the driver's GPS to the matched passenger.
+  void sendRideLocation(String rideId, double lat, double lng) =>
+      _send({'type': 'ride_location', 'rideId': rideId, 'lat': lat, 'lng': lng});
+
+  /// Watch a specific ride for live updates.
+  void subscribeRide(String rideId) =>
+      _send({'type': 'subscribe_ride', 'rideId': rideId});
+
+  void unsubscribeRide(String rideId) =>
+      _send({'type': 'unsubscribe_ride', 'rideId': rideId});
+
+  // ── Chat ────────────────────────────────────────────────────────────────────
+
+  void subscribeChat(String rideId) =>
+      _send({'type': 'subscribe_chat', 'rideId': rideId});
+
+  void unsubscribeChat(String rideId) =>
+      _send({'type': 'unsubscribe_chat', 'rideId': rideId});
+
+  void sendChat(String rideId, String text) =>
+      _send({'type': 'chat_send', 'rideId': rideId, 'text': text});
+
   void _send(Map<String, dynamic> msg) {
     if (_channel == null) return;
     try {
@@ -228,6 +289,18 @@ class DriverWsService {
         case 'errand_cancelled':
           final errandId = msg['errandId'] as String?;
           if (errandId != null) _errandCancelCtrl.add(errandId);
+
+        case 'ride_request_new':
+          final ride = msg['ride'];
+          if (ride is Map<String, dynamic>) _rideRequestCtrl.add(ride);
+
+        case 'ride_update':
+          final ride = msg['ride'];
+          if (ride is Map<String, dynamic>) _rideUpdateCtrl.add(ride);
+
+        case 'chat_message':
+          final m = msg['message'];
+          if (m is Map<String, dynamic>) _chatCtrl.add(m);
 
         default:
           break;
