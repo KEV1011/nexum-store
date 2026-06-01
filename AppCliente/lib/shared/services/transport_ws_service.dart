@@ -36,6 +36,12 @@ class IntercityUpdateEvent {
   final Map<String, dynamic> payload;
 }
 
+class PooledUpdateEvent {
+  const PooledUpdateEvent({required this.tripId, required this.payload});
+  final String tripId;
+  final Map<String, dynamic> payload;
+}
+
 /// Singleton WS client for real-time trip, errand, and intercity updates.
 ///
 /// Protocol client→server:
@@ -72,11 +78,13 @@ class TransportWsService {
   final _locationCtrl = StreamController<DriverLocationEvent>.broadcast();
   final _errandCtrl = StreamController<ErrandUpdateEvent>.broadcast();
   final _intercityCtrl = StreamController<IntercityUpdateEvent>.broadcast();
+  final _pooledCtrl = StreamController<PooledUpdateEvent>.broadcast();
 
   Stream<TripUpdateEvent> get tripUpdates => _tripCtrl.stream;
   Stream<DriverLocationEvent> get driverLocations => _locationCtrl.stream;
   Stream<ErrandUpdateEvent> get errandUpdates => _errandCtrl.stream;
   Stream<IntercityUpdateEvent> get intercityUpdates => _intercityCtrl.stream;
+  Stream<PooledUpdateEvent> get pooledUpdates => _pooledCtrl.stream;
 
   bool get isConnected => _channel != null && _authenticated;
 
@@ -139,6 +147,12 @@ class TransportWsService {
   void unsubscribeIntercity(String bookingId) =>
       _send({'type': 'unsubscribe_intercity', 'bookingId': bookingId});
 
+  void subscribePooled(String tripId) =>
+      _send({'type': 'subscribe_pooled', 'tripId': tripId});
+
+  void unsubscribePooled(String tripId) =>
+      _send({'type': 'unsubscribe_pooled', 'tripId': tripId});
+
   void disconnect() {
     _sub?.cancel();
     _channel?.sink.close();
@@ -194,6 +208,11 @@ class TransportWsService {
           _intercityCtrl.add(
             IntercityUpdateEvent(bookingId: bookingId, payload: msg),
           );
+        }
+      } else if (type == 'pooled_update') {
+        final tripId = msg['tripId'] as String?;
+        if (tripId != null) {
+          _pooledCtrl.add(PooledUpdateEvent(tripId: tripId, payload: msg));
         }
       }
     } catch (_) {}

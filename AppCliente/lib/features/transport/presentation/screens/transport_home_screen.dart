@@ -546,6 +546,14 @@ class _BottomPanel extends StatelessWidget {
 
           const SizedBox(height: 8),
 
+          // Tarjeta viajes compartidos (Modelo A)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _PooledCard(),
+          ),
+
+          const SizedBox(height: 8),
+
           // Tarjeta de mandados
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -819,6 +827,79 @@ class _IntercityCard extends StatelessWidget {
               ),
               child: const Text(
                 'Reservar',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Tarjeta de viajes compartidos (Modelo A) ──────────────────────────────────
+
+class _PooledCard extends StatelessWidget {
+  static const _bg = Color(0xFF1E3A8A);
+  static const _cardBg = Color(0xFF172554);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.push(AppRoutes.pooledSearch),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: _cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _bg.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _bg.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.groups_rounded,
+                color: Color(0xFF93C5FD),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Viajes compartidos',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Text(
+                    'Reserva un puesto y comparte el viaje',
+                    style: TextStyle(color: Color(0xFF93C5FD), fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _bg,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'Buscar',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 11,

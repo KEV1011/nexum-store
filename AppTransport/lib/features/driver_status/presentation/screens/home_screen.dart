@@ -1314,6 +1314,15 @@ class _AppDrawer extends ConsumerWidget {
                       context.push('/ratings');
                     },
                   ),
+                  _DrawerItem(
+                    icon: Icons.groups_rounded,
+                    label: 'Viajes compartidos',
+                    iconColor: const Color(0xFF1E3A8A),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/pooled-trips');
+                    },
+                  ),
                   _DrawerSection(label: 'FINANZAS'),
                   _DrawerItem(
                     icon: Icons.monetization_on_rounded,

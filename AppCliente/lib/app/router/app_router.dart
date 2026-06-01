@@ -28,6 +28,10 @@ import 'package:nexum_client/features/intercity/presentation/screens/'
     'intercity_booking_screen.dart';
 import 'package:nexum_client/features/intercity/presentation/screens/'
     'intercity_status_screen.dart';
+import 'package:nexum_client/features/pooled/presentation/screens/'
+    'pooled_search_screen.dart';
+import 'package:nexum_client/features/pooled/presentation/screens/'
+    'pooled_bookings_screen.dart';
 import 'package:nexum_client/features/onboarding/presentation/screens/'
     'onboarding_screen.dart';
 import 'package:nexum_client/features/orders/presentation/screens/'
@@ -64,6 +68,8 @@ abstract final class AppRoutes {
   // Rutas intermunicipales
   static const String intercityBooking = '/intercity/booking';
   static const String intercityStatus = '/intercity/status';
+  static const String pooledSearch = '/pooled/search';
+  static const String pooledBookings = '/pooled/bookings';
 
   // Rutas de mandados
   static const String errandBooking = '/errand/booking';
@@ -186,6 +192,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const IntercityStatusScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.pooledSearch,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const PooledSearchScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.pooledBookings,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const PooledBookingsScreen(),
         ),
       ),
       GoRoute(

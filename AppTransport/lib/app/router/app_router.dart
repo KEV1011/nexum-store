@@ -15,6 +15,8 @@ import 'package:nexum_driver/features/driver_status/presentation/screens/home_sc
 import 'package:nexum_driver/features/earnings/presentation/screens/earnings_screen.dart';
 import 'package:nexum_driver/features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'package:nexum_driver/features/performance/presentation/screens/performance_screen.dart';
+import 'package:nexum_driver/features/pooled/presentation/screens/my_pooled_trips_screen.dart';
+import 'package:nexum_driver/features/pooled/presentation/screens/publish_pooled_trip_screen.dart';
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nexum_driver/features/promotions/presentation/screens/promotions_screen.dart';
 import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
@@ -59,6 +61,8 @@ abstract final class AppRoutes {
   static const String businessPortal = '/business-portal';
   static const String orderDetail = '/business-portal/order/:id';
   static const String businessRegistration = '/business-registration';
+  static const String pooledTrips = '/pooled-trips';
+  static const String pooledPublish = '/pooled-publish';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -133,6 +137,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const EarningsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.pooledTrips,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const MyPooledTripsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.pooledPublish,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const PublishPooledTripScreen(),
         ),
       ),
       GoRoute(
