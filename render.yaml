@@ -1,11 +1,12 @@
 services:
   - type: web
     name: nexum-api
-    runtime: docker
+    env: docker
     plan: free
     region: oregon
     branch: claude/driver-app-maas-pamplona-LYIfo
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
