@@ -10,15 +10,77 @@ import {
   cancelPooledTrip,
   PooledTripError,
 } from '../services/intercity-pool.service';
-import { PublishPooledTripDTO, IntercityCity } from '../types';
+import {
+  getDriverProfile,
+  updateDriverProfile,
+  upsertDriverDocument,
+  reviewDriverDocument,
+} from '../services/driver-profile.service';
+import { getActiveDriverRide, getChatHistory } from '../services/ride-negotiation.service';
+import {
+  PublishPooledTripDTO,
+  IntercityCity,
+  UpsertDriverDocumentDTO,
+  DriverDocumentType,
+} from '../types';
 
 const router = Router();
 
 router.use(authMiddleware);
 
-// GET /driver/profile
-router.get('/profile', (_req: Request, res: Response): void => {
-  res.status(200).json({ success: true, data: MOCK_DRIVER });
+// GET /driver/profile — real profile with documents + verification status
+router.get('/profile', (req: Request, res: Response): void => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  res.status(200).json({ success: true, data: getDriverProfile(driverId) });
+});
+
+// PATCH /driver/profile — edit bio/name/photo/vehicle
+router.patch('/profile', (req: Request, res: Response): void => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const { fullName, bio, photoUrl, vehicleDescription } = req.body as Record<string, string>;
+  const updated = updateDriverProfile(driverId, { fullName, bio, photoUrl, vehicleDescription });
+  res.status(200).json({ success: true, data: updated });
+});
+
+// PUT /driver/documents — upload or re-upload a document (Feature D)
+router.put('/documents', (req: Request, res: Response): void => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const dto = req.body as Partial<UpsertDriverDocumentDTO>;
+  if (!dto.type || !dto.fileUrl) {
+    res.status(400).json({ success: false, error: 'type and fileUrl are required' });
+    return;
+  }
+  const updated = upsertDriverDocument(driverId, {
+    type: dto.type,
+    fileUrl: dto.fileUrl,
+    expiresAt: dto.expiresAt,
+  });
+  res.status(200).json({ success: true, data: updated });
+});
+
+// POST /driver/documents/:type/review — demo review action (approve/reject)
+router.post('/documents/:type/review', (req: Request, res: Response): void => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const { approve, rejectionReason } = req.body as { approve?: boolean; rejectionReason?: string };
+  const updated = reviewDriverDocument(
+    driverId,
+    req.params['type'] as DriverDocumentType,
+    approve === true,
+    rejectionReason,
+  );
+  if (!updated) { res.status(404).json({ success: false, error: 'Document not found' }); return; }
+  res.status(200).json({ success: true, data: updated });
+});
+
+// GET /driver/rides/active — the driver's matched ride, if any
+router.get('/rides/active', (req: Request, res: Response): void => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  res.status(200).json({ success: true, data: getActiveDriverRide(driverId) });
+});
+
+// GET /driver/rides/:id/chat
+router.get('/rides/:id/chat', (req: Request, res: Response): void => {
+  res.status(200).json({ success: true, data: getChatHistory(req.params['id']!) });
 });
 
 // GET /driver/status

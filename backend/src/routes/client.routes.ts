@@ -12,7 +12,16 @@ import {
   getActiveClientTrip,
   cancelClientTrip,
   getClientNameByPhone,
+  getClientById,
 } from '../services/client.service';
+import {
+  createRideRequest,
+  getActiveClientRide,
+  getRideById,
+  getChatHistory,
+  RideNegotiationError,
+} from '../services/ride-negotiation.service';
+import { getDriverPublicProfile } from '../services/driver-profile.service';
 import {
   searchPooledTrips,
   getPooledTripById,
@@ -363,6 +372,68 @@ router.post('/intercity/pool/bookings/:bookingId/cancel', clientAuthMiddleware, 
     const status = err instanceof PooledTripError ? 400 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to cancel booking' });
   }
+});
+
+// ─── Ride negotiation (inDriver-style bids + chat) ─────────────────────────────
+
+// POST /client/rides/request — publish a ride with an offered fare
+router.post('/rides/request', clientAuthMiddleware, (req, res) => {
+  const dto = req.body as Record<string, unknown>;
+  const required = ['serviceType', 'originAddress', 'destinationAddress', 'offeredFare', 'distanceKm', 'etaMinutes'];
+  for (const f of required) {
+    if (dto[f] === undefined) {
+      res.status(400).json({ success: false, error: `${f} is required` });
+      return;
+    }
+  }
+  const client = getClientById(req.clientId!);
+  const clientName = client?.name ?? getClientNameByPhone(req.clientPhone!) ?? 'Usuario Nexum';
+  try {
+    const ride = createRideRequest(req.clientId!, clientName, req.clientPhone!, {
+      serviceType: dto['serviceType'] as never,
+      originAddress: String(dto['originAddress']),
+      destinationAddress: String(dto['destinationAddress']),
+      originLat: dto['originLat'] as number | undefined,
+      originLng: dto['originLng'] as number | undefined,
+      destinationLat: dto['destinationLat'] as number | undefined,
+      destinationLng: dto['destinationLng'] as number | undefined,
+      offeredFare: Number(dto['offeredFare']),
+      distanceKm: Number(dto['distanceKm']),
+      etaMinutes: Number(dto['etaMinutes']),
+      notes: dto['notes'] as string | undefined,
+    });
+    res.status(201).json({ success: true, data: ride });
+  } catch (err) {
+    const status = err instanceof RideNegotiationError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to create ride' });
+  }
+});
+
+// GET /client/rides/active
+router.get('/rides/active', clientAuthMiddleware, (req, res) => {
+  res.json({ success: true, data: getActiveClientRide(req.clientId!) });
+});
+
+// GET /client/rides/:id
+router.get('/rides/:id', clientAuthMiddleware, (req, res) => {
+  const ride = getRideById(req.params['id']!);
+  if (!ride || ride.clientId !== req.clientId) {
+    res.status(404).json({ success: false, error: 'Ride not found' });
+    return;
+  }
+  res.json({ success: true, data: ride });
+});
+
+// GET /client/rides/:id/chat
+router.get('/rides/:id/chat', clientAuthMiddleware, (req, res) => {
+  res.json({ success: true, data: getChatHistory(req.params['id']!) });
+});
+
+// GET /client/drivers/:id/profile — public driver profile (Feature E)
+router.get('/drivers/:id/profile', clientAuthMiddleware, (req, res) => {
+  const profile = getDriverPublicProfile(req.params['id']!);
+  if (!profile) { res.status(404).json({ success: false, error: 'Driver not found' }); return; }
+  res.json({ success: true, data: profile });
 });
 
 // ─── Payments ─────────────────────────────────────────────────────────────────

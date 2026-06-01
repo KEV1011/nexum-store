@@ -226,7 +226,24 @@ export type WsMessageType =
   // Shared pooled-ride (Modelo A) messages
   | 'subscribe_pooled'
   | 'unsubscribe_pooled'
-  | 'pooled_update';
+  | 'pooled_update'
+  // Ride negotiation (inDriver-style: multi-driver + bids + chat)
+  | 'driver_register' // driver joins the live pool to receive ride requests
+  | 'ride_request_new' // server → drivers: a new ride is open for bidding
+  | 'ride_bid' // driver → server: place/counter a bid
+  | 'ride_bid_withdraw' // driver → server: withdraw bid
+  | 'ride_accept_bid' // client → server: accept a driver's bid
+  | 'ride_cancel' // either party cancels
+  | 'ride_status' // matched driver advances lifecycle
+  | 'ride_update' // server → both: ride state changed
+  | 'subscribe_ride' // client/driver watch a specific ride
+  | 'unsubscribe_ride'
+  | 'ride_location' // matched driver GPS → client
+  // Chat (Feature A)
+  | 'chat_send'
+  | 'chat_message'
+  | 'subscribe_chat'
+  | 'unsubscribe_chat';
 
 export interface WsMessage {
   type: WsMessageType;
@@ -689,6 +706,148 @@ export interface PooledTripDTO {
   createdAt: string;
   /** Present only on driver-facing responses. */
   bookings?: SeatBookingDTO[];
+}
+
+// ─── Ride Negotiation (inDriver-style: bids + chat + multi-driver) ──────────────
+
+export type RideNegotiationStatus =
+  | 'open' // accepting bids from drivers
+  | 'matched' // client accepted a bid, driver assigned
+  | 'arriving' // driver en route to pickup
+  | 'arrived' // driver at pickup
+  | 'in_progress' // trip underway
+  | 'completed'
+  | 'cancelled';
+
+export type BidStatus = 'pending' | 'accepted' | 'rejected';
+
+export type ChatRole = 'client' | 'driver';
+
+export interface CreateRideRequestDTO {
+  serviceType: TransportServiceType;
+  originAddress: string;
+  destinationAddress: string;
+  originLat?: number;
+  originLng?: number;
+  destinationLat?: number;
+  destinationLng?: number;
+  offeredFare: number;
+  distanceKm: number;
+  etaMinutes: number;
+  notes?: string;
+}
+
+export interface PlaceBidDTO {
+  fare: number;
+  etaMinutes: number;
+}
+
+export interface RideBidDTO {
+  id: string;
+  driverId: string;
+  driverName: string;
+  driverPhone: string;
+  driverRating: number;
+  driverTotalTrips: number;
+  vehicleDescription: string;
+  fare: number;
+  etaMinutes: number;
+  status: BidStatus;
+  createdAt: string;
+}
+
+export interface RideRequestDTO {
+  id: string;
+  rideRef: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string;
+  serviceType: TransportServiceType;
+  originAddress: string;
+  destinationAddress: string;
+  originLat?: number;
+  originLng?: number;
+  destinationLat?: number;
+  destinationLng?: number;
+  offeredFare: number;
+  distanceKm: number;
+  etaMinutes: number;
+  notes?: string;
+  status: RideNegotiationStatus;
+  bids: RideBidDTO[];
+  bidCount: number;
+  matchedDriverId?: string;
+  matchedBidId?: string;
+  driverLat?: number;
+  driverLng?: number;
+  createdAt: string;
+  matchedAt?: string;
+  completedAt?: string;
+}
+
+export interface ChatMessageDTO {
+  id: string;
+  rideId: string;
+  fromRole: ChatRole;
+  fromId: string;
+  text: string;
+  sentAt: string;
+}
+
+// ─── Driver Profile & Document Verification (Features D + E) ────────────────────
+
+export type DriverDocumentType =
+  | 'cedula'
+  | 'license'
+  | 'soat'
+  | 'vehicle_registration'
+  | 'profile_photo';
+
+export type DocumentStatus = 'missing' | 'pending' | 'approved' | 'rejected';
+
+export interface UpsertDriverDocumentDTO {
+  type: DriverDocumentType;
+  fileUrl: string;
+  expiresAt?: string;
+}
+
+export interface DriverDocumentDTO {
+  type: DriverDocumentType;
+  label: string;
+  fileUrl: string;
+  status: DocumentStatus;
+  expiresAt?: string;
+  rejectionReason?: string;
+  uploadedAt: string;
+  reviewedAt?: string;
+}
+
+export interface DriverProfileDTO {
+  driverId: string;
+  fullName: string;
+  phone: string;
+  photoUrl?: string;
+  bio?: string;
+  rating: number;
+  totalTrips: number;
+  vehicleDescription: string;
+  memberSince: string;
+  isVerified: boolean;
+  documents: DriverDocumentDTO[];
+  requiredDocsCount: number;
+  approvedDocsCount: number;
+}
+
+export interface DriverPublicProfileDTO {
+  driverId: string;
+  fullName: string;
+  photoUrl?: string;
+  bio?: string;
+  rating: number;
+  totalTrips: number;
+  vehicleDescription: string;
+  memberSince: string;
+  isVerified: boolean;
 }
 
 // ─── Wompi Payments ───────────────────────────────────────────────────────────

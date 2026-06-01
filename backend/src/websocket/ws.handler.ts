@@ -37,8 +37,34 @@ import {
   subscribePooledTrip,
   getPooledTripSnapshot,
 } from '../services/intercity-pool.service';
+import {
+  placeBid,
+  withdrawBid,
+  acceptBid,
+  cancelRide,
+  updateRideStatus,
+  updateRideDriverLocation,
+  addChatMessage,
+  getRideById,
+  getRideForDriver,
+  subscribeRide,
+  subscribeChat,
+  onNewRideRequest,
+  getOpenRides,
+  RideNegotiationError,
+} from '../services/ride-negotiation.service';
+import {
+  getDriverProfile,
+  isDriverVerified,
+} from '../services/driver-profile.service';
 import { getBusinessService } from '../services/business.service';
-import { WsMessage, WorkMode, ErrandStatus } from '../types';
+import {
+  WsMessage,
+  WorkMode,
+  ErrandStatus,
+  RideNegotiationStatus,
+  ChatRole,
+} from '../types';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -58,6 +84,24 @@ const pooledSubs = new Map<WebSocket, Map<string, () => void>>();
 const businessSockets = new Map<string, WebSocket>();
 const businessSubscriptions = new Map<WebSocket, Array<() => void>>();
 
+// ─── Ride negotiation (multi-driver pool + bids + chat) ─────────────────────────
+
+interface DriverConn {
+  ws: WebSocket;
+  driverId: string;
+  workMode: WorkMode;
+}
+// driverId → live connection. Supports many concurrent drivers (Feature C).
+const driverConnections = new Map<string, DriverConn>();
+const driverIdByWs = new Map<WebSocket, string>();
+// Drivers currently opted into the live ride pool, with their unsub fn.
+const ridePoolUnsub = new Map<WebSocket, () => void>();
+// Ride-specific subscriptions per socket (client + matched driver).
+const rideSubs = new Map<WebSocket, Map<string, () => void>>();
+const chatSubs = new Map<WebSocket, Map<string, () => void>>();
+// Identify a client socket by its clientId for direct relays.
+const clientIdByWs = new Map<WebSocket, string>();
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function sendTo(ws: WebSocket, payload: Record<string, unknown>): void {
@@ -75,6 +119,7 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
     const payload = verifyToken(token);
     driverSocket = ws;
     driverWorkMode = workMode;
+    driverIdByWs.set(ws, payload.driverId);
     getTripService().setDriverStatus('online');
 
     sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workMode });
@@ -98,9 +143,14 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
   }
 }
 
-function handleDriverModeChange(mode: WorkMode): void {
+function handleDriverModeChange(ws: WebSocket, mode: WorkMode): void {
   driverWorkMode = mode;
   setDriverWorkMode(mode);
+  const driverId = driverIdByWs.get(ws);
+  if (driverId) {
+    const conn = driverConnections.get(driverId);
+    if (conn) conn.workMode = mode;
+  }
   sendDriver({ type: 'auth_ok', workMode: mode });
 }
 
@@ -249,6 +299,7 @@ function handleClientAuth(ws: WebSocket, token: string): void {
     const old = clientSockets.get(payload.clientId);
     if (old && old !== ws && old.readyState === WebSocket.OPEN) old.close();
     clientSockets.set(payload.clientId, ws);
+    clientIdByWs.set(ws, payload.clientId);
     sendTo(ws, { type: 'client_auth_ok', clientId: payload.clientId });
     console.log(`[WS] Client ${payload.clientId} authenticated`);
   } catch {
@@ -346,6 +397,178 @@ function handleLocationUpdate(lat: number, lng: number, tripId: string | null): 
   if (clientWs) sendTo(clientWs, { type: 'driver_location', tripId: effectiveTripId, lat, lng });
 }
 
+// ─── Ride negotiation handlers (multi-driver + bids + chat) ─────────────────────
+
+function sendToClient(clientId: string, payload: Record<string, unknown>): void {
+  const ws = clientSockets.get(clientId);
+  if (ws) sendTo(ws, payload);
+}
+
+function sendToDriverById(driverId: string, payload: Record<string, unknown>): void {
+  const conn = driverConnections.get(driverId);
+  if (conn) sendTo(conn.ws, payload);
+}
+
+/** Relay a ride update to the client (full view) and matched driver (own view). */
+function relayRideUpdate(rideId: string): void {
+  const clientView = getRideById(rideId);
+  if (!clientView) return;
+  sendToClient(clientView.clientId, { type: 'ride_update', ride: clientView });
+  if (clientView.matchedDriverId) {
+    const driverView = getRideForDriver(rideId, clientView.matchedDriverId);
+    sendToDriverById(clientView.matchedDriverId, { type: 'ride_update', ride: driverView });
+  }
+}
+
+/** Driver opts into the live ride pool to receive new requests (Feature C). */
+function handleDriverRegister(ws: WebSocket): void {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) { sendTo(ws, { type: 'error', message: 'Driver not authenticated' }); return; }
+
+  // Block unverified drivers from receiving rides (Feature D gate).
+  if (!isDriverVerified(driverId)) {
+    sendTo(ws, {
+      type: 'error',
+      message: 'Tu cuenta no está verificada. Sube y aprueba tus documentos para recibir viajes.',
+      code: 'driver_unverified',
+    });
+    return;
+  }
+
+  driverConnections.set(driverId, { ws, driverId, workMode: driverWorkMode });
+
+  // Subscribe to new ride requests; fan-out filtered by online presence.
+  const unsub = onNewRideRequest((ride) => {
+    sendTo(ws, { type: 'ride_request_new', ride: { ...ride, bids: [] } });
+  });
+  ridePoolUnsub.get(ws)?.();
+  ridePoolUnsub.set(ws, unsub);
+
+  // Immediately surface currently-open rides.
+  for (const ride of getOpenRides()) {
+    sendTo(ws, { type: 'ride_request_new', ride: { ...ride, bids: [] } });
+  }
+  sendTo(ws, { type: 'driver_register_ok', driverId });
+}
+
+function handleRideBid(ws: WebSocket, rideId: string, fare: number, etaMinutes: number): void {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) { sendTo(ws, { type: 'error', message: 'Driver not authenticated' }); return; }
+  const profile = getDriverProfile(driverId);
+  try {
+    const bid = placeBid(
+      driverId,
+      profile.fullName,
+      profile.phone,
+      profile.rating,
+      profile.totalTrips,
+      profile.vehicleDescription,
+      rideId,
+      { fare, etaMinutes },
+    );
+    sendTo(ws, { type: 'ride_bid_ack', rideId, bid });
+    // Push fresh bid list to the client.
+    const clientView = getRideById(rideId);
+    if (clientView) sendToClient(clientView.clientId, { type: 'ride_update', ride: clientView });
+  } catch (err) {
+    sendTo(ws, {
+      type: 'error',
+      message: err instanceof RideNegotiationError ? err.message : 'No se pudo enviar la oferta',
+    });
+  }
+}
+
+function handleRideWithdraw(ws: WebSocket, rideId: string): void {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) return;
+  const updated = withdrawBid(driverId, rideId);
+  if (updated) sendToClient(updated.clientId, { type: 'ride_update', ride: updated });
+}
+
+function handleRideAcceptBid(ws: WebSocket, rideId: string, bidId: string): void {
+  const clientId = clientIdByWs.get(ws);
+  if (!clientId) { sendTo(ws, { type: 'error', message: 'Client not authenticated' }); return; }
+  try {
+    const ride = acceptBid(clientId, rideId, bidId);
+    relayRideUpdate(rideId);
+    // Tell losing drivers their bid was rejected.
+    for (const bid of ride.bids) {
+      if (bid.status === 'rejected') {
+        sendToDriverById(bid.driverId, { type: 'ride_update', ride: { ...ride, bids: [bid] } });
+      }
+    }
+  } catch (err) {
+    sendTo(ws, {
+      type: 'error',
+      message: err instanceof RideNegotiationError ? err.message : 'No se pudo aceptar la oferta',
+    });
+  }
+}
+
+function handleRideStatus(ws: WebSocket, rideId: string, status: RideNegotiationStatus): void {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) return;
+  const updated = updateRideStatus(driverId, rideId, status);
+  if (updated) relayRideUpdate(rideId);
+}
+
+function handleRideCancel(ws: WebSocket, rideId: string): void {
+  const clientId = clientIdByWs.get(ws) ?? null;
+  const driverId = driverIdByWs.get(ws) ?? null;
+  const updated = cancelRide(clientId, driverId, rideId);
+  if (updated) relayRideUpdate(rideId);
+}
+
+function handleRideLocation(ws: WebSocket, rideId: string, lat: number, lng: number): void {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) return;
+  const clientId = updateRideDriverLocation(driverId, rideId, lat, lng);
+  if (clientId) sendToClient(clientId, { type: 'ride_location', rideId, lat, lng });
+}
+
+function handleSubscribeRide(ws: WebSocket, rideId: string): void {
+  // Send current snapshot tailored to role.
+  const driverId = driverIdByWs.get(ws);
+  const snapshot = driverId ? getRideForDriver(rideId, driverId) : getRideById(rideId);
+  if (snapshot) sendTo(ws, { type: 'ride_update', ride: snapshot });
+
+  const unsub = subscribeRide(rideId, () => {
+    const view = driverId ? getRideForDriver(rideId, driverId) : getRideById(rideId);
+    if (view) sendTo(ws, { type: 'ride_update', ride: view });
+  });
+  const map = rideSubs.get(ws) ?? new Map<string, () => void>();
+  map.get(rideId)?.();
+  map.set(rideId, unsub);
+  rideSubs.set(ws, map);
+}
+
+function handleSubscribeChat(ws: WebSocket, rideId: string): void {
+  const unsub = subscribeChat(rideId, (msg) => {
+    sendTo(ws, { type: 'chat_message', message: msg });
+  });
+  const map = chatSubs.get(ws) ?? new Map<string, () => void>();
+  map.get(rideId)?.();
+  map.set(rideId, unsub);
+  chatSubs.set(ws, map);
+}
+
+function handleChatSend(ws: WebSocket, rideId: string, text: string): void {
+  const clientId = clientIdByWs.get(ws);
+  const driverId = driverIdByWs.get(ws);
+  const role: ChatRole | null = clientId ? 'client' : driverId ? 'driver' : null;
+  const fromId = clientId ?? driverId;
+  if (!role || !fromId) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+  try {
+    addChatMessage(rideId, role, fromId, text);
+    // Listeners (subscribe_chat) fan the message out to both parties.
+  } catch (err) {
+    sendTo(ws, {
+      type: 'error',
+      message: err instanceof RideNegotiationError ? err.message : 'No se pudo enviar el mensaje',
+    });
+  }
+}
+
 // ─── Message dispatcher ───────────────────────────────────────────────────────
 
 function onMessage(ws: WebSocket, raw: string): void {
@@ -381,7 +604,7 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const mode = msg['workMode'];
       if (typeof mode !== 'string') { sendTo(ws, { type: 'error', message: 'workMode required' }); return; }
-      handleDriverModeChange(mode as WorkMode);
+      handleDriverModeChange(ws, mode as WorkMode);
       break;
     }
 
@@ -555,6 +778,97 @@ function onMessage(ws: WebSocket, raw: string): void {
       break;
     }
 
+    // ── Ride negotiation: driver pool ────────────────────────────────────────
+    case 'driver_register': {
+      handleDriverRegister(ws);
+      break;
+    }
+    case 'ride_bid': {
+      const rideId = msg['rideId'];
+      const fare = msg['fare'];
+      const eta = msg['etaMinutes'];
+      if (typeof rideId !== 'string' || typeof fare !== 'number') {
+        sendTo(ws, { type: 'error', message: 'rideId and fare required' }); return;
+      }
+      handleRideBid(ws, rideId, fare, typeof eta === 'number' ? eta : 0);
+      break;
+    }
+    case 'ride_bid_withdraw': {
+      const rideId = msg['rideId'];
+      if (typeof rideId !== 'string') break;
+      handleRideWithdraw(ws, rideId);
+      break;
+    }
+    case 'ride_accept_bid': {
+      const rideId = msg['rideId'];
+      const bidId = msg['bidId'];
+      if (typeof rideId !== 'string' || typeof bidId !== 'string') {
+        sendTo(ws, { type: 'error', message: 'rideId and bidId required' }); return;
+      }
+      handleRideAcceptBid(ws, rideId, bidId);
+      break;
+    }
+    case 'ride_status': {
+      const rideId = msg['rideId'];
+      const status = msg['status'];
+      if (typeof rideId !== 'string' || typeof status !== 'string') {
+        sendTo(ws, { type: 'error', message: 'rideId and status required' }); return;
+      }
+      handleRideStatus(ws, rideId, status as RideNegotiationStatus);
+      break;
+    }
+    case 'ride_cancel': {
+      const rideId = msg['rideId'];
+      if (typeof rideId !== 'string') break;
+      handleRideCancel(ws, rideId);
+      break;
+    }
+    case 'ride_location': {
+      const rideId = msg['rideId'];
+      const lat = msg['lat'];
+      const lng = msg['lng'];
+      if (typeof rideId !== 'string' || typeof lat !== 'number' || typeof lng !== 'number') break;
+      handleRideLocation(ws, rideId, lat, lng);
+      break;
+    }
+    case 'subscribe_ride': {
+      const rideId = msg['rideId'];
+      if (typeof rideId !== 'string') { sendTo(ws, { type: 'error', message: 'rideId required' }); return; }
+      handleSubscribeRide(ws, rideId);
+      break;
+    }
+    case 'unsubscribe_ride': {
+      const rideId = msg['rideId'];
+      if (typeof rideId !== 'string') break;
+      const map = rideSubs.get(ws);
+      if (map) { map.get(rideId)?.(); map.delete(rideId); }
+      break;
+    }
+
+    // ── Chat ─────────────────────────────────────────────────────────────────
+    case 'subscribe_chat': {
+      const rideId = msg['rideId'];
+      if (typeof rideId !== 'string') { sendTo(ws, { type: 'error', message: 'rideId required' }); return; }
+      handleSubscribeChat(ws, rideId);
+      break;
+    }
+    case 'unsubscribe_chat': {
+      const rideId = msg['rideId'];
+      if (typeof rideId !== 'string') break;
+      const map = chatSubs.get(ws);
+      if (map) { map.get(rideId)?.(); map.delete(rideId); }
+      break;
+    }
+    case 'chat_send': {
+      const rideId = msg['rideId'];
+      const text = msg['text'];
+      if (typeof rideId !== 'string' || typeof text !== 'string') {
+        sendTo(ws, { type: 'error', message: 'rideId and text required' }); return;
+      }
+      handleChatSend(ws, rideId, text);
+      break;
+    }
+
     case 'ping':
       sendTo(ws, { type: 'pong' });
       break;
@@ -570,6 +884,22 @@ function onClose(ws: WebSocket): void {
   // Pooled-ride subscriptions may live on a driver or client socket.
   const pooledMap = pooledSubs.get(ws);
   if (pooledMap) { for (const fn of pooledMap.values()) fn(); pooledSubs.delete(ws); }
+
+  // Ride + chat subscriptions may live on either side.
+  const rideMap = rideSubs.get(ws);
+  if (rideMap) { for (const fn of rideMap.values()) fn(); rideSubs.delete(ws); }
+  const chatMap = chatSubs.get(ws);
+  if (chatMap) { for (const fn of chatMap.values()) fn(); chatSubs.delete(ws); }
+
+  // Leave the live ride pool.
+  ridePoolUnsub.get(ws)?.();
+  ridePoolUnsub.delete(ws);
+  const driverId = driverIdByWs.get(ws);
+  if (driverId && driverConnections.get(driverId)?.ws === ws) {
+    driverConnections.delete(driverId);
+  }
+  driverIdByWs.delete(ws);
+  clientIdByWs.delete(ws);
 
   if (ws === driverSocket) {
     stopDispatch();

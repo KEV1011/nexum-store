@@ -99,6 +99,14 @@ export function getClientNameByPhone(phone: string): string | null {
   return clientStore.get(phone)?.name ?? null;
 }
 
+/** Look up a registered client by id (clientStore is keyed by phone). */
+export function getClientById(clientId: string): ClientDTO | null {
+  for (const client of clientStore.values()) {
+    if (client.id === clientId) return client;
+  }
+  return null;
+}
+
 // ─── Businesses ───────────────────────────────────────────────────────────────
 
 export { getAllBusinessesPublic as getClientBusinesses };
