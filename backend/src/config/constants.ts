@@ -234,3 +234,37 @@ export function getIntercityRoute(origin: IntercityCity, dest: IntercityCity): I
   const key = `${origin}-${dest}` as RoutePair;
   return INTERCITY_ROUTES[key] ?? null;
 }
+
+// ─── Shared-ride cost basis (legal "gasto compartido") ──────────────────────────
+//
+// To keep pooled rides on the legal side of "gasto compartido" (cost sharing,
+// not commercial transport), the per-seat fare a particular driver may charge
+// is capped at the proportional running cost of the trip — fuel plus an
+// estimated toll allowance — divided across the seats offered. The driver
+// recovers costs but does not profit, so Nexum acts as a tech intermediary
+// rather than a transport operator.
+
+/** Estimated running cost per kilometre in COP (fuel + wear, no profit). */
+export const SHARED_RIDE_COST_PER_KM = 700;
+
+/** Estimated toll cost in COP per 100 km of intercity road. */
+export const SHARED_RIDE_TOLL_PER_100KM = 9000;
+
+/**
+ * Maximum legal cost-share per seat for a route, given the number of seats
+ * the driver offers. Returns 0 if the route is unknown.
+ */
+export function getMaxFarePerSeat(
+  origin: IntercityCity,
+  dest: IntercityCity,
+  totalSeats: number,
+): number {
+  const route = getIntercityRoute(origin, dest);
+  if (!route || totalSeats < 1) return 0;
+  const fuelCost = route.distanceKm * SHARED_RIDE_COST_PER_KM;
+  const tollCost = (route.distanceKm / 100) * SHARED_RIDE_TOLL_PER_100KM;
+  const totalRunningCost = fuelCost + tollCost;
+  // Driver occupies one seat too, so cost is split across all occupants.
+  const occupants = totalSeats + 1;
+  return Math.ceil(totalRunningCost / occupants / 500) * 500;
+}

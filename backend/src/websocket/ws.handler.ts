@@ -33,6 +33,10 @@ import {
   subscribeIntercityBooking,
   getIntercityBookingSnapshot,
 } from '../services/intercity.service';
+import {
+  subscribePooledTrip,
+  getPooledTripSnapshot,
+} from '../services/intercity-pool.service';
 import { getBusinessService } from '../services/business.service';
 import { WsMessage, WorkMode, ErrandStatus } from '../types';
 
@@ -48,6 +52,8 @@ const clientSubscriptions = new Map<WebSocket, Array<() => void>>();
 const clientTripSubs = new Map<WebSocket, Map<string, () => void>>();
 const clientErrandSubs = new Map<WebSocket, Map<string, () => void>>();
 const clientIntercitySubs = new Map<WebSocket, Map<string, () => void>>();
+// Shared pooled rides — both drivers and clients may subscribe to a trip.
+const pooledSubs = new Map<WebSocket, Map<string, () => void>>();
 
 const businessSockets = new Map<string, WebSocket>();
 const businessSubscriptions = new Map<WebSocket, Array<() => void>>();
@@ -298,6 +304,18 @@ function handleSubscribeIntercity(ws: WebSocket, bookingId: string): void {
   clientIntercitySubs.set(ws, map);
 }
 
+function handleSubscribePooled(ws: WebSocket, tripId: string): void {
+  const snapshot = getPooledTripSnapshot(tripId);
+  if (snapshot) sendTo(ws, { type: 'pooled_update', tripId, trip: snapshot });
+
+  const unsubscribe = subscribePooledTrip(tripId, (_id, trip) => {
+    sendTo(ws, { type: 'pooled_update', tripId, trip });
+  });
+  const map = pooledSubs.get(ws) ?? new Map<string, () => void>();
+  map.set(tripId, unsubscribe);
+  pooledSubs.set(ws, map);
+}
+
 function handleBusinessAuth(ws: WebSocket, token: string): void {
   try {
     const business = getBusinessService().getBusinessByToken(token);
@@ -498,6 +516,20 @@ function onMessage(ws: WebSocket, raw: string): void {
       break;
     }
 
+    case 'subscribe_pooled': {
+      const tripId = msg['tripId'];
+      if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
+      handleSubscribePooled(ws, tripId);
+      break;
+    }
+    case 'unsubscribe_pooled': {
+      const tripId = msg['tripId'];
+      if (typeof tripId !== 'string') break;
+      const map = pooledSubs.get(ws);
+      if (map) { map.get(tripId)?.(); map.delete(tripId); }
+      break;
+    }
+
     // ── Location ─────────────────────────────────────────────────────────────
     case 'location_update': {
       if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
@@ -535,6 +567,10 @@ function onMessage(ws: WebSocket, raw: string): void {
 // ─── Cleanup on close ─────────────────────────────────────────────────────────
 
 function onClose(ws: WebSocket): void {
+  // Pooled-ride subscriptions may live on a driver or client socket.
+  const pooledMap = pooledSubs.get(ws);
+  if (pooledMap) { for (const fn of pooledMap.values()) fn(); pooledSubs.delete(ws); }
+
   if (ws === driverSocket) {
     stopDispatch();
     driverSocket = null;

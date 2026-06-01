@@ -94,6 +94,11 @@ export function verifyClientToken(token: string): ClientJwtPayload {
   return decoded;
 }
 
+/** Look up a registered client's display name by phone. */
+export function getClientNameByPhone(phone: string): string | null {
+  return clientStore.get(phone)?.name ?? null;
+}
+
 // ─── Businesses ───────────────────────────────────────────────────────────────
 
 export { getAllBusinessesPublic as getClientBusinesses };

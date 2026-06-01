@@ -11,7 +11,16 @@ import {
   requestClientTrip,
   getActiveClientTrip,
   cancelClientTrip,
+  getClientNameByPhone,
 } from '../services/client.service';
+import {
+  searchPooledTrips,
+  getPooledTripById,
+  bookSeats,
+  cancelSeatBooking,
+  getClientBookings,
+  PooledTripError,
+} from '../services/intercity-pool.service';
 import {
   requestClientErrand,
   getActiveClientErrand,
@@ -28,7 +37,12 @@ import {
 } from '../services/intercity.service';
 import { getIntercityRoute } from '../config/constants';
 import { createPaymentLink } from '../services/payment.service';
-import { RequestClientErrandDTO, RequestIntercityDTO } from '../types';
+import {
+  RequestClientErrandDTO,
+  RequestIntercityDTO,
+  BookSeatsDTO,
+  IntercityCity,
+} from '../types';
 
 const router = Router();
 
@@ -292,6 +306,63 @@ router.post('/intercity/:id/cancel', clientAuthMiddleware, (req, res) => {
     return;
   }
   res.json({ success: true });
+});
+
+// ─── Shared pooled rides (Modelo A) ─────────────────────────────────────────────
+
+// GET /client/intercity/pool/search?origin=&destination=&date=
+router.get('/intercity/pool/search', clientAuthMiddleware, (req, res) => {
+  const trips = searchPooledTrips({
+    origin: req.query['origin'] as IntercityCity | undefined,
+    destination: req.query['destination'] as IntercityCity | undefined,
+    date: req.query['date'] as string | undefined,
+  });
+  res.json({ success: true, data: trips });
+});
+
+// GET /client/intercity/pool/bookings  – the caller's own seat bookings
+router.get('/intercity/pool/bookings', clientAuthMiddleware, (req, res) => {
+  res.json({ success: true, data: getClientBookings(req.clientId!) });
+});
+
+// GET /client/intercity/pool/:id
+router.get('/intercity/pool/:id', clientAuthMiddleware, (req, res) => {
+  const trip = getPooledTripById(req.params['id']!, false);
+  if (!trip) { res.status(404).json({ success: false, error: 'Trip not found' }); return; }
+  res.json({ success: true, data: trip });
+});
+
+// POST /client/intercity/pool/:id/book
+router.post('/intercity/pool/:id/book', clientAuthMiddleware, (req, res) => {
+  const dto = req.body as Partial<BookSeatsDTO>;
+  if (dto.seatsBooked === undefined) {
+    res.status(400).json({ success: false, error: 'seatsBooked is required' });
+    return;
+  }
+  const passengerName = getClientNameByPhone(req.clientPhone!) ?? 'Pasajero Nexum';
+  try {
+    const result = bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
+      seatsBooked: dto.seatsBooked,
+      pickupAddress: dto.pickupAddress,
+      notes: dto.notes,
+    });
+    res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    const status = err instanceof PooledTripError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to book seats' });
+  }
+});
+
+// POST /client/intercity/pool/bookings/:bookingId/cancel
+router.post('/intercity/pool/bookings/:bookingId/cancel', clientAuthMiddleware, (req, res) => {
+  try {
+    const trip = cancelSeatBooking(req.clientId!, req.params['bookingId']!);
+    if (!trip) { res.status(404).json({ success: false, error: 'Booking not found' }); return; }
+    res.json({ success: true, data: trip });
+  } catch (err) {
+    const status = err instanceof PooledTripError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to cancel booking' });
+  }
 });
 
 // ─── Payments ─────────────────────────────────────────────────────────────────

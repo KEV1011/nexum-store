@@ -222,7 +222,11 @@ export type WsMessageType =
   // Intercity messages
   | 'subscribe_intercity'
   | 'unsubscribe_intercity'
-  | 'intercity_update';
+  | 'intercity_update'
+  // Shared pooled-ride (Modelo A) messages
+  | 'subscribe_pooled'
+  | 'unsubscribe_pooled'
+  | 'pooled_update';
 
 export interface WsMessage {
   type: WsMessageType;
@@ -613,6 +617,78 @@ export interface IntercityBookingDTO {
   notes?: string;
   createdAt: string;
   confirmedAt?: string;
+}
+
+// ─── Shared Pooled Rides (Modelo A: conductor publica → pasajero reserva) ───────
+
+/**
+ * A trip published by a particular driver who shares the cost of an
+ * intercity ride. Passengers book individual seats until the vehicle fills.
+ */
+export type PooledTripStatus =
+  | 'open' // accepting seat bookings
+  | 'full' // all seats booked
+  | 'departed' // trip in progress
+  | 'completed'
+  | 'cancelled';
+
+export type SeatBookingStatus = 'confirmed' | 'cancelled';
+
+/** Driver-supplied payload when publishing a shared trip. */
+export interface PublishPooledTripDTO {
+  origin: IntercityCity;
+  destination: IntercityCity;
+  departureTime: string;
+  totalSeats: number; // total seats offered (1-7)
+  farePerSeat: number; // cost-share per seat (validated against legal cap)
+  vehicleDescription: string; // e.g. "Toyota Corolla Blanco • ABC 123"
+  notes?: string;
+  allowFleet?: boolean; // passenger may book the whole vehicle at once
+}
+
+/** A single passenger's booking on a pooled trip. */
+export interface SeatBookingDTO {
+  id: string;
+  tripId: string;
+  passengerName: string;
+  passengerPhone: string;
+  seatsBooked: number;
+  pickupAddress?: string;
+  notes?: string;
+  status: SeatBookingStatus;
+  bookedAt: string;
+}
+
+/** Client-supplied payload when reserving seats on a pooled trip. */
+export interface BookSeatsDTO {
+  seatsBooked: number;
+  pickupAddress?: string;
+  notes?: string;
+}
+
+/** Full pooled-trip view returned to drivers and passengers. */
+export interface PooledTripDTO {
+  id: string;
+  tripRef: string;
+  driverId: string;
+  driverName: string;
+  driverPhone: string;
+  vehicleDescription: string;
+  origin: IntercityCity;
+  destination: IntercityCity;
+  departureTime: string;
+  totalSeats: number;
+  availableSeats: number;
+  farePerSeat: number;
+  maxFarePerSeat: number; // legal cost-share cap for this route
+  allowFleet: boolean;
+  status: PooledTripStatus;
+  notes?: string;
+  distanceKm?: number;
+  durationMinutes?: number;
+  createdAt: string;
+  /** Present only on driver-facing responses. */
+  bookings?: SeatBookingDTO[];
 }
 
 // ─── Wompi Payments ───────────────────────────────────────────────────────────
