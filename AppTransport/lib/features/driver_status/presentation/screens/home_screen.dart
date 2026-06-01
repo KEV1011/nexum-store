@@ -1323,6 +1323,15 @@ class _AppDrawer extends ConsumerWidget {
                       context.push('/pooled-trips');
                     },
                   ),
+                  _DrawerItem(
+                    icon: Icons.verified_user_rounded,
+                    label: 'Verificación',
+                    iconColor: const Color(0xFF00C853),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/verification');
+                    },
+                  ),
                   _DrawerSection(label: 'FINANZAS'),
                   _DrawerItem(
                     icon: Icons.monetization_on_rounded,
