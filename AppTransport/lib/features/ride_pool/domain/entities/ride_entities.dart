@@ -132,6 +132,7 @@ class RideEntity {
     required this.status,
     required this.bids,
     required this.bidCount,
+    required this.createdAt,
     this.notes,
     this.matchedDriverId,
     this.matchedBidId,
@@ -153,6 +154,7 @@ class RideEntity {
   final RideStatus status;
   final List<RideBidEntity> bids;
   final int bidCount;
+  final DateTime createdAt;
   final String? notes;
   final String? matchedDriverId;
   final String? matchedBidId;
@@ -177,6 +179,7 @@ class RideEntity {
             .map(RideBidEntity.fromJson)
             .toList(),
         bidCount: (j['bidCount'] as num?)?.toInt() ?? 0,
+        createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
         notes: j['notes'] as String?,
         matchedDriverId: j['matchedDriverId'] as String?,
         matchedBidId: j['matchedBidId'] as String?,

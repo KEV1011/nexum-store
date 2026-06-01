@@ -76,6 +76,12 @@ class _OpenBidsView extends StatelessWidget {
                 style: const TextStyle(
                     color: Color(0xFF92610A), fontWeight: FontWeight.w600),
               ),
+              const SizedBox(height: 4),
+              Text(
+                '#${ride.rideRef}',
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textTertiary),
+              ),
             ],
           ),
         ),
@@ -91,14 +97,18 @@ class _OpenBidsView extends StatelessWidget {
                     ),
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: ride.bids.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) => _BidCard(
-                    bid: ride.bids[i],
-                    offeredFare: ride.offeredFare,
-                    onAccept: () => onAccept(ride.bids[i].id),
+              : AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: ListView.separated(
+                    key: ValueKey(ride.bids.length),
+                    padding: const EdgeInsets.all(16),
+                    itemCount: ride.bids.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (_, i) => _BidCard(
+                      bid: ride.bids[i],
+                      offeredFare: ride.offeredFare,
+                      onAccept: () => onAccept(ride.bids[i].id),
+                    ),
                   ),
                 ),
         ),
@@ -299,6 +309,19 @@ class _MatchedView extends StatelessWidget {
                           Text(bid.vehicleDescription,
                               style: const TextStyle(
                                   fontSize: 13, color: AppColors.textSecondary)),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(Icons.timer_outlined,
+                                  size: 14, color: AppColors.textSecondary),
+                              Text(
+                                ' ${bid.etaMinutes} min de llegada',
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 2),
                           Row(
                             children: [

@@ -101,6 +101,10 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         title: Text(widget.peerName),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: AppColors.outlineLight),
+        ),
       ),
       body: Column(
         children: [

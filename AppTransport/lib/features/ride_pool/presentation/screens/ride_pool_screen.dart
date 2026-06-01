@@ -8,6 +8,13 @@ import 'package:nexum_driver/features/ride_pool/domain/entities/ride_entities.da
 import 'package:nexum_driver/features/ride_pool/presentation/providers/ride_pool_provider.dart';
 import 'package:nexum_driver/features/ride_pool/presentation/screens/ride_chat_screen.dart';
 
+String _timeAgo(DateTime dt) {
+  final diff = DateTime.now().difference(dt);
+  if (diff.inSeconds < 60) return 'Hace ${diff.inSeconds}s';
+  if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
+  return 'Hace ${diff.inHours}h';
+}
+
 class RidePoolScreen extends ConsumerStatefulWidget {
   const RidePoolScreen({super.key});
 
@@ -49,19 +56,23 @@ class _RidePoolScreenState extends ConsumerState<RidePoolScreen> {
                 Expanded(
                   child: state.openRides.isEmpty
                       ? _empty()
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          itemCount: state.openRides.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
-                          itemBuilder: (_, i) {
-                            final ride = state.openRides[i];
-                            return _RequestCard(
-                              ride: ride,
-                              myBid: notifier.myBids[ride.id],
-                              onBid: (fare, eta) => notifier.bid(ride.id, fare, eta),
-                              onWithdraw: () => notifier.withdraw(ride.id),
-                            );
-                          },
+                      : RefreshIndicator(
+                          color: AppColors.primary,
+                          onRefresh: () async => ref.read(ridePoolProvider.notifier).register(),
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            itemCount: state.openRides.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 12),
+                            itemBuilder: (_, i) {
+                              final ride = state.openRides[i];
+                              return _RequestCard(
+                                ride: ride,
+                                myBid: notifier.myBids[ride.id],
+                                onBid: (fare, eta) => notifier.bid(ride.id, fare, eta),
+                                onWithdraw: () => notifier.withdraw(ride.id),
+                              );
+                            },
+                          ),
                         ),
                 ),
               ],
@@ -79,6 +90,8 @@ class _RidePoolScreenState extends ConsumerState<RidePoolScreen> {
         ),
         child: Row(
           children: [
+            Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle)),
+            const SizedBox(width: 6),
             const Icon(Icons.bolt_rounded, color: AppColors.primaryDim),
             const SizedBox(width: 10),
             Expanded(
@@ -175,6 +188,14 @@ class _RequestCard extends StatelessWidget {
           _routeRow(Icons.trip_origin_rounded, ride.originAddress, AppColors.primary),
           const SizedBox(height: 4),
           _routeRow(Icons.place_rounded, ride.destinationAddress, AppColors.error),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.access_time_rounded, size: 12, color: AppColors.textTertiary),
+              const SizedBox(width: 4),
+              Text(_timeAgo(ride.createdAt), style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+            ],
+          ),
           if (ride.notes != null && ride.notes!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text('“${ride.notes}”',

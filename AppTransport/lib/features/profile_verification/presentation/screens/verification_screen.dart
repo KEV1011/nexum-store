@@ -64,6 +64,18 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                           onUpload: () => _upload(doc),
                         ),
                       ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Perfil público',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Esta información la ven los pasajeros al aceptar tu oferta.',
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      _ProfileEditCard(profile: profile, onSave: notifier.updateProfile),
                     ],
                   ),
                 ),
@@ -224,6 +236,101 @@ class _DocumentCard extends StatelessWidget {
             )
           else
             Icon(doc.status.icon, color: doc.status.color, size: 20),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileEditCard extends StatefulWidget {
+  const _ProfileEditCard({required this.profile, required this.onSave});
+  final DriverProfileEntity profile;
+  final Future<bool> Function({String? bio, String? vehicleDescription}) onSave;
+
+  @override
+  State<_ProfileEditCard> createState() => _ProfileEditCardState();
+}
+
+class _ProfileEditCardState extends State<_ProfileEditCard> {
+  late final TextEditingController _bio;
+  late final TextEditingController _vehicle;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _bio = TextEditingController(text: widget.profile.bio ?? '');
+    _vehicle = TextEditingController(text: widget.profile.vehicleDescription);
+  }
+
+  @override
+  void dispose() {
+    _bio.dispose();
+    _vehicle.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final ok = await widget.onSave(
+      bio: _bio.text.trim().isEmpty ? null : _bio.text.trim(),
+      vehicleDescription: _vehicle.text.trim().isEmpty ? null : _vehicle.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? 'Perfil actualizado.' : 'No se pudo actualizar.'),
+      backgroundColor: ok ? AppColors.primary : AppColors.error,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.outlineLight),
+      ),
+      child: Column(
+        children: [
+          TextField(
+            controller: _vehicle,
+            decoration: const InputDecoration(
+              labelText: 'Descripción del vehículo',
+              hintText: 'Ej: Toyota Yaris blanco • NEX 123',
+              prefixIcon: Icon(Icons.directions_car_rounded),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _bio,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'Bio (opcional)',
+              hintText: 'Ej: Conductor con 5 años de experiencia',
+              prefixIcon: Icon(Icons.person_outline_rounded),
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _saving ? null : _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+              child: _saving
+                  ? const SizedBox(
+                      height: 18, width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Guardar cambios'),
+            ),
+          ),
         ],
       ),
     );

@@ -845,6 +845,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
 
+          // Quick access: new features
+          Row(
+            children: [
+              Expanded(
+                child: _PanelQuickBtn(
+                  icon: Icons.bolt_rounded,
+                  label: 'Solicitudes',
+                  onTap: () => context.push('/ride-pool'),
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingS),
+              Expanded(
+                child: _PanelQuickBtn(
+                  icon: Icons.verified_user_rounded,
+                  label: 'Verificación',
+                  onTap: () => context.push('/verification'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+
           // Status message
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -2256,6 +2278,53 @@ class _ErrandRequestCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ── Panel quick-access button ─────────────────────────────────────────────────
+
+class _PanelQuickBtn extends StatelessWidget {
+  const _PanelQuickBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  static const _bg = Color(0xFF252836);
+  static const _border = Color(0xFF2E3347);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: _bg,
+          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+          border: Border.all(color: _border),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: AppColors.primary, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFFE2E8F0),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -104,9 +104,11 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _field(_origin, 'Origen', Icons.trip_origin_rounded, AppColors.primary),
+          _field(_origin, 'Origen', Icons.trip_origin_rounded, AppColors.primary,
+              hintText: 'Ej: Calle 80 #15-32, Bogotá'),
           const SizedBox(height: 12),
-          _field(_destination, 'Destino', Icons.place_rounded, AppColors.error),
+          _field(_destination, 'Destino', Icons.place_rounded, AppColors.error,
+              hintText: 'Ej: Aeropuerto El Dorado'),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -147,6 +149,21 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                     Text('Sugerido: ${CurrencyFormatter.format(_suggested)}',
                         style: const TextStyle(
                             fontSize: 12, color: AppColors.primaryDim)),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () {
+                        _fareTouched = false;
+                        _syncSuggestedFare();
+                        setState(() {});
+                      },
+                      child: const Text(
+                        '↺ Sugerido',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: AppColors.primaryDim,
+                            decoration: TextDecoration.underline),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -178,7 +195,14 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: _InfoRow(
+              icon: Icons.info_outline_rounded,
+              text:
+                  'Conductores cercanos ven tu precio y pueden aceptar o contraofertar.',
+            ),
+          ),
           _field(_notes, 'Notas para el conductor (opcional)',
               Icons.notes_rounded, AppColors.textSecondary,
               maxLines: 2),
@@ -244,12 +268,14 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     IconData icon,
     Color iconColor, {
     int maxLines = 1,
+    String? hintText,
   }) =>
       TextField(
         controller: c,
         maxLines: maxLines,
         decoration: InputDecoration(
           labelText: label,
+          hintText: hintText,
           prefixIcon: Icon(icon, color: iconColor, size: 20),
           filled: true,
           fillColor: AppColors.surfaceLight,
@@ -263,4 +289,29 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
           ),
         ),
       );
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: AppColors.textTertiary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+                fontSize: 11.5, color: AppColors.textTertiary),
+          ),
+        ),
+      ],
+    );
+  }
 }
