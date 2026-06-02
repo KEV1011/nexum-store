@@ -10,7 +10,13 @@ enum PooledCity {
   chitaga,
   malaga,
   ocana,
-  bogota;
+  bogota,
+  medellin,
+  chinacota,
+  cacota,
+  silos,
+  mutiscua,
+  pamplonita;
 
   String get displayName => switch (this) {
         PooledCity.pamplona => 'Pamplona',
@@ -20,6 +26,12 @@ enum PooledCity {
         PooledCity.malaga => 'Málaga',
         PooledCity.ocana => 'Ocaña',
         PooledCity.bogota => 'Bogotá',
+        PooledCity.medellin => 'Medellín',
+        PooledCity.chinacota => 'Chinácota',
+        PooledCity.cacota => 'Cácota',
+        PooledCity.silos => 'Silos',
+        PooledCity.mutiscua => 'Mutiscua',
+        PooledCity.pamplonita => 'Pamplonita',
       };
 
   static PooledCity fromApi(String? s) => PooledCity.values.firstWhere(
@@ -89,6 +101,15 @@ class PooledSeatBooking {
         pickupAddress: j['pickupAddress'] as String?,
         notes: j['notes'] as String?,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'passengerName': passengerName,
+        'passengerPhone': passengerPhone,
+        'seatsBooked': seatsBooked,
+        if (pickupAddress != null) 'pickupAddress': pickupAddress,
+        if (notes != null) 'notes': notes,
+      };
 }
 
 class PooledTripEntity {
@@ -129,6 +150,51 @@ class PooledTripEntity {
   final List<PooledSeatBooking> bookings;
 
   int get bookedSeats => totalSeats - availableSeats;
+
+  /// Copia inmutable — usada por el store local para simular reservas en vivo
+  /// sin mutar la instancia original.
+  PooledTripEntity copyWith({
+    int? availableSeats,
+    PooledTripStatus? status,
+    List<PooledSeatBooking>? bookings,
+  }) =>
+      PooledTripEntity(
+        id: id,
+        tripRef: tripRef,
+        origin: origin,
+        destination: destination,
+        departureTime: departureTime,
+        totalSeats: totalSeats,
+        availableSeats: availableSeats ?? this.availableSeats,
+        farePerSeat: farePerSeat,
+        maxFarePerSeat: maxFarePerSeat,
+        allowFleet: allowFleet,
+        status: status ?? this.status,
+        vehicleDescription: vehicleDescription,
+        notes: notes,
+        distanceKm: distanceKm,
+        durationMinutes: durationMinutes,
+        bookings: bookings ?? this.bookings,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'tripRef': tripRef,
+        'origin': origin.name,
+        'destination': destination.name,
+        'departureTime': departureTime.toIso8601String(),
+        'totalSeats': totalSeats,
+        'availableSeats': availableSeats,
+        'farePerSeat': farePerSeat,
+        'maxFarePerSeat': maxFarePerSeat,
+        'allowFleet': allowFleet,
+        'status': status.name,
+        'vehicleDescription': vehicleDescription,
+        if (notes != null) 'notes': notes,
+        if (distanceKm != null) 'distanceKm': distanceKm,
+        if (durationMinutes != null) 'durationMinutes': durationMinutes,
+        'bookings': bookings.map((b) => b.toJson()).toList(),
+      };
 
   factory PooledTripEntity.fromJson(Map<String, dynamic> j) => PooledTripEntity(
         id: j['id'] as String? ?? '',
