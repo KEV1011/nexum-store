@@ -25,6 +25,7 @@ class _PublishPooledTripScreenState
   DateTime _departure = DateTime.now().add(const Duration(hours: 2));
   int _seats = 3;
   bool _allowFleet = false;
+  bool _isCompanyOffer = false;
   bool _submitting = false;
 
   final _fareCtrl = TextEditingController();
@@ -131,6 +132,7 @@ class _PublishPooledTripScreenState
           vehicleDescription: _vehicleCtrl.text.trim(),
           notes: _notesCtrl.text.trim(),
           allowFleet: _allowFleet,
+          isCompanyOffer: _isCompanyOffer,
         );
     if (!mounted) return;
     if (err == null) {
@@ -240,8 +242,22 @@ class _PublishPooledTripScreenState
           ),
           const SizedBox(height: 8),
           _fareCapBanner(),
+          const SizedBox(height: 12),
+          _potentialTotalBanner(),
           const SizedBox(height: 16),
 
+          SwitchListTile.adaptive(
+            value: _isCompanyOffer,
+            onChanged: (v) => setState(() => _isCompanyOffer = v),
+            activeColor: _kPooledColor,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Oferta de empresa intermunicipal',
+                style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text(
+                'Actívalo si publicas como empresa de transporte, no como '
+                'conductor particular',
+                style: TextStyle(fontSize: 12)),
+          ),
           SwitchListTile.adaptive(
             value: _allowFleet,
             onChanged: (v) => setState(() => _allowFleet = v),
@@ -334,6 +350,45 @@ class _PublishPooledTripScreenState
                   'sin lucro. ${cap.distanceKm.toStringAsFixed(0)} km.',
                   style: const TextStyle(
                       fontSize: 11.5, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Cálculo en vivo del potencial total = tarifa × puestos.
+  Widget _potentialTotalBanner() {
+    final fare = _fare ?? 0;
+    final total = fare * _seats;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.success.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.success.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.savings_rounded, color: AppColors.success),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Potencial total del viaje',
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
+                const SizedBox(height: 2),
+                Text(
+                  '${CurrencyFormatter.format(total)}'
+                  '${fare > 0 ? "  ·  ${CurrencyFormatter.format(fare)} × $_seats puestos" : ""}',
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.success),
                 ),
               ],
             ),

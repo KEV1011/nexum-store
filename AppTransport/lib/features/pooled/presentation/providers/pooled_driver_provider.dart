@@ -143,6 +143,7 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
     required String vehicleDescription,
     String? notes,
     bool allowFleet = false,
+    bool isCompanyOffer = false,
   }) async {
     if (_offlineMode) {
       await _store.publish(
@@ -154,6 +155,7 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
         vehicleDescription: vehicleDescription,
         notes: notes,
         allowFleet: allowFleet,
+        isCompanyOffer: isCompanyOffer,
       );
       await loadMine();
       return null;
@@ -170,6 +172,7 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
           'vehicleDescription': vehicleDescription,
           if (notes != null && notes.isNotEmpty) 'notes': notes,
           'allowFleet': allowFleet,
+          'isCompanyOffer': isCompanyOffer,
         },
       );
       await loadMine();
@@ -185,6 +188,7 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
         vehicleDescription: vehicleDescription,
         notes: notes,
         allowFleet: allowFleet,
+        isCompanyOffer: isCompanyOffer,
       );
       await loadMine();
       return null;

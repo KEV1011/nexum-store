@@ -178,6 +178,21 @@ class _PooledTripCard extends StatelessWidget {
               ),
             ],
           ),
+          if (trip.isCompanyOffer) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.business_rounded,
+                    size: 14, color: _kPooledColor),
+                const SizedBox(width: 4),
+                const Text('Oferta de empresa',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: _kPooledColor)),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           Row(
             children: [
@@ -217,6 +232,28 @@ class _PooledTripCard extends StatelessWidget {
             ),
           ),
 
+          const SizedBox(height: 12),
+          // Ganancia actual (asegurada) y potencial restante.
+          Row(
+            children: [
+              Expanded(
+                child: _earningBox(
+                  label: 'Ganancia actual',
+                  value: CurrencyFormatter.format(trip.currentEarnings),
+                  color: AppColors.success,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _earningBox(
+                  label: 'Potencial total',
+                  value: CurrencyFormatter.format(trip.potentialEarnings),
+                  color: _kPooledColor,
+                ),
+              ),
+            ],
+          ),
+
           if (trip.bookings.isNotEmpty) ...[
             const SizedBox(height: 12),
             ...trip.bookings.map((b) => Padding(
@@ -243,6 +280,33 @@ class _PooledTripCard extends StatelessWidget {
 
           const SizedBox(height: 12),
           _actions(),
+        ],
+      ),
+    );
+  }
+
+  Widget _earningBox({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w800, color: color)),
         ],
       ),
     );

@@ -130,6 +130,7 @@ class PooledTripEntity {
     this.distanceKm,
     this.durationMinutes,
     this.bookings = const [],
+    this.isCompanyOffer = false,
   });
 
   final String id;
@@ -149,7 +150,16 @@ class PooledTripEntity {
   final int? durationMinutes;
   final List<PooledSeatBooking> bookings;
 
+  /// Oferta de empresa intermunicipal (vs. conductor particular).
+  final bool isCompanyOffer;
+
   int get bookedSeats => totalSeats - availableSeats;
+
+  /// Ingreso potencial total del viaje (todos los puestos vendidos).
+  double get potentialEarnings => farePerSeat * totalSeats;
+
+  /// Ingreso ya asegurado por los puestos reservados.
+  double get currentEarnings => farePerSeat * bookedSeats;
 
   /// Copia inmutable — usada por el store local para simular reservas en vivo
   /// sin mutar la instancia original.
@@ -175,6 +185,7 @@ class PooledTripEntity {
         distanceKm: distanceKm,
         durationMinutes: durationMinutes,
         bookings: bookings ?? this.bookings,
+        isCompanyOffer: isCompanyOffer,
       );
 
   Map<String, dynamic> toJson() => {
@@ -194,6 +205,7 @@ class PooledTripEntity {
         if (distanceKm != null) 'distanceKm': distanceKm,
         if (durationMinutes != null) 'durationMinutes': durationMinutes,
         'bookings': bookings.map((b) => b.toJson()).toList(),
+        'isCompanyOffer': isCompanyOffer,
       };
 
   factory PooledTripEntity.fromJson(Map<String, dynamic> j) => PooledTripEntity(
@@ -217,5 +229,6 @@ class PooledTripEntity {
             .whereType<Map<String, dynamic>>()
             .map(PooledSeatBooking.fromJson)
             .toList(),
+        isCompanyOffer: j['isCompanyOffer'] as bool? ?? false,
       );
 }

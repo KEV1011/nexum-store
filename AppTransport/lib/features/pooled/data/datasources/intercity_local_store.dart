@@ -81,6 +81,7 @@ class IntercityLocalStore {
     required String vehicleDescription,
     String? notes,
     bool allowFleet = false,
+    bool isCompanyOffer = false,
   }) async {
     final id = 'local_${DateTime.now().millisecondsSinceEpoch}';
     final ref = 'INT-${_rng.nextInt(9000) + 1000}';
@@ -98,6 +99,7 @@ class IntercityLocalStore {
       status: PooledTripStatus.open,
       vehicleDescription: vehicleDescription,
       notes: notes,
+      isCompanyOffer: isCompanyOffer,
     );
     _trips.insert(0, trip);
     await _persist();
