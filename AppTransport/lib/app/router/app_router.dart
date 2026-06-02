@@ -7,8 +7,8 @@ import 'package:nexum_driver/app/router/splash_screen.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/active_trip/presentation/screens/active_trip_screen.dart';
 import 'package:nexum_driver/features/active_trip/presentation/screens/trip_summary_screen.dart';
+import 'package:nexum_driver/features/auth/presentation/screens/driver_login_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/otp_screen.dart';
-import 'package:nexum_driver/features/auth/presentation/screens/phone_input_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/register_screen.dart';
 import 'package:nexum_driver/features/documents/presentation/screens/documents_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/screens/home_screen.dart';
@@ -93,7 +93,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.login,
         pageBuilder: (context, state) => AppTransitions.fade(
           pageKey: state.pageKey,
-          child: const PhoneInputScreen(),
+          child: const DriverLoginScreen(),
         ),
       ),
       GoRoute(
@@ -302,7 +302,8 @@ Future<String?> _authRedirect(
 
   if (!isAuthenticated) {
     final isOnAuthRoute = state.matchedLocation == AppRoutes.login ||
-        state.matchedLocation == AppRoutes.otp;
+        state.matchedLocation == AppRoutes.otp ||
+        state.matchedLocation == AppRoutes.register;
     return isOnAuthRoute ? null : AppRoutes.login;
   }
 

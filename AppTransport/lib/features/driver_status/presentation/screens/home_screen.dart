@@ -23,9 +23,9 @@ import 'package:nexum_driver/core/mock_data/errands_mock.dart';
 import 'package:nexum_driver/core/mock_data/passengers_mock.dart';
 import 'package:nexum_driver/core/mock_data/trips_mock.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
-import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
+import 'package:nexum_driver/features/driver_status/domain/entities/driver_status_entity.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/delivery_details.dart';
@@ -35,7 +35,6 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
-import 'package:nexum_driver/shared/widgets/press_scale.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -195,25 +194,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  // ── Work mode (multi-select) ───────────────────────────────────────────
-
-  /// Toggle a job category on/off. At least one must stay enabled. When the
-  /// driver is online the new set is pushed to the backend live, so they can
-  /// add or drop categories without disconnecting.
-  void _selectWorkMode(WorkMode mode) {
-    final current = ref.read(selectedWorkModesProvider);
-    final next = Set<WorkMode>.from(current);
-    if (next.contains(mode)) {
-      if (next.length == 1) return; // keep at least one category
-      next.remove(mode);
-    } else {
-      next.add(mode);
-    }
-    ref.read(selectedWorkModesProvider.notifier).state = next;
-    if (_state.isOnline) {
-      DriverWsService().changeWorkModes(next);
-    }
-  }
+  // ── Work mode label ────────────────────────────────────────────────────
 
   String _modesLabel(Set<WorkMode> modes) {
     if (modes.length == 1) return '${modes.first.seekingLabel}.';
@@ -804,7 +785,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const _panelText = Color(0xFFE2E8F0);
 
   Widget _buildBottomPanel(ServiceType serviceType) {
-    final workMode = ref.watch(selectedWorkModeProvider);
     final workModes = ref.watch(selectedWorkModesProvider);
     final driverStatus = ref.watch(driverStatusProvider);
 
@@ -927,57 +907,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
 
-          // Work mode selector — multi-select, editable even while online.
-          _WorkModeSelector(
-            selected: workModes,
-            onSelect: _selectWorkMode,
+          // Stats summary chips (colapsable por sesión)
+          _StatsChipRow(
+            driverStatus: driverStatus,
+            workModes: workModes,
           ),
           const SizedBox(height: AppConstants.spacingM),
 
-          // Stats row
-          Row(
-            children: [
-              _StatCard(
-                label: 'Hoy',
-                value: DateFormatter.formatRelativeDate(DateTime.now()),
-                icon: Icons.calendar_today_outlined,
-              ),
-              const SizedBox(width: AppConstants.spacingM),
-              _StatCard(
-                label: 'Ganancias',
-                value: CurrencyFormatter.format(driverStatus.dailyEarnings),
-                icon: Icons.payments_outlined,
-                highlight: true,
-              ),
-              const SizedBox(width: AppConstants.spacingM),
-              _StatCard(
-                label: 'Viajes',
-                value: driverStatus.dailyTrips.toString(),
-                icon: workMode.icon,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-
-          // Quick access: new features
-          Row(
-            children: [
-              Expanded(
-                child: _PanelQuickBtn(
-                  icon: Icons.bolt_rounded,
-                  label: 'Solicitudes',
-                  onTap: () => context.push('/ride-pool'),
-                ),
-              ),
-              const SizedBox(width: AppConstants.spacingS),
-              Expanded(
-                child: _PanelQuickBtn(
-                  icon: Icons.verified_user_rounded,
-                  label: 'Verificación',
-                  onTap: () => context.push('/verification'),
-                ),
-              ),
-            ],
+          // Session selector — 3 expandable cards
+          _SessionSelector(
+            selectedModes: workModes,
+            onSelectModes: (modes) {
+              ref.read(selectedWorkModesProvider.notifier).state = modes;
+              if (_state.isOnline) {
+                DriverWsService().changeWorkModes(modes);
+              }
+            },
+            onGoToRequests: () => context.push('/ride-pool'),
           ),
           const SizedBox(height: AppConstants.spacingM),
 
@@ -998,8 +944,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Flexible(
                 child: Text(
                   _state.isOnline
-                      ? 'En línea · Buscando ${workMode.seekingLabel}...'
-                      : 'Desconectado · Elige qué quieres hacer y activa el toggle',
+                      ? 'En línea · Recibiendo solicitudes...'
+                      : 'Desconectado · Selecciona una sesión y activa el toggle',
                   style: TextStyle(
                     color: _state.isOnline
                         ? AppColors.online
@@ -1018,167 +964,574 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-// ── Work mode selector ────────────────────────────────────────────────────────
+// ── Stats chip row ───────────────────────────────────────────────────────────
 
-class _WorkModeSelector extends StatelessWidget {
-  const _WorkModeSelector({
-    required this.selected,
-    required this.onSelect,
+class _StatsChipRow extends StatelessWidget {
+  const _StatsChipRow({
+    required this.driverStatus,
+    required this.workModes,
   });
 
-  final Set<WorkMode> selected;
-  final ValueChanged<WorkMode> onSelect;
+  final DriverStatusEntity driverStatus;
+  final Set<WorkMode> workModes;
 
-  static const _subText = Color(0xFF94A3B8);
+  // Mock per-session distribution — replace with real per-category tracking.
+  int get _passengerTrips =>
+      ((driverStatus.dailyTrips * 0.55).round()).clamp(0, driverStatus.dailyTrips);
+  int get _intercityTrips =>
+      driverStatus.dailyTrips > 3 ? 1 : 0;
+  int get _deliveryTrips =>
+      (driverStatus.dailyTrips - _passengerTrips - _intercityTrips).clamp(0, driverStatus.dailyTrips);
+
+  double get _passengerEarnings => driverStatus.dailyEarnings * 0.52;
+  double get _intercityEarnings => _intercityTrips > 0 ? driverStatus.dailyEarnings * 0.30 : 0;
+  double get _deliveryEarnings =>
+      driverStatus.dailyEarnings - _passengerEarnings - _intercityEarnings;
+
+  String _fmt(double v) {
+    if (v >= 1000) return '\$${(v / 1000).toStringAsFixed(0)}k';
+    return '\$${v.round()}';
+  }
+
+  void _showDetail(BuildContext context, String title, int trips, double earnings, Color color) {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _StatDetailSheet(
+        title: title,
+        trips: trips,
+        earnings: earnings,
+        color: color,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _Chip(
+            icon: Icons.people_alt_rounded,
+            label: 'Pasajero',
+            value: '$_passengerTrips · ${_fmt(_passengerEarnings)}',
+            color: AppColors.serviceParticular,
+            onTap: () => _showDetail(
+              context, 'Pasajero', _passengerTrips, _passengerEarnings,
+              AppColors.serviceParticular,
+            ),
+          ),
+          const SizedBox(width: AppConstants.spacingS),
+          _Chip(
+            icon: Icons.directions_bus_rounded,
+            label: 'Intermunicipal',
+            value: '$_intercityTrips · ${_fmt(_intercityEarnings)}',
+            color: AppColors.secondary,
+            onTap: () => _showDetail(
+              context, 'Intermunicipal', _intercityTrips, _intercityEarnings,
+              AppColors.secondary,
+            ),
+          ),
+          const SizedBox(width: AppConstants.spacingS),
+          _Chip(
+            icon: Icons.delivery_dining_rounded,
+            label: 'Domicilios',
+            value: '$_deliveryTrips · ${_fmt(_deliveryEarnings)}',
+            color: AppColors.serviceEnvios,
+            onTap: () => _showDetail(
+              context, 'Domicilios', _deliveryTrips, _deliveryEarnings,
+              AppColors.serviceEnvios,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  final VoidCallback onTap;
+
+  static const _bg = Color(0xFF252836);
+  static const _border = Color(0xFF2E3347);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: _bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              '¿Qué quieres recibir?',
-              style: TextStyle(
-                color: _subText,
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFFE2E8F0),
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(6),
+            const SizedBox(width: 4),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Color(0xFF64748B)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatDetailSheet extends StatelessWidget {
+  const _StatDetailSheet({
+    required this.title,
+    required this.trips,
+    required this.earnings,
+    required this.color,
+  });
+
+  final String title;
+  final int trips;
+  final double earnings;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final commission = earnings * 0.13;
+    final net = earnings - commission;
+
+    return Container(
+      margin: const EdgeInsets.all(AppConstants.spacingM),
+      padding: const EdgeInsets.all(AppConstants.spacingL),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1D27),
+        borderRadius: BorderRadius.circular(AppConstants.radiusXLarge),
+        border: Border.all(color: const Color(0xFF2E3347)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.bar_chart_rounded, color: color, size: 20),
               ),
-              child: const Text(
-                'Activa varias',
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 9.5,
+              const SizedBox(width: AppConstants.spacingS),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFFE2E8F0),
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppConstants.spacingS),
-        Row(
-          children: WorkMode.values.map((mode) {
-            final isSelected = selected.contains(mode);
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  right: mode != WorkMode.values.last
-                      ? AppConstants.spacingS
-                      : 0,
-                ),
-                child: _WorkModeCard(
-                  mode: mode,
-                  isSelected: isSelected,
-                  onTap: () => onSelect(mode),
-                ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 20),
               ),
-            );
-          }).toList(),
+            ],
+          ),
+          const SizedBox(height: AppConstants.spacingL),
+          _SheetRow(label: 'Viajes completados', value: '$trips viajes'),
+          const SizedBox(height: AppConstants.spacingS),
+          _SheetRow(
+            label: 'Ganancia bruta',
+            value: CurrencyFormatter.format(earnings),
+          ),
+          const SizedBox(height: AppConstants.spacingS),
+          _SheetRow(
+            label: 'Comisión plataforma (13%)',
+            value: '− ${CurrencyFormatter.format(commission)}',
+            valueColor: AppColors.error,
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppConstants.spacingS),
+            child: Divider(color: Color(0xFF2E3347)),
+          ),
+          _SheetRow(
+            label: 'Ganancia neta',
+            value: CurrencyFormatter.format(net),
+            valueColor: AppColors.primary,
+            bold: true,
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetRow extends StatelessWidget {
+  const _SheetRow({
+    required this.label,
+    required this.value,
+    this.valueColor = const Color(0xFFE2E8F0),
+    this.bold = false,
+  });
+
+  final String label;
+  final String value;
+  final Color valueColor;
+  final bool bold;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 13,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+          ),
         ),
       ],
     );
   }
 }
 
-class _WorkModeCard extends StatelessWidget {
-  const _WorkModeCard({
-    required this.mode,
-    required this.isSelected,
-    required this.onTap,
+// ── Session selector (3 expandable accordion cards) ──────────────────────────
+
+enum _DriverSession { passenger, intercity, domicilios }
+
+class _SessionSelector extends StatefulWidget {
+  const _SessionSelector({
+    required this.selectedModes,
+    required this.onSelectModes,
+    required this.onGoToRequests,
   });
 
-  final WorkMode mode;
-  final bool isSelected;
+  final Set<WorkMode> selectedModes;
+  final ValueChanged<Set<WorkMode>> onSelectModes;
+  final VoidCallback onGoToRequests;
+
+  @override
+  State<_SessionSelector> createState() => _SessionSelectorState();
+}
+
+class _SessionSelectorState extends State<_SessionSelector> {
+  _DriverSession _expanded = _DriverSession.passenger;
+
+  static const _sessions = [
+    (
+      session: _DriverSession.passenger,
+      icon: Icons.people_alt_rounded,
+      label: 'Pasajero',
+      sublabel: 'Viajes urbanos locales',
+      color: AppColors.serviceParticular,
+      modes: {WorkMode.pasajero},
+    ),
+    (
+      session: _DriverSession.intercity,
+      icon: Icons.directions_bus_rounded,
+      label: 'Intermunicipal',
+      sublabel: 'Viajes entre ciudades',
+      color: AppColors.secondary,
+      modes: {WorkMode.pasajero},
+    ),
+    (
+      session: _DriverSession.domicilios,
+      icon: Icons.delivery_dining_rounded,
+      label: 'Domicilios',
+      sublabel: 'Pedidos, paquetes y mandados',
+      color: AppColors.serviceEnvios,
+      modes: {WorkMode.pedido, WorkMode.paquete, WorkMode.mandado},
+    ),
+  ];
+
+  void _select(_DriverSession session, Set<WorkMode> modes) {
+    HapticFeedback.selectionClick();
+    setState(() => _expanded = session);
+    widget.onSelectModes(modes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: _sessions.map((s) {
+        final isOpen = _expanded == s.session;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppConstants.spacingS),
+          child: _SessionCard(
+            icon: s.icon,
+            label: s.label,
+            sublabel: s.sublabel,
+            color: s.color,
+            isOpen: isOpen,
+            onTap: () => _select(s.session, s.modes),
+            onGoToRequests: widget.onGoToRequests,
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _SessionCard extends StatelessWidget {
+  const _SessionCard({
+    required this.icon,
+    required this.label,
+    required this.sublabel,
+    required this.color,
+    required this.isOpen,
+    required this.onTap,
+    required this.onGoToRequests,
+  });
+
+  final IconData icon;
+  final String label;
+  final String sublabel;
+  final Color color;
+  final bool isOpen;
   final VoidCallback onTap;
+  final VoidCallback onGoToRequests;
 
   static const _cardBg = Color(0xFF252836);
-  static const _borderColor = Color(0xFF2E3347);
+  static const _activeBg = Color(0xFF1E2436);
+  static const _border = Color(0xFF2E3347);
   static const _subText = Color(0xFF94A3B8);
 
   @override
   Widget build(BuildContext context) {
-    final bg = isSelected ? mode.color : _cardBg;
-    final iconColor = isSelected ? Colors.white : mode.color;
-    final labelColor =
-        isSelected ? Colors.white : const Color(0xFFE2E8F0);
-    final subColor = isSelected
-        ? Colors.white.withValues(alpha: 0.8)
-        : _subText;
-
-    return PressScale(
-      onTap: onTap,
-      scale: 0.94,
-      child: AnimatedContainer(
-        duration: AppConstants.shortAnimation,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-          border: isSelected
-              ? null
-              : Border.all(color: _borderColor),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: mode.color.withValues(alpha: 0.38),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
+    return AnimatedContainer(
+      duration: AppConstants.mediumAnimation,
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        color: isOpen ? _activeBg : _cardBg,
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(
+          color: isOpen ? color.withValues(alpha: 0.45) : _border,
+          width: isOpen ? 1.5 : 1,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(mode.icon, size: 28, color: iconColor),
-                if (isSelected)
-                  Positioned(
-                    right: -8,
-                    top: -6,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.check_circle_rounded,
-                          size: 14, color: mode.color),
+        boxShadow: isOpen
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.18),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header row — always visible
+          GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppConstants.spacingM,
+                vertical: 12,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: isOpen ? 0.20 : 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  const SizedBox(width: AppConstants.spacingS),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(
+                            color: isOpen ? const Color(0xFFE2E8F0) : const Color(0xFFCBD5E1),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          sublabel,
+                          style: const TextStyle(
+                            color: _subText,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-              ],
+                  AnimatedRotation(
+                    turns: isOpen ? 0.5 : 0,
+                    duration: AppConstants.mediumAnimation,
+                    curve: Curves.easeInOut,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: isOpen ? color : _subText,
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 6),
+          ),
+
+          // Expanded body
+          AnimatedCrossFade(
+            firstChild: const SizedBox(width: double.infinity, height: 0),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppConstants.spacingM,
+                0,
+                AppConstants.spacingM,
+                AppConstants.spacingM,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 1,
+                    color: const Color(0xFF2E3347),
+                    margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
+                  ),
+                  // Quick info row
+                  Row(
+                    children: [
+                      _InfoChip(
+                        icon: Icons.payments_outlined,
+                        label: 'Tarifa base',
+                        value: label == 'Domicilios' ? '\$3.500' : '\$4.000',
+                        color: color,
+                      ),
+                      const SizedBox(width: AppConstants.spacingS),
+                      _InfoChip(
+                        icon: Icons.add_road_rounded,
+                        label: 'Por km',
+                        value: '+\$1.000',
+                        color: color,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppConstants.spacingS),
+                  // Solicitudes CTA
+                  SizedBox(
+                    width: double.infinity,
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.mediumImpact();
+                        onGoToRequests();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                          border: Border.all(
+                            color: color.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.bolt_rounded, color: color, size: 18),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Ver solicitudes',
+                              style: TextStyle(
+                                color: color,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            crossFadeState: isOpen ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: AppConstants.mediumAnimation,
+            sizeCurve: Curves.easeInOut,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1D27),
+          borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
+          border: Border.all(color: const Color(0xFF2E3347)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(
-              mode.displayName,
+              label,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
               style: TextStyle(
+                color: color,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: labelColor,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              mode.subtitle,
-              style: TextStyle(
-                fontSize: 9,
-                color: subColor,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -2085,73 +2438,6 @@ class _NotifBell extends ConsumerWidget {
   }
 }
 
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    this.highlight = false,
-  });
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final bool highlight;
-
-  static const _cardBg = Color(0xFF252836);
-  static const _highlightBg = Color(0x1A3B82F6);
-  static const _borderColor = Color(0xFF2E3347);
-  static const _subText = Color(0xFF94A3B8);
-  static const _textColor = Color(0xFFE2E8F0);
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppConstants.spacingS,
-          vertical: AppConstants.spacingS,
-        ),
-        decoration: BoxDecoration(
-          color: highlight ? _highlightBg : _cardBg,
-          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-          border: highlight
-              ? Border.all(color: AppColors.primary.withValues(alpha: 0.3))
-              : Border.all(color: _borderColor),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: highlight ? AppColors.primary : _subText,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              value,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: highlight ? AppColors.primary : _textColor,
-                fontSize: 13,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              label,
-              style: const TextStyle(
-                color: _subText,
-                fontSize: 10,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// Modal que aparece cuando llega una solicitud de viaje nueva.
 class _TripRequestModal extends StatelessWidget {
   const _TripRequestModal({
@@ -2677,49 +2963,3 @@ class _DeliveryRequestCard extends StatelessWidget {
   }
 }
 
-// ── Panel quick-access button ─────────────────────────────────────────────────
-
-class _PanelQuickBtn extends StatelessWidget {
-  const _PanelQuickBtn({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  static const _bg = Color(0xFF252836);
-  static const _border = Color(0xFF2E3347);
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: _bg,
-          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-          border: Border.all(color: _border),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: AppColors.primary, size: 18),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFFE2E8F0),
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
