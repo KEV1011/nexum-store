@@ -200,7 +200,14 @@ class AuthRepositoryImpl implements AuthRepository {
       await _secureStorage.write(key: AppConstants.authTokenKey, value: token);
       await _secureStorage.delete(key: AppConstants.needsRegistrationKey);
 
-      return Right(_driverFromMap(data));
+      final driver = _driverFromMap(data);
+      if (driver.role != null) {
+        await _secureStorage.write(
+          key: AppConstants.accountRoleKey,
+          value: driver.role!.apiValue,
+        );
+      }
+      return Right(driver);
     } on AuthException catch (e) {
       return Left(UnexpectedFailure(message: e.message));
     } on NetworkException catch (e) {
@@ -232,6 +239,7 @@ class AuthRepositoryImpl implements AuthRepository {
       final token = data['token'] as String;
       await _secureStorage.write(key: AppConstants.authTokenKey, value: token);
       await _secureStorage.delete(key: AppConstants.needsRegistrationKey);
+      await _secureStorage.write(key: AppConstants.accountRoleKey, value: role);
 
       return Right(_driverFromMap(data));
     } on NetworkException catch (e) {

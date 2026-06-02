@@ -356,7 +356,20 @@ Future<String?> _authRedirect(
       state.matchedLocation == AppRoutes.onboarding ||
       state.matchedLocation == AppRoutes.roleSelect ||
       state.matchedLocation == AppRoutes.registerRole;
-  if (isOnAuthRoute) return AppRoutes.home;
+
+  final accountRole = await storage.read(key: AppConstants.accountRoleKey);
+  final isBusiness = accountRole == 'business';
+  final isAdmin = accountRole == 'admin';
+
+  if (isOnAuthRoute) {
+    return isBusiness ? AppRoutes.businessPortal : AppRoutes.home;
+  }
+
+  // Redirect business/admin to their home if they accidentally land on /home
+  if (state.matchedLocation == AppRoutes.home) {
+    if (isBusiness) return AppRoutes.businessPortal;
+    if (isAdmin) return AppRoutes.admin;
+  }
 
   return null;
 }

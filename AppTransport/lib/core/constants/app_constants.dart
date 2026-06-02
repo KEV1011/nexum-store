@@ -10,6 +10,7 @@ abstract final class AppConstants {
   static const String needsRegistrationKey = 'needs_registration';
   static const String onboardingCompleteKey = 'onboarding_complete';
   static const String tripHistoryKey = 'nexum_trip_history_v1';
+  static const String accountRoleKey = 'account_role';
 
   // OTP mock (hardcoded para fase MVP)
   static const String mockOtpCode = '123456';
@@ -28,7 +29,8 @@ abstract final class AppConstants {
   static const double minimumFareCop = 5000.0;
 
   // Comisión de plataforma
-  static const double platformCommissionRate = 0.15; // 15%
+  static const double platformCommissionRate = 0.15;    // 15% conductores
+  static const double businessCommissionRate = 0.19;    // 19% negocios aliados
 
   // Tracking de ubicación
   static const int locationBatchIntervalSeconds = 4;
