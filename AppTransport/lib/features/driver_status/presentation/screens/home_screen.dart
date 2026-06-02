@@ -727,8 +727,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           // Bottom panel + floating glass map controls.
-          // The FAB lives in the same min-height column so it auto-floats
-          // just above the panel regardless of the panel's dynamic height.
+          // The controls cluster lives in the same min-height column so it
+          // auto-floats just above the panel regardless of its dynamic height.
           Positioned(
             left: 0,
             right: 0,
@@ -743,9 +743,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                   child: Align(
                     alignment: Alignment.centerRight,
-                    child: _GlassCircleButton(
-                      icon: Icons.my_location_rounded,
-                      onTap: _recenterMap,
+                    child: _MapControlsCluster(
+                      heatmapOn: _showHeatmap,
+                      onToggleHeatmap: () => setState(
+                        () => _showHeatmap = !_showHeatmap,
+                      ),
+                      onRecenter: _recenterMap,
                     ),
                   ),
                 ),
@@ -773,7 +776,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       padding: const EdgeInsets.all(AppConstants.spacingM),
       child: Row(
         children: [
-          // Menu button (opens drawer)
+          // Menu button (opens drawer) — earnings, profile y demás viven aquí.
           Builder(
             builder: (ctx) => _MapActionButton(
               icon: Icons.menu_rounded,
@@ -781,33 +784,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           const SizedBox(width: AppConstants.spacingS),
-          // Online toggle
+          // Online toggle — acción primaria.
           _OnlineToggle(
             isOnline: _state.isOnline,
             workMode: workMode,
             onTap: _toggleOnline,
           ),
           const Spacer(),
-          // Earnings shortcut
-          _MapActionButton(
-            icon: Icons.monetization_on_outlined,
-            onTap: () => context.push('/earnings'),
-          ),
-          const SizedBox(width: AppConstants.spacingS),
-          _MapActionButton(
-            icon: _showHeatmap
-                ? Icons.layers_rounded
-                : Icons.layers_outlined,
-            onTap: () =>
-                setState(() => _showHeatmap = !_showHeatmap),
-          ),
-          const SizedBox(width: AppConstants.spacingS),
+          // Notificaciones — único atajo a la derecha (mantiene el badge visible).
           _NotifBell(onTap: () => context.push('/notifications')),
-          const SizedBox(width: AppConstants.spacingS),
-          _MapActionButton(
-            icon: Icons.person_outline_rounded,
-            onTap: () => context.push('/profile'),
-          ),
         ],
       ),
     );
@@ -1945,53 +1930,106 @@ class _MapActionButton extends StatelessWidget {
   }
 }
 
-/// Larger primary glass FAB — frosted circle tinted with the brand colour.
-class _GlassCircleButton extends StatelessWidget {
-  const _GlassCircleButton({
+/// Vertical glass cluster of map-only controls (heatmap + recenter), pinned to
+/// the right edge above the operational panel. Frosted pill that keeps the
+/// map readable while grouping the tools that belong to the map itself.
+class _MapControlsCluster extends StatelessWidget {
+  const _MapControlsCluster({
+    required this.heatmapOn,
+    required this.onToggleHeatmap,
+    required this.onRecenter,
+  });
+
+  final bool heatmapOn;
+  final VoidCallback onToggleHeatmap;
+  final VoidCallback onRecenter;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final glass = isDark
+        ? Colors.black.withValues(alpha: 0.34)
+        : Colors.white.withValues(alpha: 0.62);
+    final border = isDark
+        ? Colors.white.withValues(alpha: 0.16)
+        : Colors.white.withValues(alpha: 0.75);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.12)
+        : AppColors.textPrimary.withValues(alpha: 0.08);
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: glass,
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: border, width: 1.2),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _MapControlIcon(
+                  icon: heatmapOn
+                      ? Icons.layers_rounded
+                      : Icons.layers_outlined,
+                  active: heatmapOn,
+                  onTap: onToggleHeatmap,
+                ),
+                Container(width: 26, height: 1, color: divider),
+                _MapControlIcon(
+                  icon: Icons.my_location_rounded,
+                  active: false,
+                  onTap: onRecenter,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MapControlIcon extends StatelessWidget {
+  const _MapControlIcon({
     required this.icon,
+    required this.active,
     required this.onTap,
   });
 
   final IconData icon;
+  final bool active;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Material(
-            color: Colors.white.withValues(alpha: 0.65),
-            shape: CircleBorder(
-              side: BorderSide(
-                color: Colors.white.withValues(alpha: 0.75),
-                width: 1.4,
-              ),
-            ),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onTap,
-              child: Padding(
-                padding: const EdgeInsets.all(13),
-                child: Icon(
-                  icon,
-                  size: 24,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-          ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final base = isDark ? AppColors.textOnDark : AppColors.textPrimary;
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      customBorder: const CircleBorder(),
+      child: Padding(
+        padding: const EdgeInsets.all(11),
+        child: Icon(
+          icon,
+          size: 22,
+          color: active ? AppColors.primary : base,
         ),
       ),
     );
