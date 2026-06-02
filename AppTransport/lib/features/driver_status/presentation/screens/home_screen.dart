@@ -76,8 +76,14 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   _HomeState _state = const _HomeState();
   final _mapController = MapController();
+  final _sheetController = DraggableScrollableController();
   bool _showHeatmap = false;
   bool _bannerDismissed = false;
+
+  // Snap points del bottom sheet arrastrable (fracción de la altura).
+  static const double _sheetCollapsed = 0.12;
+  static const double _sheetHalf = 0.46;
+  static const double _sheetFull = 0.92;
 
   static const _kDailyTripGoal = 10;
 
@@ -162,6 +168,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _wsErrandCancelSub?.cancel();
     _wsDeliveryCancelSub?.cancel();
     _mapController.dispose();
+    _sheetController.dispose();
     super.dispose();
   }
 
@@ -707,35 +714,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
-          // Bottom panel + floating glass map controls.
-          // The controls cluster lives in the same min-height column so it
-          // auto-floats just above the panel regardless of its dynamic height.
+          // Floating glass map controls — anclados justo encima del sheet
+          // colapsado para que el mapa quede lo más visible posible.
           Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    right: AppConstants.spacingM,
-                    bottom: AppConstants.spacingS,
-                  ),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: _MapControlsCluster(
-                      heatmapOn: _showHeatmap,
-                      onToggleHeatmap: () => setState(
-                        () => _showHeatmap = !_showHeatmap,
-                      ),
-                      onRecenter: _recenterMap,
-                    ),
-                  ),
-                ),
-                _buildBottomPanel(serviceType),
-              ],
+            right: AppConstants.spacingM,
+            bottom: MediaQuery.sizeOf(context).height * _sheetCollapsed +
+                AppConstants.spacingS,
+            child: _MapControlsCluster(
+              heatmapOn: _showHeatmap,
+              onToggleHeatmap: () => setState(
+                () => _showHeatmap = !_showHeatmap,
+              ),
+              onRecenter: _recenterMap,
             ),
+          ),
+          // Bottom panel como sheet arrastrable de 3 posiciones. El mapa queda
+          // siempre interactivo detrás; el sheet se desliza sobre él.
+          DraggableScrollableSheet(
+            controller: _sheetController,
+            initialChildSize: _sheetHalf,
+            minChildSize: _sheetCollapsed,
+            maxChildSize: _sheetFull,
+            snap: true,
+            snapSizes: const [_sheetCollapsed, _sheetHalf, _sheetFull],
+            builder: (context, scrollController) =>
+                _buildBottomPanel(serviceType, scrollController),
           ),
           // Trip request modal
           if (_state.pendingRequest != null)
@@ -784,7 +787,95 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const _panelSubText = Color(0xFF94A3B8);
   static const _panelText = Color(0xFFE2E8F0);
 
-  Widget _buildBottomPanel(ServiceType serviceType) {
+  /// Cabecera compacta del sheet: estado de conexión + botón "ver panel".
+  /// Es lo único que se ve cuando el sheet está colapsado (mapa 100% visible).
+  Widget _buildSheetHeader() {
+    final online = _state.isOnline;
+    return Row(
+      children: [
+        AnimatedContainer(
+          duration: AppConstants.shortAnimation,
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: online ? AppColors.online : AppColors.offline,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: (online ? AppColors.online : AppColors.offline)
+                    .withValues(alpha: 0.5),
+                blurRadius: 6,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: AppConstants.spacingS),
+        Expanded(
+          child: Text(
+            online ? 'En línea · Recibiendo solicitudes' : 'Desconectado',
+            style: TextStyle(
+              color: online ? AppColors.online : _panelText,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        GestureDetector(
+          onTap: () {
+            final current =
+                _sheetController.isAttached ? _sheetController.size : _sheetHalf;
+            _snapSheetTo(
+              current <= _sheetCollapsed + 0.05 ? _sheetHalf : _sheetCollapsed,
+            );
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Ver panel',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+                SizedBox(width: 2),
+                Icon(
+                  Icons.unfold_more_rounded,
+                  size: 15,
+                  color: AppColors.primary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Anima el sheet a una posición concreta (snap point).
+  void _snapSheetTo(double size) {
+    HapticFeedback.selectionClick();
+    _sheetController.animateTo(
+      size,
+      duration: AppConstants.mediumAnimation,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Widget _buildBottomPanel(
+    ServiceType serviceType,
+    ScrollController scrollController,
+  ) {
     final workModes = ref.watch(selectedWorkModesProvider);
     final driverStatus = ref.watch(driverStatusProvider);
 
@@ -802,24 +893,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      padding: EdgeInsets.only(
-        left: AppConstants.spacingL,
-        right: AppConstants.spacingL,
-        top: AppConstants.spacingM,
-        bottom: MediaQuery.of(context).padding.bottom + AppConstants.spacingM,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: ListView(
+        controller: scrollController,
+        padding: EdgeInsets.only(
+          left: AppConstants.spacingL,
+          right: AppConstants.spacingL,
+          top: AppConstants.spacingS,
+          bottom: MediaQuery.of(context).padding.bottom + AppConstants.spacingL,
+        ),
         children: [
-          // Handle
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: _panelHandle,
-              borderRadius: BorderRadius.circular(2),
+          // Handle (zona de arrastre)
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
+              decoration: BoxDecoration(
+                color: _panelHandle,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
+
+          // Cabecera compacta — visible cuando el sheet está colapsado.
+          _buildSheetHeader(),
           const SizedBox(height: AppConstants.spacingM),
 
           // Greeting + daily goal
@@ -882,8 +979,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               Text(
                 '${((driverStatus.dailyTrips / _kDailyTripGoal) * 100).round().clamp(0, 100)}%',
-                style: const TextStyle(
-                  color: AppColors.primary,
+                style: TextStyle(
+                  // Gris cuando aún no hay progreso; verde al avanzar.
+                  color: driverStatus.dailyTrips == 0
+                      ? _panelSubText
+                      : AppColors.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -899,9 +999,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               minHeight: 6,
               backgroundColor: _panelHandle,
               valueColor: AlwaysStoppedAnimation<Color>(
-                driverStatus.dailyTrips >= _kDailyTripGoal
-                    ? AppColors.success
-                    : AppColors.primary,
+                driverStatus.dailyTrips == 0
+                    ? _panelSubText
+                    : driverStatus.dailyTrips >= _kDailyTripGoal
+                        ? AppColors.success
+                        : AppColors.primary,
               ),
             ),
           ),
@@ -924,6 +1026,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               }
             },
             onGoToRequests: () => context.push('/ride-pool'),
+            onPublishIntercity: () => context.push('/pooled-publish'),
+            onMyIntercityTrips: () => context.push('/pooled-trips'),
           ),
           const SizedBox(height: AppConstants.spacingM),
 
@@ -1229,16 +1333,23 @@ class _SheetRow extends StatelessWidget {
 
 enum _DriverSession { passenger, intercity, domicilios }
 
+/// Acción (botón) dentro de una tarjeta de sesión.
+typedef _SessionAction = ({IconData icon, String label, VoidCallback onTap});
+
 class _SessionSelector extends StatefulWidget {
   const _SessionSelector({
     required this.selectedModes,
     required this.onSelectModes,
     required this.onGoToRequests,
+    required this.onPublishIntercity,
+    required this.onMyIntercityTrips,
   });
 
   final Set<WorkMode> selectedModes;
   final ValueChanged<Set<WorkMode>> onSelectModes;
   final VoidCallback onGoToRequests;
+  final VoidCallback onPublishIntercity;
+  final VoidCallback onMyIntercityTrips;
 
   @override
   State<_SessionSelector> createState() => _SessionSelectorState();
@@ -1280,6 +1391,34 @@ class _SessionSelectorState extends State<_SessionSelector> {
     widget.onSelectModes(modes);
   }
 
+  /// Botones que muestra cada sesión al expandirse.
+  List<_SessionAction> _actionsFor(_DriverSession session) {
+    switch (session) {
+      case _DriverSession.intercity:
+        return [
+          (
+            icon: Icons.add_road_rounded,
+            label: 'Publicar viaje',
+            onTap: widget.onPublishIntercity,
+          ),
+          (
+            icon: Icons.event_seat_rounded,
+            label: 'Mis viajes',
+            onTap: widget.onMyIntercityTrips,
+          ),
+        ];
+      case _DriverSession.passenger:
+      case _DriverSession.domicilios:
+        return [
+          (
+            icon: Icons.bolt_rounded,
+            label: 'Ver solicitudes',
+            onTap: widget.onGoToRequests,
+          ),
+        ];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1293,8 +1432,9 @@ class _SessionSelectorState extends State<_SessionSelector> {
             sublabel: s.sublabel,
             color: s.color,
             isOpen: isOpen,
+            isIntercity: s.session == _DriverSession.intercity,
             onTap: () => _select(s.session, s.modes),
-            onGoToRequests: widget.onGoToRequests,
+            actions: _actionsFor(s.session),
           ),
         );
       }).toList(),
@@ -1309,8 +1449,9 @@ class _SessionCard extends StatelessWidget {
     required this.sublabel,
     required this.color,
     required this.isOpen,
+    required this.isIntercity,
     required this.onTap,
-    required this.onGoToRequests,
+    required this.actions,
   });
 
   final IconData icon;
@@ -1318,8 +1459,9 @@ class _SessionCard extends StatelessWidget {
   final String sublabel;
   final Color color;
   final bool isOpen;
+  final bool isIntercity;
   final VoidCallback onTap;
-  final VoidCallback onGoToRequests;
+  final List<_SessionAction> actions;
 
   static const _cardBg = Color(0xFF252836);
   static const _activeBg = Color(0xFF1E2436);
@@ -1432,54 +1574,42 @@ class _SessionCard extends StatelessWidget {
                     children: [
                       _InfoChip(
                         icon: Icons.payments_outlined,
-                        label: 'Tarifa base',
-                        value: label == 'Domicilios' ? '\$3.500' : '\$4.000',
+                        label: isIntercity ? 'Desde' : 'Tarifa base',
+                        value: isIntercity
+                            ? '\$22.000'
+                            : label == 'Domicilios'
+                                ? '\$3.500'
+                                : '\$4.000',
                         color: color,
                       ),
                       const SizedBox(width: AppConstants.spacingS),
                       _InfoChip(
-                        icon: Icons.add_road_rounded,
-                        label: 'Por km',
-                        value: '+\$1.000',
+                        icon: isIntercity
+                            ? Icons.event_seat_rounded
+                            : Icons.add_road_rounded,
+                        label: isIntercity ? 'Por puesto' : 'Por km',
+                        value: isIntercity ? 'Tú fijas' : '+\$1.000',
                         color: color,
                       ),
                     ],
                   ),
                   const SizedBox(height: AppConstants.spacingS),
-                  // Solicitudes CTA
-                  SizedBox(
-                    width: double.infinity,
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.mediumImpact();
-                        onGoToRequests();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 11),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-                          border: Border.all(
-                            color: color.withValues(alpha: 0.35),
+                  // Action buttons (1 o 2 según la sesión)
+                  Row(
+                    children: [
+                      for (var i = 0; i < actions.length; i++) ...[
+                        if (i > 0)
+                          const SizedBox(width: AppConstants.spacingS),
+                        Expanded(
+                          child: _SessionActionButton(
+                            // El primer botón es el primario (relleno tintado).
+                            primary: i == 0,
+                            action: actions[i],
+                            color: color,
                           ),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.bolt_rounded, color: color, size: 18),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Ver solicitudes',
-                              style: TextStyle(
-                                color: color,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -1531,6 +1661,61 @@ class _InfoChip extends StatelessWidget {
                 color: color,
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón de acción dentro de una tarjeta de sesión. El primario va relleno
+/// (tinte del color de la sesión); los secundarios van con borde.
+class _SessionActionButton extends StatelessWidget {
+  const _SessionActionButton({
+    required this.primary,
+    required this.action,
+    required this.color,
+  });
+
+  final bool primary;
+  final _SessionAction action;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        action.onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          color: primary
+              ? color.withValues(alpha: 0.16)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+          border: Border.all(
+            color: color.withValues(alpha: primary ? 0.40 : 0.25),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(action.icon, color: color, size: 18),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                action.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
