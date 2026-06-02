@@ -643,20 +643,42 @@ class _MenuTabState extends ConsumerState<_MenuTab> {
           ),
         ),
 
-        // Search
+        // Search + add
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM),
-          child: TextField(
-            onChanged: (v) => setState(() => _search = v.toLowerCase()),
-            decoration: InputDecoration(
-              hintText: 'Buscar producto...',
-              prefixIcon: const Icon(Icons.search_rounded, size: 20),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-                borderSide: BorderSide(color: widget.isDark ? AppColors.outlineDark : AppColors.outlineLight),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  onChanged: (v) => setState(() => _search = v.toLowerCase()),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar producto...',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                      borderSide: BorderSide(color: widget.isDark ? AppColors.outlineDark : AppColors.outlineLight),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM, vertical: 10),
+                  ),
+                ),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM, vertical: 10),
-            ),
+              const SizedBox(width: AppConstants.spacingS),
+              SizedBox(
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: () => context.push('/business-portal/add-product'),
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: const Text('Agregar'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.serviceEnvios,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: AppConstants.spacingS),
@@ -728,12 +750,35 @@ class _ProductTile extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Row(children: [
+                  Flexible(child: Text(product.name, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  if (product.requiresRx) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(color: AppColors.errorContainer, borderRadius: BorderRadius.circular(8)),
+                      child: Text('Rx', style: theme.textTheme.labelSmall?.copyWith(color: AppColors.error, fontWeight: FontWeight.w800, fontSize: 9)),
+                    ),
+                  ],
+                ]),
                 if (product.description != null)
                   Text(product.description!, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
-                Text(CurrencyFormatter.format(product.price),
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: AppColors.serviceEnvios)),
+                Row(children: [
+                  Text(CurrencyFormatter.format(product.price),
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700, color: AppColors.serviceEnvios)),
+                  if (product.tracksStock) ...[
+                    const SizedBox(width: 8),
+                    Icon(Icons.inventory_2_outlined, size: 12,
+                        color: product.isLowStock ? AppColors.warning : AppColors.textTertiary),
+                    const SizedBox(width: 2),
+                    Text('${product.stock}',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: product.isLowStock ? AppColors.warning : AppColors.textTertiary,
+                          fontWeight: product.isLowStock ? FontWeight.w700 : FontWeight.w400,
+                        )),
+                  ],
+                ]),
               ],
             ),
           ),

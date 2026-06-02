@@ -37,6 +37,8 @@ import 'package:nexum_driver/features/business_portal/presentation/screens/'
     'business_registration_screen.dart';
 import 'package:nexum_driver/features/business_portal/presentation/screens/'
     'order_detail_screen.dart';
+import 'package:nexum_driver/features/business_portal/presentation/screens/'
+    'add_product_screen.dart';
 import 'package:nexum_driver/features/trip_history/presentation/screens/trip_history_screen.dart';
 import 'package:nexum_driver/features/wallet/presentation/screens/wallet_screen.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
@@ -66,6 +68,7 @@ abstract final class AppRoutes {
   static const String businessPortal = '/business-portal';
   static const String orderDetail = '/business-portal/order/:id';
   static const String businessRegistration = '/business-registration';
+  static const String addProduct = '/business-portal/add-product';
   static const String pooledTrips = '/pooled-trips';
   static const String pooledPublish = '/pooled-publish';
   static const String verification = '/verification';
@@ -282,6 +285,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const BusinessRegistrationScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.addProduct,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const AddProductScreen(),
         ),
       ),
       GoRoute(

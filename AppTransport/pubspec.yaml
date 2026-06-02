@@ -53,6 +53,9 @@ dependencies:
   # QR code generation
   qr_flutter: ^4.1.0
 
+  # Barcode / EAN scanning (catálogo maestro)
+  mobile_scanner: ^5.2.3
+
   # Push notifications (Firebase Cloud Messaging)
   firebase_core: ^3.6.0
   firebase_messaging: ^15.1.3

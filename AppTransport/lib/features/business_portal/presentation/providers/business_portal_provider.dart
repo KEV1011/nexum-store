@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/features/business_portal/data/datasources/business_portal_datasource.dart';
+import 'package:nexum_driver/features/business_portal/data/datasources/catalog_datasource.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/business_earnings_entity.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/business_order_entity.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/business_product_entity.dart';
@@ -8,6 +9,10 @@ import 'package:nexum_driver/features/business_portal/domain/entities/business_p
 
 final _dsProvider = Provider<BusinessPortalDataSource>(
   (_) => const BusinessPortalDataSource(),
+);
+
+final catalogDataSourceProvider = Provider<CatalogDataSource>(
+  (_) => CatalogDataSource(),
 );
 
 // ── Orders ────────────────────────────────────────────────────────────────────
@@ -77,6 +82,11 @@ class _ProductsNotifier
           .map((p) => p.id == productId ? p.copyWith(isAvailable: isAvailable) : p)
           .toList(),
     );
+  }
+
+  /// Inserta un producto recién agregado al inicio de la lista (feedback inmediato).
+  void addLocal(BusinessProductEntity product) {
+    state = state.whenData((list) => [product, ...list]);
   }
 }
 
