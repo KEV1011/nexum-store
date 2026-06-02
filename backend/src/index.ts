@@ -14,6 +14,7 @@ import earningsRouter from './routes/earnings.routes';
 import businessRouter from './routes/business.routes';
 import clientRouter from './routes/client.routes';
 import webhooksRouter from './routes/webhooks.routes';
+import adminRouter from './routes/admin.routes';
 
 // ─── Express App ──────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ app.use('/earnings', earningsRouter);
 app.use('/business', businessRouter);
 app.use('/client', clientRouter);
 app.use('/webhooks', webhooksRouter);
+app.use('/admin', adminRouter);
 
 // ─── 404 Catch-all ───────────────────────────────────────────────────────────
 

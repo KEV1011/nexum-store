@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { isValidColombianPhone, sendOtp, verifyOtp, registerDriver, verifyToken } from '../services/auth.service';
-import { RegisterDriverDTO } from '../types';
+import {
+  checkIdentifier as checkIdentifierSvc,
+  loginWithPassword as loginWithPasswordSvc,
+  registerWithRole as registerWithRoleSvc,
+} from '../services/account.service';
+import { AccountRole, RegisterDriverDTO } from '../types';
 
 const router = Router();
 
@@ -150,6 +155,79 @@ router.post('/register', (req: Request, res: Response): void => {
     res.status(201).json({ success: true, data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Driver registration failed';
+    res.status(400).json({ success: false, error: message });
+  }
+});
+
+// ─── Progressive identification + password auth ──────────────────────────────
+
+// POST /auth/check-identifier  → { exists, role, status }
+router.post('/check-identifier', (req: Request, res: Response): void => {
+  const { identifier } = req.body as { identifier?: string };
+  if (!identifier || typeof identifier !== 'string') {
+    res.status(400).json({ success: false, error: 'identifier is required' });
+    return;
+  }
+  const result = checkIdentifierSvc(identifier);
+  res.status(200).json({ success: true, data: result });
+});
+
+// POST /auth/login  → { token, driver }
+router.post('/login', (req: Request, res: Response): void => {
+  const { identifier, password } = req.body as {
+    identifier?: string;
+    password?: string;
+  };
+  if (!identifier || typeof identifier !== 'string') {
+    res.status(400).json({ success: false, error: 'identifier is required' });
+    return;
+  }
+  if (!password || typeof password !== 'string') {
+    res.status(400).json({ success: false, error: 'password is required' });
+    return;
+  }
+  try {
+    const result = loginWithPasswordSvc(identifier, password);
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Login failed';
+    res.status(401).json({ success: false, error: message });
+  }
+});
+
+// POST /auth/register-role  → { token, driver }
+router.post('/register-role', (req: Request, res: Response): void => {
+  const { identifier, password, role, profile } = req.body as {
+    identifier?: string;
+    password?: string;
+    role?: string;
+    profile?: Record<string, unknown>;
+  };
+  if (!identifier || typeof identifier !== 'string') {
+    res.status(400).json({ success: false, error: 'identifier is required' });
+    return;
+  }
+  if (!password || typeof password !== 'string') {
+    res.status(400).json({ success: false, error: 'password is required' });
+    return;
+  }
+  if (!role || !['driver_car', 'driver_moto', 'business'].includes(role)) {
+    res.status(400).json({
+      success: false,
+      error: 'role must be driver_car, driver_moto or business',
+    });
+    return;
+  }
+  try {
+    const result = registerWithRoleSvc({
+      identifier,
+      password,
+      role: role as AccountRole,
+      profile: profile ?? {},
+    });
+    res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Registration failed';
     res.status(400).json({ success: false, error: message });
   }
 });

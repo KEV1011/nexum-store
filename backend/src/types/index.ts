@@ -139,6 +139,92 @@ export interface DailyEarningsDTO {
 export interface JwtPayload {
   driverId: string;  // documentNumber for new (unregistered) drivers during registration
   phone: string;
+  accountId?: string;       // present for accounts created via the role-based flow
+  role?: AccountRole;       // role claim for authorization (admin gating, etc.)
+}
+
+// ─── Multi-role accounts (progressive identification + admin) ─────────────────
+
+export type AccountRole = 'driver_car' | 'driver_moto' | 'business' | 'admin';
+
+export type AccountStatus = 'pending' | 'approved' | 'suspended' | 'rejected';
+
+export interface Account {
+  id: string;
+  identifier: string;       // normalized lookup key (lowercased email / digits-only phone)
+  displayIdentifier: string;
+  passwordHash: string;
+  role: AccountRole;
+  status: AccountStatus;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  rating: number;
+  totalTrips: number;
+  commissionRate: number;   // 0.0–1.0
+  createdAt: Date;
+  // Driver profile
+  documentType?: string;
+  documentNumber?: string;
+  vehicle?: Vehicle;
+  vehicleType?: string;     // particular | taxi | moto
+  cylinderCc?: number;
+  // Business profile
+  companyName?: string;
+  nit?: string;
+  legalRep?: string;
+  address?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  // Bank
+  bankName?: string;
+  bankAccountType?: string;
+  bankAccountNumber?: string;
+  // Moderation
+  rejectionReason?: string;
+  suspensionReason?: string;
+}
+
+/** Shape consumed by the Flutter app's `_driverFromMap`. */
+export interface AccountDriverDTO {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  rating: number;
+  totalTrips: number;
+  role: AccountRole;
+  accountStatus: AccountStatus;
+  vehicle: Vehicle;
+  documentType?: string;
+  documentNumber?: string;
+  vehicleType?: string;
+  bankName?: string;
+  bankAccountType?: string;
+  bankAccountNumber?: string;
+}
+
+/** Shape consumed by the Flutter admin panel's `AdminUserEntity.fromJson`. */
+export interface AdminAccountDTO {
+  id: string;
+  fullName: string;
+  identifier: string;
+  role: AccountRole;
+  status: AccountStatus;
+  createdAt: string;        // ISO-8601
+  vehiclePlate?: string;
+  vehicleType?: string;
+  companyName?: string;
+  commissionRate: number;
+  rejectionReason?: string;
+  suspensionReason?: string;
+}
+
+export interface RegisterRoleDTO {
+  identifier: string;
+  password: string;
+  role: AccountRole;
+  profile: Record<string, unknown>;
 }
 
 export interface RegisterDriverDTO {
