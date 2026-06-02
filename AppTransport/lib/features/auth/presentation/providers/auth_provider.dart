@@ -61,6 +61,20 @@ final class AuthUnauthenticated extends AuthState {
   const AuthUnauthenticated();
 }
 
+/// Identificador verificado — cuenta existente, lista para ingresar contraseña.
+final class AuthIdentifierFound extends AuthState {
+  const AuthIdentifierFound({required this.identifier, this.role, this.status});
+  final String identifier;
+  final String? role;
+  final String? status;
+}
+
+/// Identificador verificado — cuenta no existe, redirigir a selección de rol.
+final class AuthIdentifierNotFound extends AuthState {
+  const AuthIdentifierNotFound({required this.identifier});
+  final String identifier;
+}
+
 // ── Infrastructure providers ─────────────────────────────────────────────────
 
 /// Proveedor de [FlutterSecureStorage] con opciones óptimas por plataforma.
@@ -178,6 +192,67 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     final result = await _registerDriverUseCase(params);
 
+    result.fold(
+      (failure) => state = AuthError(failure: failure),
+      (driver) => state = AuthAuthenticated(driver: driver),
+    );
+  }
+
+  // ── checkIdentifier ────────────────────────────────────────────────────────
+
+  /// Verifica si el identificador tiene cuenta.
+  ///
+  /// Emite [AuthLoading] → [AuthIdentifierFound] | [AuthIdentifierNotFound].
+  Future<void> checkIdentifier(String identifier) async {
+    state = const AuthLoading();
+    final result = await _repository.checkIdentifier(identifier);
+    if (result.exists) {
+      state = AuthIdentifierFound(
+        identifier: identifier,
+        role: result.role,
+        status: result.status,
+      );
+    } else {
+      state = AuthIdentifierNotFound(identifier: identifier);
+    }
+  }
+
+  // ── loginWithPassword ──────────────────────────────────────────────────────
+
+  /// Autentica con identificador + contraseña.
+  ///
+  /// Emite [AuthLoading] → [AuthAuthenticated] | [AuthError].
+  Future<void> loginWithPassword({
+    required String identifier,
+    required String password,
+  }) async {
+    state = const AuthLoading();
+    final result = await _repository.loginWithPassword(
+      identifier: identifier,
+      password: password,
+    );
+    result.fold(
+      (failure) => state = AuthError(failure: failure),
+      (driver) => state = AuthAuthenticated(driver: driver),
+    );
+  }
+
+  // ── registerWithRole ───────────────────────────────────────────────────────
+
+  /// Registra con rol. Emite [AuthLoading] → [AuthAuthenticated] | [AuthError].
+  Future<void> registerWithRole({
+    required String identifier,
+    required String password,
+    required String role,
+    required Map<String, dynamic> profileData,
+  }) async {
+    state = const AuthLoading();
+    final result = await _repository.registerWithRole(
+      identifier: identifier,
+      password: password,
+      role: role,
+      profileData: profileData,
+    );
     result.fold(
       (failure) => state = AuthError(failure: failure),
       (driver) => state = AuthAuthenticated(driver: driver),

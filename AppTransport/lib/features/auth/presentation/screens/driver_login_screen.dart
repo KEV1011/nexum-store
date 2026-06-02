@@ -104,13 +104,14 @@ class _DriverLoginScreenState extends ConsumerState<DriverLoginScreen>
   Future<void> _goToPassword() async {
     final id = _identifierCtrl.text.trim();
     if (id.isEmpty) {
-      AppSnackbar.showError(context, 'Ingresa tu usuario, correo o celular');
+      AppSnackbar.showError(context, 'Ingresa tu número, correo o usuario');
       return;
     }
     unawaited(HapticFeedback.selectionClick());
-    setState(() => _step = _Step.password);
-    await _slideCtrl.forward();
-    _passwordFocus.requestFocus();
+    setState(() => _isLoading = true);
+
+    // Check if the identifier has an existing account.
+    await ref.read(authProvider.notifier).checkIdentifier(id);
   }
 
   void _goBack() {
@@ -137,23 +138,10 @@ class _DriverLoginScreenState extends ConsumerState<DriverLoginScreen>
     }
     unawaited(HapticFeedback.mediumImpact());
     setState(() => _isLoading = true);
-
-    // For phone-based login delegate to existing OTP flow
-    if (_idType == _IdentifierType.phone) {
-      final phone = '+57${id.replaceAll(RegExp(r'\D'), '')}';
-      await ref.read(authProvider.notifier).sendOtp(phone);
-    } else {
-      // Email/username: simulate credential check (mock — replace with real API)
-      await Future<void>.delayed(const Duration(milliseconds: 900));
-      if (mounted) {
-        // Treat as unauthenticated in demo; adapt to real backend here
-        AppSnackbar.showError(
-          context,
-          'Inicio con correo/usuario próximamente. Usa tu celular.',
+    await ref.read(authProvider.notifier).loginWithPassword(
+          identifier: id,
+          password: pw,
         );
-        setState(() => _isLoading = false);
-      }
-    }
   }
 
   Future<void> _tryBiometric() async {
@@ -177,6 +165,21 @@ class _DriverLoginScreenState extends ConsumerState<DriverLoginScreen>
 
     if (current is AuthOtpSent) {
       context.push('/otp', extra: current.phone);
+      return;
+    }
+    if (current is AuthIdentifierFound) {
+      // Account exists → show password step
+      setState(() => _step = _Step.password);
+      _slideCtrl.forward().then((_) {
+        if (mounted) _passwordFocus.requestFocus();
+      });
+      return;
+    }
+    if (current is AuthIdentifierNotFound) {
+      // No account → go to role selection
+      context.push(
+        '/role-select?id=${Uri.encodeComponent(current.identifier)}',
+      );
       return;
     }
     if (current is AuthAuthenticated) {
@@ -333,7 +336,7 @@ class _DriverLoginScreenState extends ConsumerState<DriverLoginScreen>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Bienvenido de vuelta',
+          'Identificación',
           style: TextStyle(
             color: Colors.white,
             fontSize: 26,
@@ -346,8 +349,8 @@ class _DriverLoginScreenState extends ConsumerState<DriverLoginScreen>
           _idType == _IdentifierType.email
               ? 'Ingresa tu correo electrónico'
               : _idType == _IdentifierType.phone
-                  ? 'Ingresa tu número de celular'
-                  : 'Ingresa tu usuario, correo o celular',
+                  ? 'Ingresa tu número de celular (+57)'
+                  : 'Número de celular, correo o usuario',
           style: const TextStyle(
             color: Color(0xFF94A3B8),
             fontSize: 14,

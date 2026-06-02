@@ -1,3 +1,5 @@
+import 'package:nexum_driver/features/auth/domain/entities/user_account_entity.dart';
+
 /// Entidad de dominio del conductor autenticado.
 class DriverEntity {
   const DriverEntity({
@@ -16,6 +18,9 @@ class DriverEntity {
     this.bankName,
     this.bankAccountType,
     this.bankAccountNumber,
+    this.role,
+    this.accountStatus,
+    this.email,
   });
 
   final String id;
@@ -27,16 +32,23 @@ class DriverEntity {
   final String vehicleDescription;
   final bool isVerified;
   final String? photoUrl;
+  final String? email;
 
   /// Tipo de documento: 'CC' | 'CE' | 'PA'
   final String? documentType;
   final String? documentNumber;
 
-  /// Tipo de vehículo: 'particular' | 'taxi'
+  /// Tipo de vehículo: 'particular' | 'taxi' | 'moto'
   final String? vehicleType;
   final String? bankName;
   final String? bankAccountType;
   final String? bankAccountNumber;
+
+  /// Role in the platform (driverCar, driverMoto, business).
+  final UserRole? role;
+
+  /// Admin-controlled account status.
+  final UserAccountStatus? accountStatus;
 
   DriverEntity copyWith({
     String? id,
@@ -54,6 +66,9 @@ class DriverEntity {
     String? bankName,
     String? bankAccountType,
     String? bankAccountNumber,
+    UserRole? role,
+    UserAccountStatus? accountStatus,
+    String? email,
   }) {
     return DriverEntity(
       id: id ?? this.id,
@@ -71,6 +86,9 @@ class DriverEntity {
       bankName: bankName ?? this.bankName,
       bankAccountType: bankAccountType ?? this.bankAccountType,
       bankAccountNumber: bankAccountNumber ?? this.bankAccountNumber,
+      role: role ?? this.role,
+      accountStatus: accountStatus ?? this.accountStatus,
+      email: email ?? this.email,
     );
   }
 

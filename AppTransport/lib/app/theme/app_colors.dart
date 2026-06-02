@@ -77,4 +77,31 @@ abstract final class AppColors {
   static const Color starContainer = Color(0xFFFEF9C3);
   static const Color overlay = Color(0x80000000);
   static const Color overlayLight = Color(0x33000000);
+
+  // ── Inputs (WCAG AA ≥ 4.5:1 sobre fondo blanco) ──────────────────────────
+  /// Borde normal: ratio 4.54:1 sobre blanco.
+  static const Color inputBorder = Color(0xFF767676);
+  /// Borde con foco: usa primaryDim para mantener identidad de marca.
+  static const Color inputBorderFocused = Color(0xFF00963D);
+  /// Borde en error: 5.91:1 sobre blanco.
+  static const Color inputBorderError = Color(0xFFB91C1C);
+  /// Label / texto de ayuda: 7.5:1 sobre blanco.
+  static const Color inputLabel = Color(0xFF374151);
+  /// Placeholder (hint): 4.54:1 sobre blanco.
+  static const Color inputHint = Color(0xFF767676);
+  static const Color inputBackground = Color(0xFFF9FAFB);
+  // Dark-mode equivalents
+  static const Color inputBackgroundDark = Color(0xFF1E2130);
+  static const Color inputBorderDark = Color(0xFF8B95A8);
+  static const Color inputBorderFocusedDark = Color(0xFF5EFF82);
+
+  // ── Account status colors ─────────────────────────────────────────────────
+  static const Color statusPending = Color(0xFFF59E0B);
+  static const Color statusPendingContainer = Color(0xFFFEF3C7);
+  static const Color statusApproved = Color(0xFF00C853);
+  static const Color statusApprovedContainer = Color(0xFFDCFCE7);
+  static const Color statusSuspended = Color(0xFFE53935);
+  static const Color statusSuspendedContainer = Color(0xFFFFEBEE);
+  static const Color statusRejected = Color(0xFF78909C);
+  static const Color statusRejectedContainer = Color(0xFFECEFF1);
 }

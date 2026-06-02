@@ -3,25 +3,17 @@ import 'package:nexum_driver/core/errors/failures.dart';
 import 'package:nexum_driver/features/auth/domain/entities/driver_entity.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/register_driver_usecase.dart';
 
-/// Interfaz abstracta del repositorio de autenticación.
-/// La implementación mock está en data/repositories/auth_repository_impl.dart.
-/// Esta interfaz permite reemplazar el mock con llamadas reales HTTP sin
-/// modificar la capa de presentación.
 abstract interface class AuthRepository {
   /// Solicita el envío de un OTP al número de teléfono dado.
-  /// Retorna [Failure] si el número no es válido.
   Future<({bool success, Failure? failure})> sendOtp(String phoneNumber);
 
   /// Verifica el OTP ingresado por el conductor.
-  /// Si es correcto, genera y almacena el JWT.
-  /// [isRegistered] indica si debe ir al home o al registro.
   Future<({DriverEntity? driver, Failure? failure, bool isRegistered})> verifyOtp({
     required String phoneNumber,
     required String otpCode,
   });
 
-  /// Registra un nuevo conductor con su información personal, de vehículo y bancaria.
-  /// Almacena el JWT resultante y retorna el [DriverEntity] creado o un [Failure].
+  /// Registra un nuevo conductor con el flujo OTP (legacy).
   Future<Either<Failure, DriverEntity>> registerDriver(
     RegisterDriverParams params,
   );
@@ -34,4 +26,25 @@ abstract interface class AuthRepository {
 
   /// Obtiene el conductor actualmente autenticado.
   Future<DriverEntity?> getCurrentDriver();
+
+  // ── Identifier-based auth ────────────────────────────────────────────────
+
+  /// Verifica si el identificador (email o teléfono) tiene cuenta existente.
+  Future<({bool exists, String? role, String? status})> checkIdentifier(
+    String identifier,
+  );
+
+  /// Autentica con identificador + contraseña.
+  Future<Either<Failure, DriverEntity>> loginWithPassword({
+    required String identifier,
+    required String password,
+  });
+
+  /// Registra una nueva cuenta para el rol dado.
+  Future<Either<Failure, DriverEntity>> registerWithRole({
+    required String identifier,
+    required String password,
+    required String role,
+    required Map<String, dynamic> profileData,
+  });
 }

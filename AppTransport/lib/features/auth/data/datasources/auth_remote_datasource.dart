@@ -8,7 +8,7 @@ class AuthRemoteDataSource implements AuthDataSource {
 
   final DioClient _client;
 
-  /// Requests an OTP to be sent to [phoneNumber].
+  @override
   Future<bool> sendOtp(String phoneNumber) async {
     await _client.post<Map<String, dynamic>>(
       '/auth/send-otp',
@@ -17,10 +17,7 @@ class AuthRemoteDataSource implements AuthDataSource {
     return true;
   }
 
-  /// Verifies [otpCode] for [phoneNumber].
-  ///
-  /// Returns a map with `{ token: String, driver: Map }` on success.
-  /// Throws [InvalidOtpException] on 401.
+  @override
   Future<Map<String, dynamic>> verifyOtp({
     required String phoneNumber,
     required String otpCode,
@@ -40,10 +37,6 @@ class AuthRemoteDataSource implements AuthDataSource {
     }
   }
 
-  /// Registers a new driver via POST /auth/register.
-  ///
-  /// Returns a map with `{ token: String, driver: Map, isRegistered: bool }` on success.
-  /// Throws [ServerException] on failure.
   @override
   Future<Map<String, dynamic>> registerDriver(
     Map<String, dynamic> data,
@@ -57,5 +50,74 @@ class AuthRemoteDataSource implements AuthDataSource {
       throw const ServerException(message: 'Respuesta vacía del servidor');
     }
     return responseData;
+  }
+
+  // ── Identifier-based auth ────────────────────────────────────────────────
+
+  @override
+  Future<({bool exists, String? role, String? status})> checkIdentifier(
+    String identifier,
+  ) async {
+    try {
+      final response = await _client.post<Map<String, dynamic>>(
+        '/auth/check-identifier',
+        data: {'identifier': identifier},
+      );
+      final d = response.data?['data'] as Map<String, dynamic>?;
+      if (d == null) return (exists: false, role: null, status: null);
+      return (
+        exists: (d['exists'] as bool?) ?? false,
+        role: d['role'] as String?,
+        status: d['status'] as String?,
+      );
+    } catch (_) {
+      return (exists: false, role: null, status: null);
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> loginWithPassword({
+    required String identifier,
+    required String password,
+  }) async {
+    try {
+      final response = await _client.post<Map<String, dynamic>>(
+        '/auth/login',
+        data: {'identifier': identifier, 'password': password},
+      );
+      final data = response.data?['data'] as Map<String, dynamic>?;
+      if (data == null) {
+        throw const ServerException(message: 'Respuesta vacía del servidor');
+      }
+      return data;
+    } on AuthException {
+      throw const AuthException(
+        message: 'Credenciales incorrectas.',
+        code: 'INVALID_CREDENTIALS',
+      );
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> registerWithRole({
+    required String identifier,
+    required String password,
+    required String role,
+    required Map<String, dynamic> profileData,
+  }) async {
+    final response = await _client.post<Map<String, dynamic>>(
+      '/auth/register-role',
+      data: {
+        'identifier': identifier,
+        'password': password,
+        'role': role,
+        'profile': profileData,
+      },
+    );
+    final data = response.data?['data'] as Map<String, dynamic>?;
+    if (data == null) {
+      throw const ServerException(message: 'Respuesta vacía del servidor');
+    }
+    return data;
   }
 }

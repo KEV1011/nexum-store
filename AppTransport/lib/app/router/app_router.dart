@@ -7,9 +7,12 @@ import 'package:nexum_driver/app/router/splash_screen.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/active_trip/presentation/screens/active_trip_screen.dart';
 import 'package:nexum_driver/features/active_trip/presentation/screens/trip_summary_screen.dart';
+import 'package:nexum_driver/features/admin/presentation/screens/admin_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/driver_login_screen.dart';
+import 'package:nexum_driver/features/auth/presentation/screens/multi_step_register_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/otp_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/register_screen.dart';
+import 'package:nexum_driver/features/auth/presentation/screens/role_selection_screen.dart';
 import 'package:nexum_driver/features/documents/presentation/screens/documents_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/screens/home_screen.dart';
 import 'package:nexum_driver/features/earnings/presentation/screens/earnings_screen.dart';
@@ -67,6 +70,9 @@ abstract final class AppRoutes {
   static const String pooledPublish = '/pooled-publish';
   static const String verification = '/verification';
   static const String ridePool = '/ride-pool';
+  static const String roleSelect = '/role-select';
+  static const String registerRole = '/register-role';
+  static const String admin = '/admin';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -278,6 +284,34 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: const BusinessRegistrationScreen(),
         ),
       ),
+      GoRoute(
+        path: AppRoutes.roleSelect,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: RoleSelectionScreen(
+            identifier:
+                Uri.decodeComponent(state.uri.queryParameters['id'] ?? ''),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.registerRole,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: MultiStepRegisterScreen(
+            identifier:
+                Uri.decodeComponent(state.uri.queryParameters['id'] ?? ''),
+            roleValue: state.uri.queryParameters['role'] ?? 'driver_car',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.admin,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const AdminScreen(),
+        ),
+      ),
     ],
     errorBuilder: (context, state) => _RouterErrorScreen(error: state.error),
   );
@@ -303,7 +337,9 @@ Future<String?> _authRedirect(
   if (!isAuthenticated) {
     final isOnAuthRoute = state.matchedLocation == AppRoutes.login ||
         state.matchedLocation == AppRoutes.otp ||
-        state.matchedLocation == AppRoutes.register;
+        state.matchedLocation == AppRoutes.register ||
+        state.matchedLocation == AppRoutes.roleSelect ||
+        state.matchedLocation == AppRoutes.registerRole;
     return isOnAuthRoute ? null : AppRoutes.login;
   }
 
@@ -317,7 +353,9 @@ Future<String?> _authRedirect(
   final isOnAuthRoute = state.matchedLocation == AppRoutes.login ||
       state.matchedLocation == AppRoutes.otp ||
       state.matchedLocation == AppRoutes.splash ||
-      state.matchedLocation == AppRoutes.onboarding;
+      state.matchedLocation == AppRoutes.onboarding ||
+      state.matchedLocation == AppRoutes.roleSelect ||
+      state.matchedLocation == AppRoutes.registerRole;
   if (isOnAuthRoute) return AppRoutes.home;
 
   return null;

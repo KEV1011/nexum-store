@@ -169,4 +169,110 @@ class AuthRepositoryImpl implements AuthRepository {
     if (!authenticated) return null;
     return null; // Driver data loaded on login; no local cache needed yet.
   }
+
+  // ── checkIdentifier ────────────────────────────────────────────────────────
+
+  @override
+  Future<({bool exists, String? role, String? status})> checkIdentifier(
+    String identifier,
+  ) async {
+    try {
+      return await _dataSource.checkIdentifier(identifier);
+    } catch (_) {
+      return (exists: false, role: null, status: null);
+    }
+  }
+
+  // ── loginWithPassword ──────────────────────────────────────────────────────
+
+  @override
+  Future<Either<Failure, DriverEntity>> loginWithPassword({
+    required String identifier,
+    required String password,
+  }) async {
+    try {
+      final data = await _dataSource.loginWithPassword(
+        identifier: identifier,
+        password: password,
+      );
+
+      final token = data['token'] as String;
+      await _secureStorage.write(key: AppConstants.authTokenKey, value: token);
+      await _secureStorage.delete(key: AppConstants.needsRegistrationKey);
+
+      return Right(_driverFromMap(data));
+    } on AuthException catch (e) {
+      return Left(UnexpectedFailure(message: e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(message: e.message));
+    } on AppException catch (e) {
+      return Left(UnexpectedFailure(message: e.message));
+    } catch (e) {
+      return Left(UnexpectedFailure(message: e.toString()));
+    }
+  }
+
+  // ── registerWithRole ───────────────────────────────────────────────────────
+
+  @override
+  Future<Either<Failure, DriverEntity>> registerWithRole({
+    required String identifier,
+    required String password,
+    required String role,
+    required Map<String, dynamic> profileData,
+  }) async {
+    try {
+      final data = await _dataSource.registerWithRole(
+        identifier: identifier,
+        password: password,
+        role: role,
+        profileData: profileData,
+      );
+
+      final token = data['token'] as String;
+      await _secureStorage.write(key: AppConstants.authTokenKey, value: token);
+      await _secureStorage.delete(key: AppConstants.needsRegistrationKey);
+
+      return Right(_driverFromMap(data));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(message: e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(message: e.message));
+    } on AppException catch (e) {
+      return Left(UnexpectedFailure(message: e.message));
+    } catch (e) {
+      return Left(UnexpectedFailure(message: e.toString()));
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  DriverEntity _driverFromMap(Map<String, dynamic> data) {
+    final d = (data['driver'] as Map<String, dynamic>?) ?? data;
+    final vehicle = d['vehicle'] as Map<String, dynamic>? ?? {};
+    final brand = vehicle['brand'] as String? ?? '';
+    final model = vehicle['model'] as String? ?? '';
+    final year = (vehicle['year'] as num?)?.toInt() ?? 0;
+    final color = vehicle['color'] as String? ?? '';
+
+    return DriverEntity(
+      id: d['id'] as String? ?? '',
+      name: d['name'] as String? ?? '',
+      phone: d['phone'] as String? ?? '',
+      email: d['email'] as String?,
+      rating: (d['rating'] as num?)?.toDouble() ?? 0,
+      totalTrips: (d['totalTrips'] as num?)?.toInt() ?? 0,
+      vehiclePlate: vehicle['plate'] as String? ?? '',
+      vehicleDescription: brand.isNotEmpty
+          ? '$brand $model ${year > 0 ? year : ''} · $color'.trim()
+          : '',
+      isVerified: (d['accountStatus'] as String?) == 'approved',
+      documentType: d['documentType'] as String?,
+      documentNumber: d['documentNumber'] as String?,
+      vehicleType: d['vehicleType'] as String?,
+      bankName: d['bankName'] as String?,
+      bankAccountType: d['bankAccountType'] as String?,
+      bankAccountNumber: d['bankAccountNumber'] as String?,
+    );
+  }
 }
