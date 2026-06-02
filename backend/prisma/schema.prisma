@@ -157,13 +157,44 @@ model Product {
   category     String   @default("General")
   imageUrl     String?
   isAvailable  Boolean  @default(true)
+  // Catálogo maestro: si referencia un MasterProduct (farmacia/super) o es
+  // un producto único del negocio (restaurante).
+  masterProductId String?
+  barcode      String?              // EAN-13 denormalizado para búsqueda rápida
+  stock        Int?                 // null = no controla inventario (restaurante)
   createdAt    DateTime @default(now())
 
-  business     Business    @relation(fields: [businessId], references: [id])
-  orderLines   OrderLine[]
+  business      Business       @relation(fields: [businessId], references: [id])
+  masterProduct MasterProduct? @relation(fields: [masterProductId], references: [id])
+  orderLines    OrderLine[]
 
   @@index([businessId])
+  @@index([barcode])
   @@map("products")
+}
+
+// ── Catálogo maestro compartido ───────────────────────────────────────────────
+// Productos estandarizados (farmacia, supermercado, licorera) identificados por
+// código de barras EAN-13. Una sola entrada por producto, reutilizable por todos
+// los negocios — cada negocio solo define precio y stock en `Product`.
+
+model MasterProduct {
+  id           String   @id @default(cuid())
+  barcode      String   @unique               // EAN-13
+  name         String
+  brand        String?
+  imageUrl     String?
+  category     String                          // bebidas, aseo, medicamentos…
+  presentation String?                         // "1.5L", "x10 tabletas"
+  requiresRx   Boolean  @default(false)        // requiere fórmula médica
+  invimaCode   String?                         // registro sanitario INVIMA
+  createdAt    DateTime @default(now())
+  createdByBusinessId String?                  // quién lo creó primero
+
+  products     Product[]
+
+  @@index([category])
+  @@map("master_products")
 }
 
 // ── Pedidos de domicilio ──────────────────────────────────────────────────────
