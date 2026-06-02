@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
@@ -11,6 +12,7 @@ import 'package:nexum_driver/features/business_portal/data/datasources/business_
 import 'package:nexum_driver/features/business_portal/domain/entities/business_earnings_entity.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/business_order_entity.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/business_product_entity.dart';
+import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/business_portal/presentation/providers/business_portal_provider.dart';
 import 'package:nexum_driver/shared/widgets/skeleton_loader.dart';
 
@@ -1249,7 +1251,10 @@ class _MyBusinessTabState extends ConsumerState<_MyBusinessTab> {
 
           const SizedBox(height: AppConstants.spacingM),
           OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: () async {
+              await ref.read(authProvider.notifier).logout();
+              if (context.mounted) context.go(AppRoutes.login);
+            },
             icon: const Icon(Icons.logout_rounded, size: 16),
             label: const Text('Cerrar sesión'),
             style: OutlinedButton.styleFrom(

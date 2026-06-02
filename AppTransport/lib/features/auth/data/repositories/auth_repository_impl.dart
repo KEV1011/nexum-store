@@ -147,6 +147,7 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> logout() async {
     await _secureStorage.delete(key: AppConstants.authTokenKey);
+    await _secureStorage.delete(key: AppConstants.accountRoleKey);
   }
 
   // ── isAuthenticated ────────────────────────────────────────────────────────
