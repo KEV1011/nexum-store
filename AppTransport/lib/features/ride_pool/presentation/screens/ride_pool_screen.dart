@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
@@ -233,7 +234,10 @@ class _RequestCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => onBid(ride.offeredFare, ride.etaMinutes),
+                    onPressed: () {
+                      HapticFeedback.mediumImpact();
+                      onBid(ride.offeredFare, ride.etaMinutes);
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,

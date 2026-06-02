@@ -321,3 +321,66 @@ class SkeletonBarChart extends StatelessWidget {
     );
   }
 }
+
+/// Matches the _RequestCard layout in the ride pool screen.
+class SkeletonRideCard extends StatelessWidget {
+  const SkeletonRideCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.surfaceDark : AppColors.cardLight,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: isDark
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x0F000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SkeletonCircle(size: 36),
+              SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SkeletonBox(width: 100, height: 13),
+                    SizedBox(height: 5),
+                    SkeletonBox(width: 72, height: 11),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  SkeletonBox(width: 36, height: 10),
+                  SizedBox(height: 4),
+                  SkeletonBox(width: 72, height: 16),
+                ],
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          SkeletonBox(height: 11),
+          SizedBox(height: 5),
+          SkeletonBox(height: 11, width: 200),
+          SizedBox(height: 10),
+          SkeletonBox(width: 60, height: 10),
+          SizedBox(height: 16),
+          SkeletonBox(height: 40, radius: 10),
+        ],
+      ),
+    );
+  }
+}

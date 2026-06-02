@@ -321,3 +321,111 @@ class SkeletonBarChart extends StatelessWidget {
     );
   }
 }
+
+/// Matches the BusinessCard layout: full-width banner + name row + meta chips.
+class SkeletonBusinessCard extends StatelessWidget {
+  const SkeletonBusinessCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+        border: Border.all(
+          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // image banner
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppConstants.radiusLarge),
+            ),
+            child: SkeletonBox(
+              width: double.infinity,
+              height: 108,
+              radius: 0,
+            ),
+          ),
+          // details
+          const Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppConstants.spacingM,
+              AppConstants.spacingS,
+              AppConstants.spacingM,
+              AppConstants.spacingM,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: SkeletonBox(height: 14)),
+                    SizedBox(width: 8),
+                    SkeletonBox(width: 28, height: 12),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    SkeletonBox(width: 52, height: 11),
+                    SizedBox(width: AppConstants.spacingM),
+                    SkeletonBox(width: 64, height: 11),
+                    SizedBox(width: AppConstants.spacingM),
+                    SkeletonBox(width: 60, height: 11),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Matches the _OrderCard layout: business name + status badge + meta row.
+class SkeletonOrderCard extends StatelessWidget {
+  const SkeletonOrderCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(
+          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+        ),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: SkeletonBox(height: 14)),
+              SizedBox(width: 12),
+              SkeletonBox(width: 60, height: 22, radius: 6),
+            ],
+          ),
+          SizedBox(height: 6),
+          SkeletonBox(width: 160, height: 11),
+          SizedBox(height: AppConstants.spacingS),
+          Row(
+            children: [
+              SkeletonBox(width: 100, height: 11),
+              Spacer(),
+              SkeletonBox(width: 72, height: 14),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

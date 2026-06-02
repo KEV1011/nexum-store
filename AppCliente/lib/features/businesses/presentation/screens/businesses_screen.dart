@@ -20,6 +20,7 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'promo_banner.dart';
 import 'package:nexum_client/features/shell/presentation/providers/'
     'shell_provider.dart';
+import 'package:nexum_client/shared/widgets/press_scale.dart';
 import 'package:nexum_client/shared/widgets/skeleton_loader.dart';
 
 /// Pestaña principal: catálogo de negocios aliados en Pamplona.
@@ -159,7 +160,7 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
         separatorBuilder: (_, __) =>
             const SizedBox(height: AppConstants.spacingM),
         itemBuilder: (_, __) =>
-            const SkeletonLoader(child: SkeletonTripTile()),
+            const SkeletonLoader(child: SkeletonBusinessCard()),
       ),
     );
   }
@@ -470,7 +471,7 @@ class _ServiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PressScale(
       onTap: onTap,
       child: Container(
         height: 128,
@@ -643,7 +644,8 @@ class _CategoryIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PressScale(
+      scale: 0.92,
       onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,

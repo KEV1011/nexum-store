@@ -35,6 +35,7 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/widgets/press_scale.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -1128,8 +1129,9 @@ class _WorkModeCard extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.8)
         : _subText;
 
-    return GestureDetector(
+    return PressScale(
       onTap: onTap,
+      scale: 0.94,
       child: AnimatedContainer(
         duration: AppConstants.shortAnimation,
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),

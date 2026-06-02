@@ -38,7 +38,8 @@ class OrdersScreen extends ConsumerWidget {
       itemCount: 4,
       separatorBuilder: (_, __) =>
           const SizedBox(height: AppConstants.spacingM),
-      itemBuilder: (_, __) => const SkeletonLoader(child: SkeletonTripTile()),
+      itemBuilder: (_, __) =>
+          const SkeletonLoader(child: SkeletonOrderCard()),
     );
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
@@ -11,7 +12,7 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'business_visuals.dart';
 
 /// Tarjeta de negocio con área de imagen y detalles.
-class BusinessCard extends StatelessWidget {
+class BusinessCard extends StatefulWidget {
   const BusinessCard({
     required this.business,
     required this.onTap,
@@ -22,32 +23,48 @@ class BusinessCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<BusinessCard> createState() => _BusinessCardState();
+}
+
+class _BusinessCardState extends State<BusinessCard> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Material(
-      color: isDark ? AppColors.cardDark : AppColors.surfaceLight,
-      borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
-      child: InkWell(
-        onTap: onTap,
+    return AnimatedScale(
+      scale: _pressed ? 0.97 : 1.0,
+      duration: const Duration(milliseconds: 110),
+      curve: Curves.easeOut,
+      child: Material(
+        color: isDark ? AppColors.cardDark : AppColors.surfaceLight,
         borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
-            border: Border.all(
-              color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            widget.onTap();
+          },
+          onHighlightChanged: (h) => setState(() => _pressed = h),
+          borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+              border: Border.all(
+                color:
+                    isDark ? AppColors.outlineDark : AppColors.outlineLight,
+              ),
+              boxShadow: isDark
+                  ? null
+                  : const [
+                      BoxShadow(
+                        color: AppColors.shadow,
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
             ),
-            boxShadow: isDark
-                ? null
-                : const [
-                    BoxShadow(
-                      color: AppColors.shadow,
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-          ),
-          child: Column(
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ── Illustration area ───────────────────────────────────────
@@ -63,8 +80,8 @@ class BusinessCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            business.category.color.withValues(alpha: 0.7),
-                            business.category.color,
+                            widget.business.category.color.withValues(alpha: 0.7),
+                            widget.business.category.color,
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -76,14 +93,14 @@ class BusinessCard extends StatelessWidget {
                             right: -12,
                             bottom: -12,
                             child: Icon(
-                              business.category.icon,
+                              widget.business.category.icon,
                               size: 90,
                               color: Colors.white.withValues(alpha: 0.15),
                             ),
                           ),
                           Center(
                             child: Icon(
-                              business.category.icon,
+                              widget.business.category.icon,
                               size: 44,
                               color: Colors.white.withValues(alpha: 0.7),
                             ),
@@ -91,7 +108,7 @@ class BusinessCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (!business.isOpen)
+                    if (!widget.business.isOpen)
                       Container(
                         height: 108,
                         color: Colors.black.withValues(alpha: 0.48),
@@ -118,9 +135,9 @@ class BusinessCard extends StatelessWidget {
                     Positioned(
                       top: 8,
                       right: 8,
-                      child: _FavoriteButton(businessId: business.id),
+                      child: _FavoriteButton(businessId: widget.business.id),
                     ),
-                    if (business.isOpen)
+                    if (widget.business.isOpen)
                       Positioned(
                         bottom: 8,
                         left: 10,
@@ -173,7 +190,7 @@ class BusinessCard extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            business.name,
+                            widget.business.name,
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
@@ -190,7 +207,7 @@ class BusinessCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 2),
                         Text(
-                          business.rating.toStringAsFixed(1),
+                          widget.business.rating.toStringAsFixed(1),
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -203,23 +220,23 @@ class BusinessCard extends StatelessWidget {
                       children: [
                         _MetaChip(
                           icon: Icons.schedule_rounded,
-                          label: '${business.etaMinutes} min',
+                          label: '${widget.business.etaMinutes} min',
                         ),
                         const SizedBox(width: AppConstants.spacingM),
                         _MetaChip(
                           icon: Icons.pedal_bike_rounded,
                           label:
-                              business.deliveryFee == 0
+                              widget.business.deliveryFee == 0
                                   ? 'Gratis'
                                   : CurrencyFormatter.format(
-                                      business.deliveryFee,
+                                      widget.business.deliveryFee,
                                     ),
-                          highlight: business.deliveryFee == 0,
+                          highlight: widget.business.deliveryFee == 0,
                         ),
                         const SizedBox(width: AppConstants.spacingM),
                         _MetaChip(
                           icon: Icons.storefront_outlined,
-                          label: business.category.label,
+                          label: widget.business.category.label,
                         ),
                       ],
                     ),
@@ -230,9 +247,12 @@ class BusinessCard extends StatelessWidget {
           ),
         ),
       ),
+    ),  // AnimatedScale
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _FavoriteButton extends ConsumerWidget {
   const _FavoriteButton({required this.businessId});
