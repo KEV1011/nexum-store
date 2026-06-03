@@ -367,57 +367,103 @@ class _EnviosPickupInfo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const accent = AppColors.serviceEnvios;
-    return Row(
+    final delivery = trip.request.delivery;
+    // Qué se recoge: para entregas, el artículo; si no, el nombre del cliente.
+    final pickupTitle = delivery?.title ?? trip.request.passenger.name;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(
-            Icons.storefront_rounded,
-            color: accent,
-            size: 24,
-          ),
-        ),
-        const SizedBox(width: AppConstants.spacingM),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                trip.request.passenger.name,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(height: 2),
-              Row(
+              child: const Icon(
+                Icons.storefront_rounded,
+                color: accent,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: AppConstants.spacingM),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.inventory_2_outlined,
-                    size: 13,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 4),
                   Text(
-                    'Al llegar: fotografía el pedido',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: accent.withValues(alpha: 0.8),
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11.5,
+                    pickupTitle,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.inventory_2_outlined,
+                        size: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          delivery?.itemDescription ??
+                              'Al llegar: fotografía el pedido',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: accent.withValues(alpha: 0.8),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11.5,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+        // Destinatario final de la entrega.
+        if (delivery != null) ...[
+          const SizedBox(height: AppConstants.spacingS),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppConstants.spacingS,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariantLight,
+              borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.person_pin_circle_rounded,
+                    size: 16, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Luego entregar a ${delivery.recipientName}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

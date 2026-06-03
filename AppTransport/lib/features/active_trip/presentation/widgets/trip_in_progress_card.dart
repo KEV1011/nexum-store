@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/delivery_details.dart';
 
 /// Tarjeta inferior para el estado (c): viaje en curso hacia el destino.
 ///
@@ -132,6 +134,12 @@ class TripInProgressCard extends StatelessWidget {
 
           const SizedBox(height: AppConstants.spacingM),
 
+          // ── Destinatario (solo entregas) ─────────────────────────────────
+          if (trip.request.delivery != null) ...[
+            _DeliveryRecipient(delivery: trip.request.delivery!),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
+
           // ── Destination row ──────────────────────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,7 +155,9 @@ class TripInProgressCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Destino',
+                      trip.request.delivery != null
+                          ? 'Dirección de entrega'
+                          : 'Destino',
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: AppColors.textSecondary,
                         letterSpacing: 0.5,
@@ -287,6 +297,120 @@ class TripInProgressCard extends StatelessWidget {
     if (confirmed == true) {
       onFinishTrip?.call();
     }
+  }
+}
+
+// ── _DeliveryRecipient ──────────────────────────────────────────────────────
+
+/// Datos del destinatario y del artículo durante una entrega en curso.
+/// Tocar el teléfono lo copia al portapapeles.
+class _DeliveryRecipient extends StatelessWidget {
+  const _DeliveryRecipient({required this.delivery});
+
+  final DeliveryDetails delivery;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = delivery.kind.color;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(delivery.kind.icon, size: 18, color: color),
+              const SizedBox(width: AppConstants.spacingXS),
+              Text(
+                'Entregar a',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            delivery.recipientName,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            delivery.title,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingS),
+          InkWell(
+            onTap: () => _copyPhone(context),
+            borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.phone_rounded,
+                      size: 16, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    delivery.recipientPhone,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.copy_rounded,
+                      size: 13, color: AppColors.textTertiary),
+                ],
+              ),
+            ),
+          ),
+          if (delivery.hasNotes) ...[
+            const SizedBox(height: AppConstants.spacingXS),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.sticky_note_2_rounded,
+                    size: 15, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    delivery.notes!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyPhone(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: delivery.recipientPhone));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Teléfono copiado'),
+        duration: Duration(seconds: 1),
+      ),
+    );
   }
 }
 
