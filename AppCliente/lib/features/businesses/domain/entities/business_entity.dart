@@ -1,7 +1,13 @@
 /// Categoría de un negocio aliado en Nexum.
 enum BusinessCategory {
   restaurant,
+  fastFood,
+  bakery,
+  cafe,
+  iceCream,
+  drinks,
   supermarket,
+  convenience,
   pharmacy,
   other,
 }
@@ -11,8 +17,20 @@ extension BusinessCategoryX on BusinessCategory {
     switch (this) {
       case BusinessCategory.restaurant:
         return 'Restaurante';
+      case BusinessCategory.fastFood:
+        return 'Comida rápida';
+      case BusinessCategory.bakery:
+        return 'Panadería';
+      case BusinessCategory.cafe:
+        return 'Cafetería';
+      case BusinessCategory.iceCream:
+        return 'Heladería';
+      case BusinessCategory.drinks:
+        return 'Licores';
       case BusinessCategory.supermarket:
         return 'Supermercado';
+      case BusinessCategory.convenience:
+        return 'Minimercado';
       case BusinessCategory.pharmacy:
         return 'Droguería';
       case BusinessCategory.other:

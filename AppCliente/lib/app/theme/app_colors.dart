@@ -63,6 +63,20 @@ abstract final class AppColors {
   static const Color serviceMotocarroContainer = Color(0xFFEFEBE9);
   static const Color serviceEnviosContainer = Color(0xFFE0F2F1);
 
+  // ── Categorías de negocio ─────────────────────────────────────────────────
+  static const Color categoryFastFood = Color(0xFFE64A19);
+  static const Color categoryFastFoodContainer = Color(0xFFFBE9E7);
+  static const Color categoryBakery = Color(0xFF8D6E63);
+  static const Color categoryBakeryContainer = Color(0xFFEFEBE9);
+  static const Color categoryCafe = Color(0xFF6D4C41);
+  static const Color categoryCafeContainer = Color(0xFFD7CCC8);
+  static const Color categoryIceCream = Color(0xFFEC407A);
+  static const Color categoryIceCreamContainer = Color(0xFFFCE4EC);
+  static const Color categoryDrinks = Color(0xFF8E24AA);
+  static const Color categoryDrinksContainer = Color(0xFFF3E5F5);
+  static const Color categoryConvenience = Color(0xFF00897B);
+  static const Color categoryConvenienceContainer = Color(0xFFE0F2F1);
+
   // ── Mapa ──────────────────────────────────────────────────────────────────
   static const Color routeColor = Color(0xFF1565C0);
   static const Color pickupMarker = Color(0xFF00C853);

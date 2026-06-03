@@ -37,7 +37,13 @@ class BusinessesRealDataSource {
 
   static BusinessCategory _mapCategory(String s) => switch (s) {
     'restaurant' => BusinessCategory.restaurant,
+    'fastFood' || 'fast_food' => BusinessCategory.fastFood,
+    'bakery' => BusinessCategory.bakery,
+    'cafe' => BusinessCategory.cafe,
+    'iceCream' || 'ice_cream' => BusinessCategory.iceCream,
+    'drinks' || 'liquor' => BusinessCategory.drinks,
     'supermarket' => BusinessCategory.supermarket,
+    'convenience' => BusinessCategory.convenience,
     'pharmacy' => BusinessCategory.pharmacy,
     _ => BusinessCategory.other,
   };
