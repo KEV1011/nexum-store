@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,7 +73,10 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
     );
 
-    await ref.read(errandProvider.notifier).createErrand(errand);
+    // `active` se fija de forma síncrona en el provider antes de la llamada
+    // de red; navegamos de inmediato y dejamos la solicitud en segundo plano
+    // para no bloquear el botón con el timeout cuando el backend no responde.
+    unawaited(ref.read(errandProvider.notifier).createErrand(errand));
     if (!mounted) return;
     context.go('/errand/status');
   }

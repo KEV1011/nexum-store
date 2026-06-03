@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -137,7 +139,11 @@ class _IntercityBookingScreenState
           _dropoffCtrl.text.trim().isEmpty ? null : _dropoffCtrl.text.trim(),
     );
 
-    await ref.read(intercityProvider.notifier).createRequest(request);
+    // El provider fija `active` de forma síncrona antes de la llamada de red,
+    // por lo que navegamos de inmediato y dejamos que la solicitud (y su
+    // simulación de respaldo) corra en segundo plano. Así el botón no queda
+    // bloqueado esperando el timeout de red cuando el backend no responde.
+    unawaited(ref.read(intercityProvider.notifier).createRequest(request));
     if (!mounted) return;
     context.go('/intercity/status');
   }

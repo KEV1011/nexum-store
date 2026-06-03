@@ -36,6 +36,15 @@
         android:name="android.permission.WAKE_LOCK"/>
     <uses-permission
         android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!--
+        CAMERA requerido para escanear códigos de barras (EAN-13) al agregar
+        productos al catálogo del negocio desde el portal aliado.
+    -->
+    <uses-permission
+        android:name="android.permission.CAMERA"/>
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false"/>
     <application
         android:label="Nexum Driver"
         android:name="${applicationName}"
