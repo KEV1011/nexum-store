@@ -11,20 +11,38 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 /// Muestra estrellas animadas, etiquetas rápidas que cambian según la
 /// puntuación, un comentario opcional y un estado de éxito con confeti.
 class PassengerRatingSheet extends StatefulWidget {
-  const PassengerRatingSheet({required this.passengerName, super.key});
+  const PassengerRatingSheet({
+    required this.passengerName,
+    this.subjectNoun = 'pasajero',
+    this.onSubmit,
+    super.key,
+  });
 
   final String passengerName;
+
+  /// Sustantivo de la persona calificada ('pasajero' o 'cliente' en entregas).
+  final String subjectNoun;
+
+  /// Se invoca al confirmar la calificación, con las estrellas y el comentario
+  /// opcional, para que la pantalla la persista.
+  final void Function(int rating, String? comment)? onSubmit;
 
   /// Presenta la hoja de calificación como modal de pantalla inferior.
   static Future<void> show(
     BuildContext context, {
     required String passengerName,
+    String subjectNoun = 'pasajero',
+    void Function(int rating, String? comment)? onSubmit,
   }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => PassengerRatingSheet(passengerName: passengerName),
+      builder: (_) => PassengerRatingSheet(
+        passengerName: passengerName,
+        subjectNoun: subjectNoun,
+        onSubmit: onSubmit,
+      ),
     );
   }
 
@@ -111,6 +129,8 @@ class _PassengerRatingSheetState extends State<PassengerRatingSheet>
   void _submit() {
     if (_rating == 0) return;
     HapticFeedback.mediumImpact();
+    final comment = _comment.text.trim();
+    widget.onSubmit?.call(_rating, comment.isEmpty ? null : comment);
     setState(() => _submitted = true);
     _confettiController.forward(from: 0);
     // Auto-dismiss after the success animation settles.
@@ -206,7 +226,7 @@ class _PassengerRatingSheetState extends State<PassengerRatingSheet>
           ),
           const SizedBox(height: AppConstants.spacingXS),
           Text(
-            '¿Cómo fue tu experiencia con este pasajero?',
+            '¿Cómo fue tu experiencia con este ${widget.subjectNoun}?',
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: AppColors.textSecondary),
             textAlign: TextAlign.center,

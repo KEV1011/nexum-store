@@ -6,6 +6,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
+import 'package:nexum_client/shared/widgets/service_rating_sheet.dart';
 
 const _kInterColor = Color(0xFF1E3A8A);
 
@@ -95,12 +96,61 @@ class IntercityStatusScreen extends ConsumerWidget {
 
             const SizedBox(height: 24),
 
+            // ── Finalizar viaje + calificar (cuando ya está confirmado) ────
+            if (request.status == IntercityStatus.confirmed &&
+                request.hasDriver) ...[
+              SizedBox(
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: () => _completeAndRate(context, ref, request),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.flag_rounded),
+                  label: const Text(
+                    'Ya llegué · Calificar viaje',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             // ── Safety tip ────────────────────────────────────────────────
             _SafetyBanner(),
           ],
         ),
       ),
     );
+  }
+
+  /// Marca el viaje como completado y abre la calificación del conductor.
+  Future<void> _completeAndRate(
+    BuildContext context,
+    WidgetRef ref,
+    IntercityRequestEntity request,
+  ) async {
+    HapticFeedback.mediumImpact();
+    int? stars;
+    String? comment;
+    await showServiceRatingSheet(
+      context,
+      title: '¿Cómo estuvo tu viaje?',
+      subtitle: request.driverName ?? 'Tu conductor',
+      onSubmit: (s, c) {
+        stars = s;
+        comment = c;
+      },
+    );
+    ref.read(intercityProvider.notifier).markCompleted(
+          rating: stars,
+          comment: comment,
+        );
+    if (context.mounted) context.go('/home');
   }
 
   Future<void> _showCancelDialog(BuildContext context, WidgetRef ref) async {

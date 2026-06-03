@@ -38,6 +38,17 @@ class TripHistoryNotifier extends StateNotifier<List<TripModel>> {
     unawaited(_persist(updated));
   }
 
+  /// Registra la calificación que el conductor dio al pasajero/cliente y la
+  /// persiste en el historial del viaje.
+  void rate(String tripId, double rating) {
+    final updated = [
+      for (final t in state)
+        if (t.id == tripId) t.copyWith(rating: rating) else t,
+    ];
+    state = updated;
+    unawaited(_persist(updated));
+  }
+
   Future<void> _persist(List<TripModel> trips) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(

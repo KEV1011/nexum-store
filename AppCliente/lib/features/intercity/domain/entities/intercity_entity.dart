@@ -231,6 +231,8 @@ class IntercityRequestEntity {
     this.driverVehicle,
     this.driverRating,
     this.counterFare,
+    this.rating,
+    this.ratingComment,
   });
 
   final String id;
@@ -250,9 +252,14 @@ class IntercityRequestEntity {
   final double? driverRating;
   final double? counterFare;
 
+  /// Calificación que el cliente dio al conductor (1–5), null si aún no califica.
+  final int? rating;
+  final String? ratingComment;
+
   bool get hasDriver => driverName != null;
   bool get isActive => status.isActive;
   bool get isCompleted => status == IntercityStatus.completed;
+  bool get isRated => rating != null;
 
   IntercityRequestEntity copyWith({
     String? id,
@@ -271,6 +278,8 @@ class IntercityRequestEntity {
     String? driverVehicle,
     double? driverRating,
     double? counterFare,
+    int? rating,
+    String? ratingComment,
   }) =>
       IntercityRequestEntity(
         id: id ?? this.id,
@@ -289,5 +298,7 @@ class IntercityRequestEntity {
         driverVehicle: driverVehicle ?? this.driverVehicle,
         driverRating: driverRating ?? this.driverRating,
         counterFare: counterFare ?? this.counterFare,
+        rating: rating ?? this.rating,
+        ratingComment: ratingComment ?? this.ratingComment,
       );
 }

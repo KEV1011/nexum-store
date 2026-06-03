@@ -153,10 +153,14 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
     }
   }
 
-  void markDelivered() {
+  void markDelivered({int? rating, String? comment}) {
     final current = state.active;
     if (current == null) return;
-    final done = current.copyWith(status: ErrandStatus.delivered);
+    final done = current.copyWith(
+      status: ErrandStatus.delivered,
+      rating: rating,
+      ratingComment: comment,
+    );
     state = state.copyWith(
       clearActive: true,
       past: [done, ...state.past],

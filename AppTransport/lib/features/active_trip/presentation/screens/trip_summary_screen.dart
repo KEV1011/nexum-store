@@ -32,17 +32,21 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(tripHistoryProvider.notifier).add(trip);
-      if (!trip.isDeliveryTrip) {
-        Future.delayed(const Duration(milliseconds: 600), () {
-          if (mounted) {
-            PassengerRatingSheet.show(
-              context,
-              passengerName: trip.passengerName,
-            );
-          }
-        });
-      }
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _openRating();
+      });
     });
+  }
+
+  void _openRating() {
+    PassengerRatingSheet.show(
+      context,
+      passengerName: trip.passengerName,
+      subjectNoun: trip.isDeliveryTrip ? 'cliente' : 'pasajero',
+      onSubmit: (rating, _) {
+        ref.read(tripHistoryProvider.notifier).rate(trip.id, rating.toDouble());
+      },
+    );
   }
 
   @override
@@ -247,23 +251,22 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
 
               const SizedBox(height: AppConstants.spacingXL),
 
-              // ── Calificar pasajero (solo viajes de personas) ─────────────
-              if (!trip.isDeliveryTrip) ...[
-                OutlinedButton.icon(
-                  onPressed: () => PassengerRatingSheet.show(
-                    context,
-                    passengerName: trip.passengerName,
-                  ),
-                  icon: const Icon(Icons.star_outline_rounded),
-                  label: const Text('Calificar pasajero'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(
-                      AppConstants.minTouchTarget,
-                    ),
+              // ── Calificar pasajero / cliente ─────────────────────────────
+              OutlinedButton.icon(
+                onPressed: _openRating,
+                icon: const Icon(Icons.star_outline_rounded),
+                label: Text(
+                  trip.isDeliveryTrip
+                      ? 'Calificar cliente'
+                      : 'Calificar pasajero',
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(
+                    AppConstants.minTouchTarget,
                   ),
                 ),
-                const SizedBox(height: AppConstants.spacingM),
-              ],
+              ),
+              const SizedBox(height: AppConstants.spacingM),
 
               // ── Volver al inicio ─────────────────────────────────────────
               ElevatedButton.icon(

@@ -6,6 +6,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
+import 'package:nexum_client/shared/widgets/service_rating_sheet.dart';
 
 class ErrandStatusScreen extends ConsumerWidget {
   const ErrandStatusScreen({super.key});
@@ -81,12 +82,7 @@ class ErrandStatusScreen extends ConsumerWidget {
               SizedBox(
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    HapticFeedback.mediumImpact();
-                    ref.read(errandProvider.notifier).markDelivered();
-                    _showRatingHint(context);
-                    context.go('/home');
-                  },
+                  onPressed: () => _confirmDelivered(context, ref, errand),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -142,14 +138,30 @@ class ErrandStatusScreen extends ConsumerWidget {
     }
   }
 
-  void _showRatingHint(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('¡Mandado completado! Gracias por usar Nexum.'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-      ),
+  /// Confirma la recepción del mandado y abre la calificación del mensajero.
+  /// La calificación (si la da) se guarda junto con el mandado al cerrarse.
+  Future<void> _confirmDelivered(
+    BuildContext context,
+    WidgetRef ref,
+    ErrandEntity errand,
+  ) async {
+    HapticFeedback.mediumImpact();
+    int? stars;
+    String? comment;
+    await showServiceRatingSheet(
+      context,
+      title: '¿Cómo estuvo tu mandado?',
+      subtitle: errand.messengerName ?? 'Tu mensajero',
+      onSubmit: (s, c) {
+        stars = s;
+        comment = c;
+      },
     );
+    ref.read(errandProvider.notifier).markDelivered(
+          rating: stars,
+          comment: comment,
+        );
+    if (context.mounted) context.go('/home');
   }
 }
 

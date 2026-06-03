@@ -238,6 +238,39 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
     }
   }
 
+  /// Marca el viaje activo como completado y registra la calificación que el
+  /// cliente dio al conductor. Mueve la solicitud al historial.
+  void markCompleted({int? rating, String? comment}) {
+    final current = state.active;
+    if (current == null) return;
+    final done = current.copyWith(
+      status: IntercityStatus.completed,
+      rating: rating,
+      ratingComment: comment,
+    );
+    state = state.copyWith(
+      clearActive: true,
+      past: [done, ...state.past],
+    );
+
+    final serverId = _activeServerId;
+    _activeServerId = null;
+    if (serverId != null) {
+      try {
+        unawaited(
+          _dio.post<void>(
+            '/client/intercity/$serverId/complete',
+            data: {
+              if (rating != null) 'rating': rating,
+              if (comment != null) 'comment': comment,
+            },
+          ),
+        );
+      } catch (_) {}
+      _wsService.unsubscribeIntercity(serverId);
+    }
+  }
+
   // ── Mock simulation (fallback) ────────────────────────────────────────────
 
   void _simulateDriverMatch(String requestId) {
