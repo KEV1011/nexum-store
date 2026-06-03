@@ -46,6 +46,7 @@ import {
 } from '../services/intercity.service';
 import { getIntercityRoute } from '../config/constants';
 import { createPaymentLink } from '../services/payment.service';
+import { rateLimit } from '../middleware/rate-limit.middleware';
 import {
   RequestClientErrandDTO,
   RequestIntercityDTO,
@@ -55,9 +56,16 @@ import {
 
 const router = Router();
 
+// Limita los flujos de OTP del cliente (mismo criterio que el portal driver).
+const clientOtpLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  message: 'Demasiados intentos de código. Espera un minuto e inténtalo de nuevo.',
+});
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-router.post('/auth/send-otp', (req, res) => {
+router.post('/auth/send-otp', clientOtpLimiter, (req, res) => {
   const { phone } = req.body as { phone?: string };
   if (!phone) {
     res.status(400).json({ success: false, error: 'phone is required' });
@@ -72,7 +80,7 @@ router.post('/auth/send-otp', (req, res) => {
   }
 });
 
-router.post('/auth/verify-otp', (req, res) => {
+router.post('/auth/verify-otp', clientOtpLimiter, (req, res) => {
   const { phone, otp } = req.body as { phone?: string; otp?: string };
   if (!phone || !otp) {
     res.status(400).json({ success: false, error: 'phone and otp are required' });

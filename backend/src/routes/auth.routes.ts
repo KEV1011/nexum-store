@@ -5,12 +5,25 @@ import {
   loginWithPassword as loginWithPasswordSvc,
   registerWithRole as registerWithRoleSvc,
 } from '../services/account.service';
+import { rateLimit } from '../middleware/rate-limit.middleware';
 import { AccountRole, RegisterDriverDTO } from '../types';
 
 const router = Router();
 
+// Protege los flujos de credenciales frente a abuso/fuerza bruta.
+const otpLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  message: 'Demasiados intentos de código. Espera un minuto e inténtalo de nuevo.',
+});
+const loginLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 10,
+  message: 'Demasiados intentos de inicio de sesión. Espera un minuto.',
+});
+
 // POST /auth/send-otp
-router.post('/send-otp', (req: Request, res: Response): void => {
+router.post('/send-otp', otpLimiter, (req: Request, res: Response): void => {
   const { phone } = req.body as { phone?: string };
 
   if (!phone || typeof phone !== 'string') {
@@ -31,7 +44,7 @@ router.post('/send-otp', (req: Request, res: Response): void => {
 });
 
 // POST /auth/verify-otp
-router.post('/verify-otp', (req: Request, res: Response): void => {
+router.post('/verify-otp', otpLimiter, (req: Request, res: Response): void => {
   const { phone, otp } = req.body as { phone?: string; otp?: string };
 
   if (!phone || typeof phone !== 'string') {
@@ -173,7 +186,7 @@ router.post('/check-identifier', (req: Request, res: Response): void => {
 });
 
 // POST /auth/login  → { token, driver }
-router.post('/login', (req: Request, res: Response): void => {
+router.post('/login', loginLimiter, (req: Request, res: Response): void => {
   const { identifier, password } = req.body as {
     identifier?: string;
     password?: string;
