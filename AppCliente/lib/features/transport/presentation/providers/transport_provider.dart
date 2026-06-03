@@ -96,31 +96,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
     final fare = serviceType.estimateFare(distance);
     final eta = (distance * 2.5 + 3).round();
 
-    String id;
-    String ref;
-
-    try {
-      final res = await _dio.post<Map<String, dynamic>>(
-        '/client/trips/request',
-        data: {
-          'serviceType': serviceType.name,
-          'originAddress': origin,
-          'destinationAddress': destination,
-          'estimatedFare': fare,
-          'distanceKm': distance,
-          'etaMinutes': eta,
-          if (recipientName != null) 'recipientName': recipientName,
-          if (recipientPhone != null) 'recipientPhone': recipientPhone,
-          if (packageDescription != null) 'packageDescription': packageDescription,
-        },
-      );
-      final data = res.data!['data'] as Map<String, dynamic>;
-      id = data['id'] as String;
-      ref = data['requestRef'] as String;
-    } catch (_) {
-      id = 'tr-${DateTime.now().millisecondsSinceEpoch}';
-      ref = 'NXM-${1000 + _random.nextInt(8000)}';
-    }
+    // Id local canónico generado de forma síncrona: permite navegar y mostrar
+    // la hoja de pago de inmediato sin esperar al backend. Antes el botón
+    // quedaba bloqueado hasta el connectTimeout cuando el servidor no respondía.
+    final id = 'tr-${DateTime.now().millisecondsSinceEpoch}';
+    final ref = 'NXM-${1000 + _random.nextInt(8000)}';
 
     final req = TransportRequestEntity(
       id: id,
@@ -142,15 +122,69 @@ class TransportNotifier extends StateNotifier<TransportState> {
     state = state.copyWith(requests: updated, isLoading: false);
     unawaited(_persist(updated));
 
+    // Notifica al servidor y conecta el tiempo real en segundo plano, de modo
+    // que la solicitud (y su simulación de respaldo) no bloquee la navegación.
+    unawaited(_dispatchRequest(
+      id: id,
+      serviceType: serviceType,
+      origin: origin,
+      destination: destination,
+      fare: fare,
+      distance: distance,
+      eta: eta,
+      recipientName: recipientName,
+      recipientPhone: recipientPhone,
+      packageDescription: packageDescription,
+    ));
+
+    return id;
+  }
+
+  /// Envía la solicitud al backend (best-effort) y suscribe el tiempo real.
+  /// Se ejecuta en segundo plano: si el servidor no responde, cae a la
+  /// simulación local con el mismo id canónico.
+  Future<void> _dispatchRequest({
+    required String id,
+    required TransportServiceType serviceType,
+    required String origin,
+    required String destination,
+    required double fare,
+    required double distance,
+    required int eta,
+    String? recipientName,
+    String? recipientPhone,
+    String? packageDescription,
+  }) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/trips/request',
+        data: {
+          'clientRef': id,
+          'serviceType': serviceType.name,
+          'originAddress': origin,
+          'destinationAddress': destination,
+          'estimatedFare': fare,
+          'distanceKm': distance,
+          'etaMinutes': eta,
+          if (recipientName != null) 'recipientName': recipientName,
+          if (recipientPhone != null) 'recipientPhone': recipientPhone,
+          if (packageDescription != null) 'packageDescription': packageDescription,
+        },
+      );
+    } catch (_) {
+      // Backend no disponible — el tiempo real se cubre con simulación.
+    }
+
+    if (!mounted) return;
+
     final wsOk = await _wsService.connect();
+    if (!mounted) return;
     if (wsOk && !_wsSubscribed.contains(id)) {
       _wsSubscribed.add(id);
       _wsService.subscribeTrip(id);
     } else {
       _startSimulation(id);
     }
-
-    return id;
   }
 
   void _applyTripUpdate(TripUpdateEvent event) {
