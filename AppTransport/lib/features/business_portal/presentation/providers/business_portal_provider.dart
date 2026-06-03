@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/features/business_portal/data/datasources/business_portal_datasource.dart';
 import 'package:nexum_driver/features/business_portal/data/datasources/catalog_datasource.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/business_earnings_entity.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/business_order_entity.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/business_product_entity.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ── Infrastructure ────────────────────────────────────────────────────────────
 
@@ -71,9 +74,18 @@ final incomingOrderProvider =
 
 class _ProductsNotifier
     extends AsyncNotifier<List<BusinessProductEntity>> {
+  static const _kKey = 'nexum_biz_products_v1';
+
   @override
-  Future<List<BusinessProductEntity>> build() async =>
-      ref.read(_dsProvider).fetchProducts('default_business');
+  Future<List<BusinessProductEntity>> build() async {
+    // Catálogo base (mock/backend) + productos agregados por el negocio que
+    // se guardaron localmente, de modo que sobrevivan al reinicio de la app.
+    final fetched = await ref.read(_dsProvider).fetchProducts('default_business');
+    final local = await _loadLocal();
+    final fetchedIds = fetched.map((p) => p.id).toSet();
+    final extras = local.where((p) => !fetchedIds.contains(p.id)).toList();
+    return [...extras, ...fetched];
+  }
 
   Future<void> toggle(String productId, bool isAvailable) async {
     await ref.read(_dsProvider).toggleProductAvailability(productId, isAvailable);
@@ -82,11 +94,42 @@ class _ProductsNotifier
           .map((p) => p.id == productId ? p.copyWith(isAvailable: isAvailable) : p)
           .toList(),
     );
+    // Refleja el cambio también en los productos persistidos localmente.
+    final local = await _loadLocal();
+    if (local.any((p) => p.id == productId)) {
+      await _saveLocal([
+        for (final p in local)
+          if (p.id == productId) p.copyWith(isAvailable: isAvailable) else p,
+      ]);
+    }
   }
 
-  /// Inserta un producto recién agregado al inicio de la lista (feedback inmediato).
-  void addLocal(BusinessProductEntity product) {
+  /// Inserta un producto recién agregado al inicio de la lista (feedback
+  /// inmediato) y lo persiste para que siga disponible tras reiniciar.
+  Future<void> addLocal(BusinessProductEntity product) async {
     state = state.whenData((list) => [product, ...list]);
+    final local = await _loadLocal();
+    await _saveLocal([product, ...local.where((p) => p.id != product.id)]);
+  }
+
+  Future<List<BusinessProductEntity>> _loadLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_kKey) ?? const [];
+    return raw
+        .map(
+          (s) => BusinessProductEntity.fromJson(
+            jsonDecode(s) as Map<String, dynamic>,
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> _saveLocal(List<BusinessProductEntity> products) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _kKey,
+      products.map((p) => jsonEncode(p.toJson())).toList(),
+    );
   }
 }
 

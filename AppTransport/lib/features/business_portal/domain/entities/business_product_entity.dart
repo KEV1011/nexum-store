@@ -75,4 +75,18 @@ class BusinessProductEntity {
         stock: (j['stock'] as num?)?.toInt(),
         requiresRx: j['requiresRx'] as bool? ?? false,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'price': price,
+        'category': category,
+        'isAvailable': isAvailable,
+        if (description != null) 'description': description,
+        if (imageUrl != null) 'imageUrl': imageUrl,
+        if (barcode != null) 'barcode': barcode,
+        if (masterProductId != null) 'masterProductId': masterProductId,
+        if (stock != null) 'stock': stock,
+        'requiresRx': requiresRx,
+      };
 }

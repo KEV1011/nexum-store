@@ -148,7 +148,8 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
     setState(() => _busy = false);
 
     if (product != null) {
-      ref.read(businessProductsProvider.notifier).addLocal(product);
+      await ref.read(businessProductsProvider.notifier).addLocal(product);
+      if (!mounted) return;
       AppSnackbar.showSuccess(context, '${product.name} agregado');
       Navigator.of(context).pop();
     } else {
