@@ -6,13 +6,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://nexum:nexum_dev_secret@nexum-db:5432/nexum_db
-      JWT_SECRET: nexum_jwt_dev_secret_change_in_prod
+      DATABASE_URL: ${DATABASE_URL:-postgresql://nexum:nexum_dev_secret@nexum-db:5432/nexum_db}
+      JWT_SECRET: ${JWT_SECRET:-nexum_jwt_dev_secret_change_in_prod}
       PORT: "3000"
       NODE_ENV: production
-      CORS_ORIGIN: "*"
-      PORTAL_BASE_URL: http://localhost:3000
-      MOCK_OTP: "123456"
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      PORTAL_BASE_URL: ${PORTAL_BASE_URL:-http://localhost:3000}
+      MOCK_OTP: ${MOCK_OTP:-123456}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
     depends_on:
       nexum-db:
         condition: service_healthy

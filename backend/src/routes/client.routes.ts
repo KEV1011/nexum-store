@@ -46,6 +46,7 @@ import {
 } from '../services/intercity.service';
 import { getIntercityRoute } from '../config/constants';
 import { createPaymentLink } from '../services/payment.service';
+import { geocodeAddress, calculateRoute } from '../services/maps.service';
 import { rateLimit } from '../middleware/rate-limit.middleware';
 import {
   RequestClientErrandDTO,
@@ -469,6 +470,29 @@ router.post('/payments/init', clientAuthMiddleware, (req, res) => {
     const msg = err instanceof Error ? err.message : 'Failed to create payment';
     res.status(400).json({ success: false, error: msg });
   }
+});
+
+// ─── Maps (proxy — clave no expuesta al cliente) ───────────────────────────────
+
+// GET /client/maps/geocode?address=...
+router.get('/maps/geocode', async (req, res): Promise<void> => {
+  const { address } = req.query as { address?: string };
+  if (!address) { res.status(400).json({ success: false, error: 'address is required' }); return; }
+  const result = await geocodeAddress(address);
+  if (!result) { res.status(404).json({ success: false, error: 'Address not found or Maps not configured' }); return; }
+  res.status(200).json({ success: true, data: result });
+});
+
+// GET /client/maps/route?origin=...&destination=...
+router.get('/maps/route', async (req, res): Promise<void> => {
+  const { origin, destination } = req.query as { origin?: string; destination?: string };
+  if (!origin || !destination) {
+    res.status(400).json({ success: false, error: 'origin and destination are required' });
+    return;
+  }
+  const result = await calculateRoute(origin, destination);
+  if (!result) { res.status(404).json({ success: false, error: 'Route not found or Maps not configured' }); return; }
+  res.status(200).json({ success: true, data: result });
 });
 
 export default router;

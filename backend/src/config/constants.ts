@@ -15,6 +15,10 @@ export const JWT_SECRET = process.env['JWT_SECRET'] ?? 'nexum-driver-secret-key-
 export const JWT_EXPIRES_IN = '30d';
 export const MOCK_OTP = '123456';
 
+// ─── Google Maps ──────────────────────────────────────────────────────────────
+
+export const GOOGLE_MAPS_API_KEY = process.env['GOOGLE_MAPS_API_KEY'] ?? '';
+
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
 export const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? '*';
