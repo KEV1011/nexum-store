@@ -45,10 +45,7 @@ class AccountScreen extends ConsumerWidget {
                 icon: Icons.account_balance_wallet_rounded,
                 title: 'Métodos de pago',
                 subtitle: 'Efectivo, tarjeta, Nequi',
-                onTap: () => AppSnackbar.showInfo(
-                  context,
-                  'Métodos de pago próximamente',
-                ),
+                onTap: () => context.push(AppRoutes.paymentMethods),
               ),
               _DarkModeTile(
                 isDark: isDark,
@@ -62,10 +59,7 @@ class AccountScreen extends ConsumerWidget {
               _SettingTile(
                 icon: Icons.help_outline_rounded,
                 title: 'Ayuda y soporte',
-                onTap: () => AppSnackbar.showInfo(
-                  context,
-                  'Centro de ayuda próximamente',
-                ),
+                onTap: () => context.push(AppRoutes.helpCenter),
               ),
               _SettingTile(
                 icon: Icons.info_outline_rounded,

@@ -36,8 +36,14 @@ import 'package:nexum_client/features/ride_negotiation/presentation/screens/'
     'request_ride_screen.dart';
 import 'package:nexum_client/features/onboarding/presentation/screens/'
     'onboarding_screen.dart';
+import 'package:nexum_client/features/help_center/presentation/screens/'
+    'help_center_screen.dart';
+import 'package:nexum_client/features/orders/presentation/screens/'
+    'order_chat_screen.dart';
 import 'package:nexum_client/features/orders/presentation/screens/'
     'order_tracking_screen.dart';
+import 'package:nexum_client/features/payment_methods/presentation/screens/'
+    'payment_methods_screen.dart';
 import 'package:nexum_client/features/shell/presentation/screens/'
     'home_shell.dart';
 import 'package:nexum_client/features/transport/domain/entities/'
@@ -78,8 +84,16 @@ abstract final class AppRoutes {
   static const String errandBooking = '/errand/booking';
   static const String errandStatus = '/errand/status';
 
+  // Métodos de pago y ayuda
+  static const String paymentMethods = '/payment-methods';
+  static const String helpCenter = '/help-center';
+
+  // Chat de pedido
+  static const String orderChat = '/order/:id/chat';
+
   static String businessPath(String id) => '/business/$id';
   static String orderPath(String id) => '/order/$id';
+  static String orderChatPath(String id) => '/order/$id/chat';
   static String transportTrackingPath(String id) => '/transport/tracking/$id';
 }
 
@@ -231,6 +245,33 @@ final routerProvider = Provider<GoRouter>((ref) {
           pageKey: state.pageKey,
           child: const ErrandStatusScreen(),
         ),
+      ),
+      GoRoute(
+        path: AppRoutes.paymentMethods,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const PaymentMethodsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.helpCenter,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const HelpCenterScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.orderChat,
+        pageBuilder: (context, state) {
+          final extra = state.extra as Map<String, String>?;
+          return AppTransitions.slideLeft(
+            pageKey: state.pageKey,
+            child: OrderChatScreen(
+              orderId: state.pathParameters['id'] ?? '',
+              driverName: extra?['driverName'] ?? 'Conductor',
+            ),
+          );
+        },
       ),
     ],
     errorBuilder: (context, state) => _RouterErrorScreen(error: state.error),

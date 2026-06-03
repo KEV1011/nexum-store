@@ -23,6 +23,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/pickup_pr
 import 'package:nexum_driver/features/active_trip/presentation/widgets/trip_in_progress_card.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_passenger_card.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
+import 'package:nexum_driver/features/ride_pool/presentation/screens/ride_chat_screen.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
@@ -521,6 +522,24 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
               const SizedBox(width: AppConstants.spacingS),
 
+              // Chat button
+              Material(
+                color: Colors.white,
+                elevation: 4,
+                shadowColor: AppColors.shadow,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: () => _openChat(trip),
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.chat_rounded,
+                        size: 22, color: AppColors.primary),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingS),
+
               // ETA badge — changes color as time runs out
               AnimatedContainer(
                 duration: const Duration(milliseconds: 500),
@@ -753,6 +772,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     _etaTimer?.cancel();
     ref.read(activeTripProvider.notifier).state = null;
     if (mounted) context.go('/home');
+  }
+
+  void _openChat(ActiveTripEntity trip) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RideChatScreen(
+          rideId: trip.request.id,
+          peerName: trip.request.passenger.name,
+        ),
+      ),
+    );
   }
 
   // ── Dialogs ──────────────────────────────────────────────────────────────

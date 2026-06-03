@@ -350,8 +350,10 @@ class _DriverCard extends StatelessWidget {
           const SizedBox(width: AppConstants.spacingS),
           _CircleAction(
             icon: Icons.chat_rounded,
-            onTap: () =>
-                AppSnackbar.showInfo(context, 'Chat no disponible en demo'),
+            onTap: () => context.push(
+              AppRoutes.orderChatPath(order.id),
+              extra: {'driverName': order.driverName ?? 'Conductor'},
+            ),
           ),
         ],
       ),
