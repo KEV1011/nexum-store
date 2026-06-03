@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { prisma } from '../lib/prisma';
+import { ErrandCategory as PrismaErrandCategory } from '@prisma/client';
 import {
   ErrandCategory,
   ErrandStatus,
@@ -7,6 +9,16 @@ import {
   ErrandRequestDTO,
 } from '../types';
 import { ERRAND_SERVICE_FEE } from '../config/constants';
+
+const ERRAND_CATEGORY_MAP: Record<string, PrismaErrandCategory> = {
+  pharmacy: PrismaErrandCategory.PHARMACY,
+  groceries: PrismaErrandCategory.GROCERIES,
+  documents: PrismaErrandCategory.DOCUMENTS,
+  payments: PrismaErrandCategory.PAYMENTS,
+  food: PrismaErrandCategory.FOOD,
+  shopping: PrismaErrandCategory.SHOPPING,
+  other: PrismaErrandCategory.OTHER,
+};
 
 // ─── Internal state ───────────────────────────────────────────────────────────
 
@@ -62,6 +74,21 @@ export function requestClientErrand(
 
   errandStore.set(id, errand);
   clientActiveErrand.set(clientId, id);
+
+  // Persist to DB (fire-and-forget)
+  prisma.errand.create({
+    data: {
+      id, requestRef, userId: clientId,
+      category: ERRAND_CATEGORY_MAP[dto.category.toLowerCase()] ?? PrismaErrandCategory.OTHER,
+      description: dto.description,
+      pickupAddress: dto.pickupAddress,
+      dropoffAddress: dto.dropoffAddress,
+      serviceFee: ERRAND_SERVICE_FEE,
+      purchaseBudget: dto.purchaseBudget,
+      notes: dto.notes,
+    },
+  }).catch(() => { /* non-fatal */ });
+
   return _toDTO(errand);
 }
 

@@ -10,6 +10,8 @@ import { logger } from './utils/logger';
 import { requestLogger } from './middleware/request-logger.middleware';
 import { securityHeaders } from './middleware/security.middleware';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
+import { prisma } from './lib/prisma';
+import { seedDatabase } from './lib/seed';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -80,6 +82,8 @@ server.listen(PORT, () => {
   logger.info(`REST API escuchando en http://localhost:${PORT}`);
   logger.info(`WebSocket escuchando en ws://localhost:${PORT}`);
   logger.info(`Entorno: ${NODE_ENV}`);
+  // Run seed in background after server is ready
+  seedDatabase().catch((e) => logger.error('Error seeding database', { error: String(e) }));
 });
 
 // ─── Apagado controlado ───────────────────────────────────────────────────────
@@ -106,9 +110,11 @@ function shutdown(signal: string): void {
   }
   wss.close(() => {
     server.close(() => {
-      logger.info('Servidor cerrado limpiamente');
-      clearTimeout(forceExit);
-      process.exit(0);
+      prisma.$disconnect().finally(() => {
+        logger.info('Servidor cerrado limpiamente');
+        clearTimeout(forceExit);
+        process.exit(0);
+      });
     });
   });
 }

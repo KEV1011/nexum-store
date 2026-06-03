@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
+import { prisma } from '../lib/prisma';
 import { JWT_SECRET, JWT_EXPIRES_IN, MOCK_OTP } from '../config/constants';
 import {
   ClientDTO,
@@ -17,10 +18,7 @@ import {
   getProductById,
 } from './business.service';
 
-// ─── Stores ───────────────────────────────────────────────────────────────────
-
-const clientStore = new Map<string, ClientDTO>();
-const otpStore = new Map<string, { otp: string; expiresAt: number }>();
+const OTP_TTL = 5 * 60 * 1000;
 
 interface ClientOrder {
   id: string;
@@ -44,6 +42,7 @@ interface ClientOrder {
   deliveredAt?: Date;
 }
 
+// In-memory simulation state (pub/sub and timers stay ephemeral)
 const orderStore = new Map<string, ClientOrder>();
 const clientOrderIndex = new Map<string, string[]>();
 
@@ -53,7 +52,6 @@ const orderListeners = new Map<string, Set<OrderCallback>>();
 type BusinessNewOrderCallback = (order: ClientOrderSummaryDTO) => void;
 const businessOrderListeners = new Map<string, Set<BusinessNewOrderCallback>>();
 
-const OTP_TTL = 5 * 60 * 1000;
 const MOCK_DRIVERS = [
   { name: 'Andrés Villamizar', phone: '+57 312 678 9012' },
   { name: 'Laura Sepúlveda', phone: '+57 318 234 5678' },
@@ -63,26 +61,32 @@ const MOCK_DRIVERS = [
 
 // ─── OTP ──────────────────────────────────────────────────────────────────────
 
-export function sendClientOtp(phone: string): void {
-  otpStore.set(phone, { otp: MOCK_OTP, expiresAt: Date.now() + OTP_TTL });
+export async function sendClientOtp(phone: string): Promise<void> {
+  const expiresAt = new Date(Date.now() + OTP_TTL);
+  await prisma.otpSession.create({ data: { phone, code: MOCK_OTP, expiresAt } });
 }
 
-export function verifyClientOtp(
+export async function verifyClientOtp(
   phone: string,
   otp: string,
-): { token: string; client: ClientDTO } {
-  const record = otpStore.get(phone);
+): Promise<{ token: string; client: ClientDTO }> {
+  const record = await prisma.otpSession.findFirst({
+    where: { phone, used: false, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+
   if (!record) throw new Error('No OTP requested for this phone number');
-  if (Date.now() > record.expiresAt) { otpStore.delete(phone); throw new Error('OTP has expired'); }
-  if (record.otp !== otp) throw new Error('Invalid OTP');
-  otpStore.delete(phone);
+  if (record.code !== otp) throw new Error('Invalid OTP');
 
-  let client = clientStore.get(phone);
-  if (!client) {
-    client = { id: `client-${randomUUID().slice(0, 8)}`, phone, name: 'Usuario Nexum' };
-    clientStore.set(phone, client);
-  }
+  await prisma.otpSession.update({ where: { id: record.id }, data: { used: true } });
 
+  const dbUser = await prisma.user.upsert({
+    where: { phone },
+    create: { phone, name: 'Usuario Nexum' },
+    update: {},
+  });
+
+  const client: ClientDTO = { id: dbUser.id, phone: dbUser.phone, name: dbUser.name ?? 'Usuario Nexum' };
   const payload: ClientJwtPayload = { clientId: client.id, phone, role: 'client' };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   return { token, client };
@@ -95,16 +99,16 @@ export function verifyClientToken(token: string): ClientJwtPayload {
 }
 
 /** Look up a registered client's display name by phone. */
-export function getClientNameByPhone(phone: string): string | null {
-  return clientStore.get(phone)?.name ?? null;
+export async function getClientNameByPhone(phone: string): Promise<string | null> {
+  const u = await prisma.user.findUnique({ where: { phone }, select: { name: true } });
+  return u?.name ?? null;
 }
 
-/** Look up a registered client by id (clientStore is keyed by phone). */
-export function getClientById(clientId: string): ClientDTO | null {
-  for (const client of clientStore.values()) {
-    if (client.id === clientId) return client;
-  }
-  return null;
+/** Look up a registered client by id. */
+export async function getClientById(clientId: string): Promise<ClientDTO | null> {
+  const u = await prisma.user.findUnique({ where: { id: clientId } });
+  if (!u) return null;
+  return { id: u.id, phone: u.phone, name: u.name ?? 'Usuario Nexum' };
 }
 
 // ─── Businesses ───────────────────────────────────────────────────────────────
@@ -114,11 +118,11 @@ export { getBusinessPublicById as getClientBusinessById };
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
-export function placeClientOrder(
+export async function placeClientOrder(
   clientId: string,
   _clientPhone: string,
   dto: ClientPlaceOrderDTO,
-): ClientOrderSummaryDTO {
+): Promise<ClientOrderSummaryDTO> {
   const biz = getBusinessPublicById(dto.businessId);
   const id = `cord-${randomUUID().slice(0, 8)}`;
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
@@ -141,8 +145,34 @@ export function placeClientOrder(
 
   orderStore.set(id, order);
   clientOrderIndex.set(clientId, [id, ...(clientOrderIndex.get(clientId) ?? [])]);
+
+  // Persist to DB (fire-and-forget with error logging)
+  prisma.order.create({
+    data: {
+      id,
+      orderRef,
+      userId: clientId,
+      businessId: dto.businessId,
+      deliveryAddress: dto.deliveryAddress,
+      subtotal,
+      deliveryFee: biz.deliveryFee,
+      total: subtotal + biz.deliveryFee,
+      etaMinutes: biz.etaMinutes,
+      lines: {
+        createMany: {
+          data: dto.items.map((line, i) => ({
+            productId: line.productId,
+            productName: items[i]?.productName ?? 'Producto',
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            subtotal: line.quantity * line.unitPrice,
+          })),
+        },
+      },
+    },
+  }).catch(() => { /* non-fatal: order lives in memory for simulation */ });
+
   _startSimulation(id, biz.name);
-  // Notify business portal listeners
   const summary = _toSummary(order, biz.name);
   for (const cb of businessOrderListeners.get(dto.businessId) ?? []) cb(summary);
   return summary;
@@ -291,6 +321,30 @@ export function requestClientTrip(clientId: string, dto: RequestClientTripDTO): 
 
   clientTripStore.set(id, trip);
   clientActiveTrip.set(clientId, id);
+
+  const SERVICE_TYPE_MAP: Record<string, import('@prisma/client').TransportType> = {
+    taxi: 'TAXI', moto: 'MOTO', particular: 'PARTICULAR', envios: 'ENVIOS', mandado: 'MANDADO',
+  };
+
+  // Persist trip to DB (fire-and-forget)
+  prisma.trip.create({
+    data: {
+      id, requestRef,
+      passengerId: clientId,
+      serviceType: SERVICE_TYPE_MAP[dto.serviceType.toLowerCase()] ?? 'TAXI',
+      originAddress: dto.originAddress,
+      originLat: 7.3754, originLng: -72.6464,
+      destAddress: dto.destinationAddress,
+      destLat: 7.3800, destLng: -72.6500,
+      estimatedFare: dto.estimatedFare,
+      distanceKm: dto.distanceKm,
+      etaMinutes: dto.etaMinutes,
+      recipientName: dto.recipientName,
+      recipientPhone: dto.recipientPhone,
+      packageDescription: dto.packageDescription,
+    },
+  }).catch(() => { /* non-fatal: trip lives in memory for simulation */ });
+
   return _toTripDTO(trip);
 }
 

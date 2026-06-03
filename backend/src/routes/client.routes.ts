@@ -65,14 +65,14 @@ const clientOtpLimiter = rateLimit({
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-router.post('/auth/send-otp', clientOtpLimiter, (req, res) => {
+router.post('/auth/send-otp', clientOtpLimiter, async (req, res) => {
   const { phone } = req.body as { phone?: string };
   if (!phone) {
     res.status(400).json({ success: false, error: 'phone is required' });
     return;
   }
   try {
-    sendClientOtp(phone);
+    await sendClientOtp(phone);
     res.json({ success: true, data: { success: true } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error sending OTP';
@@ -80,14 +80,14 @@ router.post('/auth/send-otp', clientOtpLimiter, (req, res) => {
   }
 });
 
-router.post('/auth/verify-otp', clientOtpLimiter, (req, res) => {
+router.post('/auth/verify-otp', clientOtpLimiter, async (req, res) => {
   const { phone, otp } = req.body as { phone?: string; otp?: string };
   if (!phone || !otp) {
     res.status(400).json({ success: false, error: 'phone and otp are required' });
     return;
   }
   try {
-    const result = verifyClientOtp(phone, otp);
+    const result = await verifyClientOtp(phone, otp);
     res.json({ success: true, data: result });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Verification failed';
@@ -111,7 +111,7 @@ router.get('/businesses/:id', (req, res) => {
 
 // ─── Orders (auth required) ───────────────────────────────────────────────────
 
-router.post('/orders', clientAuthMiddleware, (req, res) => {
+router.post('/orders', clientAuthMiddleware, async (req, res) => {
   const clientId = req.clientId!;
   const clientPhone = req.clientPhone!;
   const dto = req.body as { businessId?: string; deliveryAddress?: string; items?: unknown[] };
@@ -122,7 +122,7 @@ router.post('/orders', clientAuthMiddleware, (req, res) => {
   }
 
   try {
-    const order = placeClientOrder(clientId, clientPhone, {
+    const order = await placeClientOrder(clientId, clientPhone, {
       businessId: dto.businessId,
       deliveryAddress: dto.deliveryAddress,
       items: dto.items as Array<{ productId: string; quantity: number; unitPrice: number }>,
@@ -350,13 +350,13 @@ router.get('/intercity/pool/:id', clientAuthMiddleware, (req, res) => {
 });
 
 // POST /client/intercity/pool/:id/book
-router.post('/intercity/pool/:id/book', clientAuthMiddleware, (req, res) => {
+router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Partial<BookSeatsDTO>;
   if (dto.seatsBooked === undefined) {
     res.status(400).json({ success: false, error: 'seatsBooked is required' });
     return;
   }
-  const passengerName = getClientNameByPhone(req.clientPhone!) ?? 'Pasajero Nexum';
+  const passengerName = (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero Nexum';
   try {
     const result = bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
       seatsBooked: dto.seatsBooked,
@@ -385,7 +385,7 @@ router.post('/intercity/pool/bookings/:bookingId/cancel', clientAuthMiddleware, 
 // ─── Ride negotiation (inDriver-style bids + chat) ─────────────────────────────
 
 // POST /client/rides/request — publish a ride with an offered fare
-router.post('/rides/request', clientAuthMiddleware, (req, res) => {
+router.post('/rides/request', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Record<string, unknown>;
   const required = ['serviceType', 'originAddress', 'destinationAddress', 'offeredFare', 'distanceKm', 'etaMinutes'];
   for (const f of required) {
@@ -394,8 +394,8 @@ router.post('/rides/request', clientAuthMiddleware, (req, res) => {
       return;
     }
   }
-  const client = getClientById(req.clientId!);
-  const clientName = client?.name ?? getClientNameByPhone(req.clientPhone!) ?? 'Usuario Nexum';
+  const client = await getClientById(req.clientId!);
+  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Usuario Nexum';
   try {
     const ride = createRideRequest(req.clientId!, clientName, req.clientPhone!, {
       serviceType: dto['serviceType'] as never,

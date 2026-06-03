@@ -31,7 +31,6 @@ model User {
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
   ratings           Rating[]          @relation("RatingAuthor")
-  otpSessions       OtpSession[]
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
@@ -48,8 +47,6 @@ model OtpSession {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
-
-  user      User?    @relation(fields: [phone], references: [phone])
 
   @@index([phone])
   @@map("otp_sessions")
@@ -78,7 +75,6 @@ model Driver {
 
   vehicles      Vehicle[]
   trips         Trip[]
-  otpSessions   OtpSession[]
   earnings      DriverEarning[]
 
   @@index([status])

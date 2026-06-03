@@ -1,4 +1,9 @@
 import { randomUUID } from 'crypto';
+import { prisma } from '../lib/prisma';
+import {
+  IntercityCity as PrismaCity,
+  IntercitySeats as PrismaSeats,
+} from '@prisma/client';
 import {
   IntercityCity,
   IntercitySeats,
@@ -6,6 +11,14 @@ import {
   RequestIntercityDTO,
   IntercityBookingDTO,
 } from '../types';
+
+const CITY_MAP: Record<string, PrismaCity> = {
+  pamplona: PrismaCity.PAMPLONA, cucuta: PrismaCity.CUCUTA, bucaramanga: PrismaCity.BUCARAMANGA,
+  chitaga: PrismaCity.CHITAGA, malaga: PrismaCity.MALAGA, ocana: PrismaCity.OCANA, bogota: PrismaCity.BOGOTA,
+};
+const SEATS_MAP: Record<string, PrismaSeats> = {
+  one: PrismaSeats.ONE, two: PrismaSeats.TWO, three: PrismaSeats.THREE, fleet: PrismaSeats.FLEET,
+};
 
 // ─── Internal state ───────────────────────────────────────────────────────────
 
@@ -81,6 +94,22 @@ export function requestIntercityBooking(
 
   bookingStore.set(id, booking);
   clientActiveBooking.set(clientId, id);
+
+  // Persist to DB (fire-and-forget)
+  prisma.intercityBooking.create({
+    data: {
+      id, requestRef, userId: clientId,
+      origin: CITY_MAP[dto.origin.toLowerCase()] ?? PrismaCity.PAMPLONA,
+      destination: CITY_MAP[dto.destination.toLowerCase()] ?? PrismaCity.CUCUTA,
+      departureTime: new Date(dto.departureTime),
+      seats: SEATS_MAP[dto.seats.toLowerCase()] ?? PrismaSeats.ONE,
+      offeredFare: dto.offeredFare,
+      pickupAddress: dto.pickupAddress,
+      dropoffAddress: dto.dropoffAddress,
+      notes: dto.notes,
+    },
+  }).catch(() => { /* non-fatal */ });
+
   _scheduleDriverResponse(id, dto.offeredFare);
   return _toDTO(booking);
 }
