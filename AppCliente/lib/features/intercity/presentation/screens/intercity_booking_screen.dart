@@ -8,6 +8,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
+import 'package:nexum_client/features/payment_methods/presentation/widgets/payment_method_row.dart';
 
 // Color de identidad del módulo intermunicipal
 const _kInterColor = Color(0xFF1E3A8A);
@@ -503,6 +504,8 @@ class _IntercityBookingScreenState
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          const PaymentMethodRow(dark: true),
         ],
       ),
       bottomNavigationBar: _BottomBar(

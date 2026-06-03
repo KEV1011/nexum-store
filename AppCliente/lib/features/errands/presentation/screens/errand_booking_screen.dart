@@ -8,6 +8,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
+import 'package:nexum_client/features/payment_methods/presentation/widgets/payment_method_row.dart';
 
 /// Tarifa base del servicio de mandado (lo que cobra el mensajero).
 const double _kBaseServiceFee = 6000;
@@ -333,6 +334,8 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          const PaymentMethodRow(),
         ],
       ),
       bottomNavigationBar: Container(

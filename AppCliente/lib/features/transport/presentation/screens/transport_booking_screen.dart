@@ -8,6 +8,7 @@ import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/addresses_provider.dart';
+import 'package:nexum_client/features/payment_methods/presentation/widgets/payment_method_row.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -135,6 +136,8 @@ class _TransportBookingScreenState
             ],
             const SizedBox(height: 24),
             _FareEstimateCard(serviceType: widget.serviceType),
+            const SizedBox(height: 16),
+            const PaymentMethodRow(),
             const SizedBox(height: 28),
             FilledButton(
               style: FilledButton.styleFrom(

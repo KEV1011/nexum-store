@@ -3,99 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
-
-// ── Mock state ────────────────────────────────────────────────────────────────
-
-enum _MethodType { card, nequi, pse, cash }
-
-class _PaymentMethod {
-  const _PaymentMethod({
-    required this.id,
-    required this.type,
-    required this.label,
-    required this.detail,
-    this.isDefault = false,
-  });
-
-  final String id;
-  final _MethodType type;
-  final String label;
-  final String detail;
-  final bool isDefault;
-
-  _PaymentMethod copyWith({bool? isDefault}) => _PaymentMethod(
-        id: id,
-        type: type,
-        label: label,
-        detail: detail,
-        isDefault: isDefault ?? this.isDefault,
-      );
-}
-
-class _PaymentMethodsNotifier extends StateNotifier<List<_PaymentMethod>> {
-  _PaymentMethodsNotifier()
-      : super(const [
-          _PaymentMethod(
-            id: 'cash',
-            type: _MethodType.cash,
-            label: 'Efectivo',
-            detail: 'Pago al recibir',
-            isDefault: true,
-          ),
-          _PaymentMethod(
-            id: 'visa-1234',
-            type: _MethodType.card,
-            label: 'Visa •••• 1234',
-            detail: 'Vence 08/27',
-          ),
-          _PaymentMethod(
-            id: 'nequi-3100001111',
-            type: _MethodType.nequi,
-            label: 'Nequi',
-            detail: '310 000 1111',
-          ),
-        ]);
-
-  void remove(String id) {
-    if (id == 'cash') return; // cash can't be removed
-    state = state.where((m) => m.id != id).toList();
-  }
-
-  void setDefault(String id) {
-    state = state.map((m) => m.copyWith(isDefault: m.id == id)).toList();
-  }
-
-  void addCard({required String number, required String expiry}) {
-    final last4 = number.replaceAll(' ', '').substring(
-        (number.replaceAll(' ', '').length - 4).clamp(0, 9999));
-    state = [
-      ...state,
-      _PaymentMethod(
-        id: 'card-$last4-${DateTime.now().millisecondsSinceEpoch}',
-        type: _MethodType.card,
-        label: 'Tarjeta •••• $last4',
-        detail: 'Vence $expiry',
-      ),
-    ];
-  }
-
-  void addNequi(String phone) {
-    state = [
-      ...state,
-      _PaymentMethod(
-        id: 'nequi-$phone',
-        type: _MethodType.nequi,
-        label: 'Nequi',
-        detail: phone,
-      ),
-    ];
-  }
-}
-
-final _paymentMethodsProvider =
-    StateNotifierProvider<_PaymentMethodsNotifier, List<_PaymentMethod>>(
-  (_) => _PaymentMethodsNotifier(),
-);
+import 'package:nexum_client/features/payment_methods/domain/payment_method.dart';
+import 'package:nexum_client/features/payment_methods/presentation/providers/'
+    'payment_methods_provider.dart';
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -104,8 +14,8 @@ class PaymentMethodsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final methods = ref.watch(_paymentMethodsProvider);
-    final notifier = ref.read(_paymentMethodsProvider.notifier);
+    final methods = ref.watch(paymentMethodsProvider);
+    final notifier = ref.read(paymentMethodsProvider.notifier);
 
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
@@ -124,7 +34,7 @@ class PaymentMethodsScreen extends ConsumerWidget {
             (m) => _MethodTile(
               method: m,
               onSetDefault: () => notifier.setDefault(m.id),
-              onRemove: m.type == _MethodType.cash
+              onRemove: m.type == PaymentMethodType.cash
                   ? null
                   : () => _confirmRemove(context, m, notifier),
             ),
@@ -160,8 +70,8 @@ class PaymentMethodsScreen extends ConsumerWidget {
 
   Future<void> _confirmRemove(
     BuildContext context,
-    _PaymentMethod method,
-    _PaymentMethodsNotifier notifier,
+    PaymentMethod method,
+    PaymentMethodsNotifier notifier,
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -187,7 +97,7 @@ class PaymentMethodsScreen extends ConsumerWidget {
   }
 
   void _showAddCardSheet(
-      BuildContext context, _PaymentMethodsNotifier notifier) {
+      BuildContext context, PaymentMethodsNotifier notifier) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -200,7 +110,7 @@ class PaymentMethodsScreen extends ConsumerWidget {
   }
 
   void _showAddNequiSheet(
-      BuildContext context, _PaymentMethodsNotifier notifier) {
+      BuildContext context, PaymentMethodsNotifier notifier) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -244,20 +154,20 @@ class _MethodTile extends StatelessWidget {
     this.onRemove,
   });
 
-  final _PaymentMethod method;
+  final PaymentMethod method;
   final VoidCallback onSetDefault;
   final VoidCallback? onRemove;
 
   IconData get _icon => switch (method.type) {
-        _MethodType.card => Icons.credit_card_rounded,
-        _MethodType.nequi => Icons.account_balance_wallet_rounded,
-        _MethodType.pse => Icons.account_balance_rounded,
-        _MethodType.cash => Icons.payments_rounded,
+        PaymentMethodType.card => Icons.credit_card_rounded,
+        PaymentMethodType.nequi => Icons.account_balance_wallet_rounded,
+        PaymentMethodType.pse => Icons.account_balance_rounded,
+        PaymentMethodType.cash => Icons.payments_rounded,
       };
 
   Color get _iconColor => switch (method.type) {
-        _MethodType.nequi => const Color(0xFF7B2D8B),
-        _MethodType.pse => AppColors.secondary,
+        PaymentMethodType.nequi => const Color(0xFF7B2D8B),
+        PaymentMethodType.pse => AppColors.secondary,
         _ => AppColors.primary,
       };
 
@@ -426,7 +336,7 @@ class _InfoBanner extends StatelessWidget {
 
 class _AddCardSheet extends StatefulWidget {
   const _AddCardSheet({required this.notifier});
-  final _PaymentMethodsNotifier notifier;
+  final PaymentMethodsNotifier notifier;
 
   @override
   State<_AddCardSheet> createState() => _AddCardSheetState();
@@ -560,7 +470,7 @@ class _AddCardSheetState extends State<_AddCardSheet> {
 
 class _AddNequiSheet extends StatefulWidget {
   const _AddNequiSheet({required this.notifier});
-  final _PaymentMethodsNotifier notifier;
+  final PaymentMethodsNotifier notifier;
 
   @override
   State<_AddNequiSheet> createState() => _AddNequiSheetState();
