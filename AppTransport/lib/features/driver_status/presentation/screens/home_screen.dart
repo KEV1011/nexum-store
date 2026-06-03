@@ -18,6 +18,7 @@ import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/core/domain/work_mode_provider.dart';
+import 'package:nexum_driver/core/mock_data/deliveries_mock.dart';
 import 'package:nexum_driver/core/mock_data/driver_mock.dart';
 import 'package:nexum_driver/core/mock_data/errands_mock.dart';
 import 'package:nexum_driver/core/mock_data/passengers_mock.dart';
@@ -465,6 +466,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       errand = mock.toDetails();
     }
 
+    // En modo Pedido (domicilio) o Paquete (envío) adjuntamos los datos de la
+    // entrega: qué se recoge, a quién se entrega y notas del cliente. Mandado
+    // tiene prioridad porque también es un servicio de tipo entrega.
+    DeliveryDetails? delivery;
+    if (!workMode.isErrand && workMode.isDelivery) {
+      final catalog = workMode == WorkMode.paquete
+          ? DeliveriesMock.parcels
+          : DeliveriesMock.foodOrders;
+      delivery = catalog[_rng.nextInt(catalog.length)].toDetails();
+    }
+
     final request = TripRequestEntity(
       id: '${tripData.id}_${DateTime.now().millisecondsSinceEpoch}',
       passenger: passenger,
@@ -485,6 +497,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       etaToPickupMinutes: 3,
       requestedAt: DateTime.now(),
       errand: errand,
+      delivery: delivery,
     );
     _onTripRequest(request);
   }

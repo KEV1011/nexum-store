@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/delivery_details.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/features/trip_requests/presentation/providers/trip_requests_provider.dart';
 import 'package:nexum_driver/features/trip_requests/presentation/widgets/countdown_ring.dart';
@@ -70,6 +72,18 @@ class _TripRequestBottomSheet extends ConsumerWidget {
       }
     });
 
+    // El encabezado y las etiquetas se adaptan al tipo de solicitud:
+    // viaje de pasajero, domicilio/envío (delivery) o mandado (errand).
+    final delivery = request.delivery;
+    final errand = request.errand;
+    final headerTitle = delivery != null
+        ? 'Nueva solicitud · ${delivery.kind.label}'
+        : errand != null
+            ? 'Nuevo mandado'
+            : 'Nueva solicitud de viaje';
+    final destinationLabel =
+        delivery != null ? '${delivery.kind.dropoffLabel}:' : 'Destino:';
+
     return DraggableScrollableSheet(
       initialChildSize: 0.62,
       minChildSize: 0.62,
@@ -112,9 +126,9 @@ class _TripRequestBottomSheet extends ConsumerWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Nueva solicitud de viaje',
-                                  style: TextStyle(
+                                Text(
+                                  headerTitle,
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w800,
                                     color: AppColors.textPrimary,
@@ -144,6 +158,15 @@ class _TripRequestBottomSheet extends ConsumerWidget {
                       // ── Passenger info ────────────────────────────────────
                       PassengerInfoCard(passenger: request.passenger),
 
+                      // ── Detalle de entrega o mandado ─────────────────────
+                      if (delivery != null) ...[
+                        const SizedBox(height: 12),
+                        _DeliveryDetailsCard(delivery: delivery),
+                      ] else if (errand != null) ...[
+                        const SizedBox(height: 12),
+                        _ErrandDetailsCard(errand: errand),
+                      ],
+
                       const SizedBox(height: 16),
                       const Divider(color: AppColors.divider, height: 1),
                       const SizedBox(height: 16),
@@ -161,7 +184,7 @@ class _TripRequestBottomSheet extends ConsumerWidget {
                       // ── Destination ───────────────────────────────────────
                       _LocationRow(
                         dotColor: AppColors.destinationMarker,
-                        label: 'Destino:',
+                        label: destinationLabel,
                         address: request.destination.address,
                         reference: request.destination.reference,
                       ),
@@ -314,6 +337,184 @@ class _LocationRow extends StatelessWidget {
                 ),
               ],
             ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── _DeliveryDetailsCard ────────────────────────────────────────────────────
+
+/// Tarjeta con el detalle de un pedido (domicilio) o paquete (envío):
+/// qué se transporta, el destinatario y notas del cliente.
+class _DeliveryDetailsCard extends StatelessWidget {
+  const _DeliveryDetailsCard({required this.delivery});
+
+  final DeliveryDetails delivery;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = delivery.kind.color;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(delivery.kind.icon, size: 18, color: color),
+              const SizedBox(width: 8),
+              Text(
+                delivery.kind.label.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.6,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            delivery.title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            delivery.itemDescription,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _DetailLine(
+            icon: Icons.person_rounded,
+            text: delivery.recipientName,
+          ),
+          const SizedBox(height: 4),
+          _DetailLine(
+            icon: Icons.phone_rounded,
+            text: delivery.recipientPhone,
+          ),
+          if (delivery.hasNotes) ...[
+            const SizedBox(height: 4),
+            _DetailLine(
+              icon: Icons.sticky_note_2_rounded,
+              text: delivery.notes!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── _ErrandDetailsCard ──────────────────────────────────────────────────────
+
+/// Tarjeta con el detalle de un mandado: categoría, descripción de la tarea,
+/// presupuesto autorizado para compras y notas del cliente.
+class _ErrandDetailsCard extends StatelessWidget {
+  const _ErrandDetailsCard({required this.errand});
+
+  final ErrandDetails errand;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = errand.category.color;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(errand.category.icon, size: 18, color: color),
+              const SizedBox(width: 8),
+              Text(
+                'MANDADO · ${errand.category.label.toUpperCase()}',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.6,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            errand.description,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textPrimary,
+              height: 1.35,
+            ),
+          ),
+          if (errand.hasBudget) ...[
+            const SizedBox(height: 10),
+            _DetailLine(
+              icon: Icons.account_balance_wallet_rounded,
+              text:
+                  'Presupuesto: ${CurrencyFormatter.format(errand.purchaseBudget!)}',
+            ),
+          ],
+          if (errand.notes != null && errand.notes!.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            _DetailLine(
+              icon: Icons.sticky_note_2_rounded,
+              text: errand.notes!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── _DetailLine ─────────────────────────────────────────────────────────────
+
+class _DetailLine extends StatelessWidget {
+  const _DetailLine({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 15, color: AppColors.textSecondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w500,
+              height: 1.25,
+            ),
           ),
         ),
       ],
