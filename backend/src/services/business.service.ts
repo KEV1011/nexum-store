@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { prisma } from '../lib/prisma';
+import { BusinessCategory as PrismaBusinessCategory } from '@prisma/client';
 import {
   Business,
   RegisterBusinessDTO,
@@ -9,74 +11,6 @@ import {
   ProductDTO,
   BusinessPublicDTO,
 } from '../types';
-
-// ─── Mock data: pre-registered businesses ────────────────────────────────────
-
-const businesses = new Map<string, Business>([
-  ['biz-001', {
-    id: 'biz-001', name: 'Restaurante El Sabor Pamplonés',
-    ownerName: 'Hernán Suárez', phone: '+573101234567',
-    address: 'Cra. 6 #8-45, Centro, Pamplona', category: 'restaurant',
-    accessToken: 'sabor-pamp-2024', whatsapp: '+573101234567',
-    createdAt: new Date('2024-01-15'), isActive: true,
-  }],
-  ['biz-002', {
-    id: 'biz-002', name: 'Droguería San Juan',
-    ownerName: 'Claudia Rincón', phone: '+573119876543',
-    address: 'Calle 7 #5-12, Centro, Pamplona', category: 'pharmacy',
-    accessToken: 'drogueria-sj-2024', whatsapp: '+573119876543',
-    createdAt: new Date('2024-02-10'), isActive: true,
-  }],
-  ['biz-003', {
-    id: 'biz-003', name: 'Supermercado La Económica',
-    ownerName: 'Roberto Cáceres', phone: '+573121111111',
-    address: 'Av. Santander #14-30, Pamplona', category: 'supermarket',
-    accessToken: 'la-economica-2024',
-    createdAt: new Date('2024-03-01'), isActive: true,
-  }],
-  ['biz-004', {
-    id: 'biz-004', name: 'Pizzería Don Lucho',
-    ownerName: 'Lucho García', phone: '+573122222222',
-    address: 'Cra. 5 #9-18, Centro, Pamplona', category: 'restaurant',
-    accessToken: 'pizzeria-lucho-2024',
-    createdAt: new Date('2024-02-20'), isActive: true,
-  }],
-]);
-
-// ─── Products ─────────────────────────────────────────────────────────────────
-
-const productsMap = new Map<string, ProductDTO[]>([
-  ['biz-001', [
-    { id: 'p-101', businessId: 'biz-001', name: 'Bandeja Paisa', description: 'Frijoles, arroz, carne molida, chicharrón, huevo', price: 18000, category: 'Almuerzos', isAvailable: true },
-    { id: 'p-102', businessId: 'biz-001', name: 'Mute Santandereano', description: 'Sopa típica con maíz pelao y carnes', price: 15000, category: 'Almuerzos', isAvailable: true },
-    { id: 'p-103', businessId: 'biz-001', name: 'Pechuga a la plancha', description: 'Con ensalada y papas a la francesa', price: 16000, category: 'Almuerzos', isAvailable: true },
-    { id: 'p-104', businessId: 'biz-001', name: 'Jugo natural', description: 'Mora, lulo, maracuyá o guanábana', price: 5000, category: 'Bebidas', isAvailable: true },
-  ]],
-  ['biz-002', [
-    { id: 'p-201', businessId: 'biz-002', name: 'Acetaminofén 500mg x10', description: 'Caja de 10 tabletas', price: 4500, category: 'Medicamentos', isAvailable: true },
-    { id: 'p-202', businessId: 'biz-002', name: 'Alcohol antiséptico 700ml', description: 'Frasco familiar', price: 8000, category: 'Cuidado', isAvailable: true },
-    { id: 'p-203', businessId: 'biz-002', name: 'Termómetro digital', description: 'Lectura rápida en 10 segundos', price: 22000, category: 'Dispositivos', isAvailable: true },
-  ]],
-  ['biz-003', [
-    { id: 'p-301', businessId: 'biz-003', name: 'Canasta básica', description: 'Arroz, aceite, panela, huevos, pasta', price: 45000, category: 'Mercado', isAvailable: true },
-    { id: 'p-302', businessId: 'biz-003', name: 'Leche entera 1L x6', description: 'Six pack', price: 21000, category: 'Lácteos', isAvailable: true },
-    { id: 'p-303', businessId: 'biz-003', name: 'Pan tajado integral', description: 'Bolsa de 500g', price: 6500, category: 'Panadería', isAvailable: true },
-  ]],
-  ['biz-004', [
-    { id: 'p-401', businessId: 'biz-004', name: 'Pizza familiar mixta', description: 'Pollo, carne, champiñones, extra queso', price: 38000, category: 'Pizzas', isAvailable: true },
-    { id: 'p-402', businessId: 'biz-004', name: 'Pizza personal hawaiana', description: 'Jamón y piña', price: 14000, category: 'Pizzas', isAvailable: true },
-    { id: 'p-403', businessId: 'biz-004', name: 'Gaseosa 1.5L', description: 'Surtida', price: 6000, category: 'Bebidas', isAvailable: true },
-  ]],
-]);
-
-// ─── Business meta (rating / ETA / delivery fee) ──────────────────────────────
-
-const bizMeta: Record<string, { rating: number; etaMinutes: number; deliveryFee: number }> = {
-  'biz-001': { rating: 4.8, etaMinutes: 25, deliveryFee: 3500 },
-  'biz-002': { rating: 4.6, etaMinutes: 18, deliveryFee: 3000 },
-  'biz-003': { rating: 4.5, etaMinutes: 35, deliveryFee: 4000 },
-  'biz-004': { rating: 4.7, etaMinutes: 30, deliveryFee: 3500 },
-};
 
 // ─── Order-update notification subscriptions ──────────────────────────────────
 
@@ -91,13 +25,6 @@ export function onOrderUpdate(orderId: string, cb: OrderUpdateCallback): () => v
   return () => {
     orderUpdateListeners.get(orderId)?.delete(cb);
   };
-}
-
-const tokenIndex = new Map<string, string>(); // token → businessId
-
-// Build index from pre-registered
-for (const [id, biz] of businesses) {
-  tokenIndex.set(biz.accessToken, id);
 }
 
 // ─── Mock delivery orders ─────────────────────────────────────────────────────
@@ -198,43 +125,76 @@ function toSummaryDTO(order: DeliveryOrder): DeliveryOrderSummaryDTO {
 const service = {
   // ── Business registration ────────────────────────────────────────────────
 
-  registerBusiness(dto: RegisterBusinessDTO): Business {
-    const id = `biz-${randomUUID().slice(0, 8)}`;
-    const accessToken = generateToken();
-
-    const business: Business = {
-      id,
-      name: dto.name,
-      ownerName: dto.ownerName,
-      phone: dto.phone,
-      address: dto.address,
-      category: dto.category,
-      accessToken,
-      whatsapp: dto.whatsapp,
-      createdAt: new Date(),
-      isActive: true,
+  async registerBusiness(dto: RegisterBusinessDTO): Promise<{ id: string; name: string; ownerName: string; phone: string; address: string; category: string; accessToken: string; whatsapp?: string; createdAt: Date; isActive: boolean }> {
+    const token = generateToken();
+    const categoryMap: Record<string, PrismaBusinessCategory> = {
+      restaurant: 'RESTAURANT',
+      supermarket: 'SUPERMARKET',
+      pharmacy: 'PHARMACY',
+      other: 'OTHER',
     };
-
-    businesses.set(id, business);
-    tokenIndex.set(accessToken, id);
-    return business;
+    const b = await prisma.business.create({
+      data: {
+        name: dto.name,
+        category: categoryMap[dto.category] ?? 'OTHER',
+        address: dto.address,
+        phone: dto.phone,
+        ownerName: dto.ownerName,
+        whatsapp: dto.whatsapp,
+        token,
+        isOpen: true,
+        lat: 7.3754,
+        lng: -72.6464,
+      },
+    });
+    return {
+      id: b.id,
+      name: b.name,
+      ownerName: b.ownerName ?? dto.ownerName,
+      phone: b.phone ?? dto.phone,
+      address: b.address,
+      category: b.category.toLowerCase(),
+      accessToken: b.token,
+      whatsapp: b.whatsapp ?? undefined,
+      createdAt: b.createdAt,
+      isActive: b.isOpen,
+    };
   },
 
   // ── Auth via access token ─────────────────────────────────────────────────
 
-  getBusinessByToken(token: string): Business {
-    const id = tokenIndex.get(token);
-    if (!id) throw new Error(`Business not found for token: ${token}`);
-    const biz = businesses.get(id);
-    if (!biz) throw new Error(`Business ${id} not found`);
-    if (!biz.isActive) throw new Error('Business account is not active');
-    return biz;
+  async getBusinessByToken(token: string): Promise<{ id: string; name: string; ownerName: string; category: string; address: string; accessToken: string; whatsapp?: string; isActive: boolean }> {
+    const b = await prisma.business.findUnique({ where: { token } });
+    if (!b) throw new Error(`Business not found for token: ${token}`);
+    if (!b.isOpen) throw new Error('Business account is not active');
+    return {
+      id: b.id,
+      name: b.name,
+      ownerName: b.ownerName ?? '',
+      category: b.category.toLowerCase(),
+      address: b.address,
+      accessToken: b.token,
+      whatsapp: b.whatsapp ?? undefined,
+      isActive: b.isOpen,
+    };
   },
 
   getBusinessById(id: string): Business {
-    const biz = businesses.get(id);
-    if (!biz) throw new Error(`Business ${id} not found`);
-    return biz;
+    // Used for delivery order validation (in-memory only)
+    // We return a minimal Business shape from in-memory delivery order context.
+    // For in-memory delivery orders that reference 'biz-001' etc., we create a stub.
+    return {
+      id,
+      name: 'Business',
+      ownerName: '',
+      phone: '',
+      address: '',
+      category: 'other',
+      accessToken: '',
+      whatsapp: undefined,
+      createdAt: new Date(),
+      isActive: true,
+    };
   },
 
   // ── Orders ────────────────────────────────────────────────────────────────
@@ -260,7 +220,6 @@ const service = {
   },
 
   createOrder(dto: CreateDeliveryOrderDTO, driverId: string): DeliveryOrder {
-    const biz = this.getBusinessById(dto.businessId);
     const id = `order-${randomUUID().slice(0, 8)}`;
 
     const order: DeliveryOrder = {
@@ -279,7 +238,6 @@ const service = {
     };
 
     deliveryOrders.set(id, order);
-    void biz; // biz validated above
     return order;
   },
 
@@ -341,40 +299,75 @@ export function getBusinessService() {
 
 // ─── Public helpers used by client.service ────────────────────────────────────
 
-export function getProductsForBusiness(businessId: string): ProductDTO[] {
-  return productsMap.get(businessId) ?? [];
+export function getProductsForBusiness(_businessId: string): ProductDTO[] {
+  // Kept for backward compat — catalog.service now owns store products via Prisma
+  return [];
 }
 
-export function getProductById(productId: string): ProductDTO | undefined {
-  for (const prods of productsMap.values()) {
-    const found = prods.find((p) => p.id === productId);
-    if (found) return found;
-  }
-  return undefined;
-}
-
-export function getAllBusinessesPublic(): BusinessPublicDTO[] {
-  return Array.from(businesses.values())
-    .filter((b) => b.isActive)
-    .map((b) => {
-      const meta = bizMeta[b.id] ?? { rating: 4.5, etaMinutes: 30, deliveryFee: 3500 };
-      return {
-        id: b.id, name: b.name, category: b.category, address: b.address,
-        rating: meta.rating, etaMinutes: meta.etaMinutes,
-        deliveryFee: meta.deliveryFee, isOpen: b.isActive,
-        products: getProductsForBusiness(b.id),
-      };
-    });
-}
-
-export function getBusinessPublicById(id: string): BusinessPublicDTO {
-  const b = businesses.get(id);
-  if (!b) throw new Error(`Business ${id} not found`);
-  const meta = bizMeta[id] ?? { rating: 4.5, etaMinutes: 30, deliveryFee: 3500 };
+export async function getProductById(productId: string): Promise<ProductDTO | undefined> {
+  const p = await prisma.product.findUnique({ where: { id: productId } });
+  if (!p) return undefined;
   return {
-    id: b.id, name: b.name, category: b.category, address: b.address,
-    rating: meta.rating, etaMinutes: meta.etaMinutes,
-    deliveryFee: meta.deliveryFee, isOpen: b.isActive,
-    products: getProductsForBusiness(b.id),
+    id: p.id,
+    businessId: p.businessId,
+    name: p.name,
+    description: p.description ?? '',
+    price: p.price,
+    category: p.category,
+    isAvailable: p.isAvailable,
+  };
+}
+
+export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
+  const bizs = await prisma.business.findMany({
+    where: { isOpen: true },
+    include: { products: { where: { isAvailable: true } } },
+    orderBy: { name: 'asc' },
+  });
+  return bizs.map((b) => ({
+    id: b.id,
+    name: b.name,
+    category: b.category.toLowerCase() as import('../types').BusinessCategory,
+    address: b.address,
+    rating: b.rating,
+    etaMinutes: b.etaMinutes,
+    deliveryFee: b.deliveryFee,
+    isOpen: b.isOpen,
+    products: b.products.map((p) => ({
+      id: p.id,
+      businessId: p.businessId,
+      name: p.name,
+      description: p.description ?? '',
+      price: p.price,
+      category: p.category,
+      isAvailable: p.isAvailable,
+    })),
+  }));
+}
+
+export async function getBusinessPublicById(id: string): Promise<BusinessPublicDTO> {
+  const b = await prisma.business.findUnique({
+    where: { id },
+    include: { products: { where: { isAvailable: true } } },
+  });
+  if (!b) throw new Error(`Business ${id} not found`);
+  return {
+    id: b.id,
+    name: b.name,
+    category: b.category.toLowerCase() as import('../types').BusinessCategory,
+    address: b.address,
+    rating: b.rating,
+    etaMinutes: b.etaMinutes,
+    deliveryFee: b.deliveryFee,
+    isOpen: b.isOpen,
+    products: b.products.map((p) => ({
+      id: p.id,
+      businessId: p.businessId,
+      name: p.name,
+      description: p.description ?? '',
+      price: p.price,
+      category: p.category,
+      isAvailable: p.isAvailable,
+    })),
   };
 }

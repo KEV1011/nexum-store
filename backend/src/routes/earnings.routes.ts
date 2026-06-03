@@ -1,20 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { getDailyEarnings, getWeeklyHistory } from '../services/earnings.service';
+import { MOCK_DRIVER } from '../config/constants';
 
 const router = Router();
 
 router.use(authMiddleware);
 
-// GET /earnings/daily
-router.get('/daily', (_req: Request, res: Response): void => {
-  const data = getDailyEarnings();
+router.get('/daily', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const data = await getDailyEarnings(driverId);
   res.status(200).json({ success: true, data });
 });
 
-// GET /earnings/weekly
-router.get('/weekly', (_req: Request, res: Response): void => {
-  const data = getWeeklyHistory();
+router.get('/weekly', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const data = await getWeeklyHistory(driverId);
   res.status(200).json({ success: true, data });
 });
 

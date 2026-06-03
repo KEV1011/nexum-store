@@ -10,7 +10,7 @@ const router = Router();
 
 // ─── Public: business registration (called by driver/admin) ──────────────────
 
-router.post('/register', authMiddleware, (req: Request, res: Response): void => {
+router.post('/register', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   const dto = req.body as RegisterBusinessDTO;
 
   if (!dto.name || !dto.ownerName || !dto.phone || !dto.address || !dto.category) {
@@ -22,7 +22,7 @@ router.post('/register', authMiddleware, (req: Request, res: Response): void => 
   }
 
   try {
-    const business = getBusinessService().registerBusiness(dto);
+    const business = await getBusinessService().registerBusiness(dto);
     res.status(201).json({
       success: true,
       data: {
@@ -38,11 +38,11 @@ router.post('/register', authMiddleware, (req: Request, res: Response): void => 
 
 // ─── Portal access: verify token and get business info ───────────────────────
 
-router.get('/:token/info', (req: Request, res: Response): void => {
+router.get('/:token/info', async (req: Request, res: Response): Promise<void> => {
   const { token } = req.params as { token: string };
 
   try {
-    const business = getBusinessService().getBusinessByToken(token);
+    const business = await getBusinessService().getBusinessByToken(token);
     res.status(200).json({
       success: true,
       data: {
@@ -64,11 +64,11 @@ router.get('/:token/info', (req: Request, res: Response): void => {
 
 // ─── Orders: list today's orders ──────────────────────────────────────────────
 
-router.get('/:token/orders', (req: Request, res: Response): void => {
+router.get('/:token/orders', async (req: Request, res: Response): Promise<void> => {
   const { token } = req.params as { token: string };
 
   try {
-    const business = getBusinessService().getBusinessByToken(token);
+    const business = await getBusinessService().getBusinessByToken(token);
     const orders = getBusinessService().getTodayOrdersForBusiness(business.id);
     const stats = getBusinessService().getDayStats(business.id);
 
@@ -84,11 +84,11 @@ router.get('/:token/orders', (req: Request, res: Response): void => {
 
 // ─── Orders: detail ───────────────────────────────────────────────────────────
 
-router.get('/:token/orders/:orderId', (req: Request, res: Response): void => {
+router.get('/:token/orders/:orderId', async (req: Request, res: Response): Promise<void> => {
   const { token, orderId } = req.params as { token: string; orderId: string };
 
   try {
-    const business = getBusinessService().getBusinessByToken(token);
+    const business = await getBusinessService().getBusinessByToken(token);
     const order = getBusinessService().getOrderDetail(orderId, business.id);
     res.status(200).json({ success: true, data: order });
   } catch (err) {
@@ -165,11 +165,11 @@ router.patch(
 
 // ─── Client orders from AppCliente ───────────────────────────────────────────
 
-router.get('/:token/client-orders', (req: Request, res: Response): void => {
+router.get('/:token/client-orders', async (req: Request, res: Response): Promise<void> => {
   const { token } = req.params as { token: string };
   try {
-    const business = getBusinessService().getBusinessByToken(token);
-    const orders = getClientOrdersForBusiness(business.id);
+    const business = await getBusinessService().getBusinessByToken(token);
+    const orders = await getClientOrdersForBusiness(business.id);
     res.status(200).json({ success: true, data: orders });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not load orders';

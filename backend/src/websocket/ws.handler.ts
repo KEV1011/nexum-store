@@ -420,8 +420,7 @@ function handleSubscribePooled(ws: WebSocket, tripId: string): void {
 }
 
 function handleBusinessAuth(ws: WebSocket, token: string): void {
-  try {
-    const business = getBusinessService().getBusinessByToken(token);
+  getBusinessService().getBusinessByToken(token).then((business) => {
     const old = businessSockets.get(business.id);
     if (old && old !== ws && old.readyState === WebSocket.OPEN) old.close();
     businessSockets.set(business.id, ws);
@@ -432,10 +431,10 @@ function handleBusinessAuth(ws: WebSocket, token: string): void {
     });
     const existing = businessSubscriptions.get(ws) ?? [];
     businessSubscriptions.set(ws, [...existing, unsubscribe]);
-  } catch {
+  }).catch(() => {
     sendTo(ws, { type: 'business_auth_error', message: 'Invalid or expired business token' });
     ws.close();
-  }
+  });
 }
 
 function handleLocationUpdate(lat: number, lng: number, tripId: string | null): void {
@@ -506,28 +505,31 @@ function handleDriverRegister(ws: WebSocket): void {
 function handleRideBid(ws: WebSocket, rideId: string, fare: number, etaMinutes: number): void {
   const driverId = driverIdByWs.get(ws);
   if (!driverId) { sendTo(ws, { type: 'error', message: 'Driver not authenticated' }); return; }
-  const profile = getDriverProfile(driverId);
-  try {
-    const bid = placeBid(
-      driverId,
-      profile.fullName,
-      profile.phone,
-      profile.rating,
-      profile.totalTrips,
-      profile.vehicleDescription,
-      rideId,
-      { fare, etaMinutes },
-    );
-    sendTo(ws, { type: 'ride_bid_ack', rideId, bid });
-    // Push fresh bid list to the client.
-    const clientView = getRideById(rideId);
-    if (clientView) sendToClient(clientView.clientId, { type: 'ride_update', ride: clientView });
-  } catch (err) {
-    sendTo(ws, {
-      type: 'error',
-      message: err instanceof RideNegotiationError ? err.message : 'No se pudo enviar la oferta',
-    });
-  }
+  getDriverProfile(driverId).then((profile) => {
+    try {
+      const bid = placeBid(
+        driverId,
+        profile.fullName,
+        profile.phone,
+        profile.rating,
+        profile.totalTrips,
+        profile.vehicleDescription,
+        rideId,
+        { fare, etaMinutes },
+      );
+      sendTo(ws, { type: 'ride_bid_ack', rideId, bid });
+      // Push fresh bid list to the client.
+      const clientView = getRideById(rideId);
+      if (clientView) sendToClient(clientView.clientId, { type: 'ride_update', ride: clientView });
+    } catch (err) {
+      sendTo(ws, {
+        type: 'error',
+        message: err instanceof RideNegotiationError ? err.message : 'No se pudo enviar la oferta',
+      });
+    }
+  }).catch(() => {
+    sendTo(ws, { type: 'error', message: 'No se pudo enviar la oferta' });
+  });
 }
 
 function handleRideWithdraw(ws: WebSocket, rideId: string): void {

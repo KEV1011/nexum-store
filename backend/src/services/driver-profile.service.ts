@@ -7,6 +7,7 @@ import {
   UpsertDriverDocumentDTO,
 } from '../types';
 import { MOCK_DRIVER } from '../config/constants';
+import { prisma } from '../lib/prisma';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Driver profile & document verification (Features D + E)
@@ -147,7 +148,26 @@ function buildDocList(p: DriverProfile): DriverDocumentDTO[] {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function getDriverProfile(driverId: string): DriverProfileDTO {
+export async function getDriverProfile(driverId: string): Promise<DriverProfileDTO> {
+  // Merge DB data with in-memory profile for real drivers
+  if (!profileStore.has(driverId)) {
+    const dbDriver = await prisma.driver.findUnique({ where: { id: driverId } });
+    if (dbDriver) {
+      profileStore.set(driverId, {
+        driverId,
+        fullName: dbDriver.name,
+        phone: dbDriver.phone,
+        photoUrl: dbDriver.avatarUrl ?? undefined,
+        bio: dbDriver.bio ?? undefined,
+        rating: dbDriver.rating,
+        totalTrips: dbDriver.totalTrips,
+        vehicleDescription: 'Vehículo sin registrar',
+        memberSince: dbDriver.createdAt,
+        documents: new Map(),
+      });
+    }
+  }
+
   const p = getOrCreate(driverId);
   const docs = buildDocList(p);
   const verified = isDriverVerified(driverId);
@@ -186,23 +206,33 @@ export function getDriverPublicProfile(driverId: string): DriverPublicProfileDTO
   };
 }
 
-export function updateDriverProfile(
+export async function updateDriverProfile(
   driverId: string,
   patch: { fullName?: string; bio?: string; photoUrl?: string; vehicleDescription?: string },
-): DriverProfileDTO {
+): Promise<DriverProfileDTO> {
   const p = getOrCreate(driverId);
   if (patch.fullName !== undefined) p.fullName = patch.fullName;
   if (patch.bio !== undefined) p.bio = patch.bio;
   if (patch.photoUrl !== undefined) p.photoUrl = patch.photoUrl;
   if (patch.vehicleDescription !== undefined) p.vehicleDescription = patch.vehicleDescription;
+
+  // Fire-and-forget DB persistence for bio/avatarUrl
+  prisma.driver.update({
+    where: { id: driverId },
+    data: {
+      ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
+      ...(patch.photoUrl !== undefined ? { avatarUrl: patch.photoUrl } : {}),
+    },
+  }).catch(() => {});
+
   return getDriverProfile(driverId);
 }
 
 /** Driver uploads (or re-uploads) a document. Resets it to pending review. */
-export function upsertDriverDocument(
+export async function upsertDriverDocument(
   driverId: string,
   dto: UpsertDriverDocumentDTO,
-): DriverProfileDTO {
+): Promise<DriverProfileDTO> {
   const p = getOrCreate(driverId);
   p.documents.set(dto.type, {
     type: dto.type,
@@ -215,12 +245,12 @@ export function upsertDriverDocument(
 }
 
 /** Admin/review action — approve or reject an uploaded document. */
-export function reviewDriverDocument(
+export async function reviewDriverDocument(
   driverId: string,
   type: DriverDocumentType,
   approve: boolean,
   rejectionReason?: string,
-): DriverProfileDTO | null {
+): Promise<DriverProfileDTO | null> {
   const p = profileStore.get(driverId);
   const doc = p?.documents.get(type);
   if (!p || !doc) return null;

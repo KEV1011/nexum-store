@@ -175,18 +175,18 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 // ─── Progressive identification + password auth ──────────────────────────────
 
 // POST /auth/check-identifier  → { exists, role, status }
-router.post('/check-identifier', (req: Request, res: Response): void => {
+router.post('/check-identifier', async (req: Request, res: Response): Promise<void> => {
   const { identifier } = req.body as { identifier?: string };
   if (!identifier || typeof identifier !== 'string') {
     res.status(400).json({ success: false, error: 'identifier is required' });
     return;
   }
-  const result = checkIdentifierSvc(identifier);
+  const result = await checkIdentifierSvc(identifier);
   res.status(200).json({ success: true, data: result });
 });
 
 // POST /auth/login  → { token, driver }
-router.post('/login', loginLimiter, (req: Request, res: Response): void => {
+router.post('/login', loginLimiter, async (req: Request, res: Response): Promise<void> => {
   const { identifier, password } = req.body as {
     identifier?: string;
     password?: string;
@@ -200,7 +200,7 @@ router.post('/login', loginLimiter, (req: Request, res: Response): void => {
     return;
   }
   try {
-    const result = loginWithPasswordSvc(identifier, password);
+    const result = await loginWithPasswordSvc(identifier, password);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Login failed';
@@ -209,7 +209,7 @@ router.post('/login', loginLimiter, (req: Request, res: Response): void => {
 });
 
 // POST /auth/register-role  → { token, driver }
-router.post('/register-role', (req: Request, res: Response): void => {
+router.post('/register-role', async (req: Request, res: Response): Promise<void> => {
   const { identifier, password, role, profile } = req.body as {
     identifier?: string;
     password?: string;
@@ -232,7 +232,7 @@ router.post('/register-role', (req: Request, res: Response): void => {
     return;
   }
   try {
-    const result = registerWithRoleSvc({
+    const result = await registerWithRoleSvc({
       identifier,
       password,
       role: role as AccountRole,

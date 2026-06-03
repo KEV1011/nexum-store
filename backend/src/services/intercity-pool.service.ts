@@ -9,6 +9,8 @@ import {
   SeatBookingStatus,
 } from '../types';
 import { getIntercityRoute, getMaxFarePerSeat } from '../config/constants';
+import { prisma } from '../lib/prisma';
+import { IntercityCity as PrismaIntercityCity, PooledTripStatus as PrismaPooledTripStatus, SeatBookingStatus as PrismaSeatBookingStatus } from '@prisma/client';
 
 // ─── Internal state ─────────────────────────────────────────────────────────────
 
@@ -118,6 +120,28 @@ export function publishPooledTrip(
   };
 
   tripStore.set(id, trip);
+
+  // Fire-and-forget DB persistence
+  prisma.pooledTrip.create({
+    data: {
+      id,
+      tripRef,
+      driverId,
+      driverName,
+      driverPhone,
+      vehicleDescription: dto.vehicleDescription,
+      origin: dto.origin.toUpperCase() as PrismaIntercityCity,
+      destination: dto.destination.toUpperCase() as PrismaIntercityCity,
+      departureTime: departure,
+      totalSeats: dto.totalSeats,
+      farePerSeat: dto.farePerSeat,
+      maxFarePerSeat: maxFare,
+      allowFleet: dto.allowFleet ?? false,
+      status: 'OPEN',
+      notes: dto.notes,
+    },
+  }).catch(() => {});
+
   return _toDTO(trip, true);
 }
 
@@ -134,6 +158,7 @@ export function departPooledTrip(driverId: string, tripId: string): PooledTripDT
   if (t.status !== 'open' && t.status !== 'full') return null;
   t.status = 'departed';
   _notify(t);
+  prisma.pooledTrip.update({ where: { id: tripId }, data: { status: 'DEPARTED' } }).catch(() => {});
   return _toDTO(t, true);
 }
 
@@ -143,6 +168,7 @@ export function completePooledTrip(driverId: string, tripId: string): PooledTrip
   if (t.status !== 'departed') return null;
   t.status = 'completed';
   _notify(t);
+  prisma.pooledTrip.update({ where: { id: tripId }, data: { status: 'COMPLETED' } }).catch(() => {});
   return _toDTO(t, true);
 }
 
@@ -152,6 +178,7 @@ export function cancelPooledTrip(driverId: string, tripId: string): PooledTripDT
   if (t.status === 'completed' || t.status === 'cancelled') return null;
   t.status = 'cancelled';
   _notify(t);
+  prisma.pooledTrip.update({ where: { id: tripId }, data: { status: 'CANCELLED' } }).catch(() => {});
   return _toDTO(t, true);
 }
 
@@ -244,6 +271,29 @@ export function bookSeats(
   if (_availableSeats(t) <= 0) t.status = 'full';
   _notify(t);
 
+  // Fire-and-forget DB persistence
+  prisma.seatBooking.create({
+    data: {
+      id: booking.id,
+      tripId,
+      userId: clientId,
+      passengerName,
+      passengerPhone,
+      seatsBooked: requested,
+      pickupAddress: dto.pickupAddress,
+      notes: dto.notes,
+      status: 'CONFIRMED',
+    },
+  }).catch(() => {});
+
+  // Update trip status in DB if it became full
+  if (t.status === 'full') {
+    prisma.pooledTrip.update({
+      where: { id: tripId },
+      data: { status: 'FULL' },
+    }).catch(() => {});
+  }
+
   return { trip: _toDTO(t, false), booking: _toBookingDTO(booking) };
 }
 
@@ -259,6 +309,20 @@ export function cancelSeatBooking(clientId: string, bookingId: string): PooledTr
     // Freeing a seat reopens a full trip.
     if (t.status === 'full' && _availableSeats(t) > 0) t.status = 'open';
     _notify(t);
+
+    // Fire-and-forget DB persistence
+    prisma.seatBooking.update({
+      where: { id: bookingId },
+      data: { status: 'CANCELLED' as PrismaSeatBookingStatus },
+    }).catch(() => {});
+
+    if (t.status === 'open') {
+      prisma.pooledTrip.update({
+        where: { id: t.id },
+        data: { status: 'OPEN' as PrismaPooledTripStatus },
+      }).catch(() => {});
+    }
+
     return _toDTO(t, false);
   }
   return null;

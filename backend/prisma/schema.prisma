@@ -73,11 +73,27 @@ model Driver {
   lastLng       Float?
   lastSeenAt    DateTime?
 
+  // Account / credential auth
+  passwordHash     String?
+  accountStatus    String   @default("approved")  // pending|approved|rejected|suspended
+  commissionRate   Float    @default(0.13)
+  rejectionReason  String?
+  suspensionReason String?
+  role             String   @default("driver_car") // driver_car|driver_moto|admin
+  documentType     String?
+  vehicleTypeStr   String?
+  bankName         String?
+  bankAccountType  String?
+  bankAccountNumber String?
+  bio              String?
+  isAdmin          Boolean  @default(false)
+
   vehicles      Vehicle[]
   trips         Trip[]
   earnings      DriverEarning[]
 
   @@index([status])
+  @@index([accountStatus])
   @@map("drivers")
 }
 
@@ -126,6 +142,10 @@ model Business {
   deliveryFee  Float            @default(2500)
   isOpen       Boolean          @default(true)
   token        String           @unique @default(cuid())
+  passwordHash  String?
+  accountStatus String           @default("approved")
+  ownerName     String?
+  whatsapp      String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 

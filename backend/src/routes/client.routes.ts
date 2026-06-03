@@ -97,13 +97,15 @@ router.post('/auth/verify-otp', clientOtpLimiter, async (req, res) => {
 
 // ─── Businesses ───────────────────────────────────────────────────────────────
 
-router.get('/businesses', (_req, res) => {
-  res.json({ success: true, data: getClientBusinesses() });
+router.get('/businesses', async (_req, res) => {
+  const data = await getClientBusinesses();
+  res.json({ success: true, data });
 });
 
-router.get('/businesses/:id', (req, res) => {
+router.get('/businesses/:id', async (req, res) => {
   try {
-    res.json({ success: true, data: getClientBusinessById(req.params['id']!) });
+    const data = await getClientBusinessById(req.params['id']!);
+    res.json({ success: true, data });
   } catch (err) {
     res.status(404).json({ success: false, error: 'Business not found' });
   }
@@ -134,12 +136,12 @@ router.post('/orders', clientAuthMiddleware, async (req, res) => {
   }
 });
 
-router.get('/orders', clientAuthMiddleware, (req, res) => {
-  res.json({ success: true, data: getClientOrders(req.clientId!) });
+router.get('/orders', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await getClientOrders(req.clientId!) });
 });
 
-router.get('/orders/:id', clientAuthMiddleware, (req, res) => {
-  const order = getClientOrderById(req.clientId!, req.params['id']!);
+router.get('/orders/:id', clientAuthMiddleware, async (req, res) => {
+  const order = await getClientOrderById(req.clientId!, req.params['id']!);
   if (!order) { res.status(404).json({ success: false, error: 'Order not found' }); return; }
   res.json({ success: true, data: order });
 });

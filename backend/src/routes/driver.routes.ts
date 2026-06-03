@@ -29,28 +29,28 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /driver/profile — real profile with documents + verification status
-router.get('/profile', (req: Request, res: Response): void => {
+router.get('/profile', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
-  res.status(200).json({ success: true, data: getDriverProfile(driverId) });
+  res.status(200).json({ success: true, data: await getDriverProfile(driverId) });
 });
 
 // PATCH /driver/profile — edit bio/name/photo/vehicle
-router.patch('/profile', (req: Request, res: Response): void => {
+router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const { fullName, bio, photoUrl, vehicleDescription } = req.body as Record<string, string>;
-  const updated = updateDriverProfile(driverId, { fullName, bio, photoUrl, vehicleDescription });
+  const updated = await updateDriverProfile(driverId, { fullName, bio, photoUrl, vehicleDescription });
   res.status(200).json({ success: true, data: updated });
 });
 
 // PUT /driver/documents — upload or re-upload a document (Feature D)
-router.put('/documents', (req: Request, res: Response): void => {
+router.put('/documents', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const dto = req.body as Partial<UpsertDriverDocumentDTO>;
   if (!dto.type || !dto.fileUrl) {
     res.status(400).json({ success: false, error: 'type and fileUrl are required' });
     return;
   }
-  const updated = upsertDriverDocument(driverId, {
+  const updated = await upsertDriverDocument(driverId, {
     type: dto.type,
     fileUrl: dto.fileUrl,
     expiresAt: dto.expiresAt,
@@ -59,10 +59,10 @@ router.put('/documents', (req: Request, res: Response): void => {
 });
 
 // POST /driver/documents/:type/review — demo review action (approve/reject)
-router.post('/documents/:type/review', (req: Request, res: Response): void => {
+router.post('/documents/:type/review', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const { approve, rejectionReason } = req.body as { approve?: boolean; rejectionReason?: string };
-  const updated = reviewDriverDocument(
+  const updated = await reviewDriverDocument(
     driverId,
     req.params['type'] as DriverDocumentType,
     approve === true,

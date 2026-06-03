@@ -123,17 +123,17 @@ export async function placeClientOrder(
   _clientPhone: string,
   dto: ClientPlaceOrderDTO,
 ): Promise<ClientOrderSummaryDTO> {
-  const biz = getBusinessPublicById(dto.businessId);
+  const biz = await getBusinessPublicById(dto.businessId);
   const id = `cord-${randomUUID().slice(0, 8)}`;
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
   let subtotal = 0;
-  const items = dto.items.map((line) => {
-    const product = getProductById(line.productId);
+  const items = await Promise.all(dto.items.map(async (line) => {
+    const product = await getProductById(line.productId);
     const sub = line.quantity * line.unitPrice;
     subtotal += sub;
     return { productName: product?.name ?? 'Producto', quantity: line.quantity, unitPrice: line.unitPrice, subtotal: sub };
-  });
+  }));
 
   const order: ClientOrder = {
     id, orderRef, clientId, businessId: dto.businessId,
@@ -178,30 +178,33 @@ export async function placeClientOrder(
   return summary;
 }
 
-export function getClientOrders(clientId: string): ClientOrderSummaryDTO[] {
+export async function getClientOrders(clientId: string): Promise<ClientOrderSummaryDTO[]> {
+  const bizs = await getAllBusinessesPublic();
   return (clientOrderIndex.get(clientId) ?? [])
     .map((id) => {
       const o = orderStore.get(id);
       if (!o) return null;
-      const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
+      const biz = bizs.find((b) => b.id === o.businessId);
       return _toSummary(o, biz?.name ?? 'Negocio');
     })
     .filter((x): x is ClientOrderSummaryDTO => x !== null);
 }
 
-export function getClientOrderById(clientId: string, orderId: string): ClientOrderSummaryDTO | null {
+export async function getClientOrderById(clientId: string, orderId: string): Promise<ClientOrderSummaryDTO | null> {
   const o = orderStore.get(orderId);
   if (!o || o.clientId !== clientId) return null;
-  const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
+  const bizs = await getAllBusinessesPublic();
+  const biz = bizs.find((b) => b.id === o.businessId);
   return _toSummary(o, biz?.name ?? 'Negocio');
 }
 
-export function getClientOrdersForBusiness(businessId: string): ClientOrderSummaryDTO[] {
+export async function getClientOrdersForBusiness(businessId: string): Promise<ClientOrderSummaryDTO[]> {
+  const bizs = await getAllBusinessesPublic();
   return [...orderStore.values()]
     .filter((o) => o.businessId === businessId)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map((o) => {
-      const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
+      const biz = bizs.find((b) => b.id === o.businessId);
       return _toSummary(o, biz?.name ?? 'Negocio');
     });
 }
@@ -223,8 +226,8 @@ export function subscribeClientOrder(orderId: string, cb: OrderCallback): () => 
 export function getClientOrderSnapshot(orderId: string): ClientOrderSummaryDTO | null {
   const o = orderStore.get(orderId);
   if (!o) return null;
-  const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
-  return _toSummary(o, biz?.name ?? 'Negocio');
+  // businessName resolved lazily — use empty string for ephemeral snapshot (WS push will re-resolve)
+  return _toSummary(o, 'Negocio');
 }
 
 // ─── Server-side status simulation ───────────────────────────────────────────
