@@ -98,3 +98,6 @@ lcov.info
 *.log
 *.lock
 *.deb
+
+# Artefactos de goldens fallidos (flutter test)
+test/**/failures/
