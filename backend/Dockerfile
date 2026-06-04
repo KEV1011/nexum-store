@@ -9,6 +9,7 @@ RUN npm ci
 
 # Copy source and compile
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 # Prune devDependencies so we only ship production modules
@@ -29,11 +30,15 @@ COPY --from=builder --chown=nexum:nexum /app/dist ./dist
 COPY --from=builder --chown=nexum:nexum /app/node_modules ./node_modules
 COPY --from=builder --chown=nexum:nexum /app/package.json ./package.json
 
-# Copy Prisma schema so @prisma/client can locate it at runtime
+# Copy Prisma schema + migrations so migrate deploy works at startup
 COPY --from=builder --chown=nexum:nexum /app/prisma ./prisma
+
+# Entrypoint: runs migrations then starts server
+COPY --chown=nexum:nexum entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
 
 USER nexum
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+CMD ["./entrypoint.sh"]

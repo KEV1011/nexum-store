@@ -24,7 +24,7 @@ services:
     environment:
       POSTGRES_DB: nexum_db
       POSTGRES_USER: nexum
-      POSTGRES_PASSWORD: nexum_dev_secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexum_dev_secret}
     volumes:
       - nexum-pg-data:/var/lib/postgresql/data
     healthcheck:
