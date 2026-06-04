@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/location/location_service.dart';
+import 'package:nexum_client/core/location/maps_service.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/screens/ride_bids_screen.dart';
@@ -31,6 +32,8 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   late TransportServiceType _service;
   LatLng _origin = kPamplonaCenter;
   LatLng? _destination;
+  RouteResult? _route;
+  bool _routeLoading = false;
   bool _fareTouched = false;
   bool _submitting = false;
 
@@ -56,11 +59,53 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     if (!mounted) return;
     setState(() => _origin = loc.position);
     _map?.animateCamera(CameraUpdate.newLatLngZoom(loc.position, 15.5));
+    if (_destination != null) _fetchRoute();
+  }
+
+  /// Pide al backend la ruta real (siguiendo calles) y ajusta la cámara.
+  Future<void> _fetchRoute() async {
+    final dest = _destination;
+    if (dest == null) return;
+    setState(() => _routeLoading = true);
+    final result = await ref.read(mapsServiceProvider).route(_origin, dest);
+    if (!mounted) return;
+    setState(() {
+      _route = result;
+      _routeLoading = false;
+    });
+    _syncSuggested();
+    _fitToRoute();
+  }
+
+  void _fitToRoute() {
+    final dest = _destination;
+    if (dest == null) return;
+    final pts = _route?.points ?? [_origin, dest];
+    var minLat = pts.first.latitude, maxLat = pts.first.latitude;
+    var minLng = pts.first.longitude, maxLng = pts.first.longitude;
+    for (final p in pts) {
+      minLat = p.latitude < minLat ? p.latitude : minLat;
+      maxLat = p.latitude > maxLat ? p.latitude : maxLat;
+      minLng = p.longitude < minLng ? p.longitude : minLng;
+      maxLng = p.longitude > maxLng ? p.longitude : maxLng;
+    }
+    _map?.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat - 0.003, minLng - 0.003),
+          northeast: LatLng(maxLat + 0.003, maxLng + 0.003),
+        ),
+        70,
+      ),
+    );
   }
 
   // ── Cálculos ────────────────────────────────────────────────────────────────
 
   double get _distanceKm {
+    // Prefiere la distancia real de la ruta; cae a la geodésica si no hay ruta.
+    final route = _route;
+    if (route != null) return route.distanceKm;
     final dest = _destination;
     if (dest == null) return 0;
     final meters = Geolocator.distanceBetween(
@@ -72,7 +117,8 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     return meters / 1000;
   }
 
-  int get _eta => (_distanceKm * 2.5 + 3).round().clamp(3, 600);
+  int get _eta =>
+      _route?.durationMinutes ?? (_distanceKm * 2.5 + 3).round().clamp(3, 600);
 
   double get _suggestedFare {
     final raw = _service.estimateFare(_distanceKm.clamp(1, 60));
@@ -90,11 +136,13 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
   void _setDestination(LatLng p) {
     setState(() {
       _destination = p;
+      _route = null;
       if (_destCtrl.text.trim().isEmpty) {
         _destCtrl.text = 'Punto en el mapa';
       }
     });
     _syncSuggested();
+    _fetchRoute();
   }
 
   void _bumpFare(double delta) {
@@ -171,13 +219,23 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
         ),
     };
 
+    final route = _route;
     final polylines = <Polyline>{
-      if (dest != null)
+      if (route != null)
+        // Ruta real siguiendo las calles (Google Directions).
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: route.points,
+          color: color,
+          width: 5,
+        )
+      else if (dest != null)
+        // Respaldo: línea recta punteada mientras llega la ruta real.
         Polyline(
           polylineId: const PolylineId('route'),
           points: [_origin, dest],
-          color: color,
-          width: 5,
+          color: color.withValues(alpha: 0.5),
+          width: 4,
           patterns: [PatternItem.dash(24), PatternItem.gap(12)],
         ),
     };
@@ -246,6 +304,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
               distanceKm: _distanceKm,
               eta: _eta,
               suggestedFare: _suggestedFare,
+              routeLoading: _routeLoading,
               submitting: _submitting,
               onFareEdited: () => _fareTouched = true,
               onResetFare: () {
@@ -276,6 +335,7 @@ class _RequestPanel extends StatelessWidget {
     required this.distanceKm,
     required this.eta,
     required this.suggestedFare,
+    required this.routeLoading,
     required this.submitting,
     required this.onFareEdited,
     required this.onResetFare,
@@ -292,6 +352,7 @@ class _RequestPanel extends StatelessWidget {
   final double distanceKm;
   final int eta;
   final double suggestedFare;
+  final bool routeLoading;
   final bool submitting;
   final VoidCallback onFareEdited;
   final VoidCallback onResetFare;
@@ -386,7 +447,26 @@ class _RequestPanel extends StatelessWidget {
                         style: TextStyle(fontWeight: FontWeight.w800),
                       ),
                       const Spacer(),
-                      if (hasDestination)
+                      if (routeLoading)
+                        const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 11,
+                              height: 11,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 6),
+                            Text(
+                              'Calculando ruta…',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        )
+                      else if (hasDestination)
                         Text(
                           '${distanceKm.toStringAsFixed(1)} km · $eta min',
                           style: const TextStyle(

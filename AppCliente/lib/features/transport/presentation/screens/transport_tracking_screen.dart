@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/location/location_service.dart';
+import 'package:nexum_client/core/location/maps_service.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
@@ -47,6 +48,12 @@ class _TransportTrackingScreenState
   LatLng? _driverPosPrev;
   Timer? _animTimer;
 
+  // Origen/destino reales (geocodificados) + ruta siguiendo calles.
+  LatLng? _origin;
+  LatLng? _dest;
+  List<LatLng>? _routePoints;
+  bool _resolveStarted = false;
+
   static const _animTickMs = 50;
   static const _animDurationMs = 1200;
 
@@ -55,6 +62,40 @@ class _TransportTrackingScreenState
     _animTimer?.cancel();
     _map?.dispose();
     super.dispose();
+  }
+
+  // Punto de origen efectivo (real si se geocodificó, si no Pamplona).
+  LatLng get _originPoint => _origin ?? kPamplonaCenter;
+
+  // Punto de destino efectivo (real o desplazado para la simulación).
+  LatLng get _destPoint =>
+      _dest ??
+      LatLng(
+        kPamplonaCenter.latitude + 0.007,
+        kPamplonaCenter.longitude + 0.005,
+      );
+
+  /// Geocodifica las direcciones del viaje y obtiene la ruta real una vez.
+  Future<void> _resolveRoute(TransportRequestEntity req) async {
+    final maps = ref.read(mapsServiceProvider);
+    final results = await Future.wait([
+      maps.geocode(req.originAddress),
+      maps.geocode(req.destinationAddress),
+    ]);
+    if (!mounted) return;
+    final origin = results[0];
+    final dest = results[1];
+    if (origin == null || dest == null) return; // respaldo a la simulación
+
+    setState(() {
+      _origin = origin;
+      _dest = dest;
+    });
+
+    final route = await maps.route(origin, dest);
+    if (!mounted) return;
+    setState(() => _routePoints = route?.points ?? [origin, dest]);
+    _fitCamera(req);
   }
 
   // Anima suavemente el marcador del conductor cuando llegan nuevas coords.
@@ -92,19 +133,17 @@ class _TransportTrackingScreenState
     markers.add(
       Marker(
         markerId: const MarkerId('origin'),
-        position: kPamplonaCenter,
+        position: _originPoint,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
         infoWindow: InfoWindow(title: req.originAddress),
       ),
     );
 
-    // Destino (desplazado para simulación hasta que lleguen coords reales)
-    final destLat = kPamplonaCenter.latitude + 0.007;
-    final destLng = kPamplonaCenter.longitude + 0.005;
+    // Destino
     markers.add(
       Marker(
         markerId: const MarkerId('destination'),
-        position: LatLng(destLat, destLng),
+        position: _destPoint,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
         infoWindow: InfoWindow(title: req.destinationAddress),
       ),
@@ -136,37 +175,49 @@ class _TransportTrackingScreenState
   }
 
   Set<Polyline> _buildPolylines(TransportRequestEntity req, Color color) {
-    final destLat = kPamplonaCenter.latitude + 0.007;
-    final destLng = kPamplonaCenter.longitude + 0.005;
+    final points = _routePoints;
+    if (points != null && points.length >= 2) {
+      // Ruta real siguiendo las calles (Google Directions).
+      return {
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: points,
+          color: color,
+          width: 5,
+        ),
+      };
+    }
+    // Respaldo: línea recta punteada mientras se resuelve la ruta.
     return {
       Polyline(
         polylineId: const PolylineId('route'),
-        points: [kPamplonaCenter, LatLng(destLat, destLng)],
-        color: color,
-        width: 5,
+        points: [_originPoint, _destPoint],
+        color: color.withValues(alpha: 0.5),
+        width: 4,
         patterns: [PatternItem.dash(20), PatternItem.gap(10)],
       ),
     };
   }
 
   void _fitCamera(TransportRequestEntity req) {
-    final destLat = kPamplonaCenter.latitude + 0.007;
-    final destLng = kPamplonaCenter.longitude + 0.005;
-    final bounds = LatLngBounds(
-      southwest: LatLng(
-        [kPamplonaCenter.latitude, destLat].reduce((a, b) => a < b ? a : b) -
-            0.002,
-        [kPamplonaCenter.longitude, destLng].reduce((a, b) => a < b ? a : b) -
-            0.002,
-      ),
-      northeast: LatLng(
-        [kPamplonaCenter.latitude, destLat].reduce((a, b) => a > b ? a : b) +
-            0.002,
-        [kPamplonaCenter.longitude, destLng].reduce((a, b) => a > b ? a : b) +
-            0.002,
+    final pts = _routePoints ?? [_originPoint, _destPoint];
+    var minLat = pts.first.latitude, maxLat = pts.first.latitude;
+    var minLng = pts.first.longitude, maxLng = pts.first.longitude;
+    for (final p in pts) {
+      minLat = p.latitude < minLat ? p.latitude : minLat;
+      maxLat = p.latitude > maxLat ? p.latitude : maxLat;
+      minLng = p.longitude < minLng ? p.longitude : minLng;
+      maxLng = p.longitude > maxLng ? p.longitude : maxLng;
+    }
+    _map?.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat - 0.002, minLng - 0.002),
+          northeast: LatLng(maxLat + 0.002, maxLng + 0.002),
+        ),
+        60,
       ),
     );
-    _map?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 60));
   }
 
   @override
@@ -177,6 +228,14 @@ class _TransportTrackingScreenState
       return Scaffold(
         appBar: AppBar(),
         body: const Center(child: Text('Solicitud no encontrada')),
+      );
+    }
+
+    // Resuelve la ruta real una sola vez (geocoding + directions).
+    if (!_resolveStarted) {
+      _resolveStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _resolveRoute(request),
       );
     }
 
