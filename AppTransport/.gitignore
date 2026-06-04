@@ -25,7 +25,7 @@ android/.gradle/
 android/captures/
 android/gradlew
 android/gradlew.bat
-android/gradle/
+android/gradle/wrapper/gradle-wrapper.jar
 **/android/**/GeneratedPluginRegistrant.java
 
 # iOS
