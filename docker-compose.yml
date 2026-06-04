@@ -14,6 +14,7 @@ services:
       PORTAL_BASE_URL: ${PORTAL_BASE_URL:-http://localhost:3000}
       MOCK_OTP: ${MOCK_OTP:-123456}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
     depends_on:
       nexum-db:
         condition: service_healthy

@@ -24,9 +24,13 @@ COPY --from=builder --chown=nexum:nexum /app/dist ./dist
 COPY --from=builder --chown=nexum:nexum /app/node_modules ./node_modules
 COPY --from=builder --chown=nexum:nexum /app/package.json ./package.json
 COPY --from=builder --chown=nexum:nexum /app/prisma ./prisma
+# Entrypoint: corre `prisma migrate deploy` y luego arranca el servidor, igual
+# que backend/Dockerfile, para que render/railway no queden sin migraciones.
+COPY --from=builder --chown=nexum:nexum /app/entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
 
 USER nexum
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+CMD ["./entrypoint.sh"]
