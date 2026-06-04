@@ -490,7 +490,7 @@ class _TrackingMapState extends State<_TrackingMap>
   late final LatLng _deliveryPos;
   GoogleMapController? _map;
 
-  // Centrado en Pamplona, Nariño (coordenadas correctas).
+  // Centrado en Pamplona, Norte de Santander (coordenadas correctas).
   static const _origin = kPamplonaCenter;
 
   static const _animDurations = {

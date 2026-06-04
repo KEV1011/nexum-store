@@ -2,9 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-/// Centro de Pamplona, Nariño — usado como respaldo cuando no hay
-/// permisos de ubicación o el GPS aún no entrega una posición.
-const LatLng kPamplonaCenter = LatLng(1.2136, -77.2811);
+/// Centro de Pamplona, Norte de Santander (Parque Águeda Gallardo) — usado
+/// como respaldo cuando no hay permisos de ubicación o el GPS aún no entrega
+/// una posición.
+const LatLng kPamplonaCenter = LatLng(7.3754, -72.6486);
 
 /// Resultado de una consulta de ubicación: posición + si es real o respaldo.
 class UserLocation {

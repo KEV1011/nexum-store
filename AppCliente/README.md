@@ -1,6 +1,7 @@
 # nexum_client
 
-App cliente de Nexum (movilidad + domicilios) para Pamplona, Nariño.
+App cliente de Nexum (movilidad + domicilios) para Pamplona, Norte de
+Santander.
 
 ## Mapas (Google Maps nativo)
 

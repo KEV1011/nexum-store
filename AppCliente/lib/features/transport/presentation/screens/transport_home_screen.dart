@@ -20,25 +20,25 @@ import 'package:nexum_client/features/transport/presentation/providers/transport
 final _seedVehicles = <_NearbyVehicle>[
   _NearbyVehicle(
     TransportServiceType.transporte,
-    const LatLng(1.2155, -77.2838),
+    const LatLng(7.3773, -72.6513),
   ),
   _NearbyVehicle(
     TransportServiceType.transporte,
-    const LatLng(1.2112, -77.2792),
+    const LatLng(7.3730, -72.6467),
   ),
   _NearbyVehicle(
     TransportServiceType.transporte,
-    const LatLng(1.2148, -77.2770),
+    const LatLng(7.3766, -72.6445),
   ),
   _NearbyVehicle(
     TransportServiceType.transporte,
-    const LatLng(1.2172, -77.2822),
+    const LatLng(7.3790, -72.6497),
   ),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2162, -77.2802)),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2129, -77.2829)),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2141, -77.2768)),
-  _NearbyVehicle(TransportServiceType.envios, const LatLng(1.2143, -77.2862)),
-  _NearbyVehicle(TransportServiceType.envios, const LatLng(1.2175, -77.2759)),
+  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3780, -72.6477)),
+  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3747, -72.6504)),
+  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3759, -72.6443)),
+  _NearbyVehicle(TransportServiceType.envios, const LatLng(7.3761, -72.6537)),
+  _NearbyVehicle(TransportServiceType.envios, const LatLng(7.3793, -72.6434)),
 ];
 
 class _NearbyVehicle {
@@ -238,7 +238,7 @@ class _LocationChip extends StatelessWidget {
           ),
           SizedBox(width: 4),
           Text(
-            'Pamplona, Nariño',
+            'Pamplona, N. de Santander',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
