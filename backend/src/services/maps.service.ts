@@ -2,6 +2,8 @@ import { GOOGLE_MAPS_API_KEY } from '../config/constants';
 
 const GEOCODING_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
 const DIRECTIONS_URL = 'https://maps.googleapis.com/maps/api/directions/json';
+const AUTOCOMPLETE_URL = 'https://maps.googleapis.com/maps/api/place/autocomplete/json';
+const PLACE_DETAILS_URL = 'https://maps.googleapis.com/maps/api/place/details/json';
 
 export interface RouteInfo {
   distanceKm: number;
@@ -54,5 +56,78 @@ export async function calculateRoute(
     destLat: leg.end_location.lat,
     destLng: leg.end_location.lng,
     polyline: data.routes[0].overview_polyline?.points,
+  };
+}
+
+export interface PlacePrediction {
+  placeId: string;
+  description: string;
+  mainText: string;
+  secondaryText: string;
+}
+
+/**
+ * Autocompletado de direcciones (Google Places). Si se pasa lat/lng, sesga los
+ * resultados alrededor de esa ubicación (p. ej. la posición del usuario).
+ */
+export async function placesAutocomplete(
+  input: string,
+  bias?: { lat: number; lng: number },
+): Promise<PlacePrediction[]> {
+  if (!GOOGLE_MAPS_API_KEY || !input.trim()) return [];
+  const params = new URLSearchParams({
+    input,
+    key: GOOGLE_MAPS_API_KEY,
+    language: 'es',
+    components: 'country:co',
+  });
+  if (bias) {
+    params.set('location', `${bias.lat},${bias.lng}`);
+    params.set('radius', '30000');
+  }
+  const res = await fetch(`${AUTOCOMPLETE_URL}?${params.toString()}`);
+  const data = await res.json() as {
+    status: string;
+    predictions: Array<{
+      place_id: string;
+      description: string;
+      structured_formatting?: { main_text: string; secondary_text: string };
+    }>;
+  };
+  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') return [];
+  return data.predictions.map((p) => ({
+    placeId: p.place_id,
+    description: p.description,
+    mainText: p.structured_formatting?.main_text ?? p.description,
+    secondaryText: p.structured_formatting?.secondary_text ?? '',
+  }));
+}
+
+/** Detalle de un lugar por placeId: coordenadas + dirección formateada. */
+export async function placeDetails(
+  placeId: string,
+): Promise<{ lat: number; lng: number; address: string } | null> {
+  if (!GOOGLE_MAPS_API_KEY) return null;
+  const params = new URLSearchParams({
+    place_id: placeId,
+    key: GOOGLE_MAPS_API_KEY,
+    language: 'es',
+    fields: 'geometry,formatted_address,name',
+  });
+  const res = await fetch(`${PLACE_DETAILS_URL}?${params.toString()}`);
+  const data = await res.json() as {
+    status: string;
+    result?: {
+      geometry: { location: { lat: number; lng: number } };
+      formatted_address?: string;
+      name?: string;
+    };
+  };
+  if (data.status !== 'OK' || !data.result) return null;
+  const loc = data.result.geometry.location;
+  return {
+    lat: loc.lat,
+    lng: loc.lng,
+    address: data.result.formatted_address ?? data.result.name ?? '',
   };
 }

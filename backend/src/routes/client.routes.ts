@@ -46,7 +46,12 @@ import {
 } from '../services/intercity.service';
 import { getIntercityRoute } from '../config/constants';
 import { createPaymentLink } from '../services/payment.service';
-import { geocodeAddress, calculateRoute } from '../services/maps.service';
+import {
+  geocodeAddress,
+  calculateRoute,
+  placesAutocomplete,
+  placeDetails,
+} from '../services/maps.service';
 import { rateLimit } from '../middleware/rate-limit.middleware';
 import {
   RequestClientErrandDTO,
@@ -492,6 +497,24 @@ router.get('/maps/route', async (req, res): Promise<void> => {
   }
   const result = await calculateRoute(origin, destination);
   if (!result) { res.status(404).json({ success: false, error: 'Route not found or Maps not configured' }); return; }
+  res.status(200).json({ success: true, data: result });
+});
+
+// GET /client/maps/places/autocomplete?input=...&lat=...&lng=...
+router.get('/maps/places/autocomplete', async (req, res): Promise<void> => {
+  const { input, lat, lng } = req.query as { input?: string; lat?: string; lng?: string };
+  if (!input) { res.status(400).json({ success: false, error: 'input is required' }); return; }
+  const bias = lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined;
+  const predictions = await placesAutocomplete(input, bias);
+  res.status(200).json({ success: true, data: predictions });
+});
+
+// GET /client/maps/places/details?placeId=...
+router.get('/maps/places/details', async (req, res): Promise<void> => {
+  const { placeId } = req.query as { placeId?: string };
+  if (!placeId) { res.status(400).json({ success: false, error: 'placeId is required' }); return; }
+  const result = await placeDetails(placeId);
+  if (!result) { res.status(404).json({ success: false, error: 'Place not found or Maps not configured' }); return; }
   res.status(200).json({ success: true, data: result });
 });
 

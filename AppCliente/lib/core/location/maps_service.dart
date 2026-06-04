@@ -22,8 +22,39 @@ class RouteResult {
   final List<LatLng> points;
 }
 
+/// Predicción de autocompletado de direcciones.
+class PlacePrediction {
+  const PlacePrediction({
+    required this.placeId,
+    required this.description,
+    required this.mainText,
+    required this.secondaryText,
+  });
+
+  factory PlacePrediction.fromJson(Map<String, dynamic> json) =>
+      PlacePrediction(
+        placeId: json['placeId'] as String,
+        description: json['description'] as String? ?? '',
+        mainText: json['mainText'] as String? ?? '',
+        secondaryText: json['secondaryText'] as String? ?? '',
+      );
+
+  final String placeId;
+  final String description;
+  final String mainText;
+  final String secondaryText;
+}
+
+/// Detalle resuelto de un lugar (coordenadas + dirección).
+class PlaceDetail {
+  const PlaceDetail({required this.position, required this.address});
+
+  final LatLng position;
+  final String address;
+}
+
 /// Consume los endpoints de mapas del backend (`/client/maps/*`), que a su vez
-/// usan Google Directions/Geocoding. Toda la lógica de claves vive en el server.
+/// usan Google Directions/Geocoding/Places. La clave vive solo en el server.
 class MapsService {
   const MapsService(this._dio);
 
@@ -60,6 +91,54 @@ class MapsService {
           (data['destLng'] as num).toDouble(),
         ),
         points: points,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Autocompletado de direcciones (Google Places vía backend).
+  /// [bias] sesga los resultados alrededor de una ubicación (la del usuario).
+  Future<List<PlacePrediction>> autocomplete(
+    String input, {
+    LatLng? bias,
+  }) async {
+    if (input.trim().isEmpty) return [];
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/client/maps/places/autocomplete',
+        queryParameters: {
+          'input': input,
+          if (bias != null) 'lat': bias.latitude,
+          if (bias != null) 'lng': bias.longitude,
+        },
+      );
+      final list = res.data?['data'] as List<dynamic>?;
+      if (list == null) return [];
+      return list
+          .cast<Map<String, dynamic>>()
+          .map(PlacePrediction.fromJson)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Detalle de un lugar por placeId: coordenadas + dirección formateada.
+  Future<PlaceDetail?> placeDetails(String placeId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/client/maps/places/details',
+        queryParameters: {'placeId': placeId},
+      );
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      if (data == null) return null;
+      return PlaceDetail(
+        position: LatLng(
+          (data['lat'] as num).toDouble(),
+          (data['lng'] as num).toDouble(),
+        ),
+        address: data['address'] as String? ?? '',
       );
     } catch (_) {
       return null;

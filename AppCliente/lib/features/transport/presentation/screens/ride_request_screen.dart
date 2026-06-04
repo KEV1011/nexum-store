@@ -11,6 +11,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/screens/ride_bids_screen.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
+import 'package:nexum_client/features/transport/presentation/widgets/place_search_sheet.dart';
 
 /// Flujo de solicitud estilo inDrive: el mapa es protagonista, y el cliente
 /// elige destino, vehículo y **pone su precio** aquí — no en la pantalla home.
@@ -143,6 +144,41 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     });
     _syncSuggested();
     _fetchRoute();
+  }
+
+  /// Abre el buscador de direcciones para fijar el destino.
+  Future<void> _pickDestination() async {
+    final detail = await showPlaceSearch(
+      context,
+      title: 'Destino',
+      bias: _origin,
+    );
+    if (detail == null || !mounted) return;
+    setState(() {
+      _destination = detail.position;
+      _destCtrl.text = detail.address;
+      _route = null;
+    });
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(detail.position, 15.5));
+    _syncSuggested();
+    _fetchRoute();
+  }
+
+  /// Abre el buscador de direcciones para cambiar el origen.
+  Future<void> _pickOrigin() async {
+    final detail = await showPlaceSearch(
+      context,
+      title: 'Origen',
+      bias: _origin,
+    );
+    if (detail == null || !mounted) return;
+    setState(() {
+      _origin = detail.position;
+      _originCtrl.text = detail.address;
+      _route = null;
+    });
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(detail.position, 15.5));
+    if (_destination != null) _fetchRoute();
   }
 
   void _bumpFare(double delta) {
@@ -306,6 +342,8 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
               suggestedFare: _suggestedFare,
               routeLoading: _routeLoading,
               submitting: _submitting,
+              onPickOrigin: _pickOrigin,
+              onPickDestination: _pickDestination,
               onFareEdited: () => _fareTouched = true,
               onResetFare: () {
                 _fareTouched = false;
@@ -337,6 +375,8 @@ class _RequestPanel extends StatelessWidget {
     required this.suggestedFare,
     required this.routeLoading,
     required this.submitting,
+    required this.onPickOrigin,
+    required this.onPickDestination,
     required this.onFareEdited,
     required this.onResetFare,
     required this.onBump,
@@ -354,6 +394,8 @@ class _RequestPanel extends StatelessWidget {
   final double suggestedFare;
   final bool routeLoading;
   final bool submitting;
+  final VoidCallback onPickOrigin;
+  final VoidCallback onPickDestination;
   final VoidCallback onFareEdited;
   final VoidCallback onResetFare;
   final ValueChanged<double> onBump;
@@ -414,19 +456,21 @@ class _RequestPanel extends StatelessWidget {
             ),
             const SizedBox(height: 14),
 
-            // Origen / destino
+            // Origen / destino (toca para buscar con autocompletado)
             _AddrRow(
               icon: Icons.trip_origin_rounded,
               iconColor: AppColors.primary,
               controller: originCtrl,
               hint: 'Origen',
+              onTap: onPickOrigin,
             ),
             const Divider(height: 14),
             _AddrRow(
               icon: Icons.place_rounded,
               iconColor: AppColors.error,
               controller: destCtrl,
-              hint: 'Destino (toca el mapa)',
+              hint: 'Buscar destino o tocar el mapa',
+              onTap: onPickDestination,
             ),
             const SizedBox(height: 14),
 
@@ -614,31 +658,53 @@ class _AddrRow extends StatelessWidget {
     required this.iconColor,
     required this.controller,
     required this.hint,
+    required this.onTap,
   });
 
   final IconData icon;
   final Color iconColor;
   final TextEditingController controller;
   final String hint;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: iconColor, size: 20),
-        const SizedBox(width: 12),
-        Expanded(
-          child: TextField(
-            controller: controller,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: hint,
-              border: InputBorder.none,
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(icon, color: iconColor, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ValueListenableBuilder<TextEditingValue>(
+                valueListenable: controller,
+                builder: (_, value, __) {
+                  final hasText = value.text.trim().isNotEmpty;
+                  return Text(
+                    hasText ? value.text : hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: hasText
+                          ? AppColors.textPrimary
+                          : AppColors.textTertiary,
+                      fontWeight: hasText ? FontWeight.w500 : FontWeight.w400,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
+            const Icon(
+              Icons.search_rounded,
+              size: 18,
+              color: AppColors.textTertiary,
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
