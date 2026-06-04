@@ -52,6 +52,10 @@ import {
   placesAutocomplete,
   placeDetails,
 } from '../services/maps.service';
+import {
+  registerDeviceToken,
+  unregisterDeviceToken,
+} from '../services/push.service';
 import { rateLimit } from '../middleware/rate-limit.middleware';
 import {
   RequestClientErrandDTO,
@@ -516,6 +520,22 @@ router.get('/maps/places/details', async (req, res): Promise<void> => {
   const result = await placeDetails(placeId);
   if (!result) { res.status(404).json({ success: false, error: 'Place not found or Maps not configured' }); return; }
   res.status(200).json({ success: true, data: result });
+});
+
+// POST /client/devices/register  { token }
+router.post('/devices/register', clientAuthMiddleware, (req, res): void => {
+  const { token } = req.body as { token?: string };
+  if (!token) { res.status(400).json({ success: false, error: 'token is required' }); return; }
+  registerDeviceToken(req.clientId!, token);
+  res.status(200).json({ success: true });
+});
+
+// POST /client/devices/unregister  { token }
+router.post('/devices/unregister', clientAuthMiddleware, (req, res): void => {
+  const { token } = req.body as { token?: string };
+  if (!token) { res.status(400).json({ success: false, error: 'token is required' }); return; }
+  unregisterDeviceToken(req.clientId!, token);
+  res.status(200).json({ success: true });
 });
 
 export default router;

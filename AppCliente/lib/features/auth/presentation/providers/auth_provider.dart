@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_client/core/errors/failures.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/notifications/push_service.dart';
 import 'package:nexum_client/features/auth/data/datasources/'
     'auth_datasource.dart';
 import 'package:nexum_client/features/auth/data/datasources/'
@@ -77,11 +78,17 @@ final authDioProvider = Provider<Dio>((ref) => ref.watch(apiClientProvider));
 // ── AuthNotifier ─────────────────────────────────────────────────────────────
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier(this._repository) : super(const AuthInitial()) {
+  AuthNotifier(this._repository, this._ref) : super(const AuthInitial()) {
     checkAuth();
   }
 
   final AuthRepository _repository;
+  final Ref _ref;
+
+  // Registra el token de push tras autenticarse (best-effort).
+  void _initPush() {
+    _ref.read(pushServiceProvider).init();
+  }
 
   Future<void> sendOtp(String phone) async {
     state = const AuthLoading();
@@ -101,9 +108,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return;
     }
     state = AuthAuthenticated(client: result.client!);
+    _initPush();
   }
 
   Future<void> logout() async {
+    await _ref.read(pushServiceProvider).unregister();
     await _repository.logout();
     state = const AuthUnauthenticated();
   }
@@ -121,13 +130,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return;
     }
     state = AuthAuthenticated(client: client);
+    _initPush();
   }
 }
 
 // ── Providers públicos ───────────────────────────────────────────────────────
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier(ref.watch(authRepositoryProvider));
+  return AuthNotifier(ref.watch(authRepositoryProvider), ref);
 });
 
 final currentClientProvider = Provider<ClientEntity?>((ref) {

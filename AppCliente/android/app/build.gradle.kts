@@ -7,6 +7,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Aplica el plugin de Google Services solo si la credencial de Firebase existe,
+// para que FCM funcione sin romper el build cuando aún no está configurado.
+if (rootProject.file("app/google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // Clave del SDK de Google Maps, leída desde android/local.properties (no versionado):
 //   MAPS_API_KEY=tu_clave_restringida
 val mapsProperties = Properties()

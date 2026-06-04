@@ -19,6 +19,12 @@ export const MOCK_OTP = '123456';
 
 export const GOOGLE_MAPS_API_KEY = process.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
+// ─── Push notifications (Firebase Cloud Messaging) ──────────────────────────────
+// JSON del service account de Firebase (cuenta de servicio). Si está vacío, el
+// push queda desactivado y el servicio hace no-op (no rompe nada).
+export const FIREBASE_SERVICE_ACCOUNT_JSON =
+  process.env['FIREBASE_SERVICE_ACCOUNT_JSON'] ?? '';
+
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
 export const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? '*';

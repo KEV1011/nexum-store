@@ -17,6 +17,7 @@ import {
   getBusinessPublicById,
   getProductById,
 } from './business.service';
+import { sendToUser } from './push.service';
 
 const OTP_TTL = 5 * 60 * 1000;
 
@@ -421,9 +422,34 @@ export function getClientTripSnapshot(tripId: string): ClientTripDTO | null {
   return _toTripDTO(trip);
 }
 
+// Último estado notificado por push, para no enviar duplicados.
+const lastPushedStatus = new Map<string, ClientTripStatus>();
+
+const _pushCopy: Partial<Record<ClientTripStatus, { title: string; body: string }>> = {
+  accepted: { title: '¡Conductor asignado!', body: 'Un conductor aceptó tu viaje y va en camino.' },
+  arriving: { title: 'Tu conductor está en camino', body: 'El conductor se dirige a tu punto de recogida.' },
+  arrived: { title: 'Tu conductor llegó', body: 'El conductor te está esperando en el punto de recogida.' },
+  in_progress: { title: 'Viaje en curso', body: 'Disfruta tu viaje con Nexum.' },
+  completed: { title: 'Viaje completado', body: '¡Gracias por viajar con Nexum! Califica tu experiencia.' },
+  cancelled: { title: 'Viaje cancelado', body: 'Tu viaje fue cancelado.' },
+};
+
+function _maybePush(trip: ClientTrip): void {
+  if (lastPushedStatus.get(trip.id) === trip.status) return;
+  lastPushedStatus.set(trip.id, trip.status);
+  const copy = _pushCopy[trip.status];
+  if (!copy) return;
+  void sendToUser(trip.clientId, {
+    title: copy.title,
+    body: copy.body,
+    data: { type: 'trip_update', tripId: trip.id, status: trip.status },
+  });
+}
+
 function _notifyTripListeners(tripId: string, trip: ClientTrip): void {
   const dto = _toTripDTO(trip);
   for (const cb of tripListeners.get(tripId) ?? []) cb(tripId, dto);
+  _maybePush(trip);
 }
 
 function _startTripSimulation(tripId: string): void {
