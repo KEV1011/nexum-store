@@ -1,17 +1,45 @@
 # nexum_client
 
-A new Flutter project.
+App cliente de Nexum (movilidad + domicilios) para Pamplona, Nariño.
 
-## Getting Started
+## Mapas (Google Maps nativo)
 
-This project is a starting point for a Flutter application.
+La pantalla de movilidad usa `google_maps_flutter`. La clave del SDK **no se
+versiona**: se inyecta por plataforma.
 
-A few resources to get you started if this is your first Flutter project:
+### Android
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Agrega tu clave a `android/local.properties` (este archivo está en
+`.gitignore`):
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```properties
+MAPS_API_KEY=tu_clave_de_google_maps
+```
+
+El `build.gradle.kts` la lee y la inyecta en el `AndroidManifest.xml` mediante
+`manifestPlaceholders` (`${MAPS_API_KEY}`).
+
+### iOS
+
+Define una entrada `MapsApiKey` en `ios/Runner/Info.plist` (idealmente vía un
+`.xcconfig` no versionado). `AppDelegate.swift` la pasa a
+`GMSServices.provideAPIKey(...)`.
+
+### Recomendaciones de seguridad
+
+- Restringe la clave en Google Cloud Console por **package name + SHA-1**
+  (Android) y **bundle id** (iOS), y habilita solo *Maps SDK*.
+- Usa claves distintas para Android, iOS y el backend.
+
+## Permisos de ubicación
+
+La app pide permiso de ubicación en tiempo de ejecución (`geolocator`). Si el
+usuario lo niega o no hay GPS, el mapa cae al centro de Pamplona como respaldo.
+
+## Comandos
+
+```bash
+flutter pub get
+flutter run
+flutter analyze
+```

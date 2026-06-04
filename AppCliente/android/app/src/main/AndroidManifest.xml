@@ -1,8 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Ubicación en tiempo real para movilidad (origen del viaje, conductores cercanos) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
         android:label="nexum_client"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Clave del SDK de Google Maps. Se inyecta desde local.properties
+             (MAPS_API_KEY=...) vía manifestPlaceholders; NO se versiona la clave. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

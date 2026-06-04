@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/location/location_service.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
@@ -16,16 +16,24 @@ import 'package:nexum_client/features/intercity/presentation/providers/intercity
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 
-// Centro de Pamplona, Nariño
-const _pamplona = LatLng(1.2136, -77.2811);
-
-// Vehículos cercanos simulados (se animan periódicamente)
+// Vehículos cercanos simulados (se animan periódicamente).
 final _seedVehicles = <_NearbyVehicle>[
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2155, -77.2838)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2112, -77.2792)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2148, -77.2770)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2172, -77.2822)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2108, -77.2847)),
+  _NearbyVehicle(
+    TransportServiceType.transporte,
+    const LatLng(1.2155, -77.2838),
+  ),
+  _NearbyVehicle(
+    TransportServiceType.transporte,
+    const LatLng(1.2112, -77.2792),
+  ),
+  _NearbyVehicle(
+    TransportServiceType.transporte,
+    const LatLng(1.2148, -77.2770),
+  ),
+  _NearbyVehicle(
+    TransportServiceType.transporte,
+    const LatLng(1.2172, -77.2822),
+  ),
   _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2162, -77.2802)),
   _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2129, -77.2829)),
   _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2141, -77.2768)),
@@ -49,21 +57,13 @@ class TransportHomeScreen extends ConsumerStatefulWidget {
       _TransportHomeScreenState();
 }
 
-class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
-    with TickerProviderStateMixin {
-  final _mapController = MapController();
-  TransportServiceType _selected = TransportServiceType.transporte;
+class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
+  GoogleMapController? _map;
   Timer? _vehicleTimer;
   final _rng = math.Random();
   late final List<_NearbyVehicle> _vehicles;
-  late final AnimationController _panelCtrl;
-  late final Animation<double> _panelAnim;
-
-  static const Map<TransportServiceType, int> _driverCounts = {
-    TransportServiceType.transporte: 5,
-    TransportServiceType.moto: 3,
-    TransportServiceType.envios: 2,
-  };
+  LatLng _myLocation = kPamplonaCenter;
+  bool _centeredOnUser = false;
 
   @override
   void initState() {
@@ -71,16 +71,6 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
     _vehicles = _seedVehicles
         .map((v) => _NearbyVehicle(v.type, v.position))
         .toList();
-
-    _panelCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 550),
-    );
-    _panelAnim = CurvedAnimation(
-      parent: _panelCtrl,
-      curve: Curves.easeOutCubic,
-    );
-    _panelCtrl.forward();
 
     _vehicleTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
@@ -93,15 +83,37 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
         }
       });
     });
+
+    _resolveLocation();
+  }
+
+  Future<void> _resolveLocation() async {
+    final loc = await ref.read(locationServiceProvider).current();
+    if (!mounted) return;
+    setState(() => _myLocation = loc.position);
+    if (!loc.isFallback) {
+      _map?.animateCamera(CameraUpdate.newLatLngZoom(loc.position, 15.5));
+      _centeredOnUser = true;
+    }
   }
 
   @override
   void dispose() {
     _vehicleTimer?.cancel();
-    _panelCtrl.dispose();
-    _mapController.dispose();
+    _map?.dispose();
     super.dispose();
   }
+
+  Set<Marker> get _markers => {
+    for (final v in _vehicles)
+      Marker(
+        markerId: MarkerId('veh-${v.type.name}-${v.position.latitude}'),
+        position: v.position,
+        icon: BitmapDescriptor.defaultMarkerWithHue(_hueOf(v.type)),
+        anchor: const Offset(0.5, 0.5),
+        flat: true,
+      ),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -116,42 +128,24 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
     return Scaffold(
       body: Stack(
         children: [
-          // ── Mapa de fondo ────────────────────────────────────────────────
-          FlutterMap(
-            mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: _pamplona,
-              initialZoom: 15.2,
+          // ── Mapa de fondo (Google Maps nativo) ───────────────────────────
+          GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: _myLocation,
+              zoom: 15.2,
             ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.nexum.client',
-              ),
-              MarkerLayer(
-                markers: [
-                  // Mi ubicación
-                  Marker(
-                    point: _pamplona,
-                    width: 22,
-                    height: 22,
-                    child: _MyLocationDot(),
-                  ),
-                  // Vehículos cercanos del servicio seleccionado
-                  ..._vehicles
-                      .where((v) => v.type == _selected)
-                      .map(
-                        (v) => Marker(
-                          point: v.position,
-                          width: 44,
-                          height: 44,
-                          child: _VehicleMarker(type: v.type),
-                        ),
-                      ),
-                ],
-              ),
-            ],
+            onMapCreated: (c) {
+              _map = c;
+              if (_centeredOnUser) {
+                c.animateCamera(CameraUpdate.newLatLngZoom(_myLocation, 15.5));
+              }
+            },
+            markers: _markers,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            padding: const EdgeInsets.only(bottom: 140),
           ),
 
           // ── Barra superior ───────────────────────────────────────────────
@@ -160,15 +154,11 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
             left: 16,
             right: 16,
             child: Row(
-              children: [
-                _LocationChip(),
-                const Spacer(),
-                _ProfileButton(),
-              ],
+              children: [_LocationChip(), const Spacer(), _ProfileButton()],
             ),
           ),
 
-          // ── Banner de viaje activo (urbano) ─────────────────────────────
+          // ── Banners de servicios activos ─────────────────────────────────
           if (hasActive)
             Positioned(
               top: topPad + 64,
@@ -176,22 +166,17 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
               right: 16,
               child: _ActiveTripBanner(request: state.active.first),
             ),
-
-          // ── Banner de viaje intermunicipal activo ────────────────────────
           if (hasIntercityActive)
             Positioned(
               top: topPad + (hasActive ? 130 : 64),
               left: 16,
               right: 16,
-              child: _IntercityActiveBanner(
-                request: intercityState.active!,
-              ),
+              child: _IntercityActiveBanner(request: intercityState.active!),
             ),
-
-          // ── Banner de mandado activo ─────────────────────────────────────
           if (hasErrandActive)
             Positioned(
-              top: topPad +
+              top:
+                  topPad +
                   64 +
                   (hasActive ? 66 : 0) +
                   (hasIntercityActive ? 66 : 0),
@@ -200,83 +185,32 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
               child: _ErrandActiveBanner(errand: errandState.active!),
             ),
 
-          // ── Panel inferior ───────────────────────────────────────────────
+          // ── Botón de recentrar ───────────────────────────────────────────
           Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 1),
-                end: Offset.zero,
-              ).animate(_panelAnim),
-              child: _BottomPanel(
-                selected: _selected,
-                driverCounts: _driverCounts,
-                history: state.past.take(3).toList(),
-                onServiceTap: (t) => setState(() => _selected = t),
-              ),
+            right: 16,
+            bottom: MediaQuery.of(context).size.height * 0.20 + 12,
+            child: _RecenterButton(onTap: _recenter),
+          ),
+
+          // ── Panel inferior compacto y arrastrable (estilo inDriver) ──────
+          DraggableScrollableSheet(
+            initialChildSize: 0.18,
+            minChildSize: 0.18,
+            maxChildSize: 0.62,
+            snap: true,
+            snapSizes: const [0.18, 0.62],
+            builder: (context, scrollController) => _BottomPanel(
+              scrollController: scrollController,
+              history: state.past.take(3).toList(),
             ),
           ),
         ],
       ),
     );
   }
-}
 
-// ── Punto de mi ubicación ─────────────────────────────────────────────────────
-
-class _MyLocationDot extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.secondary,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, 2)),
-        ],
-      ),
-      child: const Center(
-        child: SizedBox(
-          width: 10,
-          height: 10,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Marcador de vehículo ──────────────────────────────────────────────────────
-
-class _VehicleMarker extends StatelessWidget {
-  const _VehicleMarker({required this.type});
-  final TransportServiceType type;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _colorOf(type);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: color, width: 2.5),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.35),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Icon(_iconOf(type), size: 22, color: color),
-    );
+  void _recenter() {
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(_myLocation, 15.5));
   }
 }
 
@@ -297,8 +231,11 @@ class _LocationChip extends StatelessWidget {
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.location_on_rounded,
-              size: 15, color: AppColors.serviceMoto),
+          Icon(
+            Icons.location_on_rounded,
+            size: 15,
+            color: AppColors.serviceMoto,
+          ),
           SizedBox(width: 4),
           Text(
             'Pamplona, Nariño',
@@ -309,8 +246,11 @@ class _LocationChip extends StatelessWidget {
             ),
           ),
           SizedBox(width: 2),
-          Icon(Icons.keyboard_arrow_down_rounded,
-              size: 17, color: AppColors.textSecondary),
+          Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 17,
+            color: AppColors.textSecondary,
+          ),
         ],
       ),
     );
@@ -332,8 +272,261 @@ class _ProfileButton extends StatelessWidget {
           BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2)),
         ],
       ),
-      child: const Icon(Icons.person_rounded,
-          size: 21, color: AppColors.textSecondary),
+      child: const Icon(
+        Icons.person_rounded,
+        size: 21,
+        color: AppColors.textSecondary,
+      ),
+    );
+  }
+}
+
+// ── Botón recentrar ───────────────────────────────────────────────────────────
+
+class _RecenterButton extends StatelessWidget {
+  const _RecenterButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      elevation: 3,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: const Padding(
+          padding: EdgeInsets.all(10),
+          child: Icon(
+            Icons.my_location_rounded,
+            size: 22,
+            color: AppColors.serviceParticular,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Panel inferior compacto ──────────────────────────────────────────────────
+
+class _BottomPanel extends StatelessWidget {
+  const _BottomPanel({required this.scrollController, required this.history});
+
+  final ScrollController scrollController;
+  final List<TransportRequestEntity> history;
+
+  static const _panelBg = Color(0xFF1A1D27);
+  static const _handleColor = Color(0xFF2E3347);
+  static const _subText = Color(0xFF94A3B8);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: _panelBg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x55000000),
+            blurRadius: 28,
+            offset: Offset(0, -6),
+          ),
+        ],
+      ),
+      child: ListView(
+        controller: scrollController,
+        padding: EdgeInsets.zero,
+        children: [
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _handleColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // CTA principal — abre el flujo de solicitud (vehículo + precio ahí)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: GestureDetector(
+              onTap: () => context.push(AppRoutes.transportRequest),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF252836),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.55),
+                    width: 1.5,
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.search_rounded,
+                      size: 22,
+                      color: AppColors.primary,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '¿A dónde vas?',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Color(0xFFE2E8F0),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 15,
+                      color: _subText,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Elige tu vehículo y pon tu precio en el siguiente paso.',
+              style: TextStyle(fontSize: 11.5, color: _subText),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Más servicios (se revela al expandir) ─────────────────────────
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'Más servicios',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: _subText,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: _IntercityCard(),
+          ),
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: _PooledCard(),
+          ),
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: _ErrandCard(),
+          ),
+          const SizedBox(height: 14),
+
+          // Recientes
+          if (history.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 14, color: _subText),
+                  SizedBox(width: 6),
+                  Text(
+                    'Recientes',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: _subText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...history.map((r) => _RecentTile(request: r)),
+          ],
+
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Tile de viaje reciente ────────────────────────────────────────────────────
+
+class _RecentTile extends StatelessWidget {
+  const _RecentTile({required this.request});
+
+  final TransportRequestEntity request;
+
+  static const _textColor = Color(0xFFE2E8F0);
+  static const _subText = Color(0xFF94A3B8);
+  static const _iconBg = Color(0xFF252836);
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => context.push(AppRoutes.transportTrackingPath(request.id)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: const BoxDecoration(
+                color: _iconBg,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.history_rounded,
+                size: 18,
+                color: _subText,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    request.destinationAddress,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _textColor,
+                    ),
+                  ),
+                  Text(
+                    '${request.serviceType.label} · '
+                    '${CurrencyFormatter.format(request.estimatedFare)}',
+                    style: const TextStyle(fontSize: 11, color: _subText),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.north_west_rounded, size: 17, color: _subText),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -348,8 +541,7 @@ class _ActiveTripBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _colorOf(request.serviceType);
     return GestureDetector(
-      onTap: () =>
-          context.push(AppRoutes.transportTrackingPath(request.id)),
+      onTap: () => context.push(AppRoutes.transportTrackingPath(request.id)),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
@@ -383,8 +575,7 @@ class _ActiveTripBanner extends StatelessWidget {
                     request.destinationAddress,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 11),
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
                   ),
                 ],
               ),
@@ -394,13 +585,17 @@ class _ActiveTripBanner extends StatelessWidget {
                 Text(
                   'Ver',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700),
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 SizedBox(width: 2),
-                Icon(Icons.chevron_right_rounded,
-                    size: 18, color: Colors.white),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ],
             ),
           ],
@@ -410,371 +605,11 @@ class _ActiveTripBanner extends StatelessWidget {
   }
 }
 
-// ── Panel inferior (siempre oscuro, estilo InDriver) ─────────────────────────
-
-class _BottomPanel extends StatelessWidget {
-  const _BottomPanel({
-    required this.selected,
-    required this.driverCounts,
-    required this.history,
-    required this.onServiceTap,
-  });
-
-  final TransportServiceType selected;
-  final Map<TransportServiceType, int> driverCounts;
-  final List<TransportRequestEntity> history;
-  final ValueChanged<TransportServiceType> onServiceTap;
-
-  // Colores fijos dark panel
-  static const _panelBg = Color(0xFF1A1D27);
-  static const _cardBg = Color(0xFF252836);
-  static const _handleColor = Color(0xFF2E3347);
-  static const _subText = Color(0xFF94A3B8);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: _panelBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-        boxShadow: [
-          BoxShadow(color: Color(0x55000000), blurRadius: 28, offset: Offset(0, -6)),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 8),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: _handleColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-
-          // Tabs de servicio
-          SizedBox(
-            height: 114,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: TransportServiceType.values.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, i) {
-                final svc = TransportServiceType.values[i];
-                return _ServiceTab(
-                  service: svc,
-                  isSelected: svc == selected,
-                  count: driverCounts[svc] ?? 0,
-                  onTap: () => onServiceTap(svc),
-                );
-
-              },
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Barra de búsqueda / destino
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: GestureDetector(
-              onTap: () => context.push(
-                AppRoutes.transportBooking,
-                extra: selected,
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 15),
-                decoration: BoxDecoration(
-                  color: _cardBg,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: _colorOf(selected).withValues(alpha: 0.5),
-                    width: 1.5,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.search_rounded,
-                        size: 22, color: _colorOf(selected)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        '¿A dónde y por cuánto?',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: _subText,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: _colorOf(selected),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'Pedir',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Tarjeta "Pon tu precio" (negociación estilo inDriver)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _NegotiateCard(),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Tarjeta viaje intermunicipal
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _IntercityCard(),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Tarjeta viajes compartidos (Modelo A)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _PooledCard(),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Tarjeta de mandados
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _ErrandCard(),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Recientes
-          if (history.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  const Icon(Icons.history_rounded, size: 14, color: _subText),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'Recientes',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: _subText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-            ...history.map(
-              (r) => _RecentTile(request: r),
-            ),
-          ],
-
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 10),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Tab de servicio ───────────────────────────────────────────────────────────
-
-class _ServiceTab extends StatelessWidget {
-  const _ServiceTab({
-    required this.service,
-    required this.isSelected,
-    required this.count,
-    required this.onTap,
-  });
-
-  final TransportServiceType service;
-  final bool isSelected;
-  final int count;
-  final VoidCallback onTap;
-
-  static const _cardBg = Color(0xFF252836);
-  static const _borderColor = Color(0xFF2E3347);
-  static const _subText = Color(0xFF94A3B8);
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _colorOf(service);
-    final bg = isSelected ? color : _cardBg;
-    final iconColor = isSelected ? Colors.white : color;
-    final labelColor =
-        isSelected ? Colors.white : const Color(0xFFE2E8F0);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-        width: 110,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(18),
-          border: isSelected
-              ? null
-              : Border.all(color: _borderColor),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.38),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(_iconOf(service), size: 32, color: iconColor),
-                  const SizedBox(height: 8),
-                  Text(
-                    service.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: labelColor,
-                    ),
-                  ),
-                  Text(
-                    service.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 9, color: _subText),
-                  ),
-                ],
-              ),
-            ),
-            if (count > 0)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 21,
-                  height: 21,
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Colors.white.withValues(alpha: 0.22)
-                        : color.withValues(alpha: 0.18),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: isSelected ? Colors.white : color,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Tile de viaje reciente ────────────────────────────────────────────────────
-
-class _RecentTile extends StatelessWidget {
-  const _RecentTile({required this.request});
-
-  final TransportRequestEntity request;
-
-  static const _textColor = Color(0xFFE2E8F0);
-  static const _subText = Color(0xFF94A3B8);
-  static const _iconBg = Color(0xFF252836);
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () =>
-          context.push(AppRoutes.transportTrackingPath(request.id)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: const BoxDecoration(
-                color: _iconBg,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.history_rounded,
-                  size: 18, color: _subText),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    request.destinationAddress,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: _textColor,
-                    ),
-                  ),
-                  Text(
-                    '${request.serviceType.label} · '
-                    '${CurrencyFormatter.format(request.estimatedFare)}',
-                    style: const TextStyle(fontSize: 11, color: _subText),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.north_west_rounded,
-                size: 17, color: _subText),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Tarjeta intermunicipal en el panel ────────────────────────────────────────
+// ── Tarjeta intermunicipal ────────────────────────────────────────────────────
 
 class _IntercityCard extends StatelessWidget {
+  const _IntercityCard();
+
   static const _bg = Color(0xFF1E3A8A);
   static const _cardBg = Color(0xFF172554);
 
@@ -818,17 +653,13 @@ class _IntercityCard extends StatelessWidget {
                   ),
                   Text(
                     'Cúcuta · Bucaramanga · Chitagá y más',
-                    style: TextStyle(
-                      color: Color(0xFF93C5FD),
-                      fontSize: 11,
-                    ),
+                    style: TextStyle(color: Color(0xFF93C5FD), fontSize: 11),
                   ),
                 ],
               ),
             ),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: _bg,
                 borderRadius: BorderRadius.circular(20),
@@ -849,9 +680,11 @@ class _IntercityCard extends StatelessWidget {
   }
 }
 
-// ── Tarjeta de viajes compartidos (Modelo A) ──────────────────────────────────
+// ── Tarjeta viajes compartidos ────────────────────────────────────────────────
 
 class _PooledCard extends StatelessWidget {
+  const _PooledCard();
+
   static const _bg = Color(0xFF1E3A8A);
   static const _cardBg = Color(0xFF172554);
 
@@ -922,90 +755,7 @@ class _PooledCard extends StatelessWidget {
   }
 }
 
-// ── Tarjeta "Pon tu precio" (negociación inDriver) ────────────────────────────
-
-class _NegotiateCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.push(AppRoutes.requestRide),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF00C853), Color(0xFF00963D)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.local_offer_rounded,
-                      color: Colors.white, size: 24),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Pon tu precio',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        'Ofrece tu tarifa y los conductores te responden',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.arrow_forward_ios_rounded,
-                    color: Colors.white, size: 16),
-              ],
-            ),
-          ),
-          Positioned(
-            top: -6,
-            right: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF6B00),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'NUEVO',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Banner de viaje intermunicipal activo ─────────────────────────────────────
+// ── Banner intermunicipal activo ──────────────────────────────────────────────
 
 class _IntercityActiveBanner extends StatelessWidget {
   const _IntercityActiveBanner({required this.request});
@@ -1019,8 +769,7 @@ class _IntercityActiveBanner extends StatelessWidget {
     return GestureDetector(
       onTap: () => context.push(AppRoutes.intercityStatus),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: _bg,
           borderRadius: BorderRadius.circular(16),
@@ -1041,7 +790,8 @@ class _IntercityActiveBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${request.origin.displayName} → ${request.destination.displayName}',
+                    '${request.origin.displayName} → '
+                    '${request.destination.displayName}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
@@ -1049,9 +799,8 @@ class _IntercityActiveBanner extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    request.status.label as String,
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 11),
+                    request.status.label,
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
                   ),
                 ],
               ),
@@ -1061,13 +810,17 @@ class _IntercityActiveBanner extends StatelessWidget {
                 Text(
                   'Ver',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700),
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 SizedBox(width: 2),
-                Icon(Icons.chevron_right_rounded,
-                    size: 18, color: Colors.white),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ],
             ),
           ],
@@ -1077,9 +830,11 @@ class _IntercityActiveBanner extends StatelessWidget {
   }
 }
 
-// ── Tarjeta de mandados en el panel ───────────────────────────────────────────
+// ── Tarjeta de mandados ───────────────────────────────────────────────────────
 
 class _ErrandCard extends StatelessWidget {
+  const _ErrandCard();
+
   static const _cardBg = Color(0xFF26201A);
   static const _accent = Color(0xFFD97706);
 
@@ -1123,17 +878,13 @@ class _ErrandCard extends StatelessWidget {
                   ),
                   Text(
                     'Farmacia, mercado, pagos, recoger algo...',
-                    style: TextStyle(
-                      color: Color(0xFFFBBF24),
-                      fontSize: 11,
-                    ),
+                    style: TextStyle(color: Color(0xFFFBBF24), fontSize: 11),
                   ),
                 ],
               ),
             ),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: _accent,
                 borderRadius: BorderRadius.circular(20),
@@ -1197,8 +948,7 @@ class _ErrandActiveBanner extends StatelessWidget {
                   ),
                   Text(
                     errand.status.label,
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 11),
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
                   ),
                 ],
               ),
@@ -1208,13 +958,17 @@ class _ErrandActiveBanner extends StatelessWidget {
                 Text(
                   'Ver',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700),
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 SizedBox(width: 2),
-                Icon(Icons.chevron_right_rounded,
-                    size: 18, color: Colors.white),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ],
             ),
           ],
@@ -1227,13 +981,19 @@ class _ErrandActiveBanner extends StatelessWidget {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 IconData _iconOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.transporte => Icons.directions_car_rounded,
-      TransportServiceType.moto => Icons.two_wheeler_rounded,
-      TransportServiceType.envios => Icons.inventory_2_rounded,
-    };
+  TransportServiceType.transporte => Icons.directions_car_rounded,
+  TransportServiceType.moto => Icons.two_wheeler_rounded,
+  TransportServiceType.envios => Icons.inventory_2_rounded,
+};
 
 Color _colorOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.transporte => AppColors.serviceParticular,
-      TransportServiceType.moto => AppColors.serviceMoto,
-      TransportServiceType.envios => AppColors.serviceEnvios,
-    };
+  TransportServiceType.transporte => AppColors.serviceParticular,
+  TransportServiceType.moto => AppColors.serviceMoto,
+  TransportServiceType.envios => AppColors.serviceEnvios,
+};
+
+double _hueOf(TransportServiceType t) => switch (t) {
+  TransportServiceType.transporte => BitmapDescriptor.hueAzure,
+  TransportServiceType.moto => BitmapDescriptor.hueOrange,
+  TransportServiceType.envios => BitmapDescriptor.hueGreen,
+};

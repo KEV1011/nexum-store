@@ -1,8 +1,20 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Clave del SDK de Google Maps, leída desde android/local.properties (no versionado):
+//   MAPS_API_KEY=tu_clave_restringida
+val mapsProperties = Properties()
+val mapsPropertiesFile = rootProject.file("local.properties")
+if (mapsPropertiesFile.exists()) {
+    mapsProperties.load(FileInputStream(mapsPropertiesFile))
+}
+val mapsApiKey: String = mapsProperties.getProperty("MAPS_API_KEY") ?: ""
 
 android {
     namespace = "com.nexum.nexum_client"
@@ -19,10 +31,13 @@ android {
         applicationId = "com.nexum.nexum_client"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = maxOf(flutter.minSdkVersion, 21)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Inyecta la clave de Maps en el AndroidManifest (${MAPS_API_KEY}).
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {

@@ -49,6 +49,8 @@ import 'package:nexum_client/features/shell/presentation/screens/'
 import 'package:nexum_client/features/transport/domain/entities/'
     'transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/screens/'
+    'ride_request_screen.dart';
+import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_booking_screen.dart';
 import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_tracking_screen.dart';
@@ -72,6 +74,7 @@ abstract final class AppRoutes {
 
   // Rutas de transporte
   static const String transportBooking = '/transport/booking';
+  static const String transportRequest = '/transport/request';
 
   // Rutas intermunicipales
   static const String intercityBooking = '/intercity/booking';
@@ -167,9 +170,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.order,
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
-          child: OrderTrackingScreen(
-            orderId: state.pathParameters['id'] ?? '',
-          ),
+          child: OrderTrackingScreen(orderId: state.pathParameters['id'] ?? ''),
         ),
       ),
       GoRoute(
@@ -185,6 +186,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           pageKey: state.pageKey,
           child: TransportBookingScreen(
             serviceType: state.extra! as TransportServiceType,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.transportRequest,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: RideRequestScreen(
+            initialService: state.extra as TransportServiceType?,
           ),
         ),
       ),
@@ -298,16 +308,13 @@ class _SplashGateState extends ConsumerState<_SplashGate> {
     final router = GoRouter.of(context);
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    final done =
-        prefs.getBool(AppConstants.onboardingCompleteKey) ?? false;
+    final done = prefs.getBool(AppConstants.onboardingCompleteKey) ?? false;
     if (!done) {
       router.go(AppRoutes.onboarding);
       return;
     }
     final auth = ref.read(authProvider);
-    router.go(
-      auth is AuthAuthenticated ? AppRoutes.home : AppRoutes.login,
-    );
+    router.go(auth is AuthAuthenticated ? AppRoutes.home : AppRoutes.login);
   }
 
   @override
