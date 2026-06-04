@@ -52,6 +52,13 @@ class RidePoolNotifier extends StateNotifier<RidePoolState> {
     state = state.copyWith(registered: true);
   }
 
+  /// Reset the pool when the driver goes offline: drop open requests and the
+  /// registered flag so stale cards don't linger.
+  void clear() {
+    myBids.clear();
+    state = const RidePoolState();
+  }
+
   void bid(String rideId, double fare, int etaMinutes) {
     _ws.placeBid(rideId, fare, etaMinutes);
     myBids[rideId] = fare;

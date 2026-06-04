@@ -29,6 +29,8 @@ import 'package:nexum_driver/features/active_trip/presentation/providers/active_
 import 'package:nexum_driver/features/driver_status/domain/entities/driver_status_entity.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
+import 'package:nexum_driver/features/ride_pool/domain/entities/ride_entities.dart';
+import 'package:nexum_driver/features/ride_pool/presentation/providers/ride_pool_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/delivery_details.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
@@ -153,6 +155,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   StreamSubscription<String>? _wsDeliveryCancelSub;
   final _rng = math.Random();
 
+  // Solicitudes de negociación que el conductor descartó manualmente: se
+  // ocultan sin enviar oferta (puede volver a verlas abriendo el pool).
+  final Set<String> _dismissedRideIds = <String>{};
+
   static const _center = LatLng(
     MapConstants.pamplonaCenterLat,
     MapConstants.pamplonaCenterLng,
@@ -197,6 +203,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _wsCancelSub?.cancel();
       _wsErrandCancelSub?.cancel();
       _wsDeliveryCancelSub?.cancel();
+      ref.read(ridePoolProvider.notifier).clear();
+      _dismissedRideIds.clear();
       DriverWsService().disconnect();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
@@ -279,6 +287,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() => _state = _state.copyWith(clearPending: true));
       }
     });
+
+    // Únete al pool de negociación (estilo InDrive). Las solicitudes con
+    // precio del cliente llegan por aquí y se muestran como tarjeta en el Home.
+    ref.read(ridePoolProvider.notifier).register();
   }
 
   /// Build a [TripRequestEntity] from a raw trip JSON map received via WS.
@@ -648,6 +660,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final serviceType = ref.watch(selectedServiceTypeProvider);
     final workMode = ref.watch(selectedWorkModeProvider);
 
+    // Negociación InDrive: navega a la vista de viaje activo al hacer match y
+    // avisa (sonido) cuando entra una nueva solicitud con precio.
+    ref.listen<RidePoolState>(ridePoolProvider, (prev, next) {
+      if (prev?.activeRide == null && next.activeRide != null) {
+        AppSnackbar.showSuccess(context, '¡El pasajero aceptó tu oferta!');
+        context.push('/ride-pool');
+        return;
+      }
+      final prevCount = prev?.openRides.length ?? 0;
+      if (_state.isOnline && next.openRides.length > prevCount) {
+        AudioService().playTripRequest();
+      }
+    });
+
+    // La solicitud de negociación visible: la más reciente no descartada,
+    // siempre que no haya un modal de dispatch legacy abierto.
+    final poolState = ref.watch(ridePoolProvider);
+    RideEntity? incomingRide;
+    if (_state.isOnline && _state.pendingRequest == null) {
+      for (final r in poolState.openRides) {
+        if (!_dismissedRideIds.contains(r.id)) {
+          incomingRide = r;
+          break;
+        }
+      }
+    }
+
     return Scaffold(
       drawer: _AppDrawer(
         selectedServiceType: serviceType,
@@ -761,6 +800,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               secondsLeft: _state.requestSecondsLeft,
               onAccept: () => _acceptTrip(_state.pendingRequest!),
               onReject: () => _rejectTrip(_state.pendingRequest!),
+            ),
+          // Negotiation request modal (InDrive-style "pon tu precio").
+          if (incomingRide != null)
+            _NegotiationRequestModal(
+              ride: incomingRide,
+              myBid:
+                  ref.read(ridePoolProvider.notifier).myBids[incomingRide.id],
+              otherCount: poolState.openRides
+                  .where((r) =>
+                      r.id != incomingRide!.id &&
+                      !_dismissedRideIds.contains(r.id))
+                  .length,
+              onAccept: () {
+                HapticFeedback.mediumImpact();
+                ref.read(ridePoolProvider.notifier).bid(
+                      incomingRide!.id,
+                      incomingRide.offeredFare,
+                      incomingRide.etaMinutes,
+                    );
+              },
+              onCounter: (fare) => ref.read(ridePoolProvider.notifier).bid(
+                    incomingRide!.id,
+                    fare,
+                    incomingRide.etaMinutes,
+                  ),
+              onWithdraw: () =>
+                  ref.read(ridePoolProvider.notifier).withdraw(incomingRide!.id),
+              onDismiss: () =>
+                  setState(() => _dismissedRideIds.add(incomingRide!.id)),
+              onSeeAll: () => context.push('/ride-pool'),
             ),
         ],
       ),
@@ -3160,4 +3229,307 @@ class _DeliveryRequestCard extends StatelessWidget {
     );
   }
 }
+
+/// Incoming ride-negotiation request shown on the Home (InDrive-style).
+///
+/// Lets the driver accept the passenger's offered fare, counter-offer a
+/// different price, or dismiss. Once a bid is placed it shows a "waiting"
+/// state until the passenger picks a driver (which triggers a match).
+class _NegotiationRequestModal extends StatelessWidget {
+  const _NegotiationRequestModal({
+    required this.ride,
+    required this.myBid,
+    required this.otherCount,
+    required this.onAccept,
+    required this.onCounter,
+    required this.onWithdraw,
+    required this.onDismiss,
+    required this.onSeeAll,
+  });
+
+  final RideEntity ride;
+  final double? myBid;
+  final int otherCount;
+  final VoidCallback onAccept;
+  final void Function(double fare) onCounter;
+  final VoidCallback onWithdraw;
+  final VoidCallback onDismiss;
+  final VoidCallback onSeeAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasBid = myBid != null;
+
+    return Positioned.fill(
+      child: ColoredBox(
+        color: AppColors.overlay,
+        child: SafeArea(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.all(AppConstants.spacingM),
+              child: Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppConstants.radiusXLarge),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(AppConstants.spacingL),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppConstants.spacingS,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryContainer,
+                              borderRadius:
+                                  BorderRadius.circular(AppConstants.radiusSmall),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.sell_rounded,
+                                    size: 12, color: AppColors.primaryDim),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Pon tu precio',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.primaryDim,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          if (!hasBid)
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: onDismiss,
+                              icon: const Icon(Icons.close_rounded, size: 20),
+                              color: AppColors.textSecondary,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: AppConstants.spacingS),
+                      // Passenger + offered fare
+                      Row(
+                        children: [
+                          const Icon(Icons.person_pin_circle_rounded,
+                              color: AppColors.primary, size: 30),
+                          const SizedBox(width: AppConstants.spacingS),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  ride.clientName,
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                Text(
+                                  '${ride.distanceKm.toStringAsFixed(1)} km · '
+                                  '${ride.etaMinutes} min',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                      color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              const Text('Ofrece',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary)),
+                              Text(
+                                CurrencyFormatter.format(ride.offeredFare),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                  color: AppColors.primaryDim,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppConstants.spacingM),
+                      _routeRow(Icons.trip_origin_rounded, ride.originAddress,
+                          AppColors.primary),
+                      const SizedBox(height: 4),
+                      _routeRow(Icons.place_rounded, ride.destinationAddress,
+                          AppColors.error),
+                      if (ride.notes != null && ride.notes!.isNotEmpty) ...[
+                        const SizedBox(height: AppConstants.spacingS),
+                        Text('“${ride.notes}”',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                fontStyle: FontStyle.italic,
+                                color: AppColors.textSecondary)),
+                      ],
+                      const SizedBox(height: AppConstants.spacingM),
+                      if (hasBid)
+                        _waitingState(context)
+                      else
+                        _actions(context),
+                      if (otherCount > 0) ...[
+                        const SizedBox(height: AppConstants.spacingXS),
+                        Center(
+                          child: TextButton(
+                            onPressed: onSeeAll,
+                            child: Text('Ver $otherCount solicitud(es) más'),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _actions(BuildContext context) => Row(
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              onPressed: onAccept,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child:
+                  Text('Aceptar ${CurrencyFormatter.format(ride.offeredFare)}'),
+            ),
+          ),
+          const SizedBox(width: AppConstants.spacingS),
+          OutlinedButton(
+            onPressed: () => _showCounter(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primaryDim,
+              side: const BorderSide(color: AppColors.primaryDim),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppConstants.spacingM, vertical: 14),
+            ),
+            child: const Text('Contraoferta'),
+          ),
+        ],
+      );
+
+  Widget _waitingState(BuildContext context) => Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.infoContainer,
+                borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+              ),
+              child: Text(
+                'Oferta enviada: ${CurrencyFormatter.format(myBid!)}\n'
+                'Esperando respuesta del pasajero…',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: AppColors.info, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppConstants.spacingS),
+          TextButton(
+            onPressed: onWithdraw,
+            child: const Text('Retirar',
+                style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      );
+
+  Widget _routeRow(IconData icon, String text, Color color) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(fontSize: 13),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      );
+
+  void _showCounter(BuildContext context) {
+    final ctrl = TextEditingController(
+      text: (ride.offeredFare + 1000).toStringAsFixed(0),
+    );
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Tu contraoferta',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text(
+              'El pasajero ofreció ${CurrencyFormatter.format(ride.offeredFare)}.',
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: const InputDecoration(
+                prefixText: r'$ ',
+                labelText: 'Precio (COP)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () {
+                  final fare = double.tryParse(
+                      ctrl.text.replaceAll(RegExp(r'[^0-9.]'), ''));
+                  if (fare != null && fare > 0) {
+                    onCounter(fare);
+                    Navigator.pop(ctx);
+                  }
+                },
+                child: const Text('Enviar contraoferta'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 
