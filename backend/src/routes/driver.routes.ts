@@ -16,7 +16,7 @@ import {
   upsertDriverDocument,
   reviewDriverDocument,
 } from '../services/driver-profile.service';
-import { getActiveDriverRide, getChatHistory } from '../services/ride-negotiation.service';
+import { getActiveDriverRide, getChatHistory, rateByDriver, RideNegotiationError } from '../services/ride-negotiation.service';
 import {
   PublishPooledTripDTO,
   IntercityCity,
@@ -81,6 +81,23 @@ router.get('/rides/active', (req: Request, res: Response): void => {
 // GET /driver/rides/:id/chat
 router.get('/rides/:id/chat', (req: Request, res: Response): void => {
   res.status(200).json({ success: true, data: getChatHistory(req.params['id']!) });
+});
+
+// POST /driver/rides/:id/rate  { stars: 1-5 }
+router.post('/rides/:id/rate', (req: Request, res: Response): void => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const { stars } = req.body as { stars?: number };
+  if (!stars || typeof stars !== 'number') {
+    res.status(400).json({ success: false, error: 'stars (1–5) is required' });
+    return;
+  }
+  try {
+    rateByDriver(driverId, req.params['id']!, Math.round(stars));
+    res.status(200).json({ success: true });
+  } catch (err) {
+    const status = err instanceof RideNegotiationError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to rate' });
+  }
 });
 
 // GET /driver/status

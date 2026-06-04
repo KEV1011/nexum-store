@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/ride_pool/domain/entities/ride_entities.dart';
 import 'package:nexum_driver/features/ride_pool/presentation/providers/ride_pool_provider.dart';
 import 'package:nexum_driver/features/ride_pool/presentation/screens/ride_chat_screen.dart';
+import 'package:nexum_driver/shared/models/location_model.dart';
+import 'package:nexum_driver/shared/models/trip_model.dart';
 
 String _timeAgo(DateTime dt) {
   final diff = DateTime.now().difference(dt);
@@ -33,6 +38,41 @@ class _RidePoolScreenState extends ConsumerState<RidePoolScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Navigate to trip summary when the active negotiation ride completes.
+    ref.listen<RidePoolState>(ridePoolProvider, (prev, next) {
+      if (next.completedRide != null && prev?.completedRide == null) {
+        final ride = next.completedRide!;
+        ref.read(ridePoolProvider.notifier).clearCompletedRide();
+        final now = DateTime.now();
+        final trip = TripModel(
+          id: ride.id,
+          passengerId: ride.clientId,
+          passengerName: ride.clientName,
+          origin: LocationModel(
+            latitude: 0,
+            longitude: 0,
+            address: ride.originAddress,
+          ),
+          destination: LocationModel(
+            latitude: 0,
+            longitude: 0,
+            address: ride.destinationAddress,
+          ),
+          distanceKm: ride.distanceKm,
+          durationMinutes: ride.etaMinutes,
+          grossFare: ride.offeredFare,
+          commission:
+              ride.offeredFare * AppConstants.platformCommissionRate,
+          netEarning: ride.offeredFare *
+              (1 - AppConstants.platformCommissionRate),
+          startedAt:
+              now.subtract(Duration(minutes: ride.etaMinutes)),
+          finishedAt: now,
+        );
+        context.go(AppRoutes.tripSummary, extra: trip);
+      }
+    });
+
     final state = ref.watch(ridePoolProvider);
     final notifier = ref.read(ridePoolProvider.notifier);
 

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:nexum_driver/core/network/dio_client.dart';
+
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
@@ -45,6 +47,11 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
       subjectNoun: trip.isDeliveryTrip ? 'cliente' : 'pasajero',
       onSubmit: (rating, _) {
         ref.read(tripHistoryProvider.notifier).rate(trip.id, rating.toDouble());
+        // Best-effort: send rating to backend (negotiation ride flow).
+        DioClient().dio.post<void>(
+          '/driver/rides/${trip.id}/rate',
+          data: {'stars': rating},
+        ).ignore();
       },
     );
   }

@@ -9,6 +9,7 @@ class RidePoolState {
   const RidePoolState({
     this.openRides = const [],
     this.activeRide,
+    this.completedRide,
     this.registered = false,
   });
 
@@ -18,6 +19,10 @@ class RidePoolState {
   /// The ride this driver was matched to (if any).
   final RideEntity? activeRide;
 
+  /// Set briefly when the active ride reaches 'completed' so the screen
+  /// can navigate to the summary/rating flow before it is cleared.
+  final RideEntity? completedRide;
+
   /// Whether the driver has joined the live pool.
   final bool registered;
 
@@ -25,11 +30,15 @@ class RidePoolState {
     List<RideEntity>? openRides,
     RideEntity? activeRide,
     bool clearActive = false,
+    RideEntity? completedRide,
+    bool clearCompleted = false,
     bool? registered,
   }) =>
       RidePoolState(
         openRides: openRides ?? this.openRides,
         activeRide: clearActive ? null : (activeRide ?? this.activeRide),
+        completedRide:
+            clearCompleted ? null : (completedRide ?? this.completedRide),
         registered: registered ?? this.registered,
       );
 }
@@ -52,8 +61,6 @@ class RidePoolNotifier extends StateNotifier<RidePoolState> {
     state = state.copyWith(registered: true);
   }
 
-  /// Reset the pool when the driver goes offline: drop open requests and the
-  /// registered flag so stale cards don't linger.
   void clear() {
     myBids.clear();
     state = const RidePoolState();
@@ -77,6 +84,10 @@ class RidePoolNotifier extends StateNotifier<RidePoolState> {
   void cancelActive() {
     final ride = state.activeRide;
     if (ride != null) _ws.cancelRide(ride.id);
+  }
+
+  void clearCompletedRide() {
+    state = state.copyWith(clearCompleted: true);
   }
 
   // ── stream handlers ─────────────────────────────────────────────────────────
@@ -117,7 +128,12 @@ class RidePoolNotifier extends StateNotifier<RidePoolState> {
     } else if (state.activeRide?.id == ride.id) {
       // My active ride changed.
       if (terminal) {
-        state = state.copyWith(openRides: remaining, clearActive: true);
+        final wasCompleted = ride.status == RideStatus.completed;
+        state = state.copyWith(
+          openRides: remaining,
+          clearActive: true,
+          completedRide: wasCompleted ? ride : null,
+        );
       } else {
         state = state.copyWith(openRides: remaining, activeRide: ride);
       }

@@ -82,6 +82,8 @@ interface RideRequest {
   createdAt: Date;
   matchedAt?: Date;
   completedAt?: Date;
+  clientRating?: number;
+  driverRating?: number;
 }
 
 // ─── Stores ─────────────────────────────────────────────────────────────────
@@ -435,6 +437,30 @@ export function getOpenRides(serviceType?: TransportServiceType): RideRequestDTO
     .filter((r) => (serviceType ? r.serviceType === serviceType : true))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map((r) => rideToDTO(r));
+}
+
+// ─── Ratings ─────────────────────────────────────────────────────────────────
+
+/** Client rates the driver after a completed ride. One-shot: cannot re-rate. */
+export function rateByClient(clientId: string, rideId: string, stars: number): void {
+  const ride = rideStore.get(rideId);
+  if (!ride) throw new RideNegotiationError('La solicitud no existe.');
+  if (ride.clientId !== clientId) throw new RideNegotiationError('No autorizado.');
+  if (ride.status !== 'completed') throw new RideNegotiationError('El viaje aún no ha finalizado.');
+  if (ride.clientRating !== undefined) throw new RideNegotiationError('Ya calificaste este viaje.');
+  if (stars < 1 || stars > 5) throw new RideNegotiationError('Las estrellas deben ser entre 1 y 5.');
+  ride.clientRating = stars;
+}
+
+/** Driver rates the passenger after a completed ride. One-shot: cannot re-rate. */
+export function rateByDriver(driverId: string, rideId: string, stars: number): void {
+  const ride = rideStore.get(rideId);
+  if (!ride) throw new RideNegotiationError('La solicitud no existe.');
+  if (ride.matchedDriverId !== driverId) throw new RideNegotiationError('No autorizado.');
+  if (ride.status !== 'completed') throw new RideNegotiationError('El viaje aún no ha finalizado.');
+  if (ride.driverRating !== undefined) throw new RideNegotiationError('Ya calificaste este viaje.');
+  if (stars < 1 || stars > 5) throw new RideNegotiationError('Las estrellas deben ser entre 1 y 5.');
+  ride.driverRating = stars;
 }
 
 // ─── Subscriptions (used by ws.handler) ─────────────────────────────────────────

@@ -102,6 +102,18 @@ class RideNegotiationNotifier extends StateNotifier<RideNegotiationState> {
     state = state.copyWith(clearRide: true);
   }
 
+  /// Sends the client's star rating for the driver after the ride completes.
+  Future<void> rateRide(String rideId, int stars, {String? comment}) async {
+    try {
+      await _dio.post<void>(
+        '/client/rides/$rideId/rate',
+        data: {'stars': stars, if (comment != null) 'comment': comment},
+      );
+    } catch (_) {
+      // Best-effort — silently swallow on failure.
+    }
+  }
+
   void _onRideUpdate(RideUpdateEvent event) {
     final ride = RideEntity.fromJson(event.ride);
     // Only track our own active ride.

@@ -19,6 +19,7 @@ import {
   getActiveClientRide,
   getRideById,
   getChatHistory,
+  rateByClient,
   RideNegotiationError,
 } from '../services/ride-negotiation.service';
 import { getDriverPublicProfile } from '../services/driver-profile.service';
@@ -447,6 +448,22 @@ router.get('/rides/:id', clientAuthMiddleware, (req, res) => {
 // GET /client/rides/:id/chat
 router.get('/rides/:id/chat', clientAuthMiddleware, (req, res) => {
   res.json({ success: true, data: getChatHistory(req.params['id']!) });
+});
+
+// POST /client/rides/:id/rate  { stars: 1-5, comment?: string }
+router.post('/rides/:id/rate', clientAuthMiddleware, (req, res) => {
+  const { stars, comment: _comment } = req.body as { stars?: number; comment?: string };
+  if (!stars || typeof stars !== 'number') {
+    res.status(400).json({ success: false, error: 'stars (1–5) is required' });
+    return;
+  }
+  try {
+    rateByClient(req.clientId!, req.params['id']!, Math.round(stars));
+    res.json({ success: true });
+  } catch (err) {
+    const status = err instanceof RideNegotiationError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to rate' });
+  }
 });
 
 // GET /client/drivers/:id/profile — public driver profile (Feature E)

@@ -7,6 +7,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/domain/entities/ride_entities.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/screens/ride_chat_screen.dart';
+import 'package:nexum_client/shared/widgets/service_rating_sheet.dart';
 
 class RideBidsScreen extends ConsumerWidget {
   const RideBidsScreen({super.key});
@@ -28,14 +29,32 @@ class RideBidsScreen extends ConsumerWidget {
       body: ride == null
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : ride.status == RideStatus.open
-              ? _OpenBidsView(ride: ride, onAccept: notifier.acceptBid, onCancel: () {
-                  notifier.cancel();
-                  Navigator.of(context).maybePop();
-                })
-              : _MatchedView(ride: ride, onCancel: () {
-                  notifier.cancel();
-                  Navigator.of(context).maybePop();
-                }),
+              ? _OpenBidsView(
+                  ride: ride,
+                  onAccept: notifier.acceptBid,
+                  onCancel: () {
+                    notifier.cancel();
+                    Navigator.of(context).maybePop();
+                  },
+                )
+              : ride.status == RideStatus.completed
+                  ? _CompletedView(
+                      ride: ride,
+                      onRate: (stars, comment) =>
+                          notifier.rateRide(ride.id, stars, comment: comment),
+                      onClose: () => Navigator.of(context).maybePop(),
+                    )
+                  : ride.status == RideStatus.cancelled
+                      ? _CancelledView(
+                          onClose: () => Navigator.of(context).maybePop(),
+                        )
+                      : _MatchedView(
+                          ride: ride,
+                          onCancel: () {
+                            notifier.cancel();
+                            Navigator.of(context).maybePop();
+                          },
+                        ),
     );
   }
 }
@@ -425,5 +444,206 @@ class _MatchedView extends StatelessWidget {
   Future<void> _call(String phone) async {
     final uri = Uri.parse('tel:${phone.replaceAll(' ', '')}');
     if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+}
+
+// ── Completed view ────────────────────────────────────────────────────────────
+
+class _CompletedView extends StatefulWidget {
+  const _CompletedView({
+    required this.ride,
+    required this.onRate,
+    required this.onClose,
+  });
+
+  final RideEntity ride;
+  final void Function(int stars, String? comment) onRate;
+  final VoidCallback onClose;
+
+  @override
+  State<_CompletedView> createState() => _CompletedViewState();
+}
+
+class _CompletedViewState extends State<_CompletedView> {
+  bool _rated = false;
+
+  void _openRating() {
+    showServiceRatingSheet(
+      context,
+      title: '¿Cómo fue tu viaje?',
+      subtitle: 'Tu calificación ayuda a mejorar el servicio',
+      onSubmit: (stars, comment) {
+        widget.onRate(stars, comment);
+        setState(() => _rated = true);
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bid = widget.ride.acceptedBid;
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const SizedBox(height: 16),
+        Container(
+          width: 72,
+          height: 72,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: AppColors.primary,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.check_rounded, color: Colors.white, size: 40),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          '¡Viaje completado!',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Tarifa: ${CurrencyFormatter.format(widget.ride.offeredFare)}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primaryDim,
+          ),
+        ),
+        const SizedBox(height: 24),
+        if (bid != null)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardLight,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0F000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppColors.primaryContainer,
+                  child: Text(
+                    bid.driverName.isNotEmpty
+                        ? bid.driverName[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primaryDim,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        bid.driverName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        bid.vehicleDescription,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 24),
+        if (!_rated)
+          ElevatedButton.icon(
+            onPressed: _openRating,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(52),
+            ),
+            icon: const Icon(Icons.star_rounded),
+            label: const Text(
+              'Calificar conductor',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text(
+              '¡Gracias por tu calificación!',
+              style: TextStyle(
+                color: AppColors.primaryDim,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: widget.onClose,
+          child: const Text('Volver al inicio'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Cancelled view ────────────────────────────────────────────────────────────
+
+class _CancelledView extends StatelessWidget {
+  const _CancelledView({required this.onClose});
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.cancel_rounded, color: AppColors.error, size: 64),
+            const SizedBox(height: 16),
+            const Text(
+              'Viaje cancelado',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'El viaje fue cancelado. Puedes solicitar uno nuevo.',
+              style: TextStyle(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: onClose,
+              child: const Text('Volver al inicio'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
