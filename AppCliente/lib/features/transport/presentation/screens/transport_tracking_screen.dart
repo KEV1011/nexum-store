@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/location/location_service.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
@@ -12,20 +14,164 @@ import 'package:nexum_client/features/transport/presentation/providers/transport
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
 Color _colorOf(TransportServiceType t) => switch (t) {
-      TransportServiceType.transporte => AppColors.serviceParticular,
-      TransportServiceType.moto => AppColors.serviceMoto,
-      TransportServiceType.envios => AppColors.serviceEnvios,
-    };
+  TransportServiceType.transporte => AppColors.serviceParticular,
+  TransportServiceType.moto => AppColors.serviceMoto,
+  TransportServiceType.envios => AppColors.serviceEnvios,
+};
 
-/// Seguimiento en vivo de un viaje o envío.
-class TransportTrackingScreen extends ConsumerWidget {
+IconData _statusIcon(TransportStatus s) => switch (s) {
+  TransportStatus.searching => Icons.search_rounded,
+  TransportStatus.accepted => Icons.person_pin_rounded,
+  TransportStatus.arriving => Icons.directions_rounded,
+  TransportStatus.arrived => Icons.location_on_rounded,
+  TransportStatus.inProgress => Icons.near_me_rounded,
+  TransportStatus.completed => Icons.check_circle_rounded,
+  TransportStatus.cancelled => Icons.cancel_rounded,
+};
+
+/// Seguimiento en vivo: mapa full-screen + panel de información arrastrabe.
+class TransportTrackingScreen extends ConsumerStatefulWidget {
   const TransportTrackingScreen({required this.requestId, super.key});
 
   final String requestId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final request = ref.watch(transportByIdProvider(requestId));
+  ConsumerState<TransportTrackingScreen> createState() =>
+      _TransportTrackingScreenState();
+}
+
+class _TransportTrackingScreenState
+    extends ConsumerState<TransportTrackingScreen> {
+  GoogleMapController? _map;
+  LatLng? _driverPos;
+  LatLng? _driverPosPrev;
+  Timer? _animTimer;
+
+  static const _animTickMs = 50;
+  static const _animDurationMs = 1200;
+
+  @override
+  void dispose() {
+    _animTimer?.cancel();
+    _map?.dispose();
+    super.dispose();
+  }
+
+  // Anima suavemente el marcador del conductor cuando llegan nuevas coords.
+  void _updateDriverPos(LatLng newPos) {
+    if (_driverPos == null) {
+      setState(() => _driverPos = newPos);
+      return;
+    }
+    _driverPosPrev = _driverPos;
+    _animTimer?.cancel();
+    const steps = _animDurationMs ~/ _animTickMs;
+    var step = 0;
+    _animTimer = Timer.periodic(const Duration(milliseconds: _animTickMs), (_) {
+      step++;
+      final t = (step / steps).clamp(0.0, 1.0);
+      final from = _driverPosPrev!;
+      if (!mounted) {
+        _animTimer?.cancel();
+        return;
+      }
+      setState(() {
+        _driverPos = LatLng(
+          from.latitude + (newPos.latitude - from.latitude) * t,
+          from.longitude + (newPos.longitude - from.longitude) * t,
+        );
+      });
+      if (step >= steps) _animTimer?.cancel();
+    });
+  }
+
+  Set<Marker> _buildMarkers(TransportRequestEntity req) {
+    final markers = <Marker>{};
+
+    // Origen
+    markers.add(
+      Marker(
+        markerId: const MarkerId('origin'),
+        position: kPamplonaCenter,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(title: req.originAddress),
+      ),
+    );
+
+    // Destino (desplazado para simulación hasta que lleguen coords reales)
+    final destLat = kPamplonaCenter.latitude + 0.007;
+    final destLng = kPamplonaCenter.longitude + 0.005;
+    markers.add(
+      Marker(
+        markerId: const MarkerId('destination'),
+        position: LatLng(destLat, destLng),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(title: req.destinationAddress),
+      ),
+    );
+
+    // Conductor en vivo
+    final driverRaw = req.driverLat != null && req.driverLng != null
+        ? LatLng(req.driverLat!, req.driverLng!)
+        : null;
+    if (driverRaw != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (driverRaw != _driverPos) _updateDriverPos(driverRaw);
+      });
+    }
+    final dp = _driverPos ?? driverRaw;
+    if (dp != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('driver'),
+          position: dp,
+          icon: BitmapDescriptor.defaultMarkerWithHue(_hueOf(req.serviceType)),
+          infoWindow: InfoWindow(title: req.driverName ?? 'Conductor'),
+          zIndex: 2,
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  Set<Polyline> _buildPolylines(TransportRequestEntity req, Color color) {
+    final destLat = kPamplonaCenter.latitude + 0.007;
+    final destLng = kPamplonaCenter.longitude + 0.005;
+    return {
+      Polyline(
+        polylineId: const PolylineId('route'),
+        points: [kPamplonaCenter, LatLng(destLat, destLng)],
+        color: color,
+        width: 5,
+        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+      ),
+    };
+  }
+
+  void _fitCamera(TransportRequestEntity req) {
+    final destLat = kPamplonaCenter.latitude + 0.007;
+    final destLng = kPamplonaCenter.longitude + 0.005;
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        [kPamplonaCenter.latitude, destLat].reduce((a, b) => a < b ? a : b) -
+            0.002,
+        [kPamplonaCenter.longitude, destLng].reduce((a, b) => a < b ? a : b) -
+            0.002,
+      ),
+      northeast: LatLng(
+        [kPamplonaCenter.latitude, destLat].reduce((a, b) => a > b ? a : b) +
+            0.002,
+        [kPamplonaCenter.longitude, destLng].reduce((a, b) => a > b ? a : b) +
+            0.002,
+      ),
+    );
+    _map?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 60));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final request = ref.watch(transportByIdProvider(widget.requestId));
 
     if (request == null) {
       return Scaffold(
@@ -34,383 +180,385 @@ class TransportTrackingScreen extends ConsumerWidget {
       );
     }
 
+    final color = _colorOf(request.serviceType);
+    final markers = _buildMarkers(request);
+    final polylines = _buildPolylines(request, color);
+    final topPad = MediaQuery.of(context).padding.top;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Seguimiento ${request.requestRef}'),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => context.go(AppRoutes.home),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Stack(
         children: [
-          _StatusCard(request: request),
-          const SizedBox(height: 16),
-          if (request.driverName != null) ...[
-            _DriverCard(request: request),
-            const SizedBox(height: 16),
-          ],
-          _TripMap(request: request),
-          const SizedBox(height: 16),
-          _StatusTimeline(request: request),
-          const SizedBox(height: 16),
-          _TripDetails(request: request),
-          if (request.status.canCancel) ...[
-            const SizedBox(height: 16),
-            _CancelButton(
-              onCancel: () =>
-                  ref.read(transportProvider.notifier).cancelRequest(requestId),
+          // ── Mapa full-screen ─────────────────────────────────────────────
+          GoogleMap(
+            initialCameraPosition: const CameraPosition(
+              target: kPamplonaCenter,
+              zoom: 14.5,
             ),
-          ],
-          if (request.isCompleted && !request.isRated) ...[
-            const SizedBox(height: 16),
-            _RatingSection(requestId: requestId),
-          ],
-          if (request.isCompleted && request.isRated) ...[
-            const SizedBox(height: 16),
-            _RatingDisplay(rating: request.rating!),
-          ],
-          const SizedBox(height: 24),
+            onMapCreated: (c) {
+              _map = c;
+              _fitCamera(request);
+            },
+            markers: markers,
+            polylines: polylines,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            padding: const EdgeInsets.only(bottom: 280),
+          ),
+
+          // ── Barra superior ───────────────────────────────────────────────
+          Positioned(
+            top: topPad + 8,
+            left: 12,
+            right: 12,
+            child: Row(
+              children: [
+                _CircleBtn(
+                  icon: Icons.close_rounded,
+                  onTap: () => context.go(AppRoutes.home),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 9,
+                    ),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: color.withValues(alpha: 0.45),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _statusIcon(request.status),
+                          size: 17,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            request.status.label,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        if (request.isActive)
+                          Text(
+                            '${request.etaMinutes} min',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Panel inferior arrastrable ───────────────────────────────────
+          DraggableScrollableSheet(
+            initialChildSize: 0.32,
+            minChildSize: 0.18,
+            maxChildSize: 0.75,
+            snap: true,
+            snapSizes: const [0.18, 0.32, 0.75],
+            builder: (ctx, scroll) => _InfoPanel(
+              scrollController: scroll,
+              request: request,
+              onCancel: () => ref
+                  .read(transportProvider.notifier)
+                  .cancelRequest(widget.requestId),
+              onRate: (stars) => ref
+                  .read(transportProvider.notifier)
+                  .rateRequest(widget.requestId, stars),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// ── Status card ───────────────────────────────────────────────────────────────
+// ── Panel de información ──────────────────────────────────────────────────────
 
-class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.request});
+class _InfoPanel extends StatelessWidget {
+  const _InfoPanel({
+    required this.scrollController,
+    required this.request,
+    required this.onCancel,
+    required this.onRate,
+  });
 
+  final ScrollController scrollController;
   final TransportRequestEntity request;
+  final VoidCallback onCancel;
+  final ValueChanged<int> onRate;
+
+  static const _bg = Colors.white;
+  static const _handle = Color(0xFFE2E8F0);
 
   @override
   Widget build(BuildContext context) {
     final color = _colorOf(request.serviceType);
 
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color, color.withValues(alpha: 0.75)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
+      decoration: const BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 24,
+            offset: Offset(0, -6),
+          ),
+        ],
       ),
-      child: Column(
+      child: ListView(
+        controller: scrollController,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).padding.bottom + 16,
+        ),
         children: [
-          Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _statusIcon(request.status),
-                  color: Colors.white,
-                  size: 26,
-                ),
+          // Handle
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 14),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _handle,
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+
+          // Ruta (origen → destino compacto)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Column(
                   children: [
-                    Text(
-                      request.status.label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: AppColors.pickupMarker,
+                        shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      request.serviceType.label,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.8),
-                        fontSize: 13,
+                    Container(
+                      width: 2,
+                      height: 22,
+                      color: AppColors.outlineLight,
+                    ),
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: AppColors.destinationMarker,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        request.originAddress,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        request.destinationAddress,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  CurrencyFormatter.format(request.estimatedFare),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 24, indent: 16, endIndent: 16),
+
+          // Conductor (si está asignado)
+          if (request.driverName != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _DriverRow(request: request),
+            ),
+
+          if (request.driverName != null)
+            const Divider(height: 24, indent: 16, endIndent: 16),
+
+          // Timeline de estados
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _StatusTimeline(request: request),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Chips de estadísticas
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _StatChip(
+                    icon: Icons.straighten_rounded,
+                    value: '${request.distanceKm.toStringAsFixed(1)} km',
+                    label: 'Distancia',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatChip(
+                    icon: Icons.schedule_rounded,
+                    value: '${request.etaMinutes} min',
+                    label: 'Tiempo est.',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatChip(
+                    icon: Icons.payments_outlined,
+                    value: CurrencyFormatter.format(request.estimatedFare),
+                    label: 'Tarifa',
+                    valueColor: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Cancelar
+          if (request.status.canCancel)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _CancelButton(onCancel: onCancel),
+            ),
+
+          // Calificar
+          if (request.isCompleted && !request.isRated)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _RatingSection(onRate: onRate),
+            ),
+
+          // Calificación emitida
+          if (request.isCompleted && request.isRated)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _RatingDisplay(rating: request.rating!),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Driver row ────────────────────────────────────────────────────────────────
+
+class _DriverRow extends StatelessWidget {
+  const _DriverRow({required this.request});
+
+  final TransportRequestEntity request;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: const BoxDecoration(
+            color: AppColors.primaryContainer,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.person_rounded,
+            color: AppColors.primary,
+            size: 24,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                request.driverName!,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
-              if (request.isActive)
-                _EtaBadge(eta: request.etaMinutes),
+              if (request.driverVehicle != null)
+                Text(
+                  request.driverVehicle!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
             ],
           ),
-          if (request.isCompleted && request.completedAt != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.check_circle_rounded,
-                      color: Colors.white, size: 16),
-                  SizedBox(width: 6),
-                  Text(
-                    'Viaje completado exitosamente',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  IconData _statusIcon(TransportStatus status) => switch (status) {
-        TransportStatus.searching => Icons.search_rounded,
-        TransportStatus.accepted => Icons.person_pin_rounded,
-        TransportStatus.arriving => Icons.directions_rounded,
-        TransportStatus.arrived => Icons.location_on_rounded,
-        TransportStatus.inProgress => Icons.near_me_rounded,
-        TransportStatus.completed => Icons.check_circle_rounded,
-        TransportStatus.cancelled => Icons.cancel_rounded,
-      };
-}
-
-class _EtaBadge extends StatelessWidget {
-  const _EtaBadge({required this.eta});
-
-  final int eta;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        children: [
-          Text(
-            '$eta',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const Text(
-            'min',
-            style: TextStyle(color: Colors.white70, fontSize: 10),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Driver card ───────────────────────────────────────────────────────────────
-
-class _DriverCard extends StatelessWidget {
-  const _DriverCard({required this.request});
-
-  final TransportRequestEntity request;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
-        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              color: AppColors.primaryContainer,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.person_rounded,
-                color: AppColors.primary, size: 26),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  request.driverName ?? '',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                ),
-                if (request.driverVehicle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    request.driverVehicle!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          IconButton(
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.primaryContainer,
-              foregroundColor: AppColors.primary,
-            ),
-            icon: const Icon(Icons.phone_rounded),
-            onPressed: () {},
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Map ───────────────────────────────────────────────────────────────────────
-
-class _TripMap extends StatelessWidget {
-  const _TripMap({required this.request});
-
-  final TransportRequestEntity request;
-
-  static const _pamplona = LatLng(7.3762, -72.6465);
-
-  LatLng _hashLatLng(String seed, int salt) {
-    final hash = seed.hashCode ^ salt;
-    final dlat = ((hash % 100) - 50) / 8000;
-    final dlng = ((hash ~/ 100 % 100) - 50) / 8000;
-    return LatLng(_pamplona.latitude + dlat, _pamplona.longitude + dlng);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final origin = _hashLatLng(request.originAddress, 0x1A);
-    final destination = _hashLatLng(request.destinationAddress, 0x2B);
-    final center = LatLng(
-      (origin.latitude + destination.latitude) / 2,
-      (origin.longitude + destination.longitude) / 2,
-    );
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: SizedBox(
-        height: 200,
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: center,
-            initialZoom: 14.5,
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.none,
-            ),
-          ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.nexum.client',
-            ),
-            PolylineLayer(
-              polylines: [
-                Polyline(
-                  points: [origin, destination],
-                  color: AppColors.routeColor,
-                  strokeWidth: 4,
-                ),
-              ],
-            ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: origin,
-                  width: 32,
-                  height: 32,
-                  child: const _MapDot(color: AppColors.pickupMarker),
-                ),
-                Marker(
-                  point: destination,
-                  width: 32,
-                  height: 32,
-                  child: const _MapDot(color: AppColors.destinationMarker),
-                ),
-                if (request.driverLat != null && request.driverLng != null)
-                  Marker(
-                    point: LatLng(request.driverLat!, request.driverLng!),
-                    width: 38,
-                    height: 38,
-                    child: const _DriverDot(),
-                  ),
-              ],
-            ),
-          ],
         ),
-      ),
-    );
-  }
-}
-
-class _MapDot extends StatelessWidget {
-  const _MapDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2.5),
-        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6)],
-      ),
-    );
-  }
-}
-
-class _DriverDot extends StatelessWidget {
-  const _DriverDot();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.5),
-            blurRadius: 8,
+        IconButton(
+          style: IconButton.styleFrom(
+            backgroundColor: AppColors.primaryContainer,
+            foregroundColor: AppColors.primary,
           ),
-        ],
-      ),
-      child: const Icon(Icons.directions_car_rounded,
-          color: Colors.white, size: 18),
+          icon: const Icon(Icons.phone_rounded),
+          onPressed: () {},
+        ),
+      ],
     );
   }
 }
 
-// ── Timeline ──────────────────────────────────────────────────────────────────
+// ── Status timeline ───────────────────────────────────────────────────────────
 
 class _StatusTimeline extends StatelessWidget {
   const _StatusTimeline({required this.request});
@@ -430,34 +578,24 @@ class _StatusTimeline extends StatelessWidget {
     final currentStep = request.status.step;
     final color = _colorOf(request.serviceType);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
-        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
-      ),
-      child: Column(
-        children: [
-          for (var i = 0; i < _steps.length; i++) ...[
-            _TimelineStep(
-              icon: _steps[i].$1,
-              label: _steps[i].$2,
-              done: i < currentStep,
-              active: i == currentStep && request.isActive,
-              color: color,
-              isLast: i == _steps.length - 1,
-            ),
-          ],
-        ],
-      ),
+    return Column(
+      children: [
+        for (var i = 0; i < _steps.length; i++)
+          _Step(
+            icon: _steps[i].$1,
+            label: _steps[i].$2,
+            done: i < currentStep,
+            active: i == currentStep && request.isActive,
+            color: color,
+            isLast: i == _steps.length - 1,
+          ),
+      ],
     );
   }
 }
 
-class _TimelineStep extends StatelessWidget {
-  const _TimelineStep({
+class _Step extends StatelessWidget {
+  const _Step({
     required this.icon,
     required this.label,
     required this.done,
@@ -477,11 +615,7 @@ class _TimelineStep extends StatelessWidget {
   Widget build(BuildContext context) {
     final dotColor = done || active ? color : AppColors.outlineLight;
     final labelStyle = active
-        ? TextStyle(
-            color: color,
-            fontWeight: FontWeight.w700,
-            fontSize: 13,
-          )
+        ? TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13)
         : TextStyle(
             color: done ? AppColors.textPrimary : AppColors.textTertiary,
             fontSize: 13,
@@ -493,8 +627,8 @@ class _TimelineStep extends StatelessWidget {
         Column(
           children: [
             Container(
-              width: 30,
-              height: 30,
+              width: 28,
+              height: 28,
               decoration: BoxDecoration(
                 color: dotColor.withValues(alpha: done || active ? 0.15 : 0.05),
                 shape: BoxShape.circle,
@@ -503,20 +637,22 @@ class _TimelineStep extends StatelessWidget {
               child: Icon(
                 done ? Icons.check_rounded : icon,
                 color: dotColor,
-                size: 14,
+                size: 13,
               ),
             ),
             if (!isLast)
               Container(
                 width: 2,
-                height: 20,
-                color: done ? color.withValues(alpha: 0.4) : AppColors.outlineLight,
+                height: 18,
+                color: done
+                    ? color.withValues(alpha: 0.4)
+                    : AppColors.outlineLight,
               ),
           ],
         ),
         const SizedBox(width: 12),
         Padding(
-          padding: const EdgeInsets.only(top: 6),
+          padding: const EdgeInsets.only(top: 5),
           child: Text(label, style: labelStyle),
         ),
       ],
@@ -524,185 +660,7 @@ class _TimelineStep extends StatelessWidget {
   }
 }
 
-// ── Trip details ──────────────────────────────────────────────────────────────
-
-class _TripDetails extends StatelessWidget {
-  const _TripDetails({required this.request});
-
-  final TransportRequestEntity request;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _colorOf(request.serviceType);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
-        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
-      ),
-      child: Column(
-        children: [
-          _RouteRow(
-            icon: Icons.radio_button_checked_rounded,
-            color: AppColors.pickupMarker,
-            label: 'Origen',
-            address: request.originAddress,
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 12),
-            child: SizedBox(
-              height: 16,
-              child: VerticalDivider(color: AppColors.outlineLight),
-            ),
-          ),
-          _RouteRow(
-            icon: Icons.location_on_rounded,
-            color: AppColors.destinationMarker,
-            label: 'Destino',
-            address: request.destinationAddress,
-          ),
-          const Divider(height: 24),
-          if (request.serviceType == TransportServiceType.envios &&
-              request.recipientName != null) ...[
-            _DetailRow(
-              icon: Icons.person_outline_rounded,
-              label: 'Destinatario',
-              value: request.recipientName!,
-            ),
-            if (request.recipientPhone != null)
-              _DetailRow(
-                icon: Icons.phone_outlined,
-                label: 'Teléfono',
-                value: request.recipientPhone!,
-              ),
-            if (request.packageDescription != null)
-              _DetailRow(
-                icon: Icons.inventory_2_outlined,
-                label: 'Paquete',
-                value: request.packageDescription!,
-              ),
-            const Divider(height: 24),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: _StatChip(
-                  icon: Icons.straighten_rounded,
-                  value: '${request.distanceKm.toStringAsFixed(1)} km',
-                  label: 'Distancia',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatChip(
-                  icon: Icons.schedule_rounded,
-                  value: '${request.etaMinutes} min',
-                  label: 'Tiempo est.',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatChip(
-                  icon: Icons.payments_outlined,
-                  value: CurrencyFormatter.format(request.estimatedFare),
-                  label: 'Tarifa',
-                  valueColor: color,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RouteRow extends StatelessWidget {
-  const _RouteRow({
-    required this.icon,
-    required this.color,
-    required this.label,
-    required this.address,
-  });
-
-  final IconData icon;
-  final Color color;
-  final String label;
-  final String address;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textTertiary,
-                ),
-              ),
-              Text(
-                address,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: AppColors.textTertiary),
-          const SizedBox(width: 10),
-          Text(
-            '$label: ',
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// ── Stats chip ────────────────────────────────────────────────────────────────
 
 class _StatChip extends StatelessWidget {
   const _StatChip({
@@ -719,31 +677,37 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(icon, size: 18, color: AppColors.textTertiary),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: valueColor,
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundLight,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 17, color: AppColors.textTertiary),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: valueColor,
+            ),
+            textAlign: TextAlign.center,
           ),
-          textAlign: TextAlign.center,
-        ),
-        Text(
-          label,
-          style: const TextStyle(
-              fontSize: 10, color: AppColors.textTertiary),
-          textAlign: TextAlign.center,
-        ),
-      ],
+          Text(
+            label,
+            style: const TextStyle(fontSize: 10, color: AppColors.textTertiary),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }
 
-// ── Cancel ────────────────────────────────────────────────────────────────────
+// ── Cancel button ─────────────────────────────────────────────────────────────
 
 class _CancelButton extends StatelessWidget {
   const _CancelButton({required this.onCancel});
@@ -757,41 +721,38 @@ class _CancelButton extends StatelessWidget {
         foregroundColor: AppColors.error,
         side: const BorderSide(color: AppColors.error),
         padding: const EdgeInsets.symmetric(vertical: 14),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      onPressed: () {
-        showDialog<void>(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('¿Cancelar solicitud?'),
-            content:
-                const Text('Esta acción no se puede deshacer.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('No'),
-              ),
-              FilledButton(
-                style:
-                    FilledButton.styleFrom(backgroundColor: AppColors.error),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  onCancel();
-                },
-                child: const Text('Sí, cancelar'),
-              ),
-            ],
-          ),
-        );
-      },
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('¿Cancelar solicitud?'),
+          content: const Text('Esta acción no se puede deshacer.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('No'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+              onPressed: () {
+                Navigator.of(context).pop();
+                onCancel();
+              },
+              child: const Text('Sí, cancelar'),
+            ),
+          ],
+        ),
+      ),
       child: const Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.cancel_outlined, size: 18),
+          Icon(Icons.cancel_outlined, size: 17),
           SizedBox(width: 8),
-          Text('Cancelar solicitud',
-              style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(
+            'Cancelar solicitud',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
         ],
       ),
     );
@@ -800,23 +761,21 @@ class _CancelButton extends StatelessWidget {
 
 // ── Rating ────────────────────────────────────────────────────────────────────
 
-class _RatingSection extends ConsumerStatefulWidget {
-  const _RatingSection({required this.requestId});
-
-  final String requestId;
+class _RatingSection extends StatefulWidget {
+  const _RatingSection({required this.onRate});
+  final ValueChanged<int> onRate;
 
   @override
-  ConsumerState<_RatingSection> createState() => _RatingSectionState();
+  State<_RatingSection> createState() => _RatingSectionState();
 }
 
-class _RatingSectionState extends ConsumerState<_RatingSection> {
-  int _hovered = 0;
+class _RatingSectionState extends State<_RatingSection> {
   int _selected = 0;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.starContainer,
         borderRadius: BorderRadius.circular(14),
@@ -826,65 +785,37 @@ class _RatingSectionState extends ConsumerState<_RatingSection> {
         children: [
           const Text(
             '¿Cómo estuvo el servicio?',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(5, (i) {
-              final filled = i < (_hovered > 0 ? _hovered : _selected);
+              final filled = i < _selected;
               return GestureDetector(
                 onTap: () {
                   setState(() => _selected = i + 1);
-                  ref.read(transportProvider.notifier).rateRequest(
-                        widget.requestId,
-                        i + 1,
-                      );
+                  widget.onRate(i + 1);
                 },
-                onLongPressStart: (_) => setState(() => _hovered = i + 1),
-                onLongPressEnd: (_) => setState(() => _hovered = 0),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
                   child: Icon(
                     filled ? Icons.star_rounded : Icons.star_outline_rounded,
                     color: AppColors.star,
-                    size: 36,
+                    size: 34,
                   ),
                 ),
               );
             }),
           ),
-          if (_selected > 0) ...[
-            const SizedBox(height: 8),
-            Text(
-              _ratingLabel(_selected),
-              style: const TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 13,
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
-
-  String _ratingLabel(int stars) => switch (stars) {
-        1 => 'Muy malo',
-        2 => 'Malo',
-        3 => 'Regular',
-        4 => 'Bueno',
-        5 => '¡Excelente!',
-        _ => '',
-      };
 }
 
 class _RatingDisplay extends StatelessWidget {
   const _RatingDisplay({required this.rating});
-
   final int rating;
 
   @override
@@ -908,14 +839,42 @@ class _RatingDisplay extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
+          const Text(
             'Tu calificación',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+double _hueOf(TransportServiceType t) => switch (t) {
+  TransportServiceType.transporte => BitmapDescriptor.hueAzure,
+  TransportServiceType.moto => BitmapDescriptor.hueOrange,
+  TransportServiceType.envios => BitmapDescriptor.hueGreen,
+};
+
+class _CircleBtn extends StatelessWidget {
+  const _CircleBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      elevation: 3,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Icon(icon, size: 22, color: AppColors.textPrimary),
+        ),
       ),
     );
   }

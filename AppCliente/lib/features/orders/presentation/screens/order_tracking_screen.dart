@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/core/location/location_service.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
@@ -87,9 +87,7 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
           ],
           CustodyProofCard(order: order),
           const SizedBox(height: AppConstants.spacingL),
-          _Card(
-            child: OrderStatusTimeline(status: order.status),
-          ),
+          _Card(child: OrderStatusTimeline(status: order.status)),
           if (order.isDelivered) ...[
             const SizedBox(height: AppConstants.spacingL),
             _RatingCard(order: order),
@@ -155,11 +153,7 @@ class _RatingCard extends StatelessWidget {
           children: [
             const Row(
               children: [
-                Icon(
-                  Icons.star_rounded,
-                  color: AppColors.star,
-                  size: 18,
-                ),
+                Icon(Icons.star_rounded, color: AppColors.star, size: 18),
                 SizedBox(width: AppConstants.spacingS),
                 Text(
                   'Tu calificación',
@@ -277,9 +271,9 @@ class _StatusHeader extends StatelessWidget {
             order.isDelivered
                 ? 'Tu pedido de ${order.businessName} fue entregado.'
                 : order.etaMinutes != null
-                    ? 'Llega en ~${order.etaMinutes} min desde '
-                        '${order.businessName}'
-                    : 'Preparando tu pedido de ${order.businessName}',
+                ? 'Llega en ~${order.etaMinutes} min desde '
+                      '${order.businessName}'
+                : 'Preparando tu pedido de ${order.businessName}',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 14,
@@ -422,10 +416,7 @@ class _OrderSummary extends StatelessWidget {
                   Expanded(
                     child: Text(
                       line.productName,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 14,
-                      ),
+                      style: const TextStyle(fontFamily: 'Inter', fontSize: 14),
                     ),
                   ),
                   Text(
@@ -481,7 +472,7 @@ class _SummaryRow extends StatelessWidget {
   }
 }
 
-// ── Mapa de seguimiento ──────────────────────────────────────────────────────
+// ── Mapa de seguimiento (Google Maps) ────────────────────────────────────────
 
 class _TrackingMap extends StatefulWidget {
   const _TrackingMap({required this.order});
@@ -497,9 +488,10 @@ class _TrackingMapState extends State<_TrackingMap>
   late final AnimationController _ctrl;
   late final LatLng _businessPos;
   late final LatLng _deliveryPos;
-  late final LatLng _mapCenter;
+  GoogleMapController? _map;
 
-  static const _pamplonaCenter = LatLng(7.3762, -72.6465);
+  // Centrado en Pamplona, Nariño (coordenadas correctas).
+  static const _origin = kPamplonaCenter;
 
   static const _animDurations = {
     CustomerOrderStatus.driverToPickup: Duration(seconds: 7),
@@ -512,19 +504,15 @@ class _TrackingMapState extends State<_TrackingMap>
     final bh = widget.order.businessName.hashCode.abs();
     final dh = widget.order.deliveryAddress.hashCode.abs();
     _businessPos = LatLng(
-      7.3762 + (bh % 100) * 0.00008,
-      -72.6465 - (bh % 137) * 0.00007,
+      kPamplonaCenter.latitude + (bh % 100) * 0.00008,
+      kPamplonaCenter.longitude - (bh % 137) * 0.00007,
     );
     _deliveryPos = LatLng(
-      7.3820 + (dh % 60) * 0.00008,
-      -72.6512 - (dh % 50) * 0.00006,
+      kPamplonaCenter.latitude + 0.006 + (dh % 60) * 0.00008,
+      kPamplonaCenter.longitude - 0.004 - (dh % 50) * 0.00006,
     );
-    _mapCenter = LatLng(
-      (_businessPos.latitude + _deliveryPos.latitude) / 2,
-      (_businessPos.longitude + _deliveryPos.longitude) / 2,
-    );
-    final dur = _animDurations[widget.order.status] ??
-        const Duration(seconds: 10);
+    final dur =
+        _animDurations[widget.order.status] ?? const Duration(seconds: 10);
     _ctrl = AnimationController(vsync: this, duration: dur);
     _startForStatus(widget.order.status);
   }
@@ -551,132 +539,73 @@ class _TrackingMapState extends State<_TrackingMap>
   @override
   void dispose() {
     _ctrl.dispose();
+    _map?.dispose();
     super.dispose();
   }
 
   LatLng _lerp(LatLng a, LatLng b, double t) => LatLng(
-        a.latitude + (b.latitude - a.latitude) * t,
-        a.longitude + (b.longitude - a.longitude) * t,
-      );
+    a.latitude + (b.latitude - a.latitude) * t,
+    a.longitude + (b.longitude - a.longitude) * t,
+  );
 
   LatLng _driverPos(double t) => switch (widget.order.status) {
-        CustomerOrderStatus.driverToPickup =>
-          _lerp(_pamplonaCenter, _businessPos, t),
-        CustomerOrderStatus.atPickup => _businessPos,
-        _ => _lerp(_businessPos, _deliveryPos, t),
-      };
+    CustomerOrderStatus.driverToPickup => _lerp(_origin, _businessPos, t),
+    CustomerOrderStatus.atPickup => _businessPos,
+    _ => _lerp(_businessPos, _deliveryPos, t),
+  };
 
   @override
   Widget build(BuildContext context) {
+    final center = LatLng(
+      (_businessPos.latitude + _deliveryPos.latitude) / 2,
+      (_businessPos.longitude + _deliveryPos.longitude) / 2,
+    );
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
       child: SizedBox(
         height: 220,
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: _mapCenter,
-            initialZoom: 15.2,
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
-            ),
-          ),
-          children: [
-            TileLayer(
-              urlTemplate:
-                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.nexum.cliente',
-            ),
-            AnimatedBuilder(
-              animation: _ctrl,
-              builder: (_, __) => MarkerLayer(
-                markers: [
-                  Marker(
-                    point: _businessPos,
-                    width: 36,
-                    height: 36,
-                    child: const _MapPin(
-                      icon: Icons.restaurant_rounded,
-                      color: AppColors.primaryDim,
-                      bgColor: AppColors.primaryContainer,
-                    ),
-                  ),
-                  Marker(
-                    point: _deliveryPos,
-                    width: 36,
-                    height: 36,
-                    child: const _MapPin(
-                      icon: Icons.home_rounded,
-                      color: AppColors.error,
-                      bgColor: AppColors.errorContainer,
-                    ),
-                  ),
-                  Marker(
-                    point: _driverPos(_ctrl.value),
-                    width: 40,
-                    height: 40,
-                    child: const _DriverPin(),
-                  ),
-                ],
+        child: AnimatedBuilder(
+          animation: _ctrl,
+          builder: (_, __) {
+            final dp = _driverPos(_ctrl.value);
+            final markers = <Marker>{
+              Marker(
+                markerId: const MarkerId('business'),
+                position: _businessPos,
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueGreen,
+                ),
+                infoWindow: InfoWindow(title: widget.order.businessName),
               ),
-            ),
-          ],
+              Marker(
+                markerId: const MarkerId('delivery'),
+                position: _deliveryPos,
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueRed,
+                ),
+                infoWindow: InfoWindow(title: widget.order.deliveryAddress),
+              ),
+              Marker(
+                markerId: const MarkerId('driver'),
+                position: dp,
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueViolet,
+                ),
+                zIndex: 2,
+              ),
+            };
+
+            return GoogleMap(
+              initialCameraPosition: CameraPosition(target: center, zoom: 15.0),
+              onMapCreated: (c) => _map = c,
+              markers: markers,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              myLocationButtonEnabled: false,
+            );
+          },
         ),
-      ),
-    );
-  }
-}
-
-class _MapPin extends StatelessWidget {
-  const _MapPin({
-    required this.icon,
-    required this.color,
-    required this.bgColor,
-  });
-
-  final IconData icon;
-  final Color color;
-  final Color bgColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: bgColor,
-        shape: BoxShape.circle,
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.shadow,
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Icon(icon, size: 20, color: color),
-    );
-  }
-}
-
-class _DriverPin extends StatelessWidget {
-  const _DriverPin();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.primary,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadowMedium,
-            blurRadius: 6,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: const Icon(
-        Icons.delivery_dining_rounded,
-        size: 24,
-        color: Colors.white,
       ),
     );
   }
