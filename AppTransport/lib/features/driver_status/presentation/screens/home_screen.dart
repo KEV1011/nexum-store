@@ -4,11 +4,10 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/theme_provider.dart';
@@ -78,7 +77,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   _HomeState _state = const _HomeState();
-  final _mapController = MapController();
+  GoogleMapController? _map;
   final _sheetController = DraggableScrollableController();
   bool _showHeatmap = false;
   bool _bannerDismissed = false;
@@ -174,7 +173,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _wsCancelSub?.cancel();
     _wsErrandCancelSub?.cancel();
     _wsDeliveryCancelSub?.cancel();
-    _mapController.dispose();
+    _map?.dispose();
     _sheetController.dispose();
     super.dispose();
   }
@@ -579,65 +578,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  List<CircleMarker> _buildHeatmapCircles() {
-    return [
-      CircleMarker(
-        point: const LatLng(7.3752, -72.6479),
-        radius: 200,
-        color: AppColors.error.withValues(alpha: 0.25),
-        borderColor: AppColors.error.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3694, -72.6521),
-        radius: 250,
-        color: AppColors.error.withValues(alpha: 0.25),
-        borderColor: AppColors.error.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3783, -72.6451),
-        radius: 200,
-        color: AppColors.warning.withValues(alpha: 0.25),
-        borderColor: AppColors.warning.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3741, -72.6498),
-        radius: 150,
-        color: AppColors.warning.withValues(alpha: 0.25),
-        borderColor: AppColors.warning.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3758, -72.6472),
-        radius: 150,
-        color: AppColors.warning.withValues(alpha: 0.25),
-        borderColor: AppColors.warning.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3715, -72.6543),
-        radius: 150,
-        color: AppColors.primary.withValues(alpha: 0.2),
-        borderColor: AppColors.primary.withValues(alpha: 0.5),
-        borderStrokeWidth: 1,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3769, -72.6505),
-        radius: 150,
-        color: AppColors.primary.withValues(alpha: 0.2),
-        borderColor: AppColors.primary.withValues(alpha: 0.5),
-        borderStrokeWidth: 1,
-        useRadiusInMeter: true,
-      ),
-    ];
+  Set<Circle> _buildHeatmapCircles() {
+    Circle hot(String id, LatLng point, double radius, Color base,
+        double borderWidth) {
+      return Circle(
+        circleId: CircleId(id),
+        center: point,
+        radius: radius,
+        fillColor: base.withValues(alpha: 0.25),
+        strokeColor: base.withValues(alpha: 0.6),
+        strokeWidth: borderWidth.round(),
+      );
+    }
+
+    return {
+      hot('hm-1', const LatLng(7.3752, -72.6479), 200, AppColors.error, 2),
+      hot('hm-2', const LatLng(7.3694, -72.6521), 250, AppColors.error, 2),
+      hot('hm-3', const LatLng(7.3783, -72.6451), 200, AppColors.warning, 2),
+      hot('hm-4', const LatLng(7.3741, -72.6498), 150, AppColors.warning, 2),
+      hot('hm-5', const LatLng(7.3758, -72.6472), 150, AppColors.warning, 2),
+      hot('hm-6', const LatLng(7.3715, -72.6543), 150, AppColors.primary, 1),
+      hot('hm-7', const LatLng(7.3769, -72.6505), 150, AppColors.primary, 1),
+    };
   }
 
   // ── Map controls ───────────────────────────────────────────────────────
@@ -645,7 +607,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// Re-centre the map on the driver's current position with a smooth move.
   void _recenterMap() {
     HapticFeedback.selectionClick();
-    _mapController.move(_driverLatLng, MapConstants.initialZoom);
+    _map?.animateCamera(
+      CameraUpdate.newLatLngZoom(_driverLatLng, MapConstants.initialZoom),
+    );
   }
 
   // ── Build ──────────────────────────────────────────────────────────────
@@ -695,50 +659,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: Stack(
         children: [
           // Map
-          FlutterMap(
-            mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: _center,
-              initialZoom: MapConstants.initialZoom,
+          GoogleMap(
+            initialCameraPosition: const CameraPosition(
+              target: _center,
+              zoom: MapConstants.initialZoom,
             ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.nexum.driver',
-              ),
-              if (_showHeatmap)
-                CircleLayer(circles: _buildHeatmapCircles()),
-              if (_state.isOnline)
-                MarkerLayer(
-                  markers: [
+            onMapCreated: (c) => _map = c,
+            circles: _showHeatmap ? _buildHeatmapCircles() : const {},
+            markers: _state.isOnline
+                ? {
                     Marker(
-                      point: _driverLatLng,
-                      width: 48,
-                      height: 48,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: workMode.color,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: workMode.color.withValues(alpha: 0.45),
-                              blurRadius: 12,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          workMode.icon,
-                          color: Colors.white,
-                          size: 22,
-                        ),
+                      markerId: const MarkerId('driver'),
+                      position: _driverLatLng,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(
+                        _hueOf(workMode.color),
                       ),
+                      anchor: const Offset(0.5, 0.5),
+                      flat: true,
                     ),
-                  ],
-                ),
-            ],
+                  }
+                : const {},
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
           ),
           // Top bar + opportunity banner
           SafeArea(
@@ -3533,3 +3476,8 @@ class _NegotiationRequestModal extends StatelessWidget {
 }
 
 
+
+/// Convierte un [Color] al matiz (0–360) que usa
+/// [BitmapDescriptor.defaultMarkerWithHue], para teñir los pines nativos
+/// de Google Maps acorde a los colores de marca de cada modo/servicio.
+double _hueOf(Color color) => HSVColor.fromColor(color).hue;

@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
@@ -35,9 +33,15 @@ class ActiveTripScreen extends ConsumerStatefulWidget {
 }
 
 class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
-  final _mapController = MapController();
+  GoogleMapController? _map;
   bool _isLoading = false;
   bool _autoFollow = true;
+
+  // Google Maps dispara onCameraMoveStarted tanto en gestos del usuario como en
+  // movimientos programáticos (animateCamera). Marcamos el instante de cada
+  // movimiento programático para no confundirlo con un gesto y así no apagar el
+  // seguimiento automático por error.
+  DateTime? _lastProgrammaticMove;
 
   // Simulated driver position — starts at Pamplona center
   LatLng _driverPos = const LatLng(
@@ -74,7 +78,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   void dispose() {
     _movementTimer?.cancel();
     _etaTimer?.cancel();
-    _mapController.dispose();
+    _map?.dispose();
     super.dispose();
   }
 
@@ -128,7 +132,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
       if (_autoFollow) {
         final zoom = current?.isInProgress == true ? 16.5 : MapConstants.tripZoom;
-        _mapController.move(next, zoom);
+        _moveCamera(CameraUpdate.newLatLngZoom(next, zoom));
       }
     });
   }
@@ -210,18 +214,36 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
   // ── Camera helpers ───────────────────────────────────────────────────────
 
+  /// Mueve la cámara marcando el movimiento como programático para que
+  /// [onCameraMoveStarted] no lo interprete como un gesto del usuario.
+  void _moveCamera(CameraUpdate update) {
+    _lastProgrammaticMove = DateTime.now();
+    _map?.animateCamera(update);
+  }
+
   void _fitBoundsToRoute(List<LatLng> points) {
     if (points.length < 2) return;
-    _mapController.fitCamera(
-      CameraFit.coordinates(
-        coordinates: points,
-        padding: const EdgeInsets.all(72),
+    var minLat = points.first.latitude, maxLat = points.first.latitude;
+    var minLng = points.first.longitude, maxLng = points.first.longitude;
+    for (final p in points) {
+      minLat = p.latitude < minLat ? p.latitude : minLat;
+      maxLat = p.latitude > maxLat ? p.latitude : maxLat;
+      minLng = p.longitude < minLng ? p.longitude : minLng;
+      maxLng = p.longitude > maxLng ? p.longitude : maxLng;
+    }
+    _moveCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        72,
       ),
     );
   }
 
   void _zoomTo(LatLng target, {double zoom = 16}) {
-    _mapController.move(target, zoom);
+    _moveCamera(CameraUpdate.newLatLngZoom(target, zoom));
   }
 
   void _recenter(ActiveTripEntity trip) {
@@ -292,107 +314,83 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
         ? [_driverPos, originLatLng, destinationLatLng]
         : [_driverPos, originLatLng];
 
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: _driverPos,
-        initialZoom: MapConstants.tripZoom,
-        onMapReady: () => _fitBoundsToRoute(boundsPoints),
-        onPositionChanged: (camera, hasGesture) {
-          if (hasGesture && _autoFollow) {
-            setState(() => _autoFollow = false);
-          }
-        },
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: _driverPos,
+        zoom: MapConstants.tripZoom,
       ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.nexum.driver',
-        ),
-        PolylineLayer(polylines: _buildPolylines(trip, serviceType)),
-        MarkerLayer(markers: _buildMarkers(trip, serviceType)),
-      ],
+      onMapCreated: (c) {
+        _map = c;
+        _fitBoundsToRoute(boundsPoints);
+      },
+      onCameraMoveStarted: () {
+        // Si el movimiento no proviene de un animateCamera reciente, fue un
+        // gesto del usuario → desactivar el seguimiento automático.
+        final last = _lastProgrammaticMove;
+        final isProgrammatic = last != null &&
+            DateTime.now().difference(last) < const Duration(milliseconds: 900);
+        if (!isProgrammatic && _autoFollow) {
+          setState(() => _autoFollow = false);
+        }
+      },
+      polylines: _buildPolylines(trip, serviceType),
+      markers: _buildMarkers(trip, serviceType),
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
     );
   }
 
-  List<Marker> _buildMarkers(ActiveTripEntity trip, ServiceType serviceType) {
+  Set<Marker> _buildMarkers(ActiveTripEntity trip, ServiceType serviceType) {
     final originLatLng = trip.request.origin.latLng;
 
-    return [
+    return {
       Marker(
-        point: _driverPos,
-        width: 48,
-        height: 48,
-        child: Container(
-          decoration: BoxDecoration(
-            color: serviceType.color,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: serviceType.color.withValues(alpha: 0.45),
-                blurRadius: 12,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Icon(serviceType.icon, color: Colors.white, size: 22),
+        markerId: const MarkerId('driver'),
+        position: _driverPos,
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+          HSVColor.fromColor(serviceType.color).hue,
         ),
+        anchor: const Offset(0.5, 0.5),
+        flat: true,
+        zIndex: 2,
       ),
       Marker(
-        point: originLatLng,
-        width: 44,
-        height: 44,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.pickupMarker,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.person_pin_rounded,
-            color: Colors.white,
-            size: 22,
-          ),
-        ),
+        markerId: const MarkerId('origin'),
+        position: originLatLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: InfoWindow(title: trip.request.origin.address),
       ),
       Marker(
-        point: trip.request.destination.latLng,
-        width: 44,
-        height: 44,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.destinationMarker,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.location_on_rounded,
-            color: Colors.white,
-            size: 22,
-          ),
-        ),
+        markerId: const MarkerId('destination'),
+        position: trip.request.destination.latLng,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: InfoWindow(title: trip.request.destination.address),
       ),
-    ];
+    };
   }
 
-  List<Polyline> _buildPolylines(
+  Set<Polyline> _buildPolylines(
       ActiveTripEntity trip, ServiceType serviceType) {
-    final dashedPattern = StrokePattern.dashed(segments: const [18, 8]);
-    final solidPattern = StrokePattern.solid();
+    final dashed = <PatternItem>[PatternItem.dash(18), PatternItem.gap(8)];
+    final pattern = trip.isToPickup ? dashed : const <PatternItem>[];
 
     if (_waypoints.isEmpty) {
       final target = trip.isInProgress
           ? trip.request.destination.latLng
           : trip.request.origin.latLng;
-      return [
+      return {
         Polyline(
+          polylineId: const PolylineId('route'),
           points: [_driverPos, target],
           color: serviceType.color,
-          strokeWidth: 5,
-          pattern: trip.isToPickup ? dashedPattern : solidPattern,
-          strokeCap: StrokeCap.round,
-          strokeJoin: StrokeJoin.round,
+          width: 5,
+          patterns: pattern,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
         ),
-      ];
+      };
     }
 
     final fullRoute = [_routeStart, ..._waypoints];
@@ -400,31 +398,36 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     final consumed = fullRoute.take(splitAt).toList();
     final remaining = fullRoute.skip(splitAt > 0 ? splitAt - 1 : 0).toList();
 
-    return [
+    return {
       if (consumed.length >= 2)
         Polyline(
+          polylineId: const PolylineId('route-consumed'),
           points: consumed,
           color: Colors.grey.withValues(alpha: 0.45),
-          strokeWidth: 5,
-          strokeCap: StrokeCap.round,
-          strokeJoin: StrokeJoin.round,
+          width: 5,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
         ),
       if (remaining.length >= 2) ...[
         Polyline(
+          polylineId: const PolylineId('route-shadow'),
           points: remaining,
           color: Colors.black.withValues(alpha: 0.15),
-          strokeWidth: 9,
+          width: 9,
         ),
         Polyline(
+          polylineId: const PolylineId('route-remaining'),
           points: remaining,
           color: serviceType.color,
-          strokeWidth: 5,
-          pattern: trip.isToPickup ? dashedPattern : solidPattern,
-          strokeCap: StrokeCap.round,
-          strokeJoin: StrokeJoin.round,
+          width: 5,
+          patterns: pattern,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
         ),
       ],
-    ];
+    };
   }
 
   // ── FAB: recenter ────────────────────────────────────────────────────────
