@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/location/location_service.dart';
+import 'package:nexum_client/core/location/map_style.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
@@ -46,6 +47,7 @@ class _NearbyVehicle {
   _NearbyVehicle(this.type, this.position);
   final TransportServiceType type;
   LatLng position;
+  double heading = 0;
 }
 
 // ── Pantalla principal ────────────────────────────────────────────────────────
@@ -76,9 +78,13 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
       if (!mounted) return;
       setState(() {
         for (final v in _vehicles) {
+          final dLat = (_rng.nextDouble() - 0.5) * 0.0006;
+          final dLng = (_rng.nextDouble() - 0.5) * 0.0006;
+          // Rumbo según el desplazamiento (0° = norte) para orientar el auto.
+          v.heading = math.atan2(dLng, dLat) * 180 / math.pi;
           v.position = LatLng(
-            v.position.latitude + (_rng.nextDouble() - 0.5) * 0.0006,
-            v.position.longitude + (_rng.nextDouble() - 0.5) * 0.0006,
+            v.position.latitude + dLat,
+            v.position.longitude + dLng,
           );
         }
       });
@@ -104,13 +110,25 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   }
 
   List<Marker> get _markers => [
+    // Vehículos cercanos (vista cenital, orientados según su rumbo).
     for (final v in _vehicles)
       Marker(
         point: v.position,
-        width: 20,
-        height: 20,
-        child: Icon(Icons.circle, color: _colorOf(v.type), size: 14),
+        width: 38,
+        height: 38,
+        child: VehicleTopMarker(
+          color: _colorOf(v.type),
+          isMoto: v.type == TransportServiceType.moto,
+          headingDeg: v.heading,
+        ),
       ),
+    // Ubicación del usuario con halo pulsante.
+    Marker(
+      point: _myLocation,
+      width: 62,
+      height: 62,
+      child: const PulsingLocationDot(),
+    ),
   ];
 
   @override
@@ -134,11 +152,7 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
               initialZoom: 15.2,
             ),
             children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.nexum.nexum_client',
-              ),
+              darkTileLayer(),
               MarkerLayer(markers: _markers),
             ],
           ),

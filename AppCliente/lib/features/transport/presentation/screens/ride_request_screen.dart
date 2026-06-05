@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/location/location_service.dart';
+import 'package:nexum_client/core/location/map_style.dart';
 import 'package:nexum_client/core/location/maps_service.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
@@ -255,11 +256,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
               onTap: (_, point) => _setDestination(point),
             ),
             children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.nexum.nexum_client',
-              ),
+              darkTileLayer(),
               PolylineLayer(
                 polylines: [
                   if (route != null)
@@ -278,15 +275,18 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
               ),
               MarkerLayer(
                 markers: [
+                  // Origen con callout «Punto de recogida».
                   Marker(
                     point: _origin,
-                    width: 32,
-                    height: 32,
+                    width: 240,
+                    height: 110,
                     alignment: Alignment.bottomCenter,
-                    child: const Icon(
-                      Icons.location_on,
-                      color: Colors.green,
-                      size: 32,
+                    child: PickupCallout(
+                      title: 'Punto de recogida',
+                      address: _originCtrl.text.trim().isEmpty
+                          ? 'Mi ubicación'
+                          : _originCtrl.text.trim(),
+                      onTap: _pickOrigin,
                     ),
                   ),
                   if (dest != null)

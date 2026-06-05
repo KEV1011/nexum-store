@@ -8,6 +8,7 @@ import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/location/location_service.dart';
+import 'package:nexum_client/core/location/map_style.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
@@ -577,11 +578,7 @@ class _TrackingMapState extends State<_TrackingMap>
                 ),
               ),
               children: [
-                TileLayer(
-                  urlTemplate:
-                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.nexum.nexum_client',
-                ),
+                darkTileLayer(),
                 MarkerLayer(
                   markers: [
                     Marker(

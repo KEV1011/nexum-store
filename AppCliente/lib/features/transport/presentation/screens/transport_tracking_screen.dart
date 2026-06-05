@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/location/location_service.dart';
+import 'package:nexum_client/core/location/map_style.dart';
 import 'package:nexum_client/core/location/maps_service.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
@@ -47,6 +49,7 @@ class _TransportTrackingScreenState
   final MapController _map = MapController();
   LatLng? _driverPos;
   LatLng? _driverPosPrev;
+  double _driverHeading = 0;
   Timer? _animTimer;
 
   // Origen/destino reales (geocodificados) + ruta siguiendo calles.
@@ -106,6 +109,15 @@ class _TransportTrackingScreenState
       return;
     }
     _driverPosPrev = _driverPos;
+    // Rumbo (0° = norte) según el desplazamiento hacia la nueva posición.
+    final from = _driverPosPrev!;
+    _driverHeading =
+        math.atan2(
+          newPos.longitude - from.longitude,
+          newPos.latitude - from.latitude,
+        ) *
+        180 /
+        math.pi;
     _animTimer?.cancel();
     const steps = _animDurationMs ~/ _animTickMs;
     var step = 0;
@@ -163,12 +175,12 @@ class _TransportTrackingScreenState
       result.add(
         Marker(
           point: dp,
-          width: 32,
-          height: 32,
-          child: Icon(
-            Icons.directions_car_rounded,
+          width: 40,
+          height: 40,
+          child: VehicleTopMarker(
             color: _markerColorOf(req.serviceType),
-            size: 28,
+            isMoto: req.serviceType == TransportServiceType.moto,
+            headingDeg: _driverHeading,
           ),
         ),
       );
@@ -250,11 +262,7 @@ class _TransportTrackingScreenState
               initialZoom: 14.5,
             ),
             children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.nexum.nexum_client',
-              ),
+              darkTileLayer(),
               PolylineLayer(polylines: polylines),
               MarkerLayer(markers: markers),
             ],
