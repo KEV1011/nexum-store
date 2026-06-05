@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:latlong2/latlong2.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 
 /// Resultado de una ruta calculada por el backend (Google Directions).
