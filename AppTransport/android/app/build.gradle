@@ -25,16 +25,16 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "com.nexum.driver_app"
-    compileSdkVersion 34
+    compileSdkVersion flutter.compileSdkVersion
     ndkVersion flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
 
     sourceSets {
@@ -43,8 +43,8 @@ android {
 
     defaultConfig {
         applicationId "com.nexum.driver_app"
-        minSdkVersion 21
-        targetSdkVersion 34
+        minSdkVersion flutter.minSdkVersion
+        targetSdkVersion flutter.targetSdkVersion
         versionCode flutter.versionCode
         versionName flutter.versionName
 
@@ -83,5 +83,5 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22"
+    // kotlin-stdlib ya viene incluido automáticamente con Kotlin 2.x
 }
