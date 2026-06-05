@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/location/location_service.dart';
-import 'package:nexum_client/core/location/map_style.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
@@ -490,6 +488,7 @@ class _TrackingMapState extends State<_TrackingMap>
   late final AnimationController _ctrl;
   late final LatLng _businessPos;
   late final LatLng _deliveryPos;
+  GoogleMapController? _map;
 
   // Centrado en Pamplona, Norte de Santander (coordenadas correctas).
   static const _origin = kPamplonaCenter;
@@ -540,6 +539,7 @@ class _TrackingMapState extends State<_TrackingMap>
   @override
   void dispose() {
     _ctrl.dispose();
+    _map?.dispose();
     super.dispose();
   }
 
@@ -569,53 +569,40 @@ class _TrackingMapState extends State<_TrackingMap>
           animation: _ctrl,
           builder: (_, __) {
             final dp = _driverPos(_ctrl.value);
-            return FlutterMap(
-              options: MapOptions(
-                initialCenter: center,
-                initialZoom: 15.0,
-                interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.none,
+            final markers = <Marker>{
+              Marker(
+                markerId: const MarkerId('business'),
+                position: _businessPos,
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueGreen,
                 ),
+                infoWindow: InfoWindow(title: widget.order.businessName),
               ),
-              children: [
-                darkTileLayer(),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _businessPos,
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.bottomCenter,
-                      child: const Icon(
-                        Icons.store_rounded,
-                        color: Colors.green,
-                        size: 26,
-                      ),
-                    ),
-                    Marker(
-                      point: _deliveryPos,
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.bottomCenter,
-                      child: const Icon(
-                        Icons.location_on,
-                        color: Colors.red,
-                        size: 28,
-                      ),
-                    ),
-                    Marker(
-                      point: dp,
-                      width: 28,
-                      height: 28,
-                      child: const Icon(
-                        Icons.delivery_dining_rounded,
-                        color: Colors.purple,
-                        size: 26,
-                      ),
-                    ),
-                  ],
+              Marker(
+                markerId: const MarkerId('delivery'),
+                position: _deliveryPos,
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueRed,
                 ),
-              ],
+                infoWindow: InfoWindow(title: widget.order.deliveryAddress),
+              ),
+              Marker(
+                markerId: const MarkerId('driver'),
+                position: dp,
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueViolet,
+                ),
+                zIndex: 2,
+              ),
+            };
+
+            return GoogleMap(
+              initialCameraPosition: CameraPosition(target: center, zoom: 15.0),
+              onMapCreated: (c) => _map = c,
+              markers: markers,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              myLocationButtonEnabled: false,
             );
           },
         ),

@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/location/location_service.dart';
-import 'package:nexum_client/core/location/map_style.dart';
 import 'package:nexum_client/core/location/maps_service.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
@@ -27,7 +25,7 @@ class RideRequestScreen extends ConsumerStatefulWidget {
 }
 
 class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
-  final MapController _map = MapController();
+  GoogleMapController? _map;
   final _originCtrl = TextEditingController();
   final _destCtrl = TextEditingController();
   final _fareCtrl = TextEditingController();
@@ -53,7 +51,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     _originCtrl.dispose();
     _destCtrl.dispose();
     _fareCtrl.dispose();
-    _map.dispose();
+    _map?.dispose();
     super.dispose();
   }
 
@@ -61,7 +59,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     final loc = await ref.read(locationServiceProvider).current();
     if (!mounted) return;
     setState(() => _origin = loc.position);
-    _map.move(loc.position, 15.5);
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(loc.position, 15.5));
     if (_destination != null) _fetchRoute();
   }
 
@@ -92,13 +90,13 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
       minLng = p.longitude < minLng ? p.longitude : minLng;
       maxLng = p.longitude > maxLng ? p.longitude : maxLng;
     }
-    _map.fitCamera(
-      CameraFit.bounds(
-        bounds: LatLngBounds(
-          LatLng(minLat - 0.003, minLng - 0.003),
-          LatLng(maxLat + 0.003, maxLng + 0.003),
+    _map?.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat - 0.003, minLng - 0.003),
+          northeast: LatLng(maxLat + 0.003, maxLng + 0.003),
         ),
-        padding: const EdgeInsets.all(70),
+        70,
       ),
     );
   }
@@ -161,7 +159,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
       _destCtrl.text = detail.address;
       _route = null;
     });
-    _map.move(detail.position, 15.5);
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(detail.position, 15.5));
     _syncSuggested();
     _fetchRoute();
   }
@@ -179,7 +177,7 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
       _originCtrl.text = detail.address;
       _route = null;
     });
-    _map.move(detail.position, 15.5);
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(detail.position, 15.5));
     if (_destination != null) _fetchRoute();
   }
 
@@ -242,68 +240,56 @@ class _RideRequestScreenState extends ConsumerState<RideRequestScreen> {
     final dest = _destination;
     final color = _colorOf(_service);
 
+    final markers = <Marker>{
+      Marker(
+        markerId: const MarkerId('origin'),
+        position: _origin,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: const InfoWindow(title: 'Origen'),
+      ),
+      if (dest != null)
+        Marker(
+          markerId: const MarkerId('destination'),
+          position: dest,
+          infoWindow: const InfoWindow(title: 'Destino'),
+        ),
+    };
+
     final route = _route;
+    final polylines = <Polyline>{
+      if (route != null)
+        // Ruta real siguiendo las calles (Google Directions).
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: route.points,
+          color: color,
+          width: 5,
+        )
+      else if (dest != null)
+        // Respaldo: línea recta punteada mientras llega la ruta real.
+        Polyline(
+          polylineId: const PolylineId('route'),
+          points: [_origin, dest],
+          color: color.withValues(alpha: 0.5),
+          width: 4,
+          patterns: [PatternItem.dash(24), PatternItem.gap(12)],
+        ),
+    };
 
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       body: Stack(
         children: [
-          FlutterMap(
-            mapController: _map,
-            options: MapOptions(
-              initialCenter: _origin,
-              initialZoom: 15,
-              onTap: (_, point) => _setDestination(point),
-            ),
-            children: [
-              darkTileLayer(),
-              PolylineLayer(
-                polylines: [
-                  if (route != null)
-                    Polyline(
-                      points: route.points,
-                      color: color,
-                      strokeWidth: 5,
-                    )
-                  else if (dest != null)
-                    Polyline(
-                      points: [_origin, dest],
-                      color: color.withValues(alpha: 0.5),
-                      strokeWidth: 4,
-                    ),
-                ],
-              ),
-              MarkerLayer(
-                markers: [
-                  // Origen con callout «Punto de recogida».
-                  Marker(
-                    point: _origin,
-                    width: 240,
-                    height: 110,
-                    alignment: Alignment.bottomCenter,
-                    child: PickupCallout(
-                      title: 'Punto de recogida',
-                      address: _originCtrl.text.trim().isEmpty
-                          ? 'Mi ubicación'
-                          : _originCtrl.text.trim(),
-                      onTap: _pickOrigin,
-                    ),
-                  ),
-                  if (dest != null)
-                    Marker(
-                      point: dest,
-                      width: 32,
-                      height: 32,
-                      alignment: Alignment.bottomCenter,
-                      child: const Icon(
-                        Icons.location_on,
-                        color: Colors.red,
-                        size: 32,
-                      ),
-                    ),
-                ],
-              ),
-            ],
+          GoogleMap(
+            initialCameraPosition: CameraPosition(target: _origin, zoom: 15),
+            onMapCreated: (c) => _map = c,
+            onTap: _setDestination,
+            markers: markers,
+            polylines: polylines,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
           ),
 
           // Botón volver
