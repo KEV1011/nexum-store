@@ -22,7 +22,6 @@ dependencies:
   # Maps & Location
   google_maps_flutter: ^2.9.0
   geolocator: ^13.0.1
-  flutter_background_geolocation: ^4.16.0
 
   # HTTP client
   dio: ^5.7.0
@@ -30,9 +29,6 @@ dependencies:
   # Storage
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.2
-
-  # UI & Fonts
-  google_fonts: ^6.2.1
 
   # Internationalization
   intl: ^0.20.0
