@@ -37,14 +37,11 @@ jobs:
         working-directory: AppCliente
         run: flutter pub get
 
-      # ── Inyectar MAPS_API_KEY en local.properties ─────────────────────────
-      - name: Write local.properties with Maps API Key
+      # ── Flutter SDK path para Gradle ─────────────────────────────────────
+      - name: Write local.properties
         working-directory: AppCliente/android
-        env:
-          MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
         run: |
           echo "flutter.sdk=$(which flutter | sed 's|/bin/flutter||')" > local.properties
-          echo "MAPS_API_KEY=${MAPS_API_KEY}" >> local.properties
 
       # ── Firebase (opcional) ───────────────────────────────────────────────
       - name: Decode google-services.json

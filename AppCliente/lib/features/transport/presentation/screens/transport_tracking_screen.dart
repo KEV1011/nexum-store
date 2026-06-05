@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong2.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/location/location_service.dart';
@@ -43,7 +44,7 @@ class TransportTrackingScreen extends ConsumerStatefulWidget {
 
 class _TransportTrackingScreenState
     extends ConsumerState<TransportTrackingScreen> {
-  GoogleMapController? _map;
+  final MapController _map = MapController();
   LatLng? _driverPos;
   LatLng? _driverPosPrev;
   Timer? _animTimer;
@@ -60,7 +61,7 @@ class _TransportTrackingScreenState
   @override
   void dispose() {
     _animTimer?.cancel();
-    _map?.dispose();
+    _map.dispose();
     super.dispose();
   }
 
@@ -126,30 +127,29 @@ class _TransportTrackingScreenState
     });
   }
 
-  Set<Marker> _buildMarkers(TransportRequestEntity req) {
-    final markers = <Marker>{};
+  List<Marker> _buildMarkers(TransportRequestEntity req) {
+    final result = <Marker>[];
 
-    // Origen
-    markers.add(
+    result.add(
       Marker(
-        markerId: const MarkerId('origin'),
-        position: _originPoint,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        infoWindow: InfoWindow(title: req.originAddress),
+        point: _originPoint,
+        width: 32,
+        height: 32,
+        alignment: Alignment.bottomCenter,
+        child: const Icon(Icons.location_on, color: Colors.green, size: 32),
       ),
     );
 
-    // Destino
-    markers.add(
+    result.add(
       Marker(
-        markerId: const MarkerId('destination'),
-        position: _destPoint,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        infoWindow: InfoWindow(title: req.destinationAddress),
+        point: _destPoint,
+        width: 32,
+        height: 32,
+        alignment: Alignment.bottomCenter,
+        child: const Icon(Icons.location_on, color: Colors.red, size: 32),
       ),
     );
 
-    // Conductor en vivo
     final driverRaw = req.driverLat != null && req.driverLng != null
         ? LatLng(req.driverLat!, req.driverLng!)
         : null;
@@ -160,43 +160,37 @@ class _TransportTrackingScreenState
     }
     final dp = _driverPos ?? driverRaw;
     if (dp != null) {
-      markers.add(
+      result.add(
         Marker(
-          markerId: const MarkerId('driver'),
-          position: dp,
-          icon: BitmapDescriptor.defaultMarkerWithHue(_hueOf(req.serviceType)),
-          infoWindow: InfoWindow(title: req.driverName ?? 'Conductor'),
-          zIndex: 2,
+          point: dp,
+          width: 32,
+          height: 32,
+          child: Icon(
+            Icons.directions_car_rounded,
+            color: _markerColorOf(req.serviceType),
+            size: 28,
+          ),
         ),
       );
     }
 
-    return markers;
+    return result;
   }
 
-  Set<Polyline> _buildPolylines(TransportRequestEntity req, Color color) {
+  List<Polyline> _buildPolylines(Color color) {
     final points = _routePoints;
     if (points != null && points.length >= 2) {
-      // Ruta real siguiendo las calles (Google Directions).
-      return {
-        Polyline(
-          polylineId: const PolylineId('route'),
-          points: points,
-          color: color,
-          width: 5,
-        ),
-      };
+      return [
+        Polyline(points: points, color: color, strokeWidth: 5),
+      ];
     }
-    // Respaldo: línea recta punteada mientras se resuelve la ruta.
-    return {
+    return [
       Polyline(
-        polylineId: const PolylineId('route'),
         points: [_originPoint, _destPoint],
         color: color.withValues(alpha: 0.5),
-        width: 4,
-        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+        strokeWidth: 4,
       ),
-    };
+    ];
   }
 
   void _fitCamera(TransportRequestEntity req) {
@@ -209,13 +203,14 @@ class _TransportTrackingScreenState
       minLng = p.longitude < minLng ? p.longitude : minLng;
       maxLng = p.longitude > maxLng ? p.longitude : maxLng;
     }
-    _map?.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(minLat - 0.002, minLng - 0.002),
-          northeast: LatLng(maxLat + 0.002, maxLng + 0.002),
+    if (!mounted) return;
+    _map.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds(
+          LatLng(minLat - 0.002, minLng - 0.002),
+          LatLng(maxLat + 0.002, maxLng + 0.002),
         ),
-        60,
+        padding: const EdgeInsets.all(60),
       ),
     );
   }
@@ -241,29 +236,28 @@ class _TransportTrackingScreenState
 
     final color = _colorOf(request.serviceType);
     final markers = _buildMarkers(request);
-    final polylines = _buildPolylines(request, color);
+    final polylines = _buildPolylines(color);
     final topPad = MediaQuery.of(context).padding.top;
 
     return Scaffold(
       body: Stack(
         children: [
           // ── Mapa full-screen ─────────────────────────────────────────────
-          GoogleMap(
-            initialCameraPosition: const CameraPosition(
-              target: kPamplonaCenter,
-              zoom: 14.5,
+          FlutterMap(
+            mapController: _map,
+            options: MapOptions(
+              initialCenter: kPamplonaCenter,
+              initialZoom: 14.5,
             ),
-            onMapCreated: (c) {
-              _map = c;
-              _fitCamera(request);
-            },
-            markers: markers,
-            polylines: polylines,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            padding: const EdgeInsets.only(bottom: 280),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.nexum.nexum_client',
+              ),
+              PolylineLayer(polylines: polylines),
+              MarkerLayer(markers: markers),
+            ],
           ),
 
           // ── Barra superior ───────────────────────────────────────────────
@@ -910,10 +904,10 @@ class _RatingDisplay extends StatelessWidget {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-double _hueOf(TransportServiceType t) => switch (t) {
-  TransportServiceType.transporte => BitmapDescriptor.hueAzure,
-  TransportServiceType.moto => BitmapDescriptor.hueOrange,
-  TransportServiceType.envios => BitmapDescriptor.hueGreen,
+Color _markerColorOf(TransportServiceType t) => switch (t) {
+  TransportServiceType.transporte => Colors.blue,
+  TransportServiceType.moto => Colors.orange,
+  TransportServiceType.envios => Colors.green,
 };
 
 class _CircleBtn extends StatelessWidget {

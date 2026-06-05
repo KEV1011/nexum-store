@@ -4,7 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong2.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/location/location_service.dart';
@@ -58,12 +59,11 @@ class TransportHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
-  GoogleMapController? _map;
+  final MapController _map = MapController();
   Timer? _vehicleTimer;
   final _rng = math.Random();
   late final List<_NearbyVehicle> _vehicles;
   LatLng _myLocation = kPamplonaCenter;
-  bool _centeredOnUser = false;
 
   @override
   void initState() {
@@ -92,28 +92,26 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
     if (!mounted) return;
     setState(() => _myLocation = loc.position);
     if (!loc.isFallback) {
-      _map?.animateCamera(CameraUpdate.newLatLngZoom(loc.position, 15.5));
-      _centeredOnUser = true;
+      _map.move(loc.position, 15.5);
     }
   }
 
   @override
   void dispose() {
     _vehicleTimer?.cancel();
-    _map?.dispose();
+    _map.dispose();
     super.dispose();
   }
 
-  Set<Marker> get _markers => {
+  List<Marker> get _markers => [
     for (final v in _vehicles)
       Marker(
-        markerId: MarkerId('veh-${v.type.name}-${v.position.latitude}'),
-        position: v.position,
-        icon: BitmapDescriptor.defaultMarkerWithHue(_hueOf(v.type)),
-        anchor: const Offset(0.5, 0.5),
-        flat: true,
+        point: v.position,
+        width: 20,
+        height: 20,
+        child: Icon(Icons.circle, color: _colorOf(v.type), size: 14),
       ),
-  };
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -128,24 +126,21 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // ── Mapa de fondo (Google Maps nativo) ───────────────────────────
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _myLocation,
-              zoom: 15.2,
+          // ── Mapa de fondo (OpenStreetMap via flutter_map) ────────────────
+          FlutterMap(
+            mapController: _map,
+            options: MapOptions(
+              initialCenter: _myLocation,
+              initialZoom: 15.2,
             ),
-            onMapCreated: (c) {
-              _map = c;
-              if (_centeredOnUser) {
-                c.animateCamera(CameraUpdate.newLatLngZoom(_myLocation, 15.5));
-              }
-            },
-            markers: _markers,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-            padding: const EdgeInsets.only(bottom: 140),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.nexum.nexum_client',
+              ),
+              MarkerLayer(markers: _markers),
+            ],
           ),
 
           // ── Barra superior ───────────────────────────────────────────────
@@ -210,7 +205,7 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   }
 
   void _recenter() {
-    _map?.animateCamera(CameraUpdate.newLatLngZoom(_myLocation, 15.5));
+    _map.move(_myLocation, 15.5);
   }
 }
 
@@ -992,8 +987,3 @@ Color _colorOf(TransportServiceType t) => switch (t) {
   TransportServiceType.envios => AppColors.serviceEnvios,
 };
 
-double _hueOf(TransportServiceType t) => switch (t) {
-  TransportServiceType.transporte => BitmapDescriptor.hueAzure,
-  TransportServiceType.moto => BitmapDescriptor.hueOrange,
-  TransportServiceType.envios => BitmapDescriptor.hueGreen,
-};
