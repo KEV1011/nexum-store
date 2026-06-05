@@ -1,3 +1,14 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// Firebase Google Services — solo si google-services.json existe en CI/CD
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}
+
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
 if (localPropertiesFile.exists()) {
@@ -6,32 +17,6 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def flutterRoot = localProperties.getProperty('flutter.sdk')
-if (flutterRoot == null) {
-    throw new FileNotFoundException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
-}
-
-def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
-if (flutterVersionCode == null) {
-    flutterVersionCode = '1'
-}
-
-def flutterVersionName = localProperties.getProperty('flutter.versionName')
-if (flutterVersionName == null) {
-    flutterVersionName = '1.0'
-}
-
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
-
-// Firebase Google Services plugin — solo si google-services.json existe.
-// Esto permite que la app compile sin Firebase mientras se obtiene el archivo.
-if (file('google-services.json').exists()) {
-    apply plugin: 'com.google.gms.google-services'
-}
-
-// ── Release signing ───────────────────────────────────────────────────────────
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -60,10 +45,9 @@ android {
         applicationId "com.nexum.driver_app"
         minSdkVersion 21
         targetSdkVersion 34
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+        versionCode flutter.versionCode
+        versionName flutter.versionName
 
-        // Google Maps API Key — busca en (1) gradle property, (2) env var, (3) local.properties, (4) vacío
         manifestPlaceholders = [
             GOOGLE_MAPS_API_KEY: project.findProperty("GOOGLE_MAPS_API_KEY")
                 ?: System.getenv("GOOGLE_MAPS_API_KEY")
@@ -99,5 +83,5 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22"
 }
