@@ -6,35 +6,86 @@ Pasos para poner la app lista para Play Store / producción real.
 
 ## 1. Google Maps API Key
 
-### Conseguir la key (5 min)
+> **Esta es la causa #1 del "mapa en blanco/gris".** El código está cableado
+> correctamente; el mapa solo renderiza si la key es válida, tiene **billing**
+> activo y las **APIs habilitadas**. Si ves el mapa gris, el problema casi
+> siempre está aquí, no en el código.
+
+### 1.1 Conseguir la key (5 min)
 1. Ir a https://console.cloud.google.com/google/maps-apis/start
 2. Crear un proyecto nuevo (o seleccionar uno existente)
-3. **Habilitar estas APIs:**
-   - Maps SDK for Android
-   - Maps JavaScript API (para web)
-   - Places API (opcional — autocompletado de direcciones)
-4. Ir a **Credentials → Create Credentials → API Key**
-5. Copiar la key (`AIza...`)
-6. **Restringir la key** (importante — evita uso indebido):
-   - Application restrictions → Android apps → agregar `com.nexum.driver_app` con el SHA-1 de tu keystore
-   - HTTP referrers → agregar `kev1011.github.io/*` para web
+3. **Activar Billing** en el proyecto (Maps lo exige aunque uses la capa
+   gratuita): Console → Billing → vincular una cuenta de facturación.
+4. **Habilitar estas 5 APIs** (Console → APIs & Services → Enable APIs):
+   - **Maps SDK for Android** — mapa nativo en los APK
+   - **Maps JavaScript API** — mapa en las versiones web
+   - **Geocoding API** — el backend convierte direcciones ↔ coordenadas
+   - **Directions API** — el backend calcula rutas siguiendo calles
+   - **Places API** — autocompletado de direcciones en el buscador
+5. Ir a **Credentials → Create Credentials → API Key** y copiar la key (`AIza...`).
 
-### Configurar en el proyecto
+### 1.2 Restringir la key (seguridad)
 
-**Opción A — Para builds locales (Android):**
-Agregar a `AppTransport/android/local.properties`:
+> ⚠️ **Importante:** una key de Google Maps solo admite **un tipo** de
+> "Application restriction" (Android **o** referrers HTTP **o** IP, no varios).
+> Como esta misma key se usa en Android + Web + Backend, hay dos caminos:
+
+**Opción simple (recomendada para la demo a inversionistas) — una sola key:**
+- Application restrictions → **None**
+- API restrictions → **Restrict key** → seleccionar solo las 5 APIs de arriba.
+- Funciona en todas las plataformas de inmediato. Menos estricta, pero las
+  API restrictions limitan el daño si se filtra.
+
+**Opción segura (producción) — keys separadas por plataforma:**
+- Key Android: Application restrictions → Android apps → agregar
+  `com.nexum.nexum_client` (AppCliente) y `com.nexum.driver_app` (AppTransport)
+  con el SHA-1 de cada keystore.
+- Key Web: Application restrictions → HTTP referrers → `kev1011.github.io/*`.
+- Key Backend: Application restrictions → IP del servidor (o None).
+- Requiere 3 secrets distintos; hoy el repo usa **uno solo**, así que para
+  esto habría que ajustar los workflows.
+
+### 1.3 Configurar el secret (un único secret alimenta todo)
+
+En GitHub → **Settings → Secrets and variables → Actions → New repository secret**:
+- **Name:** `GOOGLE_MAPS_API_KEY`
+- **Value:** `AIzaXXXXXXXXXXXXXXX`
+
+O por CLI (si tienes `gh` autenticado localmente):
+```bash
+gh secret set GOOGLE_MAPS_API_KEY --repo KEV1011/nexum-store
+# pega la key cuando lo pida (no queda en el historial del shell)
 ```
-google.maps.api.key=AIzaXXXXXXXXXXXXXXX
+
+Ese único secret se inyecta automáticamente al hacer push en **5 lugares**:
+
+| Consumidor | Workflow | Mecanismo |
+|------------|----------|-----------|
+| AppCliente Android | `build-apk-cliente.yml` | `local.properties` → `MAPS_API_KEY` → manifest |
+| AppCliente Web | `deploy-web-cliente.yml` | reemplaza `__MAPS_API_KEY__` en `web/index.html` |
+| AppTransport Android | `build-apk.yml` | `-PGOOGLE_MAPS_API_KEY` → manifest |
+| AppTransport Web | `deploy-web.yml` | reemplaza `__GOOGLE_MAPS_API_KEY__` |
+| Backend | env del servidor | `process.env.GOOGLE_MAPS_API_KEY` |
+
+> **Backend:** además del secret de Actions, el servidor donde corre el backend
+> (Render/Railway/VPS) necesita la variable de entorno `GOOGLE_MAPS_API_KEY`.
+> Si falta, geocoding/rutas/búsqueda degradan sin romper (retornan vacío).
+
+**Para builds locales (sin CI):** crear `AppCliente/android/local.properties`
+(ya está en `.gitignore`, nunca se commitea):
+```
+MAPS_API_KEY=AIzaXXXXXXXXXXXXXXX
 ```
 
-**Opción B — Para builds en CI/CD (recomendado):**
-En GitHub → Settings → Secrets and variables → Actions → New repository secret:
-- Name: `GOOGLE_MAPS_API_KEY`
-- Value: `AIzaXXXXXXXXXXXXXXX`
+### 1.4 Verificar que el mapa renderiza
+1. Hacer push (o re-ejecutar el workflow) tras guardar el secret.
+2. Abrir el APK / la web: el mapa debe mostrar las calles de Pamplona.
+3. Si sigue **gris**: revisar en GCP → APIs & Services → **Metrics** si hay
+   errores `REQUEST_DENIED` (API no habilitada) o `ApiNotActivatedMapError`
+   (billing apagado). Esos dos son las causas más comunes.
 
-Al hacer push, el workflow inyecta la key automáticamente en:
-- APK / AAB (manifestPlaceholders)
-- Build web (sed en `build/web/index.html`)
+> 🔒 La key expuesta antes (`AIzaSy…fiBiME`) debe **revocarse** en GCP si aún
+> existe; genera una nueva y guárdala solo en el secret.
 
 ---
 
