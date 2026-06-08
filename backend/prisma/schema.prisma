@@ -1,5 +1,5 @@
 // Nexum MaaS — Schema de base de datos
-// Stack: PostgreSQL + PostGIS (geo-queries) + Prisma ORM
+// Stack: PostgreSQL + Prisma ORM
 //
 // Para aplicar:
 //   npx prisma migrate dev --name init
@@ -49,6 +49,8 @@ model OtpSession {
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
+  driverId  String?
+  driver    Driver?  @relation(fields: [driverId], references: [id])
   user      User?    @relation(fields: [phone], references: [phone])
 
   @@index([phone])
@@ -58,20 +60,26 @@ model OtpSession {
 // ── Conductores ───────────────────────────────────────────────────────────────
 
 model Driver {
-  id            String       @id @default(cuid())
-  phone         String       @unique
-  name          String
-  email         String?      @unique
-  avatarUrl     String?
-  licenseNumber String       @unique
-  status        DriverStatus @default(OFFLINE)
-  isVerified    Boolean      @default(false)
-  rating        Float        @default(5.0)
-  totalTrips    Int          @default(0)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id                String       @id @default(cuid())
+  phone             String       @unique
+  name              String
+  email             String?      @unique
+  avatarUrl         String?
+  documentType      String?
+  documentNumber    String?      @unique
+  licenseNumber     String?      @unique
+  status            DriverStatus @default(OFFLINE)
+  isVerified        Boolean      @default(false)
+  rating            Float        @default(5.0)
+  totalTrips        Int          @default(0)
+  bio               String?
+  bankName          String?
+  bankAccountType   String?
+  bankAccountNumber String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
-  // Última posición conocida (PostGIS — se guarda como lat/lng en Postgres)
+  // Última posición conocida
   lastLat       Float?
   lastLng       Float?
   lastSeenAt    DateTime?
@@ -80,6 +88,7 @@ model Driver {
   trips         Trip[]
   otpSessions   OtpSession[]
   earnings      DriverEarning[]
+  documents     DriverDocument[]
 
   @@index([status])
   @@map("drivers")
@@ -89,6 +98,24 @@ enum DriverStatus {
   OFFLINE
   ONLINE
   ON_TRIP
+}
+
+model DriverDocument {
+  id              String    @id @default(cuid())
+  driverId        String
+  type            String
+  fileUrl         String
+  status          String    @default("pending")
+  expiresAt       String?
+  rejectionReason String?
+  uploadedAt      DateTime  @default(now())
+  reviewedAt      DateTime?
+
+  driver          Driver    @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, type])
+  @@index([driverId])
+  @@map("driver_documents")
 }
 
 model Vehicle {
@@ -120,11 +147,13 @@ enum VehicleType {
 model Business {
   id           String           @id @default(cuid())
   name         String
+  ownerName    String?
   category     BusinessCategory
   address      String
-  lat          Float
-  lng          Float
+  lat          Float?
+  lng          Float?
   phone        String?
+  whatsapp     String?
   rating       Float            @default(5.0)
   etaMinutes   Int              @default(30)
   deliveryFee  Float            @default(2500)
@@ -137,7 +166,6 @@ model Business {
   orders       Order[]
 
   @@index([category])
-  @@index([lat, lng])
   @@map("businesses")
 }
 
@@ -171,7 +199,7 @@ model Product {
 model Order {
   id               String      @id @default(cuid())
   orderRef         String      @unique
-  userId           String
+  userId           String?
   businessId       String
   driverId         String?
   status           OrderStatus @default(CONFIRMED)
@@ -192,7 +220,7 @@ model Order {
   pickedUpAt       DateTime?
   deliveredAt      DateTime?
 
-  user             User        @relation(fields: [userId], references: [id])
+  user             User?       @relation(fields: [userId], references: [id])
   business         Business    @relation(fields: [businessId], references: [id])
   lines            OrderLine[]
 
@@ -231,7 +259,7 @@ model OrderLine {
 model Trip {
   id                 String          @id @default(cuid())
   requestRef         String          @unique
-  passengerId        String
+  passengerId        String?
   driverId           String?
   vehicleId          String?
   serviceType        TransportType
@@ -247,10 +275,8 @@ model Trip {
   distanceKm         Float?
   etaMinutes         Int?
   cancelReason       String?
-  // Prueba de entrega (para envíos)
   pickupPhotoUrl     String?
   deliveryPhotoUrl   String?
-  // Envíos — datos destinatario
   recipientName      String?
   recipientPhone     String?
   packageDescription String?
@@ -262,7 +288,7 @@ model Trip {
   arrivedAt          DateTime?
   completedAt        DateTime?
 
-  passenger          User            @relation("TripPassenger", fields: [passengerId], references: [id])
+  passenger          User?           @relation("TripPassenger", fields: [passengerId], references: [id])
   driver             Driver?         @relation(fields: [driverId], references: [id])
   vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
   ratings            Rating[]
@@ -353,6 +379,8 @@ model Errand {
   proofPhotoUrl    String?
   deliveryPhotoUrl String?
   hasSignature     Boolean       @default(false)
+  driverName       String?
+  driverPhone      String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   acceptedAt       DateTime?
@@ -444,7 +472,7 @@ enum IntercityStatus {
   CANCELLED
 }
 
-// ── Viajes compartidos (Modelo A: conductor publica → pasajero reserva) ─────────
+// ── Viajes compartidos (Modelo A) ─────────────────────────────────────────────
 
 model PooledTrip {
   id                 String           @id @default(cuid())
@@ -474,16 +502,16 @@ model PooledTrip {
 }
 
 model SeatBooking {
-  id            String            @id @default(cuid())
-  tripId        String
-  userId        String
-  passengerName String
+  id             String            @id @default(cuid())
+  tripId         String
+  userId         String
+  passengerName  String
   passengerPhone String
-  seatsBooked   Int
-  pickupAddress String?
-  notes         String?
-  status        SeatBookingStatus @default(CONFIRMED)
-  bookedAt      DateTime          @default(now())
+  seatsBooked    Int
+  pickupAddress  String?
+  notes          String?
+  status         SeatBookingStatus @default(CONFIRMED)
+  bookedAt       DateTime          @default(now())
 
   trip          PooledTrip        @relation(fields: [tripId], references: [id])
   user          User              @relation(fields: [userId], references: [id])
@@ -520,4 +548,24 @@ model Rating {
   trip      Trip?    @relation(fields: [tripId], references: [id])
 
   @@map("ratings")
+}
+
+// ── Pagos (Wompi) ─────────────────────────────────────────────────────────────
+
+model Payment {
+  id            String   @id @default(cuid())
+  referenceCode String   @unique
+  amount        Float
+  currency      String   @default("COP")
+  description   String
+  clientId      String
+  orderId       String?
+  tripId        String?
+  status        String   @default("pending")
+  paymentUrl    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("payments")
 }
