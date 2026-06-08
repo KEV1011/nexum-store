@@ -173,7 +173,7 @@ router.get('/intercity/pool/fare-cap', (req: Request, res: Response): void => {
 });
 
 // POST /driver/intercity/pool/publish
-router.post('/intercity/pool/publish', (req: Request, res: Response): void => {
+router.post('/intercity/pool/publish', async (req: Request, res: Response): Promise<void> => {
   const dto = req.body as Partial<PublishPooledTripDTO>;
   if (
     !dto.origin || !dto.destination || !dto.departureTime ||
@@ -186,7 +186,7 @@ router.post('/intercity/pool/publish', (req: Request, res: Response): void => {
     return;
   }
   try {
-    const trip = publishPooledTrip(req.driverId!, MOCK_DRIVER.name, req.driverPhone ?? MOCK_DRIVER.phone, {
+    const trip = await publishPooledTrip(req.driverId!, MOCK_DRIVER.name, req.driverPhone ?? MOCK_DRIVER.phone, {
       origin: dto.origin,
       destination: dto.destination,
       departureTime: dto.departureTime,
@@ -204,27 +204,27 @@ router.post('/intercity/pool/publish', (req: Request, res: Response): void => {
 });
 
 // GET /driver/intercity/pool/mine
-router.get('/intercity/pool/mine', (req: Request, res: Response): void => {
-  res.json({ success: true, data: getDriverPooledTrips(req.driverId!) });
+router.get('/intercity/pool/mine', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await getDriverPooledTrips(req.driverId!) });
 });
 
 // POST /driver/intercity/pool/:id/depart
-router.post('/intercity/pool/:id/depart', (req: Request, res: Response): void => {
-  const trip = departPooledTrip(req.driverId!, req.params['id']!);
+router.post('/intercity/pool/:id/depart', async (req: Request, res: Response): Promise<void> => {
+  const trip = await departPooledTrip(req.driverId!, req.params['id']!);
   if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or cannot depart' }); return; }
   res.json({ success: true, data: trip });
 });
 
 // POST /driver/intercity/pool/:id/complete
-router.post('/intercity/pool/:id/complete', (req: Request, res: Response): void => {
-  const trip = completePooledTrip(req.driverId!, req.params['id']!);
+router.post('/intercity/pool/:id/complete', async (req: Request, res: Response): Promise<void> => {
+  const trip = await completePooledTrip(req.driverId!, req.params['id']!);
   if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or not in progress' }); return; }
   res.json({ success: true, data: trip });
 });
 
 // POST /driver/intercity/pool/:id/cancel
-router.post('/intercity/pool/:id/cancel', (req: Request, res: Response): void => {
-  const trip = cancelPooledTrip(req.driverId!, req.params['id']!);
+router.post('/intercity/pool/:id/cancel', async (req: Request, res: Response): Promise<void> => {
+  const trip = await cancelPooledTrip(req.driverId!, req.params['id']!);
   if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
   res.json({ success: true, data: trip });
 });

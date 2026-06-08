@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import {
   IntercityCity,
   IntercitySeats,
@@ -6,215 +5,215 @@ import {
   RequestIntercityDTO,
   IntercityBookingDTO,
 } from '../types';
+import { prisma } from '../lib/prisma';
 
-// ─── Internal state ───────────────────────────────────────────────────────────
-
-interface IntercityBooking {
-  id: string;
-  requestRef: string;
-  clientId: string;
-  origin: IntercityCity;
-  destination: IntercityCity;
-  departureTime: Date;
-  seats: IntercitySeats;
-  offeredFare: number;
-  counterFare?: number;
-  status: IntercityStatus;
-  driverName?: string;
-  driverPhone?: string;
-  driverVehicle?: string;
-  pickupAddress?: string;
-  dropoffAddress?: string;
-  notes?: string;
-  createdAt: Date;
-  confirmedAt?: Date;
-}
-
-const bookingStore = new Map<string, IntercityBooking>();
-const clientActiveBooking = new Map<string, string>(); // clientId → bookingId
-
+// ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type BookingCallback = (bookingId: string, booking: IntercityBookingDTO) => void;
 const bookingListeners = new Map<string, Set<BookingCallback>>();
 
+// ─── Enum mappings ─────────────────────────────────────────────────────────────
+
+const SEATS_TO_PRISMA: Record<IntercitySeats, 'ONE' | 'TWO' | 'THREE' | 'FLEET'> = {
+  one: 'ONE', two: 'TWO', three: 'THREE', fleet: 'FLEET',
+};
+
+const SEATS_FROM_PRISMA: Record<string, IntercitySeats> = {
+  ONE: 'one', TWO: 'two', THREE: 'three', FLEET: 'fleet',
+};
+
+const STATUS_FROM_PRISMA: Record<string, IntercityStatus> = {
+  SEARCHING: 'searching', DRIVER_FOUND: 'driver_found', CONFIRMED: 'confirmed',
+  IN_PROGRESS: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled',
+};
+
+const CITY_TO_PRISMA: Record<IntercityCity, 'PAMPLONA' | 'CUCUTA' | 'BUCARAMANGA' | 'CHITAGA' | 'MALAGA' | 'OCANA' | 'BOGOTA'> = {
+  pamplona: 'PAMPLONA', cucuta: 'CUCUTA', bucaramanga: 'BUCARAMANGA',
+  chitaga: 'CHITAGA', malaga: 'MALAGA', ocana: 'OCANA', bogota: 'BOGOTA',
+};
+
+const CITY_FROM_PRISMA: Record<string, IntercityCity> = {
+  PAMPLONA: 'pamplona', CUCUTA: 'cucuta', BUCARAMANGA: 'bucaramanga',
+  CHITAGA: 'chitaga', MALAGA: 'malaga', OCANA: 'ocana', BOGOTA: 'bogota',
+};
+
+// ─── Mock driver pool for simulation ──────────────────────────────────────────
 const MOCK_INTERCITY_DRIVERS = [
-  {
-    name: 'Hernán Castellanos',
-    phone: '+57 311 789 0123',
-    vehicle: 'Toyota Fortuner Gris 2022 • TJK 451',
-  },
-  {
-    name: 'Wilson Durán',
-    phone: '+57 317 654 3210',
-    vehicle: 'Chevrolet Captiva Blanca 2021 • MPN 334',
-  },
-  {
-    name: 'Ramiro Sepúlveda',
-    phone: '+57 313 456 0987',
-    vehicle: 'Nissan X-Trail Negra 2023 • OPS 876',
-  },
+  { name: 'Hernán Castellanos', phone: '+57 311 789 0123', vehicle: 'Toyota Fortuner Gris 2022 • TJK 451' },
+  { name: 'Wilson Durán', phone: '+57 317 654 3210', vehicle: 'Chevrolet Captiva Blanca 2021 • MPN 334' },
+  { name: 'Ramiro Sepúlveda', phone: '+57 313 456 0987', vehicle: 'Nissan X-Trail Negra 2023 • OPS 876' },
 ];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+type DbBooking = {
+  id: string; requestRef: string; userId: string;
+  origin: string; destination: string; departureTime: Date; seats: string;
+  offeredFare: number; counterFare: number | null; status: string;
+  driverName: string | null; driverPhone: string | null; driverVehicle: string | null;
+  pickupAddress: string | null; dropoffAddress: string | null; notes: string | null;
+  createdAt: Date; confirmedAt: Date | null;
+};
+
+function _toDTO(b: DbBooking): IntercityBookingDTO {
+  return {
+    id: b.id,
+    requestRef: b.requestRef,
+    origin: (CITY_FROM_PRISMA[b.origin] ?? b.origin.toLowerCase()) as IntercityCity,
+    destination: (CITY_FROM_PRISMA[b.destination] ?? b.destination.toLowerCase()) as IntercityCity,
+    departureTime: b.departureTime.toISOString(),
+    seats: (SEATS_FROM_PRISMA[b.seats] ?? 'one') as IntercitySeats,
+    offeredFare: b.offeredFare,
+    counterFare: b.counterFare ?? undefined,
+    status: (STATUS_FROM_PRISMA[b.status] ?? 'searching') as IntercityStatus,
+    driverName: b.driverName ?? undefined,
+    driverPhone: b.driverPhone ?? undefined,
+    driverVehicle: b.driverVehicle ?? undefined,
+    pickupAddress: b.pickupAddress ?? undefined,
+    dropoffAddress: b.dropoffAddress ?? undefined,
+    notes: b.notes ?? undefined,
+    createdAt: b.createdAt.toISOString(),
+    confirmedAt: b.confirmedAt?.toISOString(),
+  };
+}
+
+function _notify(bookingId: string, dto: IntercityBookingDTO): void {
+  for (const cb of bookingListeners.get(bookingId) ?? []) cb(bookingId, dto);
+}
+
+function _scheduleDriverResponse(bookingId: string, offeredFare: number): void {
+  const delayMs = Math.random() * 6000 + 6000;
+  const hasCounter = Math.random() > 0.45;
+
+  setTimeout(() => {
+    void (async () => {
+      const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+      if (!b || b.status !== 'SEARCHING') return;
+
+      const driver = MOCK_INTERCITY_DRIVERS[Math.floor(Math.random() * MOCK_INTERCITY_DRIVERS.length)]!;
+
+      let updated: DbBooking;
+      if (hasCounter) {
+        const pct = 0.05 + Math.random() * 0.10;
+        const counterFare = Math.round((offeredFare * (1 + pct)) / 1000) * 1000;
+        updated = await prisma.intercityBooking.update({
+          where: { id: bookingId },
+          data: {
+            status: 'DRIVER_FOUND',
+            driverName: driver.name,
+            driverPhone: driver.phone,
+            driverVehicle: driver.vehicle,
+            counterFare,
+          },
+        }) as DbBooking;
+      } else {
+        updated = await prisma.intercityBooking.update({
+          where: { id: bookingId },
+          data: {
+            status: 'CONFIRMED',
+            driverName: driver.name,
+            driverPhone: driver.phone,
+            driverVehicle: driver.vehicle,
+            confirmedAt: new Date(),
+          },
+        }) as DbBooking;
+      }
+      _notify(bookingId, _toDTO(updated));
+    })();
+  }, delayMs);
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function requestIntercityBooking(
+export async function requestIntercityBooking(
   clientId: string,
   dto: RequestIntercityDTO,
-): IntercityBookingDTO {
-  const id = `cint-${randomUUID().slice(0, 8)}`;
+): Promise<IntercityBookingDTO> {
   const requestRef = `NXI-${Math.floor(1000 + Math.random() * 8000)}`;
-
-  const booking: IntercityBooking = {
-    id,
-    requestRef,
-    clientId,
-    origin: dto.origin,
-    destination: dto.destination,
-    departureTime: new Date(dto.departureTime),
-    seats: dto.seats,
-    offeredFare: dto.offeredFare,
-    status: 'searching',
-    pickupAddress: dto.pickupAddress,
-    dropoffAddress: dto.dropoffAddress,
-    notes: dto.notes,
-    createdAt: new Date(),
-  };
-
-  bookingStore.set(id, booking);
-  clientActiveBooking.set(clientId, id);
-  _scheduleDriverResponse(id, dto.offeredFare);
-  return _toDTO(booking);
+  const booking = await prisma.intercityBooking.create({
+    data: {
+      requestRef,
+      userId: clientId,
+      origin: CITY_TO_PRISMA[dto.origin],
+      destination: CITY_TO_PRISMA[dto.destination],
+      departureTime: new Date(dto.departureTime),
+      seats: SEATS_TO_PRISMA[dto.seats],
+      offeredFare: dto.offeredFare,
+      status: 'SEARCHING',
+      pickupAddress: dto.pickupAddress ?? null,
+      dropoffAddress: dto.dropoffAddress ?? null,
+      notes: dto.notes ?? null,
+    },
+  });
+  _scheduleDriverResponse(booking.id, dto.offeredFare);
+  return _toDTO(booking as DbBooking);
 }
 
-export function confirmIntercityBooking(
+export async function confirmIntercityBooking(
   clientId: string,
   bookingId: string,
-): IntercityBookingDTO | null {
-  const b = bookingStore.get(bookingId);
-  if (!b || b.clientId !== clientId) return null;
-  if (b.status !== 'driver_found') return null;
-  b.status = 'confirmed';
-  b.confirmedAt = new Date();
-  _notify(bookingId, b);
-  return _toDTO(b);
+): Promise<IntercityBookingDTO | null> {
+  const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+  if (!b || b.userId !== clientId) return null;
+  if (b.status !== 'DRIVER_FOUND') return null;
+
+  const updated = await prisma.intercityBooking.update({
+    where: { id: bookingId },
+    data: { status: 'CONFIRMED', confirmedAt: new Date() },
+  });
+  const dto = _toDTO(updated as DbBooking);
+  _notify(bookingId, dto);
+  return dto;
 }
 
-export function rejectIntercityOffer(clientId: string, bookingId: string): boolean {
-  const b = bookingStore.get(bookingId);
-  if (!b || b.clientId !== clientId) return false;
-  if (b.status !== 'driver_found') return false;
-  b.status = 'searching';
-  b.driverName = undefined;
-  b.driverPhone = undefined;
-  b.driverVehicle = undefined;
-  b.counterFare = undefined;
-  _notify(bookingId, b);
-  // Re-search with same offered fare (driver may accept this time)
+export async function rejectIntercityOffer(clientId: string, bookingId: string): Promise<boolean> {
+  const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+  if (!b || b.userId !== clientId) return false;
+  if (b.status !== 'DRIVER_FOUND') return false;
+
+  const updated = await prisma.intercityBooking.update({
+    where: { id: bookingId },
+    data: {
+      status: 'SEARCHING',
+      driverName: null, driverPhone: null, driverVehicle: null, counterFare: null,
+    },
+  });
+  const dto = _toDTO(updated as DbBooking);
+  _notify(bookingId, dto);
   _scheduleDriverResponse(bookingId, b.offeredFare);
   return true;
 }
 
-export function cancelIntercityBooking(clientId: string, bookingId: string): boolean {
-  const b = bookingStore.get(bookingId);
-  if (!b || b.clientId !== clientId) return false;
-  const cancellable: IntercityStatus[] = ['searching', 'driver_found', 'confirmed'];
-  if (!cancellable.includes(b.status)) return false;
-  b.status = 'cancelled';
-  _notify(bookingId, b);
+export async function cancelIntercityBooking(clientId: string, bookingId: string): Promise<boolean> {
+  const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+  if (!b || b.userId !== clientId) return false;
+  if (!['SEARCHING', 'DRIVER_FOUND', 'CONFIRMED'].includes(b.status)) return false;
+
+  const updated = await prisma.intercityBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
+  _notify(bookingId, _toDTO(updated as DbBooking));
   return true;
 }
 
-export function getActiveIntercityBooking(
-  clientId: string,
-): IntercityBookingDTO | null {
-  const id = clientActiveBooking.get(clientId);
-  if (!id) return null;
-  const b = bookingStore.get(id);
-  if (!b) return null;
-  const active: IntercityStatus[] = ['searching', 'driver_found', 'confirmed', 'in_progress'];
-  if (!active.includes(b.status)) return null;
-  return _toDTO(b);
+export async function getActiveIntercityBooking(clientId: string): Promise<IntercityBookingDTO | null> {
+  const b = await prisma.intercityBooking.findFirst({
+    where: { userId: clientId, status: { in: ['SEARCHING', 'DRIVER_FOUND', 'CONFIRMED', 'IN_PROGRESS'] } },
+    orderBy: { createdAt: 'desc' },
+  });
+  return b ? _toDTO(b as DbBooking) : null;
 }
 
-export function getIntercityBookingById(
-  clientId: string,
-  bookingId: string,
-): IntercityBookingDTO | null {
-  const b = bookingStore.get(bookingId);
-  if (!b || b.clientId !== clientId) return null;
-  return _toDTO(b);
+export async function getIntercityBookingById(clientId: string, bookingId: string): Promise<IntercityBookingDTO | null> {
+  const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+  if (!b || b.userId !== clientId) return null;
+  return _toDTO(b as DbBooking);
 }
 
-export function subscribeIntercityBooking(
-  bookingId: string,
-  cb: BookingCallback,
-): () => void {
+export function subscribeIntercityBooking(bookingId: string, cb: BookingCallback): () => void {
   if (!bookingListeners.has(bookingId)) bookingListeners.set(bookingId, new Set());
   bookingListeners.get(bookingId)!.add(cb);
   return () => bookingListeners.get(bookingId)?.delete(cb);
 }
 
-export function getIntercityBookingSnapshot(
-  bookingId: string,
-): IntercityBookingDTO | null {
-  const b = bookingStore.get(bookingId);
-  if (!b) return null;
-  return _toDTO(b);
-}
-
-// ─── Simulation ───────────────────────────────────────────────────────────────
-
-function _scheduleDriverResponse(bookingId: string, offeredFare: number): void {
-  const delayMs = Math.random() * 6000 + 6000; // 6-12 s
-  const hasCounter = Math.random() > 0.45; // 55% send counter offer
-
-  setTimeout(() => {
-    const b = bookingStore.get(bookingId);
-    if (!b || b.status !== 'searching') return;
-
-    const driver =
-      MOCK_INTERCITY_DRIVERS[Math.floor(Math.random() * MOCK_INTERCITY_DRIVERS.length)]!;
-    b.driverName = driver.name;
-    b.driverPhone = driver.phone;
-    b.driverVehicle = driver.vehicle;
-
-    if (hasCounter) {
-      // Counter is offered fare + 5-15 %
-      const pct = 0.05 + Math.random() * 0.10;
-      b.counterFare = Math.round((offeredFare * (1 + pct)) / 1000) * 1000;
-      b.status = 'driver_found';
-    } else {
-      b.status = 'confirmed';
-      b.confirmedAt = new Date();
-    }
-    _notify(bookingId, b);
-  }, delayMs);
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function _notify(bookingId: string, b: IntercityBooking): void {
-  const dto = _toDTO(b);
-  for (const cb of bookingListeners.get(bookingId) ?? []) cb(bookingId, dto);
-}
-
-function _toDTO(b: IntercityBooking): IntercityBookingDTO {
-  return {
-    id: b.id,
-    requestRef: b.requestRef,
-    origin: b.origin,
-    destination: b.destination,
-    departureTime: b.departureTime.toISOString(),
-    seats: b.seats,
-    offeredFare: b.offeredFare,
-    counterFare: b.counterFare,
-    status: b.status,
-    driverName: b.driverName,
-    driverPhone: b.driverPhone,
-    driverVehicle: b.driverVehicle,
-    pickupAddress: b.pickupAddress,
-    dropoffAddress: b.dropoffAddress,
-    notes: b.notes,
-    createdAt: b.createdAt.toISOString(),
-    confirmedAt: b.confirmedAt?.toISOString(),
-  };
+export async function getIntercityBookingSnapshot(bookingId: string): Promise<IntercityBookingDTO | null> {
+  const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+  return b ? _toDTO(b as DbBooking) : null;
 }

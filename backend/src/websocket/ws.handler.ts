@@ -208,16 +208,16 @@ async function handleReject(tripId: string): Promise<void> {
   }
 }
 
-function handleAcceptErrand(errandId: string): void {
+async function handleAcceptErrand(errandId: string): Promise<void> {
   if (driverActiveErrandId && driverActiveErrandId !== errandId) {
     sendDriver({ type: 'error', message: 'Already handling an errand' });
     return;
   }
 
   // Real client errand
-  const clientErrand = getClientErrandRaw(errandId);
+  const clientErrand = await getClientErrandRaw(errandId);
   if (clientErrand) {
-    const updated = acceptClientErrand(errandId, 'Carlos Méndez', '+57 310 456 7890');
+    const updated = await acceptClientErrand(errandId, 'Carlos Méndez', '+57 310 456 7890');
     if (updated) {
       sendDriver({ type: 'errand_update', errandId, errand: updated });
       driverActiveErrandId = errandId;
@@ -248,11 +248,11 @@ function handleRejectErrand(errandId: string): void {
   resumeDispatch();
 }
 
-function handleErrandStatus(
+async function handleErrandStatus(
   errandId: string,
   status: string,
   actualCost: number | null,
-): void {
+): Promise<void> {
   const validStatuses: ErrandStatus[] = ['shopping', 'on_the_way', 'delivered', 'cancelled'];
   if (!validStatuses.includes(status as ErrandStatus)) {
     sendDriver({ type: 'error', message: `Invalid errand status: ${status}` });
@@ -262,9 +262,9 @@ function handleErrandStatus(
   const terminal = status === 'delivered' || status === 'cancelled';
 
   // Update real client errand
-  const clientErrand = getClientErrandRaw(errandId);
+  const clientErrand = await getClientErrandRaw(errandId);
   if (clientErrand) {
-    const updated = updateErrandStatus(
+    const updated = await updateErrandStatus(
       errandId,
       status as ErrandStatus,
       actualCost ?? undefined,
@@ -331,8 +331,8 @@ function handleSubscribeTrip(ws: WebSocket, tripId: string): void {
   clientTripSubs.set(ws, map);
 }
 
-function handleSubscribeErrand(ws: WebSocket, errandId: string): void {
-  const snapshot = getClientErrandSnapshot(errandId);
+async function handleSubscribeErrand(ws: WebSocket, errandId: string): Promise<void> {
+  const snapshot = await getClientErrandSnapshot(errandId);
   if (snapshot) sendTo(ws, { type: 'errand_update', errandId, errand: snapshot });
 
   const unsubscribe = subscribeClientErrand(errandId, (_id, errand) => {
@@ -343,8 +343,8 @@ function handleSubscribeErrand(ws: WebSocket, errandId: string): void {
   clientErrandSubs.set(ws, map);
 }
 
-function handleSubscribeIntercity(ws: WebSocket, bookingId: string): void {
-  const snapshot = getIntercityBookingSnapshot(bookingId);
+async function handleSubscribeIntercity(ws: WebSocket, bookingId: string): Promise<void> {
+  const snapshot = await getIntercityBookingSnapshot(bookingId);
   if (snapshot) sendTo(ws, { type: 'intercity_update', bookingId, booking: snapshot });
 
   const unsubscribe = subscribeIntercityBooking(bookingId, (_id, booking) => {
@@ -355,8 +355,8 @@ function handleSubscribeIntercity(ws: WebSocket, bookingId: string): void {
   clientIntercitySubs.set(ws, map);
 }
 
-function handleSubscribePooled(ws: WebSocket, tripId: string): void {
-  const snapshot = getPooledTripSnapshot(tripId);
+async function handleSubscribePooled(ws: WebSocket, tripId: string): Promise<void> {
+  const snapshot = await getPooledTripSnapshot(tripId);
   if (snapshot) sendTo(ws, { type: 'pooled_update', tripId, trip: snapshot });
 
   const unsubscribe = subscribePooledTrip(tripId, (_id, trip) => {
@@ -659,7 +659,7 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
-      handleAcceptErrand(errandId);
+      void handleAcceptErrand(errandId);
       break;
     }
     case 'reject_errand': {
@@ -680,7 +680,7 @@ function onMessage(ws: WebSocket, raw: string): void {
         return;
       }
       const actualCost = typeof msg['actualCost'] === 'number' ? msg['actualCost'] : null;
-      handleErrandStatus(errandId, status, actualCost);
+      void handleErrandStatus(errandId, status, actualCost);
       break;
     }
 
@@ -722,7 +722,7 @@ function onMessage(ws: WebSocket, raw: string): void {
     case 'subscribe_errand': {
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
-      handleSubscribeErrand(ws, errandId);
+      void handleSubscribeErrand(ws, errandId);
       break;
     }
     case 'unsubscribe_errand': {
@@ -736,7 +736,7 @@ function onMessage(ws: WebSocket, raw: string): void {
     case 'subscribe_intercity': {
       const bookingId = msg['bookingId'];
       if (typeof bookingId !== 'string') { sendTo(ws, { type: 'error', message: 'bookingId required' }); return; }
-      handleSubscribeIntercity(ws, bookingId);
+      void handleSubscribeIntercity(ws, bookingId);
       break;
     }
     case 'unsubscribe_intercity': {
@@ -750,7 +750,7 @@ function onMessage(ws: WebSocket, raw: string): void {
     case 'subscribe_pooled': {
       const tripId = msg['tripId'];
       if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
-      handleSubscribePooled(ws, tripId);
+      void handleSubscribePooled(ws, tripId);
       break;
     }
     case 'unsubscribe_pooled': {
