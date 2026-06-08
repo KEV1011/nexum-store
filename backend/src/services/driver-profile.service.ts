@@ -6,16 +6,10 @@ import {
   DocumentStatus,
   UpsertDriverDocumentDTO,
 } from '../types';
-import { MOCK_DRIVER } from '../config/constants';
+import { prisma } from '../lib/prisma';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Driver profile & document verification (Features D + E)
-//
-// D — drivers upload required legal documents (cédula, licencia, SOAT, tarjeta
-//     de propiedad). Each has a verification status. A driver is "verified" and
-//     allowed to receive rides only when every required document is approved.
-// E — passengers fetch a public profile (name, photo, rating, vehicle, verified
-//     badge) before accepting a bid.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const REQUIRED_DOCS: DriverDocumentType[] = [
@@ -33,108 +27,36 @@ const DOC_LABELS: Record<DriverDocumentType, string> = {
   profile_photo: 'Foto de perfil',
 };
 
-interface DriverDocument {
-  type: DriverDocumentType;
-  fileUrl: string;
-  status: DocumentStatus;
-  expiresAt?: string;
-  rejectionReason?: string;
-  uploadedAt: Date;
-  reviewedAt?: Date;
-}
-
-interface DriverProfile {
-  driverId: string;
-  fullName: string;
-  phone: string;
-  photoUrl?: string;
-  bio?: string;
-  rating: number;
-  totalTrips: number;
-  vehicleDescription: string;
-  memberSince: Date;
-  documents: Map<DriverDocumentType, DriverDocument>;
-}
-
-const profileStore = new Map<string, DriverProfile>();
-
-// ─── Seed the demo driver so the flow is explorable out of the box ─────────────
-
-function seedDemoDriver(): DriverProfile {
-  const now = new Date();
-  const docs = new Map<DriverDocumentType, DriverDocument>();
-  for (const t of REQUIRED_DOCS) {
-    docs.set(t, {
-      type: t,
-      fileUrl: `mock://docs/${MOCK_DRIVER.id}/${t}.jpg`,
-      status: 'approved',
-      uploadedAt: now,
-      reviewedAt: now,
-    });
-  }
-  const profile: DriverProfile = {
-    driverId: MOCK_DRIVER.id,
-    fullName: MOCK_DRIVER.name,
-    phone: MOCK_DRIVER.phone,
-    photoUrl: undefined,
-    bio: 'Conductor con más de 5 años de experiencia en Pamplona. Puntual y seguro.',
-    rating: MOCK_DRIVER.rating,
-    totalTrips: MOCK_DRIVER.totalTrips,
-    vehicleDescription: `${MOCK_DRIVER.vehicle.brand} ${MOCK_DRIVER.vehicle.model} ${MOCK_DRIVER.vehicle.color} • ${MOCK_DRIVER.vehicle.plate}`,
-    memberSince: new Date('2021-03-15'),
-    documents: docs,
-  };
-  profileStore.set(MOCK_DRIVER.id, profile);
-  return profile;
-}
-
-seedDemoDriver();
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function getOrCreate(driverId: string, fallbackName = 'Conductor Nexum', fallbackPhone = ''): DriverProfile {
-  let p = profileStore.get(driverId);
-  if (!p) {
-    p = {
-      driverId,
-      fullName: fallbackName,
-      phone: fallbackPhone,
-      rating: 5.0,
-      totalTrips: 0,
-      vehicleDescription: 'Vehículo sin registrar',
-      memberSince: new Date(),
-      documents: new Map(),
-    };
-    profileStore.set(driverId, p);
-  }
-  return p;
-}
+type DbDoc = {
+  type: string;
+  fileUrl: string;
+  status: string;
+  expiresAt: string | null;
+  rejectionReason: string | null;
+  uploadedAt: Date;
+  reviewedAt: Date | null;
+};
 
-function docToDTO(d: DriverDocument): DriverDocumentDTO {
+function _dbDocToDTO(doc: DbDoc): DriverDocumentDTO {
   return {
-    type: d.type,
-    label: DOC_LABELS[d.type],
-    fileUrl: d.fileUrl,
-    status: d.status,
-    expiresAt: d.expiresAt,
-    rejectionReason: d.rejectionReason,
-    uploadedAt: d.uploadedAt.toISOString(),
-    reviewedAt: d.reviewedAt?.toISOString(),
+    type: doc.type as DriverDocumentType,
+    label: DOC_LABELS[doc.type as DriverDocumentType] ?? doc.type,
+    fileUrl: doc.fileUrl,
+    status: doc.status as DocumentStatus,
+    expiresAt: doc.expiresAt ?? undefined,
+    rejectionReason: doc.rejectionReason ?? undefined,
+    uploadedAt: doc.uploadedAt.toISOString(),
+    reviewedAt: doc.reviewedAt?.toISOString(),
   };
 }
 
-/** A driver is verified once every required document is approved. */
-export function isDriverVerified(driverId: string): boolean {
-  const p = profileStore.get(driverId);
-  if (!p) return false;
-  return REQUIRED_DOCS.every((t) => p.documents.get(t)?.status === 'approved');
-}
-
-function buildDocList(p: DriverProfile): DriverDocumentDTO[] {
-  // Always return a row per required doc, even if not yet uploaded.
+function _buildDocList(docs: DbDoc[]): DriverDocumentDTO[] {
+  const docMap = new Map(docs.map((d) => [d.type, d]));
   return REQUIRED_DOCS.map((t) => {
-    const existing = p.documents.get(t);
-    if (existing) return docToDTO(existing);
+    const existing = docMap.get(t);
+    if (existing) return _dbDocToDTO(existing);
     return {
       type: t,
       label: DOC_LABELS[t],
@@ -145,87 +67,142 @@ function buildDocList(p: DriverProfile): DriverDocumentDTO[] {
   });
 }
 
+function _vehicleDescription(
+  vehicle: { brand: string; model: string; color: string; plate: string } | null | undefined,
+): string {
+  if (!vehicle) return 'Vehículo sin registrar';
+  return `${vehicle.brand} ${vehicle.model} ${vehicle.color} • ${vehicle.plate}`;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function getDriverProfile(driverId: string): DriverProfileDTO {
-  const p = getOrCreate(driverId);
-  const docs = buildDocList(p);
-  const verified = isDriverVerified(driverId);
+export async function isDriverVerified(driverId: string): Promise<boolean> {
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { isVerified: true },
+  });
+  return driver?.isVerified ?? false;
+}
+
+export async function getDriverProfile(driverId: string): Promise<DriverProfileDTO> {
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    include: {
+      vehicles: { where: { isActive: true }, take: 1 },
+      documents: true,
+    },
+  });
+  if (!driver) throw new Error('Driver not found');
+
+  const docs = _buildDocList(driver.documents);
   const approvedCount = docs.filter((d) => d.status === 'approved').length;
 
   return {
-    driverId: p.driverId,
-    fullName: p.fullName,
-    phone: p.phone,
-    photoUrl: p.photoUrl,
-    bio: p.bio,
-    rating: p.rating,
-    totalTrips: p.totalTrips,
-    vehicleDescription: p.vehicleDescription,
-    memberSince: p.memberSince.toISOString(),
-    isVerified: verified,
+    driverId: driver.id,
+    fullName: driver.name,
+    phone: driver.phone,
+    photoUrl: driver.avatarUrl ?? undefined,
+    bio: driver.bio ?? undefined,
+    rating: driver.rating,
+    totalTrips: driver.totalTrips,
+    vehicleDescription: _vehicleDescription(driver.vehicles[0]),
+    memberSince: driver.createdAt.toISOString(),
+    isVerified: driver.isVerified,
     documents: docs,
     requiredDocsCount: REQUIRED_DOCS.length,
     approvedDocsCount: approvedCount,
   };
 }
 
-export function getDriverPublicProfile(driverId: string): DriverPublicProfileDTO | null {
-  const p = profileStore.get(driverId);
-  if (!p) return null;
+export async function getDriverPublicProfile(driverId: string): Promise<DriverPublicProfileDTO | null> {
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    include: { vehicles: { where: { isActive: true }, take: 1 } },
+  });
+  if (!driver) return null;
+
   return {
-    driverId: p.driverId,
-    fullName: p.fullName,
-    photoUrl: p.photoUrl,
-    bio: p.bio,
-    rating: p.rating,
-    totalTrips: p.totalTrips,
-    vehicleDescription: p.vehicleDescription,
-    memberSince: p.memberSince.toISOString(),
-    isVerified: isDriverVerified(driverId),
+    driverId: driver.id,
+    fullName: driver.name,
+    photoUrl: driver.avatarUrl ?? undefined,
+    bio: driver.bio ?? undefined,
+    rating: driver.rating,
+    totalTrips: driver.totalTrips,
+    vehicleDescription: _vehicleDescription(driver.vehicles[0]),
+    memberSince: driver.createdAt.toISOString(),
+    isVerified: driver.isVerified,
   };
 }
 
-export function updateDriverProfile(
+export async function updateDriverProfile(
   driverId: string,
   patch: { fullName?: string; bio?: string; photoUrl?: string; vehicleDescription?: string },
-): DriverProfileDTO {
-  const p = getOrCreate(driverId);
-  if (patch.fullName !== undefined) p.fullName = patch.fullName;
-  if (patch.bio !== undefined) p.bio = patch.bio;
-  if (patch.photoUrl !== undefined) p.photoUrl = patch.photoUrl;
-  if (patch.vehicleDescription !== undefined) p.vehicleDescription = patch.vehicleDescription;
-  return getDriverProfile(driverId);
-}
-
-/** Driver uploads (or re-uploads) a document. Resets it to pending review. */
-export function upsertDriverDocument(
-  driverId: string,
-  dto: UpsertDriverDocumentDTO,
-): DriverProfileDTO {
-  const p = getOrCreate(driverId);
-  p.documents.set(dto.type, {
-    type: dto.type,
-    fileUrl: dto.fileUrl,
-    status: 'pending',
-    expiresAt: dto.expiresAt,
-    uploadedAt: new Date(),
+): Promise<DriverProfileDTO> {
+  await prisma.driver.update({
+    where: { id: driverId },
+    data: {
+      ...(patch.fullName !== undefined && { name: patch.fullName }),
+      ...(patch.bio !== undefined && { bio: patch.bio }),
+      ...(patch.photoUrl !== undefined && { avatarUrl: patch.photoUrl }),
+      // vehicleDescription is a computed field from Vehicle; no direct DB column
+    },
   });
   return getDriverProfile(driverId);
 }
 
-/** Admin/review action — approve or reject an uploaded document. */
-export function reviewDriverDocument(
+export async function upsertDriverDocument(
+  driverId: string,
+  dto: UpsertDriverDocumentDTO,
+): Promise<DriverProfileDTO> {
+  await prisma.driverDocument.upsert({
+    where: { driverId_type: { driverId, type: dto.type } },
+    update: {
+      fileUrl: dto.fileUrl,
+      status: 'pending',
+      expiresAt: dto.expiresAt ?? null,
+      rejectionReason: null,
+      reviewedAt: null,
+      uploadedAt: new Date(),
+    },
+    create: {
+      driverId,
+      type: dto.type,
+      fileUrl: dto.fileUrl,
+      status: 'pending',
+      expiresAt: dto.expiresAt ?? null,
+    },
+  });
+  return getDriverProfile(driverId);
+}
+
+export async function reviewDriverDocument(
   driverId: string,
   type: DriverDocumentType,
   approve: boolean,
   rejectionReason?: string,
-): DriverProfileDTO | null {
-  const p = profileStore.get(driverId);
-  const doc = p?.documents.get(type);
-  if (!p || !doc) return null;
-  doc.status = approve ? 'approved' : 'rejected';
-  doc.rejectionReason = approve ? undefined : rejectionReason;
-  doc.reviewedAt = new Date();
+): Promise<DriverProfileDTO | null> {
+  const doc = await prisma.driverDocument.findUnique({
+    where: { driverId_type: { driverId, type } },
+  });
+  if (!doc) return null;
+
+  await prisma.driverDocument.update({
+    where: { id: doc.id },
+    data: {
+      status: approve ? 'approved' : 'rejected',
+      rejectionReason: approve ? null : (rejectionReason ?? null),
+      reviewedAt: new Date(),
+    },
+  });
+
+  // Sync isVerified: all required docs must be approved
+  const approvedCount = await prisma.driverDocument.count({
+    where: { driverId, type: { in: REQUIRED_DOCS }, status: 'approved' },
+  });
+  await prisma.driver.update({
+    where: { id: driverId },
+    data: { isVerified: approvedCount >= REQUIRED_DOCS.length },
+  });
+
   return getDriverProfile(driverId);
 }

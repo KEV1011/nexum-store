@@ -29,47 +29,67 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /driver/profile — real profile with documents + verification status
-router.get('/profile', (req: Request, res: Response): void => {
+router.get('/profile', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
-  res.status(200).json({ success: true, data: getDriverProfile(driverId) });
+  try {
+    res.status(200).json({ success: true, data: await getDriverProfile(driverId) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to get profile';
+    res.status(404).json({ success: false, error: message });
+  }
 });
 
 // PATCH /driver/profile — edit bio/name/photo/vehicle
-router.patch('/profile', (req: Request, res: Response): void => {
+router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const { fullName, bio, photoUrl, vehicleDescription } = req.body as Record<string, string>;
-  const updated = updateDriverProfile(driverId, { fullName, bio, photoUrl, vehicleDescription });
-  res.status(200).json({ success: true, data: updated });
+  try {
+    const updated = await updateDriverProfile(driverId, { fullName, bio, photoUrl, vehicleDescription });
+    res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to update profile';
+    res.status(400).json({ success: false, error: message });
+  }
 });
 
 // PUT /driver/documents — upload or re-upload a document (Feature D)
-router.put('/documents', (req: Request, res: Response): void => {
+router.put('/documents', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const dto = req.body as Partial<UpsertDriverDocumentDTO>;
   if (!dto.type || !dto.fileUrl) {
     res.status(400).json({ success: false, error: 'type and fileUrl are required' });
     return;
   }
-  const updated = upsertDriverDocument(driverId, {
-    type: dto.type,
-    fileUrl: dto.fileUrl,
-    expiresAt: dto.expiresAt,
-  });
-  res.status(200).json({ success: true, data: updated });
+  try {
+    const updated = await upsertDriverDocument(driverId, {
+      type: dto.type,
+      fileUrl: dto.fileUrl,
+      expiresAt: dto.expiresAt,
+    });
+    res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to upload document';
+    res.status(400).json({ success: false, error: message });
+  }
 });
 
 // POST /driver/documents/:type/review — demo review action (approve/reject)
-router.post('/documents/:type/review', (req: Request, res: Response): void => {
+router.post('/documents/:type/review', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const { approve, rejectionReason } = req.body as { approve?: boolean; rejectionReason?: string };
-  const updated = reviewDriverDocument(
-    driverId,
-    req.params['type'] as DriverDocumentType,
-    approve === true,
-    rejectionReason,
-  );
-  if (!updated) { res.status(404).json({ success: false, error: 'Document not found' }); return; }
-  res.status(200).json({ success: true, data: updated });
+  try {
+    const updated = await reviewDriverDocument(
+      driverId,
+      req.params['type'] as DriverDocumentType,
+      approve === true,
+      rejectionReason,
+    );
+    if (!updated) { res.status(404).json({ success: false, error: 'Document not found' }); return; }
+    res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to review document';
+    res.status(400).json({ success: false, error: message });
+  }
 });
 
 // GET /driver/rides/active — the driver's matched ride, if any

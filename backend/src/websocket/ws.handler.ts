@@ -421,12 +421,12 @@ function relayRideUpdate(rideId: string): void {
 }
 
 /** Driver opts into the live ride pool to receive new requests (Feature C). */
-function handleDriverRegister(ws: WebSocket): void {
+async function handleDriverRegister(ws: WebSocket): Promise<void> {
   const driverId = driverIdByWs.get(ws);
   if (!driverId) { sendTo(ws, { type: 'error', message: 'Driver not authenticated' }); return; }
 
   // Block unverified drivers from receiving rides (Feature D gate).
-  if (!isDriverVerified(driverId)) {
+  if (!await isDriverVerified(driverId)) {
     sendTo(ws, {
       type: 'error',
       message: 'Tu cuenta no está verificada. Sube y aprueba tus documentos para recibir viajes.',
@@ -451,10 +451,16 @@ function handleDriverRegister(ws: WebSocket): void {
   sendTo(ws, { type: 'driver_register_ok', driverId });
 }
 
-function handleRideBid(ws: WebSocket, rideId: string, fare: number, etaMinutes: number): void {
+async function handleRideBid(ws: WebSocket, rideId: string, fare: number, etaMinutes: number): Promise<void> {
   const driverId = driverIdByWs.get(ws);
   if (!driverId) { sendTo(ws, { type: 'error', message: 'Driver not authenticated' }); return; }
-  const profile = getDriverProfile(driverId);
+  let profile;
+  try {
+    profile = await getDriverProfile(driverId);
+  } catch {
+    sendTo(ws, { type: 'error', message: 'Driver profile not found' });
+    return;
+  }
   try {
     const bid = placeBid(
       driverId,
@@ -782,7 +788,7 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Ride negotiation: driver pool ────────────────────────────────────────
     case 'driver_register': {
-      handleDriverRegister(ws);
+      void handleDriverRegister(ws);
       break;
     }
     case 'ride_bid': {
@@ -792,7 +798,7 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (typeof rideId !== 'string' || typeof fare !== 'number') {
         sendTo(ws, { type: 'error', message: 'rideId and fare required' }); return;
       }
-      handleRideBid(ws, rideId, fare, typeof eta === 'number' ? eta : 0);
+      void handleRideBid(ws, rideId, fare, typeof eta === 'number' ? eta : 0);
       break;
     }
     case 'ride_bid_withdraw': {
