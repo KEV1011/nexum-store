@@ -1,5 +1,4 @@
 import jwt from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
 import { JWT_SECRET, JWT_EXPIRES_IN, MOCK_OTP } from '../config/constants';
 import {
   ClientDTO,
@@ -11,41 +10,11 @@ import {
   RequestClientTripDTO,
   TransportServiceType,
 } from '../types';
-import {
-  getAllBusinessesPublic,
-  getBusinessPublicById,
-  getProductById,
-} from './business.service';
+import { prisma } from '../lib/prisma';
 
-// ─── Stores ───────────────────────────────────────────────────────────────────
+const OTP_TTL = 5 * 60 * 1000;
 
-const clientStore = new Map<string, ClientDTO>();
-const otpStore = new Map<string, { otp: string; expiresAt: number }>();
-
-interface ClientOrder {
-  id: string;
-  orderRef: string;
-  clientId: string;
-  businessId: string;
-  customerAddress: string;
-  status: 'confirmed' | 'driverToPickup' | 'atPickup' | 'inTransit' | 'delivered' | 'cancelled';
-  driverName: string;
-  driverPhone: string;
-  subtotal: number;
-  deliveryFee: number;
-  total: number;
-  etaMinutes: number;
-  items: Array<{ productName: string; quantity: number; unitPrice: number; subtotal: number }>;
-  pickupPhotoUrl?: string;
-  deliveryPhotoUrl?: string;
-  hasSignature: boolean;
-  createdAt: Date;
-  pickedUpAt?: Date;
-  deliveredAt?: Date;
-}
-
-const orderStore = new Map<string, ClientOrder>();
-const clientOrderIndex = new Map<string, string[]>();
+// ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
 type OrderCallback = (orderId: string, summary: ClientOrderSummaryDTO) => void;
 const orderListeners = new Map<string, Set<OrderCallback>>();
@@ -53,37 +22,41 @@ const orderListeners = new Map<string, Set<OrderCallback>>();
 type BusinessNewOrderCallback = (order: ClientOrderSummaryDTO) => void;
 const businessOrderListeners = new Map<string, Set<BusinessNewOrderCallback>>();
 
-const OTP_TTL = 5 * 60 * 1000;
-const MOCK_DRIVERS = [
-  { name: 'Andrés Villamizar', phone: '+57 312 678 9012' },
-  { name: 'Laura Sepúlveda', phone: '+57 318 234 5678' },
-  { name: 'Jorge Contreras', phone: '+57 320 987 6543' },
-  { name: 'Diana Rangel', phone: '+57 315 456 7788' },
-];
+type TripCallback = (tripId: string, trip: ClientTripDTO) => void;
+const tripListeners = new Map<string, Set<TripCallback>>();
 
 // ─── OTP ──────────────────────────────────────────────────────────────────────
 
-export function sendClientOtp(phone: string): void {
-  otpStore.set(phone, { otp: MOCK_OTP, expiresAt: Date.now() + OTP_TTL });
+export async function sendClientOtp(phone: string): Promise<void> {
+  const code = MOCK_OTP ?? Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + OTP_TTL);
+  await prisma.otpSession.updateMany({ where: { phone, used: false }, data: { used: true } });
+  await prisma.otpSession.create({ data: { phone, code, expiresAt } });
 }
 
-export function verifyClientOtp(
+export async function verifyClientOtp(
   phone: string,
   otp: string,
-): { token: string; client: ClientDTO } {
-  const record = otpStore.get(phone);
-  if (!record) throw new Error('No OTP requested for this phone number');
-  if (Date.now() > record.expiresAt) { otpStore.delete(phone); throw new Error('OTP has expired'); }
-  if (record.otp !== otp) throw new Error('Invalid OTP');
-  otpStore.delete(phone);
+): Promise<{ token: string; client: ClientDTO }> {
+  const session = await prisma.otpSession.findFirst({
+    where: { phone, used: false, expiresAt: { gte: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (!session) throw new Error('No OTP requested for this phone number');
+  if (new Date() > session.expiresAt) {
+    await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
+    throw new Error('OTP has expired');
+  }
+  if (session.code !== otp) throw new Error('Invalid OTP');
+  await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
 
-  let client = clientStore.get(phone);
-  if (!client) {
-    client = { id: `client-${randomUUID().slice(0, 8)}`, phone, name: 'Usuario Nexum' };
-    clientStore.set(phone, client);
+  let user = await prisma.user.findUnique({ where: { phone } });
+  if (!user) {
+    user = await prisma.user.create({ data: { phone, name: 'Usuario Nexum' } });
   }
 
-  const payload: ClientJwtPayload = { clientId: client.id, phone, role: 'client' };
+  const client: ClientDTO = { id: user.id, phone: user.phone, name: user.name ?? 'Usuario Nexum' };
+  const payload: ClientJwtPayload = { clientId: user.id, phone: user.phone, role: 'client' };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   return { token, client };
 }
@@ -94,86 +67,99 @@ export function verifyClientToken(token: string): ClientJwtPayload {
   return decoded;
 }
 
-/** Look up a registered client's display name by phone. */
-export function getClientNameByPhone(phone: string): string | null {
-  return clientStore.get(phone)?.name ?? null;
+export async function getClientNameByPhone(phone: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({ where: { phone }, select: { name: true } });
+  return user?.name ?? null;
 }
 
-/** Look up a registered client by id (clientStore is keyed by phone). */
-export function getClientById(clientId: string): ClientDTO | null {
-  for (const client of clientStore.values()) {
-    if (client.id === clientId) return client;
-  }
-  return null;
+export async function getClientById(clientId: string): Promise<ClientDTO | null> {
+  const user = await prisma.user.findUnique({ where: { id: clientId } });
+  if (!user) return null;
+  return { id: user.id, phone: user.phone, name: user.name ?? 'Usuario Nexum' };
 }
 
-// ─── Businesses ───────────────────────────────────────────────────────────────
+// ─── Businesses (delegated to business.service) ────────────────────────────
 
-export { getAllBusinessesPublic as getClientBusinesses };
-export { getBusinessPublicById as getClientBusinessById };
+export { getAllBusinessesPublic as getClientBusinesses } from './business.service';
+export { getBusinessPublicById as getClientBusinessById } from './business.service';
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
-export function placeClientOrder(
+export async function placeClientOrder(
   clientId: string,
   _clientPhone: string,
   dto: ClientPlaceOrderDTO,
-): ClientOrderSummaryDTO {
-  const biz = getBusinessPublicById(dto.businessId);
-  const id = `cord-${randomUUID().slice(0, 8)}`;
+): Promise<ClientOrderSummaryDTO> {
+  const { getBusinessPublicById, getProductById } = await import('./business.service');
+  const biz = await getBusinessPublicById(dto.businessId);
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
   let subtotal = 0;
-  const items = dto.items.map((line) => {
-    const product = getProductById(line.productId);
+  const lines: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number }> = [];
+
+  for (const line of dto.items) {
+    const product = await getProductById(line.productId);
     const sub = line.quantity * line.unitPrice;
     subtotal += sub;
-    return { productName: product?.name ?? 'Producto', quantity: line.quantity, unitPrice: line.unitPrice, subtotal: sub };
+    lines.push({
+      productId: line.productId,
+      productName: product?.name ?? 'Producto',
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      subtotal: sub,
+    });
+  }
+
+  const order = await prisma.order.create({
+    data: {
+      orderRef,
+      userId: clientId,
+      businessId: dto.businessId,
+      deliveryAddress: dto.deliveryAddress,
+      status: 'CONFIRMED',
+      subtotal,
+      deliveryFee: biz.deliveryFee,
+      total: subtotal + biz.deliveryFee,
+      etaMinutes: biz.etaMinutes,
+      hasSignature: false,
+      lines: {
+        create: lines,
+      },
+    },
+    include: { lines: true },
   });
 
-  const order: ClientOrder = {
-    id, orderRef, clientId, businessId: dto.businessId,
-    customerAddress: dto.deliveryAddress, status: 'confirmed',
-    driverName: '', driverPhone: '',
-    subtotal, deliveryFee: biz.deliveryFee, total: subtotal + biz.deliveryFee,
-    etaMinutes: biz.etaMinutes, items, hasSignature: false, createdAt: new Date(),
-  };
-
-  orderStore.set(id, order);
-  clientOrderIndex.set(clientId, [id, ...(clientOrderIndex.get(clientId) ?? [])]);
-  _startSimulation(id, biz.name);
-  // Notify business portal listeners
-  const summary = _toSummary(order, biz.name);
+  const summary = _toSummary(order, biz.name, order.lines);
+  void _startSimulation(order.id, biz.name);
   for (const cb of businessOrderListeners.get(dto.businessId) ?? []) cb(summary);
   return summary;
 }
 
-export function getClientOrders(clientId: string): ClientOrderSummaryDTO[] {
-  return (clientOrderIndex.get(clientId) ?? [])
-    .map((id) => {
-      const o = orderStore.get(id);
-      if (!o) return null;
-      const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
-      return _toSummary(o, biz?.name ?? 'Negocio');
-    })
-    .filter((x): x is ClientOrderSummaryDTO => x !== null);
+export async function getClientOrders(clientId: string): Promise<ClientOrderSummaryDTO[]> {
+  const orders = await prisma.order.findMany({
+    where: { userId: clientId },
+    include: { lines: true, business: { select: { name: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  return orders.map((o) => _toSummary(o, o.business?.name ?? 'Negocio', o.lines));
 }
 
-export function getClientOrderById(clientId: string, orderId: string): ClientOrderSummaryDTO | null {
-  const o = orderStore.get(orderId);
-  if (!o || o.clientId !== clientId) return null;
-  const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
-  return _toSummary(o, biz?.name ?? 'Negocio');
+export async function getClientOrderById(clientId: string, orderId: string): Promise<ClientOrderSummaryDTO | null> {
+  const o = await prisma.order.findFirst({
+    where: { id: orderId, userId: clientId },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+  if (!o) return null;
+  return _toSummary(o, o.business?.name ?? 'Negocio', o.lines);
 }
 
-export function getClientOrdersForBusiness(businessId: string): ClientOrderSummaryDTO[] {
-  return [...orderStore.values()]
-    .filter((o) => o.businessId === businessId)
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .map((o) => {
-      const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
-      return _toSummary(o, biz?.name ?? 'Negocio');
-    });
+export async function getClientOrdersForBusiness(businessId: string): Promise<ClientOrderSummaryDTO[]> {
+  const orders = await prisma.order.findMany({
+    where: { businessId },
+    include: { lines: true, business: { select: { name: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  return orders.map((o) => _toSummary(o, o.business?.name ?? 'Negocio', o.lines));
 }
 
 export function onNewClientOrderForBusiness(businessId: string, cb: BusinessNewOrderCallback): () => void {
@@ -190,166 +176,153 @@ export function subscribeClientOrder(orderId: string, cb: OrderCallback): () => 
   return () => orderListeners.get(orderId)?.delete(cb);
 }
 
-export function getClientOrderSnapshot(orderId: string): ClientOrderSummaryDTO | null {
-  const o = orderStore.get(orderId);
+export async function getClientOrderSnapshot(orderId: string): Promise<ClientOrderSummaryDTO | null> {
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { lines: true, business: { select: { name: true } } },
+  });
   if (!o) return null;
-  const biz = getAllBusinessesPublic().find((b) => b.id === o.businessId);
-  return _toSummary(o, biz?.name ?? 'Negocio');
+  return _toSummary(o, o.business?.name ?? 'Negocio', o.lines);
 }
 
-// ─── Server-side status simulation ───────────────────────────────────────────
+// ─── Server-side order simulation ────────────────────────────────────────────
 
-function _startSimulation(orderId: string, bizName: string): void {
-  const driver = MOCK_DRIVERS[Math.floor(Math.random() * MOCK_DRIVERS.length)];
+const MOCK_DRIVERS = [
+  { name: 'Andrés Villamizar', phone: '+57 312 678 9012' },
+  { name: 'Laura Sepúlveda', phone: '+57 318 234 5678' },
+  { name: 'Jorge Contreras', phone: '+57 320 987 6543' },
+  { name: 'Diana Rangel', phone: '+57 315 456 7788' },
+];
 
-  const update = (
-    status: ClientOrder['status'],
-    extras: Partial<Pick<ClientOrder, 'pickedUpAt' | 'deliveredAt' | 'pickupPhotoUrl' | 'deliveryPhotoUrl' | 'hasSignature'>> = {},
+async function _startSimulation(orderId: string, bizName: string): Promise<void> {
+  const driver = MOCK_DRIVERS[Math.floor(Math.random() * MOCK_DRIVERS.length)]!;
+
+  const update = async (
+    status: string,
+    extras: {
+      pickedUpAt?: Date;
+      deliveredAt?: Date;
+      pickupPhotoUrl?: string;
+      deliveryPhotoUrl?: string;
+      hasSignature?: boolean;
+    } = {},
   ) => {
-    const o = orderStore.get(orderId);
-    if (!o) return;
-    o.driverName = driver.name;
-    o.driverPhone = driver.phone;
-    o.status = status;
-    Object.assign(o, extras);
-    orderStore.set(orderId, o);
-
-    const summary = _toSummary(o, bizName);
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: status as never,
+        ...extras,
+      },
+      include: { lines: true },
+    });
+    const summary = _toSummary({ ...updated, driverName: driver.name, driverPhone: driver.phone }, bizName, updated.lines);
     for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
   };
 
-  setTimeout(() => update('driverToPickup'), 8_000);
-  setTimeout(() => update('atPickup'), 22_000);
-  setTimeout(() => update('inTransit', { pickedUpAt: new Date(), pickupPhotoUrl: `mock://pickup/${orderId}` }), 38_000);
-  setTimeout(() => update('delivered', { deliveredAt: new Date(), deliveryPhotoUrl: `mock://delivery/${orderId}`, hasSignature: true }), 65_000);
-}
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-function _toSummary(o: ClientOrder, businessName: string): ClientOrderSummaryDTO {
-  return {
-    id: o.id, orderRef: o.orderRef, businessId: o.businessId, businessName,
-    status: o.status, subtotal: o.subtotal, deliveryFee: o.deliveryFee, total: o.total,
-    etaMinutes: o.etaMinutes, items: o.items, deliveryAddress: o.customerAddress,
-    driverName: o.driverName || undefined, driverPhone: o.driverPhone || undefined,
-    pickupPhotoUrl: o.pickupPhotoUrl, deliveryPhotoUrl: o.deliveryPhotoUrl,
-    hasSignature: o.hasSignature, createdAt: o.createdAt.toISOString(),
-    pickedUpAt: o.pickedUpAt?.toISOString(), deliveredAt: o.deliveredAt?.toISOString(),
-  };
+  setTimeout(() => void update('DRIVER_TO_PICKUP'), 8_000);
+  setTimeout(() => void update('AT_PICKUP'), 22_000);
+  setTimeout(() => void update('IN_TRANSIT', { pickedUpAt: new Date(), pickupPhotoUrl: `mock://pickup/${orderId}` }), 38_000);
+  setTimeout(() => void update('DELIVERED', { deliveredAt: new Date(), deliveryPhotoUrl: `mock://delivery/${orderId}`, hasSignature: true }), 65_000);
 }
 
 // ─── Client Trips ─────────────────────────────────────────────────────────────
 
-interface ClientTrip {
-  id: string;
-  requestRef: string;
-  clientId: string;
-  serviceType: string;
-  originAddress: string;
-  destinationAddress: string;
-  estimatedFare: number;
-  distanceKm: number;
-  etaMinutes: number;
-  status: ClientTripStatus;
-  driverName?: string;
-  driverPhone?: string;
-  driverVehicle?: string;
-  driverLat?: number;
-  driverLng?: number;
-  createdAt: Date;
-  acceptedAt?: Date;
-  completedAt?: Date;
-  recipientName?: string;
-  recipientPhone?: string;
-  packageDescription?: string;
-}
-
-const clientTripStore = new Map<string, ClientTrip>();
-const clientActiveTrip = new Map<string, string>(); // clientId → tripId
-
-type TripCallback = (tripId: string, trip: ClientTripDTO) => void;
-const tripListeners = new Map<string, Set<TripCallback>>();
-
-export function requestClientTrip(clientId: string, dto: RequestClientTripDTO): ClientTripDTO {
-  const id = `ctrip-${randomUUID().slice(0, 8)}`;
+export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripDTO> {
   const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;
+  const serviceType = dto.serviceType.toUpperCase() as 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS';
 
-  const trip: ClientTrip = {
-    id, requestRef, clientId,
-    serviceType: dto.serviceType,
-    originAddress: dto.originAddress,
-    destinationAddress: dto.destinationAddress,
-    estimatedFare: dto.estimatedFare,
-    distanceKm: dto.distanceKm,
-    etaMinutes: dto.etaMinutes,
-    status: 'searching',
-    createdAt: new Date(),
-    recipientName: dto.recipientName,
-    recipientPhone: dto.recipientPhone,
-    packageDescription: dto.packageDescription,
-  };
+  const trip = await prisma.trip.create({
+    data: {
+      requestRef,
+      passengerId: clientId,
+      serviceType,
+      status: 'SEARCHING',
+      originAddress: dto.originAddress,
+      originLat: 7.3754,
+      originLng: -72.6486,
+      destAddress: dto.destinationAddress,
+      destLat: 7.3821,
+      destLng: -72.6512,
+      estimatedFare: dto.estimatedFare,
+      distanceKm: dto.distanceKm,
+      etaMinutes: dto.etaMinutes,
+      recipientName: dto.recipientName,
+      recipientPhone: dto.recipientPhone,
+      packageDescription: dto.packageDescription,
+    },
+  });
 
-  clientTripStore.set(id, trip);
-  clientActiveTrip.set(clientId, id);
-  return _toTripDTO(trip);
+  return _toTripDTO(trip, clientId);
 }
 
-export function acceptClientTrip(
+export async function acceptClientTrip(
   tripId: string,
   driverName: string,
   driverPhone: string,
   driverVehicle?: string,
-): ClientTripDTO | null {
-  const trip = clientTripStore.get(tripId);
-  if (!trip || trip.status !== 'searching') return null;
-  trip.status = 'accepted';
-  trip.acceptedAt = new Date();
-  trip.driverName = driverName;
-  trip.driverPhone = driverPhone;
-  trip.driverVehicle = driverVehicle;
-  _notifyTripListeners(tripId, trip);
-  _startTripSimulation(tripId);
-  return _toTripDTO(trip);
+): Promise<ClientTripDTO | null> {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+  if (!trip || trip.status !== 'SEARCHING') return null;
+
+  const updated = await prisma.trip.update({
+    where: { id: tripId },
+    data: { status: 'ACCEPTED', acceptedAt: new Date() },
+  });
+  const dto = _toTripDTOWithDriver(updated, driverName, driverPhone, driverVehicle);
+  _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+  void _startTripSimulation(tripId, updated.passengerId ?? '');
+  return dto;
 }
 
-export function updateClientTripLocation(tripId: string, lat: number, lng: number): string | null {
-  const trip = clientTripStore.get(tripId);
+export async function updateClientTripLocation(tripId: string, _lat: number, _lng: number): Promise<string | null> {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { passengerId: true } });
   if (!trip) return null;
-  trip.driverLat = lat;
-  trip.driverLng = lng;
-  return trip.clientId;
+  // Location updates are ephemeral; we don't persist per-update lat/lng to trips table
+  return trip.passengerId;
 }
 
-export function updateClientTripStatus(tripId: string, status: ClientTripStatus): ClientTripDTO | null {
-  const trip = clientTripStore.get(tripId);
-  if (!trip) return null;
-  trip.status = status;
-  if (status === 'completed') trip.completedAt = new Date();
-  _notifyTripListeners(tripId, trip);
-  return _toTripDTO(trip);
+export async function updateClientTripStatus(tripId: string, status: ClientTripStatus): Promise<ClientTripDTO | null> {
+  const prismaStatus = status.toUpperCase().replace('_', '_') as 'SEARCHING' | 'ACCEPTED' | 'ARRIVING' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  const updated = await prisma.trip.update({
+    where: { id: tripId },
+    data: {
+      status: prismaStatus,
+      completedAt: status === 'completed' ? new Date() : undefined,
+    },
+  });
+  const dto = _toTripDTO(updated, updated.passengerId ?? '');
+  _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+  return dto;
 }
 
-export function cancelClientTrip(clientId: string, tripId: string): boolean {
-  const trip = clientTripStore.get(tripId);
-  if (!trip || trip.clientId !== clientId) return false;
-  if (!['searching', 'accepted', 'arriving', 'arrived'].includes(trip.status)) return false;
-  trip.status = 'cancelled';
-  _notifyTripListeners(tripId, trip);
+export async function cancelClientTrip(clientId: string, tripId: string): Promise<boolean> {
+  const trip = await prisma.trip.findFirst({ where: { id: tripId, passengerId: clientId } });
+  if (!trip) return false;
+  const cancellable = ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED'];
+  if (!cancellable.includes(trip.status)) return false;
+  const updated = await prisma.trip.update({
+    where: { id: tripId },
+    data: { status: 'CANCELLED' },
+  });
+  const dto = _toTripDTO(updated, clientId);
+  _notifyTripListeners(tripId, clientId, dto);
   return true;
 }
 
-export function getActiveClientTrip(clientId: string): ClientTripDTO | null {
-  const tripId = clientActiveTrip.get(clientId);
-  if (!tripId) return null;
-  const trip = clientTripStore.get(tripId);
+export async function getActiveClientTrip(clientId: string): Promise<ClientTripDTO | null> {
+  const active = ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'];
+  const trip = await prisma.trip.findFirst({
+    where: { passengerId: clientId, status: { in: active as never[] } },
+    orderBy: { createdAt: 'desc' },
+  });
   if (!trip) return null;
-  const active: ClientTripStatus[] = ['searching', 'accepted', 'arriving', 'arrived', 'in_progress'];
-  if (!active.includes(trip.status)) return null;
-  return _toTripDTO(trip);
+  return _toTripDTO(trip, clientId);
 }
 
-export function getClientTripRaw(tripId: string): ClientTrip | undefined {
-  return clientTripStore.get(tripId);
+export async function getClientTripRaw(tripId: string): Promise<{ clientId: string } | undefined> {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { passengerId: true } });
+  if (!trip?.passengerId) return undefined;
+  return { clientId: trip.passengerId };
 }
 
 export function subscribeClientTrip(tripId: string, cb: TripCallback): () => void {
@@ -358,45 +331,117 @@ export function subscribeClientTrip(tripId: string, cb: TripCallback): () => voi
   return () => tripListeners.get(tripId)?.delete(cb);
 }
 
-export function getClientTripSnapshot(tripId: string): ClientTripDTO | null {
-  const trip = clientTripStore.get(tripId);
+export async function getClientTripSnapshot(tripId: string): Promise<ClientTripDTO | null> {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
   if (!trip) return null;
-  return _toTripDTO(trip);
+  return _toTripDTO(trip, trip.passengerId ?? '');
 }
 
-function _notifyTripListeners(tripId: string, trip: ClientTrip): void {
-  const dto = _toTripDTO(trip);
+// ─── Trip simulation ──────────────────────────────────────────────────────────
+
+async function _startTripSimulation(tripId: string, passengerId: string): Promise<void> {
+  const step = async (status: string, extras: { completedAt?: Date } = {}) => {
+    const current = await prisma.trip.findUnique({ where: { id: tripId }, select: { status: true } });
+    const active = ['ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'];
+    if (!current || !active.includes(current.status)) return;
+    const updated = await prisma.trip.update({
+      where: { id: tripId },
+      data: { status: status as never, ...extras },
+    });
+    const dto = _toTripDTO(updated, passengerId);
+    _notifyTripListeners(tripId, passengerId, dto);
+  };
+  setTimeout(() => void step('ARRIVING'), 8_000);
+  setTimeout(() => void step('ARRIVED'), 20_000);
+  setTimeout(() => void step('IN_PROGRESS'), 30_000);
+  setTimeout(() => void step('COMPLETED', { completedAt: new Date() }), 55_000);
+}
+
+function _notifyTripListeners(tripId: string, _passengerId: string, dto: ClientTripDTO): void {
   for (const cb of tripListeners.get(tripId) ?? []) cb(tripId, dto);
 }
 
-function _startTripSimulation(tripId: string): void {
-  const step = (status: ClientTripStatus) => {
-    const trip = clientTripStore.get(tripId);
-    const active: ClientTripStatus[] = ['accepted', 'arriving', 'arrived', 'in_progress'];
-    if (!trip || !active.includes(trip.status)) return;
-    trip.status = status;
-    if (status === 'completed') trip.completedAt = new Date();
-    _notifyTripListeners(tripId, trip);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+type PrismaOrder = {
+  id: string; orderRef: string; businessId: string; status: string; subtotal: number;
+  deliveryFee: number; total: number; etaMinutes: number | null; deliveryAddress: string;
+  pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
+  createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
+  driverName?: string; driverPhone?: string;
+};
+
+type PrismaOrderLine = {
+  productName: string; quantity: number; unitPrice: number; subtotal: number;
+};
+
+function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine[]): ClientOrderSummaryDTO {
+  const statusMap: Record<string, string> = {
+    CONFIRMED: 'confirmed',
+    DRIVER_TO_PICKUP: 'driverToPickup',
+    AT_PICKUP: 'atPickup',
+    IN_TRANSIT: 'inTransit',
+    DELIVERED: 'delivered',
+    CANCELLED: 'cancelled',
   };
-  setTimeout(() => step('arriving'), 8_000);
-  setTimeout(() => step('arrived'), 20_000);
-  setTimeout(() => step('in_progress'), 30_000);
-  setTimeout(() => step('completed'), 55_000);
+  return {
+    id: o.id,
+    orderRef: o.orderRef,
+    businessId: o.businessId,
+    businessName,
+    status: statusMap[o.status] ?? o.status.toLowerCase(),
+    subtotal: o.subtotal,
+    deliveryFee: o.deliveryFee,
+    total: o.total,
+    etaMinutes: o.etaMinutes ?? 30,
+    items: lines.map((l) => ({ productName: l.productName, quantity: l.quantity, unitPrice: l.unitPrice, subtotal: l.subtotal })),
+    deliveryAddress: o.deliveryAddress,
+    driverName: o.driverName || undefined,
+    driverPhone: o.driverPhone || undefined,
+    pickupPhotoUrl: o.pickupPhotoUrl ?? undefined,
+    deliveryPhotoUrl: o.deliveryPhotoUrl ?? undefined,
+    hasSignature: o.hasSignature,
+    createdAt: o.createdAt.toISOString(),
+    pickedUpAt: o.pickedUpAt?.toISOString(),
+    deliveredAt: o.deliveredAt?.toISOString(),
+  };
 }
 
-function _toTripDTO(trip: ClientTrip): ClientTripDTO {
+type PrismaTrip = {
+  id: string; requestRef: string; serviceType: string; status: string;
+  originAddress: string; destAddress: string; estimatedFare: number;
+  distanceKm: number | null; etaMinutes: number | null;
+  createdAt: Date; acceptedAt: Date | null; completedAt: Date | null;
+  recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
+};
+
+function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string, driverPhone?: string, driverVehicle?: string): ClientTripDTO {
+  const statusMap: Record<string, ClientTripStatus> = {
+    SEARCHING: 'searching', ACCEPTED: 'accepted', ARRIVING: 'arriving',
+    ARRIVED: 'arrived', IN_PROGRESS: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled',
+  };
   return {
-    id: trip.id, requestRef: trip.requestRef,
-    serviceType: trip.serviceType as TransportServiceType,
-    originAddress: trip.originAddress, destinationAddress: trip.destinationAddress,
-    estimatedFare: trip.estimatedFare, distanceKm: trip.distanceKm, etaMinutes: trip.etaMinutes,
-    status: trip.status,
-    driverName: trip.driverName, driverPhone: trip.driverPhone, driverVehicle: trip.driverVehicle,
-    driverLat: trip.driverLat, driverLng: trip.driverLng,
+    id: trip.id,
+    requestRef: trip.requestRef,
+    serviceType: trip.serviceType.toLowerCase() as TransportServiceType,
+    originAddress: trip.originAddress,
+    destinationAddress: trip.destAddress,
+    estimatedFare: trip.estimatedFare,
+    distanceKm: trip.distanceKm ?? 0,
+    etaMinutes: trip.etaMinutes ?? 0,
+    status: statusMap[trip.status] ?? 'searching',
+    driverName,
+    driverPhone,
+    driverVehicle,
     createdAt: trip.createdAt.toISOString(),
     acceptedAt: trip.acceptedAt?.toISOString(),
     completedAt: trip.completedAt?.toISOString(),
-    recipientName: trip.recipientName, recipientPhone: trip.recipientPhone,
-    packageDescription: trip.packageDescription,
+    recipientName: trip.recipientName ?? undefined,
+    recipientPhone: trip.recipientPhone ?? undefined,
+    packageDescription: trip.packageDescription ?? undefined,
   };
+}
+
+function _toTripDTOWithDriver(trip: PrismaTrip, driverName: string, driverPhone: string, driverVehicle?: string): ClientTripDTO {
+  return _toTripDTO(trip, '', driverName, driverPhone, driverVehicle);
 }

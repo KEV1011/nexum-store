@@ -57,53 +57,49 @@ const router = Router();
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-router.post('/auth/send-otp', (req, res) => {
+router.post('/auth/send-otp', async (req, res) => {
   const { phone } = req.body as { phone?: string };
-  if (!phone) {
-    res.status(400).json({ success: false, error: 'phone is required' });
-    return;
-  }
+  if (!phone) { res.status(400).json({ success: false, error: 'phone is required' }); return; }
   try {
-    sendClientOtp(phone);
+    await sendClientOtp(phone);
     res.json({ success: true, data: { success: true } });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Error sending OTP';
-    res.status(400).json({ success: false, error: msg });
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Error sending OTP' });
   }
 });
 
-router.post('/auth/verify-otp', (req, res) => {
+router.post('/auth/verify-otp', async (req, res) => {
   const { phone, otp } = req.body as { phone?: string; otp?: string };
-  if (!phone || !otp) {
-    res.status(400).json({ success: false, error: 'phone and otp are required' });
-    return;
-  }
+  if (!phone || !otp) { res.status(400).json({ success: false, error: 'phone and otp are required' }); return; }
   try {
-    const result = verifyClientOtp(phone, otp);
+    const result = await verifyClientOtp(phone, otp);
     res.json({ success: true, data: result });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Verification failed';
-    res.status(401).json({ success: false, error: msg });
+    res.status(401).json({ success: false, error: err instanceof Error ? err.message : 'Verification failed' });
   }
 });
 
 // ─── Businesses ───────────────────────────────────────────────────────────────
 
-router.get('/businesses', (_req, res) => {
-  res.json({ success: true, data: getClientBusinesses() });
+router.get('/businesses', async (_req, res) => {
+  try {
+    res.json({ success: true, data: await getClientBusinesses() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
 });
 
-router.get('/businesses/:id', (req, res) => {
+router.get('/businesses/:id', async (req, res) => {
   try {
-    res.json({ success: true, data: getClientBusinessById(req.params['id']!) });
-  } catch (err) {
+    res.json({ success: true, data: await getClientBusinessById(req.params['id']!) });
+  } catch {
     res.status(404).json({ success: false, error: 'Business not found' });
   }
 });
 
 // ─── Orders (auth required) ───────────────────────────────────────────────────
 
-router.post('/orders', clientAuthMiddleware, (req, res) => {
+router.post('/orders', clientAuthMiddleware, async (req, res) => {
   const clientId = req.clientId!;
   const clientPhone = req.clientPhone!;
   const dto = req.body as { businessId?: string; deliveryAddress?: string; items?: unknown[] };
@@ -114,41 +110,34 @@ router.post('/orders', clientAuthMiddleware, (req, res) => {
   }
 
   try {
-    const order = placeClientOrder(clientId, clientPhone, {
+    const order = await placeClientOrder(clientId, clientPhone, {
       businessId: dto.businessId,
       deliveryAddress: dto.deliveryAddress,
       items: dto.items as Array<{ productId: string; quantity: number; unitPrice: number }>,
     });
     res.status(201).json({ success: true, data: order });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to place order';
-    res.status(400).json({ success: false, error: msg });
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to place order' });
   }
 });
 
-router.get('/orders', clientAuthMiddleware, (req, res) => {
-  res.json({ success: true, data: getClientOrders(req.clientId!) });
+router.get('/orders', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await getClientOrders(req.clientId!) });
 });
 
-router.get('/orders/:id', clientAuthMiddleware, (req, res) => {
-  const order = getClientOrderById(req.clientId!, req.params['id']!);
+router.get('/orders/:id', clientAuthMiddleware, async (req, res) => {
+  const order = await getClientOrderById(req.clientId!, req.params['id']!);
   if (!order) { res.status(404).json({ success: false, error: 'Order not found' }); return; }
   res.json({ success: true, data: order });
 });
 
 // ─── Trips (auth required) ────────────────────────────────────────────────────
 
-router.post('/trips/request', clientAuthMiddleware, (req, res) => {
+router.post('/trips/request', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as {
-    serviceType?: string;
-    originAddress?: string;
-    destinationAddress?: string;
-    estimatedFare?: number;
-    distanceKm?: number;
-    etaMinutes?: number;
-    recipientName?: string;
-    recipientPhone?: string;
-    packageDescription?: string;
+    serviceType?: string; originAddress?: string; destinationAddress?: string;
+    estimatedFare?: number; distanceKm?: number; etaMinutes?: number;
+    recipientName?: string; recipientPhone?: string; packageDescription?: string;
   };
 
   if (!dto.serviceType || !dto.originAddress || !dto.destinationAddress) {
@@ -157,7 +146,7 @@ router.post('/trips/request', clientAuthMiddleware, (req, res) => {
   }
 
   try {
-    const trip = requestClientTrip(req.clientId!, {
+    const trip = await requestClientTrip(req.clientId!, {
       serviceType: dto.serviceType as import('../types').TransportServiceType,
       originAddress: dto.originAddress,
       destinationAddress: dto.destinationAddress,
@@ -170,74 +159,59 @@ router.post('/trips/request', clientAuthMiddleware, (req, res) => {
     });
     res.status(201).json({ success: true, data: trip });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to request trip';
-    res.status(400).json({ success: false, error: msg });
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to request trip' });
   }
 });
 
-router.get('/trips/active', clientAuthMiddleware, (req, res) => {
-  const trip = getActiveClientTrip(req.clientId!);
-  res.json({ success: true, data: trip });
+router.get('/trips/active', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await getActiveClientTrip(req.clientId!) });
 });
 
-router.post('/trips/:id/cancel', clientAuthMiddleware, (req, res) => {
-  const ok = cancelClientTrip(req.clientId!, req.params['id']!);
+router.post('/trips/:id/cancel', clientAuthMiddleware, async (req, res) => {
+  const ok = await cancelClientTrip(req.clientId!, req.params['id']!);
   if (!ok) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
   res.json({ success: true });
 });
 
 // ─── Errands (Mandados) ───────────────────────────────────────────────────────
 
-router.post('/errands/request', clientAuthMiddleware, (req, res) => {
+router.post('/errands/request', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Partial<RequestClientErrandDTO>;
-
   if (!dto.category || !dto.description || !dto.pickupAddress || !dto.dropoffAddress) {
-    res.status(400).json({
-      success: false,
-      error: 'category, description, pickupAddress, dropoffAddress are required',
-    });
+    res.status(400).json({ success: false, error: 'category, description, pickupAddress, dropoffAddress are required' });
     return;
   }
-
   try {
-    const errand = requestClientErrand(req.clientId!, {
-      category: dto.category,
-      description: dto.description,
-      pickupAddress: dto.pickupAddress,
-      dropoffAddress: dto.dropoffAddress,
-      purchaseBudget: dto.purchaseBudget,
-      notes: dto.notes,
+    const errand = await requestClientErrand(req.clientId!, {
+      category: dto.category, description: dto.description,
+      pickupAddress: dto.pickupAddress, dropoffAddress: dto.dropoffAddress,
+      purchaseBudget: dto.purchaseBudget, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: errand });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to request errand';
-    res.status(400).json({ success: false, error: msg });
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to request errand' });
   }
 });
 
-router.get('/errands/active', clientAuthMiddleware, (req, res) => {
-  res.json({ success: true, data: getActiveClientErrand(req.clientId!) });
+router.get('/errands/active', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await getActiveClientErrand(req.clientId!) });
 });
 
-router.get('/errands/:id', clientAuthMiddleware, (req, res) => {
-  const errand = getClientErrandById(req.clientId!, req.params['id']!);
+router.get('/errands/:id', clientAuthMiddleware, async (req, res) => {
+  const errand = await getClientErrandById(req.clientId!, req.params['id']!);
   if (!errand) { res.status(404).json({ success: false, error: 'Errand not found' }); return; }
   res.json({ success: true, data: errand });
 });
 
-router.post('/errands/:id/cancel', clientAuthMiddleware, (req, res) => {
-  const ok = cancelClientErrand(req.clientId!, req.params['id']!);
-  if (!ok) {
-    res.status(400).json({ success: false, error: 'Errand not found or cannot be cancelled' });
-    return;
-  }
+router.post('/errands/:id/cancel', clientAuthMiddleware, async (req, res) => {
+  const ok = await cancelClientErrand(req.clientId!, req.params['id']!);
+  if (!ok) { res.status(400).json({ success: false, error: 'Errand not found or cannot be cancelled' }); return; }
   res.json({ success: true });
 });
 
 // ─── Intercity ────────────────────────────────────────────────────────────────
 
 router.get('/intercity/routes', (_req, res) => {
-  // Return all available city pairs with fare info
   const cities = ['pamplona', 'cucuta', 'bucaramanga', 'chitaga', 'malaga', 'ocana', 'bogota'] as const;
   type City = typeof cities[number];
   const routes: Record<string, unknown>[] = [];
@@ -251,77 +225,56 @@ router.get('/intercity/routes', (_req, res) => {
   res.json({ success: true, data: routes });
 });
 
-router.post('/intercity/request', clientAuthMiddleware, (req, res) => {
+router.post('/intercity/request', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Partial<RequestIntercityDTO>;
-
   if (!dto.origin || !dto.destination || !dto.departureTime || !dto.seats || dto.offeredFare === undefined) {
-    res.status(400).json({
-      success: false,
-      error: 'origin, destination, departureTime, seats, offeredFare are required',
-    });
+    res.status(400).json({ success: false, error: 'origin, destination, departureTime, seats, offeredFare are required' });
     return;
   }
-
   try {
-    const booking = requestIntercityBooking(req.clientId!, {
-      origin: dto.origin,
-      destination: dto.destination,
-      departureTime: dto.departureTime,
-      seats: dto.seats,
-      offeredFare: dto.offeredFare,
-      pickupAddress: dto.pickupAddress,
-      dropoffAddress: dto.dropoffAddress,
-      notes: dto.notes,
+    const booking = await requestIntercityBooking(req.clientId!, {
+      origin: dto.origin, destination: dto.destination, departureTime: dto.departureTime,
+      seats: dto.seats, offeredFare: dto.offeredFare,
+      pickupAddress: dto.pickupAddress, dropoffAddress: dto.dropoffAddress, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: booking });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to request intercity booking';
-    res.status(400).json({ success: false, error: msg });
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to request intercity booking' });
   }
 });
 
-router.get('/intercity/active', clientAuthMiddleware, (req, res) => {
-  res.json({ success: true, data: getActiveIntercityBooking(req.clientId!) });
+router.get('/intercity/active', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await getActiveIntercityBooking(req.clientId!) });
 });
 
-router.get('/intercity/:id', clientAuthMiddleware, (req, res) => {
-  const booking = getIntercityBookingById(req.clientId!, req.params['id']!);
+router.get('/intercity/:id', clientAuthMiddleware, async (req, res) => {
+  const booking = await getIntercityBookingById(req.clientId!, req.params['id']!);
   if (!booking) { res.status(404).json({ success: false, error: 'Booking not found' }); return; }
   res.json({ success: true, data: booking });
 });
 
-router.post('/intercity/:id/confirm', clientAuthMiddleware, (req, res) => {
-  const booking = confirmIntercityBooking(req.clientId!, req.params['id']!);
-  if (!booking) {
-    res.status(400).json({ success: false, error: 'Booking not found or not in driver_found state' });
-    return;
-  }
+router.post('/intercity/:id/confirm', clientAuthMiddleware, async (req, res) => {
+  const booking = await confirmIntercityBooking(req.clientId!, req.params['id']!);
+  if (!booking) { res.status(400).json({ success: false, error: 'Booking not found or not in driver_found state' }); return; }
   res.json({ success: true, data: booking });
 });
 
-router.post('/intercity/:id/reject-offer', clientAuthMiddleware, (req, res) => {
-  const ok = rejectIntercityOffer(req.clientId!, req.params['id']!);
-  if (!ok) {
-    res.status(400).json({ success: false, error: 'No counter offer to reject' });
-    return;
-  }
+router.post('/intercity/:id/reject-offer', clientAuthMiddleware, async (req, res) => {
+  const ok = await rejectIntercityOffer(req.clientId!, req.params['id']!);
+  if (!ok) { res.status(400).json({ success: false, error: 'No counter offer to reject' }); return; }
   res.json({ success: true });
 });
 
-router.post('/intercity/:id/cancel', clientAuthMiddleware, (req, res) => {
-  const ok = cancelIntercityBooking(req.clientId!, req.params['id']!);
-  if (!ok) {
-    res.status(400).json({ success: false, error: 'Booking not found or cannot be cancelled' });
-    return;
-  }
+router.post('/intercity/:id/cancel', clientAuthMiddleware, async (req, res) => {
+  const ok = await cancelIntercityBooking(req.clientId!, req.params['id']!);
+  if (!ok) { res.status(400).json({ success: false, error: 'Booking not found or cannot be cancelled' }); return; }
   res.json({ success: true });
 });
 
-// ─── Shared pooled rides (Modelo A) ─────────────────────────────────────────────
+// ─── Shared pooled rides ─────────────────────────────────────────────────────
 
-// GET /client/intercity/pool/search?origin=&destination=&date=
-router.get('/intercity/pool/search', clientAuthMiddleware, (req, res) => {
-  const trips = searchPooledTrips({
+router.get('/intercity/pool/search', clientAuthMiddleware, async (req, res) => {
+  const trips = await searchPooledTrips({
     origin: req.query['origin'] as IntercityCity | undefined,
     destination: req.query['destination'] as IntercityCity | undefined,
     date: req.query['date'] as string | undefined,
@@ -329,31 +282,23 @@ router.get('/intercity/pool/search', clientAuthMiddleware, (req, res) => {
   res.json({ success: true, data: trips });
 });
 
-// GET /client/intercity/pool/bookings  – the caller's own seat bookings
-router.get('/intercity/pool/bookings', clientAuthMiddleware, (req, res) => {
-  res.json({ success: true, data: getClientBookings(req.clientId!) });
+router.get('/intercity/pool/bookings', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await getClientBookings(req.clientId!) });
 });
 
-// GET /client/intercity/pool/:id
-router.get('/intercity/pool/:id', clientAuthMiddleware, (req, res) => {
-  const trip = getPooledTripById(req.params['id']!, false);
+router.get('/intercity/pool/:id', clientAuthMiddleware, async (req, res) => {
+  const trip = await getPooledTripById(req.params['id']!, false);
   if (!trip) { res.status(404).json({ success: false, error: 'Trip not found' }); return; }
   res.json({ success: true, data: trip });
 });
 
-// POST /client/intercity/pool/:id/book
-router.post('/intercity/pool/:id/book', clientAuthMiddleware, (req, res) => {
+router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Partial<BookSeatsDTO>;
-  if (dto.seatsBooked === undefined) {
-    res.status(400).json({ success: false, error: 'seatsBooked is required' });
-    return;
-  }
-  const passengerName = getClientNameByPhone(req.clientPhone!) ?? 'Pasajero Nexum';
+  if (dto.seatsBooked === undefined) { res.status(400).json({ success: false, error: 'seatsBooked is required' }); return; }
+  const passengerName = (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero Nexum';
   try {
-    const result = bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
-      seatsBooked: dto.seatsBooked,
-      pickupAddress: dto.pickupAddress,
-      notes: dto.notes,
+    const result = await bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
+      seatsBooked: dto.seatsBooked, pickupAddress: dto.pickupAddress, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: result });
   } catch (err) {
@@ -362,10 +307,9 @@ router.post('/intercity/pool/:id/book', clientAuthMiddleware, (req, res) => {
   }
 });
 
-// POST /client/intercity/pool/bookings/:bookingId/cancel
-router.post('/intercity/pool/bookings/:bookingId/cancel', clientAuthMiddleware, (req, res) => {
+router.post('/intercity/pool/bookings/:bookingId/cancel', clientAuthMiddleware, async (req, res) => {
   try {
-    const trip = cancelSeatBooking(req.clientId!, req.params['bookingId']!);
+    const trip = await cancelSeatBooking(req.clientId!, req.params['bookingId']!);
     if (!trip) { res.status(404).json({ success: false, error: 'Booking not found' }); return; }
     res.json({ success: true, data: trip });
   } catch (err) {
@@ -374,22 +318,18 @@ router.post('/intercity/pool/bookings/:bookingId/cancel', clientAuthMiddleware, 
   }
 });
 
-// ─── Ride negotiation (inDriver-style bids + chat) ─────────────────────────────
+// ─── Ride negotiation ─────────────────────────────────────────────────────────
 
-// POST /client/rides/request — publish a ride with an offered fare
-router.post('/rides/request', clientAuthMiddleware, (req, res) => {
+router.post('/rides/request', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Record<string, unknown>;
   const required = ['serviceType', 'originAddress', 'destinationAddress', 'offeredFare', 'distanceKm', 'etaMinutes'];
   for (const f of required) {
-    if (dto[f] === undefined) {
-      res.status(400).json({ success: false, error: `${f} is required` });
-      return;
-    }
+    if (dto[f] === undefined) { res.status(400).json({ success: false, error: `${f} is required` }); return; }
   }
-  const client = getClientById(req.clientId!);
-  const clientName = client?.name ?? getClientNameByPhone(req.clientPhone!) ?? 'Usuario Nexum';
+  const client = await getClientById(req.clientId!);
+  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Usuario Nexum';
   try {
-    const ride = createRideRequest(req.clientId!, clientName, req.clientPhone!, {
+    const ride = await createRideRequest(req.clientId!, clientName, req.clientPhone!, {
       serviceType: dto['serviceType'] as never,
       originAddress: String(dto['originAddress']),
       destinationAddress: String(dto['destinationAddress']),
@@ -409,55 +349,40 @@ router.post('/rides/request', clientAuthMiddleware, (req, res) => {
   }
 });
 
-// GET /client/rides/active
 router.get('/rides/active', clientAuthMiddleware, (req, res) => {
   res.json({ success: true, data: getActiveClientRide(req.clientId!) });
 });
 
-// GET /client/rides/:id
 router.get('/rides/:id', clientAuthMiddleware, (req, res) => {
   const ride = getRideById(req.params['id']!);
   if (!ride || ride.clientId !== req.clientId) {
-    res.status(404).json({ success: false, error: 'Ride not found' });
-    return;
+    res.status(404).json({ success: false, error: 'Ride not found' }); return;
   }
   res.json({ success: true, data: ride });
 });
 
-// GET /client/rides/:id/chat
 router.get('/rides/:id/chat', clientAuthMiddleware, (req, res) => {
   res.json({ success: true, data: getChatHistory(req.params['id']!) });
 });
 
-// GET /client/drivers/:id/profile — public driver profile (Feature E)
-router.get('/drivers/:id/profile', clientAuthMiddleware, (req, res) => {
-  const profile = getDriverPublicProfile(req.params['id']!);
+router.get('/drivers/:id/profile', clientAuthMiddleware, async (req, res) => {
+  const profile = await getDriverPublicProfile(req.params['id']!);
   if (!profile) { res.status(404).json({ success: false, error: 'Driver not found' }); return; }
   res.json({ success: true, data: profile });
 });
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
-router.post('/payments/init', clientAuthMiddleware, (req, res) => {
+router.post('/payments/init', clientAuthMiddleware, async (req, res) => {
   const { amount, description, orderId, tripId, customerEmail } = req.body as {
-    amount?: number;
-    description?: string;
-    orderId?: string;
-    tripId?: string;
-    customerEmail?: string;
+    amount?: number; description?: string; orderId?: string; tripId?: string; customerEmail?: string;
   };
-
-  if (!amount || !description) {
-    res.status(400).json({ success: false, error: 'amount and description are required' });
-    return;
-  }
-
+  if (!amount || !description) { res.status(400).json({ success: false, error: 'amount and description are required' }); return; }
   try {
-    const result = createPaymentLink(req.clientId!, { amount, description, orderId, tripId, customerEmail });
+    const result = await createPaymentLink(req.clientId!, { amount, description, orderId, tripId, customerEmail });
     res.status(201).json({ success: true, data: result });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to create payment';
-    res.status(400).json({ success: false, error: msg });
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to create payment' });
   }
 });
 

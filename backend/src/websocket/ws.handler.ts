@@ -154,16 +154,16 @@ function handleDriverModeChange(ws: WebSocket, mode: WorkMode): void {
   sendDriver({ type: 'auth_ok', workMode: mode });
 }
 
-function handleAccept(tripId: string): void {
+async function handleAccept(tripId: string): Promise<void> {
   // Check if this is a real client trip
-  const clientTrip = getClientTripRaw(tripId);
+  const clientTrip = await getClientTripRaw(tripId);
   if (clientTrip) {
     const MOCK_DRIVER = {
       name: 'Carlos Méndez',
       phone: '+57 310 456 7890',
       vehicle: 'Toyota Yaris • NEX 123',
     };
-    const updated = acceptClientTrip(tripId, MOCK_DRIVER.name, MOCK_DRIVER.phone, MOCK_DRIVER.vehicle);
+    const updated = await acceptClientTrip(tripId, MOCK_DRIVER.name, MOCK_DRIVER.phone, MOCK_DRIVER.vehicle);
     if (updated) {
       sendDriver({ type: 'trip_accepted', trip: updated });
       driverActiveTripId = tripId;
@@ -386,11 +386,11 @@ function handleBusinessAuth(ws: WebSocket, token: string): void {
   }
 }
 
-function handleLocationUpdate(lat: number, lng: number, tripId: string | null): void {
+async function handleLocationUpdate(lat: number, lng: number, tripId: string | null): Promise<void> {
   const effectiveTripId = tripId ?? driverActiveTripId;
   if (!effectiveTripId) return;
 
-  const clientId = updateClientTripLocation(effectiveTripId, lat, lng);
+  const clientId = await updateClientTripLocation(effectiveTripId, lat, lng);
   if (!clientId) return;
 
   const clientWs = clientSockets.get(clientId);
@@ -613,7 +613,7 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const tripId = msg['tripId'];
       if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
-      handleAccept(tripId);
+      void handleAccept(tripId);
       break;
     }
     case 'reject': {
@@ -632,17 +632,19 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (typeof tripId !== 'string' || typeof status !== 'string') {
         sendDriver({ type: 'error', message: 'tripId and status required' }); return;
       }
-      const updated = updateClientTripStatus(tripId, status as import('../types').ClientTripStatus);
-      if (updated) {
-        const raw = getClientTripRaw(tripId);
-        if (raw) {
-          const clientWs = clientSockets.get(raw.clientId);
-          if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });
+      void (async () => {
+        const updated = await updateClientTripStatus(tripId, status as import('../types').ClientTripStatus);
+        if (updated) {
+          const raw = await getClientTripRaw(tripId);
+          if (raw) {
+            const clientWs = clientSockets.get(raw.clientId);
+            if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });
+          }
+          sendDriver({ type: 'trip_status_ack', tripId, status });
+        } else {
+          sendDriver({ type: 'error', message: `Trip ${tripId} not found` });
         }
-        sendDriver({ type: 'trip_status_ack', tripId, status });
-      } else {
-        sendDriver({ type: 'error', message: `Trip ${tripId} not found` });
-      }
+      })();
       break;
     }
 
@@ -763,7 +765,7 @@ function onMessage(ws: WebSocket, raw: string): void {
         sendTo(ws, { type: 'error', message: 'lat and lng required as numbers' });
         return;
       }
-      handleLocationUpdate(lat, lng, typeof tripId === 'string' ? tripId : null);
+      void handleLocationUpdate(lat, lng, typeof tripId === 'string' ? tripId : null);
       break;
     }
 
