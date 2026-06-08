@@ -5,7 +5,7 @@ import { RegisterDriverDTO } from '../types';
 const router = Router();
 
 // POST /auth/send-otp
-router.post('/send-otp', (req: Request, res: Response): void => {
+router.post('/send-otp', async (req: Request, res: Response): Promise<void> => {
   const { phone } = req.body as { phone?: string };
 
   if (!phone || typeof phone !== 'string') {
@@ -21,12 +21,17 @@ router.post('/send-otp', (req: Request, res: Response): void => {
     return;
   }
 
-  sendOtp(phone);
-  res.status(200).json({ success: true, data: { success: true } });
+  try {
+    await sendOtp(phone);
+    res.status(200).json({ success: true, data: { success: true } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to send OTP';
+    res.status(500).json({ success: false, error: message });
+  }
 });
 
 // POST /auth/verify-otp
-router.post('/verify-otp', (req: Request, res: Response): void => {
+router.post('/verify-otp', async (req: Request, res: Response): Promise<void> => {
   const { phone, otp } = req.body as { phone?: string; otp?: string };
 
   if (!phone || typeof phone !== 'string') {
@@ -40,7 +45,7 @@ router.post('/verify-otp', (req: Request, res: Response): void => {
   }
 
   try {
-    const result = verifyOtp(phone, otp);
+    const result = await verifyOtp(phone, otp);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'OTP verification failed';
@@ -49,18 +54,15 @@ router.post('/verify-otp', (req: Request, res: Response): void => {
 });
 
 // POST /auth/register
-router.post('/register', (req: Request, res: Response): void => {
-  // Accept either a verified phone (from OTP flow) or a valid JWT in Authorization header
+router.post('/register', async (req: Request, res: Response): Promise<void> => {
   const authHeader = req.headers['authorization'];
   const dto = req.body as Partial<RegisterDriverDTO>;
 
-  // Validate required fields
   if (!dto.phone || typeof dto.phone !== 'string') {
     res.status(400).json({ success: false, error: 'phone is required' });
     return;
   }
 
-  // Authorization: phone must be validated via JWT in Authorization header
   if (authHeader && typeof authHeader === 'string') {
     const parts = authHeader.split(' ');
     const token = parts.length === 2 && parts[0] === 'Bearer' ? parts[1] : authHeader;
@@ -79,7 +81,6 @@ router.post('/register', (req: Request, res: Response): void => {
     return;
   }
 
-  // Validate all required DTO fields
   if (!dto.fullName || typeof dto.fullName !== 'string') {
     res.status(400).json({ success: false, error: 'fullName is required' });
     return;
@@ -146,7 +147,7 @@ router.post('/register', (req: Request, res: Response): void => {
   };
 
   try {
-    const result = registerDriver(validatedDto);
+    const result = await registerDriver(validatedDto);
     res.status(201).json({ success: true, data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Driver registration failed';
