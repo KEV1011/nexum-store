@@ -10,6 +10,7 @@ import {
   ChatRole,
   TransportServiceType,
 } from '../types';
+import { prisma } from '../lib/prisma';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ride negotiation service (inDriver-style)
@@ -22,7 +23,7 @@ import {
 //   5. Client accepts one bid → driver matched, others rejected    (acceptBid)
 //   6. Both parties exchange chat messages bound to the ride       (addChatMessage)
 //
-// State is in-memory, mirroring the rest of the backend.
+// In-memory state: bids, chat, live status maps. Completed rides persist to Trip.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class RideNegotiationError extends Error {
@@ -110,6 +111,10 @@ const ACTIVE_STATUSES: RideNegotiationStatus[] = [
   'arrived',
   'in_progress',
 ];
+
+const SERVICE_TYPE_TO_PRISMA: Record<TransportServiceType, 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS'> = {
+  taxi: 'TAXI', moto: 'MOTO', particular: 'PARTICULAR', envios: 'ENVIOS',
+};
 
 // ─── DTO mappers ────────────────────────────────────────────────────────────
 
@@ -328,9 +333,32 @@ export function updateRideStatus(
   if (!ride || ride.matchedDriverId !== driverId) return null;
   ride.status = status;
   if (status === 'completed') {
-    ride.completedAt = new Date();
+    const now = new Date();
+    ride.completedAt = now;
     clientActiveRide.delete(ride.clientId);
     driverActiveRide.delete(driverId);
+
+    // Persist completed ride to Trip table (fire-and-forget).
+    void prisma.trip.create({
+      data: {
+        requestRef: ride.id,
+        driverId: ride.matchedDriverId ?? null,
+        serviceType: SERVICE_TYPE_TO_PRISMA[ride.serviceType] ?? 'PARTICULAR',
+        status: 'COMPLETED',
+        originAddress: ride.originAddress,
+        originLat: ride.originLat ?? 0,
+        originLng: ride.originLng ?? 0,
+        destAddress: ride.destinationAddress,
+        destLat: ride.destinationLat ?? 0,
+        destLng: ride.destinationLng ?? 0,
+        estimatedFare: ride.offeredFare,
+        finalFare: ride.offeredFare,
+        distanceKm: ride.distanceKm,
+        etaMinutes: ride.etaMinutes,
+        passengerName: ride.clientName,
+        completedAt: now,
+      },
+    }).catch(() => { /* ignore if requestRef already exists */ });
   }
   notifyRide(ride);
   return rideToDTO(ride);

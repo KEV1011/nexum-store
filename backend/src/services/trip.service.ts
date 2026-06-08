@@ -256,7 +256,7 @@ const service: TripService = {
       grossFare,
       netEarning,
       completedAt: now.toISOString(),
-    });
+    }, driverId ?? activeDriverId ?? undefined);
 
     try {
       await prisma.trip.update({
