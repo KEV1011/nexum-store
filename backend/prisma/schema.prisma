@@ -283,11 +283,16 @@ model Trip {
   recipientName      String?
   recipientPhone     String?
   packageDescription String?
+  passengerName      String?
+  passengerRating    Float?
+  netEarning         Float?
+  commission         Float?
   rating             Int?
   ratingComment      String?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   acceptedAt         DateTime?
+  startedAt          DateTime?
   arrivedAt          DateTime?
   completedAt        DateTime?
 

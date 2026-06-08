@@ -120,7 +120,7 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
     driverSocket = ws;
     driverWorkMode = workMode;
     driverIdByWs.set(ws, payload.driverId);
-    getTripService().setDriverStatus('online');
+    void getTripService().setDriverStatus('online', payload.driverId);
 
     sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workMode });
 
@@ -180,7 +180,7 @@ async function handleAccept(tripId: string): Promise<void> {
     return;
   }
   try {
-    const trip = getTripService().acceptTrip(tripId);
+    const trip = await getTripService().acceptTrip(tripId);
     sendDriver({ type: 'trip_accepted', trip });
   } catch (err) {
     sendDriver({
@@ -190,14 +190,14 @@ async function handleAccept(tripId: string): Promise<void> {
   }
 }
 
-function handleReject(tripId: string): void {
+async function handleReject(tripId: string): Promise<void> {
   const acked = acknowledgeTripResponse(tripId);
   if (!acked) {
     sendDriver({ type: 'error', message: `Trip ${tripId} is no longer available` });
     return;
   }
   try {
-    getTripService().rejectTrip(tripId);
+    await getTripService().rejectTrip(tripId);
     sendDriver({ type: 'trip_rejected', tripId });
     resumeDispatch();
   } catch (err) {
@@ -276,7 +276,7 @@ function handleErrandStatus(
 
       if (terminal) {
         driverActiveErrandId = null;
-        getTripService().setDriverStatus('online');
+        void getTripService().setDriverStatus('online', driverSocket ? driverIdByWs.get(driverSocket) : undefined);
         resumeDispatch();
       }
     }
@@ -626,7 +626,7 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const tripId = msg['tripId'];
       if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
-      handleReject(tripId);
+      void handleReject(tripId);
       break;
     }
 
@@ -915,7 +915,7 @@ function onClose(ws: WebSocket): void {
     driverActiveTripId = null;
     driverActiveErrandId = null;
     driverWorkMode = 'pasajero';
-    getTripService().setDriverStatus('offline');
+    void getTripService().setDriverStatus('offline', driverIdByWs.get(ws));
     console.log('[WS] Driver disconnected');
     return;
   }

@@ -104,21 +104,23 @@ router.get('/rides/:id/chat', (req: Request, res: Response): void => {
 });
 
 // GET /driver/status
-router.get('/status', (_req: Request, res: Response): void => {
+router.get('/status', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
   const svc = getTripService();
+  const [dailyTrips, dailyEarnings] = await Promise.all([
+    svc.getDailyTrips(driverId),
+    svc.getDailyEarnings(driverId),
+  ]);
   res.status(200).json({
     success: true,
-    data: {
-      status: svc.getDriverStatus(),
-      dailyTrips: svc.getDailyTrips(),
-      dailyEarnings: svc.getDailyEarnings(),
-    },
+    data: { status: svc.getDriverStatus(), dailyTrips, dailyEarnings },
   });
 });
 
 // PUT /driver/status  – only allows online/offline
-router.put('/status', (req: Request, res: Response): void => {
+router.put('/status', async (req: Request, res: Response): Promise<void> => {
   const { status } = req.body as { status?: string };
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
 
   if (!status || (status !== 'online' && status !== 'offline')) {
     res.status(400).json({ success: false, error: 'status must be "online" or "offline"' });
@@ -126,15 +128,15 @@ router.put('/status', (req: Request, res: Response): void => {
   }
 
   const svc = getTripService();
-  svc.setDriverStatus(status);
+  await svc.setDriverStatus(status as 'online' | 'offline', driverId);
 
+  const [dailyTrips, dailyEarnings] = await Promise.all([
+    svc.getDailyTrips(driverId),
+    svc.getDailyEarnings(driverId),
+  ]);
   res.status(200).json({
     success: true,
-    data: {
-      status,
-      dailyTrips: svc.getDailyTrips(),
-      dailyEarnings: svc.getDailyEarnings(),
-    },
+    data: { status, dailyTrips, dailyEarnings },
   });
 });
 
