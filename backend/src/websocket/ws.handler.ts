@@ -367,9 +367,9 @@ function handleSubscribePooled(ws: WebSocket, tripId: string): void {
   pooledSubs.set(ws, map);
 }
 
-function handleBusinessAuth(ws: WebSocket, token: string): void {
+async function handleBusinessAuth(ws: WebSocket, token: string): Promise<void> {
   try {
-    const business = getBusinessService().getBusinessByToken(token);
+    const business = await getBusinessService().getBusinessByToken(token);
     const old = businessSockets.get(business.id);
     if (old && old !== ws && old.readyState === WebSocket.OPEN) old.close();
     businessSockets.set(business.id, ws);
@@ -782,7 +782,7 @@ function onMessage(ws: WebSocket, raw: string): void {
         sendTo(ws, { type: 'business_auth_error', message: 'token field is required' });
         return;
       }
-      handleBusinessAuth(ws, token);
+      void handleBusinessAuth(ws, token);
       break;
     }
 

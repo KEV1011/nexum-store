@@ -213,6 +213,9 @@ model Order {
   pickupPhotoUrl   String?
   deliveryPhotoUrl String?
   hasSignature     Boolean     @default(false)
+  customerName     String?
+  driverName       String?
+  driverPhone      String?
   rating           Int?
   ratingComment    String?
   createdAt        DateTime    @default(now())

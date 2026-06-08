@@ -8,77 +8,11 @@ import {
   DeliveryOrderSummaryDTO,
   ProductDTO,
   BusinessPublicDTO,
+  BusinessCategory,
 } from '../types';
+import { prisma } from '../lib/prisma';
 
-// ─── Mock data: pre-registered businesses ────────────────────────────────────
-
-const businesses = new Map<string, Business>([
-  ['biz-001', {
-    id: 'biz-001', name: 'Restaurante El Sabor Pamplonés',
-    ownerName: 'Hernán Suárez', phone: '+573101234567',
-    address: 'Cra. 6 #8-45, Centro, Pamplona', category: 'restaurant',
-    accessToken: 'sabor-pamp-2024', whatsapp: '+573101234567',
-    createdAt: new Date('2024-01-15'), isActive: true,
-  }],
-  ['biz-002', {
-    id: 'biz-002', name: 'Droguería San Juan',
-    ownerName: 'Claudia Rincón', phone: '+573119876543',
-    address: 'Calle 7 #5-12, Centro, Pamplona', category: 'pharmacy',
-    accessToken: 'drogueria-sj-2024', whatsapp: '+573119876543',
-    createdAt: new Date('2024-02-10'), isActive: true,
-  }],
-  ['biz-003', {
-    id: 'biz-003', name: 'Supermercado La Económica',
-    ownerName: 'Roberto Cáceres', phone: '+573121111111',
-    address: 'Av. Santander #14-30, Pamplona', category: 'supermarket',
-    accessToken: 'la-economica-2024',
-    createdAt: new Date('2024-03-01'), isActive: true,
-  }],
-  ['biz-004', {
-    id: 'biz-004', name: 'Pizzería Don Lucho',
-    ownerName: 'Lucho García', phone: '+573122222222',
-    address: 'Cra. 5 #9-18, Centro, Pamplona', category: 'restaurant',
-    accessToken: 'pizzeria-lucho-2024',
-    createdAt: new Date('2024-02-20'), isActive: true,
-  }],
-]);
-
-// ─── Products ─────────────────────────────────────────────────────────────────
-
-const productsMap = new Map<string, ProductDTO[]>([
-  ['biz-001', [
-    { id: 'p-101', businessId: 'biz-001', name: 'Bandeja Paisa', description: 'Frijoles, arroz, carne molida, chicharrón, huevo', price: 18000, category: 'Almuerzos', isAvailable: true },
-    { id: 'p-102', businessId: 'biz-001', name: 'Mute Santandereano', description: 'Sopa típica con maíz pelao y carnes', price: 15000, category: 'Almuerzos', isAvailable: true },
-    { id: 'p-103', businessId: 'biz-001', name: 'Pechuga a la plancha', description: 'Con ensalada y papas a la francesa', price: 16000, category: 'Almuerzos', isAvailable: true },
-    { id: 'p-104', businessId: 'biz-001', name: 'Jugo natural', description: 'Mora, lulo, maracuyá o guanábana', price: 5000, category: 'Bebidas', isAvailable: true },
-  ]],
-  ['biz-002', [
-    { id: 'p-201', businessId: 'biz-002', name: 'Acetaminofén 500mg x10', description: 'Caja de 10 tabletas', price: 4500, category: 'Medicamentos', isAvailable: true },
-    { id: 'p-202', businessId: 'biz-002', name: 'Alcohol antiséptico 700ml', description: 'Frasco familiar', price: 8000, category: 'Cuidado', isAvailable: true },
-    { id: 'p-203', businessId: 'biz-002', name: 'Termómetro digital', description: 'Lectura rápida en 10 segundos', price: 22000, category: 'Dispositivos', isAvailable: true },
-  ]],
-  ['biz-003', [
-    { id: 'p-301', businessId: 'biz-003', name: 'Canasta básica', description: 'Arroz, aceite, panela, huevos, pasta', price: 45000, category: 'Mercado', isAvailable: true },
-    { id: 'p-302', businessId: 'biz-003', name: 'Leche entera 1L x6', description: 'Six pack', price: 21000, category: 'Lácteos', isAvailable: true },
-    { id: 'p-303', businessId: 'biz-003', name: 'Pan tajado integral', description: 'Bolsa de 500g', price: 6500, category: 'Panadería', isAvailable: true },
-  ]],
-  ['biz-004', [
-    { id: 'p-401', businessId: 'biz-004', name: 'Pizza familiar mixta', description: 'Pollo, carne, champiñones, extra queso', price: 38000, category: 'Pizzas', isAvailable: true },
-    { id: 'p-402', businessId: 'biz-004', name: 'Pizza personal hawaiana', description: 'Jamón y piña', price: 14000, category: 'Pizzas', isAvailable: true },
-    { id: 'p-403', businessId: 'biz-004', name: 'Gaseosa 1.5L', description: 'Surtida', price: 6000, category: 'Bebidas', isAvailable: true },
-  ]],
-]);
-
-// ─── Business meta (rating / ETA / delivery fee) ──────────────────────────────
-
-const bizMeta: Record<string, { rating: number; etaMinutes: number; deliveryFee: number }> = {
-  'biz-001': { rating: 4.8, etaMinutes: 25, deliveryFee: 3500 },
-  'biz-002': { rating: 4.6, etaMinutes: 18, deliveryFee: 3000 },
-  'biz-003': { rating: 4.5, etaMinutes: 35, deliveryFee: 4000 },
-  'biz-004': { rating: 4.7, etaMinutes: 30, deliveryFee: 3500 },
-};
-
-// ─── Order-update notification subscriptions ──────────────────────────────────
+// ─── Order-update notification subscriptions (ephemeral WS session state) ─────
 
 type OrderUpdateCallback = (orderId: string, update: DeliveryOrderSummaryDTO) => void;
 const orderUpdateListeners = new Map<string, Set<OrderUpdateCallback>>();
@@ -93,100 +27,82 @@ export function onOrderUpdate(orderId: string, cb: OrderUpdateCallback): () => v
   };
 }
 
-const tokenIndex = new Map<string, string>(); // token → businessId
+// ─── Enum mappings ─────────────────────────────────────────────────────────────
 
-// Build index from pre-registered
-for (const [id, biz] of businesses) {
-  tokenIndex.set(biz.accessToken, id);
-}
+const CATEGORY_TO_PRISMA: Record<BusinessCategory, 'RESTAURANT' | 'SUPERMARKET' | 'PHARMACY' | 'OTHER'> = {
+  restaurant: 'RESTAURANT',
+  supermarket: 'SUPERMARKET',
+  pharmacy: 'PHARMACY',
+  other: 'OTHER',
+};
 
-// ─── Mock delivery orders ─────────────────────────────────────────────────────
+const CATEGORY_FROM_PRISMA: Record<string, BusinessCategory> = {
+  RESTAURANT: 'restaurant',
+  SUPERMARKET: 'supermarket',
+  PHARMACY: 'pharmacy',
+  OTHER: 'other',
+};
 
-const deliveryOrders = new Map<string, DeliveryOrder>();
+type PrismaOrderStatus = 'CONFIRMED' | 'DRIVER_TO_PICKUP' | 'AT_PICKUP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
 
-function seedOrders(): void {
-  const now = new Date();
-  const mock: DeliveryOrder[] = [
-    {
-      id: 'order-001',
-      businessId: 'biz-001',
-      orderRef: '#4521',
-      customerName: 'María González',
-      customerAddress: 'Cra. 5 #12-34, Barrio San Francisco',
-      driverId: 'driver-001',
-      driverName: 'Carlos Ruiz',
-      driverPhone: '+573105550101',
-      status: 'delivered',
-      grossFare: 8500,
-      createdAt: new Date(now.getTime() - 3 * 60 * 60 * 1000),
-      pickedUpAt: new Date(now.getTime() - 2.8 * 60 * 60 * 1000),
-      deliveredAt: new Date(now.getTime() - 2.6 * 60 * 60 * 1000),
-      pickupPhotoUrl: '/mock/pickup_001.jpg',
-      hasSignature: true,
-    },
-    {
-      id: 'order-002',
-      businessId: 'biz-001',
-      orderRef: '#4522',
-      customerName: 'Andrés Pérez',
-      customerAddress: 'Calle 9 #6-21, Centro',
-      driverId: 'driver-001',
-      driverName: 'José Ramírez',
-      driverPhone: '+573115550202',
-      status: 'in_transit',
-      grossFare: 7200,
-      createdAt: new Date(now.getTime() - 35 * 60 * 1000),
-      pickedUpAt: new Date(now.getTime() - 20 * 60 * 1000),
-      pickupPhotoUrl: '/mock/pickup_002.jpg',
-      hasSignature: false,
-    },
-    {
-      id: 'order-003',
-      businessId: 'biz-001',
-      orderRef: '#4523',
-      customerName: 'Luisa Martínez',
-      customerAddress: 'Cra. 8 #15-67, Barrio El Buque',
-      driverId: 'driver-001',
-      driverName: 'Pedro Torres',
-      driverPhone: '+573125550303',
-      status: 'pending',
-      grossFare: 6800,
-      createdAt: new Date(now.getTime() - 8 * 60 * 1000),
-      hasSignature: false,
-    },
-  ];
+const DELIVERY_STATUS_TO_PRISMA: Record<string, PrismaOrderStatus> = {
+  pending: 'CONFIRMED',
+  at_pickup: 'AT_PICKUP',
+  in_transit: 'IN_TRANSIT',
+  delivered: 'DELIVERED',
+};
 
-  for (const order of mock) {
-    deliveryOrders.set(order.id, order);
-  }
-}
-
-seedOrders();
+const DELIVERY_STATUS_FROM_PRISMA: Record<string, string> = {
+  CONFIRMED: 'pending',
+  AT_PICKUP: 'at_pickup',
+  IN_TRANSIT: 'in_transit',
+  DELIVERED: 'delivered',
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function generateToken(): string {
-  return randomUUID().replace(/-/g, '').slice(0, 12);
+function _dbToBusinessInterface(b: {
+  id: string; name: string; ownerName: string | null; phone: string | null;
+  address: string; category: string; token: string; whatsapp: string | null;
+  createdAt: Date; isOpen: boolean;
+}): Business {
+  return {
+    id: b.id,
+    name: b.name,
+    ownerName: b.ownerName ?? '',
+    phone: b.phone ?? '',
+    address: b.address,
+    category: CATEGORY_FROM_PRISMA[b.category] as BusinessCategory ?? 'other',
+    accessToken: b.token,
+    whatsapp: b.whatsapp ?? undefined,
+    createdAt: b.createdAt,
+    isActive: b.isOpen,
+  };
 }
 
-function toSummaryDTO(order: DeliveryOrder): DeliveryOrderSummaryDTO {
+function _toSummaryDTO(order: {
+  id: string; orderRef: string; customerName: string | null; deliveryAddress: string;
+  status: string; total: number; createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
+  pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
+  driverName: string | null; driverPhone: string | null;
+}): DeliveryOrderSummaryDTO {
   const hasPickupProof = !!order.pickupPhotoUrl;
   const hasDeliveryProof = !!order.deliveryPhotoUrl || order.hasSignature;
   return {
     id: order.id,
     orderRef: order.orderRef,
-    customerName: order.customerName,
-    customerAddress: order.customerAddress,
-    status: order.status,
-    grossFare: order.grossFare,
+    customerName: order.customerName ?? '',
+    customerAddress: order.deliveryAddress,
+    status: (DELIVERY_STATUS_FROM_PRISMA[order.status] ?? 'pending') as DeliveryOrderSummaryDTO['status'],
+    grossFare: order.total,
     createdAt: order.createdAt.toISOString(),
     pickedUpAt: order.pickedUpAt?.toISOString(),
     deliveredAt: order.deliveredAt?.toISOString(),
-    pickupPhotoUrl: order.pickupPhotoUrl,
-    deliveryPhotoUrl: order.deliveryPhotoUrl,
+    pickupPhotoUrl: order.pickupPhotoUrl ?? undefined,
+    deliveryPhotoUrl: order.deliveryPhotoUrl ?? undefined,
     hasSignature: order.hasSignature,
-    driverName: order.driverName,
-    driverPhone: order.driverPhone,
+    driverName: order.driverName ?? '',
+    driverPhone: order.driverPhone ?? '',
     hasPickupProof,
     hasDeliveryProof,
     hasFullCustody: hasPickupProof && hasDeliveryProof,
@@ -198,113 +114,115 @@ function toSummaryDTO(order: DeliveryOrder): DeliveryOrderSummaryDTO {
 const service = {
   // ── Business registration ────────────────────────────────────────────────
 
-  registerBusiness(dto: RegisterBusinessDTO): Business {
-    const id = `biz-${randomUUID().slice(0, 8)}`;
-    const accessToken = generateToken();
-
-    const business: Business = {
-      id,
-      name: dto.name,
-      ownerName: dto.ownerName,
-      phone: dto.phone,
-      address: dto.address,
-      category: dto.category,
-      accessToken,
-      whatsapp: dto.whatsapp,
-      createdAt: new Date(),
-      isActive: true,
-    };
-
-    businesses.set(id, business);
-    tokenIndex.set(accessToken, id);
-    return business;
+  async registerBusiness(dto: RegisterBusinessDTO): Promise<Business> {
+    const token = randomUUID().replace(/-/g, '').slice(0, 12);
+    const biz = await prisma.business.create({
+      data: {
+        name: dto.name,
+        ownerName: dto.ownerName,
+        phone: dto.phone,
+        address: dto.address,
+        category: CATEGORY_TO_PRISMA[dto.category] ?? 'OTHER',
+        whatsapp: dto.whatsapp ?? null,
+        token,
+        isOpen: true,
+      },
+    });
+    return _dbToBusinessInterface(biz);
   },
 
   // ── Auth via access token ─────────────────────────────────────────────────
 
-  getBusinessByToken(token: string): Business {
-    const id = tokenIndex.get(token);
-    if (!id) throw new Error(`Business not found for token: ${token}`);
-    const biz = businesses.get(id);
-    if (!biz) throw new Error(`Business ${id} not found`);
-    if (!biz.isActive) throw new Error('Business account is not active');
-    return biz;
+  async getBusinessByToken(token: string): Promise<Business> {
+    const biz = await prisma.business.findUnique({ where: { token } });
+    if (!biz) throw new Error(`Business not found for token: ${token}`);
+    if (!biz.isOpen) throw new Error('Business account is not active');
+    return _dbToBusinessInterface(biz);
   },
 
-  getBusinessById(id: string): Business {
-    const biz = businesses.get(id);
+  async getBusinessById(id: string): Promise<Business> {
+    const biz = await prisma.business.findUnique({ where: { id } });
     if (!biz) throw new Error(`Business ${id} not found`);
-    return biz;
+    return _dbToBusinessInterface(biz);
   },
 
   // ── Orders ────────────────────────────────────────────────────────────────
 
-  getTodayOrdersForBusiness(businessId: string): DeliveryOrderSummaryDTO[] {
+  async getTodayOrdersForBusiness(businessId: string): Promise<DeliveryOrderSummaryDTO[]> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    return Array.from(deliveryOrders.values())
-      .filter(
-        (o) => o.businessId === businessId && o.createdAt >= today,
-      )
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .map(toSummaryDTO);
+    const orders = await prisma.order.findMany({
+      where: { businessId, createdAt: { gte: today }, userId: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return orders.map(_toSummaryDTO);
   },
 
-  getOrderDetail(orderId: string, businessId: string): DeliveryOrderSummaryDTO {
-    const order = deliveryOrders.get(orderId);
+  async getOrderDetail(orderId: string, businessId: string): Promise<DeliveryOrderSummaryDTO> {
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new Error(`Order ${orderId} not found`);
-    if (order.businessId !== businessId)
-      throw new Error('Order does not belong to this business');
-    return toSummaryDTO(order);
+    if (order.businessId !== businessId) throw new Error('Order does not belong to this business');
+    return _toSummaryDTO(order);
   },
 
-  createOrder(dto: CreateDeliveryOrderDTO, driverId: string): DeliveryOrder {
-    const biz = this.getBusinessById(dto.businessId);
-    const id = `order-${randomUUID().slice(0, 8)}`;
-
-    const order: DeliveryOrder = {
-      id,
-      businessId: dto.businessId,
-      orderRef: dto.orderRef,
-      customerName: dto.customerName,
-      customerAddress: dto.customerAddress,
-      driverId,
-      driverName: 'Driver', // resolved by auth
-      driverPhone: '',
+  async createOrder(dto: CreateDeliveryOrderDTO, driverId: string): Promise<DeliveryOrder> {
+    await this.getBusinessById(dto.businessId); // validates business exists
+    const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { name: true, phone: true } });
+    const orderRef = dto.orderRef;
+    const order = await prisma.order.create({
+      data: {
+        orderRef,
+        businessId: dto.businessId,
+        driverId,
+        status: 'CONFIRMED',
+        deliveryAddress: dto.customerAddress,
+        customerName: dto.customerName,
+        driverName: driver?.name ?? '',
+        driverPhone: driver?.phone ?? '',
+        subtotal: dto.grossFare,
+        deliveryFee: 0,
+        total: dto.grossFare,
+        hasSignature: false,
+      },
+    });
+    return {
+      id: order.id,
+      businessId: order.businessId,
+      orderRef: order.orderRef,
+      customerName: order.customerName ?? '',
+      customerAddress: order.deliveryAddress,
+      driverId: order.driverId ?? '',
+      driverName: order.driverName ?? '',
+      driverPhone: order.driverPhone ?? '',
       status: 'pending',
-      grossFare: dto.grossFare,
-      createdAt: new Date(),
-      hasSignature: false,
+      grossFare: order.total,
+      createdAt: order.createdAt,
+      hasSignature: order.hasSignature,
     };
-
-    deliveryOrders.set(id, order);
-    void biz; // biz validated above
-    return order;
   },
 
-  updateOrderStatus(
-    orderId: string,
-    dto: OrderStatusUpdateDTO,
-  ): DeliveryOrderSummaryDTO {
-    const order = deliveryOrders.get(orderId);
-    if (!order) throw new Error(`Order ${orderId} not found`);
+  async updateOrderStatus(orderId: string, dto: OrderStatusUpdateDTO): Promise<DeliveryOrderSummaryDTO> {
+    const existing = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!existing) throw new Error(`Order ${orderId} not found`);
 
-    if (dto.status === 'at_pickup') {
-      order.status = 'at_pickup';
-    } else if (dto.status === 'in_transit') {
-      order.status = 'in_transit';
-      order.pickedUpAt = new Date();
-      if (dto.pickupPhotoUrl) order.pickupPhotoUrl = dto.pickupPhotoUrl;
-    } else if (dto.status === 'delivered') {
-      order.status = 'delivered';
-      order.deliveredAt = new Date();
-      if (dto.deliveryPhotoUrl) order.deliveryPhotoUrl = dto.deliveryPhotoUrl;
-      if (dto.hasSignature) order.hasSignature = true;
-    }
+    const newStatus = DELIVERY_STATUS_TO_PRISMA[dto.status] ?? 'CONFIRMED';
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: newStatus,
+        ...(dto.status === 'in_transit' && {
+          pickedUpAt: new Date(),
+          ...(dto.pickupPhotoUrl && { pickupPhotoUrl: dto.pickupPhotoUrl }),
+        }),
+        ...(dto.status === 'delivered' && {
+          deliveredAt: new Date(),
+          ...(dto.deliveryPhotoUrl && { deliveryPhotoUrl: dto.deliveryPhotoUrl }),
+          ...(dto.hasSignature && { hasSignature: true }),
+        }),
+      },
+    });
 
-    deliveryOrders.set(orderId, order);
-    const summary = toSummaryDTO(order);
+    const summary = _toSummaryDTO(updated);
 
     // Notify subscribed WS clients
     const listeners = orderUpdateListeners.get(orderId);
@@ -317,20 +235,17 @@ const service = {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
-  getDayStats(businessId: string) {
-    const orders = this.getTodayOrdersForBusiness(businessId);
+  async getDayStats(businessId: string) {
+    const orders = await this.getTodayOrdersForBusiness(businessId);
     const delivered = orders.filter((o) => o.status === 'delivered');
     const fullCustody = delivered.filter((o) => o.hasFullCustody).length;
 
     return {
       total: orders.length,
-      pending: orders.filter(
-        (o) => o.status === 'pending' || o.status === 'at_pickup',
-      ).length,
+      pending: orders.filter((o) => o.status === 'pending' || o.status === 'at_pickup').length,
       inTransit: orders.filter((o) => o.status === 'in_transit').length,
       delivered: delivered.length,
-      fullCustodyRate:
-        delivered.length === 0 ? 0 : fullCustody / delivered.length,
+      fullCustodyRate: delivered.length === 0 ? 0 : fullCustody / delivered.length,
     };
   },
 };
@@ -341,40 +256,86 @@ export function getBusinessService() {
 
 // ─── Public helpers used by client.service ────────────────────────────────────
 
-export function getProductsForBusiness(businessId: string): ProductDTO[] {
-  return productsMap.get(businessId) ?? [];
+export async function getProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
+  const products = await prisma.product.findMany({
+    where: { businessId, isAvailable: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return products.map((p) => ({
+    id: p.id,
+    businessId: p.businessId,
+    name: p.name,
+    description: p.description ?? '',
+    price: p.price,
+    category: p.category,
+    isAvailable: p.isAvailable,
+  }));
 }
 
-export function getProductById(productId: string): ProductDTO | undefined {
-  for (const prods of productsMap.values()) {
-    const found = prods.find((p) => p.id === productId);
-    if (found) return found;
-  }
-  return undefined;
-}
-
-export function getAllBusinessesPublic(): BusinessPublicDTO[] {
-  return Array.from(businesses.values())
-    .filter((b) => b.isActive)
-    .map((b) => {
-      const meta = bizMeta[b.id] ?? { rating: 4.5, etaMinutes: 30, deliveryFee: 3500 };
-      return {
-        id: b.id, name: b.name, category: b.category, address: b.address,
-        rating: meta.rating, etaMinutes: meta.etaMinutes,
-        deliveryFee: meta.deliveryFee, isOpen: b.isActive,
-        products: getProductsForBusiness(b.id),
-      };
-    });
-}
-
-export function getBusinessPublicById(id: string): BusinessPublicDTO {
-  const b = businesses.get(id);
-  if (!b) throw new Error(`Business ${id} not found`);
-  const meta = bizMeta[id] ?? { rating: 4.5, etaMinutes: 30, deliveryFee: 3500 };
+export async function getProductById(productId: string): Promise<ProductDTO | undefined> {
+  const p = await prisma.product.findUnique({ where: { id: productId } });
+  if (!p) return undefined;
   return {
-    id: b.id, name: b.name, category: b.category, address: b.address,
-    rating: meta.rating, etaMinutes: meta.etaMinutes,
-    deliveryFee: meta.deliveryFee, isOpen: b.isActive,
-    products: getProductsForBusiness(b.id),
+    id: p.id,
+    businessId: p.businessId,
+    name: p.name,
+    description: p.description ?? '',
+    price: p.price,
+    category: p.category,
+    isAvailable: p.isAvailable,
+  };
+}
+
+export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
+  const businesses = await prisma.business.findMany({
+    where: { isOpen: true },
+    include: { products: { where: { isAvailable: true } } },
+    orderBy: { name: 'asc' },
+  });
+  return businesses.map((b) => ({
+    id: b.id,
+    name: b.name,
+    category: (CATEGORY_FROM_PRISMA[b.category] ?? 'other') as BusinessCategory,
+    address: b.address,
+    rating: b.rating,
+    etaMinutes: b.etaMinutes,
+    deliveryFee: b.deliveryFee,
+    isOpen: b.isOpen,
+    products: b.products.map((p) => ({
+      id: p.id,
+      businessId: p.businessId,
+      name: p.name,
+      description: p.description ?? '',
+      price: p.price,
+      category: p.category,
+      isAvailable: p.isAvailable,
+    })),
+  }));
+}
+
+export async function getBusinessPublicById(id: string): Promise<BusinessPublicDTO> {
+  const b = await prisma.business.findUnique({
+    where: { id },
+    include: { products: { where: { isAvailable: true } } },
+  });
+  if (!b) throw new Error(`Business ${id} not found`);
+  return {
+    id: b.id,
+    name: b.name,
+    category: (CATEGORY_FROM_PRISMA[b.category] ?? 'other') as BusinessCategory,
+    address: b.address,
+    rating: b.rating,
+    etaMinutes: b.etaMinutes,
+    deliveryFee: b.deliveryFee,
+    isOpen: b.isOpen,
+    products: b.products.map((p) => ({
+      id: p.id,
+      businessId: p.businessId,
+      name: p.name,
+      description: p.description ?? '',
+      price: p.price,
+      category: p.category,
+      isAvailable: p.isAvailable,
+    })),
   };
 }

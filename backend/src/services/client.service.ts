@@ -368,7 +368,7 @@ type PrismaOrder = {
   deliveryFee: number; total: number; etaMinutes: number | null; deliveryAddress: string;
   pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
   createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
-  driverName?: string; driverPhone?: string;
+  driverName: string | null; driverPhone: string | null; customerName: string | null;
 };
 
 type PrismaOrderLine = {
