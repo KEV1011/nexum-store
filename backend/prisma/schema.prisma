@@ -481,6 +481,8 @@ model IntercityBooking {
   updatedAt      DateTime        @updatedAt
   confirmedAt    DateTime?
   completedAt    DateTime?
+  rating         Int?
+  ratingComment  String?
 
   user           User            @relation(fields: [userId], references: [id])
 

@@ -260,6 +260,66 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
     }
   }
 
+  // ── History & rating ─────────────────────────────────────────────────────
+
+  /// Loads the server-side trip history (completed/cancelled bookings) and
+  /// replaces the local `past` list. Falls back silently to the local list
+  /// when the server is unreachable.
+  Future<void> loadHistory() async {
+    try {
+      final res = await _dio
+          .get<Map<String, dynamic>>('/client/intercity/history');
+      final list = (res.data?['data'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(IntercityRequestEntity.fromApi)
+          .toList();
+      if (!mounted) return;
+      state = state.copyWith(past: list);
+    } catch (_) {
+      // Keep whatever we accumulated locally this session.
+    }
+  }
+
+  /// Rates a completed trip (1-5 stars). Returns `null` on success or a
+  /// human-readable error message.
+  Future<String?> rateTrip(String id, int stars, {String? comment}) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/intercity/$id/rate',
+        data: {
+          'rating': stars,
+          if (comment != null && comment.trim().isNotEmpty)
+            'comment': comment.trim(),
+        },
+      );
+      _applyLocalRating(id, stars);
+      return null;
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      final msg =
+          body is Map<String, dynamic> ? body['error'] as String? : null;
+      final status = e.response?.statusCode ?? 0;
+      if (status >= 400 && status < 500) {
+        return msg ?? 'No se pudo enviar la calificación.';
+      }
+      // Offline: keep the rating locally so the UI reflects the user's action.
+      _applyLocalRating(id, stars);
+      return null;
+    } catch (_) {
+      _applyLocalRating(id, stars);
+      return null;
+    }
+  }
+
+  void _applyLocalRating(String id, int stars) {
+    state = state.copyWith(
+      past: [
+        for (final t in state.past)
+          if (t.id == id) t.copyWith(myRating: stars) else t,
+      ],
+    );
+  }
+
   // ── Mock simulation (fallback) ────────────────────────────────────────────
 
   void _simulateDriverMatch(String requestId) {

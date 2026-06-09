@@ -314,7 +314,53 @@ class IntercityRequestEntity {
     this.driverVehicle,
     this.driverRating,
     this.counterFare,
+    this.myRating,
   });
+
+  /// Parses the backend `IntercityBookingDTO` JSON shape.
+  factory IntercityRequestEntity.fromApi(Map<String, dynamic> json) {
+    IntercityCity city(String? raw, IntercityCity fallback) {
+      for (final c in IntercityCity.values) {
+        if (c.name == raw) return c;
+      }
+      return fallback;
+    }
+
+    final seatsRaw = json['seats'] as String?;
+    final seats = IntercitySeats.values.firstWhere(
+      (s) => s.name == seatsRaw,
+      orElse: () => IntercitySeats.one,
+    );
+    final status = switch (json['status'] as String?) {
+      'driver_found' => IntercityStatus.driverFound,
+      'confirmed' => IntercityStatus.confirmed,
+      'in_progress' => IntercityStatus.inProgress,
+      'completed' => IntercityStatus.completed,
+      'cancelled' => IntercityStatus.cancelled,
+      _ => IntercityStatus.searching,
+    };
+    return IntercityRequestEntity(
+      id: json['id'] as String? ?? '',
+      origin: city(json['origin'] as String?, IntercityCity.pamplona),
+      destination: city(json['destination'] as String?, IntercityCity.cucuta),
+      departureTime:
+          DateTime.tryParse(json['departureTime'] as String? ?? '') ??
+              DateTime.now(),
+      seats: seats,
+      offeredFare: (json['offeredFare'] as num?)?.toDouble() ?? 0,
+      status: status,
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+      notes: json['notes'] as String?,
+      pickupAddress: json['pickupAddress'] as String?,
+      dropoffAddress: json['dropoffAddress'] as String?,
+      driverName: json['driverName'] as String?,
+      driverPhone: json['maskedPhone'] as String?,
+      driverVehicle: json['driverVehicle'] as String?,
+      counterFare: (json['counterFare'] as num?)?.toDouble(),
+      myRating: json['rating'] as int?,
+    );
+  }
 
   final String id;
   final IntercityCity origin;
@@ -333,9 +379,13 @@ class IntercityRequestEntity {
   final double? driverRating;
   final double? counterFare;
 
+  /// Calificación (1-5) que el pasajero le dio al viaje completado.
+  final int? myRating;
+
   bool get hasDriver => driverName != null;
   bool get isActive => status.isActive;
   bool get isCompleted => status == IntercityStatus.completed;
+  bool get canRate => isCompleted && myRating == null;
 
   IntercityRequestEntity copyWith({
     String? id,
@@ -354,6 +404,7 @@ class IntercityRequestEntity {
     String? driverVehicle,
     double? driverRating,
     double? counterFare,
+    int? myRating,
   }) =>
       IntercityRequestEntity(
         id: id ?? this.id,
@@ -372,5 +423,6 @@ class IntercityRequestEntity {
         driverVehicle: driverVehicle ?? this.driverVehicle,
         driverRating: driverRating ?? this.driverRating,
         counterFare: counterFare ?? this.counterFare,
+        myRating: myRating ?? this.myRating,
       );
 }

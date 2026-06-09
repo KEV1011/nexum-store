@@ -646,6 +646,9 @@ export interface IntercityBookingDTO {
   notes?: string;
   createdAt: string;
   confirmedAt?: string;
+  /** Calificación del pasajero al viaje completado (1-5). */
+  rating?: number;
+  ratingComment?: string;
 }
 
 // ─── Shared Pooled Rides (Modelo A: conductor publica → pasajero reserva) ───────

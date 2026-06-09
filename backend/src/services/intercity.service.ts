@@ -61,6 +61,7 @@ type DbBooking = {
   driverName: string | null; driverPhone: string | null; driverVehicle: string | null;
   pickupAddress: string | null; dropoffAddress: string | null; notes: string | null;
   createdAt: Date; confirmedAt: Date | null;
+  rating?: number | null; ratingComment?: string | null;
 };
 
 function _toDTO(b: DbBooking): IntercityBookingDTO {
@@ -85,6 +86,8 @@ function _toDTO(b: DbBooking): IntercityBookingDTO {
     notes: b.notes ?? undefined,
     createdAt: b.createdAt.toISOString(),
     confirmedAt: b.confirmedAt?.toISOString(),
+    rating: b.rating ?? undefined,
+    ratingComment: b.ratingComment ?? undefined,
   };
 }
 
@@ -229,6 +232,41 @@ export async function getIntercityBookingById(clientId: string, bookingId: strin
   const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
   if (!b || b.userId !== clientId) return null;
   return _toDTO(b as DbBooking);
+}
+
+/** Viajes terminados (completados o cancelados) del cliente, más reciente primero. */
+export async function getIntercityHistory(clientId: string): Promise<IntercityBookingDTO[]> {
+  const rows = await prisma.intercityBooking.findMany({
+    where: { userId: clientId, status: { in: ['COMPLETED', 'CANCELLED'] } },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+  return rows.map((b) => _toDTO(b as DbBooking));
+}
+
+/**
+ * Califica un viaje completado (1-5 estrellas, comentario opcional).
+ * Solo el dueño de la reserva puede calificar, una sola vez.
+ */
+export async function rateIntercityBooking(
+  clientId: string,
+  bookingId: string,
+  rating: number,
+  comment?: string,
+): Promise<IntercityBookingDTO> {
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new IntercityError('La calificación debe ser un entero entre 1 y 5');
+  }
+  const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+  if (!b || b.userId !== clientId) throw new IntercityError('Reserva no encontrada');
+  if (b.status !== 'COMPLETED') throw new IntercityError('Solo puedes calificar viajes completados');
+  if (b.rating != null) throw new IntercityError('Este viaje ya fue calificado');
+
+  const updated = await prisma.intercityBooking.update({
+    where: { id: bookingId },
+    data: { rating, ratingComment: comment?.trim() || null },
+  });
+  return _toDTO(updated as DbBooking);
 }
 
 export function subscribeIntercityBooking(bookingId: string, cb: BookingCallback): () => void {

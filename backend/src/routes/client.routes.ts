@@ -43,6 +43,8 @@ import {
   cancelIntercityBooking,
   getActiveIntercityBooking,
   getIntercityBookingById,
+  getIntercityHistory,
+  rateIntercityBooking,
   IntercityError,
 } from '../services/intercity.service';
 import {
@@ -282,6 +284,24 @@ router.post('/intercity/request', clientAuthMiddleware, async (req, res) => {
 
 router.get('/intercity/active', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: await getActiveIntercityBooking(req.clientId!) });
+});
+
+// Nota: registrada antes de '/intercity/:id' para que 'history' no se
+// interprete como un id de reserva.
+router.get('/intercity/history', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await getIntercityHistory(req.clientId!) });
+});
+
+router.post('/intercity/:id/rate', clientAuthMiddleware, async (req, res) => {
+  const { rating, comment } = req.body as { rating?: number; comment?: string };
+  if (rating === undefined) { res.status(400).json({ success: false, error: 'rating is required' }); return; }
+  try {
+    const booking = await rateIntercityBooking(req.clientId!, req.params['id']!, rating, comment);
+    res.json({ success: true, data: booking });
+  } catch (err) {
+    const status = err instanceof IntercityError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to rate booking' });
+  }
 });
 
 router.get('/intercity/:id', clientAuthMiddleware, async (req, res) => {

@@ -181,6 +181,13 @@ class _IntercityBookingScreenState
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Mis viajes',
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () => context.push('/intercity/history'),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
