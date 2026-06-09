@@ -50,6 +50,12 @@ class AccountScreen extends ConsumerWidget {
                   'Métodos de pago próximamente',
                 ),
               ),
+              _SettingTile(
+                icon: Icons.shield_outlined,
+                title: 'Contacto de confianza',
+                subtitle: 'Para el botón SOS durante un viaje',
+                onTap: () => context.push(AppRoutes.trustedContact),
+              ),
               _DarkModeTile(
                 isDark: isDark,
                 onChanged: (v) => themeNotifier.setDark(dark: v),

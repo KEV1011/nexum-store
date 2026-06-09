@@ -10,6 +10,8 @@ import {
   ChatRole,
   TransportServiceType,
 } from '../types';
+import { prisma } from '../lib/prisma';
+import { maskPhone } from './safe-contact.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ride negotiation service (inDriver-style)
@@ -22,7 +24,7 @@ import {
 //   5. Client accepts one bid → driver matched, others rejected    (acceptBid)
 //   6. Both parties exchange chat messages bound to the ride       (addChatMessage)
 //
-// State is in-memory, mirroring the rest of the backend.
+// In-memory state: bids, chat, live status maps. Completed rides persist to Trip.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class RideNegotiationError extends Error {
@@ -111,6 +113,10 @@ const ACTIVE_STATUSES: RideNegotiationStatus[] = [
   'in_progress',
 ];
 
+const SERVICE_TYPE_TO_PRISMA: Record<TransportServiceType, 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS'> = {
+  taxi: 'TAXI', moto: 'MOTO', particular: 'PARTICULAR', envios: 'ENVIOS',
+};
+
 // ─── DTO mappers ────────────────────────────────────────────────────────────
 
 function bidToDTO(b: RideBid): RideBidDTO {
@@ -118,7 +124,10 @@ function bidToDTO(b: RideBid): RideBidDTO {
     id: b.id,
     driverId: b.driverId,
     driverName: b.driverName,
-    driverPhone: b.driverPhone,
+    // Privacy: the client sees a masked reference in the bid, not the real number.
+    driverPhone: maskPhone(b.driverPhone) ?? '',
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(b.driverPhone),
     driverRating: b.driverRating,
     driverTotalTrips: b.driverTotalTrips,
     vehicleDescription: b.vehicleDescription,
@@ -144,7 +153,10 @@ function rideToDTO(r: RideRequest, forDriverId?: string): RideRequestDTO {
     rideRef: r.rideRef,
     clientId: r.clientId,
     clientName: r.clientName,
-    clientPhone: r.clientPhone,
+    // Privacy: bidding drivers see a masked reference, not the passenger's number.
+    clientPhone: maskPhone(r.clientPhone) ?? '',
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(r.clientPhone),
     serviceType: r.serviceType,
     originAddress: r.originAddress,
     destinationAddress: r.destinationAddress,
@@ -328,9 +340,32 @@ export function updateRideStatus(
   if (!ride || ride.matchedDriverId !== driverId) return null;
   ride.status = status;
   if (status === 'completed') {
-    ride.completedAt = new Date();
+    const now = new Date();
+    ride.completedAt = now;
     clientActiveRide.delete(ride.clientId);
     driverActiveRide.delete(driverId);
+
+    // Persist completed ride to Trip table (fire-and-forget).
+    void prisma.trip.create({
+      data: {
+        requestRef: ride.id,
+        driverId: ride.matchedDriverId ?? null,
+        serviceType: SERVICE_TYPE_TO_PRISMA[ride.serviceType] ?? 'PARTICULAR',
+        status: 'COMPLETED',
+        originAddress: ride.originAddress,
+        originLat: ride.originLat ?? 0,
+        originLng: ride.originLng ?? 0,
+        destAddress: ride.destinationAddress,
+        destLat: ride.destinationLat ?? 0,
+        destLng: ride.destinationLng ?? 0,
+        estimatedFare: ride.offeredFare,
+        finalFare: ride.offeredFare,
+        distanceKm: ride.distanceKm,
+        etaMinutes: ride.etaMinutes,
+        passengerName: ride.clientName,
+        completedAt: now,
+      },
+    }).catch(() => { /* ignore if requestRef already exists */ });
   }
   notifyRide(ride);
   return rideToDTO(ride);

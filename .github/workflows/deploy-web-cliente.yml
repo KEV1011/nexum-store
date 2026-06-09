@@ -39,9 +39,18 @@ jobs:
 
       # --no-tree-shake-icons evita que falten íconos de Cupertino en runtime.
       # --base-href reemplaza $FLUTTER_BASE_HREF en index.html.
+      # API_BASE_URL / WS_BASE_URL se inyectan en tiempo de compilación via --dart-define
+      # para que la web app publicada alcance el backend real y no 10.0.2.2 (emulador Android).
       - name: Build Flutter Web
         working-directory: AppCliente
-        run: flutter build web --release --no-tree-shake-icons --base-href /nexum-store/cliente/
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL || 'http://10.0.2.2:3000' }}
+          WS_BASE_URL: ${{ secrets.WS_BASE_URL || 'ws://10.0.2.2:3000' }}
+        run: |
+          flutter build web --release --no-tree-shake-icons \
+            --base-href /nexum-store/cliente/ \
+            --dart-define=API_BASE_URL=${API_BASE_URL} \
+            --dart-define=WS_BASE_URL=${WS_BASE_URL}
 
       # ── Post-build patches ────────────────────────────────────────────────────
 

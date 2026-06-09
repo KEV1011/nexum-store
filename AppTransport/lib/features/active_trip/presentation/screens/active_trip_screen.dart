@@ -556,6 +556,24 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
                   ),
                 ),
               ),
+
+              const SizedBox(width: AppConstants.spacingS),
+
+              // SOS — emergency, accessible throughout the active trip.
+              Material(
+                color: AppColors.error,
+                elevation: 4,
+                shadowColor: AppColors.shadow,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  onTap: () => context.push('/safety'),
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.sos_rounded, size: 24, color: Colors.white),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

@@ -359,6 +359,8 @@ export interface DeliveryOrderSummaryDTO {
   hasSignature: boolean;
   driverName: string;
   driverPhone: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   hasPickupProof: boolean;
   hasDeliveryProof: boolean;
   hasFullCustody: boolean;
@@ -465,6 +467,8 @@ export interface ClientOrderSummaryDTO {
   deliveryAddress: string;
   driverName?: string;
   driverPhone?: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   pickupPhotoUrl?: string;
   deliveryPhotoUrl?: string;
   hasSignature: boolean;
@@ -498,6 +502,8 @@ export interface ClientTripDTO {
   status: ClientTripStatus;
   driverName?: string;
   driverPhone?: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   driverVehicle?: string;
   driverLat?: number;
   driverLng?: number;
@@ -516,6 +522,8 @@ export interface RequestClientTripDTO {
   estimatedFare: number;
   distanceKm: number;
   etaMinutes: number;
+  originLat?: number;
+  originLng?: number;
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
@@ -567,6 +575,8 @@ export interface ClientErrandDTO {
   status: ErrandStatus;
   driverName?: string;
   driverPhone?: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   createdAt: string;
   acceptedAt?: string;
   deliveredAt?: string;
@@ -628,6 +638,8 @@ export interface IntercityBookingDTO {
   status: IntercityStatus;
   driverName?: string;
   driverPhone?: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   driverVehicle?: string;
   pickupAddress?: string;
   dropoffAddress?: string;
@@ -669,6 +681,8 @@ export interface SeatBookingDTO {
   tripId: string;
   passengerName: string;
   passengerPhone: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   seatsBooked: number;
   pickupAddress?: string;
   notes?: string;
@@ -690,6 +704,8 @@ export interface PooledTripDTO {
   driverId: string;
   driverName: string;
   driverPhone: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   vehicleDescription: string;
   origin: IntercityCity;
   destination: IntercityCity;
@@ -747,6 +763,8 @@ export interface RideBidDTO {
   driverId: string;
   driverName: string;
   driverPhone: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   driverRating: number;
   driverTotalTrips: number;
   vehicleDescription: string;
@@ -762,6 +780,8 @@ export interface RideRequestDTO {
   clientId: string;
   clientName: string;
   clientPhone: string;
+  contactChannel?: 'in_app_chat' | 'call_proxy';
+  maskedPhone?: string;
   serviceType: TransportServiceType;
   originAddress: string;
   destinationAddress: string;
@@ -796,14 +816,16 @@ export interface ChatMessageDTO {
 
 // ─── Driver Profile & Document Verification (Features D + E) ────────────────────
 
+// These match the Prisma DocumentType / DocumentStatus enums.
 export type DriverDocumentType =
-  | 'cedula'
-  | 'license'
-  | 'soat'
-  | 'vehicle_registration'
-  | 'profile_photo';
+  | 'CEDULA'
+  | 'LICENSE'
+  | 'SOAT'
+  | 'PROPERTY_CARD'
+  | 'PROFILE_PHOTO';
 
-export type DocumentStatus = 'missing' | 'pending' | 'approved' | 'rejected';
+// 'missing' is a synthetic front-end-only status (no DB row yet).
+export type DocumentStatus = 'missing' | 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface UpsertDriverDocumentDTO {
   type: DriverDocumentType;

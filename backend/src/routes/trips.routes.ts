@@ -7,16 +7,16 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /trips/active
-router.get('/active', (_req: Request, res: Response): void => {
+router.get('/active', async (_req: Request, res: Response): Promise<void> => {
   const trip = getTripService().getActiveTrip();
   res.status(200).json({ success: true, data: trip ?? null });
 });
 
 // POST /trips/:id/accept
-router.post('/:id/accept', (req: Request, res: Response): void => {
+router.post('/:id/accept', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as { id: string };
   try {
-    const trip = getTripService().acceptTrip(id);
+    const trip = await getTripService().acceptTrip(id);
     res.status(200).json({ success: true, data: trip });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not accept trip';
@@ -25,10 +25,10 @@ router.post('/:id/accept', (req: Request, res: Response): void => {
 });
 
 // POST /trips/:id/reject
-router.post('/:id/reject', (req: Request, res: Response): void => {
+router.post('/:id/reject', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as { id: string };
   try {
-    const trip = getTripService().rejectTrip(id);
+    const trip = await getTripService().rejectTrip(id);
     res.status(200).json({ success: true, data: trip });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not reject trip';
@@ -37,10 +37,10 @@ router.post('/:id/reject', (req: Request, res: Response): void => {
 });
 
 // POST /trips/:id/start  → going_to_pickup
-router.post('/:id/start', (req: Request, res: Response): void => {
+router.post('/:id/start', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as { id: string };
   try {
-    const trip = getTripService().startTrip(id);
+    const trip = await getTripService().startTrip(id);
     res.status(200).json({ success: true, data: trip });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not start trip';
@@ -49,10 +49,10 @@ router.post('/:id/start', (req: Request, res: Response): void => {
 });
 
 // POST /trips/:id/arrive  → arrived_at_pickup
-router.post('/:id/arrive', (req: Request, res: Response): void => {
+router.post('/:id/arrive', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as { id: string };
   try {
-    const trip = getTripService().arriveAtPickup(id);
+    const trip = await getTripService().arriveAtPickup(id);
     res.status(200).json({ success: true, data: trip });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not update trip';
@@ -61,11 +61,10 @@ router.post('/:id/arrive', (req: Request, res: Response): void => {
 });
 
 // POST /trips/:id/finish  → completed, returns TripSummaryDTO
-router.post('/:id/finish', (req: Request, res: Response): void => {
+router.post('/:id/finish', async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as { id: string };
   try {
-    // finishTrip already records earnings internally
-    const summary = getTripService().finishTrip(id);
+    const summary = await getTripService().finishTrip(id, req.driverId);
     res.status(200).json({ success: true, data: summary });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not finish trip';

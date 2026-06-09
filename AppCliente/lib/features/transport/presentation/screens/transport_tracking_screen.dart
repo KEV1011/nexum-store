@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 
@@ -41,6 +42,17 @@ class TransportTrackingScreen extends ConsumerWidget {
           icon: const Icon(Icons.close_rounded),
           onPressed: () => context.go(AppRoutes.home),
         ),
+        actions: [
+          if (request.status.isActive)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SosButton(
+                tripId: request.id,
+                lat: request.driverLat,
+                lng: request.driverLng,
+              ),
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -279,10 +291,63 @@ class _DriverCard extends StatelessWidget {
               backgroundColor: AppColors.primaryContainer,
               foregroundColor: AppColors.primary,
             ),
-            icon: const Icon(Icons.phone_rounded),
-            onPressed: () {},
+            tooltip: 'Contacto seguro',
+            icon: const Icon(Icons.shield_outlined),
+            onPressed: () => _showSafeContactSheet(context),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showSafeContactSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: const [
+                Icon(Icons.lock_outline_rounded,
+                    color: AppColors.primary, size: 22),
+                SizedBox(width: 10),
+                Text(
+                  'Contacto protegido',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Por tu seguridad y la del conductor, el número real se mantiene '
+              'privado. Comunícate por el chat in-app del viaje.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            if (request.maskedPhone != null) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(Icons.phone_outlined,
+                      size: 18, color: AppColors.textTertiary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Referencia: ${request.maskedPhone}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

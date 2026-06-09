@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { DocumentType } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { MOCK_DRIVER, getMaxFarePerSeat, getIntercityRoute } from '../config/constants';
 import { getTripService } from '../services/trip.service';
@@ -14,6 +15,7 @@ import {
   getDriverProfile,
   updateDriverProfile,
   upsertDriverDocument,
+  uploadDriverDocument,
   reviewDriverDocument,
 } from '../services/driver-profile.service';
 import { getActiveDriverRide, getChatHistory } from '../services/ride-negotiation.service';
@@ -23,53 +25,131 @@ import {
   UpsertDriverDocumentDTO,
   DriverDocumentType,
 } from '../types';
+import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
 
 const router = Router();
 
 router.use(authMiddleware);
 
 // GET /driver/profile — real profile with documents + verification status
-router.get('/profile', (req: Request, res: Response): void => {
+router.get('/profile', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
-  res.status(200).json({ success: true, data: getDriverProfile(driverId) });
+  try {
+    res.status(200).json({ success: true, data: await getDriverProfile(driverId) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to get profile';
+    res.status(404).json({ success: false, error: message });
+  }
 });
 
 // PATCH /driver/profile — edit bio/name/photo/vehicle
-router.patch('/profile', (req: Request, res: Response): void => {
+router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const { fullName, bio, photoUrl, vehicleDescription } = req.body as Record<string, string>;
-  const updated = updateDriverProfile(driverId, { fullName, bio, photoUrl, vehicleDescription });
-  res.status(200).json({ success: true, data: updated });
+  try {
+    const updated = await updateDriverProfile(driverId, { fullName, bio, photoUrl, vehicleDescription });
+    res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to update profile';
+    res.status(400).json({ success: false, error: message });
+  }
 });
 
-// PUT /driver/documents — upload or re-upload a document (Feature D)
-router.put('/documents', (req: Request, res: Response): void => {
+// GET /driver/documents — list all documents for the authenticated driver
+router.get('/documents', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  try {
+    const profile = await getDriverProfile(driverId);
+    res.status(200).json({ success: true, data: profile.documents });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to get documents';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+// POST /driver/documents — upload a document file (multipart/form-data)
+// Form fields: type (DocumentType), expiresAt? (ISO date string)
+router.post(
+  '/documents',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId ?? MOCK_DRIVER.id;
+    const { type, expiresAt } = req.body as { type?: string; expiresAt?: string };
+
+    if (!type || !ALLOWED_TYPES.includes(type as DocumentType)) {
+      res.status(400).json({
+        success: false,
+        error: `type es requerido. Valores válidos: ${ALLOWED_TYPES.join(', ')}`,
+      });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ningún archivo.' });
+      return;
+    }
+
+    try {
+      const fileUrl = fileToUrl(req.file.filename);
+      const updated = await uploadDriverDocument(
+        driverId,
+        type as DocumentType,
+        fileUrl,
+        expiresAt,
+      );
+      res.status(201).json({ success: true, data: updated });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al guardar el documento';
+      res.status(500).json({ success: false, error: message });
+    }
+  },
+);
+
+// PUT /driver/documents — legacy JSON upload (fileUrl provided by caller)
+router.put('/documents', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const dto = req.body as Partial<UpsertDriverDocumentDTO>;
   if (!dto.type || !dto.fileUrl) {
     res.status(400).json({ success: false, error: 'type and fileUrl are required' });
     return;
   }
-  const updated = upsertDriverDocument(driverId, {
-    type: dto.type,
-    fileUrl: dto.fileUrl,
-    expiresAt: dto.expiresAt,
-  });
-  res.status(200).json({ success: true, data: updated });
+  try {
+    const updated = await upsertDriverDocument(driverId, {
+      type: dto.type,
+      fileUrl: dto.fileUrl,
+      expiresAt: dto.expiresAt,
+    });
+    res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to upload document';
+    res.status(400).json({ success: false, error: message });
+  }
 });
 
 // POST /driver/documents/:type/review — demo review action (approve/reject)
-router.post('/documents/:type/review', (req: Request, res: Response): void => {
+router.post('/documents/:type/review', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const { approve, rejectionReason } = req.body as { approve?: boolean; rejectionReason?: string };
-  const updated = reviewDriverDocument(
-    driverId,
-    req.params['type'] as DriverDocumentType,
-    approve === true,
-    rejectionReason,
-  );
-  if (!updated) { res.status(404).json({ success: false, error: 'Document not found' }); return; }
-  res.status(200).json({ success: true, data: updated });
+  try {
+    const updated = await reviewDriverDocument(
+      driverId,
+      req.params['type'] as DriverDocumentType,
+      approve === true,
+      rejectionReason,
+    );
+    if (!updated) { res.status(404).json({ success: false, error: 'Document not found' }); return; }
+    res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to review document';
+    res.status(400).json({ success: false, error: message });
+  }
 });
 
 // GET /driver/rides/active — the driver's matched ride, if any
@@ -84,21 +164,23 @@ router.get('/rides/:id/chat', (req: Request, res: Response): void => {
 });
 
 // GET /driver/status
-router.get('/status', (_req: Request, res: Response): void => {
+router.get('/status', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
   const svc = getTripService();
+  const [dailyTrips, dailyEarnings] = await Promise.all([
+    svc.getDailyTrips(driverId),
+    svc.getDailyEarnings(driverId),
+  ]);
   res.status(200).json({
     success: true,
-    data: {
-      status: svc.getDriverStatus(),
-      dailyTrips: svc.getDailyTrips(),
-      dailyEarnings: svc.getDailyEarnings(),
-    },
+    data: { status: svc.getDriverStatus(), dailyTrips, dailyEarnings },
   });
 });
 
 // PUT /driver/status  – only allows online/offline
-router.put('/status', (req: Request, res: Response): void => {
+router.put('/status', async (req: Request, res: Response): Promise<void> => {
   const { status } = req.body as { status?: string };
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
 
   if (!status || (status !== 'online' && status !== 'offline')) {
     res.status(400).json({ success: false, error: 'status must be "online" or "offline"' });
@@ -106,15 +188,15 @@ router.put('/status', (req: Request, res: Response): void => {
   }
 
   const svc = getTripService();
-  svc.setDriverStatus(status);
+  await svc.setDriverStatus(status as 'online' | 'offline', driverId);
 
+  const [dailyTrips, dailyEarnings] = await Promise.all([
+    svc.getDailyTrips(driverId),
+    svc.getDailyEarnings(driverId),
+  ]);
   res.status(200).json({
     success: true,
-    data: {
-      status,
-      dailyTrips: svc.getDailyTrips(),
-      dailyEarnings: svc.getDailyEarnings(),
-    },
+    data: { status, dailyTrips, dailyEarnings },
   });
 });
 
@@ -151,7 +233,7 @@ router.get('/intercity/pool/fare-cap', (req: Request, res: Response): void => {
 });
 
 // POST /driver/intercity/pool/publish
-router.post('/intercity/pool/publish', (req: Request, res: Response): void => {
+router.post('/intercity/pool/publish', async (req: Request, res: Response): Promise<void> => {
   const dto = req.body as Partial<PublishPooledTripDTO>;
   if (
     !dto.origin || !dto.destination || !dto.departureTime ||
@@ -164,7 +246,7 @@ router.post('/intercity/pool/publish', (req: Request, res: Response): void => {
     return;
   }
   try {
-    const trip = publishPooledTrip(req.driverId!, MOCK_DRIVER.name, req.driverPhone ?? MOCK_DRIVER.phone, {
+    const trip = await publishPooledTrip(req.driverId!, MOCK_DRIVER.name, req.driverPhone ?? MOCK_DRIVER.phone, {
       origin: dto.origin,
       destination: dto.destination,
       departureTime: dto.departureTime,
@@ -182,27 +264,27 @@ router.post('/intercity/pool/publish', (req: Request, res: Response): void => {
 });
 
 // GET /driver/intercity/pool/mine
-router.get('/intercity/pool/mine', (req: Request, res: Response): void => {
-  res.json({ success: true, data: getDriverPooledTrips(req.driverId!) });
+router.get('/intercity/pool/mine', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await getDriverPooledTrips(req.driverId!) });
 });
 
 // POST /driver/intercity/pool/:id/depart
-router.post('/intercity/pool/:id/depart', (req: Request, res: Response): void => {
-  const trip = departPooledTrip(req.driverId!, req.params['id']!);
+router.post('/intercity/pool/:id/depart', async (req: Request, res: Response): Promise<void> => {
+  const trip = await departPooledTrip(req.driverId!, req.params['id']!);
   if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or cannot depart' }); return; }
   res.json({ success: true, data: trip });
 });
 
 // POST /driver/intercity/pool/:id/complete
-router.post('/intercity/pool/:id/complete', (req: Request, res: Response): void => {
-  const trip = completePooledTrip(req.driverId!, req.params['id']!);
+router.post('/intercity/pool/:id/complete', async (req: Request, res: Response): Promise<void> => {
+  const trip = await completePooledTrip(req.driverId!, req.params['id']!);
   if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or not in progress' }); return; }
   res.json({ success: true, data: trip });
 });
 
 // POST /driver/intercity/pool/:id/cancel
-router.post('/intercity/pool/:id/cancel', (req: Request, res: Response): void => {
-  const trip = cancelPooledTrip(req.driverId!, req.params['id']!);
+router.post('/intercity/pool/:id/cancel', async (req: Request, res: Response): Promise<void> => {
+  const trip = await cancelPooledTrip(req.driverId!, req.params['id']!);
   if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
   res.json({ success: true, data: trip });
 });

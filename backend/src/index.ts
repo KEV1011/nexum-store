@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
+import path from 'path';
 import { WebSocketServer } from 'ws';
 
 import { PORT, CORS_ORIGIN } from './config/constants';
@@ -14,6 +15,8 @@ import earningsRouter from './routes/earnings.routes';
 import businessRouter from './routes/business.routes';
 import clientRouter from './routes/client.routes';
 import webhooksRouter from './routes/webhooks.routes';
+import safetyRouter from './routes/safety.routes';
+import adminRouter from './routes/admin.routes';
 
 // ─── Express App ──────────────────────────────────────────────────────────────
 
@@ -42,6 +45,12 @@ app.use('/earnings', earningsRouter);
 app.use('/business', businessRouter);
 app.use('/client', clientRouter);
 app.use('/webhooks', webhooksRouter);
+app.use('/safety', safetyRouter);
+app.use('/admin', adminRouter);
+
+// Serve uploaded driver documents (protected path — no directory listing).
+const uploadsDir = path.resolve(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadsDir, { index: false, dotfiles: 'deny' }));
 
 // ─── 404 Catch-all ───────────────────────────────────────────────────────────
 

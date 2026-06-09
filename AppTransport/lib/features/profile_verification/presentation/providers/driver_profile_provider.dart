@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/network/dio_client.dart';
@@ -49,17 +50,19 @@ class DriverProfileNotifier extends StateNotifier<DriverProfileState> {
     }
   }
 
-  /// Uploads (or re-uploads) a document. [fileUrl] is the stored file reference;
-  /// in this MVP it's a mock URL until cloud storage is wired.
-  Future<bool> uploadDocument(String type, String fileUrl, {String? expiresAt}) async {
+  /// Uploads a document file via multipart POST /driver/documents.
+  /// [filePath] is the local file system path returned by image_picker.
+  Future<bool> uploadDocument(String type, String filePath, {String? expiresAt}) async {
     try {
-      final res = await _client.put<Map<String, dynamic>>(
+      final filename = filePath.split('/').last;
+      final formData = FormData.fromMap({
+        'type': type,
+        'file': await MultipartFile.fromFile(filePath, filename: filename),
+        if (expiresAt != null) 'expiresAt': expiresAt,
+      });
+      final res = await _client.dio.post<Map<String, dynamic>>(
         '/driver/documents',
-        data: {
-          'type': type,
-          'fileUrl': fileUrl,
-          if (expiresAt != null) 'expiresAt': expiresAt,
-        },
+        data: formData,
       );
       final data = res.data?['data'] as Map<String, dynamic>?;
       if (data != null) {
@@ -68,23 +71,6 @@ class DriverProfileNotifier extends StateNotifier<DriverProfileState> {
       return true;
     } catch (_) {
       return false;
-    }
-  }
-
-  /// Demo-only: locally trigger an approval review so the verification flow is
-  /// explorable end-to-end without an admin backend.
-  Future<void> simulateReview(String type, {bool approve = true, String? reason}) async {
-    try {
-      final res = await _client.post<Map<String, dynamic>>(
-        '/driver/documents/$type/review',
-        data: {'approve': approve, if (reason != null) 'rejectionReason': reason},
-      );
-      final data = res.data?['data'] as Map<String, dynamic>?;
-      if (data != null) {
-        state = state.copyWith(profile: DriverProfileEntity.fromJson(data));
-      }
-    } catch (_) {
-      // ignore — UI keeps prior state
     }
   }
 

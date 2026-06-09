@@ -8,12 +8,12 @@ enum DocumentStatus {
   rejected;
 
   static DocumentStatus fromApi(String? s) {
-    switch (s) {
-      case 'approved':
+    switch ((s ?? '').toUpperCase()) {
+      case 'APPROVED':
         return DocumentStatus.approved;
-      case 'pending':
+      case 'PENDING':
         return DocumentStatus.pending;
-      case 'rejected':
+      case 'REJECTED':
         return DocumentStatus.rejected;
       default:
         return DocumentStatus.missing;

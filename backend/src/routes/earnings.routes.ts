@@ -7,14 +7,14 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /earnings/daily
-router.get('/daily', (_req: Request, res: Response): void => {
-  const data = getDailyEarnings();
+router.get('/daily', async (req: Request, res: Response): Promise<void> => {
+  const data = await getDailyEarnings(req.driverId);
   res.status(200).json({ success: true, data });
 });
 
 // GET /earnings/weekly
-router.get('/weekly', (_req: Request, res: Response): void => {
-  const data = getWeeklyHistory();
+router.get('/weekly', async (req: Request, res: Response): Promise<void> => {
+  const data = await getWeeklyHistory(req.driverId);
   res.status(200).json({ success: true, data });
 });
 

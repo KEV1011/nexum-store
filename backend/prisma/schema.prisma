@@ -1,5 +1,5 @@
 // Nexum MaaS — Schema de base de datos
-// Stack: PostgreSQL + PostGIS (geo-queries) + Prisma ORM
+// Stack: PostgreSQL + Prisma ORM
 //
 // Para aplicar:
 //   npx prisma migrate dev --name init
@@ -27,6 +27,10 @@ model User {
   updatedAt   DateTime  @updatedAt
   isActive    Boolean   @default(true)
 
+  // Trusted contact for the SOS / share-trip safety features.
+  trustedContactName  String?
+  trustedContactPhone String?
+
   addresses         Address[]
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
@@ -35,6 +39,7 @@ model User {
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
+  emergencyEvents   EmergencyEvent[]
 
   @@map("users")
 }
@@ -49,6 +54,8 @@ model OtpSession {
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
+  driverId  String?
+  driver    Driver?  @relation(fields: [driverId], references: [id])
   user      User?    @relation(fields: [phone], references: [phone])
 
   @@index([phone])
@@ -58,28 +65,48 @@ model OtpSession {
 // ── Conductores ───────────────────────────────────────────────────────────────
 
 model Driver {
-  id            String       @id @default(cuid())
-  phone         String       @unique
-  name          String
-  email         String?      @unique
-  avatarUrl     String?
-  licenseNumber String       @unique
-  status        DriverStatus @default(OFFLINE)
-  isVerified    Boolean      @default(false)
-  rating        Float        @default(5.0)
-  totalTrips    Int          @default(0)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id                String       @id @default(cuid())
+  phone             String       @unique
+  name              String
+  email             String?      @unique
+  avatarUrl         String?
+  documentType      String?
+  documentNumber    String?      @unique
+  licenseNumber     String?      @unique
+  status            DriverStatus @default(OFFLINE)
+  isVerified        Boolean      @default(false)
+  rating            Float        @default(5.0)
+  totalTrips        Int          @default(0)
+  bio               String?
+  bankName          String?
+  bankAccountType   String?
+  bankAccountNumber String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
-  // Última posición conocida (PostGIS — se guarda como lat/lng en Postgres)
+  // Trusted contact for the SOS / share-trip safety features.
+  trustedContactName  String?
+  trustedContactPhone String?
+
+  // Última posición conocida
   lastLat       Float?
   lastLng       Float?
   lastSeenAt    DateTime?
+
+  // Posición geográfica para matching por cercanía (PostGIS).
+  // Prisma no soporta tipos PostGIS de forma nativa: la columna se declara como
+  // Unsupported para que el cliente la conozca pero NO la gestione. Se ESCRIBE y
+  // se CONSULTA exclusivamente vía SQL raw (ST_MakePoint / ST_DWithin / ST_Distance)
+  // desde matching.service.ts. El índice GIST y la columna se crean en la
+  // migración manual `add_postgis`.
+  geo           Unsupported("geography(Point, 4326)")?
 
   vehicles      Vehicle[]
   trips         Trip[]
   otpSessions   OtpSession[]
   earnings      DriverEarning[]
+  documents     DriverDocument[]
+  emergencyEvents EmergencyEvent[]
 
   @@index([status])
   @@map("drivers")
@@ -89,6 +116,40 @@ enum DriverStatus {
   OFFLINE
   ONLINE
   ON_TRIP
+}
+
+model DriverDocument {
+  id              String         @id @default(cuid())
+  driverId        String
+  type            DocumentType
+  fileUrl         String
+  status          DocumentStatus @default(PENDING)
+  expiresAt       String?
+  rejectionReason String?
+  reviewedBy      String?
+  uploadedAt      DateTime       @default(now())
+  reviewedAt      DateTime?
+
+  driver          Driver         @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, type])
+  @@index([driverId])
+  @@index([status])
+  @@map("driver_documents")
+}
+
+enum DocumentType {
+  CEDULA
+  LICENSE
+  SOAT
+  PROPERTY_CARD
+  PROFILE_PHOTO
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Vehicle {
@@ -120,11 +181,13 @@ enum VehicleType {
 model Business {
   id           String           @id @default(cuid())
   name         String
+  ownerName    String?
   category     BusinessCategory
   address      String
-  lat          Float
-  lng          Float
+  lat          Float?
+  lng          Float?
   phone        String?
+  whatsapp     String?
   rating       Float            @default(5.0)
   etaMinutes   Int              @default(30)
   deliveryFee  Float            @default(2500)
@@ -137,7 +200,6 @@ model Business {
   orders       Order[]
 
   @@index([category])
-  @@index([lat, lng])
   @@map("businesses")
 }
 
@@ -171,7 +233,7 @@ model Product {
 model Order {
   id               String      @id @default(cuid())
   orderRef         String      @unique
-  userId           String
+  userId           String?
   businessId       String
   driverId         String?
   status           OrderStatus @default(CONFIRMED)
@@ -185,6 +247,9 @@ model Order {
   pickupPhotoUrl   String?
   deliveryPhotoUrl String?
   hasSignature     Boolean     @default(false)
+  customerName     String?
+  driverName       String?
+  driverPhone      String?
   rating           Int?
   ratingComment    String?
   createdAt        DateTime    @default(now())
@@ -192,7 +257,7 @@ model Order {
   pickedUpAt       DateTime?
   deliveredAt      DateTime?
 
-  user             User        @relation(fields: [userId], references: [id])
+  user             User?       @relation(fields: [userId], references: [id])
   business         Business    @relation(fields: [businessId], references: [id])
   lines            OrderLine[]
 
@@ -231,7 +296,7 @@ model OrderLine {
 model Trip {
   id                 String          @id @default(cuid())
   requestRef         String          @unique
-  passengerId        String
+  passengerId        String?
   driverId           String?
   vehicleId          String?
   serviceType        TransportType
@@ -243,26 +308,30 @@ model Trip {
   destLat            Float
   destLng            Float
   estimatedFare      Float
+  surgeMultiplier    Float           @default(1.0)
   finalFare          Float?
   distanceKm         Float?
   etaMinutes         Int?
   cancelReason       String?
-  // Prueba de entrega (para envíos)
   pickupPhotoUrl     String?
   deliveryPhotoUrl   String?
-  // Envíos — datos destinatario
   recipientName      String?
   recipientPhone     String?
   packageDescription String?
+  passengerName      String?
+  passengerRating    Float?
+  netEarning         Float?
+  commission         Float?
   rating             Int?
   ratingComment      String?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   acceptedAt         DateTime?
+  startedAt          DateTime?
   arrivedAt          DateTime?
   completedAt        DateTime?
 
-  passenger          User            @relation("TripPassenger", fields: [passengerId], references: [id])
+  passenger          User?           @relation("TripPassenger", fields: [passengerId], references: [id])
   driver             Driver?         @relation(fields: [driverId], references: [id])
   vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
   ratings            Rating[]
@@ -353,6 +422,8 @@ model Errand {
   proofPhotoUrl    String?
   deliveryPhotoUrl String?
   hasSignature     Boolean       @default(false)
+  driverName       String?
+  driverPhone      String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   acceptedAt       DateTime?
@@ -444,7 +515,7 @@ enum IntercityStatus {
   CANCELLED
 }
 
-// ── Viajes compartidos (Modelo A: conductor publica → pasajero reserva) ─────────
+// ── Viajes compartidos (Modelo A) ─────────────────────────────────────────────
 
 model PooledTrip {
   id                 String           @id @default(cuid())
@@ -474,16 +545,16 @@ model PooledTrip {
 }
 
 model SeatBooking {
-  id            String            @id @default(cuid())
-  tripId        String
-  userId        String
-  passengerName String
+  id             String            @id @default(cuid())
+  tripId         String
+  userId         String
+  passengerName  String
   passengerPhone String
-  seatsBooked   Int
-  pickupAddress String?
-  notes         String?
-  status        SeatBookingStatus @default(CONFIRMED)
-  bookedAt      DateTime          @default(now())
+  seatsBooked    Int
+  pickupAddress  String?
+  notes          String?
+  status         SeatBookingStatus @default(CONFIRMED)
+  bookedAt       DateTime          @default(now())
 
   trip          PooledTrip        @relation(fields: [tripId], references: [id])
   user          User              @relation(fields: [userId], references: [id])
@@ -520,4 +591,50 @@ model Rating {
   trip      Trip?    @relation(fields: [tripId], references: [id])
 
   @@map("ratings")
+}
+
+// ── Pagos (Wompi) ─────────────────────────────────────────────────────────────
+
+model Payment {
+  id            String   @id @default(cuid())
+  referenceCode String   @unique
+  amount        Float
+  currency      String   @default("COP")
+  description   String
+  clientId      String
+  orderId       String?
+  tripId        String?
+  status        String   @default("pending")
+  paymentUrl    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([clientId])
+  @@map("payments")
+}
+
+// ── Eventos de emergencia (SOS / compartir viaje) ─────────────────────────────
+
+model EmergencyEvent {
+  id        String        @id @default(cuid())
+  userId    String?
+  driverId  String?
+  tripId    String?
+  lat       Float
+  lng       Float
+  type      EmergencyType @default(PANIC)
+  createdAt DateTime      @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+  driver    Driver?  @relation(fields: [driverId], references: [id])
+
+  @@index([userId])
+  @@index([driverId])
+  @@index([tripId])
+  @@map("emergency_events")
+}
+
+enum EmergencyType {
+  PANIC // botón de pánico pulsado
+  SHARE // viaje compartido con contacto de confianza
 }

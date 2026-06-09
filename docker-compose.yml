@@ -19,7 +19,10 @@ services:
     restart: unless-stopped
 
   nexum-db:
-    image: postgres:16-alpine
+    # PostGIS-enabled image: the postgis extension ships preinstalled and the
+    # POSTGRES_USER is a superuser, so the `CREATE EXTENSION postgis` in the
+    # add_postgis migration applies on first boot. Geo matching needs this.
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_DB: nexum_db
       POSTGRES_USER: nexum

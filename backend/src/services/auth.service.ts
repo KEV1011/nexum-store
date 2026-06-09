@@ -1,150 +1,190 @@
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, JWT_EXPIRES_IN, MOCK_OTP, MOCK_DRIVER } from '../config/constants';
+import { JWT_SECRET, JWT_EXPIRES_IN, MOCK_OTP } from '../config/constants';
 import { DriverDTO, JwtPayload, RegisterDriverDTO } from '../types';
+import { prisma } from '../lib/prisma';
 
-// In-memory OTP store: phone → { otp, expiresAt }
-const otpStore = new Map<string, { otp: string; expiresAt: number }>();
+const OTP_TTL_MS = 5 * 60 * 1000;
 
-// In-memory driver store: phone → DriverDTO
-const driverStore = new Map<string, DriverDTO>();
-
-// Initialize with MOCK_DRIVER so it is treated as already registered
-driverStore.set(MOCK_DRIVER.phone, {
-  id: MOCK_DRIVER.id,
-  name: MOCK_DRIVER.name,
-  phone: MOCK_DRIVER.phone,
-  rating: MOCK_DRIVER.rating,
-  totalTrips: MOCK_DRIVER.totalTrips,
-  vehicle: MOCK_DRIVER.vehicle,
-  bankAccount: MOCK_DRIVER.bankAccount,
-});
-
-const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-/**
- * Validates a Colombian phone number in +57 format.
- * Accepts formats like "+57 312 456 7890" or "+573124567890".
- */
 export function isValidColombianPhone(phone: string): boolean {
   const cleaned = phone.replace(/\s+/g, '');
   return /^\+57[3][0-9]{9}$/.test(cleaned);
 }
 
-/**
- * Generates a 6-digit OTP and stores it against the phone number.
- * In production this would send an SMS; here we always store MOCK_OTP.
- */
-export function sendOtp(phone: string): void {
-  const otp = MOCK_OTP; // always "123456" for the mock
-  otpStore.set(phone, { otp, expiresAt: Date.now() + OTP_TTL_MS });
+export async function sendOtp(phone: string): Promise<void> {
+  const code = MOCK_OTP ?? Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+  // Invalidate old sessions for this phone
+  await prisma.otpSession.updateMany({
+    where: { phone, used: false },
+    data: { used: true },
+  });
+  const driver = await prisma.driver.findUnique({ where: { phone } });
+  await prisma.otpSession.create({
+    data: { phone, code, expiresAt, driverId: driver?.id },
+  });
 }
 
-/**
- * Verifies the supplied OTP against the store.
- * Returns the JWT, DriverDTO, and whether the driver is already registered.
- */
-export function verifyOtp(
+export async function verifyOtp(
   phone: string,
-  otp: string
-): { token: string; driver: DriverDTO; isRegistered: boolean } {
-  const record = otpStore.get(phone);
+  otp: string,
+): Promise<{ token: string; driver: DriverDTO; isRegistered: boolean }> {
+  const session = await prisma.otpSession.findFirst({
+    where: { phone, used: false, expiresAt: { gte: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  if (!record) {
-    throw new Error('No OTP requested for this phone number');
-  }
-
-  if (Date.now() > record.expiresAt) {
-    otpStore.delete(phone);
+  if (!session) throw new Error('No OTP requested for this phone number');
+  if (new Date() > session.expiresAt) {
+    await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
     throw new Error('OTP has expired');
   }
+  if (session.code !== otp) throw new Error('Invalid OTP');
 
-  if (record.otp !== otp) {
-    throw new Error('Invalid OTP');
-  }
+  await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
 
-  // Consume the OTP so it can't be reused
-  otpStore.delete(phone);
+  const existingDriver = await prisma.driver.findUnique({
+    where: { phone },
+    include: { vehicles: { where: { isActive: true }, take: 1 } },
+  });
 
-  const isRegistered = driverStore.has(phone);
+  const isRegistered = existingDriver !== null;
 
-  // For registered drivers use the stored record; for new ones use a placeholder
-  const existingDriver = driverStore.get(phone);
-
-  const driver: DriverDTO = existingDriver ?? {
-    id: '',
-    name: '',
-    phone,
-    rating: 0,
-    totalTrips: 0,
-    vehicle: {
-      brand: '',
-      model: '',
-      year: 0,
-      plate: '',
-      color: '',
-    },
-    bankAccount: {
-      bank: '',
-      type: '',
-      number: '',
-    },
-  };
+  const driver: DriverDTO = existingDriver
+    ? _driverToDTO(existingDriver, existingDriver.vehicles[0])
+    : {
+        id: '',
+        name: '',
+        phone,
+        rating: 0,
+        totalTrips: 0,
+        vehicle: { brand: '', model: '', year: 0, plate: '', color: '' },
+        bankAccount: { bank: '', type: '', number: '' },
+      };
 
   const payload: JwtPayload = {
-    driverId: existingDriver ? existingDriver.id : phone,
+    driverId: existingDriver?.id ?? phone,
     phone,
   };
-
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-
   return { token, driver, isRegistered };
 }
 
-/**
- * Registers a new driver with the supplied DTO.
- * Validates the vehicle plate format, persists to driverStore, and returns a JWT.
- */
-export function registerDriver(dto: RegisterDriverDTO): { token: string; driver: DriverDTO } {
+export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: string; driver: DriverDTO }> {
   const plateRegex = /^[A-Z]{3}-[0-9]{3}$/;
   if (!plateRegex.test(dto.vehiclePlate)) {
     throw new Error('Invalid vehicle plate format. Expected Colombian format: ABC-123');
   }
 
-  const driver: DriverDTO = {
-    id: dto.documentNumber,
-    name: dto.fullName,
-    phone: dto.phone,
-    rating: 0,
-    totalTrips: 0,
-    vehicle: {
-      brand: dto.vehicleBrand,
-      model: dto.vehicleModel,
-      year: dto.vehicleYear,
-      plate: dto.vehiclePlate,
-      color: dto.vehicleColor,
-    },
-    bankAccount: {
-      bank: dto.bankName,
-      type: dto.bankAccountType,
-      number: dto.bankAccountNumber,
-    },
+  const vehicleTypeMap: Record<string, 'PARTICULAR' | 'TAXI' | 'MOTO'> = {
+    particular: 'PARTICULAR',
+    taxi: 'TAXI',
+    moto: 'MOTO',
   };
+  const vehicleType = vehicleTypeMap[dto.vehicleType.toLowerCase()] ?? 'PARTICULAR';
 
-  driverStore.set(dto.phone, driver);
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const existing = await tx.driver.findUnique({ where: { phone: dto.phone } });
+      if (existing) {
+        // Update existing driver record
+        const updated = await tx.driver.update({
+          where: { phone: dto.phone },
+          data: {
+            name: dto.fullName,
+            documentType: dto.documentType,
+            documentNumber: dto.documentNumber,
+            bankName: dto.bankName,
+            bankAccountType: dto.bankAccountType,
+            bankAccountNumber: dto.bankAccountNumber,
+          },
+          include: { vehicles: { where: { isActive: true }, take: 1 } },
+        });
+        // Upsert vehicle
+        const vehicle = await tx.vehicle.upsert({
+          where: { plate: dto.vehiclePlate },
+          update: {
+            brand: dto.vehicleBrand,
+            model: dto.vehicleModel,
+            year: dto.vehicleYear,
+            color: dto.vehicleColor,
+            type: vehicleType,
+            isActive: true,
+          },
+          create: {
+            driverId: updated.id,
+            type: vehicleType,
+            brand: dto.vehicleBrand,
+            model: dto.vehicleModel,
+            year: dto.vehicleYear,
+            plate: dto.vehiclePlate,
+            color: dto.vehicleColor,
+          },
+        });
+        return { driver: updated, vehicle };
+      }
+      const driver = await tx.driver.create({
+        data: {
+          phone: dto.phone,
+          name: dto.fullName,
+          documentType: dto.documentType,
+          documentNumber: dto.documentNumber,
+          bankName: dto.bankName,
+          bankAccountType: dto.bankAccountType,
+          bankAccountNumber: dto.bankAccountNumber,
+        },
+      });
+      const vehicle = await tx.vehicle.create({
+        data: {
+          driverId: driver.id,
+          type: vehicleType,
+          brand: dto.vehicleBrand,
+          model: dto.vehicleModel,
+          year: dto.vehicleYear,
+          plate: dto.vehiclePlate,
+          color: dto.vehicleColor,
+        },
+      });
+      return { driver, vehicle };
+    });
 
-  const payload: JwtPayload = {
-    driverId: dto.documentNumber,
-    phone: dto.phone,
-  };
-
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-
-  return { token, driver };
+    const driverDTO = _driverToDTO(result.driver, result.vehicle);
+    const payload: JwtPayload = { driverId: result.driver.id, phone: dto.phone };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return { token, driver: driverDTO };
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('Unique constraint')) {
+      throw new Error('A driver with that document number or vehicle plate already exists');
+    }
+    throw err;
+  }
 }
 
-/**
- * Verifies a JWT and returns the decoded payload.
- */
 export function verifyToken(token: string): JwtPayload {
   return jwt.verify(token, JWT_SECRET) as JwtPayload;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function _driverToDTO(
+  driver: {
+    id: string; name: string; phone: string; rating: number; totalTrips: number;
+    bankName: string | null; bankAccountType: string | null; bankAccountNumber: string | null;
+  },
+  vehicle?: { brand: string; model: string; year: number; plate: string; color: string } | null,
+): DriverDTO {
+  return {
+    id: driver.id,
+    name: driver.name,
+    phone: driver.phone,
+    rating: driver.rating,
+    totalTrips: driver.totalTrips,
+    vehicle: vehicle
+      ? { brand: vehicle.brand, model: vehicle.model, year: vehicle.year, plate: vehicle.plate, color: vehicle.color }
+      : { brand: '', model: '', year: 0, plate: '', color: '' },
+    bankAccount: {
+      bank: driver.bankName ?? '',
+      type: driver.bankAccountType ?? '',
+      number: driver.bankAccountNumber ?? '',
+    },
+  };
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/features/profile_verification/domain/entities/driver_profile_entity.dart';
@@ -13,6 +14,8 @@ class VerificationScreen extends ConsumerStatefulWidget {
 }
 
 class _VerificationScreenState extends ConsumerState<VerificationScreen> {
+  bool _uploading = false;
+
   @override
   void initState() {
     super.initState();
@@ -58,10 +61,15 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                         style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: 12),
+                      if (_uploading)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: LinearProgressIndicator(color: AppColors.primary),
+                        ),
                       ...profile.documents.map(
                         (doc) => _DocumentCard(
                           doc: doc,
-                          onUpload: () => _upload(doc),
+                          onUpload: _uploading ? null : () => _upload(doc),
                         ),
                       ),
                     ],
@@ -71,12 +79,20 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
   }
 
   Future<void> _upload(DriverDocument doc) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() => _uploading = true);
     final notifier = ref.read(driverProfileProvider.notifier);
-    // In this MVP the file picker stores a mock reference. Wiring a real
-    // image_picker + cloud upload is a follow-up; the flow is otherwise complete.
-    final mockUrl = 'mock://docs/${doc.type}-${DateTime.now().millisecondsSinceEpoch}.jpg';
-    final ok = await notifier.uploadDocument(doc.type, mockUrl);
+    final ok = await notifier.uploadDocument(doc.type, picked.path);
+
     if (!mounted) return;
+    setState(() => _uploading = false);
+
     if (ok) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -84,9 +100,6 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
           backgroundColor: AppColors.primary,
         ),
       );
-      // Demo: auto-approve after a moment so the badge can turn green.
-      await Future<void>.delayed(const Duration(milliseconds: 800));
-      await notifier.simulateReview(doc.type, approve: true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No se pudo subir el documento.')),
@@ -168,7 +181,7 @@ class _DocumentCard extends StatelessWidget {
   const _DocumentCard({required this.doc, required this.onUpload});
 
   final DriverDocument doc;
-  final VoidCallback onUpload;
+  final VoidCallback? onUpload;
 
   @override
   Widget build(BuildContext context) {
@@ -199,13 +212,13 @@ class _DocumentCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(doc.label,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 14.5)),
+                Text(
+                  doc.label,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5),
+                ),
                 const SizedBox(height: 2),
                 Text(
-                  doc.status == DocumentStatus.rejected &&
-                          doc.rejectionReason != null
+                  doc.status == DocumentStatus.rejected && doc.rejectionReason != null
                       ? doc.rejectionReason!
                       : doc.status.label,
                   style: TextStyle(fontSize: 12.5, color: doc.status.color),
@@ -219,7 +232,9 @@ class _DocumentCard extends StatelessWidget {
               child: Text(
                 doc.status == DocumentStatus.rejected ? 'Reenviar' : 'Subir',
                 style: const TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.w700),
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             )
           else
