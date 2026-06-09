@@ -216,6 +216,14 @@ interface IntercityRouteInfo {
   durationMinutes: number;
   suggestedFarePerSeat: number;
   suggestedFareFleet: number;
+  /**
+   * Option B (dual model): trunk routes that legally require a habilitated
+   * transport operator for a particular to carry paying passengers. Only
+   * enforced when INTERCITY_DUAL_MODEL is enabled. See INTERCITY_LEGAL_NOTES.md.
+   */
+  requiresLicensedOperator?: boolean;
+  /** True when this route was synthesised from city coordinates (no explicit row). */
+  isEstimated?: boolean;
 }
 
 type RoutePair = `${IntercityCity}-${IntercityCity}`;
@@ -223,45 +231,128 @@ type RoutePair = `${IntercityCity}-${IntercityCity}`;
 export const INTERCITY_ROUTES: Partial<Record<RoutePair, IntercityRouteInfo>> = {
   'pamplona-cucuta': { distanceKm: 95, durationMinutes: 120, suggestedFarePerSeat: 22000, suggestedFareFleet: 70000 },
   'cucuta-pamplona': { distanceKm: 95, durationMinutes: 120, suggestedFarePerSeat: 22000, suggestedFareFleet: 70000 },
-  'pamplona-bucaramanga': { distanceKm: 200, durationMinutes: 240, suggestedFarePerSeat: 42000, suggestedFareFleet: 130000 },
-  'bucaramanga-pamplona': { distanceKm: 200, durationMinutes: 240, suggestedFarePerSeat: 42000, suggestedFareFleet: 130000 },
+  'pamplona-bucaramanga': { distanceKm: 200, durationMinutes: 240, suggestedFarePerSeat: 42000, suggestedFareFleet: 130000, requiresLicensedOperator: true },
+  'bucaramanga-pamplona': { distanceKm: 200, durationMinutes: 240, suggestedFarePerSeat: 42000, suggestedFareFleet: 130000, requiresLicensedOperator: true },
   'pamplona-chitaga': { distanceKm: 45, durationMinutes: 60, suggestedFarePerSeat: 10000, suggestedFareFleet: 35000 },
   'chitaga-pamplona': { distanceKm: 45, durationMinutes: 60, suggestedFarePerSeat: 10000, suggestedFareFleet: 35000 },
   'pamplona-malaga': { distanceKm: 80, durationMinutes: 105, suggestedFarePerSeat: 18000, suggestedFareFleet: 58000 },
   'malaga-pamplona': { distanceKm: 80, durationMinutes: 105, suggestedFarePerSeat: 18000, suggestedFareFleet: 58000 },
   'pamplona-ocana': { distanceKm: 120, durationMinutes: 150, suggestedFarePerSeat: 28000, suggestedFareFleet: 90000 },
   'ocana-pamplona': { distanceKm: 120, durationMinutes: 150, suggestedFarePerSeat: 28000, suggestedFareFleet: 90000 },
-  'pamplona-bogota': { distanceKm: 500, durationMinutes: 540, suggestedFarePerSeat: 90000, suggestedFareFleet: 280000 },
-  'bogota-pamplona': { distanceKm: 500, durationMinutes: 540, suggestedFarePerSeat: 90000, suggestedFareFleet: 280000 },
+  'pamplona-bogota': { distanceKm: 500, durationMinutes: 540, suggestedFarePerSeat: 90000, suggestedFareFleet: 280000, requiresLicensedOperator: true },
+  'bogota-pamplona': { distanceKm: 500, durationMinutes: 540, suggestedFarePerSeat: 90000, suggestedFareFleet: 280000, requiresLicensedOperator: true },
   'chitaga-cucuta': { distanceKm: 140, durationMinutes: 170, suggestedFarePerSeat: 30000, suggestedFareFleet: 95000 },
   'cucuta-chitaga': { distanceKm: 140, durationMinutes: 170, suggestedFarePerSeat: 30000, suggestedFareFleet: 95000 },
-  'malaga-bucaramanga': { distanceKm: 130, durationMinutes: 160, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000 },
-  'bucaramanga-malaga': { distanceKm: 130, durationMinutes: 160, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000 },
+  'malaga-bucaramanga': { distanceKm: 130, durationMinutes: 160, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000, requiresLicensedOperator: true },
+  'bucaramanga-malaga': { distanceKm: 130, durationMinutes: 160, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000, requiresLicensedOperator: true },
 };
 
-export function getIntercityRoute(origin: IntercityCity, dest: IntercityCity): IntercityRouteInfo | null {
-  const key = `${origin}-${dest}` as RoutePair;
-  return INTERCITY_ROUTES[key] ?? null;
+// Approximate municipal centroids (lat/lng) used to synthesise route metadata
+// for any city pair not listed explicitly above, so the client can always
+// request a trip between supported municipalities.
+const INTERCITY_CITY_COORDS: Record<IntercityCity, { lat: number; lng: number }> = {
+  pamplona: { lat: 7.3754, lng: -72.6486 },
+  cucuta: { lat: 7.8939, lng: -72.5078 },
+  bucaramanga: { lat: 7.1193, lng: -73.1227 },
+  chitaga: { lat: 6.9000, lng: -72.6660 },
+  malaga: { lat: 6.6983, lng: -72.7333 },
+  ocana: { lat: 8.2375, lng: -73.3561 },
+  bogota: { lat: 4.7110, lng: -74.0721 },
+};
+
+/** Straight-line distance in km between two coordinates (haversine). */
+function _haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// ─── Shared-ride cost basis (legal "gasto compartido") ──────────────────────────
+/** Road-distance multiplier over straight-line for Andean mountain roads. */
+const ROAD_FACTOR = 1.4;
+/** Average intercity road speed (km/h) used to estimate duration. */
+const AVG_ROAD_SPEED_KMH = 55;
+/** Suggested per-seat fare estimate (COP per road km). */
+const SUGGESTED_FARE_PER_KM = 220;
+/** Above this estimated distance (km), a synthesised route is treated as trunk. */
+const TRUNK_DISTANCE_KM = 150;
+
+/** Synthesise route metadata from city centroids for pairs with no explicit row. */
+function _synthesizeRoute(origin: IntercityCity, dest: IntercityCity): IntercityRouteInfo {
+  const straight = _haversineKm(INTERCITY_CITY_COORDS[origin], INTERCITY_CITY_COORDS[dest]);
+  const distanceKm = Math.max(10, Math.round((straight * ROAD_FACTOR) / 5) * 5);
+  const durationMinutes = Math.round((distanceKm / AVG_ROAD_SPEED_KMH) * 60);
+  const suggestedFarePerSeat = Math.round((distanceKm * SUGGESTED_FARE_PER_KM) / 1000) * 1000;
+  return {
+    distanceKm,
+    durationMinutes,
+    suggestedFarePerSeat,
+    suggestedFareFleet: suggestedFarePerSeat * 3,
+    requiresLicensedOperator: distanceKm >= TRUNK_DISTANCE_KM,
+    isEstimated: true,
+  };
+}
+
+/**
+ * Returns route metadata for a supported city pair. Falls back to a synthesised
+ * estimate (from city coordinates) for any pair without an explicit row, so the
+ * client can always request a trip between supported municipalities.
+ */
+export function getIntercityRoute(origin: IntercityCity, dest: IntercityCity): IntercityRouteInfo | null {
+  if (origin === dest) return null;
+  const key = `${origin}-${dest}` as RoutePair;
+  return INTERCITY_ROUTES[key] ?? _synthesizeRoute(origin, dest);
+}
+
+// ─── Intercity legal model (gasto compartido) ────────────────────────────────
 //
 // To keep pooled rides on the legal side of "gasto compartido" (cost sharing,
 // not commercial transport), the per-seat fare a particular driver may charge
 // is capped at the proportional running cost of the trip — fuel plus an
-// estimated toll allowance — divided across the seats offered. The driver
-// recovers costs but does not profit, so Nexum acts as a tech intermediary
-// rather than a transport operator.
+// estimated toll allowance — divided across the occupants. The driver recovers
+// costs but does not profit, so Nexum acts as a tech intermediary rather than a
+// transport operator. See INTERCITY_LEGAL_NOTES.md for the full legal context
+// and the three configurable options (A default / B dual / C no-cap).
 
-/** Estimated running cost per kilometre in COP (fuel + wear, no profit). */
-export const SHARED_RIDE_COST_PER_KM = 700;
+/**
+ * Estimated running cost per kilometre in COP (fuel + wear, no profit).
+ * TODO(legal/finanzas): confirmar la cifra real 2026 con el operador. El valor
+ * por defecto se subió para reflejar el alza de combustible y mantenimiento.
+ */
+export const SHARED_RIDE_COST_PER_KM = parseInt(process.env['SHARED_RIDE_COST_PER_KM'] ?? '950', 10);
 
-/** Estimated toll cost in COP per 100 km of intercity road. */
-export const SHARED_RIDE_TOLL_PER_100KM = 9000;
+/**
+ * Estimated toll cost in COP per 100 km of intercity road.
+ * TODO(legal/finanzas): confirmar peajes reales 2026 por corredor.
+ */
+export const SHARED_RIDE_TOLL_PER_100KM = parseInt(process.env['SHARED_RIDE_TOLL_PER_100KM'] ?? '16000', 10);
+
+/**
+ * Option C — remove the cost-share cap entirely. OFF by default.
+ * Only enable if the operator assumes the legal framework for commercial
+ * intercity transport (habilitación). When enabled, the apps must show the
+ * legal disclaimer. The cost-share value is still computed for reference, but
+ * not enforced. See INTERCITY_LEGAL_NOTES.md.
+ */
+export const INTERCITY_REMOVE_CAP = (process.env['INTERCITY_REMOVE_CAP'] ?? 'false') === 'true';
+
+/**
+ * Option B — dual model. Trunk routes flagged `requiresLicensedOperator` are
+ * blocked for particular drivers until there is a convenio with a habilitated
+ * transport operator. OFF by default. See INTERCITY_LEGAL_NOTES.md.
+ */
+export const INTERCITY_DUAL_MODEL = (process.env['INTERCITY_DUAL_MODEL'] ?? 'false') === 'true';
 
 /**
  * Maximum legal cost-share per seat for a route, given the number of seats
- * the driver offers. Returns 0 if the route is unknown.
+ * the driver offers. Returns 0 if the route is unknown. This is always the
+ * computed cost-share reference value; enforcement is gated by
+ * INTERCITY_REMOVE_CAP at the call sites.
  */
 export function getMaxFarePerSeat(
   origin: IntercityCity,
@@ -276,4 +367,9 @@ export function getMaxFarePerSeat(
   // Driver occupies one seat too, so cost is split across all occupants.
   const occupants = totalSeats + 1;
   return Math.ceil(totalRunningCost / occupants / 500) * 500;
+}
+
+/** Whether a given route is a trunk route (Option B classification). */
+export function routeRequiresLicensedOperator(origin: IntercityCity, dest: IntercityCity): boolean {
+  return getIntercityRoute(origin, dest)?.requiresLicensedOperator ?? false;
 }

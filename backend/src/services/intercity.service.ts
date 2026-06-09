@@ -7,6 +7,14 @@ import {
 } from '../types';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
+import { routeRequiresLicensedOperator, INTERCITY_DUAL_MODEL } from '../config/constants';
+
+export class IntercityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IntercityError';
+  }
+}
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type BookingCallback = (bookingId: string, booking: IntercityBookingDTO) => void;
@@ -132,6 +140,18 @@ export async function requestIntercityBooking(
   clientId: string,
   dto: RequestIntercityDTO,
 ): Promise<IntercityBookingDTO> {
+  if (dto.origin === dto.destination) {
+    throw new IntercityError('El origen y el destino deben ser diferentes.');
+  }
+
+  // Option B (dual model): trunk routes require a habilitated operator.
+  if (INTERCITY_DUAL_MODEL && routeRequiresLicensedOperator(dto.origin, dto.destination)) {
+    throw new IntercityError(
+      'Esta es una ruta troncal que requiere operador de transporte habilitado. ' +
+        'Por ahora no está disponible para viajes con conductores particulares.',
+    );
+  }
+
   const requestRef = `NXI-${Math.floor(1000 + Math.random() * 8000)}`;
   const booking = await prisma.intercityBooking.create({
     data: {

@@ -137,8 +137,14 @@ class _IntercityBookingScreenState
           _dropoffCtrl.text.trim().isEmpty ? null : _dropoffCtrl.text.trim(),
     );
 
-    await ref.read(intercityProvider.notifier).createRequest(request);
+    final error =
+        await ref.read(intercityProvider.notifier).createRequest(request);
     if (!mounted) return;
+    setState(() => _isSubmitting = false);
+    if (error != null) {
+      _showError(error);
+      return;
+    }
     context.go('/intercity/status');
   }
 
@@ -405,7 +411,8 @@ class _IntercityBookingScreenState
                 Text(
                   route != null
                       ? 'Precio sugerido total: ${CurrencyFormatter.format(_suggestedFare)}'
-                      : 'Selecciona origen y destino primero',
+                          '${route.isEstimated ? ' (aprox.)' : ''}'
+                      : 'Elige un origen y un destino diferentes',
                   style: const TextStyle(
                     color: Color(0xFF64748B),
                     fontSize: 12,
