@@ -111,7 +111,11 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
 
   // ── Public API ───────────────────────────────────────────────────────────────
 
-  Future<void> createRequest(IntercityRequestEntity request) async {
+  /// Creates an intercity request. Returns `null` on success (or accepted mock
+  /// fallback when the server is unreachable), or an error message when the
+  /// server rejects the request for a business reason — e.g. a trunk route that
+  /// requires a habilitated operator under the dual model (Option B).
+  Future<String?> createRequest(IntercityRequestEntity request) async {
     state = state.copyWith(active: request, isLoading: true);
 
     try {
@@ -149,11 +153,29 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
       } else {
         _simulateDriverMatch(serverId);
       }
-    } catch (_) {
-      // Server unavailable — fall back to mock simulation.
+      return null;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      // 4xx = the server deliberately rejected the request (validation or a
+      // legal/business rule). Surface it instead of faking a driver match.
+      if (status >= 400 && status < 500) {
+        final body = e.response?.data;
+        final msg = body is Map<String, dynamic> ? body['error'] as String? : null;
+        state = state.copyWith(clearActive: true, isLoading: false);
+        _activeServerId = null;
+        return msg ?? 'No se pudo crear la solicitud.';
+      }
+      // Network/5xx — fall back to mock simulation so the flow stays usable.
       state = state.copyWith(isLoading: false);
       _activeServerId = request.id;
       _simulateDriverMatch(request.id);
+      return null;
+    } catch (_) {
+      // Unknown/transport error — fall back to mock simulation.
+      state = state.copyWith(isLoading: false);
+      _activeServerId = request.id;
+      _simulateDriverMatch(request.id);
+      return null;
     }
   }
 

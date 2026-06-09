@@ -43,8 +43,13 @@ import {
   cancelIntercityBooking,
   getActiveIntercityBooking,
   getIntercityBookingById,
+  IntercityError,
 } from '../services/intercity.service';
-import { getIntercityRoute } from '../config/constants';
+import {
+  getIntercityRoute,
+  INTERCITY_REMOVE_CAP,
+  INTERCITY_DUAL_MODEL,
+} from '../config/constants';
 import { createPaymentLink } from '../services/payment.service';
 import { getFareEstimate } from '../services/surge.service';
 import {
@@ -245,7 +250,15 @@ router.get('/intercity/routes', (_req, res) => {
       if (info) routes.push({ origin, destination: dest, ...info });
     }
   }
-  res.json({ success: true, data: routes });
+  res.json({
+    success: true,
+    data: routes,
+    // Legal model flags so the client can show the right copy / disclaimers.
+    legal: {
+      capEnforced: !INTERCITY_REMOVE_CAP,
+      dualModel: INTERCITY_DUAL_MODEL,
+    },
+  });
 });
 
 router.post('/intercity/request', clientAuthMiddleware, async (req, res) => {
@@ -262,7 +275,8 @@ router.post('/intercity/request', clientAuthMiddleware, async (req, res) => {
     });
     res.status(201).json({ success: true, data: booking });
   } catch (err) {
-    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to request intercity booking' });
+    const status = err instanceof IntercityError ? 422 : 400;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to request intercity booking' });
   }
 });
 

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -49,6 +51,8 @@ class IntercityRoute {
     required this.durationMinutes,
     required this.farePerSeat,
     required this.fleetFare,
+    this.requiresLicensedOperator = false,
+    this.isEstimated = false,
   });
 
   final IntercityCity origin;
@@ -57,6 +61,12 @@ class IntercityRoute {
   final int durationMinutes;
   final double farePerSeat;
   final double fleetFare;
+
+  /// Trunk route that legally needs a habilitated operator (Option B).
+  final bool requiresLicensedOperator;
+
+  /// True when the route was synthesised from city coordinates (no explicit row).
+  final bool isEstimated;
 
   String get durationLabel {
     final h = durationMinutes ~/ 60;
@@ -69,6 +79,10 @@ class IntercityRoute {
   String get fareLabel => CurrencyFormatter.format(farePerSeat);
   String get fleetLabel => CurrencyFormatter.format(fleetFare);
 
+  /// Resolves the route between any two supported municipalities. Returns an
+  /// explicit row when available, otherwise a coordinate-based estimate so the
+  /// client can always quote and request the trip. Mirrors the backend's
+  /// `getIntercityRoute` synthesis.
   static IntercityRoute? between(IntercityCity a, IntercityCity b) {
     if (a == b) return null;
     for (final r in _routes) {
@@ -83,10 +97,59 @@ class IntercityRoute {
                 durationMinutes: r.durationMinutes,
                 farePerSeat: r.farePerSeat,
                 fleetFare: r.fleetFare,
+                requiresLicensedOperator: r.requiresLicensedOperator,
               );
       }
     }
-    return null;
+    return _synthesize(a, b);
+  }
+
+  // ── Coordinate-based fallback (parity with backend) ──────────────────────────
+
+  static const Map<IntercityCity, ({double lat, double lng})> _cityCoords = {
+    IntercityCity.pamplona: (lat: 7.3754, lng: -72.6486),
+    IntercityCity.cucuta: (lat: 7.8939, lng: -72.5078),
+    IntercityCity.bucaramanga: (lat: 7.1193, lng: -73.1227),
+    IntercityCity.chitaga: (lat: 6.9000, lng: -72.6660),
+    IntercityCity.malaga: (lat: 6.6983, lng: -72.7333),
+    IntercityCity.ocana: (lat: 8.2375, lng: -73.3561),
+    IntercityCity.bogota: (lat: 4.7110, lng: -74.0721),
+  };
+
+  static const double _roadFactor = 1.4;
+  static const double _avgSpeedKmh = 55;
+  static const double _farePerKm = 220;
+  static const double _trunkDistanceKm = 150;
+
+  static double _haversineKm(
+    ({double lat, double lng}) a,
+    ({double lat, double lng}) b,
+  ) {
+    const r = 6371.0;
+    final dLat = (b.lat - a.lat) * math.pi / 180;
+    final dLng = (b.lng - a.lng) * math.pi / 180;
+    final lat1 = a.lat * math.pi / 180;
+    final lat2 = b.lat * math.pi / 180;
+    final h = math.pow(math.sin(dLat / 2), 2) +
+        math.pow(math.sin(dLng / 2), 2) * math.cos(lat1) * math.cos(lat2);
+    return 2 * r * math.asin(math.sqrt(h));
+  }
+
+  static IntercityRoute _synthesize(IntercityCity a, IntercityCity b) {
+    final straight = _haversineKm(_cityCoords[a]!, _cityCoords[b]!);
+    final distanceKm = math.max(10, (straight * _roadFactor / 5).round() * 5);
+    final durationMinutes = (distanceKm / _avgSpeedKmh * 60).round();
+    final farePerSeat = (distanceKm * _farePerKm / 1000).round() * 1000;
+    return IntercityRoute(
+      origin: a,
+      destination: b,
+      distanceKm: distanceKm.toDouble(),
+      durationMinutes: durationMinutes,
+      farePerSeat: farePerSeat.toDouble(),
+      fleetFare: (farePerSeat * 3).toDouble(),
+      requiresLicensedOperator: distanceKm >= _trunkDistanceKm,
+      isEstimated: true,
+    );
   }
 
   static const List<IntercityRoute> _routes = [
@@ -105,6 +168,7 @@ class IntercityRoute {
       durationMinutes: 240,
       farePerSeat: 42000,
       fleetFare: 130000,
+      requiresLicensedOperator: true,
     ),
     IntercityRoute(
       origin: IntercityCity.pamplona,
@@ -117,18 +181,18 @@ class IntercityRoute {
     IntercityRoute(
       origin: IntercityCity.pamplona,
       destination: IntercityCity.malaga,
-      distanceKm: 105,
-      durationMinutes: 150,
-      farePerSeat: 25000,
-      fleetFare: 80000,
+      distanceKm: 80,
+      durationMinutes: 105,
+      farePerSeat: 18000,
+      fleetFare: 58000,
     ),
     IntercityRoute(
       origin: IntercityCity.pamplona,
       destination: IntercityCity.ocana,
-      distanceKm: 160,
-      durationMinutes: 210,
-      farePerSeat: 35000,
-      fleetFare: 110000,
+      distanceKm: 120,
+      durationMinutes: 150,
+      farePerSeat: 28000,
+      fleetFare: 90000,
     ),
     IntercityRoute(
       origin: IntercityCity.pamplona,
@@ -137,6 +201,7 @@ class IntercityRoute {
       durationMinutes: 540,
       farePerSeat: 90000,
       fleetFare: 280000,
+      requiresLicensedOperator: true,
     ),
     IntercityRoute(
       origin: IntercityCity.cucuta,
@@ -145,6 +210,24 @@ class IntercityRoute {
       durationMinutes: 240,
       farePerSeat: 42000,
       fleetFare: 130000,
+      requiresLicensedOperator: true,
+    ),
+    IntercityRoute(
+      origin: IntercityCity.chitaga,
+      destination: IntercityCity.cucuta,
+      distanceKm: 140,
+      durationMinutes: 170,
+      farePerSeat: 30000,
+      fleetFare: 95000,
+    ),
+    IntercityRoute(
+      origin: IntercityCity.malaga,
+      destination: IntercityCity.bucaramanga,
+      distanceKm: 130,
+      durationMinutes: 160,
+      farePerSeat: 28000,
+      fleetFare: 88000,
+      requiresLicensedOperator: true,
     ),
   ];
 }

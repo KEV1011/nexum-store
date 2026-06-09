@@ -7,7 +7,12 @@ import {
   SeatBookingDTO,
   SeatBookingStatus,
 } from '../types';
-import { getIntercityRoute, getMaxFarePerSeat } from '../config/constants';
+import {
+  getIntercityRoute,
+  getMaxFarePerSeat,
+  INTERCITY_REMOVE_CAP,
+  INTERCITY_DUAL_MODEL,
+} from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 
@@ -130,9 +135,18 @@ export async function publishPooledTrip(
   driverPhone: string,
   dto: PublishPooledTripDTO,
 ): Promise<PooledTripDTO> {
+  if (dto.origin === dto.destination) throw new PooledTripError('El origen y el destino no pueden ser iguales');
   const route = getIntercityRoute(dto.origin, dto.destination);
   if (!route) throw new PooledTripError(`No hay ruta definida entre ${dto.origin} y ${dto.destination}`);
-  if (dto.origin === dto.destination) throw new PooledTripError('El origen y el destino no pueden ser iguales');
+
+  // Option B (dual model): trunk routes require a habilitated operator.
+  if (INTERCITY_DUAL_MODEL && route.requiresLicensedOperator) {
+    throw new PooledTripError(
+      'Esta es una ruta troncal que requiere operador de transporte habilitado. ' +
+        'Por ahora no está disponible para conductores particulares.',
+    );
+  }
+
   if (!Number.isInteger(dto.totalSeats) || dto.totalSeats < 1 || dto.totalSeats > MAX_SEATS) {
     throw new PooledTripError(`Los puestos deben estar entre 1 y ${MAX_SEATS}`);
   }
@@ -140,13 +154,16 @@ export async function publishPooledTrip(
   if (Number.isNaN(departure.getTime()) || departure.getTime() < Date.now()) {
     throw new PooledTripError('La hora de salida debe ser en el futuro');
   }
+  if (dto.farePerSeat < 0) throw new PooledTripError('La tarifa por puesto no puede ser negativa');
+
+  // Cost-share reference value (always computed). Enforcement (Option A) is
+  // skipped only when Option C (INTERCITY_REMOVE_CAP) is explicitly enabled.
   const maxFare = getMaxFarePerSeat(dto.origin, dto.destination, dto.totalSeats);
-  if (dto.farePerSeat > maxFare) {
+  if (!INTERCITY_REMOVE_CAP && dto.farePerSeat > maxFare) {
     throw new PooledTripError(
       `La tarifa por puesto ($${dto.farePerSeat.toLocaleString('es-CO')}) supera el máximo legal de gasto compartido para esta ruta ($${maxFare.toLocaleString('es-CO')}).`,
     );
   }
-  if (dto.farePerSeat < 0) throw new PooledTripError('La tarifa por puesto no puede ser negativa');
 
   const tripRef = `NXP-${Math.floor(1000 + Math.random() * 8000)}`;
   const trip = await prisma.pooledTrip.create({
