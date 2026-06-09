@@ -13,8 +13,10 @@ permissions:
 
 # Despliega en el subdirectorio /cliente/ usando keep_files para no borrar
 # la app de conductor (publicada en la raíz de gh-pages).
+# Mismo grupo que deploy-web.yml: serializa los push a gh-pages para evitar
+# la carrera "fetch first" cuando ambos deploys corren a la vez.
 concurrency:
-  group: gh-pages-cliente
+  group: gh-pages-deploy
   cancel-in-progress: false
 
 jobs:

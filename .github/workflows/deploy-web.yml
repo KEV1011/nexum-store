@@ -10,6 +10,12 @@ on:
 permissions:
   contents: write
 
+# Mismo grupo que deploy-web-cliente: serializa los push a gh-pages para
+# evitar la carrera "fetch first" cuando ambos deploys corren a la vez.
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Build & Deploy Flutter Web
