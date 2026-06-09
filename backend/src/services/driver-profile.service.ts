@@ -1,3 +1,4 @@
+import { DocumentType, DocumentStatus as PrismaDocumentStatus } from '@prisma/client';
 import {
   DriverProfileDTO,
   DriverPublicProfileDTO,
@@ -12,29 +13,31 @@ import { prisma } from '../lib/prisma';
 // Driver profile & document verification (Features D + E)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const REQUIRED_DOCS: DriverDocumentType[] = [
-  'cedula',
-  'license',
-  'soat',
-  'vehicle_registration',
+const REQUIRED_DOCS: DocumentType[] = [
+  DocumentType.CEDULA,
+  DocumentType.LICENSE,
+  DocumentType.SOAT,
+  DocumentType.PROPERTY_CARD,
 ];
 
-const DOC_LABELS: Record<DriverDocumentType, string> = {
-  cedula: 'Cédula de ciudadanía',
-  license: 'Licencia de conducción',
-  soat: 'SOAT vigente',
-  vehicle_registration: 'Tarjeta de propiedad',
-  profile_photo: 'Foto de perfil',
+const DOC_LABELS: Record<DocumentType, string> = {
+  CEDULA: 'Cédula de ciudadanía',
+  LICENSE: 'Licencia de conducción',
+  SOAT: 'SOAT vigente',
+  PROPERTY_CARD: 'Tarjeta de propiedad',
+  PROFILE_PHOTO: 'Foto de perfil',
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 type DbDoc = {
-  type: string;
+  id: string;
+  type: DocumentType;
   fileUrl: string;
-  status: string;
+  status: PrismaDocumentStatus;
   expiresAt: string | null;
   rejectionReason: string | null;
+  reviewedBy: string | null;
   uploadedAt: Date;
   reviewedAt: Date | null;
 };
@@ -42,7 +45,7 @@ type DbDoc = {
 function _dbDocToDTO(doc: DbDoc): DriverDocumentDTO {
   return {
     type: doc.type as DriverDocumentType,
-    label: DOC_LABELS[doc.type as DriverDocumentType] ?? doc.type,
+    label: DOC_LABELS[doc.type] ?? doc.type,
     fileUrl: doc.fileUrl,
     status: doc.status as DocumentStatus,
     expiresAt: doc.expiresAt ?? undefined,
@@ -58,7 +61,7 @@ function _buildDocList(docs: DbDoc[]): DriverDocumentDTO[] {
     const existing = docMap.get(t);
     if (existing) return _dbDocToDTO(existing);
     return {
-      type: t,
+      type: t as DriverDocumentType,
       label: DOC_LABELS[t],
       fileUrl: '',
       status: 'missing' as DocumentStatus,
@@ -94,8 +97,8 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
   });
   if (!driver) throw new Error('Driver not found');
 
-  const docs = _buildDocList(driver.documents);
-  const approvedCount = docs.filter((d) => d.status === 'approved').length;
+  const docs = _buildDocList(driver.documents as DbDoc[]);
+  const approvedCount = docs.filter((d) => d.status === 'APPROVED').length;
 
   return {
     driverId: driver.id,
@@ -144,35 +147,90 @@ export async function updateDriverProfile(
       ...(patch.fullName !== undefined && { name: patch.fullName }),
       ...(patch.bio !== undefined && { bio: patch.bio }),
       ...(patch.photoUrl !== undefined && { avatarUrl: patch.photoUrl }),
-      // vehicleDescription is a computed field from Vehicle; no direct DB column
     },
   });
   return getDriverProfile(driverId);
 }
 
+/** Used by the legacy PUT /driver/documents (JSON body with fileUrl). */
 export async function upsertDriverDocument(
   driverId: string,
   dto: UpsertDriverDocumentDTO,
 ): Promise<DriverProfileDTO> {
+  const docType = dto.type as DocumentType;
   await prisma.driverDocument.upsert({
-    where: { driverId_type: { driverId, type: dto.type } },
+    where: { driverId_type: { driverId, type: docType } },
     update: {
       fileUrl: dto.fileUrl,
-      status: 'pending',
+      status: PrismaDocumentStatus.PENDING,
       expiresAt: dto.expiresAt ?? null,
       rejectionReason: null,
       reviewedAt: null,
+      reviewedBy: null,
       uploadedAt: new Date(),
     },
     create: {
       driverId,
-      type: dto.type,
+      type: docType,
       fileUrl: dto.fileUrl,
-      status: 'pending',
+      status: PrismaDocumentStatus.PENDING,
       expiresAt: dto.expiresAt ?? null,
     },
   });
   return getDriverProfile(driverId);
+}
+
+/** Used by the new POST /driver/documents (multipart; file already saved to disk). */
+export async function uploadDriverDocument(
+  driverId: string,
+  type: DocumentType,
+  fileUrl: string,
+  expiresAt?: string,
+): Promise<DriverProfileDTO> {
+  await prisma.driverDocument.upsert({
+    where: { driverId_type: { driverId, type } },
+    update: {
+      fileUrl,
+      status: PrismaDocumentStatus.PENDING,
+      expiresAt: expiresAt ?? null,
+      rejectionReason: null,
+      reviewedAt: null,
+      reviewedBy: null,
+      uploadedAt: new Date(),
+    },
+    create: {
+      driverId,
+      type,
+      fileUrl,
+      status: PrismaDocumentStatus.PENDING,
+      expiresAt: expiresAt ?? null,
+    },
+  });
+  return getDriverProfile(driverId);
+}
+
+/** Used by admin approve/reject endpoints. */
+export async function adminReviewDocument(
+  docId: string,
+  approve: boolean,
+  reviewedBy: string,
+  rejectionReason?: string,
+): Promise<DriverProfileDTO | null> {
+  const doc = await prisma.driverDocument.findUnique({ where: { id: docId } });
+  if (!doc) return null;
+
+  await prisma.driverDocument.update({
+    where: { id: docId },
+    data: {
+      status: approve ? PrismaDocumentStatus.APPROVED : PrismaDocumentStatus.REJECTED,
+      rejectionReason: approve ? null : (rejectionReason ?? null),
+      reviewedBy,
+      reviewedAt: new Date(),
+    },
+  });
+
+  await _syncIsVerified(doc.driverId);
+  return getDriverProfile(doc.driverId);
 }
 
 export async function reviewDriverDocument(
@@ -182,27 +240,75 @@ export async function reviewDriverDocument(
   rejectionReason?: string,
 ): Promise<DriverProfileDTO | null> {
   const doc = await prisma.driverDocument.findUnique({
-    where: { driverId_type: { driverId, type } },
+    where: { driverId_type: { driverId, type: type as DocumentType } },
   });
   if (!doc) return null;
 
   await prisma.driverDocument.update({
     where: { id: doc.id },
     data: {
-      status: approve ? 'approved' : 'rejected',
+      status: approve ? PrismaDocumentStatus.APPROVED : PrismaDocumentStatus.REJECTED,
       rejectionReason: approve ? null : (rejectionReason ?? null),
       reviewedAt: new Date(),
     },
   });
 
-  // Sync isVerified: all required docs must be approved
+  await _syncIsVerified(driverId);
+  return getDriverProfile(driverId);
+}
+
+async function _syncIsVerified(driverId: string): Promise<void> {
   const approvedCount = await prisma.driverDocument.count({
-    where: { driverId, type: { in: REQUIRED_DOCS }, status: 'approved' },
+    where: {
+      driverId,
+      type: { in: REQUIRED_DOCS },
+      status: PrismaDocumentStatus.APPROVED,
+    },
   });
   await prisma.driver.update({
     where: { id: driverId },
     data: { isVerified: approvedCount >= REQUIRED_DOCS.length },
   });
+}
 
-  return getDriverProfile(driverId);
+// ─── Admin listing helpers ────────────────────────────────────────────────────
+
+export interface AdminDocumentItem {
+  docId: string;
+  driverId: string;
+  driverName: string;
+  driverPhone: string;
+  type: DocumentType;
+  label: string;
+  fileUrl: string;
+  status: PrismaDocumentStatus;
+  rejectionReason: string | null;
+  reviewedBy: string | null;
+  uploadedAt: string;
+  reviewedAt: string | null;
+}
+
+export async function listDocumentsForAdmin(
+  status?: PrismaDocumentStatus,
+): Promise<AdminDocumentItem[]> {
+  const docs = await prisma.driverDocument.findMany({
+    where: status ? { status } : undefined,
+    include: { driver: { select: { name: true, phone: true } } },
+    orderBy: { uploadedAt: 'asc' },
+  });
+
+  return docs.map((d) => ({
+    docId: d.id,
+    driverId: d.driverId,
+    driverName: d.driver.name,
+    driverPhone: d.driver.phone,
+    type: d.type,
+    label: DOC_LABELS[d.type] ?? d.type,
+    fileUrl: d.fileUrl,
+    status: d.status,
+    rejectionReason: d.rejectionReason,
+    reviewedBy: d.reviewedBy,
+    uploadedAt: d.uploadedAt.toISOString(),
+    reviewedAt: d.reviewedAt?.toISOString() ?? null,
+  }));
 }

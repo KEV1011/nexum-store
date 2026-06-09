@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { DocumentType } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { MOCK_DRIVER, getMaxFarePerSeat, getIntercityRoute } from '../config/constants';
 import { getTripService } from '../services/trip.service';
@@ -14,6 +15,7 @@ import {
   getDriverProfile,
   updateDriverProfile,
   upsertDriverDocument,
+  uploadDriverDocument,
   reviewDriverDocument,
 } from '../services/driver-profile.service';
 import { getActiveDriverRide, getChatHistory } from '../services/ride-negotiation.service';
@@ -23,6 +25,7 @@ import {
   UpsertDriverDocumentDTO,
   DriverDocumentType,
 } from '../types';
+import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
 
 const router = Router();
 
@@ -52,7 +55,64 @@ router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// PUT /driver/documents — upload or re-upload a document (Feature D)
+// GET /driver/documents — list all documents for the authenticated driver
+router.get('/documents', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  try {
+    const profile = await getDriverProfile(driverId);
+    res.status(200).json({ success: true, data: profile.documents });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to get documents';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+// POST /driver/documents — upload a document file (multipart/form-data)
+// Form fields: type (DocumentType), expiresAt? (ISO date string)
+router.post(
+  '/documents',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId ?? MOCK_DRIVER.id;
+    const { type, expiresAt } = req.body as { type?: string; expiresAt?: string };
+
+    if (!type || !ALLOWED_TYPES.includes(type as DocumentType)) {
+      res.status(400).json({
+        success: false,
+        error: `type es requerido. Valores válidos: ${ALLOWED_TYPES.join(', ')}`,
+      });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ningún archivo.' });
+      return;
+    }
+
+    try {
+      const fileUrl = fileToUrl(req.file.filename);
+      const updated = await uploadDriverDocument(
+        driverId,
+        type as DocumentType,
+        fileUrl,
+        expiresAt,
+      );
+      res.status(201).json({ success: true, data: updated });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al guardar el documento';
+      res.status(500).json({ success: false, error: message });
+    }
+  },
+);
+
+// PUT /driver/documents — legacy JSON upload (fileUrl provided by caller)
 router.put('/documents', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   const dto = req.body as Partial<UpsertDriverDocumentDTO>;

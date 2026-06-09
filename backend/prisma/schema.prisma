@@ -119,21 +119,37 @@ enum DriverStatus {
 }
 
 model DriverDocument {
-  id              String    @id @default(cuid())
+  id              String         @id @default(cuid())
   driverId        String
-  type            String
+  type            DocumentType
   fileUrl         String
-  status          String    @default("pending")
+  status          DocumentStatus @default(PENDING)
   expiresAt       String?
   rejectionReason String?
-  uploadedAt      DateTime  @default(now())
+  reviewedBy      String?
+  uploadedAt      DateTime       @default(now())
   reviewedAt      DateTime?
 
-  driver          Driver    @relation(fields: [driverId], references: [id])
+  driver          Driver         @relation(fields: [driverId], references: [id])
 
   @@unique([driverId, type])
   @@index([driverId])
+  @@index([status])
   @@map("driver_documents")
+}
+
+enum DocumentType {
+  CEDULA
+  LICENSE
+  SOAT
+  PROPERTY_CARD
+  PROFILE_PHOTO
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model Vehicle {

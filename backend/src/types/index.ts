@@ -816,14 +816,16 @@ export interface ChatMessageDTO {
 
 // ─── Driver Profile & Document Verification (Features D + E) ────────────────────
 
+// These match the Prisma DocumentType / DocumentStatus enums.
 export type DriverDocumentType =
-  | 'cedula'
-  | 'license'
-  | 'soat'
-  | 'vehicle_registration'
-  | 'profile_photo';
+  | 'CEDULA'
+  | 'LICENSE'
+  | 'SOAT'
+  | 'PROPERTY_CARD'
+  | 'PROFILE_PHOTO';
 
-export type DocumentStatus = 'missing' | 'pending' | 'approved' | 'rejected';
+// 'missing' is a synthetic front-end-only status (no DB row yet).
+export type DocumentStatus = 'missing' | 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface UpsertDriverDocumentDTO {
   type: DriverDocumentType;

@@ -26,6 +26,7 @@ import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
+import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
@@ -148,6 +149,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    // Load driver profile so isVerified is available when toggle is pressed.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => ref.read(driverProfileProvider.notifier).load(),
+    );
+  }
+
+  @override
   void dispose() {
     _countdownTimer?.cancel();
     _webMockTimer?.cancel();
@@ -163,6 +173,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _toggleOnline() {
     final goingOnline = !_state.isOnline;
+
+    // Block going online when the driver is not yet verified.
+    if (goingOnline) {
+      final profile = ref.read(driverProfileProvider).profile;
+      if (profile != null && !profile.isVerified) {
+        context.push(AppRoutes.verification);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Debes completar la verificación antes de recibir viajes.',
+            ),
+            backgroundColor: Color(0xFFF57F17),
+          ),
+        );
+        return;
+      }
+    }
+
     setState(() {
       _state = _state.copyWith(isOnline: goingOnline, clearPending: true);
     });
