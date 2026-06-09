@@ -6,6 +6,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/date_formatter.dart';
+import 'package:nexum_client/core/widgets/empty_state.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
@@ -255,36 +256,12 @@ class _EmptyOrders extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.receipt_long_outlined,
-            size: 64,
-            color: AppColors.textTertiary,
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          const Text(
-            'Aún no tienes pedidos',
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: AppConstants.spacingXS),
-          const Text(
-            'Haz tu primer pedido desde un negocio',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: AppConstants.spacingL),
-          OutlinedButton(
-            onPressed: () => context.go(AppRoutes.home),
-            child: const Text('Explorar negocios'),
-          ),
-        ],
-      ),
+    return EmptyState(
+      icon: Icons.receipt_long_outlined,
+      title: 'Aún no tienes pedidos',
+      message: 'Haz tu primer pedido y aparecerá aquí.',
+      actionLabel: 'Explorar negocios',
+      onAction: () => context.go(AppRoutes.home),
     );
   }
 }
