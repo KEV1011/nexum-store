@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
@@ -22,23 +23,29 @@ TextStyle _inter({
   );
 }
 
+/// Type pairing: **Sora** (geometric, with personality) for display, headline
+/// and the large title — a confident brand voice for headers and hero numbers —
+/// while **Inter** carries titles, body and labels for maximum legibility.
 TextTheme _buildTextTheme(TextTheme base) {
+  TextStyle? text(TextStyle? s) => s?.copyWith(fontFamily: 'Inter');
+  TextStyle display(TextStyle? s, {FontWeight weight = FontWeight.w700}) =>
+      GoogleFonts.sora(textStyle: s, fontWeight: weight);
   return base.copyWith(
-    displayLarge: base.displayLarge?.copyWith(fontFamily: 'Inter'),
-    displayMedium: base.displayMedium?.copyWith(fontFamily: 'Inter'),
-    displaySmall: base.displaySmall?.copyWith(fontFamily: 'Inter'),
-    headlineLarge: base.headlineLarge?.copyWith(fontFamily: 'Inter'),
-    headlineMedium: base.headlineMedium?.copyWith(fontFamily: 'Inter'),
-    headlineSmall: base.headlineSmall?.copyWith(fontFamily: 'Inter'),
-    titleLarge: base.titleLarge?.copyWith(fontFamily: 'Inter'),
-    titleMedium: base.titleMedium?.copyWith(fontFamily: 'Inter'),
-    titleSmall: base.titleSmall?.copyWith(fontFamily: 'Inter'),
-    bodyLarge: base.bodyLarge?.copyWith(fontFamily: 'Inter'),
-    bodyMedium: base.bodyMedium?.copyWith(fontFamily: 'Inter'),
-    bodySmall: base.bodySmall?.copyWith(fontFamily: 'Inter'),
-    labelLarge: base.labelLarge?.copyWith(fontFamily: 'Inter'),
-    labelMedium: base.labelMedium?.copyWith(fontFamily: 'Inter'),
-    labelSmall: base.labelSmall?.copyWith(fontFamily: 'Inter'),
+    displayLarge: display(base.displayLarge, weight: FontWeight.w800),
+    displayMedium: display(base.displayMedium, weight: FontWeight.w800),
+    displaySmall: display(base.displaySmall),
+    headlineLarge: display(base.headlineLarge),
+    headlineMedium: display(base.headlineMedium),
+    headlineSmall: display(base.headlineSmall),
+    titleLarge: display(base.titleLarge, weight: FontWeight.w600),
+    titleMedium: text(base.titleMedium),
+    titleSmall: text(base.titleSmall),
+    bodyLarge: text(base.bodyLarge),
+    bodyMedium: text(base.bodyMedium),
+    bodySmall: text(base.bodySmall),
+    labelLarge: text(base.labelLarge),
+    labelMedium: text(base.labelMedium),
+    labelSmall: text(base.labelSmall),
   );
 }
 

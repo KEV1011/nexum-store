@@ -1,11 +1,11 @@
 {
-    "name": "nexum_driver",
-    "short_name": "nexum_driver",
+    "name": "Nexum Conductor",
+    "short_name": "Nexum Conductor",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#00C853",
+    "description": "App del conductor Nexum: recibe viajes, envíos, mandados y domicilios en Norte de Santander.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
