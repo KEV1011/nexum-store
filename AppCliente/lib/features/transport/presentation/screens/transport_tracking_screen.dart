@@ -57,14 +57,14 @@ class TransportTrackingScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _TripMap(request: request),
+          const SizedBox(height: 16),
           _StatusCard(request: request),
           const SizedBox(height: 16),
           if (request.driverName != null) ...[
             _DriverCard(request: request),
             const SizedBox(height: 16),
           ],
-          _TripMap(request: request),
-          const SizedBox(height: 16),
           _StatusTimeline(request: request),
           const SizedBox(height: 16),
           _TripDetails(request: request),
@@ -353,14 +353,41 @@ class _DriverCard extends StatelessWidget {
   }
 }
 
-// ── Map ───────────────────────────────────────────────────────────────────────
+// ── Map (hero) ──────────────────────────────────────────────────────────────
+//
+// The live map is the trust moment of the trip: a tall hero with the driver's
+// pin, a pulsing "live" halo (reduce-motion aware), the route, and a floating
+// status + ETA overlay.
 
-class _TripMap extends StatelessWidget {
+class _TripMap extends StatefulWidget {
   const _TripMap({required this.request});
 
   final TransportRequestEntity request;
 
+  @override
+  State<_TripMap> createState() => _TripMapState();
+}
+
+class _TripMapState extends State<_TripMap>
+    with SingleTickerProviderStateMixin {
   static const _pamplona = LatLng(7.3762, -72.6465);
+
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
 
   LatLng _hashLatLng(String seed, int salt) {
     final hash = seed.hashCode ^ salt;
@@ -371,65 +398,185 @@ class _TripMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final request = widget.request;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final hasDriver = request.driverLat != null && request.driverLng != null;
+    final live = request.isActive && hasDriver;
+    final color = _colorOf(request.serviceType);
+
     final origin = _hashLatLng(request.originAddress, 0x1A);
     final destination = _hashLatLng(request.destinationAddress, 0x2B);
+    final driver =
+        hasDriver ? LatLng(request.driverLat!, request.driverLng!) : null;
     final center = LatLng(
       (origin.latitude + destination.latitude) / 2,
       (origin.longitude + destination.longitude) / 2,
     );
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(18),
       child: SizedBox(
-        height: 200,
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: center,
-            initialZoom: 14.5,
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.none,
-            ),
-          ),
+        height: 290,
+        child: Stack(
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.nexum.client',
-            ),
-            PolylineLayer(
-              polylines: [
-                Polyline(
-                  points: [origin, destination],
-                  color: AppColors.routeColor,
-                  strokeWidth: 4,
-                ),
-              ],
-            ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: origin,
-                  width: 32,
-                  height: 32,
-                  child: const _MapDot(color: AppColors.pickupMarker),
-                ),
-                Marker(
-                  point: destination,
-                  width: 32,
-                  height: 32,
-                  child: const _MapDot(color: AppColors.destinationMarker),
-                ),
-                if (request.driverLat != null && request.driverLng != null)
-                  Marker(
-                    point: LatLng(request.driverLat!, request.driverLng!),
-                    width: 38,
-                    height: 38,
-                    child: const _DriverDot(),
+            Positioned.fill(
+              child: FlutterMap(
+                options: MapOptions(
+                  initialCenter: driver ?? center,
+                  initialZoom: 14.5,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
                   ),
-              ],
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.nexum.client',
+                  ),
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: [origin, if (driver != null) driver, destination],
+                        color: AppColors.routeColor,
+                        strokeWidth: 4,
+                      ),
+                    ],
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: origin,
+                        width: 32,
+                        height: 32,
+                        child: const _MapDot(color: AppColors.pickupMarker),
+                      ),
+                      Marker(
+                        point: destination,
+                        width: 32,
+                        height: 32,
+                        child:
+                            const _MapDot(color: AppColors.destinationMarker),
+                      ),
+                      if (driver != null)
+                        Marker(
+                          point: driver,
+                          width: 72,
+                          height: 72,
+                          child: _LiveDriverMarker(
+                            pulse: _pulse,
+                            animate: live && !reduceMotion,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Floating live status + ETA overlay.
+            Positioned(
+              left: 12,
+              top: 12,
+              right: 12,
+              child: _MapLiveOverlay(
+                request: request,
+                color: color,
+                live: live,
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MapLiveOverlay extends StatelessWidget {
+  const _MapLiveOverlay({
+    required this.request,
+    required this.color,
+    required this.live,
+  });
+
+  final TransportRequestEntity request;
+  final Color color;
+  final bool live;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Flexible(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: const [
+                BoxShadow(color: AppColors.shadow, blurRadius: 10),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (live) ...[
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Flexible(
+                  child: Text(
+                    request.status.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (live) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: const [
+                BoxShadow(color: AppColors.shadow, blurRadius: 10),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.schedule_rounded,
+                    color: Colors.white, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  '${request.etaMinutes} min',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -452,12 +599,48 @@ class _MapDot extends StatelessWidget {
   }
 }
 
+/// Driver pin with a continuously expanding halo to signal a live position.
+/// The halo is suppressed when [animate] is false (reduce-motion / not live).
+class _LiveDriverMarker extends StatelessWidget {
+  const _LiveDriverMarker({required this.pulse, required this.animate});
+
+  final Animation<double> pulse;
+  final bool animate;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        if (animate)
+          AnimatedBuilder(
+            animation: pulse,
+            builder: (context, _) {
+              final t = pulse.value;
+              return Container(
+                width: 28 + 44 * t,
+                height: 28 + 44 * t,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primary.withValues(alpha: 0.22 * (1 - t)),
+                ),
+              );
+            },
+          ),
+        const _DriverDot(),
+      ],
+    );
+  }
+}
+
 class _DriverDot extends StatelessWidget {
   const _DriverDot();
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: 38,
+      height: 38,
       decoration: BoxDecoration(
         color: AppColors.primary,
         shape: BoxShape.circle,
