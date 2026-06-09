@@ -1,5 +1,4 @@
-import { randomUUID } from 'crypto';
-import { createHmac } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
 
 const WOMPI_PUBLIC_KEY = process.env['WOMPI_PUBLIC_KEY'] ?? '';
@@ -72,8 +71,9 @@ export async function handleWompiWebhook(body: unknown, signature: string): Prom
     const evt = body as Record<string, unknown>;
     const data = evt['data'] as Record<string, unknown> | undefined;
     const tx = data?.['transaction'] as Record<string, unknown> | undefined;
+    // Wompi checksum: SHA256(id + status + amount_in_cents + eventsSecret) — plain hash, not HMAC.
     const toSign = `${tx?.['id'] ?? ''}${tx?.['status'] ?? ''}${tx?.['amount_in_cents'] ?? ''}${WOMPI_EVENTS_SECRET}`;
-    const expected = createHmac('sha256', WOMPI_EVENTS_SECRET).update(toSign).digest('hex');
+    const expected = createHash('sha256').update(toSign).digest('hex');
     if (signature !== expected) return { handled: false };
   }
 
