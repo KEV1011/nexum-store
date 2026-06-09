@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 
@@ -41,6 +42,17 @@ class TransportTrackingScreen extends ConsumerWidget {
           icon: const Icon(Icons.close_rounded),
           onPressed: () => context.go(AppRoutes.home),
         ),
+        actions: [
+          if (request.status.isActive)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: SosButton(
+                tripId: request.id,
+                lat: request.driverLat,
+                lng: request.driverLng,
+              ),
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
+import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/features/safety/data/safety_api.dart';
+import 'package:nexum_driver/shared/services/location_service.dart';
+import 'package:nexum_driver/shared/services/ws_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+/// Línea única de emergencias en Colombia (no es 911).
+const String kEmergencyNumber = '123';
 
 class SafetyScreen extends StatefulWidget {
   const SafetyScreen({super.key});
@@ -81,7 +90,8 @@ class _SafetyScreenState extends State<SafetyScreen> {
           ),
           const SizedBox(height: AppConstants.spacingS),
           Text(
-            'Presiona si estás en peligro. Alertará a Nexum y a tus contactos de emergencia.',
+            'Comparte tu ubicación con tu contacto de confianza y facilita la '
+            'llamada al $kEmergencyNumber. No avisa automáticamente a la policía.',
             style:
                 theme.textTheme.bodyMedium?.copyWith(color: Colors.white70),
             textAlign: TextAlign.center,
@@ -110,39 +120,106 @@ class _SafetyScreenState extends State<SafetyScreen> {
     );
   }
 
-  void _confirmSos() {
-    showDialog<void>(
+  Future<void> _confirmSos() async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar SOS'),
+        title: const Text('¿Activar SOS?'),
         content: const Text(
-          '¿Confirmas que necesitas ayuda de emergencia? Se notificará a Nexum y a tus contactos.',
+          'Compartiremos tu ubicación con tu contacto de confianza y te '
+          'facilitaremos llamar al $kEmergencyNumber. Esto NO avisa '
+          'automáticamente a la policía.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
+            onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              HapticFeedback.heavyImpact();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('🚨 SOS activado. Ayuda en camino.'),
-                  backgroundColor: AppColors.error,
-                  duration: Duration(seconds: 4),
-                ),
-              );
-            },
+            onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error,
                 foregroundColor: Colors.white),
-            child: const Text('Confirmar SOS'),
+            child: const Text('Activar SOS'),
           ),
         ],
       ),
     );
+    if (confirmed != true || !mounted) return;
+
+    HapticFeedback.heavyImpact();
+
+    SosResult? result;
+    try {
+      final loc = await LocationService().getCurrentLocation();
+      final tripId = WsService().activeTripId;
+      result = await SafetyApi().sendSos(
+        tripId: (tripId == null || tripId.isEmpty) ? null : tripId,
+        lat: loc.latitude,
+        lng: loc.longitude,
+      );
+    } catch (_) {
+      // Even if the backend/GPS fails, still let the driver call 123.
+    }
+    if (!mounted) return;
+    await _showSosActions(result);
+  }
+
+  Future<void> _showSosActions(SosResult? result) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.sos_rounded, color: AppColors.error, size: 26),
+                SizedBox(width: 10),
+                Text('SOS activado',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              result == null
+                  ? 'No pudimos registrar el evento, pero puedes llamar al $kEmergencyNumber.'
+                  : result.trustedContactNotified
+                      ? 'Tu ubicación fue compartida con tu contacto de confianza.'
+                      : 'Evento registrado. Configura un contacto de confianza '
+                          'para avisarle automáticamente.',
+              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _callEmergency,
+              icon: const Icon(Icons.phone_in_talk_rounded),
+              label: const Text('Llamar al 123'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(50),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _callEmergency() async {
+    final uri = Uri(scheme: 'tel', path: kEmergencyNumber);
+    if (!await launchUrl(uri) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Marca el $kEmergencyNumber desde tu teléfono.')),
+      );
+    }
   }
 
   Widget _buildLocationCard(ThemeData theme) {
@@ -218,6 +295,16 @@ class _SafetyScreenState extends State<SafetyScreen> {
               ?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: AppConstants.spacingM),
+        Card(
+          margin: const EdgeInsets.only(bottom: AppConstants.spacingM),
+          child: ListTile(
+            leading: const Icon(Icons.shield_outlined, color: AppColors.primary),
+            title: const Text('Contacto de confianza'),
+            subtitle: const Text('Se le avisa con tu ubicación al activar SOS'),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.push(AppRoutes.trustedContact),
+          ),
+        ),
         ..._contacts.map(
           (c) => Padding(
             padding: const EdgeInsets.only(bottom: AppConstants.spacingS),

@@ -24,6 +24,7 @@ import 'package:nexum_driver/features/promotions/presentation/screens/promotions
 import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
 import 'package:nexum_driver/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nexum_driver/features/safety/presentation/screens/safety_screen.dart';
+import 'package:nexum_driver/features/safety/presentation/screens/trusted_contact_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nexum_driver/features/support/presentation/screens/support_screen.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/'
@@ -54,6 +55,7 @@ abstract final class AppRoutes {
   static const String tripHistory = '/trip-history';
   static const String ratings = '/ratings';
   static const String safety = '/safety';
+  static const String trustedContact = '/safety/trusted-contact';
   static const String settings = '/settings';
   static const String support = '/support';
   static const String promotions = '/promotions';
@@ -204,6 +206,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const SafetyScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.trustedContact,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const TrustedContactScreen(),
         ),
       ),
       GoRoute(

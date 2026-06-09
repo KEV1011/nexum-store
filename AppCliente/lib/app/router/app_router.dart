@@ -36,6 +36,8 @@ import 'package:nexum_client/features/ride_negotiation/presentation/screens/'
     'request_ride_screen.dart';
 import 'package:nexum_client/features/onboarding/presentation/screens/'
     'onboarding_screen.dart';
+import 'package:nexum_client/features/safety/presentation/screens/'
+    'trusted_contact_screen.dart';
 import 'package:nexum_client/features/orders/presentation/screens/'
     'order_tracking_screen.dart';
 import 'package:nexum_client/features/shell/presentation/screens/'
@@ -77,6 +79,9 @@ abstract final class AppRoutes {
   // Rutas de mandados
   static const String errandBooking = '/errand/booking';
   static const String errandStatus = '/errand/status';
+
+  // Seguridad
+  static const String trustedContact = '/safety/trusted-contact';
 
   static String businessPath(String id) => '/business/$id';
   static String orderPath(String id) => '/order/$id';
@@ -216,6 +221,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const RequestRideScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.trustedContact,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const TrustedContactScreen(),
         ),
       ),
       GoRoute(
