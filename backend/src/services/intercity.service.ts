@@ -6,6 +6,7 @@ import {
   IntercityBookingDTO,
 } from '../types';
 import { prisma } from '../lib/prisma';
+import { maskPhone } from './safe-contact.service';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type BookingCallback = (bookingId: string, booking: IntercityBookingDTO) => void;
@@ -66,7 +67,10 @@ function _toDTO(b: DbBooking): IntercityBookingDTO {
     counterFare: b.counterFare ?? undefined,
     status: (STATUS_FROM_PRISMA[b.status] ?? 'searching') as IntercityStatus,
     driverName: b.driverName ?? undefined,
-    driverPhone: b.driverPhone ?? undefined,
+    // Privacy: masked reference only, communication via in-app chat.
+    driverPhone: maskPhone(b.driverPhone),
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(b.driverPhone),
     driverVehicle: b.driverVehicle ?? undefined,
     pickupAddress: b.pickupAddress ?? undefined,
     dropoffAddress: b.dropoffAddress ?? undefined,

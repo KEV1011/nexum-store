@@ -11,6 +11,7 @@ import {
   TransportServiceType,
 } from '../types';
 import { prisma } from '../lib/prisma';
+import { maskPhone } from './safe-contact.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ride negotiation service (inDriver-style)
@@ -123,7 +124,10 @@ function bidToDTO(b: RideBid): RideBidDTO {
     id: b.id,
     driverId: b.driverId,
     driverName: b.driverName,
-    driverPhone: b.driverPhone,
+    // Privacy: the client sees a masked reference in the bid, not the real number.
+    driverPhone: maskPhone(b.driverPhone) ?? '',
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(b.driverPhone),
     driverRating: b.driverRating,
     driverTotalTrips: b.driverTotalTrips,
     vehicleDescription: b.vehicleDescription,
@@ -149,7 +153,10 @@ function rideToDTO(r: RideRequest, forDriverId?: string): RideRequestDTO {
     rideRef: r.rideRef,
     clientId: r.clientId,
     clientName: r.clientName,
-    clientPhone: r.clientPhone,
+    // Privacy: bidding drivers see a masked reference, not the passenger's number.
+    clientPhone: maskPhone(r.clientPhone) ?? '',
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(r.clientPhone),
     serviceType: r.serviceType,
     originAddress: r.originAddress,
     destinationAddress: r.destinationAddress,

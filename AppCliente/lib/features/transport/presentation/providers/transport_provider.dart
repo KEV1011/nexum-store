@@ -175,6 +175,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
         status: status,
         driverName: payload['driverName'] as String? ?? r.driverName,
         driverPhone: payload['driverPhone'] as String? ?? r.driverPhone,
+        maskedPhone: payload['maskedPhone'] as String? ?? r.maskedPhone,
+        contactChannel: payload['contactChannel'] as String? ?? r.contactChannel,
         driverVehicle: payload['driverVehicle'] as String? ?? r.driverVehicle,
         etaMinutes: payload['etaMinutes'] as int? ?? r.etaMinutes,
         acceptedAt: acceptedAtStr != null

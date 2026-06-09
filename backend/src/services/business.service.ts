@@ -11,6 +11,7 @@ import {
   BusinessCategory,
 } from '../types';
 import { prisma } from '../lib/prisma';
+import { maskPhone } from './safe-contact.service';
 
 // ─── Order-update notification subscriptions (ephemeral WS session state) ─────
 
@@ -102,7 +103,10 @@ function _toSummaryDTO(order: {
     deliveryPhotoUrl: order.deliveryPhotoUrl ?? undefined,
     hasSignature: order.hasSignature,
     driverName: order.driverName ?? '',
-    driverPhone: order.driverPhone ?? '',
+    // Privacy: the driver's real number is never exposed to the business.
+    driverPhone: maskPhone(order.driverPhone) ?? '',
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(order.driverPhone),
     hasPickupProof,
     hasDeliveryProof,
     hasFullCustody: hasPickupProof && hasDeliveryProof,

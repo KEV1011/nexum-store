@@ -279,10 +279,63 @@ class _DriverCard extends StatelessWidget {
               backgroundColor: AppColors.primaryContainer,
               foregroundColor: AppColors.primary,
             ),
-            icon: const Icon(Icons.phone_rounded),
-            onPressed: () {},
+            tooltip: 'Contacto seguro',
+            icon: const Icon(Icons.shield_outlined),
+            onPressed: () => _showSafeContactSheet(context),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showSafeContactSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: const [
+                Icon(Icons.lock_outline_rounded,
+                    color: AppColors.primary, size: 22),
+                SizedBox(width: 10),
+                Text(
+                  'Contacto protegido',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Por tu seguridad y la del conductor, el número real se mantiene '
+              'privado. Comunícate por el chat in-app del viaje.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            if (request.maskedPhone != null) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(Icons.phone_outlined,
+                      size: 18, color: AppColors.textTertiary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Referencia: ${request.maskedPhone}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

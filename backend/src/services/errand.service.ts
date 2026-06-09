@@ -7,6 +7,7 @@ import {
 } from '../types';
 import { ERRAND_SERVICE_FEE } from '../config/constants';
 import { prisma } from '../lib/prisma';
+import { maskPhone } from './safe-contact.service';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type ErrandCallback = (errandId: string, errand: ClientErrandDTO) => void;
@@ -59,7 +60,10 @@ function _toDTO(e: DbErrand): ClientErrandDTO {
     notes: e.notes ?? undefined,
     status: (STATUS_FROM_PRISMA[e.status] ?? 'searching') as ErrandStatus,
     driverName: e.driverName ?? undefined,
-    driverPhone: e.driverPhone ?? undefined,
+    // Privacy: masked reference only, communication via in-app chat.
+    driverPhone: maskPhone(e.driverPhone),
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(e.driverPhone),
     createdAt: e.createdAt.toISOString(),
     acceptedAt: e.acceptedAt?.toISOString(),
     deliveredAt: e.deliveredAt?.toISOString(),

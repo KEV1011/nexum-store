@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { getIntercityRoute, getMaxFarePerSeat } from '../config/constants';
 import { prisma } from '../lib/prisma';
+import { maskPhone } from './safe-contact.service';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type TripCallback = (tripId: string, trip: PooledTripDTO) => void;
@@ -59,7 +60,10 @@ function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
     id: b.id,
     tripId: b.tripId,
     passengerName: b.passengerName,
-    passengerPhone: b.passengerPhone,
+    // Privacy: the driver sees a masked reference, not the passenger's number.
+    passengerPhone: maskPhone(b.passengerPhone) ?? '',
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(b.passengerPhone),
     seatsBooked: b.seatsBooked,
     pickupAddress: b.pickupAddress ?? undefined,
     notes: b.notes ?? undefined,
@@ -81,7 +85,10 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     tripRef: t.tripRef,
     driverId: t.driverId,
     driverName: t.driverName,
-    driverPhone: t.driverPhone,
+    // Privacy: passengers see a masked reference, not the driver's number.
+    driverPhone: maskPhone(t.driverPhone) ?? '',
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(t.driverPhone),
     vehicleDescription: t.vehicleDescription,
     origin: (CITY_FROM_PRISMA[t.origin] ?? t.origin.toLowerCase()) as IntercityCity,
     destination: (CITY_FROM_PRISMA[t.destination] ?? t.destination.toLowerCase()) as IntercityCity,

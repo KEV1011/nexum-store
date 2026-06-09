@@ -110,13 +110,16 @@ class GoingToPassengerCard extends ConsumerWidget {
             _PassengerInfo(
               passenger: passenger,
               theme: theme,
+              // Privacy: the passenger's real number stays hidden. Direct dialing
+              // is disabled until a call-proxy is integrated; chat is the channel.
               onCall: () => AppSnackbar.showInfo(
                 context,
-                'Llamando a ${passenger.firstName}...',
+                'Por privacidad, el número del pasajero está protegido. '
+                'Comunícate por el chat in-app.',
               ),
               onMessage: () => AppSnackbar.showInfo(
                 context,
-                'Mensajes próximamente',
+                'Abriendo chat con ${passenger.firstName}...',
               ),
             ),
 

@@ -13,6 +13,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { startMatchingCycle } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
+import { maskPhone } from './safe-contact.service';
 
 const OTP_TTL = 5 * 60 * 1000;
 
@@ -429,7 +430,10 @@ function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine
     items: lines.map((l) => ({ productName: l.productName, quantity: l.quantity, unitPrice: l.unitPrice, subtotal: l.subtotal })),
     deliveryAddress: o.deliveryAddress,
     driverName: o.driverName || undefined,
-    driverPhone: o.driverPhone || undefined,
+    // Privacy: never expose the driver's real number to the passenger.
+    driverPhone: maskPhone(o.driverPhone),
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(o.driverPhone),
     pickupPhotoUrl: o.pickupPhotoUrl ?? undefined,
     deliveryPhotoUrl: o.deliveryPhotoUrl ?? undefined,
     hasSignature: o.hasSignature,
@@ -463,7 +467,10 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     etaMinutes: trip.etaMinutes ?? 0,
     status: statusMap[trip.status] ?? 'searching',
     driverName,
-    driverPhone,
+    // Privacy: the passenger sees a masked reference, not the real number.
+    driverPhone: maskPhone(driverPhone),
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(driverPhone),
     driverVehicle,
     createdAt: trip.createdAt.toISOString(),
     acceptedAt: trip.acceptedAt?.toISOString(),

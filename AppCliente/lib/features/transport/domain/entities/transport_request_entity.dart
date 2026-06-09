@@ -118,6 +118,8 @@ class TransportRequestEntity {
     required this.createdAt,
     this.driverName,
     this.driverPhone,
+    this.maskedPhone,
+    this.contactChannel,
     this.driverVehicle,
     this.acceptedAt,
     this.completedAt,
@@ -148,6 +150,8 @@ class TransportRequestEntity {
         createdAt: DateTime.parse(json['createdAt'] as String),
         driverName: json['driverName'] as String?,
         driverPhone: json['driverPhone'] as String?,
+        maskedPhone: json['maskedPhone'] as String?,
+        contactChannel: json['contactChannel'] as String?,
         driverVehicle: json['driverVehicle'] as String?,
         acceptedAt: json['acceptedAt'] != null
             ? DateTime.parse(json['acceptedAt'] as String)
@@ -176,6 +180,8 @@ class TransportRequestEntity {
   final DateTime createdAt;
   final String? driverName;
   final String? driverPhone;
+  final String? maskedPhone;
+  final String? contactChannel;
   final String? driverVehicle;
   final DateTime? acceptedAt;
   final DateTime? completedAt;
@@ -205,6 +211,8 @@ class TransportRequestEntity {
     DateTime? createdAt,
     String? driverName,
     String? driverPhone,
+    String? maskedPhone,
+    String? contactChannel,
     String? driverVehicle,
     DateTime? acceptedAt,
     DateTime? completedAt,
@@ -229,6 +237,8 @@ class TransportRequestEntity {
       createdAt: createdAt ?? this.createdAt,
       driverName: driverName ?? this.driverName,
       driverPhone: driverPhone ?? this.driverPhone,
+      maskedPhone: maskedPhone ?? this.maskedPhone,
+      contactChannel: contactChannel ?? this.contactChannel,
       driverVehicle: driverVehicle ?? this.driverVehicle,
       acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,
@@ -255,6 +265,8 @@ class TransportRequestEntity {
         'createdAt': createdAt.toIso8601String(),
         if (driverName != null) 'driverName': driverName,
         if (driverPhone != null) 'driverPhone': driverPhone,
+        if (maskedPhone != null) 'maskedPhone': maskedPhone,
+        if (contactChannel != null) 'contactChannel': contactChannel,
         if (driverVehicle != null) 'driverVehicle': driverVehicle,
         if (acceptedAt != null) 'acceptedAt': acceptedAt!.toIso8601String(),
         if (completedAt != null) 'completedAt': completedAt!.toIso8601String(),
