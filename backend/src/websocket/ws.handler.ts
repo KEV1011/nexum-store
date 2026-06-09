@@ -58,6 +58,7 @@ import {
   isDriverVerified,
 } from '../services/driver-profile.service';
 import { getBusinessService } from '../services/business.service';
+import { updateDriverGeo } from '../services/matching.service';
 import {
   WsMessage,
   WorkMode,
@@ -386,7 +387,14 @@ async function handleBusinessAuth(ws: WebSocket, token: string): Promise<void> {
   }
 }
 
-async function handleLocationUpdate(lat: number, lng: number, tripId: string | null): Promise<void> {
+async function handleLocationUpdate(ws: WebSocket, lat: number, lng: number, tripId: string | null): Promise<void> {
+  // Persist the driver's position into PostGIS first — this powers nearest-driver
+  // matching and must happen on every fix, even while the driver is idle/ONLINE
+  // (no active trip).
+  const driverId = driverIdByWs.get(ws);
+  if (driverId) await updateDriverGeo(driverId, lat, lng);
+
+  // Relay the live position to the passenger of the active trip, if any.
   const effectiveTripId = tripId ?? driverActiveTripId;
   if (!effectiveTripId) return;
 
@@ -763,7 +771,9 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Location ─────────────────────────────────────────────────────────────
     case 'location_update': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
+      // Any authenticated driver may report location (multi-driver presence for
+      // matching), not just the legacy singleton driverSocket.
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
       const lat = msg['lat'];
       const lng = msg['lng'];
       const tripId = msg['tripId'];
@@ -771,7 +781,7 @@ function onMessage(ws: WebSocket, raw: string): void {
         sendTo(ws, { type: 'error', message: 'lat and lng required as numbers' });
         return;
       }
-      void handleLocationUpdate(lat, lng, typeof tripId === 'string' ? tripId : null);
+      void handleLocationUpdate(ws, lat, lng, typeof tripId === 'string' ? tripId : null);
       break;
     }
 
