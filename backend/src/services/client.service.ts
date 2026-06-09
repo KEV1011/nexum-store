@@ -11,6 +11,7 @@ import {
   TransportServiceType,
 } from '../types';
 import { prisma } from '../lib/prisma';
+import { startMatchingCycle } from './matching.service';
 
 const OTP_TTL = 5 * 60 * 1000;
 
@@ -252,6 +253,9 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
     },
   });
 
+  // Kick off geo-matching asynchronously — does not block the REST response.
+  void startMatchingCycle(trip.id, trip.originLat, trip.originLng);
+
   return _toTripDTO(trip, clientId);
 }
 
@@ -359,6 +363,28 @@ async function _startTripSimulation(tripId: string, passengerId: string): Promis
 
 function _notifyTripListeners(tripId: string, _passengerId: string, dto: ClientTripDTO): void {
   for (const cb of tripListeners.get(tripId) ?? []) cb(tripId, dto);
+}
+
+/**
+ * Fetch the trip from DB (joining driver + active vehicle) and fire all
+ * registered trip listeners.  Called by the matching service after a driver
+ * accepts so that WS-subscribed passengers receive a `trip_update` with real
+ * driver info.
+ */
+export async function notifyClientTripUpdateById(tripId: string): Promise<void> {
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: {
+      driver: {
+        include: { vehicles: { where: { isActive: true }, take: 1 } },
+      },
+    },
+  });
+  if (!trip || !trip.passengerId) return;
+  const v = trip.driver?.vehicles[0];
+  const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
+  const dto = _toTripDTO(trip, trip.passengerId, trip.driver?.name, trip.driver?.phone, driverVehicle);
+  _notifyTripListeners(tripId, trip.passengerId, dto);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

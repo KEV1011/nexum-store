@@ -4,7 +4,6 @@ import { verifyToken } from '../services/auth.service';
 import {
   startDispatch,
   stopDispatch,
-  acknowledgeTripResponse,
   acknowledgeErrandResponse,
   resumeDispatch,
   setDriverWorkMode,
@@ -14,13 +13,13 @@ import {
   verifyClientToken,
   subscribeClientOrder,
   getClientOrderSnapshot,
-  acceptClientTrip,
   updateClientTripLocation,
   updateClientTripStatus,
   subscribeClientTrip,
   getClientTripSnapshot,
   getClientTripRaw,
   onNewClientOrderForBusiness,
+  notifyClientTripUpdateById,
 } from '../services/client.service';
 import {
   getClientErrandRaw,
@@ -58,7 +57,13 @@ import {
   isDriverVerified,
 } from '../services/driver-profile.service';
 import { getBusinessService } from '../services/business.service';
-import { updateDriverGeo } from '../services/matching.service';
+import {
+  updateDriverGeo,
+  registerSendToDriver,
+  registerNotifyTripUpdate,
+  onDriverAccept,
+  onDriverDeclineOrTimeout,
+} from '../services/matching.service';
 import {
   WsMessage,
   WorkMode,
@@ -84,6 +89,10 @@ const pooledSubs = new Map<WebSocket, Map<string, () => void>>();
 
 const businessSockets = new Map<string, WebSocket>();
 const businessSubscriptions = new Map<WebSocket, Array<() => void>>();
+
+// Per-driver active trip (supports multi-driver matching; driverActiveTripId is the
+// legacy singleton fallback kept for backward compatibility with errand dispatch).
+const driverActiveTripIdMap = new Map<string, string>(); // driverId → tripId
 
 // ─── Ride negotiation (multi-driver pool + bids + chat) ─────────────────────────
 
@@ -121,18 +130,17 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
     driverSocket = ws;
     driverWorkMode = workMode;
     driverIdByWs.set(ws, payload.driverId);
+    // Register in driverConnections so matching can reach this driver via sendToDriverById.
+    driverConnections.set(payload.driverId, { ws, driverId: payload.driverId, workMode });
     void getTripService().setDriverStatus('online', payload.driverId);
 
     sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workMode });
 
+    // Trip dispatch is handled by the real geo-matching engine (matching.service.ts).
+    // Only errand simulation remains here until Phase 4 wires real errand matching.
     startDispatch(
-      (trip) => sendDriver({ type: 'trip_request', trip }),
       (id) => {
-        if (driverWorkMode === 'mandado') {
-          sendDriver({ type: 'errand_cancelled', errandId: id, reason: 'No response within 15 seconds' });
-        } else {
-          sendDriver({ type: 'trip_cancelled', tripId: id, reason: 'No response within 15 seconds' });
-        }
+        sendDriver({ type: 'errand_cancelled', errandId: id, reason: 'No response within 15 seconds' });
         resumeDispatch();
       },
       workMode,
@@ -155,58 +163,58 @@ function handleDriverModeChange(ws: WebSocket, mode: WorkMode): void {
   sendDriver({ type: 'auth_ok', workMode: mode });
 }
 
-async function handleAccept(tripId: string): Promise<void> {
-  // Check if this is a real client trip
-  const clientTrip = await getClientTripRaw(tripId);
-  if (clientTrip) {
-    const MOCK_DRIVER = {
-      name: 'Carlos Méndez',
-      phone: '+57 310 456 7890',
-      vehicle: 'Toyota Yaris • NEX 123',
-    };
-    const updated = await acceptClientTrip(tripId, MOCK_DRIVER.name, MOCK_DRIVER.phone, MOCK_DRIVER.vehicle);
-    if (updated) {
-      sendDriver({ type: 'trip_accepted', trip: updated });
-      driverActiveTripId = tripId;
-      const clientWs = clientSockets.get(clientTrip.clientId);
-      if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });
-    }
+async function handleAccept(ws: WebSocket, tripId: string): Promise<void> {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) {
+    sendTo(ws, { type: 'error', message: 'Driver not authenticated' });
     return;
   }
 
-  // Mock dispatch trip
-  const acked = acknowledgeTripResponse(tripId);
-  if (!acked) {
-    sendDriver({ type: 'error', message: `Trip ${tripId} is no longer available` });
+  const clientTrip = await getClientTripRaw(tripId);
+  if (!clientTrip) {
+    sendTo(ws, { type: 'error', message: `Trip ${tripId} not found` });
     return;
   }
+
+  const accepted = await onDriverAccept(tripId, driverId);
+  if (!accepted) {
+    sendTo(ws, { type: 'error', message: `Trip ${tripId} is no longer available` });
+    return;
+  }
+
+  // Build trip_accepted response with real driver info.
+  let driverName: string | undefined;
+  let driverPhone: string | undefined;
+  let driverVehicle: string | undefined;
   try {
-    const trip = await getTripService().acceptTrip(tripId);
-    sendDriver({ type: 'trip_accepted', trip });
-  } catch (err) {
-    sendDriver({
-      type: 'error',
-      message: err instanceof Error ? err.message : 'Failed to accept trip',
-    });
+    const profile = await getDriverProfile(driverId);
+    driverName = profile.fullName;
+    driverPhone = profile.phone;
+    driverVehicle = profile.vehicleDescription;
+  } catch { /* no profile yet; proceed without */ }
+
+  const snapshot = await getClientTripSnapshot(tripId);
+  if (snapshot) {
+    const dto = { ...snapshot, driverName, driverPhone, driverVehicle };
+    sendTo(ws, { type: 'trip_accepted', trip: dto });
+    driverActiveTripId = tripId;
+    if (driverId) driverActiveTripIdMap.set(driverId, tripId);
+    // Passenger is notified via the notifyClientTripUpdateById callback registered
+    // in setupWebSocket (triggered inside onDriverAccept → _notifyTripUpdate).
   }
 }
 
-async function handleReject(tripId: string): Promise<void> {
-  const acked = acknowledgeTripResponse(tripId);
-  if (!acked) {
-    sendDriver({ type: 'error', message: `Trip ${tripId} is no longer available` });
+async function handleReject(ws: WebSocket, tripId: string): Promise<void> {
+  const driverId = driverIdByWs.get(ws);
+
+  const clientTrip = await getClientTripRaw(tripId);
+  if (!clientTrip) {
+    sendTo(ws, { type: 'error', message: `Trip ${tripId} not found` });
     return;
   }
-  try {
-    await getTripService().rejectTrip(tripId);
-    sendDriver({ type: 'trip_rejected', tripId });
-    resumeDispatch();
-  } catch (err) {
-    sendDriver({
-      type: 'error',
-      message: err instanceof Error ? err.message : 'Failed to reject trip',
-    });
-  }
+
+  await onDriverDeclineOrTimeout(tripId, driverId);
+  sendTo(ws, { type: 'trip_rejected', tripId });
 }
 
 async function handleAcceptErrand(errandId: string): Promise<void> {
@@ -395,7 +403,9 @@ async function handleLocationUpdate(ws: WebSocket, lat: number, lng: number, tri
   if (driverId) await updateDriverGeo(driverId, lat, lng);
 
   // Relay the live position to the passenger of the active trip, if any.
-  const effectiveTripId = tripId ?? driverActiveTripId;
+  // Prefer the per-driver map (multi-driver matching), fall back to singleton.
+  const perDriverTripId = driverId ? driverActiveTripIdMap.get(driverId) : undefined;
+  const effectiveTripId = tripId ?? perDriverTripId ?? driverActiveTripId;
   if (!effectiveTripId) return;
 
   const clientId = await updateClientTripLocation(effectiveTripId, lat, lng);
@@ -598,11 +608,6 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Driver auth ──────────────────────────────────────────────────────────
     case 'auth': {
-      if (driverSocket && driverSocket.readyState === WebSocket.OPEN && driverSocket !== ws) {
-        sendTo(ws, { type: 'auth_error', message: 'Another driver session is active' });
-        ws.close();
-        return;
-      }
       const token = msg['token'];
       if (typeof token !== 'string' || !token) {
         sendTo(ws, { type: 'auth_error', message: 'token field is required' });
@@ -624,17 +629,17 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Trip accept / reject ─────────────────────────────────────────────────
     case 'accept': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
       const tripId = msg['tripId'];
       if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
-      void handleAccept(tripId);
+      void handleAccept(ws, tripId);
       break;
     }
     case 'reject': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
       const tripId = msg['tripId'];
       if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
-      void handleReject(tripId);
+      void handleReject(ws, tripId);
       break;
     }
 
@@ -916,6 +921,7 @@ function onClose(ws: WebSocket): void {
   if (driverId && driverConnections.get(driverId)?.ws === ws) {
     driverConnections.delete(driverId);
   }
+  if (driverId) driverActiveTripIdMap.delete(driverId);
   driverIdByWs.delete(ws);
   clientIdByWs.delete(ws);
 
@@ -963,6 +969,11 @@ function onClose(ws: WebSocket): void {
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 export function setupWebSocket(wss: WebSocketServer): void {
+  // Wire up matching callbacks so the service can reach driver sockets and
+  // notify passengers, without importing WebSocket internals directly.
+  registerSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+  registerNotifyTripUpdate(notifyClientTripUpdateById);
+
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
     console.log('[WS] New connection');
     ws.on('message', (data) => onMessage(ws, data.toString()));
