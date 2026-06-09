@@ -18,8 +18,14 @@ class IntercityStatusScreen extends ConsumerWidget {
     final request = state.active;
 
     if (request == null) {
+      // Si el viaje acaba de completarse va al historial, donde el
+      // pasajero puede calificarlo; si fue cancelado, vuelve al inicio.
+      final justCompleted =
+          state.past.isNotEmpty && state.past.first.isCompleted;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.go('/home');
+        if (context.mounted) {
+          context.go(justCompleted ? '/intercity/history' : '/home');
+        }
       });
       return const Scaffold(
         backgroundColor: Color(0xFF0F172A),

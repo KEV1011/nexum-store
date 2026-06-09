@@ -78,7 +78,7 @@ TripRequestEntity createMockTripRequest({
 /// Viaje completado mock
 TripModel createMockCompletedTrip({
   String id = 'completed_test',
-  double netEarning = 4_751.25,
+  double netEarning = 4751.25,
 }) {
   return TripModel(
     id: id,

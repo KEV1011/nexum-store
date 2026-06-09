@@ -13,19 +13,21 @@ export async function POST(req: NextRequest) {
   try {
     const topic = req.headers.get('x-shopify-topic') ?? ''
 
-    // Revalida según el topic del webhook
+    // Revalida según el topic del webhook.
+    // Next 16: revalidateTag exige el perfil de cache como segundo argumento;
+    // 'max' expira el tag de inmediato en la siguiente petición.
     if (topic.startsWith('products/')) {
-      revalidateTag('products')
+      revalidateTag('products', 'max')
 
       // Si es un producto específico, revalida su handle también
       const body = await req.json().catch(() => null)
-      if (body?.handle) revalidateTag(`product-${body.handle}`)
+      if (body?.handle) revalidateTag(`product-${body.handle}`, 'max')
     }
 
     if (topic.startsWith('collections/')) {
-      revalidateTag('collections')
+      revalidateTag('collections', 'max')
       const body = await req.json().catch(() => null)
-      if (body?.handle) revalidateTag(`collection-${body.handle}`)
+      if (body?.handle) revalidateTag(`collection-${body.handle}`, 'max')
     }
 
     return NextResponse.json({ revalidated: true, topic })

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:nexum_driver/app/theme/app_theme.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/'
@@ -40,6 +41,9 @@ Future<void> _loadInterFonts() async {
 
 void main() {
   setUpAll(() async {
+    // Sin red en tests: google_fonts (Sora) no debe intentar descargar;
+    // el texto cae al fallback Inter cargado localmente más abajo.
+    GoogleFonts.config.allowRuntimeFetching = false;
     await initializeDateFormatting('es_CO');
     await _loadInterFonts();
   });

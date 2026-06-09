@@ -99,3 +99,6 @@ lcov.info
 *.log
 *.lock
 *.deb
+
+# Golden test diff artifacts
+**/test/**/failures/

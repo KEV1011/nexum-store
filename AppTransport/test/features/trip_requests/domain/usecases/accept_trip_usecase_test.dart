@@ -9,15 +9,16 @@ void main() {
     late AcceptTripUseCase useCase;
 
     setUp(() {
-      final dataSource = TripRequestsMockDataSource();
-      final repository = TripRequestsRepositoryImpl(dataSource);
+      final dataSource = TripRequestsDataSource();
+      final repository = TripRequestsRepositoryImpl(dataSource: dataSource);
       useCase = AcceptTripUseCase(repository);
     });
 
-    test('Aceptar viaje válido retorna true', () async {
+    test('Aceptar viaje válido retorna la solicitud aceptada', () async {
       final request = createMockTripRequest();
       final result = await useCase.call(request);
-      expect(result, isTrue);
+      expect(result, isNotNull);
+      expect(result.id, equals(request.id));
     });
 
     test('La solicitud de viaje tiene los campos correctos', () {

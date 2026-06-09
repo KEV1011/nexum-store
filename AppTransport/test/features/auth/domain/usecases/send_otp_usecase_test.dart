@@ -12,7 +12,10 @@ void main() {
     setUp(() {
       const storage = FlutterSecureStorage();
       final dataSource = AuthMockDataSource();
-      final repository = AuthRepositoryImpl(dataSource, storage);
+      final repository = AuthRepositoryImpl(
+        dataSource: dataSource,
+        secureStorage: storage,
+      );
       useCase = SendOtpUseCase(repository);
     });
 

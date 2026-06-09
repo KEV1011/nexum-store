@@ -12,8 +12,8 @@ void main() {
     late FinishTripUseCase useCase;
 
     setUp(() {
-      final dataSource = ActiveTripMockDataSource();
-      final repository = ActiveTripRepositoryImpl(dataSource);
+      final dataSource = ActiveTripDataSource();
+      final repository = ActiveTripRepositoryImpl(dataSource: dataSource);
       useCase = FinishTripUseCase(repository);
     });
 
@@ -73,7 +73,7 @@ void main() {
       );
     });
 
-    test('FareCalculator: tarifa mínima es $5.000 COP', () {
+    test(r'FareCalculator: tarifa mínima es $5.000 COP', () {
       // Viaje muy corto: 0.1 km, 1 min
       final fare = FareCalculator.calculateFare(
         distanceKm: 0.1,
@@ -82,7 +82,7 @@ void main() {
       expect(fare, equals(AppConstants.minimumFareCop));
     });
 
-    test('FareCalculator: tarifa para 1.8 km / 5 min = $5.585 COP', () {
+    test(r'FareCalculator: tarifa para 1.8 km / 5 min = $5.585 COP', () {
       final fare = FareCalculator.calculateFare(
         distanceKm: 1.8,
         durationMinutes: 5,

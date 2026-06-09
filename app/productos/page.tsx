@@ -1,4 +1,5 @@
 import { ProductCard } from '@/components/product/ProductCard'
+import { SortSelect } from '@/components/product/SortSelect'
 import { products, collections, type CollectionHandle } from '@/lib/mockData'
 
 type SearchParams = { sort?: string; categoria?: CollectionHandle }
@@ -7,14 +8,6 @@ export const metadata = {
   title: 'Productos',
   description: 'Catálogo completo de productos Nexum. GPS mascotas, accesorios auto y gadgets premium.',
 }
-
-const SORT_OPTIONS = [
-  { value: 'default',     label: 'Destacados'   },
-  { value: 'new',         label: 'Más nuevos'   },
-  { value: 'bestselling', label: 'Más vendidos' },
-  { value: 'price-asc',   label: 'Precio: menor'  },
-  { value: 'price-desc',  label: 'Precio: mayor'  },
-]
 
 export default function ProductosPage({
   searchParams,
@@ -84,22 +77,7 @@ export default function ProductosPage({
           </div>
 
           {/* Sort */}
-          <select
-            className="bg-obsidian-50 border border-white/10 text-ghost-muted text-sm
-                       rounded-nexum px-4 py-2 focus:outline-none focus:border-gold/50
-                       focus:text-ghost transition-colors cursor-pointer"
-            defaultValue={sort ?? 'default'}
-            onChange={e => {
-              const url = new URL(window.location.href)
-              if (e.target.value === 'default') url.searchParams.delete('sort')
-              else url.searchParams.set('sort', e.target.value)
-              window.location.href = url.toString()
-            }}
-          >
-            {SORT_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          <SortSelect sort={sort} />
         </div>
 
         {/* Grid */}

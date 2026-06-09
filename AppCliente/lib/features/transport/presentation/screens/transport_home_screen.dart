@@ -546,18 +546,10 @@ class _BottomPanel extends StatelessWidget {
 
           const SizedBox(height: 8),
 
-          // Tarjeta viaje intermunicipal
+          // Bloque hero intermunicipal: lo distintivo de Nexum en la región
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _IntercityCard(),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Tarjeta viajes compartidos (Modelo A)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _PooledCard(),
+            child: _IntercityHeroCard(),
           ),
 
           const SizedBox(height: 8),
@@ -772,150 +764,153 @@ class _RecentTile extends StatelessWidget {
   }
 }
 
-// ── Tarjeta intermunicipal en el panel ────────────────────────────────────────
+// ── Bloque hero intermunicipal ───────────────────────────────────────────────
+//
+// La propuesta diferencial de Nexum en la región: viajes entre municipios
+// privados o con cupos compartidos. Por eso ocupa el lugar protagonista.
 
-class _IntercityCard extends StatelessWidget {
-  static const _bg = Color(0xFF1E3A8A);
-  static const _cardBg = Color(0xFF172554);
+class _IntercityHeroCard extends StatelessWidget {
+  static const _blue = Color(0xFF1E3A8A);
+  static const _lightBlue = Color(0xFF93C5FD);
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.push(AppRoutes.intercityBooking),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _bg.withValues(alpha: 0.6)),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1E3A8A), Color(0xFF172554)],
         ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _bg.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _blue.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: _blue.withValues(alpha: 0.35),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.route_rounded,
+                color: _lightBlue,
+                size: 22,
               ),
-              child: const Icon(
-                Icons.directions_car_filled_rounded,
-                color: Color(0xFF93C5FD),
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Viaje intermunicipal',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Viaja entre municipios',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
                   ),
-                  Text(
-                    'Cúcuta · Bucaramanga · Chitagá y más',
-                    style: TextStyle(
-                      color: Color(0xFF93C5FD),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: _bg,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'Reservar',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-          ],
-        ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF22C55E).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF22C55E).withValues(alpha: 0.5),
+                  ),
+                ),
+                child: const Text(
+                  'NUEVO',
+                  style: TextStyle(
+                    color: Color(0xFF4ADE80),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Pamplona · Cúcuta · Bucaramanga · Chitagá · Málaga y más',
+            style: TextStyle(color: _lightBlue, fontSize: 11.5),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _HeroAction(
+                  icon: Icons.directions_car_filled_rounded,
+                  label: 'Reservar privado',
+                  onTap: () => context.push(AppRoutes.intercityBooking),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HeroAction(
+                  icon: Icons.groups_rounded,
+                  label: 'Cupos compartidos',
+                  onTap: () => context.push(AppRoutes.pooledSearch),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-// ── Tarjeta de viajes compartidos (Modelo A) ──────────────────────────────────
+class _HeroAction extends StatelessWidget {
+  const _HeroAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
-class _PooledCard extends StatelessWidget {
-  static const _bg = Color(0xFF1E3A8A);
-  static const _cardBg = Color(0xFF172554);
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.push(AppRoutes.pooledSearch),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _bg.withValues(alpha: 0.6)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _bg.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.groups_rounded,
-                color: Color(0xFF93C5FD),
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Viajes compartidos',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
+    return Material(
+      color: Colors.white.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 17, color: Colors.white),
+              const SizedBox(width: 7),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
                   ),
-                  Text(
-                    'Reserva un puesto y comparte el viaje',
-                    style: TextStyle(color: Color(0xFF93C5FD), fontSize: 11),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: _bg,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'Buscar',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

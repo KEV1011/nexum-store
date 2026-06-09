@@ -6,14 +6,21 @@ import 'package:nexum_driver/features/auth/domain/usecases/verify_otp_usecase.da
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('VerifyOtpUseCase', () {
     late VerifyOtpUseCase useCase;
     late AuthRepositoryImpl repository;
 
     setUp(() {
+      // Sin plataforma nativa en tests: usa el almacén en memoria del plugin.
+      FlutterSecureStorage.setMockInitialValues({});
       const storage = FlutterSecureStorage();
       final dataSource = AuthMockDataSource();
-      repository = AuthRepositoryImpl(dataSource, storage);
+      repository = AuthRepositoryImpl(
+        dataSource: dataSource,
+        secureStorage: storage,
+      );
       useCase = VerifyOtpUseCase(repository);
     });
 
