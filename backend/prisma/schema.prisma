@@ -27,6 +27,10 @@ model User {
   updatedAt   DateTime  @updatedAt
   isActive    Boolean   @default(true)
 
+  // Trusted contact for the SOS / share-trip safety features.
+  trustedContactName  String?
+  trustedContactPhone String?
+
   addresses         Address[]
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
@@ -35,6 +39,7 @@ model User {
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
+  emergencyEvents   EmergencyEvent[]
 
   @@map("users")
 }
@@ -79,6 +84,10 @@ model Driver {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
+  // Trusted contact for the SOS / share-trip safety features.
+  trustedContactName  String?
+  trustedContactPhone String?
+
   // Última posición conocida
   lastLat       Float?
   lastLng       Float?
@@ -97,6 +106,7 @@ model Driver {
   otpSessions   OtpSession[]
   earnings      DriverEarning[]
   documents     DriverDocument[]
+  emergencyEvents EmergencyEvent[]
 
   @@index([status])
   @@map("drivers")
@@ -585,4 +595,30 @@ model Payment {
 
   @@index([clientId])
   @@map("payments")
+}
+
+// ── Eventos de emergencia (SOS / compartir viaje) ─────────────────────────────
+
+model EmergencyEvent {
+  id        String        @id @default(cuid())
+  userId    String?
+  driverId  String?
+  tripId    String?
+  lat       Float
+  lng       Float
+  type      EmergencyType @default(PANIC)
+  createdAt DateTime      @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+  driver    Driver?  @relation(fields: [driverId], references: [id])
+
+  @@index([userId])
+  @@index([driverId])
+  @@index([tripId])
+  @@map("emergency_events")
+}
+
+enum EmergencyType {
+  PANIC // botón de pánico pulsado
+  SHARE // viaje compartido con contacto de confianza
 }
