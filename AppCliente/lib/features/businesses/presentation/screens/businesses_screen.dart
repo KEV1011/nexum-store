@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/core/widgets/empty_state.dart';
+import 'package:nexum_client/core/widgets/error_state.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
@@ -167,24 +169,10 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
   Widget _buildError() {
     return SliverFillRemaining(
       hasScrollBody: false,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.cloud_off_rounded,
-              size: 56,
-              color: AppColors.textTertiary,
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            const Text('No se pudieron cargar los negocios'),
-            const SizedBox(height: AppConstants.spacingM),
-            OutlinedButton(
-              onPressed: () => ref.invalidate(businessesProvider),
-              child: const Text('Reintentar'),
-            ),
-          ],
-        ),
+      child: ErrorState(
+        title: 'No pudimos cargar los negocios',
+        message: 'Revisa tu conexión e intenta de nuevo.',
+        onRetry: () => ref.invalidate(businessesProvider),
       ),
     );
   }
@@ -696,38 +684,17 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            favoritesMode
-                ? Icons.favorite_border_rounded
-                : Icons.search_off_rounded,
-            size: 56,
-            color: AppColors.textTertiary,
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          Text(
-            favoritesMode
-                ? 'Aún no tienes favoritos'
-                : 'No encontramos negocios con ese filtro',
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          if (favoritesMode) ...[
-            const SizedBox(height: AppConstants.spacingXS),
-            const Text(
-              'Toca el corazón en un negocio para guardarlo',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ],
-      ),
+    if (favoritesMode) {
+      return const EmptyState(
+        icon: Icons.favorite_border_rounded,
+        title: 'Aún no tienes favoritos',
+        message: 'Toca el corazón en un negocio para guardarlo.',
+      );
+    }
+    return const EmptyState(
+      icon: Icons.search_off_rounded,
+      title: 'No encontramos negocios con ese filtro',
+      message: 'Prueba con otra categoría o cambia la búsqueda.',
     );
   }
 }
