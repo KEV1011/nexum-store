@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -33,10 +32,14 @@ class ActiveTripScreen extends ConsumerStatefulWidget {
   ConsumerState<ActiveTripScreen> createState() => _ActiveTripScreenState();
 }
 
-class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
+class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
+    with SingleTickerProviderStateMixin {
   final _mapController = MapController();
   bool _isLoading = false;
   bool _autoFollow = true;
+
+  // Continuous pulse for the live driver marker halo.
+  late final AnimationController _pulse;
 
   // Simulated driver position — starts at Pamplona center
   LatLng _driverPos = const LatLng(
@@ -60,6 +63,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   @override
   void initState() {
     super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final trip = ref.read(activeTripProvider);
       if (trip != null) {
@@ -71,6 +78,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
   @override
   void dispose() {
+    _pulse.dispose();
     _movementTimer?.cancel();
     _etaTimer?.cancel();
     _mapController.dispose();
@@ -316,26 +324,19 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
   List<Marker> _buildMarkers(ActiveTripEntity trip, ServiceType serviceType) {
     final originLatLng = trip.request.origin.latLng;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
     return [
       Marker(
         point: _driverPos,
-        width: 48,
-        height: 48,
-        child: Container(
-          decoration: BoxDecoration(
-            color: serviceType.color,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: serviceType.color.withValues(alpha: 0.45),
-                blurRadius: 12,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Icon(serviceType.icon, color: Colors.white, size: 22),
+        width: 84,
+        height: 84,
+        child: _LiveDriverMarker(
+          pulse: _pulse,
+          animate: !reduceMotion,
+          color: serviceType.color,
+          icon: serviceType.icon,
         ),
       ),
       Marker(
@@ -816,5 +817,62 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
       ),
     );
     if (confirmed == true && mounted) _handleCancelled();
+  }
+}
+
+/// Driver pin with a continuously expanding halo to signal a live position.
+/// The halo is suppressed when [animate] is false (reduce-motion).
+class _LiveDriverMarker extends StatelessWidget {
+  const _LiveDriverMarker({
+    required this.pulse,
+    required this.animate,
+    required this.color,
+    required this.icon,
+  });
+
+  final Animation<double> pulse;
+  final bool animate;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        if (animate)
+          AnimatedBuilder(
+            animation: pulse,
+            builder: (context, _) {
+              final t = pulse.value;
+              return Container(
+                width: 36 + 48 * t,
+                height: 36 + 48 * t,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: 0.22 * (1 - t)),
+                ),
+              );
+            },
+          ),
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 3),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.45),
+                blurRadius: 12,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+      ],
+    );
   }
 }
