@@ -46,6 +46,7 @@ import {
 } from '../services/intercity.service';
 import { getIntercityRoute } from '../config/constants';
 import { createPaymentLink } from '../services/payment.service';
+import { getFareEstimate } from '../services/surge.service';
 import {
   RequestClientErrandDTO,
   RequestIntercityDTO,
@@ -133,10 +134,30 @@ router.get('/orders/:id', clientAuthMiddleware, async (req, res) => {
 
 // ─── Trips (auth required) ────────────────────────────────────────────────────
 
+router.get('/trips/estimate', async (req, res) => {
+  const lat = parseFloat(req.query['lat'] as string);
+  const lng = parseFloat(req.query['lng'] as string);
+  const distanceKm = parseFloat(req.query['distanceKm'] as string);
+  const etaMinutes = parseFloat(req.query['etaMinutes'] as string);
+
+  if (isNaN(lat) || isNaN(lng) || isNaN(distanceKm) || isNaN(etaMinutes)) {
+    res.status(400).json({ success: false, error: 'lat, lng, distanceKm, etaMinutes are required numbers' });
+    return;
+  }
+
+  try {
+    const estimate = await getFareEstimate(lat, lng, distanceKm, etaMinutes);
+    res.json({ success: true, data: estimate });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error computing estimate' });
+  }
+});
+
 router.post('/trips/request', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as {
     serviceType?: string; originAddress?: string; destinationAddress?: string;
     estimatedFare?: number; distanceKm?: number; etaMinutes?: number;
+    originLat?: number; originLng?: number;
     recipientName?: string; recipientPhone?: string; packageDescription?: string;
   };
 
@@ -153,6 +174,8 @@ router.post('/trips/request', clientAuthMiddleware, async (req, res) => {
       estimatedFare: dto.estimatedFare ?? 0,
       distanceKm: dto.distanceKm ?? 0,
       etaMinutes: dto.etaMinutes ?? 0,
+      originLat: dto.originLat,
+      originLng: dto.originLng,
       recipientName: dto.recipientName,
       recipientPhone: dto.recipientPhone,
       packageDescription: dto.packageDescription,

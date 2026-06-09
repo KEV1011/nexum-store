@@ -282,6 +282,7 @@ model Trip {
   destLat            Float
   destLng            Float
   estimatedFare      Float
+  surgeMultiplier    Float           @default(1.0)
   finalFare          Float?
   distanceKm         Float?
   etaMinutes         Int?

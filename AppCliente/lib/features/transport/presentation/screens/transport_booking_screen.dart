@@ -190,6 +190,9 @@ class _TransportBookingScreenState
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
 
+    final surgeMultiplier =
+        ref.read(surgeEstimateProvider).valueOrNull?.surgeMultiplier ?? 1.0;
+
     final id = await ref.read(transportProvider.notifier).request(
           serviceType: widget.serviceType,
           origin: _originCtrl.text.trim(),
@@ -205,6 +208,7 @@ class _TransportBookingScreenState
                   ? null
                   : _packageCtrl.text.trim())
               : null,
+          surgeMultiplier: surgeMultiplier,
         );
 
     if (!mounted) return;
@@ -345,57 +349,107 @@ class _AddressField extends StatelessWidget {
   }
 }
 
-class _FareEstimateCard extends StatelessWidget {
+class _FareEstimateCard extends ConsumerWidget {
   const _FareEstimateCard({required this.serviceType});
 
   final TransportServiceType serviceType;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final color = _colorOf(serviceType);
     final minFare = serviceType.estimateFare(2);
     final maxFare = serviceType.estimateFare(7);
+    final surgeAsync = ref.watch(surgeEstimateProvider);
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceVariantLight,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.receipt_outlined,
+                  color: AppColors.textSecondary, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Precio estimado',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${CurrencyFormatter.format(minFare)} – '
+                      '${CurrencyFormatter.format(maxFare)}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Text(
+                '2–7 km',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        surgeAsync.when(
+          data: (estimate) => estimate != null && estimate.isSurge
+              ? _SurgeBadge(multiplier: estimate.surgeMultiplier)
+              : const SizedBox.shrink(),
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+}
+
+class _SurgeBadge extends StatelessWidget {
+  const _SurgeBadge({required this.multiplier});
+
+  final double multiplier;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surfaceVariantLight,
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFFB74D)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.receipt_outlined,
-              color: AppColors.textSecondary, size: 20),
-          const SizedBox(width: 10),
+          const Icon(Icons.trending_up_rounded,
+              color: Color(0xFFE65100), size: 16),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Precio estimado',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${CurrencyFormatter.format(minFare)} – '
-                  '${CurrencyFormatter.format(maxFare)}',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Text(
-            '2–7 km',
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textTertiary,
+            child: Text(
+              'Tarifa más alta por alta demanda '
+              '×${multiplier.toStringAsFixed(1)}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFFBF360C),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

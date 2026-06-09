@@ -1,3 +1,31 @@
+/// Respuesta del endpoint GET /client/trips/estimate.
+class FareEstimate {
+  const FareEstimate({
+    required this.baseFare,
+    required this.suggestedFare,
+    required this.surgeMultiplier,
+    required this.isSurge,
+    required this.demand,
+    required this.supply,
+  });
+
+  factory FareEstimate.fromJson(Map<String, dynamic> json) => FareEstimate(
+        baseFare: (json['baseFare'] as num).toDouble(),
+        suggestedFare: (json['suggestedFare'] as num).toDouble(),
+        surgeMultiplier: (json['surgeMultiplier'] as num).toDouble(),
+        isSurge: json['isSurge'] as bool,
+        demand: (json['demand'] as num).toInt(),
+        supply: (json['supply'] as num).toInt(),
+      );
+
+  final double baseFare;
+  final double suggestedFare;
+  final double surgeMultiplier;
+  final bool isSurge;
+  final int demand;
+  final int supply;
+}
+
 /// Tipos de servicio de transporte ofrecidos al cliente.
 enum TransportServiceType {
   transporte,

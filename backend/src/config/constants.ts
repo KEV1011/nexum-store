@@ -28,6 +28,15 @@ export const FARE_PER_MIN = 150;
 export const FARE_MINIMUM = 5000;
 export const COMMISSION_RATE = 0.15;
 
+// ─── Surge Pricing ────────────────────────────────────────────────────────────
+
+/** Hard upper cap on the surge multiplier (e.g. 2.0 = at most 2× base fare). */
+export const SURGE_MAX = 2.0;
+/** Radius (metres) used to count nearby SEARCHING trips and ONLINE drivers. */
+export const SURGE_RADIUS_M = 5_000;
+/** Only count SEARCHING trips created in the last N minutes as "demand". */
+export const SURGE_WINDOW_MIN = 15;
+
 // ─── Dispatch Timing (ms) ─────────────────────────────────────────────────────
 
 export const DISPATCH_MIN_INTERVAL_MS = 45_000;

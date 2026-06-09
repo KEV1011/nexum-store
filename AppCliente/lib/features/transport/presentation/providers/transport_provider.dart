@@ -91,9 +91,10 @@ class TransportNotifier extends StateNotifier<TransportState> {
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
+    double surgeMultiplier = 1.0,
   }) async {
     final distance = 1.5 + _random.nextDouble() * 6.5;
-    final fare = serviceType.estimateFare(distance);
+    final fare = (serviceType.estimateFare(distance) * surgeMultiplier).roundToDouble();
     final eta = (distance * 2.5 + 3).round();
 
     String id;
@@ -293,4 +294,27 @@ final transportProvider =
 final transportByIdProvider =
     Provider.family<TransportRequestEntity?, String>((ref, id) {
   return ref.watch(transportProvider).byId(id);
+});
+
+// Fetches the current surge multiplier for Pamplona centre (default origin).
+// Falls back to null on network error so the UI degrades gracefully.
+final surgeEstimateProvider =
+    FutureProvider.autoDispose<FareEstimate?>((ref) async {
+  final dio = ref.read(apiClientProvider);
+  try {
+    final res = await dio.get<Map<String, dynamic>>(
+      '/client/trips/estimate',
+      queryParameters: {
+        'lat': 7.3754,
+        'lng': -72.6486,
+        'distanceKm': 4.0,
+        'etaMinutes': 10,
+      },
+    );
+    final data = res.data?['data'] as Map<String, dynamic>?;
+    if (data == null) return null;
+    return FareEstimate.fromJson(data);
+  } catch (_) {
+    return null;
+  }
 });

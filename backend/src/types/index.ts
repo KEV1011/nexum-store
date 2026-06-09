@@ -516,6 +516,8 @@ export interface RequestClientTripDTO {
   estimatedFare: number;
   distanceKm: number;
   etaMinutes: number;
+  originLat?: number;
+  originLng?: number;
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;

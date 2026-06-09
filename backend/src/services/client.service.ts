@@ -12,6 +12,7 @@ import {
 } from '../types';
 import { prisma } from '../lib/prisma';
 import { startMatchingCycle } from './matching.service';
+import { getSurgeMultiplier } from './surge.service';
 
 const OTP_TTL = 5 * 60 * 1000;
 
@@ -231,6 +232,10 @@ async function _startSimulation(orderId: string, bizName: string): Promise<void>
 export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripDTO> {
   const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;
   const serviceType = dto.serviceType.toUpperCase() as 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS';
+  const originLat = dto.originLat ?? 7.3754;
+  const originLng = dto.originLng ?? -72.6486;
+
+  const { multiplier: surgeMultiplier } = await getSurgeMultiplier(originLat, originLng);
 
   const trip = await prisma.trip.create({
     data: {
@@ -239,12 +244,13 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       serviceType,
       status: 'SEARCHING',
       originAddress: dto.originAddress,
-      originLat: 7.3754,
-      originLng: -72.6486,
+      originLat,
+      originLng,
       destAddress: dto.destinationAddress,
-      destLat: 7.3821,
-      destLng: -72.6512,
+      destLat: dto.originLat ? originLat + 0.0067 : 7.3821,
+      destLng: dto.originLng ? originLng - 0.0026 : -72.6512,
       estimatedFare: dto.estimatedFare,
+      surgeMultiplier,
       distanceKm: dto.distanceKm,
       etaMinutes: dto.etaMinutes,
       recipientName: dto.recipientName,
