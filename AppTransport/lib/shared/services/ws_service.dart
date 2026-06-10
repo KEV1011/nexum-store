@@ -7,6 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
@@ -32,9 +33,19 @@ class WsService {
   String? _activeTripId;
 
   final _tripCtrl = StreamController<TripRequestEntity>.broadcast();
+  final _intercityCtrl =
+      StreamController<IntercityRequestEntity>.broadcast();
+  final _intercityCancelCtrl = StreamController<String>.broadcast();
 
   /// Emits every incoming trip request dispatched by the backend.
   Stream<TripRequestEntity> get tripRequests => _tripCtrl.stream;
+
+  /// Ofertas de reservas intermunicipales (`intercity_request`).
+  Stream<IntercityRequestEntity> get intercityRequests =>
+      _intercityCtrl.stream;
+
+  /// IDs de reservas intermunicipales canceladas por el cliente.
+  Stream<String> get intercityCancellations => _intercityCancelCtrl.stream;
 
   /// The ID of the currently active trip, or `null` when no trip is in progress.
   String? get activeTripId => _activeTripId;
@@ -89,6 +100,16 @@ class WsService {
   void rejectTrip(String tripId) =>
       _send({'type': 'reject', 'tripId': tripId});
 
+  /// Acepta una reserva intermunicipal; con [counterFare] propone otra tarifa.
+  void acceptIntercity(String bookingId, {double? counterFare}) => _send({
+        'type': 'intercity_accept',
+        'bookingId': bookingId,
+        if (counterFare != null) 'counterFare': counterFare,
+      });
+
+  void rejectIntercity(String bookingId) =>
+      _send({'type': 'intercity_reject', 'bookingId': bookingId});
+
   void sendLocationUpdate(double lat, double lng, String? tripId) {
     _send({
       'type': 'location_update',
@@ -125,6 +146,11 @@ class WsService {
         _activeTripId ??= msg['tripId'] as String?;
       } else if (type == 'trip_completed' || type == 'trip_cancelled') {
         _activeTripId = null;
+      } else if (type == 'intercity_request') {
+        _intercityCtrl.add(IntercityRequestEntity.fromWs(msg));
+      } else if (type == 'intercity_cancelled') {
+        final bookingId = msg['bookingId'] as String?;
+        if (bookingId != null) _intercityCancelCtrl.add(bookingId);
       }
     } catch (_) {}
   }

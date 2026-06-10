@@ -31,6 +31,9 @@ import {
 import {
   subscribeIntercityBooking,
   getIntercityBookingSnapshot,
+  registerIntercitySendToDriver,
+  driverAcceptIntercity,
+  driverRejectIntercity,
 } from '../services/intercity.service';
 import {
   subscribePooledTrip,
@@ -760,6 +763,32 @@ function onMessage(ws: WebSocket, raw: string): void {
       break;
     }
 
+    // ── Intercity: aceptación/rechazo del conductor (matching real) ──────────
+    case 'intercity_accept': {
+      const driverId = driverIdByWs.get(ws);
+      if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
+      const bookingId = msg['bookingId'];
+      if (typeof bookingId !== 'string') { sendTo(ws, { type: 'error', message: 'bookingId required' }); return; }
+      const counterFare = typeof msg['counterFare'] === 'number' ? msg['counterFare'] : undefined;
+      void (async () => {
+        const booking = await driverAcceptIntercity(driverId, bookingId, counterFare);
+        if (booking) {
+          sendTo(ws, { type: 'intercity_accept_ok', bookingId, booking });
+        } else {
+          sendTo(ws, { type: 'error', message: 'La reserva ya no está disponible' });
+        }
+      })();
+      break;
+    }
+    case 'intercity_reject': {
+      const driverId = driverIdByWs.get(ws);
+      if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
+      const bookingId = msg['bookingId'];
+      if (typeof bookingId !== 'string') break;
+      void driverRejectIntercity(driverId, bookingId);
+      break;
+    }
+
     case 'subscribe_pooled': {
       const tripId = msg['tripId'];
       if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
@@ -973,6 +1002,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
   // notify passengers, without importing WebSocket internals directly.
   registerSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   registerNotifyTripUpdate(notifyClientTripUpdateById);
+  registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
 
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
     console.log('[WS] New connection');

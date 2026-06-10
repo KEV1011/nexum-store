@@ -1362,6 +1362,15 @@ class _AppDrawer extends ConsumerWidget {
                     },
                   ),
                   _DrawerItem(
+                    icon: Icons.route_rounded,
+                    label: 'Intermunicipal',
+                    iconColor: const Color(0xFF1E3A8A),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/intercity-requests');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.verified_user_rounded,
                     label: 'Verificación',
                     iconColor: const Color(0xFF00C853),

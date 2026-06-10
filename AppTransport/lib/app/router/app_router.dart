@@ -16,6 +16,7 @@ import 'package:nexum_driver/features/earnings/presentation/screens/earnings_scr
 import 'package:nexum_driver/features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'package:nexum_driver/features/performance/presentation/screens/performance_screen.dart';
 import 'package:nexum_driver/features/pooled/presentation/screens/my_pooled_trips_screen.dart';
+import 'package:nexum_driver/features/intercity/presentation/screens/intercity_requests_screen.dart';
 import 'package:nexum_driver/features/pooled/presentation/screens/publish_pooled_trip_screen.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/screens/verification_screen.dart';
 import 'package:nexum_driver/features/ride_pool/presentation/screens/ride_pool_screen.dart';
@@ -66,6 +67,7 @@ abstract final class AppRoutes {
   static const String orderDetail = '/business-portal/order/:id';
   static const String businessRegistration = '/business-registration';
   static const String pooledTrips = '/pooled-trips';
+  static const String intercityRequests = '/intercity-requests';
   static const String pooledPublish = '/pooled-publish';
   static const String verification = '/verification';
   static const String ridePool = '/ride-pool';
@@ -151,6 +153,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           pageKey: state.pageKey,
           child: const MyPooledTripsScreen(),
         ),
+      ),
+      GoRoute(
+        path: AppRoutes.intercityRequests,
+        name: 'intercity-requests',
+        builder: (context, state) => const IntercityRequestsScreen(),
       ),
       GoRoute(
         path: AppRoutes.pooledPublish,

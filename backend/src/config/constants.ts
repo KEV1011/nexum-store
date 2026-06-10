@@ -245,12 +245,41 @@ export const INTERCITY_ROUTES: Partial<Record<RoutePair, IntercityRouteInfo>> = 
   'cucuta-chitaga': { distanceKm: 140, durationMinutes: 170, suggestedFarePerSeat: 30000, suggestedFareFleet: 95000 },
   'malaga-bucaramanga': { distanceKm: 130, durationMinutes: 160, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000, requiresLicensedOperator: true },
   'bucaramanga-malaga': { distanceKm: 130, durationMinutes: 160, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000, requiresLicensedOperator: true },
+  // Pares restantes con distancia/tiempo aproximados por carretera, para que
+  // toda combinación de municipios soportados calcule tarifa sin caer al
+  // sintetizador. Troncales largas marcadas requiresLicensedOperator.
+  'cucuta-bucaramanga': { distanceKm: 198, durationMinutes: 240, suggestedFarePerSeat: 44000, suggestedFareFleet: 135000, requiresLicensedOperator: true },
+  'bucaramanga-cucuta': { distanceKm: 198, durationMinutes: 240, suggestedFarePerSeat: 44000, suggestedFareFleet: 135000, requiresLicensedOperator: true },
+  'cucuta-malaga': { distanceKm: 175, durationMinutes: 225, suggestedFarePerSeat: 39000, suggestedFareFleet: 120000, requiresLicensedOperator: true },
+  'malaga-cucuta': { distanceKm: 175, durationMinutes: 225, suggestedFarePerSeat: 39000, suggestedFareFleet: 120000, requiresLicensedOperator: true },
+  'cucuta-ocana': { distanceKm: 215, durationMinutes: 270, suggestedFarePerSeat: 47000, suggestedFareFleet: 145000, requiresLicensedOperator: true },
+  'ocana-cucuta': { distanceKm: 215, durationMinutes: 270, suggestedFarePerSeat: 47000, suggestedFareFleet: 145000, requiresLicensedOperator: true },
+  'cucuta-bogota': { distanceKm: 555, durationMinutes: 720, suggestedFarePerSeat: 100000, suggestedFareFleet: 310000, requiresLicensedOperator: true },
+  'bogota-cucuta': { distanceKm: 555, durationMinutes: 720, suggestedFarePerSeat: 100000, suggestedFareFleet: 310000, requiresLicensedOperator: true },
+  'bucaramanga-chitaga': { distanceKm: 245, durationMinutes: 300, suggestedFarePerSeat: 54000, suggestedFareFleet: 165000, requiresLicensedOperator: true },
+  'chitaga-bucaramanga': { distanceKm: 245, durationMinutes: 300, suggestedFarePerSeat: 54000, suggestedFareFleet: 165000, requiresLicensedOperator: true },
+  'bucaramanga-ocana': { distanceKm: 205, durationMinutes: 300, suggestedFarePerSeat: 45000, suggestedFareFleet: 140000, requiresLicensedOperator: true },
+  'ocana-bucaramanga': { distanceKm: 205, durationMinutes: 300, suggestedFarePerSeat: 45000, suggestedFareFleet: 140000, requiresLicensedOperator: true },
+  'bucaramanga-bogota': { distanceKm: 395, durationMinutes: 540, suggestedFarePerSeat: 87000, suggestedFareFleet: 270000, requiresLicensedOperator: true },
+  'bogota-bucaramanga': { distanceKm: 395, durationMinutes: 540, suggestedFarePerSeat: 87000, suggestedFareFleet: 270000, requiresLicensedOperator: true },
+  'chitaga-malaga': { distanceKm: 125, durationMinutes: 165, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000 },
+  'malaga-chitaga': { distanceKm: 125, durationMinutes: 165, suggestedFarePerSeat: 28000, suggestedFareFleet: 88000 },
+  'chitaga-ocana': { distanceKm: 165, durationMinutes: 215, suggestedFarePerSeat: 36000, suggestedFareFleet: 110000, requiresLicensedOperator: true },
+  'ocana-chitaga': { distanceKm: 165, durationMinutes: 215, suggestedFarePerSeat: 36000, suggestedFareFleet: 110000, requiresLicensedOperator: true },
+  'chitaga-bogota': { distanceKm: 455, durationMinutes: 620, suggestedFarePerSeat: 100000, suggestedFareFleet: 310000, requiresLicensedOperator: true },
+  'bogota-chitaga': { distanceKm: 455, durationMinutes: 620, suggestedFarePerSeat: 100000, suggestedFareFleet: 310000, requiresLicensedOperator: true },
+  'malaga-ocana': { distanceKm: 250, durationMinutes: 330, suggestedFarePerSeat: 55000, suggestedFareFleet: 170000, requiresLicensedOperator: true },
+  'ocana-malaga': { distanceKm: 250, durationMinutes: 330, suggestedFarePerSeat: 55000, suggestedFareFleet: 170000, requiresLicensedOperator: true },
+  'malaga-bogota': { distanceKm: 310, durationMinutes: 420, suggestedFarePerSeat: 68000, suggestedFareFleet: 210000, requiresLicensedOperator: true },
+  'bogota-malaga': { distanceKm: 310, durationMinutes: 420, suggestedFarePerSeat: 68000, suggestedFareFleet: 210000, requiresLicensedOperator: true },
+  'ocana-bogota': { distanceKm: 430, durationMinutes: 600, suggestedFarePerSeat: 95000, suggestedFareFleet: 295000, requiresLicensedOperator: true },
+  'bogota-ocana': { distanceKm: 430, durationMinutes: 600, suggestedFarePerSeat: 95000, suggestedFareFleet: 295000, requiresLicensedOperator: true },
 };
 
-// Approximate municipal centroids (lat/lng) used to synthesise route metadata
-// for any city pair not listed explicitly above, so the client can always
-// request a trip between supported municipalities.
-const INTERCITY_CITY_COORDS: Record<IntercityCity, { lat: number; lng: number }> = {
+// Approximate municipal centroids (lat/lng). Used to synthesise route
+// metadata for any pair without an explicit row, and as reference point for
+// the intercity driver matching (PostGIS proximity to the origin city).
+export const INTERCITY_CITY_COORDS: Record<IntercityCity, { lat: number; lng: number }> = {
   pamplona: { lat: 7.3754, lng: -72.6486 },
   cucuta: { lat: 7.8939, lng: -72.5078 },
   bucaramanga: { lat: 7.1193, lng: -73.1227 },
@@ -347,6 +376,13 @@ export const INTERCITY_REMOVE_CAP = (process.env['INTERCITY_REMOVE_CAP'] ?? 'fal
  * transport operator. OFF by default. See INTERCITY_LEGAL_NOTES.md.
  */
 export const INTERCITY_DUAL_MODEL = (process.env['INTERCITY_DUAL_MODEL'] ?? 'false') === 'true';
+
+/**
+ * Demo-only: simulate the intercity driver response with a mock pool instead
+ * of offering the booking to real online drivers. OFF by default — production
+ * always uses the real matching cycle.
+ */
+export const INTERCITY_SIMULATE = (process.env['INTERCITY_SIMULATE'] ?? 'false') === 'true';
 
 /**
  * Maximum legal cost-share per seat for a route, given the number of seats

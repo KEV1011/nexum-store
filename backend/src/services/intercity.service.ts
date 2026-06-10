@@ -7,7 +7,14 @@ import {
 } from '../types';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
-import { routeRequiresLicensedOperator, INTERCITY_DUAL_MODEL } from '../config/constants';
+import { getDriverProfile } from './driver-profile.service';
+import {
+  routeRequiresLicensedOperator,
+  getIntercityRoute,
+  INTERCITY_DUAL_MODEL,
+  INTERCITY_SIMULATE,
+  INTERCITY_CITY_COORDS,
+} from '../config/constants';
 
 export class IntercityError extends Error {
   constructor(message: string) {
@@ -45,7 +52,7 @@ const CITY_FROM_PRISMA: Record<string, IntercityCity> = {
   CHITAGA: 'chitaga', MALAGA: 'malaga', OCANA: 'ocana', BOGOTA: 'bogota',
 };
 
-// ─── Mock driver pool for simulation ──────────────────────────────────────────
+// ─── Mock driver pool for simulation (solo con INTERCITY_SIMULATE=true) ──────
 const MOCK_INTERCITY_DRIVERS = [
   { name: 'Hernán Castellanos', phone: '+57 311 789 0123', vehicle: 'Toyota Fortuner Gris 2022 • TJK 451' },
   { name: 'Wilson Durán', phone: '+57 317 654 3210', vehicle: 'Chevrolet Captiva Blanca 2021 • MPN 334' },
@@ -137,6 +144,227 @@ function _scheduleDriverResponse(bookingId: string, offeredFare: number): void {
   }, delayMs);
 }
 
+// ─── Real driver matching (PostGIS offer cycle) ───────────────────────────────
+//
+// Cuando se crea una IntercityBooking en SEARCHING se busca conductores
+// reales: ONLINE, verificados, con `intercityEnabled` y cerca de la ciudad de
+// origen (PostGIS, centroide municipal). La reserva se ofrece a un conductor a
+// la vez por WebSocket (`intercity_request`), con timeout y avance al
+// siguiente candidato — el mismo patrón que los viajes urbanos
+// (matching.service.ts). El mock _scheduleDriverResponse queda solo detrás de
+// INTERCITY_SIMULATE para demos.
+
+const INTERCITY_OFFER_TIMEOUT_MS = 30_000;
+const INTERCITY_SEARCH_RADIUS_M = 25_000; // cubre el casco urbano del municipio
+const INTERCITY_MAX_CANDIDATES = 5;
+const INTERCITY_GEO_FRESHNESS_S = 600;    // intermunicipal tolera fixes de 10 min
+
+interface IntercityOfferState {
+  bookingId: string;
+  candidates: string[];
+  candidateIndex: number;
+  currentDriverId: string;
+  timeout: NodeJS.Timeout;
+}
+
+// bookingId → oferta activa (a lo sumo una a la vez por reserva)
+const intercityOffers = new Map<string, IntercityOfferState>();
+// bookingId → conductores que ya rechazaron (no volver a ofrecerles)
+const intercityDeclined = new Map<string, Set<string>>();
+
+// Inyectado por ws.handler.ts al arrancar — este servicio no conoce sockets.
+let _sendToDriver: ((driverId: string, msg: Record<string, unknown>) => void) | null = null;
+
+export function registerIntercitySendToDriver(
+  fn: (driverId: string, msg: Record<string, unknown>) => void,
+): void {
+  _sendToDriver = fn;
+}
+
+async function _findIntercityDrivers(
+  origin: IntercityCity,
+  exclude: Set<string>,
+): Promise<string[]> {
+  const c = INTERCITY_CITY_COORDS[origin];
+  // Parámetros internos (constantes + centroide de tabla fija): sin strings de
+  // usuario. SQL parametrizado vía tagged template — nunca interpolación.
+  const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
+    SELECT d."id" AS driver_id,
+           ST_Distance(
+             d."geo",
+             ST_SetSRID(ST_MakePoint(${c.lng}, ${c.lat}), 4326)::geography
+           ) AS distance_m
+    FROM "drivers" d
+    WHERE d."geo" IS NOT NULL
+      AND d."status" = 'ONLINE'
+      AND d."isVerified" = true
+      AND d."intercityEnabled" = true
+      AND d."lastSeenAt" >= now() - ${INTERCITY_GEO_FRESHNESS_S} * INTERVAL '1 second'
+      AND ST_DWithin(
+            d."geo",
+            ST_SetSRID(ST_MakePoint(${c.lng}, ${c.lat}), 4326)::geography,
+            ${INTERCITY_SEARCH_RADIUS_M}
+          )
+    ORDER BY distance_m ASC
+    LIMIT ${INTERCITY_MAX_CANDIDATES + 5}`;
+  return rows
+    .map((r) => r.driver_id)
+    .filter((id) => !exclude.has(id))
+    .slice(0, INTERCITY_MAX_CANDIDATES);
+}
+
+/** Arranca (o reinicia) el ciclo de oferta a conductores reales. */
+export async function startIntercityMatching(bookingId: string): Promise<void> {
+  const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+  if (!b || b.status !== 'SEARCHING') return;
+
+  const origin = (CITY_FROM_PRISMA[b.origin] ?? 'pamplona') as IntercityCity;
+  const declined = intercityDeclined.get(bookingId) ?? new Set<string>();
+  const candidates = await _findIntercityDrivers(origin, declined);
+  if (candidates.length === 0) {
+    // Sin datos personales en logs: solo ids técnicos.
+    console.log(`[Intercity] No drivers available for booking ${bookingId}`);
+    return;
+  }
+  await _offerIntercityTo(bookingId, candidates, 0);
+}
+
+async function _offerIntercityTo(
+  bookingId: string,
+  candidates: string[],
+  index: number,
+): Promise<void> {
+  if (index >= candidates.length) {
+    console.log(`[Intercity] All ${candidates.length} candidates exhausted for booking ${bookingId}`);
+    return;
+  }
+  const driverId = candidates[index]!;
+
+  // La reserva pudo cancelarse mientras tanto.
+  const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
+  if (!b || b.status !== 'SEARCHING') return;
+
+  const dto = _toDTO(b as DbBooking);
+  const route = getIntercityRoute(dto.origin, dto.destination);
+
+  const timeout = setTimeout(() => {
+    void driverRejectIntercity(driverId, bookingId, true);
+  }, INTERCITY_OFFER_TIMEOUT_MS);
+
+  intercityOffers.set(bookingId, {
+    bookingId,
+    candidates,
+    candidateIndex: index,
+    currentDriverId: driverId,
+    timeout,
+  });
+
+  _sendToDriver?.(driverId, {
+    type: 'intercity_request',
+    booking: dto,
+    route: route
+      ? { distanceKm: route.distanceKm, durationMinutes: route.durationMinutes }
+      : null,
+    timeoutSeconds: Math.round(INTERCITY_OFFER_TIMEOUT_MS / 1000),
+  });
+  console.log(
+    `[Intercity] Offered booking ${bookingId} to driver ${driverId} ` +
+      `(candidate ${index + 1}/${candidates.length})`,
+  );
+}
+
+/**
+ * El conductor acepta la reserva. Sin contraoferta queda CONFIRMED; con
+ * contraoferta queda DRIVER_FOUND y el cliente decide (confirmar/rechazar),
+ * igual que el contrato que ya consume la app cliente.
+ */
+export async function driverAcceptIntercity(
+  driverId: string,
+  bookingId: string,
+  counterFare?: number,
+): Promise<IntercityBookingDTO | null> {
+  const state = intercityOffers.get(bookingId);
+  if (!state || state.currentDriverId !== driverId) return null;
+  clearTimeout(state.timeout);
+  intercityOffers.delete(bookingId);
+
+  let driverName = 'Conductor Nexum';
+  let driverPhone: string | null = null;
+  let driverVehicle: string | null = null;
+  try {
+    const profile = await getDriverProfile(driverId);
+    driverName = profile.fullName;
+    driverPhone = profile.phone;
+    driverVehicle = profile.vehicleDescription;
+  } catch { /* sin perfil completo; se ofrece igual */ }
+
+  const hasCounter =
+    typeof counterFare === 'number' && counterFare > 0;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const current = await tx.intercityBooking.findUnique({
+      where: { id: bookingId },
+      select: { status: true },
+    });
+    if (!current || current.status !== 'SEARCHING') return null;
+    return tx.intercityBooking.update({
+      where: { id: bookingId },
+      data: hasCounter
+        ? {
+            status: 'DRIVER_FOUND',
+            driverId,
+            driverName,
+            driverPhone,
+            driverVehicle,
+            counterFare: Math.round(counterFare),
+          }
+        : {
+            status: 'CONFIRMED',
+            driverId,
+            driverName,
+            driverPhone,
+            driverVehicle,
+            confirmedAt: new Date(),
+          },
+    });
+  });
+  if (!updated) return null;
+
+  const dto = _toDTO(updated as DbBooking);
+  _notify(bookingId, dto);
+  console.log(`[Intercity] Driver ${driverId} accepted booking ${bookingId}`);
+  return dto;
+}
+
+/**
+ * El conductor rechaza (o expira el timeout): avanza al siguiente candidato.
+ * `fromTimeout` evita que un timeout viejo pise una oferta ya resuelta.
+ */
+export async function driverRejectIntercity(
+  driverId: string,
+  bookingId: string,
+  fromTimeout = false,
+): Promise<void> {
+  const state = intercityOffers.get(bookingId);
+  if (!state || state.currentDriverId !== driverId) return;
+  if (!fromTimeout) clearTimeout(state.timeout);
+  intercityOffers.delete(bookingId);
+
+  const declined = intercityDeclined.get(bookingId) ?? new Set<string>();
+  declined.add(driverId);
+  intercityDeclined.set(bookingId, declined);
+
+  await _offerIntercityTo(bookingId, state.candidates, state.candidateIndex + 1);
+}
+
+function _dispatchDriverSearch(bookingId: string, offeredFare: number): void {
+  if (INTERCITY_SIMULATE) {
+    _scheduleDriverResponse(bookingId, offeredFare);
+  } else {
+    void startIntercityMatching(bookingId);
+  }
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function requestIntercityBooking(
@@ -171,7 +399,7 @@ export async function requestIntercityBooking(
       notes: dto.notes ?? null,
     },
   });
-  _scheduleDriverResponse(booking.id, dto.offeredFare);
+  _dispatchDriverSearch(booking.id, dto.offeredFare);
   return _toDTO(booking as DbBooking);
 }
 
@@ -201,12 +429,19 @@ export async function rejectIntercityOffer(clientId: string, bookingId: string):
     where: { id: bookingId },
     data: {
       status: 'SEARCHING',
-      driverName: null, driverPhone: null, driverVehicle: null, counterFare: null,
+      driverId: null, driverName: null, driverPhone: null, driverVehicle: null,
+      counterFare: null,
     },
   });
+  // El conductor cuya contraoferta fue rechazada no vuelve a recibir la reserva.
+  if (b.driverId) {
+    const declined = intercityDeclined.get(bookingId) ?? new Set<string>();
+    declined.add(b.driverId);
+    intercityDeclined.set(bookingId, declined);
+  }
   const dto = _toDTO(updated as DbBooking);
   _notify(bookingId, dto);
-  _scheduleDriverResponse(bookingId, b.offeredFare);
+  _dispatchDriverSearch(bookingId, b.offeredFare);
   return true;
 }
 
@@ -216,6 +451,19 @@ export async function cancelIntercityBooking(clientId: string, bookingId: string
   if (!['SEARCHING', 'DRIVER_FOUND', 'CONFIRMED'].includes(b.status)) return false;
 
   const updated = await prisma.intercityBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
+
+  // Limpieza del ciclo de oferta: avisar al conductor con la oferta pendiente.
+  const state = intercityOffers.get(bookingId);
+  if (state) {
+    clearTimeout(state.timeout);
+    intercityOffers.delete(bookingId);
+    _sendToDriver?.(state.currentDriverId, {
+      type: 'intercity_cancelled',
+      bookingId,
+    });
+  }
+  intercityDeclined.delete(bookingId);
+
   _notify(bookingId, _toDTO(updated as DbBooking));
   return true;
 }

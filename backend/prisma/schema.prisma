@@ -75,6 +75,8 @@ model Driver {
   licenseNumber     String?      @unique
   status            DriverStatus @default(OFFLINE)
   isVerified        Boolean      @default(false)
+  // Disponibilidad para recibir solicitudes de viajes intermunicipales.
+  intercityEnabled  Boolean      @default(false)
   rating            Float        @default(5.0)
   totalTrips        Int          @default(0)
   bio               String?

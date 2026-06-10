@@ -223,6 +223,11 @@ export type WsMessageType =
   | 'subscribe_intercity'
   | 'unsubscribe_intercity'
   | 'intercity_update'
+  | 'intercity_request' // server → driver: oferta de reserva intermunicipal
+  | 'intercity_accept' // driver → server: acepta (counterFare opcional)
+  | 'intercity_reject' // driver → server: rechaza la oferta
+  | 'intercity_accept_ok' // server → driver: aceptación registrada
+  | 'intercity_cancelled' // server → driver: el cliente canceló la reserva
   // Shared pooled-ride (Modelo A) messages
   | 'subscribe_pooled'
   | 'unsubscribe_pooled'

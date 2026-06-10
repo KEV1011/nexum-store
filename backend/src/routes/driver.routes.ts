@@ -26,6 +26,7 @@ import {
   DriverDocumentType,
 } from '../types';
 import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 
@@ -198,6 +199,41 @@ router.put('/status', async (req: Request, res: Response): Promise<void> => {
     success: true,
     data: { status, dailyTrips, dailyEarnings },
   });
+});
+
+// ─── Intercity availability (matching real) ────────────────────────────────────
+
+// GET /driver/intercity/availability — ¿recibe solicitudes intermunicipales?
+router.get('/intercity/availability', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { intercityEnabled: true },
+  });
+  res.json({ success: true, data: { enabled: driver?.intercityEnabled ?? false } });
+});
+
+// PUT /driver/intercity/availability { enabled: boolean }
+router.put('/intercity/availability', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+  const enabled = (req.body as { enabled?: unknown }).enabled;
+  if (typeof enabled !== 'boolean') {
+    res.status(400).json({ success: false, error: 'enabled (boolean) is required' });
+    return;
+  }
+  await prisma.driver.update({
+    where: { id: driverId },
+    data: { intercityEnabled: enabled },
+  });
+  res.json({ success: true, data: { enabled } });
 });
 
 // ─── Shared pooled rides (Modelo A) ─────────────────────────────────────────────
