@@ -2,7 +2,7 @@ name: Build Nexum Driver APK
 
 on:
   push:
-    branches: [main, claude/driver-app-maas-pamplona-LYIfo]
+    branches: [main, claude/nexum-postgres-prisma-migration-phpj5q]
     paths:
       - 'AppTransport/**'
   pull_request:
