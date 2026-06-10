@@ -49,15 +49,18 @@ class TransportHomeScreen extends ConsumerStatefulWidget {
       _TransportHomeScreenState();
 }
 
-class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
-    with TickerProviderStateMixin {
+class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   final _mapController = MapController();
   TransportServiceType _selected = TransportServiceType.transporte;
   Timer? _vehicleTimer;
   final _rng = math.Random();
   late final List<_NearbyVehicle> _vehicles;
-  late final AnimationController _panelCtrl;
-  late final Animation<double> _panelAnim;
+
+  // Tamaños del panel arrastrable (fracción de la pantalla). Colapsado deja
+  // visible solo el asa + la barra de búsqueda para poder usar el mapa.
+  static const _sheetMin = 0.15;
+  static const _sheetInitial = 0.42;
+  static const _sheetMax = 0.9;
 
   static const Map<TransportServiceType, int> _driverCounts = {
     TransportServiceType.transporte: 5,
@@ -71,16 +74,6 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
     _vehicles = _seedVehicles
         .map((v) => _NearbyVehicle(v.type, v.position))
         .toList();
-
-    _panelCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 550),
-    );
-    _panelAnim = CurvedAnimation(
-      parent: _panelCtrl,
-      curve: Curves.easeOutCubic,
-    );
-    _panelCtrl.forward();
 
     _vehicleTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
@@ -98,7 +91,6 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
   @override
   void dispose() {
     _vehicleTimer?.cancel();
-    _panelCtrl.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -200,22 +192,21 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
               child: _ErrandActiveBanner(errand: errandState.active!),
             ),
 
-          // ── Panel inferior ───────────────────────────────────────────────
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 1),
-                end: Offset.zero,
-              ).animate(_panelAnim),
-              child: _BottomPanel(
-                selected: _selected,
-                driverCounts: _driverCounts,
-                history: state.past.take(3).toList(),
-                onServiceTap: (t) => setState(() => _selected = t),
-              ),
+          // ── Panel inferior arrastrable ───────────────────────────────────
+          // DraggableScrollableSheet con snapping: colapsado (solo asa +
+          // búsqueda) deja el mapa usable; expandido muestra todo el menú.
+          DraggableScrollableSheet(
+            minChildSize: _sheetMin,
+            initialChildSize: _sheetInitial,
+            maxChildSize: _sheetMax,
+            snap: true,
+            snapSizes: const [_sheetMin, _sheetInitial, _sheetMax],
+            builder: (context, scrollController) => _BottomPanel(
+              scrollController: scrollController,
+              selected: _selected,
+              driverCounts: _driverCounts,
+              history: state.past.take(3).toList(),
+              onServiceTap: (t) => setState(() => _selected = t),
             ),
           ),
         ],
@@ -414,12 +405,14 @@ class _ActiveTripBanner extends StatelessWidget {
 
 class _BottomPanel extends StatelessWidget {
   const _BottomPanel({
+    required this.scrollController,
     required this.selected,
     required this.driverCounts,
     required this.history,
     required this.onServiceTap,
   });
 
+  final ScrollController scrollController;
   final TransportServiceType selected;
   final Map<TransportServiceType, int> driverCounts;
   final List<TransportRequestEntity> history;
@@ -441,46 +434,26 @@ class _BottomPanel extends StatelessWidget {
           BoxShadow(color: Color(0x55000000), blurRadius: 28, offset: Offset(0, -6)),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      // El contenido vive dentro del scrollController del sheet: arrastrar
+      // el asa o el contenido expande/colapsa el panel con snapping.
+      child: ListView(
+        controller: scrollController,
+        padding: EdgeInsets.zero,
         children: [
-          // Handle
+          // Handle (asa): indica que el panel se arrastra
           Center(
             child: Container(
               margin: const EdgeInsets.only(top: 10, bottom: 8),
-              width: 40,
-              height: 4,
+              width: 44,
+              height: 5,
               decoration: BoxDecoration(
                 color: _handleColor,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
           ),
 
-          // Tabs de servicio
-          SizedBox(
-            height: 114,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: TransportServiceType.values.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (_, i) {
-                final svc = TransportServiceType.values[i];
-                return _ServiceTab(
-                  service: svc,
-                  isSelected: svc == selected,
-                  count: driverCounts[svc] ?? 0,
-                  onTap: () => onServiceTap(svc),
-                );
-
-              },
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Barra de búsqueda / destino
+          // Barra de búsqueda / destino: visible incluso colapsado
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: GestureDetector(
@@ -533,6 +506,28 @@ class _BottomPanel extends StatelessWidget {
                   ],
                 ),
               ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Tabs de servicio
+          SizedBox(
+            height: 114,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: TransportServiceType.values.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final svc = TransportServiceType.values[i];
+                return _ServiceTab(
+                  service: svc,
+                  isSelected: svc == selected,
+                  count: driverCounts[svc] ?? 0,
+                  onTap: () => onServiceTap(svc),
+                );
+              },
             ),
           ),
 
