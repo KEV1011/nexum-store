@@ -27,6 +27,9 @@ model User {
   updatedAt   DateTime  @updatedAt
   isActive    Boolean   @default(true)
 
+  // Token FCM del dispositivo para notificaciones push (null = sin registrar).
+  fcmToken    String?
+
   // Trusted contact for the SOS / share-trip safety features.
   trustedContactName  String?
   trustedContactPhone String?
@@ -77,6 +80,8 @@ model Driver {
   isVerified        Boolean      @default(false)
   // Disponibilidad para recibir solicitudes de viajes intermunicipales.
   intercityEnabled  Boolean      @default(false)
+  // Token FCM del dispositivo para notificaciones push (null = sin registrar).
+  fcmToken          String?
   rating            Float        @default(5.0)
   totalTrips        Int          @default(0)
   bio               String?

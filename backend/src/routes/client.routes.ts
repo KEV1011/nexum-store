@@ -10,10 +10,12 @@ import {
   getClientOrderById,
   requestClientTrip,
   getActiveClientTrip,
+  getClientTripHistory,
   cancelClientTrip,
   getClientNameByPhone,
   getClientById,
 } from '../services/client.service';
+import { registerClientFcmToken } from '../services/push.service';
 import {
   createRideRequest,
   getActiveClientRide,
@@ -164,7 +166,7 @@ router.post('/trips/request', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as {
     serviceType?: string; originAddress?: string; destinationAddress?: string;
     estimatedFare?: number; distanceKm?: number; etaMinutes?: number;
-    originLat?: number; originLng?: number;
+    originLat?: number; originLng?: number; destLat?: number; destLng?: number;
     recipientName?: string; recipientPhone?: string; packageDescription?: string;
   };
 
@@ -183,6 +185,8 @@ router.post('/trips/request', clientAuthMiddleware, async (req, res) => {
       etaMinutes: dto.etaMinutes ?? 0,
       originLat: dto.originLat,
       originLng: dto.originLng,
+      destLat: dto.destLat,
+      destLng: dto.destLng,
       recipientName: dto.recipientName,
       recipientPhone: dto.recipientPhone,
       packageDescription: dto.packageDescription,
@@ -197,10 +201,28 @@ router.get('/trips/active', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: await getActiveClientTrip(req.clientId!) });
 });
 
+// Historial de viajes finalizados (completados/cancelados), más reciente primero.
+router.get('/trips/history', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await getClientTripHistory(req.clientId!) });
+});
+
 router.post('/trips/:id/cancel', clientAuthMiddleware, async (req, res) => {
   const ok = await cancelClientTrip(req.clientId!, req.params['id']!);
   if (!ok) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
   res.json({ success: true });
+});
+
+// ─── Push notifications ───────────────────────────────────────────────────────
+
+// PUT /client/fcm-token { token } — registra el token del dispositivo para push
+router.put('/fcm-token', clientAuthMiddleware, async (req, res) => {
+  const token = (req.body as { token?: unknown }).token;
+  if (typeof token !== 'string' || token.length === 0) {
+    res.status(400).json({ success: false, error: 'token (string) is required' });
+    return;
+  }
+  await registerClientFcmToken(req.clientId!, token);
+  res.json({ success: true, data: { registered: true } });
 });
 
 // ─── Errands (Mandados) ───────────────────────────────────────────────────────

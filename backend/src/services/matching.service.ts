@@ -1,6 +1,7 @@
 import { DriverStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { TripRequestDTO } from '../types';
+import { sendPushToDriver, sendPushToClient } from '../services/push.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -184,6 +185,12 @@ async function _offerToCandidate(
   });
 
   _sendToDriver?.(candidate.driverId, { type: 'trip_request', trip: dto });
+  // Push FCM en paralelo al WS: despierta la app si está en background.
+  void sendPushToDriver(candidate.driverId, {
+    title: 'Nueva solicitud de viaje',
+    body: `${dto.distanceKm.toFixed(1)} km · tarifa estimada $${Math.round(dto.estimatedFare)}`,
+    data: { type: 'trip_request', tripId },
+  });
   console.log(
     `[Matching] Offered trip ${tripId} to driver ${candidate.driverId} ` +
       `(${Math.round(candidate.distanceMeters)}m away, candidate ${index + 1}/${candidates.length})`,
@@ -242,6 +249,14 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
   });
 
   if (_notifyTripUpdate) await _notifyTripUpdate(tripId);
+
+  if (updated.passengerId) {
+    void sendPushToClient(updated.passengerId, {
+      title: 'Conductor asignado',
+      body: 'Tu conductor está en camino. Abre la app para seguirlo en el mapa.',
+      data: { type: 'trip_accepted', tripId },
+    });
+  }
 
   console.log(`[Matching] Driver ${driverId} accepted trip ${tripId}`);
   return true;

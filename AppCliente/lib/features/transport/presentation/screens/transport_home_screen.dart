@@ -16,21 +16,21 @@ import 'package:nexum_client/features/intercity/presentation/providers/intercity
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 
-// Centro de Pamplona, Nariño
-const _pamplona = LatLng(1.2136, -77.2811);
+// Centro de Pamplona, Norte de Santander (misma referencia que el backend).
+const _pamplona = LatLng(7.3754, -72.6486);
 
 // Vehículos cercanos simulados (se animan periódicamente)
 final _seedVehicles = <_NearbyVehicle>[
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2155, -77.2838)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2112, -77.2792)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2148, -77.2770)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2172, -77.2822)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(1.2108, -77.2847)),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2162, -77.2802)),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2129, -77.2829)),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(1.2141, -77.2768)),
-  _NearbyVehicle(TransportServiceType.envios, const LatLng(1.2143, -77.2862)),
-  _NearbyVehicle(TransportServiceType.envios, const LatLng(1.2175, -77.2759)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3773, -72.6513)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3730, -72.6467)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3766, -72.6445)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3790, -72.6497)),
+  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3726, -72.6522)),
+  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3780, -72.6477)),
+  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3747, -72.6504)),
+  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3759, -72.6443)),
+  _NearbyVehicle(TransportServiceType.envios, const LatLng(7.3761, -72.6537)),
+  _NearbyVehicle(TransportServiceType.envios, const LatLng(7.3793, -72.6434)),
 ];
 
 class _NearbyVehicle {
@@ -568,6 +568,18 @@ class _BottomPanel extends StatelessWidget {
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: _subText,
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => context.push(AppRoutes.tripHistory),
+                    child: const Text(
+                      'Ver todo',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
                     ),
                   ),
                 ],

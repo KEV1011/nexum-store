@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:nexum_driver/core/network/dio_client.dart';
 
 /// Background handler — debe ser top-level o static para FCM.
 @pragma('vm:entry-point')
@@ -60,11 +61,35 @@ class PushNotificationService {
       FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
       _fcmToken = await FirebaseMessaging.instance.getToken();
-      debugPrint('[FCM] Token: $_fcmToken');
+      debugPrint('[FCM] Token obtained: ${_fcmToken != null}');
+
+      // Si FCM rota el token, re-registrarlo en el backend.
+      FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+        _fcmToken = token;
+        syncTokenToBackend();
+      });
 
       _initialized = true;
     } catch (e) {
       debugPrint('[FCM] init failed: $e');
+    }
+  }
+
+  /// Registra el token del dispositivo en el backend (PUT /driver/fcm-token).
+  ///
+  /// Llamar cuando hay sesión activa (p. ej. al entrar al home). Falla en
+  /// silencio: sin token FCM o sin sesión simplemente no registra.
+  Future<void> syncTokenToBackend() async {
+    final token = _fcmToken;
+    if (token == null || token.isEmpty) return;
+    try {
+      await DioClient().put<Map<String, dynamic>>(
+        '/driver/fcm-token',
+        data: {'token': token},
+      );
+      debugPrint('[FCM] Token registered with backend');
+    } catch (_) {
+      // Sin sesión o sin red: se reintentará en el próximo arranque del home.
     }
   }
 

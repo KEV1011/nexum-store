@@ -27,6 +27,7 @@ import {
 } from '../types';
 import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
 import { prisma } from '../lib/prisma';
+import { registerDriverFcmToken } from '../services/push.service';
 
 const router = Router();
 
@@ -199,6 +200,24 @@ router.put('/status', async (req: Request, res: Response): Promise<void> => {
     success: true,
     data: { status, dailyTrips, dailyEarnings },
   });
+});
+
+// ─── Push notifications ────────────────────────────────────────────────────────
+
+// PUT /driver/fcm-token { token } — registra el token del dispositivo para push
+router.put('/fcm-token', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+  const token = (req.body as { token?: unknown }).token;
+  if (typeof token !== 'string' || token.length === 0) {
+    res.status(400).json({ success: false, error: 'token (string) is required' });
+    return;
+  }
+  await registerDriverFcmToken(driverId, token);
+  res.json({ success: true, data: { registered: true } });
 });
 
 // ─── Intercity availability (matching real) ────────────────────────────────────

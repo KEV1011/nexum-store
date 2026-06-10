@@ -232,7 +232,10 @@ async function _startSimulation(orderId: string, bizName: string): Promise<void>
 
 export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripDTO> {
   const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;
-  const serviceType = dto.serviceType.toUpperCase() as 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS';
+  // 'transporte' es el nombre que usa la app cliente para el servicio de carro
+  // particular/taxi — se acepta como alias para no romper el contrato REST.
+  const normalized = dto.serviceType.toLowerCase() === 'transporte' ? 'particular' : dto.serviceType;
+  const serviceType = normalized.toUpperCase() as 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS';
   const originLat = dto.originLat ?? 7.3754;
   const originLng = dto.originLng ?? -72.6486;
 
@@ -248,8 +251,10 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       originLat,
       originLng,
       destAddress: dto.destinationAddress,
-      destLat: dto.originLat ? originLat + 0.0067 : 7.3821,
-      destLng: dto.originLng ? originLng - 0.0026 : -72.6512,
+      // Destino real cuando la app lo resolvió por autocomplete; aproximación
+      // cercana al origen como fallback para texto libre.
+      destLat: dto.destLat ?? (dto.originLat ? originLat + 0.0067 : 7.3821),
+      destLng: dto.destLng ?? (dto.originLng ? originLng - 0.0026 : -72.6512),
       estimatedFare: dto.estimatedFare,
       surgeMultiplier,
       distanceKm: dto.distanceKm,
@@ -328,6 +333,25 @@ export async function getActiveClientTrip(clientId: string): Promise<ClientTripD
   });
   if (!trip) return null;
   return _toTripDTO(trip, clientId);
+}
+
+/** Viajes finalizados (completados o cancelados) del cliente, más reciente primero. */
+export async function getClientTripHistory(clientId: string, limit = 50): Promise<ClientTripDTO[]> {
+  const trips = await prisma.trip.findMany({
+    where: { passengerId: clientId, status: { in: ['COMPLETED', 'CANCELLED'] } },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: {
+      driver: {
+        include: { vehicles: { where: { isActive: true }, take: 1 } },
+      },
+    },
+  });
+  return trips.map((trip) => {
+    const v = trip.driver?.vehicles[0];
+    const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
+    return _toTripDTO(trip, clientId, trip.driver?.name, trip.driver?.phone, driverVehicle);
+  });
 }
 
 export async function getClientTripRaw(tripId: string): Promise<{ clientId: string } | undefined> {

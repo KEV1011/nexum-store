@@ -6,10 +6,12 @@ import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/addresses_provider.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Pantalla de reserva de servicio de transporte o envío.
@@ -32,6 +34,13 @@ class _TransportBookingScreenState
   final _recipientPhoneCtrl = TextEditingController();
   final _packageCtrl = TextEditingController();
   bool _loading = false;
+
+  // Coordenadas resueltas por el autocompletado (null = texto libre; el
+  // backend usa el centro de Pamplona como fallback).
+  double? _originLat;
+  double? _originLng;
+  double? _destLat;
+  double? _destLng;
 
   bool get _isEnvios =>
       widget.serviceType == TransportServiceType.envios;
@@ -73,12 +82,24 @@ class _TransportBookingScreenState
             const SizedBox(height: 24),
             _SectionTitle(title: 'Origen y destino'),
             const SizedBox(height: 12),
-            _AddressField(
+            AddressAutocompleteField(
               controller: _originCtrl,
               label: 'Origen',
               hint: '¿Desde dónde saldrás?',
-              required: true,
-              onPickAddress: () => _pickAddress(_originCtrl),
+              requiredField: true,
+              onPlaceSelected: (place) {
+                _originLat = place.lat;
+                _originLng = place.lng;
+              },
+              onManualEdit: () {
+                _originLat = null;
+                _originLng = null;
+              },
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.bookmarks_outlined, size: 20),
+                tooltip: 'Mis direcciones',
+                onPressed: () => _pickAddress(_originCtrl),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -90,12 +111,24 @@ class _TransportBookingScreenState
                 ],
               ),
             ),
-            _AddressField(
+            AddressAutocompleteField(
               controller: _destCtrl,
               label: 'Destino',
               hint: '¿A dónde vas?',
-              required: true,
-              onPickAddress: () => _pickAddress(_destCtrl),
+              requiredField: true,
+              onPlaceSelected: (place) {
+                _destLat = place.lat;
+                _destLng = place.lng;
+              },
+              onManualEdit: () {
+                _destLat = null;
+                _destLng = null;
+              },
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.bookmarks_outlined, size: 20),
+                tooltip: 'Mis direcciones',
+                onPressed: () => _pickAddress(_destCtrl),
+              ),
             ),
             if (_isEnvios) ...[
               const SizedBox(height: 24),
@@ -183,6 +216,14 @@ class _TransportBookingScreenState
 
     if (selected != null) {
       ctrl.text = selected.fullAddress;
+      // Direcciones guardadas no traen coordenadas: invalidar las anteriores.
+      if (ctrl == _originCtrl) {
+        _originLat = null;
+        _originLng = null;
+      } else if (ctrl == _destCtrl) {
+        _destLat = null;
+        _destLng = null;
+      }
     }
   }
 
@@ -193,10 +234,28 @@ class _TransportBookingScreenState
     final surgeMultiplier =
         ref.read(surgeEstimateProvider).valueOrNull?.surgeMultiplier ?? 1.0;
 
+    // Con ambos extremos resueltos por autocompletado se usa la ruta real de
+    // Google Directions (distancia/ETA); si no, el provider estima.
+    RouteInfo? route;
+    if (_originLat != null && _destLat != null) {
+      route = await ref.read(geoServiceProvider).directions(
+            originLat: _originLat!,
+            originLng: _originLng!,
+            destLat: _destLat!,
+            destLng: _destLng!,
+          );
+    }
+
     final id = await ref.read(transportProvider.notifier).request(
           serviceType: widget.serviceType,
           origin: _originCtrl.text.trim(),
           destination: _destCtrl.text.trim(),
+          originLat: _originLat,
+          originLng: _originLng,
+          destLat: _destLat,
+          destLng: _destLng,
+          distanceKm: route?.distanceKm,
+          etaMinutes: route?.durationMinutes,
           recipientName: _isEnvios ? _recipientNameCtrl.text.trim() : null,
           recipientPhone: _isEnvios
               ? (_recipientPhoneCtrl.text.trim().isEmpty
@@ -308,43 +367,6 @@ class _SectionTitle extends StatelessWidget {
         fontWeight: FontWeight.w700,
         color: AppColors.textSecondary,
       ),
-    );
-  }
-}
-
-class _AddressField extends StatelessWidget {
-  const _AddressField({
-    required this.controller,
-    required this.label,
-    required this.hint,
-    required this.required,
-    required this.onPickAddress,
-  });
-
-  final TextEditingController controller;
-  final String label;
-  final String hint;
-  final bool required;
-  final VoidCallback onPickAddress;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      textCapitalization: TextCapitalization.sentences,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: const Icon(Icons.location_on_outlined),
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.bookmarks_outlined, size: 20),
-          tooltip: 'Mis direcciones',
-          onPressed: onPickAddress,
-        ),
-      ),
-      validator: required
-          ? (v) => (v == null || v.trim().isEmpty) ? 'Ingresa una dirección' : null
-          : null,
     );
   }
 }

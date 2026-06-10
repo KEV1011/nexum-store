@@ -92,10 +92,18 @@ class TransportNotifier extends StateNotifier<TransportState> {
     String? recipientPhone,
     String? packageDescription,
     double surgeMultiplier = 1.0,
+    double? originLat,
+    double? originLng,
+    double? destLat,
+    double? destLng,
+    double? distanceKm,
+    int? etaMinutes,
   }) async {
-    final distance = 1.5 + _random.nextDouble() * 6.5;
+    // Distancia/ETA reales (Google Directions) cuando el booking las resolvió;
+    // estimación local como fallback para texto libre.
+    final distance = distanceKm ?? (1.5 + _random.nextDouble() * 6.5);
     final fare = (serviceType.estimateFare(distance) * surgeMultiplier).roundToDouble();
-    final eta = (distance * 2.5 + 3).round();
+    final eta = etaMinutes ?? (distance * 2.5 + 3).round();
 
     String id;
     String ref;
@@ -110,6 +118,10 @@ class TransportNotifier extends StateNotifier<TransportState> {
           'estimatedFare': fare,
           'distanceKm': distance,
           'etaMinutes': eta,
+          if (originLat != null) 'originLat': originLat,
+          if (originLng != null) 'originLng': originLng,
+          if (destLat != null) 'destLat': destLat,
+          if (destLng != null) 'destLng': destLng,
           if (recipientName != null) 'recipientName': recipientName,
           if (recipientPhone != null) 'recipientPhone': recipientPhone,
           if (packageDescription != null) 'packageDescription': packageDescription,
@@ -296,6 +308,22 @@ final transportProvider =
 final transportByIdProvider =
     Provider.family<TransportRequestEntity?, String>((ref, id) {
   return ref.watch(transportProvider).byId(id);
+});
+
+// Historial de viajes finalizados desde el backend; si la red falla se usa el
+// historial local persistido para que la pantalla degrade sin error.
+final tripHistoryProvider =
+    FutureProvider.autoDispose<List<TransportRequestEntity>>((ref) async {
+  final dio = ref.read(apiClientProvider);
+  try {
+    final res = await dio.get<Map<String, dynamic>>('/client/trips/history');
+    final data = res.data?['data'] as List<dynamic>? ?? const [];
+    return data
+        .map((e) => TransportRequestEntity.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    return ref.read(transportProvider).past;
+  }
 });
 
 // Fetches the current surge multiplier for Pamplona centre (default origin).

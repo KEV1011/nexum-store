@@ -25,6 +25,14 @@ services:
         value: "false"
       - key: INTERCITY_REMOVE_CAP
         value: "false"
+      # Key de Google Maps (Places/Directions/Geocoding) — se define en el
+      # dashboard de Render, nunca en el repo.
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      # JSON de la cuenta de servicio de Firebase (texto plano o base64).
+      # Sin definir → push en modo mock (solo logs).
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
 
 databases:
   - name: nexum-db

@@ -17,6 +17,7 @@ import clientRouter from './routes/client.routes';
 import webhooksRouter from './routes/webhooks.routes';
 import safetyRouter from './routes/safety.routes';
 import adminRouter from './routes/admin.routes';
+import geoRouter from './routes/geo.routes';
 
 // ─── Express App ──────────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ app.use('/client', clientRouter);
 app.use('/webhooks', webhooksRouter);
 app.use('/safety', safetyRouter);
 app.use('/admin', adminRouter);
+app.use('/geo', geoRouter);
 
 // Serve uploaded driver documents (protected path — no directory listing).
 const uploadsDir = path.resolve(process.cwd(), 'uploads');

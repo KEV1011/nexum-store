@@ -50,6 +50,8 @@ import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_booking_screen.dart';
 import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_tracking_screen.dart';
+import 'package:nexum_client/features/transport/presentation/screens/'
+    'trip_history_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Rutas con nombre de la app Nexum Cliente.
@@ -67,6 +69,7 @@ abstract final class AppRoutes {
   static const String business = '/business/:id';
   static const String order = '/order/:id';
   static const String transportTracking = '/transport/tracking/:id';
+  static const String tripHistory = '/transport/history';
 
   // Rutas de transporte
   static const String transportBooking = '/transport/booking';
@@ -189,6 +192,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           child: TransportTrackingScreen(
             requestId: state.pathParameters['id'] ?? '',
           ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.tripHistory,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const TripHistoryScreen(),
         ),
       ),
       GoRoute(

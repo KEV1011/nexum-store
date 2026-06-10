@@ -8,6 +8,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { getDriverProfile } from './driver-profile.service';
+import { sendPushToDriver } from './push.service';
 import {
   routeRequiresLicensedOperator,
   getIntercityRoute,
@@ -266,6 +267,12 @@ async function _offerIntercityTo(
       ? { distanceKm: route.distanceKm, durationMinutes: route.durationMinutes }
       : null,
     timeoutSeconds: Math.round(INTERCITY_OFFER_TIMEOUT_MS / 1000),
+  });
+  // Push FCM en paralelo al WS: despierta la app si está en background.
+  void sendPushToDriver(driverId, {
+    title: 'Solicitud intermunicipal',
+    body: `${dto.origin} → ${dto.destination} · oferta $${Math.round(dto.offeredFare)}`,
+    data: { type: 'intercity_request', bookingId },
   });
   console.log(
     `[Intercity] Offered booking ${bookingId} to driver ${driverId} ` +

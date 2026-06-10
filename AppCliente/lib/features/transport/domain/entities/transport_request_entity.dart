@@ -136,8 +136,15 @@ class TransportRequestEntity {
       TransportRequestEntity(
         id: json['id'] as String,
         requestRef: json['requestRef'] as String,
+        // Parsing defensivo: el backend usa 'taxi'/'particular' para el
+        // servicio que la app llama 'transporte', y 'mandado' viaja como envío.
         serviceType: TransportServiceType.values.firstWhere(
           (e) => e.name == json['serviceType'],
+          orElse: () => switch (json['serviceType']) {
+            'taxi' || 'particular' => TransportServiceType.transporte,
+            'mandado' => TransportServiceType.envios,
+            _ => TransportServiceType.transporte,
+          },
         ),
         originAddress: json['originAddress'] as String,
         destinationAddress: json['destinationAddress'] as String,
@@ -146,6 +153,10 @@ class TransportRequestEntity {
         etaMinutes: json['etaMinutes'] as int,
         status: TransportStatus.values.firstWhere(
           (e) => e.name == json['status'],
+          orElse: () => switch (json['status']) {
+            'in_progress' => TransportStatus.inProgress,
+            _ => TransportStatus.searching,
+          },
         ),
         createdAt: DateTime.parse(json['createdAt'] as String),
         driverName: json['driverName'] as String?,
