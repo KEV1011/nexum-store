@@ -24,7 +24,6 @@ import 'package:nexum_driver/features/profile/presentation/screens/profile_scree
 import 'package:nexum_driver/features/promotions/presentation/screens/promotions_screen.dart';
 import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
 import 'package:nexum_driver/features/notifications/presentation/screens/notifications_screen.dart';
-import 'package:nexum_driver/features/intercity/presentation/screens/intercity_requests_screen.dart';
 import 'package:nexum_driver/features/safety/presentation/screens/safety_screen.dart';
 import 'package:nexum_driver/features/safety/presentation/screens/trusted_contact_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/settings_screen.dart';
@@ -72,7 +71,6 @@ abstract final class AppRoutes {
   static const String pooledPublish = '/pooled-publish';
   static const String verification = '/verification';
   static const String ridePool = '/ride-pool';
-  static const String intercityRequests = '/intercity-requests';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -180,13 +178,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const RidePoolScreen(),
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.intercityRequests,
-        pageBuilder: (context, state) => AppTransitions.slideLeft(
-          pageKey: state.pageKey,
-          child: const IntercityRequestsScreen(),
         ),
       ),
       GoRoute(
