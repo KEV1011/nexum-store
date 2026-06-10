@@ -41,7 +41,7 @@ enum TransportServiceType {
   String get description => switch (this) {
         TransportServiceType.transporte => 'Carro o taxi, cómodo y seguro',
         TransportServiceType.moto => 'Mototaxi rápido y económico',
-        TransportServiceType.envios => 'Envío de paquetes a domicilio',
+        TransportServiceType.envios => 'Paquetes, compras y diligencias',
       };
 
   double get baseFare => switch (this) {

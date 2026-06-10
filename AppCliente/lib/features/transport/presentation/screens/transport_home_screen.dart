@@ -180,7 +180,7 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
               ),
             ),
 
-          // ── Banner de mandado activo ─────────────────────────────────────
+          // ── Banner de envío (encargo) activo ─────────────────────────────
           if (hasErrandActive)
             Positioned(
               top: topPad +
@@ -457,10 +457,15 @@ class _BottomPanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: GestureDetector(
-              onTap: () => context.push(
-                AppRoutes.transportBooking,
-                extra: selected,
-              ),
+              onTap: () {
+                // Envíos es el paraguas: paquete punto a punto o un encargo
+                // (compra/diligencia, antes "mandados").
+                if (selected == TransportServiceType.envios) {
+                  _showEnviosOptions(context);
+                } else {
+                  context.push(AppRoutes.transportBooking, extra: selected);
+                }
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 15),
@@ -545,14 +550,6 @@ class _BottomPanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _IntercityHeroCard(),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Tarjeta de mandados
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _ErrandCard(),
           ),
 
           const SizedBox(height: 10),
@@ -1042,84 +1039,150 @@ class _IntercityActiveBanner extends StatelessWidget {
   }
 }
 
-// ── Tarjeta de mandados en el panel ───────────────────────────────────────────
+// ── Selector de subtipos de Envíos ────────────────────────────────────────────
+//
+// "Envíos" cubre tanto el paquete punto a punto como los encargos
+// (compra/recogida/diligencia, el motor errands del backend).
 
-class _ErrandCard extends StatelessWidget {
-  static const _cardBg = Color(0xFF26201A);
-  static const _accent = Color(0xFFD97706);
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.push(AppRoutes.errandBooking),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: _cardBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _accent.withValues(alpha: 0.5)),
-        ),
-        child: Row(
+void _showEnviosOptions(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: const Color(0xFF1A1D27),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _accent.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.run_circle_rounded,
-                color: Color(0xFFFBBF24),
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Mandados',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                  Text(
-                    'Farmacia, mercado, pagos, recoger algo...',
-                    style: TextStyle(
-                      color: Color(0xFFFBBF24),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: _accent,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'Pedir',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+            Center(
+              child: Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2E3347),
+                  borderRadius: BorderRadius.circular(3),
                 ),
               ),
             ),
+            const SizedBox(height: 14),
+            const Text(
+              '¿Qué necesitas enviar?',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _EnviosOption(
+              icon: Icons.inventory_2_rounded,
+              title: 'Enviar un paquete',
+              subtitle: 'De una dirección a otra, ya tienes el paquete listo',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                context.push(
+                  AppRoutes.transportBooking,
+                  extra: TransportServiceType.envios,
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            _EnviosOption(
+              icon: Icons.shopping_bag_rounded,
+              title: 'Compra o diligencia',
+              subtitle: 'Farmacia, mercado, pagos, recoger algo por ti...',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                context.push(AppRoutes.errandBooking);
+              },
+            ),
           ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _EnviosOption extends StatelessWidget {
+  const _EnviosOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  static const _cardBg = Color(0xFF252836);
+  static const _subText = Color(0xFF94A3B8);
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppColors.serviceEnvios;
+    return Material(
+      color: _cardBg,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(color: _subText, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: _subText,
+                size: 20,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ── Banner de mandado activo ──────────────────────────────────────────────────
+// ── Banner de envío (encargo) activo ─────────────────────────────────────────
 
 class _ErrandActiveBanner extends StatelessWidget {
   const _ErrandActiveBanner({required this.errand});
@@ -1153,7 +1216,7 @@ class _ErrandActiveBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Mandado · ${errand.category.label}',
+                    'Envío · ${errand.category.label}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,

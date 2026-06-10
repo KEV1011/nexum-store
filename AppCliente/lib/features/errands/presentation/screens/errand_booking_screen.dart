@@ -7,7 +7,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
 
-/// Tarifa base del servicio de mandado (lo que cobra el mensajero).
+/// Tarifa base del servicio de encargo (lo que cobra el mensajero).
 const double _kBaseServiceFee = 6000;
 
 class ErrandBookingScreen extends ConsumerStatefulWidget {
@@ -46,7 +46,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
 
   Future<void> _submit() async {
     if (_descCtrl.text.trim().length < 5) {
-      _showError('Describe el mandado con más detalle.');
+      _showError('Describe el encargo con más detalle.');
       return;
     }
     if (_dropoffCtrl.text.trim().isEmpty) {
@@ -95,7 +95,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
       backgroundColor: AppColors.backgroundLight,
       appBar: AppBar(
         title: const Text(
-          'Pedir un mandado',
+          'Envío: compra o diligencia',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         centerTitle: false,
@@ -132,7 +132,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           const SizedBox(height: 18),
 
           // ── Categoría ─────────────────────────────────────────────────────
-          _Label('¿Qué tipo de mandado?'),
+          _Label('¿Qué tipo de encargo?'),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -194,7 +194,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           const SizedBox(height: 18),
 
           // ── Descripción ───────────────────────────────────────────────────
-          _Label('Describe el mandado'),
+          _Label('Describe el encargo'),
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
@@ -229,7 +229,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           const SizedBox(height: 8),
           _AddressField(
             controller: _pickupCtrl,
-            hint: 'Dónde se hace el mandado (opcional)',
+            hint: 'Dónde se hace el encargo (opcional)',
             icon: Icons.store_mall_directory_rounded,
             iconColor: accent,
           ),
@@ -373,7 +373,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
                       const Icon(Icons.send_rounded, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        'Pedir mandado · ${CurrencyFormatter.format(_estimatedTotal)}',
+                        'Pedir envío · ${CurrencyFormatter.format(_estimatedTotal)}',
                         style: theme.textTheme.titleSmall?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,

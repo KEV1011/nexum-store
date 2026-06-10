@@ -32,7 +32,7 @@ class ErrandStatusScreen extends ConsumerWidget {
         backgroundColor: AppColors.backgroundLight,
         appBar: AppBar(
           title: const Text(
-            'Mi mandado',
+            'Mi envío',
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           centerTitle: false,
@@ -68,7 +68,7 @@ class ErrandStatusScreen extends ConsumerWidget {
               const SizedBox(height: 12),
             ],
 
-            // ── Detalle del mandado ──────────────────────────────────────────
+            // ── Detalle del encargo ──────────────────────────────────────────
             _ErrandDetailCard(errand: errand, accent: accent),
             const SizedBox(height: 12),
 
@@ -121,7 +121,7 @@ class ErrandStatusScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('¿Cancelar el mandado?'),
+        title: const Text('¿Cancelar el envío?'),
         content: const Text('Se cancelará la búsqueda del mensajero.'),
         actions: [
           TextButton(
@@ -131,7 +131,7 @@ class ErrandStatusScreen extends ConsumerWidget {
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Cancelar mandado'),
+            child: const Text('Cancelar envío'),
           ),
         ],
       ),
@@ -145,7 +145,7 @@ class ErrandStatusScreen extends ConsumerWidget {
   void _showRatingHint(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('¡Mandado completado! Gracias por usar Nexum.'),
+        content: Text('¡Envío completado! Gracias por usar Nexum.'),
         backgroundColor: AppColors.success,
         behavior: SnackBarBehavior.floating,
       ),

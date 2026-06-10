@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 
-// ── Categorías de mandado ──────────────────────────────────────────────────────
+// ── Categorías de encargo (Envíos) ──────────────────────────────────────────────────────
 
 enum ErrandCategory {
   pharmacy,
@@ -36,7 +36,7 @@ enum ErrandCategory {
         ErrandCategory.shopping =>
           'Ej: Comprar un cargador en la tienda del centro',
         ErrandCategory.other =>
-          'Describe el mandado con el mayor detalle posible',
+          'Describe el encargo con el mayor detalle posible',
       };
 
   IconData get icon => switch (this) {
@@ -59,7 +59,7 @@ enum ErrandCategory {
         ErrandCategory.other => const Color(0xFF64748B),
       };
 
-  /// Indica si el mandado típicamente implica comprar productos
+  /// Indica si el encargo típicamente implica comprar productos
   /// (y por tanto requiere presupuesto).
   bool get usuallyBuys => switch (this) {
         ErrandCategory.pharmacy ||
@@ -74,7 +74,7 @@ enum ErrandCategory {
       };
 }
 
-// ── Estado del mandado ─────────────────────────────────────────────────────────
+// ── Estado del encargo ─────────────────────────────────────────────────────────
 
 enum ErrandStatus {
   searching,
@@ -87,7 +87,7 @@ enum ErrandStatus {
   String get label => switch (this) {
         ErrandStatus.searching => 'Buscando quién lo haga...',
         ErrandStatus.accepted => 'Mensajero asignado',
-        ErrandStatus.shopping => 'Realizando el mandado',
+        ErrandStatus.shopping => 'Haciendo tu encargo',
         ErrandStatus.onTheWay => 'En camino a entregarte',
         ErrandStatus.delivered => 'Entregado',
         ErrandStatus.cancelled => 'Cancelado',
@@ -95,14 +95,14 @@ enum ErrandStatus {
 
   String get description => switch (this) {
         ErrandStatus.searching =>
-          'Enviando tu mandado a mensajeros cercanos...',
+          'Buscando un mensajero cercano para tu envío...',
         ErrandStatus.accepted =>
-          'Va camino al sitio para realizar tu mandado',
+          'Va camino al sitio para hacer tu encargo',
         ErrandStatus.shopping =>
           'Comprando / gestionando lo que pediste',
         ErrandStatus.onTheWay => 'Llevando todo hasta tu dirección',
-        ErrandStatus.delivered => '¡Mandado completado!',
-        ErrandStatus.cancelled => 'El mandado fue cancelado',
+        ErrandStatus.delivered => '¡Envío completado!',
+        ErrandStatus.cancelled => 'El envío fue cancelado',
       };
 
   Color get color => switch (this) {
@@ -165,7 +165,7 @@ class ErrandEntity {
   final String pickupAddress;
   final String dropoffAddress;
 
-  /// Tarifa del servicio (lo que cobra el mensajero por hacer el mandado).
+  /// Tarifa del servicio (lo que cobra el mensajero por hacer el encargo).
   final double serviceFee;
 
   /// Presupuesto máximo que el cliente autoriza para compras.

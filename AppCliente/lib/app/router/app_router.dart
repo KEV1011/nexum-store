@@ -79,7 +79,7 @@ abstract final class AppRoutes {
   static const String pooledBookings = '/pooled/bookings';
   static const String requestRide = '/ride/request';
 
-  // Rutas de mandados
+  // Rutas de envíos por encargo (motor errands)
   static const String errandBooking = '/errand/booking';
   static const String errandStatus = '/errand/status';
 
