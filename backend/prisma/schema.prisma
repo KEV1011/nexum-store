@@ -31,6 +31,8 @@ model User {
   trustedContactName  String?
   trustedContactPhone String?
 
+  fcmToken          String?
+
   addresses         Address[]
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
@@ -87,6 +89,8 @@ model Driver {
   // Trusted contact for the SOS / share-trip safety features.
   trustedContactName  String?
   trustedContactPhone String?
+
+  fcmToken      String?
 
   // Última posición conocida
   lastLat       Float?

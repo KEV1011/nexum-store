@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:nexum_driver/core/network/dio_client.dart';
 
 /// Background handler — debe ser top-level o static para FCM.
 @pragma('vm:entry-point')
@@ -60,11 +61,32 @@ class PushNotificationService {
       FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
       _fcmToken = await FirebaseMessaging.instance.getToken();
-      debugPrint('[FCM] Token: $_fcmToken');
+      debugPrint('[FCM] Token obtained: ${_fcmToken != null}');
+
+      // Keep backend in sync when FCM rotates the token.
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+        _fcmToken = newToken;
+        syncTokenToBackend();
+      });
 
       _initialized = true;
     } catch (e) {
       debugPrint('[FCM] init failed: $e');
+    }
+  }
+
+  // ── syncTokenToBackend ──────────────────────────────────────────────────────
+
+  Future<void> syncTokenToBackend() async {
+    if (kIsWeb || _fcmToken == null) return;
+    try {
+      await DioClient().put<Map<String, dynamic>>(
+        '/driver/fcm-token',
+        data: {'token': _fcmToken},
+      );
+      debugPrint('[FCM] Token synced to backend');
+    } catch (e) {
+      debugPrint('[FCM] Token sync failed: $e');
     }
   }
 

@@ -230,9 +230,17 @@ async function _startSimulation(orderId: string, bizName: string): Promise<void>
 
 // ─── Client Trips ─────────────────────────────────────────────────────────────
 
+function _normalizeServiceType(raw: string): 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS' {
+  const map: Record<string, 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS'> = {
+    taxi: 'TAXI', moto: 'MOTO', particular: 'PARTICULAR', envios: 'ENVIOS',
+    transporte: 'PARTICULAR', transport: 'PARTICULAR', mandado: 'ENVIOS', errand: 'ENVIOS',
+  };
+  return map[raw.toLowerCase()] ?? 'PARTICULAR';
+}
+
 export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripDTO> {
   const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;
-  const serviceType = dto.serviceType.toUpperCase() as 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS';
+  const serviceType = _normalizeServiceType(dto.serviceType);
   const originLat = dto.originLat ?? 7.3754;
   const originLng = dto.originLng ?? -72.6486;
 
@@ -248,8 +256,8 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       originLat,
       originLng,
       destAddress: dto.destinationAddress,
-      destLat: dto.originLat ? originLat + 0.0067 : 7.3821,
-      destLng: dto.originLng ? originLng - 0.0026 : -72.6512,
+      destLat: dto.destLat ?? (originLat + 0.0067),
+      destLng: dto.destLng ?? (originLng - 0.0026),
       estimatedFare: dto.estimatedFare,
       surgeMultiplier,
       distanceKm: dto.distanceKm,
@@ -483,4 +491,28 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
 
 function _toTripDTOWithDriver(trip: PrismaTrip, driverName: string, driverPhone: string, driverVehicle?: string): ClientTripDTO {
   return _toTripDTO(trip, '', driverName, driverPhone, driverVehicle);
+}
+
+// ─── Trip history ─────────────────────────────────────────────────────────────
+
+export async function getClientTripHistory(clientId: string, limit = 50): Promise<ClientTripDTO[]> {
+  const trips = await prisma.trip.findMany({
+    where: {
+      passengerId: clientId,
+      status: { in: ['COMPLETED', 'CANCELLED'] },
+    },
+    include: {
+      driver: { select: { name: true, phone: true, vehicles: { take: 1, select: { brand: true, model: true, plate: true } } } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
+
+  return trips.map((t) => {
+    const dName = t.driver?.name ?? undefined;
+    const dPhone = t.driver?.phone ?? undefined;
+    const v = t.driver?.vehicles?.[0];
+    const dVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
+    return _toTripDTO(t, clientId, dName, dPhone, dVehicle);
+  });
 }

@@ -2,7 +2,7 @@ name: Deploy Cliente Web to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/driver-app-maas-pamplona-LYIfo]
+    branches: [main, claude/nexum-postgres-prisma-migration-phpj5q]
     paths:
       - 'AppCliente/**'
       - '.github/workflows/deploy-web-cliente.yml'
@@ -44,13 +44,13 @@ jobs:
       - name: Build Flutter Web
         working-directory: AppCliente
         env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL || 'http://10.0.2.2:3000' }}
-          WS_BASE_URL: ${{ secrets.WS_BASE_URL || 'ws://10.0.2.2:3000' }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          WS_BASE_URL: ${{ secrets.WS_BASE_URL }}
         run: |
           flutter build web --release --no-tree-shake-icons \
             --base-href /nexum-store/cliente/ \
-            --dart-define=API_BASE_URL=${API_BASE_URL} \
-            --dart-define=WS_BASE_URL=${WS_BASE_URL}
+            --dart-define=API_BASE_URL="${API_BASE_URL:-https://nexum-api.onrender.com}" \
+            --dart-define=WS_BASE_URL="${WS_BASE_URL:-wss://nexum-api.onrender.com}"
 
       # ── Post-build patches ────────────────────────────────────────────────────
 

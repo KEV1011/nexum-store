@@ -48,6 +48,8 @@ import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_booking_screen.dart';
 import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_tracking_screen.dart';
+import 'package:nexum_client/features/transport/presentation/screens/'
+    'trip_history_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Rutas con nombre de la app Nexum Cliente.
@@ -68,6 +70,7 @@ abstract final class AppRoutes {
 
   // Rutas de transporte
   static const String transportBooking = '/transport/booking';
+  static const String tripHistory = '/transport/history';
 
   // Rutas intermunicipales
   static const String intercityBooking = '/intercity/booking';
@@ -228,6 +231,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const TrustedContactScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.tripHistory,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const TripHistoryScreen(),
         ),
       ),
       GoRoute(

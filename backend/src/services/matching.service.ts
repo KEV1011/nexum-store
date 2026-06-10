@@ -1,6 +1,7 @@
 import { DriverStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { TripRequestDTO } from '../types';
+import { sendPushToDriver, sendPushToClient } from './push.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -184,6 +185,11 @@ async function _offerToCandidate(
   });
 
   _sendToDriver?.(candidate.driverId, { type: 'trip_request', trip: dto });
+  void sendPushToDriver(candidate.driverId, {
+    title: 'Nueva solicitud de viaje',
+    body: `${dto.origin.address} → ${dto.destination.address}`,
+    data: { tripId, type: 'trip_request' },
+  });
   console.log(
     `[Matching] Offered trip ${tripId} to driver ${candidate.driverId} ` +
       `(${Math.round(candidate.distanceMeters)}m away, candidate ${index + 1}/${candidates.length})`,
@@ -242,6 +248,12 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
   });
 
   if (_notifyTripUpdate) await _notifyTripUpdate(tripId);
+
+  void sendPushToClient(updated.passengerId!, {
+    title: 'Conductor asignado',
+    body: 'Tu conductor está en camino',
+    data: { tripId, type: 'trip_accepted' },
+  });
 
   console.log(`[Matching] Driver ${driverId} accepted trip ${tripId}`);
   return true;

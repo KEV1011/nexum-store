@@ -13,7 +13,9 @@ import {
   cancelClientTrip,
   getClientNameByPhone,
   getClientById,
+  getClientTripHistory,
 } from '../services/client.service';
+import { registerClientFcmToken } from '../services/push.service';
 import {
   createRideRequest,
   getActiveClientRide,
@@ -137,6 +139,19 @@ router.get('/orders/:id', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: order });
 });
 
+// ─── FCM token ────────────────────────────────────────────────────────────────
+
+router.put('/fcm-token', clientAuthMiddleware, async (req, res) => {
+  const { token } = req.body as { token?: string };
+  if (!token) { res.status(400).json({ success: false, error: 'token is required' }); return; }
+  try {
+    await registerClientFcmToken(req.clientId!, token);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
 // ─── Trips (auth required) ────────────────────────────────────────────────────
 
 router.get('/trips/estimate', async (req, res) => {
@@ -162,7 +177,7 @@ router.post('/trips/request', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as {
     serviceType?: string; originAddress?: string; destinationAddress?: string;
     estimatedFare?: number; distanceKm?: number; etaMinutes?: number;
-    originLat?: number; originLng?: number;
+    originLat?: number; originLng?: number; destLat?: number; destLng?: number;
     recipientName?: string; recipientPhone?: string; packageDescription?: string;
   };
 
@@ -181,6 +196,8 @@ router.post('/trips/request', clientAuthMiddleware, async (req, res) => {
       etaMinutes: dto.etaMinutes ?? 0,
       originLat: dto.originLat,
       originLng: dto.originLng,
+      destLat: dto.destLat,
+      destLng: dto.destLng,
       recipientName: dto.recipientName,
       recipientPhone: dto.recipientPhone,
       packageDescription: dto.packageDescription,
@@ -199,6 +216,11 @@ router.post('/trips/:id/cancel', clientAuthMiddleware, async (req, res) => {
   const ok = await cancelClientTrip(req.clientId!, req.params['id']!);
   if (!ok) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
   res.json({ success: true });
+});
+
+router.get('/trips/history', clientAuthMiddleware, async (req, res) => {
+  const limit = Math.min(parseInt(req.query['limit'] as string) || 50, 100);
+  res.json({ success: true, data: await getClientTripHistory(req.clientId!, limit) });
 });
 
 // ─── Errands (Mandados) ───────────────────────────────────────────────────────

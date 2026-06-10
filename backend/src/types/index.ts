@@ -524,6 +524,8 @@ export interface RequestClientTripDTO {
   etaMinutes: number;
   originLat?: number;
   originLng?: number;
+  destLat?: number;
+  destLng?: number;
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;

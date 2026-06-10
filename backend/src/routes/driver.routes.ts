@@ -26,10 +26,24 @@ import {
   DriverDocumentType,
 } from '../types';
 import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
+import { registerDriverFcmToken } from '../services/push.service';
 
 const router = Router();
 
 router.use(authMiddleware);
+
+// PUT /driver/fcm-token
+router.put('/fcm-token', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const { token } = req.body as { token?: string };
+  if (!token) { res.status(400).json({ success: false, error: 'token is required' }); return; }
+  try {
+    await registerDriverFcmToken(driverId, token);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
 
 // GET /driver/profile — real profile with documents + verification status
 router.get('/profile', async (req: Request, res: Response): Promise<void> => {

@@ -8,6 +8,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { routeRequiresLicensedOperator, INTERCITY_DUAL_MODEL } from '../config/constants';
+import { sendPushToClient } from './push.service';
 
 export class IntercityError extends Error {
   constructor(message: string) {
@@ -129,7 +130,13 @@ function _scheduleDriverResponse(bookingId: string, offeredFare: number): void {
           },
         }) as DbBooking;
       }
-      _notify(bookingId, _toDTO(updated));
+      const dto = _toDTO(updated);
+      _notify(bookingId, dto);
+      void sendPushToClient(updated.userId, {
+        title: updated.status === 'CONFIRMED' ? 'Conductor confirmado' : 'Oferta del conductor',
+        body: `${dto.origin} → ${dto.destination} • ${driver.name}`,
+        data: { bookingId, type: 'intercity_update' },
+      });
     })();
   }, delayMs);
 }

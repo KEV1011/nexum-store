@@ -1,12 +1,18 @@
+databases:
+  - name: nexum-db
+    plan: free
+    region: oregon
+    ipAllowList: []
+
 services:
   - type: web
     name: nexum-api
     env: docker
     plan: free
     region: oregon
-    branch: claude/driver-app-maas-pamplona-LYIfo
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    branch: claude/nexum-postgres-prisma-migration-phpj5q
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -15,3 +21,11 @@ services:
         value: "*"
       - key: JWT_SECRET
         generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexum-db
+          property: connectionString
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false

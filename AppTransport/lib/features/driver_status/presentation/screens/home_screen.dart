@@ -35,6 +35,7 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/push_notification_service.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -156,6 +157,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => ref.read(driverProfileProvider.notifier).load(),
     );
+    // Sync FCM token so backend can push trip offers to this device.
+    unawaited(PushNotificationService().syncTokenToBackend());
   }
 
   @override

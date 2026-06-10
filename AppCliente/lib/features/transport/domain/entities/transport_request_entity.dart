@@ -132,21 +132,44 @@ class TransportRequestEntity {
     this.driverLng,
   });
 
+  static TransportServiceType _parseServiceType(String raw) {
+    const map = {
+      'transporte': TransportServiceType.transporte,
+      'particular': TransportServiceType.transporte,
+      'taxi': TransportServiceType.transporte,
+      'moto': TransportServiceType.moto,
+      'envios': TransportServiceType.envios,
+      'errand': TransportServiceType.envios,
+      'mandado': TransportServiceType.envios,
+    };
+    return map[raw.toLowerCase()] ?? TransportServiceType.transporte;
+  }
+
+  static TransportStatus _parseStatus(String raw) {
+    const map = {
+      'searching': TransportStatus.searching,
+      'accepted': TransportStatus.accepted,
+      'arriving': TransportStatus.arriving,
+      'arrived': TransportStatus.arrived,
+      'in_progress': TransportStatus.inProgress,
+      'inprogress': TransportStatus.inProgress,
+      'completed': TransportStatus.completed,
+      'cancelled': TransportStatus.cancelled,
+    };
+    return map[raw.toLowerCase()] ?? TransportStatus.searching;
+  }
+
   factory TransportRequestEntity.fromJson(Map<String, dynamic> json) =>
       TransportRequestEntity(
         id: json['id'] as String,
         requestRef: json['requestRef'] as String,
-        serviceType: TransportServiceType.values.firstWhere(
-          (e) => e.name == json['serviceType'],
-        ),
+        serviceType: _parseServiceType(json['serviceType'] as String? ?? ''),
         originAddress: json['originAddress'] as String,
         destinationAddress: json['destinationAddress'] as String,
         estimatedFare: (json['estimatedFare'] as num).toDouble(),
         distanceKm: (json['distanceKm'] as num).toDouble(),
         etaMinutes: json['etaMinutes'] as int,
-        status: TransportStatus.values.firstWhere(
-          (e) => e.name == json['status'],
-        ),
+        status: _parseStatus(json['status'] as String? ?? ''),
         createdAt: DateTime.parse(json['createdAt'] as String),
         driverName: json['driverName'] as String?,
         driverPhone: json['driverPhone'] as String?,

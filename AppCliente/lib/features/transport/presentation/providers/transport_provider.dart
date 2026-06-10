@@ -88,14 +88,20 @@ class TransportNotifier extends StateNotifier<TransportState> {
     required TransportServiceType serviceType,
     required String origin,
     required String destination,
+    double? originLat,
+    double? originLng,
+    double? destLat,
+    double? destLng,
+    double? distanceKm,
+    int? etaMinutes,
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
     double surgeMultiplier = 1.0,
   }) async {
-    final distance = 1.5 + _random.nextDouble() * 6.5;
+    final distance = distanceKm ?? (1.5 + _random.nextDouble() * 6.5);
     final fare = (serviceType.estimateFare(distance) * surgeMultiplier).roundToDouble();
-    final eta = (distance * 2.5 + 3).round();
+    final eta = etaMinutes ?? (distance * 2.5 + 3).round();
 
     String id;
     String ref;
@@ -110,6 +116,10 @@ class TransportNotifier extends StateNotifier<TransportState> {
           'estimatedFare': fare,
           'distanceKm': distance,
           'etaMinutes': eta,
+          if (originLat != null) 'originLat': originLat,
+          if (originLng != null) 'originLng': originLng,
+          if (destLat != null) 'destLat': destLat,
+          if (destLng != null) 'destLng': destLng,
           if (recipientName != null) 'recipientName': recipientName,
           if (recipientPhone != null) 'recipientPhone': recipientPhone,
           if (packageDescription != null) 'packageDescription': packageDescription,
@@ -318,5 +328,22 @@ final surgeEstimateProvider =
     return FareEstimate.fromJson(data);
   } catch (_) {
     return null;
+  }
+});
+
+final tripHistoryProvider =
+    FutureProvider.autoDispose<List<TransportRequestEntity>>((ref) async {
+  final dio = ref.read(apiClientProvider);
+  try {
+    final res = await dio.get<Map<String, dynamic>>('/client/trips/history');
+    final list = res.data!['data'] as List<dynamic>;
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(TransportRequestEntity.fromJson)
+        .toList();
+  } catch (_) {
+    // Fall back to locally cached past trips.
+    final state = ref.read(transportProvider);
+    return state.past;
   }
 });
