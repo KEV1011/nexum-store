@@ -325,4 +325,29 @@ router.post('/intercity/pool/:id/cancel', async (req: Request, res: Response): P
   res.json({ success: true, data: trip });
 });
 
+// GET /driver/intercity/availability
+router.get('/intercity/availability', async (req: Request, res: Response): Promise<void> => {
+  const driver = await prisma.driver.findUnique({
+    where: { id: req.driverId! },
+    select: { intercityEnabled: true },
+  });
+  if (!driver) { res.status(404).json({ success: false, error: 'Driver not found' }); return; }
+  res.json({ success: true, data: { enabled: driver.intercityEnabled } });
+});
+
+// PUT /driver/intercity/availability
+router.put('/intercity/availability', async (req: Request, res: Response): Promise<void> => {
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== 'boolean') {
+    res.status(400).json({ success: false, error: '`enabled` boolean required' });
+    return;
+  }
+  const driver = await prisma.driver.update({
+    where: { id: req.driverId! },
+    data: { intercityEnabled: enabled },
+    select: { intercityEnabled: true },
+  });
+  res.json({ success: true, data: { enabled: driver.intercityEnabled } });
+});
+
 export default router;

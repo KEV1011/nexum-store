@@ -27,8 +27,9 @@ UPDATE "driver_documents"
   SET "status" = 'PENDING'
   WHERE "status" NOT IN ('PENDING', 'APPROVED', 'REJECTED');
 
--- 6. Convert columns to enum types
+-- 6. Convert columns to enum types (drop TEXT default first; it cannot be auto-cast)
+ALTER TABLE "driver_documents" ALTER COLUMN "status" DROP DEFAULT;
 ALTER TABLE "driver_documents"
   ALTER COLUMN "type"   TYPE "DocumentType"   USING "type"::"DocumentType",
-  ALTER COLUMN "status" TYPE "DocumentStatus" USING "status"::"DocumentStatus",
-  ALTER COLUMN "status" SET DEFAULT 'PENDING'::"DocumentStatus";
+  ALTER COLUMN "status" TYPE "DocumentStatus" USING "status"::"DocumentStatus";
+ALTER TABLE "driver_documents" ALTER COLUMN "status" SET DEFAULT 'PENDING'::"DocumentStatus";

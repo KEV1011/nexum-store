@@ -4,7 +4,7 @@ services:
     env: docker
     plan: free
     region: oregon
-    branch: claude/driver-app-maas-pamplona-LYIfo
+    branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
@@ -15,3 +15,20 @@ services:
         value: "*"
       - key: JWT_SECRET
         generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexum-db
+          property: connectionString
+      - key: INTERCITY_SIMULATE
+        value: "false"
+      - key: INTERCITY_DUAL_MODEL
+        value: "false"
+      - key: INTERCITY_REMOVE_CAP
+        value: "false"
+
+databases:
+  - name: nexum-db
+    plan: free
+    region: oregon
+    databaseName: nexum_db
+    user: nexum

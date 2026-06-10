@@ -8,8 +8,9 @@ COPY backend/package*.json ./
 RUN npm ci
 
 COPY backend/ .
+RUN npx prisma generate
 RUN npm run build
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev && npx prisma generate
 
 # ── Stage 2: runner ───────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
@@ -29,4 +30,4 @@ USER nexum
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]

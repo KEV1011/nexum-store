@@ -101,7 +101,7 @@ model Driver {
   // se CONSULTA exclusivamente vía SQL raw (ST_MakePoint / ST_DWithin / ST_Distance)
   // desde matching.service.ts. El índice GIST y la columna se crean en la
   // migración manual `add_postgis`.
-  geo           Unsupported("geography(Point, 4326)")?
+  geo               Unsupported("geography(Point, 4326)")?
 
   vehicles      Vehicle[]
   trips         Trip[]
