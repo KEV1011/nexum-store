@@ -1,10 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter, Montserrat } from 'next/font/google'
 import './globals.css'
-import { Navbar }      from '@/components/layout/Navbar'
-import { Footer }      from '@/components/layout/Footer'
-import { CartProvider } from '@/context/CartContext'
-import { CartDrawer }  from '@/components/cart/CartDrawer'
 
 const inter = Inter({
   subsets:  ['latin'],
@@ -21,22 +17,20 @@ const montserrat = Montserrat({
 
 export const metadata: Metadata = {
   title: {
-    default:  'Nexum — Tecnología de Alto Estatus',
+    default:  'Nexum — Movilidad y envíos en Pamplona',
     template: '%s | Nexum',
   },
-  description: 'GPS para mascotas, accesorios premium para auto y gadgets de diseño. Tecnología que eleva tu vida diaria.',
-  keywords:    ['GPS mascotas', 'accesorios auto', 'gadgets premium', 'tecnología', 'Nexum'],
-  authors:     [{ name: 'Nexum' }],
+  description:
+    'Plataforma de movilidad, envíos y pedidos para Pamplona, Norte de Santander. ' +
+    'Portal de negocios aliados con seguimiento de pedidos en tiempo real.',
+  keywords: ['transporte', 'envíos', 'domicilios', 'Pamplona', 'Nexum'],
+  authors:  [{ name: 'Nexum' }],
   openGraph: {
     type:        'website',
     locale:      'es_CO',
     siteName:    'Nexum',
-    title:       'Nexum — Tecnología de Alto Estatus',
-    description: 'GPS para mascotas, accesorios premium para auto y gadgets de diseño.',
-  },
-  twitter: {
-    card:  'summary_large_image',
-    title: 'Nexum — Tecnología de Alto Estatus',
+    title:       'Nexum — Movilidad y envíos en Pamplona',
+    description: 'Transporte, envíos y pedidos con seguimiento en tiempo real.',
   },
   robots: { index: true, follow: true },
 }
@@ -44,13 +38,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es-CO" className={`scroll-smooth ${inter.variable} ${montserrat.variable}`}>
-      <body className="bg-obsidian text-ghost antialiased">
-        <CartProvider>
-          <Navbar />
-          <CartDrawer />
-          <main>{children}</main>
-          <Footer />
-        </CartProvider>
+      <body className="antialiased">
+        {children}
       </body>
     </html>
   )
