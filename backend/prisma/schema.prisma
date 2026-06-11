@@ -31,7 +31,7 @@ model User {
   trustedContactName  String?
   trustedContactPhone String?
 
-  fcmToken          String?
+  fcmToken    String?
 
   addresses         Address[]
   orders            Order[]
@@ -98,12 +98,10 @@ model Driver {
   lastSeenAt    DateTime?
 
   // Posición geográfica para matching por cercanía (PostGIS).
-  // Prisma no soporta tipos PostGIS de forma nativa: la columna se declara como
-  // Unsupported para que el cliente la conozca pero NO la gestione. Se ESCRIBE y
-  // se CONSULTA exclusivamente vía SQL raw (ST_MakePoint / ST_DWithin / ST_Distance)
-  // desde matching.service.ts. El índice GIST y la columna se crean en la
-  // migración manual `add_postgis`.
   geo           Unsupported("geography(Point, 4326)")?
+
+  // Firebase Cloud Messaging token for push notifications.
+  fcmToken    String?
 
   vehicles      Vehicle[]
   trips         Trip[]

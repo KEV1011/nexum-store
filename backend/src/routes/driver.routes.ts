@@ -303,4 +303,12 @@ router.post('/intercity/pool/:id/cancel', async (req: Request, res: Response): P
   res.json({ success: true, data: trip });
 });
 
+// PUT /driver/fcm-token
+router.put('/fcm-token', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.body as { token?: string };
+  if (!token) { res.status(400).json({ success: false, error: 'token is required' }); return; }
+  await registerDriverFcmToken(req.driverId!, token);
+  res.json({ success: true });
+});
+
 export default router;

@@ -24,9 +24,16 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(keystorePropertiesFile.inputStream())
 }
 
+repositories {
+    maven { url = uri("${project(":flutter_background_geolocation").projectDir}/libs") }
+    maven { url = uri("https://dl.cloudsmith.io/public/transistorsoft/flutter-background-geolocation/maven/") }
+    google()
+    mavenCentral()
+}
+
 android {
     namespace = "com.nexum.driver_app"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -37,7 +44,7 @@ android {
     defaultConfig {
         applicationId = "com.nexum.driver_app"
         minSdk = 21
-        targetSdk = 35
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 

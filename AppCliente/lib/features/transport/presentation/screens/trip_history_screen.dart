@@ -1,35 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
-import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
-import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:nexum_client/core/utils/date_formatter.dart';
+
+// ── Provider ──────────────────────────────────────────────────────────────────
+
+final tripHistoryProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final dio = ref.watch(apiClientProvider);
+  final resp = await dio.get<Map<String, dynamic>>('/client/trips/history');
+  final data = resp.data?['data'];
+  if (data is List) {
+    return data.whereType<Map<String, dynamic>>().toList();
+  }
+  return [];
+});
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 class TripHistoryScreen extends ConsumerWidget {
   const TripHistoryScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(tripHistoryProvider);
+    final histAsync = ref.watch(tripHistoryProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Historial de viajes'),
-        leading: const BackButton(),
+        centerTitle: true,
       ),
-      body: async.when(
+      body: histAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (err, _) => Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              const Text('No se pudo cargar el historial'),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () => ref.invalidate(tripHistoryProvider),
+                child: const Text('Reintentar'),
+              ),
+            ],
+          ),
+        ),
         data: (trips) {
           if (trips.isEmpty) {
             return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.history, size: 64, color: Colors.grey),
+                  Icon(Icons.directions_car_outlined, size: 64, color: Colors.grey),
                   SizedBox(height: 16),
                   Text(
-                    'Sin viajes anteriores',
+                    'Aún no has realizado viajes',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
                 ],
@@ -39,10 +66,10 @@ class TripHistoryScreen extends ConsumerWidget {
           return RefreshIndicator(
             onRefresh: () => ref.refresh(tripHistoryProvider.future),
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.all(16),
               itemCount: trips.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) => _TripCard(trip: trips[i]),
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, i) => _TripCard(trip: trips[i]),
             ),
           );
         },
@@ -51,18 +78,31 @@ class TripHistoryScreen extends ConsumerWidget {
   }
 }
 
+// ── Trip card ─────────────────────────────────────────────────────────────────
+
 class _TripCard extends StatelessWidget {
   const _TripCard({required this.trip});
 
-  final TransportRequestEntity trip;
+  final Map<String, dynamic> trip;
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = trip.isCompleted
-        ? Colors.green
-        : trip.isCancelled
-            ? Colors.red
-            : AppColors.primary;
+    final status = (trip['status'] as String? ?? '').toUpperCase();
+    final driver = trip['driver'] as Map<String, dynamic>?;
+    final vehicle = trip['vehicle'] as Map<String, dynamic>?;
+    final fare = trip['fare'] as num?;
+    final createdAt = trip['createdAt'] as String?;
+
+    final statusColor = switch (status) {
+      'COMPLETED' => Colors.green,
+      'CANCELLED' => Colors.red,
+      _ => Colors.orange,
+    };
+    final statusLabel = switch (status) {
+      'COMPLETED' => 'Completado',
+      'CANCELLED' => 'Cancelado',
+      _ => status,
+    };
 
     return Card(
       elevation: 1,
@@ -72,35 +112,27 @@ class _TripCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row
             Row(
               children: [
-                Icon(
-                  _serviceIcon(trip.serviceType),
-                  size: 20,
-                  color: AppColors.primary,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  trip.serviceType.label,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                Expanded(
+                  child: Text(
+                    createdAt != null
+                        ? DateFormatter.formatDate(DateTime.tryParse(createdAt) ?? DateTime.now())
+                        : '—',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
                   ),
                 ),
-                const Spacer(),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    trip.status.label,
+                    statusLabel,
                     style: TextStyle(
                       color: statusColor,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -108,76 +140,47 @@ class _TripCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            // Route
-            _RouteLine(
-              icon: Icons.radio_button_checked,
-              iconColor: AppColors.primary,
-              text: trip.originAddress,
+            _RouteRow(
+              origin: trip['originAddress'] as String? ?? 'Origen',
+              destination: trip['destinationAddress'] as String? ?? 'Destino',
             ),
-            const SizedBox(height: 6),
-            _RouteLine(
-              icon: Icons.location_on,
-              iconColor: Colors.red,
-              text: trip.destinationAddress,
-            ),
-            const Divider(height: 20),
-            // Meta row
-            Row(
-              children: [
-                Text(
-                  CurrencyFormatter.format(trip.estimatedFare),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${trip.distanceKm.toStringAsFixed(1)} km',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-                const Spacer(),
-                Text(
-                  _formatDate(trip.createdAt),
-                  style: TextStyle(color: Colors.grey[500], fontSize: 11),
-                ),
-              ],
-            ),
-            if (trip.driverName != null) ...[
-              const SizedBox(height: 8),
+            if (driver != null) ...[
+              const Divider(height: 20),
               Row(
                 children: [
-                  const Icon(Icons.person_outline, size: 14, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    trip.driverName!,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.grey[200],
+                    backgroundImage: driver['avatarUrl'] != null
+                        ? NetworkImage(driver['avatarUrl'] as String)
+                        : null,
+                    child: driver['avatarUrl'] == null
+                        ? const Icon(Icons.person, size: 18, color: Colors.grey)
+                        : null,
                   ),
-                  if (trip.driverVehicle != null) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '• ${trip.driverVehicle!}',
-                        style:
-                            TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          driver['name'] as String? ?? 'Conductor',
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        if (vehicle != null)
+                          Text(
+                            '${vehicle['brand'] ?? ''} ${vehicle['model'] ?? ''} • ${vehicle['plate'] ?? ''}'.trim(),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                          ),
+                      ],
                     ),
-                  ],
-                ],
-              ),
-            ],
-            if (trip.rating != null) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: List.generate(
-                  5,
-                  (i) => Icon(
-                    i < trip.rating! ? Icons.star : Icons.star_border,
-                    size: 14,
-                    color: Colors.amber,
                   ),
-                ),
+                  if (fare != null)
+                    Text(
+                      CurrencyFormatter.format(fare.toDouble()),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                ],
               ),
             ],
           ],
@@ -185,45 +188,35 @@ class _TripCard extends StatelessWidget {
       ),
     );
   }
-
-  IconData _serviceIcon(TransportServiceType t) => switch (t) {
-        TransportServiceType.transporte => Icons.directions_car,
-        TransportServiceType.moto => Icons.two_wheeler,
-        TransportServiceType.envios => Icons.local_shipping,
-      };
-
-  String _formatDate(DateTime dt) {
-    final now = DateTime.now();
-    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
-      return 'Hoy ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    }
-    return '${dt.day}/${dt.month}/${dt.year}';
-  }
 }
 
-class _RouteLine extends StatelessWidget {
-  const _RouteLine({
-    required this.icon,
-    required this.iconColor,
-    required this.text,
-  });
+class _RouteRow extends StatelessWidget {
+  const _RouteRow({required this.origin, required this.destination});
 
-  final IconData icon;
-  final Color iconColor;
-  final String text;
+  final String origin;
+  final String destination;
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 14, color: iconColor),
+        Column(
+          children: [
+            const Icon(Icons.radio_button_checked, size: 14, color: Colors.green),
+            Container(width: 2, height: 20, color: Colors.grey[300]),
+            const Icon(Icons.location_on, size: 14, color: Colors.red),
+          ],
+        ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(fontSize: 13),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(origin, maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 12),
+              Text(destination, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
           ),
         ),
       ],

@@ -132,11 +132,12 @@ function _scheduleDriverResponse(bookingId: string, offeredFare: number): void {
       }
       const dto = _toDTO(updated);
       _notify(bookingId, dto);
-      void sendPushToClient(updated.userId, {
-        title: updated.status === 'CONFIRMED' ? 'Conductor confirmado' : 'Oferta del conductor',
-        body: `${dto.origin} → ${dto.destination} • ${driver.name}`,
-        data: { bookingId, type: 'intercity_update' },
-      });
+      void sendPushToClient(
+        updated.userId,
+        updated.status === 'CONFIRMED' ? 'Conductor confirmado' : 'Oferta del conductor',
+        `${dto.origin} → ${dto.destination} • ${driver.name}`,
+        { bookingId, type: 'intercity_update' },
+      );
     })();
   }, delayMs);
 }

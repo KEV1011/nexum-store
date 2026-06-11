@@ -185,11 +185,15 @@ async function _offerToCandidate(
   });
 
   _sendToDriver?.(candidate.driverId, { type: 'trip_request', trip: dto });
-  void sendPushToDriver(candidate.driverId, {
-    title: 'Nueva solicitud de viaje',
-    body: `${dto.origin.address} → ${dto.destination.address}`,
-    data: { tripId, type: 'trip_request' },
-  });
+
+  void sendPushToDriver(
+    candidate.driverId,
+    'Nueva solicitud de viaje',
+    `${dto.origin.address} → ${dto.destination.address}`,
+    { tripId, type: 'trip_request' },
+  );
+
+
   console.log(
     `[Matching] Offered trip ${tripId} to driver ${candidate.driverId} ` +
       `(${Math.round(candidate.distanceMeters)}m away, candidate ${index + 1}/${candidates.length})`,
@@ -249,11 +253,15 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
 
   if (_notifyTripUpdate) await _notifyTripUpdate(tripId);
 
-  void sendPushToClient(updated.passengerId!, {
-    title: 'Conductor asignado',
-    body: 'Tu conductor está en camino',
-    data: { tripId, type: 'trip_accepted' },
-  });
+  if (updated.passengerId) {
+    const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { name: true } });
+    void sendPushToClient(
+      updated.passengerId,
+      'Conductor asignado',
+      `${driver?.name ?? 'Tu conductor'} está en camino. Toca para ver el estado.`,
+      { tripId, type: 'trip_accepted' },
+    );
+  }
 
   console.log(`[Matching] Driver ${driverId} accepted trip ${tripId}`);
   return true;

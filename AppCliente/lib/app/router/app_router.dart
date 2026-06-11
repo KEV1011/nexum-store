@@ -83,6 +83,9 @@ abstract final class AppRoutes {
   static const String errandBooking = '/errand/booking';
   static const String errandStatus = '/errand/status';
 
+  // Historial de viajes
+  static const String tripHistory = '/transport/history';
+
   // Seguridad
   static const String trustedContact = '/safety/trusted-contact';
 
@@ -252,6 +255,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const ErrandStatusScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.tripHistory,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const TripHistoryScreen(),
         ),
       ),
     ],

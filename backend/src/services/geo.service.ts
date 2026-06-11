@@ -1,8 +1,12 @@
-// Google Maps proxy — all API calls run server-side; key never exposed to clients.
-// Uses:
-//   • Places API (New)  — POST https://places.googleapis.com/v1/places:autocomplete
-//   • Routes API        — POST https://routes.googleapis.com/directions/v2:computeRoutes
-//   • Geocoding API     — GET  https://maps.googleapis.com/maps/api/geocode/json
+// ─── Google Maps server-side proxy ────────────────────────────────────────────
+//
+// Keeps the API key on the server. Flutter apps call /geo/* — never the
+// Maps APIs directly. Key is injected via GOOGLE_MAPS_API_KEY env var.
+//
+// APIs used:
+//   Places API (New)  — autocomplete + place details
+//   Routes API        — directions / distance-matrix
+//   Geocoding API     — reverse geocode
 
 const API_KEY = process.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
@@ -10,169 +14,123 @@ export function isGeoConfigured(): boolean {
   return API_KEY.length > 0;
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface PlaceSuggestion {
   placeId: string;
-  description: string;
   mainText: string;
   secondaryText: string;
+  description: string;
 }
 
 export interface PlaceDetails {
   placeId: string;
-  description: string;
+  name: string;
+  address: string;
   lat: number;
   lng: number;
 }
 
 export interface RouteInfo {
   distanceMeters: number;
-  distanceKm: number;
+  distanceText: string;
   durationSeconds: number;
-  etaMinutes: number;
-  polyline: string;
+  durationText: string;
+  polyline?: string;
 }
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function gPost<T>(url: string, body: unknown, fieldMask: string): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': API_KEY,
-      'X-Goog-FieldMask': fieldMask,
-    },
-    body: JSON.stringify(body),
-  });
+async function mapsPost(url: string, body: unknown, extraHeaders?: Record<string, string>): Promise<unknown> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Goog-Api-Key': API_KEY,
+    ...extraHeaders,
+  };
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`[Geo] ${url} → ${res.status}: ${text.slice(0, 200)}`);
+    const text = await res.text();
+    throw new Error(`Maps API ${res.status}: ${text.slice(0, 200)}`);
   }
-  return res.json() as Promise<T>;
+  return res.json();
 }
 
-async function gGet<T>(url: string, params: Record<string, string>): Promise<T> {
-  const qs = new URLSearchParams({ ...params, key: API_KEY }).toString();
-  const res = await fetch(`${url}?${qs}`);
+async function mapsGet(url: string): Promise<unknown> {
+  const res = await fetch(url);
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`[Geo] ${url} → ${res.status}: ${text.slice(0, 200)}`);
+    const text = await res.text();
+    throw new Error(`Maps API ${res.status}: ${text.slice(0, 200)}`);
   }
-  return res.json() as Promise<T>;
+  return res.json();
 }
 
-// ─── Autocomplete ─────────────────────────────────────────────────────────────
+// ── Autocomplete (Places API New) ─────────────────────────────────────────────
 
-export async function autocomplete(
-  input: string,
-  lat?: number,
-  lng?: number,
-): Promise<PlaceSuggestion[]> {
-  if (!isGeoConfigured()) throw new Error('Google Maps API key not configured');
-
+export async function autocomplete(input: string, sessionToken?: string): Promise<PlaceSuggestion[]> {
   const body: Record<string, unknown> = {
     input,
     languageCode: 'es',
     regionCode: 'CO',
+    locationBias: {
+      circle: { center: { latitude: 7.3754, longitude: -72.6486 }, radius: 50000 },
+    },
   };
+  if (sessionToken) body['sessionToken'] = sessionToken;
 
-  if (lat !== undefined && lng !== undefined) {
-    body['locationBias'] = {
-      circle: {
-        center: { latitude: lat, longitude: lng },
-        radius: 30000,
-      },
-    };
-  }
-
-  const data = await gPost<{
-    suggestions?: Array<{
-      placePrediction?: {
-        placeId?: string;
-        text?: { text?: string };
-        structuredFormat?: {
-          mainText?: { text?: string };
-          secondaryText?: { text?: string };
-        };
-      };
-    }>;
-  }>(
+  const data = await mapsPost(
     'https://places.googleapis.com/v1/places:autocomplete',
     body,
-    'suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat',
-  );
+    { 'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.text' },
+  ) as { suggestions?: Array<{ placePrediction?: { placeId?: string; text?: { text?: string }; structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } } } }> };
 
   return (data.suggestions ?? [])
-    .map((s) => s.placePrediction)
-    .filter((p): p is NonNullable<typeof p> => !!p?.placeId)
-    .map((p) => ({
-      placeId: p.placeId!,
-      description: p.text?.text ?? '',
-      mainText: p.structuredFormat?.mainText?.text ?? '',
-      secondaryText: p.structuredFormat?.secondaryText?.text ?? '',
-    }));
+    .map((s) => {
+      const p = s.placePrediction;
+      if (!p?.placeId) return null;
+      return {
+        placeId: p.placeId,
+        mainText: p.structuredFormat?.mainText?.text ?? p.text?.text ?? '',
+        secondaryText: p.structuredFormat?.secondaryText?.text ?? '',
+        description: p.text?.text ?? '',
+      } satisfies PlaceSuggestion;
+    })
+    .filter((s): s is PlaceSuggestion => s !== null);
 }
 
-// ─── Place Details ────────────────────────────────────────────────────────────
+// ── Place Details (Places API New) ────────────────────────────────────────────
 
 export async function placeDetails(placeId: string): Promise<PlaceDetails> {
-  if (!isGeoConfigured()) throw new Error('Google Maps API key not configured');
-
-  const res = await fetch(
-    `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
-    {
-      headers: {
-        'X-Goog-Api-Key': API_KEY,
-        'X-Goog-FieldMask': 'id,displayName,location,formattedAddress',
-      },
-    },
-  );
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`[Geo] place details → ${res.status}: ${text.slice(0, 200)}`);
-  }
-
-  const data = await res.json() as {
-    id?: string;
-    displayName?: { text?: string };
-    formattedAddress?: string;
-    location?: { latitude?: number; longitude?: number };
-  };
-
-  const lat = data.location?.latitude;
-  const lng = data.location?.longitude;
-  if (lat === undefined || lng === undefined) throw new Error('[Geo] place has no location');
+  const data = await fetch(
+    `https://places.googleapis.com/v1/places/${placeId}?fields=id,displayName,formattedAddress,location&languageCode=es`,
+    { headers: { 'X-Goog-Api-Key': API_KEY } },
+  ).then(async (r) => {
+    if (!r.ok) throw new Error(`Places details ${r.status}`);
+    return r.json() as Promise<{ id?: string; displayName?: { text?: string }; formattedAddress?: string; location?: { latitude?: number; longitude?: number } }>;
+  });
 
   return {
     placeId: data.id ?? placeId,
-    description: data.formattedAddress ?? data.displayName?.text ?? '',
-    lat,
-    lng,
+    name: data.displayName?.text ?? '',
+    address: data.formattedAddress ?? '',
+    lat: data.location?.latitude ?? 0,
+    lng: data.location?.longitude ?? 0,
   };
 }
 
-// ─── Reverse Geocode ──────────────────────────────────────────────────────────
+// ── Reverse Geocode ───────────────────────────────────────────────────────────
 
-export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
-  if (!isGeoConfigured()) return null;
+export async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  const data = await mapsGet(
+    `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=es&key=${API_KEY}`,
+  ) as { results?: Array<{ formatted_address?: string }>; status?: string };
 
-  const data = await gGet<{
-    status: string;
-    results?: Array<{ formatted_address?: string }>;
-  }>('https://maps.googleapis.com/maps/api/geocode/json', {
-    latlng: `${lat},${lng}`,
-    language: 'es',
-    region: 'CO',
-  });
-
-  if (data.status !== 'OK') return null;
-  return data.results?.[0]?.formatted_address ?? null;
+  if (data.status !== 'OK' || !data.results?.length) {
+    throw new Error(`Reverse geocode status: ${data.status}`);
+  }
+  return data.results[0]?.formatted_address ?? '';
 }
 
-// ─── Directions ───────────────────────────────────────────────────────────────
+// ── Directions (Routes API) ───────────────────────────────────────────────────
 
 export async function directions(
   originLat: number,
@@ -180,42 +138,36 @@ export async function directions(
   destLat: number,
   destLng: number,
 ): Promise<RouteInfo> {
-  if (!isGeoConfigured()) throw new Error('Google Maps API key not configured');
-
-  const body = {
-    origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
-    destination: { location: { latLng: { latitude: destLat, longitude: destLng } } },
-    travelMode: 'DRIVE',
-    routingPreference: 'TRAFFIC_AWARE',
-    languageCode: 'es',
-    regionCode: 'CO',
-    units: 'METRIC',
-  };
-
-  const data = await gPost<{
-    routes?: Array<{
-      distanceMeters?: number;
-      duration?: string;
-      polyline?: { encodedPolyline?: string };
-    }>;
-  }>(
+  const data = await mapsPost(
     'https://routes.googleapis.com/directions/v2:computeRoutes',
-    body,
-    'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
-  );
+    {
+      origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
+      destination: { location: { latLng: { latitude: destLat, longitude: destLng } } },
+      travelMode: 'DRIVE',
+      routingPreference: 'TRAFFIC_AWARE',
+      languageCode: 'es',
+      units: 'METRIC',
+    },
+    {
+      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
+    },
+  ) as { routes?: Array<{ distanceMeters?: number; duration?: string; polyline?: { encodedPolyline?: string } }> };
 
   const route = data.routes?.[0];
-  if (!route) throw new Error('[Geo] Routes API returned no route');
+  if (!route) throw new Error('No route found');
 
   const distanceMeters = route.distanceMeters ?? 0;
-  // duration is returned as "NNNs" (e.g. "1234s")
-  const durationSeconds = parseInt((route.duration ?? '0s').replace('s', ''), 10);
+  const durationSeconds = parseInt(route.duration?.replace('s', '') ?? '0', 10);
 
   return {
     distanceMeters,
-    distanceKm: Math.round((distanceMeters / 1000) * 10) / 10,
+    distanceText: distanceMeters < 1000
+      ? `${distanceMeters} m`
+      : `${(distanceMeters / 1000).toFixed(1)} km`,
     durationSeconds,
-    etaMinutes: Math.ceil(durationSeconds / 60),
-    polyline: route.polyline?.encodedPolyline ?? '',
+    durationText: durationSeconds < 60
+      ? `${durationSeconds} seg`
+      : `${Math.round(durationSeconds / 60)} min`,
+    polyline: route.polyline?.encodedPolyline,
   };
 }

@@ -1,34 +1,32 @@
 import { prisma } from '../lib/prisma';
 
-// ─── Firebase Admin init ──────────────────────────────────────────────────────
+// ─── Firebase Admin (lazy init) ───────────────────────────────────────────────
 
 let _messaging: import('firebase-admin/messaging').Messaging | null = null;
-let _mockMode = false;
 
 function getMessaging(): import('firebase-admin/messaging').Messaging | null {
   if (_messaging) return _messaging;
 
   const raw = process.env['FIREBASE_SERVICE_ACCOUNT'];
-  if (!raw) {
-    _mockMode = true;
-    return null;
-  }
+  if (!raw) return null;
 
   try {
-    const { initializeApp, cert } = require('firebase-admin/app') as typeof import('firebase-admin/app');
-    const { getMessaging } = require('firebase-admin/messaging') as typeof import('firebase-admin/messaging');
+    const { initializeApp, getApps, cert } = require('firebase-admin/app');
+    const { getMessaging } = require('firebase-admin/messaging');
 
-    const json = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8');
-    const serviceAccount = JSON.parse(json) as import('firebase-admin').ServiceAccount;
+    const serviceAccount = raw.startsWith('{')
+      ? JSON.parse(raw)
+      : JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
 
-    const app = initializeApp({ credential: cert(serviceAccount) }, 'nexum-push');
-    _messaging = getMessaging(app);
-    return _messaging;
+    if (getApps().length === 0) {
+      initializeApp({ credential: cert(serviceAccount) });
+    }
+    _messaging = getMessaging();
   } catch (err) {
-    console.error('[Push] Firebase init failed, switching to mock mode:', err instanceof Error ? err.message : err);
-    _mockMode = true;
-    return null;
+    console.error('[Push] Firebase init failed:', err instanceof Error ? err.message : err);
   }
+
+  return _messaging;
 }
 
 // ─── Token registration ───────────────────────────────────────────────────────
@@ -37,44 +35,41 @@ export async function registerDriverFcmToken(driverId: string, token: string): P
   await prisma.driver.update({ where: { id: driverId }, data: { fcmToken: token } });
 }
 
-export async function registerClientFcmToken(userId: string, token: string): Promise<void> {
-  await prisma.user.update({ where: { id: userId }, data: { fcmToken: token } });
+export async function registerClientFcmToken(clientId: string, token: string): Promise<void> {
+  await prisma.user.update({ where: { id: clientId }, data: { fcmToken: token } });
 }
 
-// ─── Push sending ─────────────────────────────────────────────────────────────
+// ─── Send helpers ─────────────────────────────────────────────────────────────
 
-interface PushPayload {
-  title: string;
-  body: string;
-  data?: Record<string, string>;
-}
+async function sendPush(token: string, title: string, body: string, data?: Record<string, string>): Promise<void> {
+  const messaging = getMessaging();
 
-async function _send(token: string, payload: PushPayload): Promise<void> {
-  if (_mockMode || !getMessaging()) {
-    console.log('[Push:mock] title=%s body=%s token_present=%s', payload.title, payload.body, !!token);
+  if (!messaging) {
+    console.log(`[Push-mock] → ${title}: ${body}`);
     return;
   }
+
   try {
-    await _messaging!.send({
+    await messaging.send({
       token,
-      notification: { title: payload.title, body: payload.body },
-      data: payload.data,
-      android: { priority: 'high' },
-      apns: { payload: { aps: { sound: 'default' } } },
+      notification: { title, body },
+      data,
+      android: { priority: 'high', notification: { channelId: 'nexum_trips', sound: 'default' } },
+      apns: { payload: { aps: { sound: 'default', badge: 1 } } },
     });
   } catch (err) {
     console.error('[Push] send failed:', err instanceof Error ? err.message : err);
   }
 }
 
-export async function sendPushToDriver(driverId: string, payload: PushPayload): Promise<void> {
+export async function sendPushToDriver(driverId: string, title: string, body: string, data?: Record<string, string>): Promise<void> {
   const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { fcmToken: true } });
   if (!driver?.fcmToken) return;
-  await _send(driver.fcmToken, payload);
+  await sendPush(driver.fcmToken, title, body, data);
 }
 
-export async function sendPushToClient(userId: string, payload: PushPayload): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { fcmToken: true } });
+export async function sendPushToClient(clientId: string, title: string, body: string, data?: Record<string, string>): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: clientId }, select: { fcmToken: true } });
   if (!user?.fcmToken) return;
-  await _send(user.fcmToken, payload);
+  await sendPush(user.fcmToken, title, body, data);
 }
