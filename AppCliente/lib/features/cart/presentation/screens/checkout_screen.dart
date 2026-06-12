@@ -1,9 +1,12 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
@@ -51,13 +54,54 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _notesController = TextEditingController();
+  final _promoController = TextEditingController();
   PaymentMethod _payment = PaymentMethod.cash;
   bool _placing = false;
+  bool _promoValidating = false;
+
+  /// Descuento validado por el backend (null = sin cupón aplicado).
+  double _promoDiscount = 0;
+  String? _promoCode;
 
   @override
   void dispose() {
     _notesController.dispose();
+    _promoController.dispose();
     super.dispose();
+  }
+
+  Future<void> _applyPromo(CartState cart) async {
+    final code = _promoController.text.trim();
+    if (code.isEmpty || _promoValidating) return;
+    setState(() => _promoValidating = true);
+    try {
+      final res = await ref.read(apiClientProvider).post<Map<String, dynamic>>(
+        '/client/promos/validate',
+        data: {'code': code, 'amount': cart.total, 'context': 'order'},
+      );
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      final discount = (data?['discount'] as num?)?.toDouble() ?? 0;
+      if (!mounted) return;
+      setState(() {
+        _promoDiscount = discount;
+        _promoCode = data?['code'] as String? ?? code.toUpperCase();
+      });
+      AppSnackbar.showSuccess(
+        context,
+        'Cupón aplicado: -${CurrencyFormatter.format(discount)}',
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final msg = (e.response?.data as Map?)?['error'] as String? ??
+          'No se pudo validar el cupón';
+      setState(() {
+        _promoDiscount = 0;
+        _promoCode = null;
+      });
+      AppSnackbar.showError(context, msg);
+    } finally {
+      if (mounted) setState(() => _promoValidating = false);
+    }
   }
 
   Future<void> _placeOrder(CartState cart) async {
@@ -75,6 +119,21 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           cart: cart,
           deliveryAddress: address.fullAddress,
         );
+    if (!mounted) return;
+
+    // Canjea el cupón ya validado; si el canje falla (p. ej. carrera con otro
+    // dispositivo) el pedido sigue su curso sin descuento.
+    final promo = _promoCode;
+    if (promo != null) {
+      try {
+        await ref.read(apiClientProvider).post<Map<String, dynamic>>(
+          '/client/promos/redeem',
+          data: {'code': promo, 'amount': cart.total, 'context': 'order'},
+        );
+      } on DioException {
+        // Sin bloqueo del flujo de pedido.
+      }
+    }
     if (!mounted) return;
     ref.read(cartProvider.notifier).clear();
 
@@ -126,6 +185,38 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
           const SizedBox(height: AppConstants.spacingL),
           const _SectionTitle(
+            icon: Icons.local_offer_rounded,
+            title: 'Código promocional',
+          ),
+          const SizedBox(height: AppConstants.spacingS),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _promoController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(hintText: 'Ej: BIENVENIDO'),
+                  onSubmitted: (_) => _applyPromo(cart),
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingS),
+              SizedBox(
+                height: 48,
+                child: OutlinedButton(
+                  onPressed: _promoValidating ? null : () => _applyPromo(cart),
+                  child: _promoValidating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Aplicar'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppConstants.spacingL),
+          const _SectionTitle(
             icon: Icons.receipt_long_rounded,
             title: 'Resumen',
           ),
@@ -135,6 +226,29 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             deliveryFee: cart.deliveryFee,
             total: cart.total,
           ),
+          if (_promoDiscount > 0) ...[
+            const SizedBox(height: AppConstants.spacingS),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Cupón $_promoCode',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  '-${CurrencyFormatter.format(_promoDiscount)} · '
+                  'Pagas ${CurrencyFormatter.format((cart.total - _promoDiscount).clamp(0, double.infinity).toDouble())}',
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: AppConstants.spacingM),
           const _CustodyNotice(),
         ],

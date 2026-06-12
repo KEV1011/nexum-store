@@ -34,6 +34,12 @@ model User {
   trustedContactName  String?
   trustedContactPhone String?
 
+  // Programa de referidos: código propio para compartir y quién lo refirió.
+  referralCode  String? @unique
+  referredById  String?
+  referredBy    User?   @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals     User[]  @relation("UserReferrals")
+
   addresses         Address[]
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
@@ -43,8 +49,67 @@ model User {
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
   emergencyEvents   EmergencyEvent[]
+  promoRedemptions  PromoRedemption[]
 
   @@map("users")
+}
+
+// ── Promociones (cupones y referidos) ─────────────────────────────────────────
+
+enum PromoType {
+  PERCENT
+  FIXED
+}
+
+enum PromoScope {
+  ALL
+  TRIPS
+  ORDERS
+}
+
+model PromoCode {
+  id             String      @id @default(cuid())
+  code           String      @unique
+  description    String?
+  type           PromoType
+  /// PERCENT: 1–100; FIXED: monto en COP.
+  value          Float
+  scope          PromoScope  @default(ALL)
+  minAmount      Float       @default(0)
+  /// Tope del descuento en COP para cupones PERCENT (null = sin tope).
+  maxDiscount    Float?
+  /// null = sin límite global de canjes.
+  maxRedemptions Int?
+  perUserLimit   Int         @default(1)
+  expiresAt      DateTime?
+  active         Boolean     @default(true)
+  /// Teléfono del admin que lo creó, o "referral" para los generados por referidos.
+  createdBy      String?
+  /// Si es un cupón personal, solo este usuario puede canjearlo.
+  ownerUserId    String?
+  createdAt      DateTime    @default(now())
+
+  redemptions PromoRedemption[]
+
+  @@map("promo_codes")
+}
+
+model PromoRedemption {
+  id           String   @id @default(cuid())
+  promoCodeId  String
+  userId       String
+  /// 'trip' | 'order'
+  context      String
+  amountBefore Float
+  discount     Float
+  createdAt    DateTime @default(now())
+
+  promoCode PromoCode @relation(fields: [promoCodeId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([promoCodeId])
+  @@index([userId])
+  @@map("promo_redemptions")
 }
 
 // ── OTP Sessions ──────────────────────────────────────────────────────────────

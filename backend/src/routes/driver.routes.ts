@@ -28,6 +28,7 @@ import {
 import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
 import { prisma } from '../lib/prisma';
 import { registerDriverFcmToken } from '../services/push.service';
+import { getSurgeMultiplier } from '../services/surge.service';
 
 const router = Router();
 
@@ -367,6 +368,45 @@ router.put('/intercity/availability', async (req: Request, res: Response): Promi
     select: { intercityEnabled: true },
   });
   res.json({ success: true, data: { enabled: driver.intercityEnabled } });
+});
+
+// ─── Zonas de demanda (surge real por zona) ───────────────────────────────────
+
+// Centroides de las zonas operativas de Pamplona usados para el mapa de
+// demanda del conductor. El multiplicador se calcula con el surge real
+// (viajes SEARCHING vs conductores ONLINE vía PostGIS).
+const DEMAND_ZONES = [
+  { id: 'centro', name: 'Centro histórico', lat: 7.3754, lng: -72.6486 },
+  { id: 'unipamplona', name: 'Zona universitaria', lat: 7.3889, lng: -72.6445 },
+  { id: 'terminal', name: 'Terminal de transportes', lat: 7.3698, lng: -72.6521 },
+  { id: 'hospital', name: 'Hospital San Juan de Dios', lat: 7.3821, lng: -72.6512 },
+  { id: 'esmeralda', name: 'Barrio La Esmeralda', lat: 7.3812, lng: -72.6423 },
+] as const;
+
+// GET /driver/demand-zones — demanda/oferta y multiplicador por zona.
+router.get('/demand-zones', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const zones = await Promise.all(
+      DEMAND_ZONES.map(async (z) => {
+        const surge = await getSurgeMultiplier(z.lat, z.lng);
+        return {
+          id: z.id,
+          name: z.name,
+          lat: z.lat,
+          lng: z.lng,
+          multiplier: surge.multiplier,
+          demand: surge.demand,
+          supply: surge.supply,
+          isSurge: surge.isSurge,
+        };
+      }),
+    );
+    // Zonas calientes primero.
+    zones.sort((a, b) => b.multiplier - a.multiplier || b.demand - a.demand);
+    res.json({ success: true, data: zones });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
 });
 
 export default router;

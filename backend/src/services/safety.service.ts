@@ -2,20 +2,24 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
+import { sendSms, isSmsSenderConfigured } from './sms.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Safety service — SOS panic events, trusted contacts, and trip sharing.
 //
-// What the SOS actually does TODAY (see SAFETY_NOTES.md for the honest scope):
+// What the SOS actually does (see SAFETY_NOTES.md for the honest scope):
 //   1. Records an EmergencyEvent row (audit trail + location).
-//   2. If the user configured a trusted contact, builds the notification payload
-//      and hands it to a STUB sender (no SMS/WhatsApp provider wired yet).
+//   2. If the user configured a trusted contact, sends them an SMS (Twilio)
+//      with the live location — and the live-trip tracking link when the SOS
+//      happens during a trip. Without Twilio credentials it degrades to a log.
 //   3. The apps facilitate a call to 123 (Colombia's emergency line).
 // It does NOT automatically alert the police — we never claim otherwise.
 //
 // Trip sharing uses a short-lived opaque JWT so the trusted contact can poll a
 // minimal, sanitised trip status. No phone numbers or PII ever go in the URL.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const APP_URL = process.env['APP_URL'] ?? 'http://localhost:3000';
 
 export type SafetyRole = 'client' | 'driver';
 export type EmergencyType = 'PANIC' | 'SHARE';
@@ -112,9 +116,9 @@ export async function recordEmergencyEvent(params: {
 }
 
 /**
- * STUB — send the SOS alert to the trusted contact. No SMS/WhatsApp provider is
- * integrated yet, so this only logs and reports "queued". Wire Twilio / Meta
- * Cloud API here in production. See SAFETY_NOTES.md.
+ * Envía la alerta SOS al contacto de confianza por SMS (Twilio). Incluye la
+ * ubicación puntual y, si el SOS ocurre durante un viaje, el link de
+ * seguimiento en vivo. Sin proveedor configurado degrada a log (modo dev).
  */
 async function notifyTrustedContact(payload: {
   to: string;
@@ -124,12 +128,30 @@ async function notifyTrustedContact(payload: {
   tripId?: string;
 }): Promise<boolean> {
   const mapLink = `https://maps.google.com/?q=${payload.lat},${payload.lng}`;
+
+  let trackLink = '';
+  if (payload.tripId) {
+    const claims: ShareTokenClaims = { tripId: payload.tripId, purpose: 'trip_share' };
+    const token = jwt.sign(claims, JWT_SECRET, { expiresIn: SHARE_TOKEN_TTL });
+    trackLink = `${APP_URL}/safety/track/${token}`;
+  }
+
+  const body =
+    `ALERTA NEXUM: tu contacto activó el botón de emergencia. ` +
+    `Ubicación: ${mapLink}` +
+    (trackLink ? ` · Sigue el viaje en vivo: ${trackLink}` : '') +
+    ` · Si no logras comunicarte, llama al 123.`;
+
+  if (!isSmsSenderConfigured()) {
+    // eslint-disable-next-line no-console
+    console.log(`[SOS:mock → ${maskPhone(payload.to)}] ${body}`);
+    return true; // queued en modo dev
+  }
+
+  const sent = await sendSms(payload.to, body);
   // eslint-disable-next-line no-console
-  console.log(
-    `[SOS → ${maskPhone(payload.to)}] Alerta de seguridad. Ubicación: ${mapLink}` +
-      (payload.tripId ? ` (viaje ${payload.tripId})` : ''),
-  );
-  return true; // "queued" — replace with real provider result.
+  console.log(`[SOS → ${maskPhone(payload.to)}] SMS ${sent ? 'enviado' : 'FALLÓ'}`);
+  return sent;
 }
 
 // ─── Trip sharing ─────────────────────────────────────────────────────────────

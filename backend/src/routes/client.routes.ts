@@ -56,6 +56,13 @@ import {
   INTERCITY_DUAL_MODEL,
 } from '../config/constants';
 import { createPaymentLink, getPaymentByReference, reconcilePayment } from '../services/payment.service';
+import {
+  getClientPromoOverview,
+  validatePromo,
+  redeemPromo,
+  redeemReferral,
+  PromoError,
+} from '../services/promo.service';
 import { getFareEstimate } from '../services/surge.service';
 import {
   RequestClientErrandDTO,
@@ -464,6 +471,65 @@ router.post('/payments/init', clientAuthMiddleware, async (req, res) => {
     res.status(201).json({ success: true, data: result });
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to create payment' });
+  }
+});
+
+// ─── Promociones y referidos ─────────────────────────────────────────────────
+
+// GET /client/promos — código de referido propio + cupones personales vigentes.
+router.get('/promos', clientAuthMiddleware, async (req, res) => {
+  try {
+    const overview = await getClientPromoOverview(req.clientId!);
+    res.json({ success: true, data: overview });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /client/promos/validate { code, amount, context } — previsualiza el descuento.
+router.post('/promos/validate', clientAuthMiddleware, async (req, res) => {
+  const { code, amount, context } = req.body as { code?: string; amount?: number; context?: string };
+  if (!code || typeof amount !== 'number' || amount <= 0) {
+    res.status(400).json({ success: false, error: 'code y amount son requeridos' });
+    return;
+  }
+  const ctx: 'trip' | 'order' = context === 'trip' ? 'trip' : 'order';
+  try {
+    const quote = await validatePromo(req.clientId!, code, amount, ctx);
+    res.json({ success: true, data: quote });
+  } catch (err) {
+    const status = err instanceof PromoError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /client/promos/redeem { code, amount, context } — canjea (registra la redención).
+router.post('/promos/redeem', clientAuthMiddleware, async (req, res) => {
+  const { code, amount, context } = req.body as { code?: string; amount?: number; context?: string };
+  if (!code || typeof amount !== 'number' || amount <= 0) {
+    res.status(400).json({ success: false, error: 'code y amount son requeridos' });
+    return;
+  }
+  const ctx: 'trip' | 'order' = context === 'trip' ? 'trip' : 'order';
+  try {
+    const quote = await redeemPromo(req.clientId!, code, amount, ctx);
+    res.json({ success: true, data: quote });
+  } catch (err) {
+    const status = err instanceof PromoError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /client/promos/redeem-referral { code } — canjea un código de referido.
+router.post('/promos/redeem-referral', clientAuthMiddleware, async (req, res) => {
+  const { code } = req.body as { code?: string };
+  if (!code) { res.status(400).json({ success: false, error: 'code es requerido' }); return; }
+  try {
+    const result = await redeemReferral(req.clientId!, code);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    const status = err instanceof PromoError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
 

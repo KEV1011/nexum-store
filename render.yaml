@@ -48,6 +48,14 @@ services:
         sync: false
       - key: OTP_FALLBACK_CODE
         sync: false
+      # SMS transaccionales (SOS) — Messaging Service SID o número Twilio.
+      - key: TWILIO_MESSAGING_SERVICE_SID
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      # Teléfonos (separados por coma) con acceso al panel /admin.
+      - key: ADMIN_PHONES
+        sync: false
       # ── Pagos (Wompi) ────────────────────────────────────────────────────
       - key: WOMPI_PUBLIC_KEY
         sync: false

@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../config/constants';
 
 // Admin phones are stored in the ADMIN_PHONES env var as comma-separated values.
 // Example: ADMIN_PHONES="+573001234567,+573009876543"
-function getAdminPhones(): Set<string> {
+export function getAdminPhones(): Set<string> {
   const raw = process.env['ADMIN_PHONES'] ?? '';
   return new Set(
     raw.split(',')
@@ -11,26 +13,48 @@ function getAdminPhones(): Set<string> {
   );
 }
 
+export function isAdminPhone(phone: string): boolean {
+  return getAdminPhones().has(phone.trim());
+}
+
+const ADMIN_TOKEN_TTL = '12h';
+
+export interface AdminJwtPayload {
+  phone: string;
+  role: 'admin';
+}
+
+export function signAdminToken(phone: string): string {
+  const payload: AdminJwtPayload = { phone, role: 'admin' };
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: ADMIN_TOKEN_TTL });
+}
+
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  const adminPhones = getAdminPhones();
-  if (adminPhones.size === 0) {
+  if (getAdminPhones().size === 0) {
     res.status(503).json({ success: false, error: 'Panel de admin no configurado (ADMIN_PHONES vacío).' });
     return;
   }
 
-  // Admin auth: Bearer token where the token IS the admin phone (simple, no JWT).
-  // For production, upgrade to a proper admin JWT or session.
+  // JWT de admin emitido por /admin/auth/verify-otp. El teléfono dentro del
+  // token debe seguir en la lista blanca: revocar = quitarlo de ADMIN_PHONES.
   const header = req.headers['authorization'] ?? '';
-  const phone = header.replace(/^Bearer\s+/i, '').trim();
-
-  if (!phone || !adminPhones.has(phone)) {
+  const token = header.replace(/^Bearer\s+/i, '').trim();
+  if (!token) {
     res.status(401).json({ success: false, error: 'No autorizado.' });
     return;
   }
 
-  // Attach the admin identifier for audit trail.
-  req.adminPhone = phone;
-  next();
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as AdminJwtPayload;
+    if (decoded.role !== 'admin' || !isAdminPhone(decoded.phone)) {
+      res.status(401).json({ success: false, error: 'No autorizado.' });
+      return;
+    }
+    req.adminPhone = decoded.phone;
+    next();
+  } catch {
+    res.status(401).json({ success: false, error: 'Sesión expirada. Vuelve a ingresar.' });
+  }
 }
 
 // Extend Express Request type.
