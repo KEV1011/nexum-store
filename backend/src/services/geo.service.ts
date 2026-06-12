@@ -30,6 +30,59 @@ export function isGeoConfigured(): boolean {
   return GOOGLE_MAPS_API_KEY.length > 0;
 }
 
+export interface GeoHealth {
+  /** GOOGLE_MAPS_API_KEY presente en el entorno del servidor. */
+  keyConfigured: boolean;
+  /** La llamada de prueba a Google respondió OK. */
+  upstreamOk: boolean;
+  /**
+   * Causa del fallo upstream, tal como la reporta Google (sin exponer la key):
+   * p. ej. "REQUEST_DENIED: This API project is not authorized…" (API no
+   * habilitada / sin billing) o "API keys with referer restrictions cannot
+   * be used with this API" (key restringida a Android/web — debe ser sin
+   * restricción de aplicación para uso server-side).
+   */
+  upstreamError: string | null;
+}
+
+/**
+ * Diagnóstico del proxy geo: verifica la key con un reverse geocode barato
+ * del centro de Pamplona. Pensado para abrirse en el navegador cuando "los
+ * mapas no funcionan" y ver la causa exacta sin leer logs.
+ */
+export async function geoHealth(): Promise<GeoHealth> {
+  if (!isGeoConfigured()) {
+    return {
+      keyConfigured: false,
+      upstreamOk: false,
+      upstreamError: 'GOOGLE_MAPS_API_KEY no está definida en el servidor (Render → Environment).',
+    };
+  }
+  try {
+    const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+    url.searchParams.set('latlng', `${DEFAULT_LAT},${DEFAULT_LNG}`);
+    url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
+    const res = await fetch(url);
+    const json = (await res.json()) as Record<string, unknown>;
+    const status = json['status'] as string | undefined;
+    if (status === 'OK' || status === 'ZERO_RESULTS') {
+      return { keyConfigured: true, upstreamOk: true, upstreamError: null };
+    }
+    const detail = json['error_message'] as string | undefined;
+    return {
+      keyConfigured: true,
+      upstreamOk: false,
+      upstreamError: `${status ?? `HTTP ${res.status}`}${detail ? `: ${detail}` : ''}`,
+    };
+  } catch (err) {
+    return {
+      keyConfigured: true,
+      upstreamOk: false,
+      upstreamError: err instanceof Error ? err.message : 'Error de red hacia Google',
+    };
+  }
+}
+
 async function _googleFetch(
   url: string,
   init: { method?: string; body?: unknown; fieldMask?: string },

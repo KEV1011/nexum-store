@@ -1,179 +1,146 @@
 import { Router, Request, Response } from 'express';
 import { DocumentStatus } from '@prisma/client';
-import { requireAdmin } from '../middleware/admin.middleware';
+import {
+  requireAdmin,
+  isAdminPhone,
+  getAdminPhones,
+  signAdminToken,
+} from '../middleware/admin.middleware';
 import {
   listDocumentsForAdmin,
   adminReviewDocument,
 } from '../services/driver-profile.service';
+import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
+import { getAdminMetrics, listDriversForAdmin, listSosForAdmin } from '../services/admin.service';
+import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
 
 const router = Router();
 
-// ─── HTML Admin Panel ────────────────────────────────────────────────────────
+// ─── Auth del panel (OTP → JWT de admin) ─────────────────────────────────────
 
-const PANEL_HTML = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nexum — Verificación de Conductores</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #1a1a1a; }
-    header { background: #1565c0; color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
-    header h1 { font-size: 1.2rem; }
-    #login-form { max-width: 360px; margin: 60px auto; background: #fff; padding: 32px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
-    #login-form h2 { margin-bottom: 20px; font-size: 1rem; color: #333; }
-    input { width: 100%; border: 1px solid #ccc; border-radius: 6px; padding: 10px 12px; font-size: .9rem; margin-bottom: 12px; }
-    button { width: 100%; background: #1565c0; color: #fff; border: none; border-radius: 6px; padding: 12px; font-size: .95rem; cursor: pointer; }
-    button:hover { background: #1976d2; }
-    #app { display: none; padding: 24px; max-width: 1100px; margin: 0 auto; }
-    .controls { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-    .controls select, .controls button { width: auto; padding: 8px 16px; font-size: .85rem; }
-    .controls button { background: #1565c0; }
-    table { width: 100%; background: #fff; border-radius: 10px; border-collapse: collapse; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; }
-    th { background: #e3f2fd; color: #1565c0; padding: 12px 14px; text-align: left; font-size: .8rem; text-transform: uppercase; }
-    td { padding: 10px 14px; border-top: 1px solid #f0f0f0; font-size: .88rem; vertical-align: middle; }
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .75rem; font-weight: 600; }
-    .badge-PENDING  { background: #fff8e1; color: #f57f17; }
-    .badge-APPROVED { background: #e8f5e9; color: #2e7d32; }
-    .badge-REJECTED { background: #fce4ec; color: #c62828; }
-    .btn-sm { padding: 5px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: .8rem; margin-right: 4px; }
-    .btn-approve { background: #2e7d32; color: #fff; }
-    .btn-reject  { background: #c62828; color: #fff; }
-    a.doc-link { color: #1565c0; }
-    #msg { padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; display: none; }
-    #msg.ok  { background: #e8f5e9; color: #2e7d32; }
-    #msg.err { background: #fce4ec; color: #c62828; }
-    .empty { padding: 40px; text-align: center; color: #888; }
-  </style>
-</head>
-<body>
-
-<div id="login-form">
-  <h2>Acceso al panel de administración</h2>
-  <input id="phone-input" type="tel" placeholder="+57300..." />
-  <button onclick="login()">Entrar</button>
-  <p id="login-err" style="color:#c00;font-size:.8rem;margin-top:8px;"></p>
-</div>
-
-<div id="app">
-  <header>
-    <span style="font-size:1.6rem">🛡️</span>
-    <h1>Nexum — Verificación de Conductores</h1>
-  </header>
-  <div style="padding:24px">
-    <div id="msg"></div>
-    <div class="controls">
-      <select id="status-filter">
-        <option value="PENDING">Pendientes</option>
-        <option value="APPROVED">Aprobados</option>
-        <option value="REJECTED">Rechazados</option>
-        <option value="">Todos</option>
-      </select>
-      <button onclick="loadDocs()">Actualizar</button>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Conductor</th>
-          <th>Documento</th>
-          <th>Archivo</th>
-          <th>Estado</th>
-          <th>Subido</th>
-          <th>Acciones</th>
-        </tr>
-      </thead>
-      <tbody id="doc-table-body">
-        <tr><td colspan="6" class="empty">Cargando...</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<script>
-let TOKEN = '';
-
-function login() {
-  const phone = document.getElementById('phone-input').value.trim();
-  if (!phone) return;
-  TOKEN = phone;
-  fetch('/admin/verifications?status=PENDING', { headers: { Authorization: 'Bearer ' + TOKEN } })
-    .then(r => {
-      if (!r.ok) { document.getElementById('login-err').textContent = 'Teléfono no autorizado.'; TOKEN = ''; return; }
-      document.getElementById('login-form').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      loadDocs();
-    });
-}
-
-function loadDocs() {
-  const status = document.getElementById('status-filter').value;
-  const url = '/admin/verifications' + (status ? '?status=' + status : '');
-  fetch(url, { headers: { Authorization: 'Bearer ' + TOKEN } })
-    .then(r => r.json())
-    .then(data => renderTable(data.data || []));
-}
-
-function renderTable(docs) {
-  const tbody = document.getElementById('doc-table-body');
-  if (!docs.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Sin documentos.</td></tr>'; return; }
-  tbody.innerHTML = docs.map(d => \`
-    <tr>
-      <td><strong>\${esc(d.driverName)}</strong></td>
-      <td>\${esc(d.label)}</td>
-      <td><a class="doc-link" href="\${esc(d.fileUrl)}" target="_blank">Ver archivo</a></td>
-      <td><span class="badge badge-\${d.status}">\${d.status}</span></td>
-      <td>\${new Date(d.uploadedAt).toLocaleDateString('es-CO')}</td>
-      <td>
-        \${d.status !== 'APPROVED' ? '<button class="btn-sm btn-approve" onclick="approve(\\''+d.docId+'\\')">Aprobar</button>' : ''}
-        \${d.status !== 'REJECTED' ? '<button class="btn-sm btn-reject"  onclick="reject(\\''+d.docId+'\\')">Rechazar</button>' : ''}
-      </td>
-    </tr>
-  \`).join('');
-}
-
-function approve(docId) {
-  apiFetch('/admin/verifications/' + docId + '/approve', 'POST', {})
-    .then(() => { showMsg('Documento aprobado.', false); loadDocs(); });
-}
-
-function reject(docId) {
-  const reason = prompt('Motivo de rechazo (opcional):') ?? '';
-  apiFetch('/admin/verifications/' + docId + '/reject', 'POST', { rejectionReason: reason })
-    .then(() => { showMsg('Documento rechazado.', false); loadDocs(); });
-}
-
-function apiFetch(url, method, body) {
-  return fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TOKEN },
-    body: JSON.stringify(body),
-  }).then(r => r.json()).catch(e => showMsg(e.message, true));
-}
-
-function showMsg(text, isErr) {
-  const el = document.getElementById('msg');
-  el.textContent = text;
-  el.className = isErr ? 'err' : 'ok';
-  el.style.display = 'block';
-  setTimeout(() => { el.style.display = 'none'; }, 4000);
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-</script>
-</body>
-</html>`;
-
-// GET /admin — HTML panel (no auth; login handled in-browser via Bearer token)
-router.get('/', (_req: Request, res: Response): void => {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(PANEL_HTML);
+// POST /admin/auth/send-otp { phone } — solo teléfonos en ADMIN_PHONES.
+router.post('/auth/send-otp', async (req: Request, res: Response): Promise<void> => {
+  const { phone } = req.body as { phone?: string };
+  if (!phone || typeof phone !== 'string') {
+    res.status(400).json({ success: false, error: 'phone es requerido' });
+    return;
+  }
+  if (getAdminPhones().size === 0) {
+    res.status(503).json({ success: false, error: 'Panel no configurado (ADMIN_PHONES vacío).' });
+    return;
+  }
+  // Mismo mensaje para no-admin que para éxito: no revelar la lista blanca.
+  if (!isAdminPhone(phone)) {
+    res.json({ success: true, data: { success: true } });
+    return;
+  }
+  try {
+    await requestOtp(phone.trim());
+    res.json({ success: true, data: { success: true } });
+  } catch (err) {
+    const status = err instanceof OtpRateLimitError ? 429 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
 });
 
-// All API routes below require admin authentication.
-router.use('/verifications', requireAdmin);
+// POST /admin/auth/verify-otp { phone, otp } → { token }
+router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<void> => {
+  const { phone, otp } = req.body as { phone?: string; otp?: string };
+  if (!phone || !otp) {
+    res.status(400).json({ success: false, error: 'phone y otp son requeridos' });
+    return;
+  }
+  if (!isAdminPhone(phone)) {
+    res.status(401).json({ success: false, error: 'Código inválido' });
+    return;
+  }
+  try {
+    await validateOtp(phone.trim(), otp.trim());
+    res.json({ success: true, data: { token: signAdminToken(phone.trim()) } });
+  } catch {
+    res.status(401).json({ success: false, error: 'Código inválido o expirado' });
+  }
+});
+
+// ─── API del panel (requiere JWT de admin) ───────────────────────────────────
+
+router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos'], requireAdmin);
+
+// GET /admin/metrics
+router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await getAdminMetrics() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/drivers
+router.get('/drivers', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listDriversForAdmin() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/sos
+router.get('/sos', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listSosForAdmin() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/promos · POST /admin/promos · POST /admin/promos/:id/toggle
+router.get('/promos', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await adminListPromos() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post('/promos', async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as Record<string, unknown>;
+  if (typeof b['code'] !== 'string' || typeof b['value'] !== 'number'
+      || (b['type'] !== 'PERCENT' && b['type'] !== 'FIXED')) {
+    res.status(400).json({ success: false, error: 'code, type (PERCENT|FIXED) y value son requeridos' });
+    return;
+  }
+  try {
+    const promo = await adminCreatePromo({
+      code: b['code'],
+      description: typeof b['description'] === 'string' ? b['description'] : undefined,
+      type: b['type'],
+      value: b['value'],
+      scope: b['scope'] === 'TRIPS' || b['scope'] === 'ORDERS' ? b['scope'] : 'ALL',
+      minAmount: typeof b['minAmount'] === 'number' ? b['minAmount'] : undefined,
+      maxDiscount: typeof b['maxDiscount'] === 'number' ? b['maxDiscount'] : undefined,
+      maxRedemptions: typeof b['maxRedemptions'] === 'number' ? b['maxRedemptions'] : undefined,
+      perUserLimit: typeof b['perUserLimit'] === 'number' ? b['perUserLimit'] : undefined,
+      expiresAt: typeof b['expiresAt'] === 'string' && b['expiresAt'] ? b['expiresAt'] : undefined,
+      createdBy: req.adminPhone!,
+    });
+    res.status(201).json({ success: true, data: promo });
+  } catch (err) {
+    const status = err instanceof PromoError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post('/promos/:id/toggle', async (req: Request, res: Response): Promise<void> => {
+  const { active } = req.body as { active?: boolean };
+  try {
+    await adminTogglePromo(req.params['id']!, Boolean(active));
+    res.json({ success: true });
+  } catch {
+    res.status(404).json({ success: false, error: 'Promo no encontrada' });
+  }
+});
+
+// ─── Verificación de documentos (existente) ──────────────────────────────────
 
 // GET /admin/verifications?status=PENDING|APPROVED|REJECTED
 router.get('/verifications', async (req: Request, res: Response): Promise<void> => {
@@ -217,6 +184,310 @@ router.post('/verifications/:docId/reject', async (req: Request, res: Response):
     const message = err instanceof Error ? err.message : 'Error al rechazar';
     res.status(500).json({ success: false, error: message });
   }
+});
+
+// ─── HTML del panel ──────────────────────────────────────────────────────────
+
+const PANEL_HTML = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexum — Panel de Operación</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #1a1a1a; }
+    header { background: #1565c0; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 1.1rem; flex: 1; }
+    header button { width: auto; background: rgba(255,255,255,.15); padding: 6px 14px; font-size: .8rem; }
+    .card { max-width: 360px; margin: 60px auto; background: #fff; padding: 32px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+    .card h2 { margin-bottom: 18px; font-size: 1rem; color: #333; }
+    input, select { width: 100%; border: 1px solid #ccc; border-radius: 6px; padding: 10px 12px; font-size: .9rem; margin-bottom: 12px; background:#fff; }
+    button { width: 100%; background: #1565c0; color: #fff; border: none; border-radius: 6px; padding: 11px; font-size: .92rem; cursor: pointer; }
+    button:hover { filter: brightness(1.08); }
+    #app { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
+    nav.tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+    nav.tabs button { width: auto; padding: 8px 18px; background: #fff; color: #1565c0; border: 1px solid #cfd8dc; font-size: .85rem; border-radius: 20px; }
+    nav.tabs button.active { background: #1565c0; color: #fff; border-color: #1565c0; }
+    table { width: 100%; background: #fff; border-radius: 10px; border-collapse: collapse; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; }
+    th { background: #e3f2fd; color: #1565c0; padding: 11px 13px; text-align: left; font-size: .76rem; text-transform: uppercase; }
+    td { padding: 9px 13px; border-top: 1px solid #f0f0f0; font-size: .87rem; vertical-align: middle; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .73rem; font-weight: 600; }
+    .badge-PENDING { background: #fff8e1; color: #f57f17; }
+    .badge-APPROVED, .badge-ONLINE, .badge-ok { background: #e8f5e9; color: #2e7d32; }
+    .badge-REJECTED, .badge-PANIC { background: #fce4ec; color: #c62828; }
+    .badge-OFFLINE { background: #eceff1; color: #607d8b; }
+    .badge-ON_TRIP { background: #e3f2fd; color: #1565c0; }
+    .btn-sm { width:auto; padding: 5px 12px; border-radius: 6px; font-size: .78rem; margin-right: 4px; }
+    .btn-approve { background: #2e7d32; }
+    .btn-reject { background: #c62828; }
+    a { color: #1565c0; }
+    #msg { padding: 10px 16px; border-radius: 8px; margin-bottom: 14px; display: none; }
+    #msg.ok { background: #e8f5e9; color: #2e7d32; }
+    #msg.err { background: #fce4ec; color: #c62828; }
+    .empty { padding: 36px; text-align: center; color: #888; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .metric { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+    .metric .v { font-size: 1.5rem; font-weight: 700; color: #1565c0; }
+    .metric .l { font-size: .75rem; color: #777; margin-top: 4px; }
+    form.inline { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; align-items:end; }
+    form.inline label { font-size:.72rem; color:#666; display:block; margin-bottom:4px; }
+    form.inline input, form.inline select { margin-bottom:0; }
+  </style>
+</head>
+<body>
+
+<div id="login" class="card">
+  <h2>Panel de operación Nexum</h2>
+  <div id="step-phone">
+    <input id="phone" type="tel" placeholder="+573001234567" />
+    <button onclick="sendOtp()">Enviarme el código</button>
+  </div>
+  <div id="step-otp" style="display:none">
+    <input id="otp" inputmode="numeric" maxlength="6" placeholder="Código SMS (6 dígitos)" />
+    <button onclick="verifyOtp()">Entrar</button>
+  </div>
+  <p id="login-err" style="color:#c00;font-size:.8rem;margin-top:8px;"></p>
+</div>
+
+<div id="app">
+  <header>
+    <span style="font-size:1.4rem">🛡️</span>
+    <h1>Nexum — Panel de Operación</h1>
+    <button onclick="logout()" style="width:auto">Salir</button>
+  </header>
+  <div style="padding:18px 0">
+    <div id="msg"></div>
+    <nav class="tabs">
+      <button data-tab="metrics" class="active" onclick="show('metrics')">Métricas</button>
+      <button data-tab="docs" onclick="show('docs')">Verificaciones</button>
+      <button data-tab="drivers" onclick="show('drivers')">Conductores</button>
+      <button data-tab="sos" onclick="show('sos')">SOS</button>
+      <button data-tab="promos" onclick="show('promos')">Promos</button>
+    </nav>
+
+    <section id="tab-metrics"><div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div></section>
+
+    <section id="tab-docs" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <select id="status-filter" style="width:auto" onchange="loadDocs()">
+          <option value="PENDING">Pendientes</option>
+          <option value="APPROVED">Aprobados</option>
+          <option value="REJECTED">Rechazados</option>
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <table><thead><tr><th>Conductor</th><th>Documento</th><th>Archivo</th><th>Estado</th><th>Subido</th><th>Acciones</th></tr></thead>
+      <tbody id="docs-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+
+    <section id="tab-drivers" style="display:none">
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Rating</th><th>Viajes</th><th>Última conexión</th></tr></thead>
+      <tbody id="drivers-body"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+
+    <section id="tab-sos" style="display:none">
+      <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Quién</th><th>Teléfono</th><th>Viaje</th><th>Ubicación</th></tr></thead>
+      <tbody id="sos-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+
+    <section id="tab-promos" style="display:none">
+      <form class="inline" onsubmit="createPromo(event)">
+        <div><label>Código</label><input id="p-code" placeholder="BIENVENIDO20" required /></div>
+        <div><label>Tipo</label><select id="p-type"><option value="PERCENT">% Porcentaje</option><option value="FIXED">$ Fijo (COP)</option></select></div>
+        <div><label>Valor</label><input id="p-value" type="number" min="1" required /></div>
+        <div><label>Aplica a</label><select id="p-scope"><option value="ALL">Todo</option><option value="TRIPS">Viajes</option><option value="ORDERS">Pedidos</option></select></div>
+        <div><label>Usos totales (vacío = ∞)</label><input id="p-max" type="number" min="1" /></div>
+        <div><label>Vence</label><input id="p-exp" type="date" /></div>
+        <div><button class="btn-sm" type="submit" style="padding:10px">Crear cupón</button></div>
+      </form>
+      <table><thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Aplica</th><th>Canjes</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="promos-body"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+  </div>
+</div>
+
+<script>
+let TOKEN = sessionStorage.getItem('nx_admin_token') || '';
+let PHONE = '';
+
+if (TOKEN) { boot(); }
+
+function api(path, opts = {}) {
+  return fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + TOKEN, ...(opts.headers || {}) },
+  }).then(async (r) => {
+    if (r.status === 401) { logout(); throw new Error('Sesión expirada'); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.success === false) throw new Error(j.error || 'Error');
+    return j.data;
+  });
+}
+
+function sendOtp() {
+  PHONE = document.getElementById('phone').value.trim();
+  if (!PHONE) return;
+  fetch('/admin/auth/send-otp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: PHONE }) })
+    .then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { document.getElementById('login-err').textContent = j.error || 'Error enviando código'; return; }
+      document.getElementById('step-phone').style.display = 'none';
+      document.getElementById('step-otp').style.display = 'block';
+      document.getElementById('login-err').textContent = '';
+      document.getElementById('otp').focus();
+    });
+}
+
+function verifyOtp() {
+  const otp = document.getElementById('otp').value.trim();
+  fetch('/admin/auth/verify-otp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: PHONE, otp }) })
+    .then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.data?.token) { document.getElementById('login-err').textContent = j.error || 'Código inválido'; return; }
+      TOKEN = j.data.token;
+      sessionStorage.setItem('nx_admin_token', TOKEN);
+      boot();
+    });
+}
+
+function logout() {
+  sessionStorage.removeItem('nx_admin_token');
+  TOKEN = '';
+  location.reload();
+}
+
+function boot() {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  show('metrics');
+}
+
+function show(tab) {
+  for (const s of document.querySelectorAll('section[id^="tab-"]')) s.style.display = 'none';
+  document.getElementById('tab-' + tab).style.display = 'block';
+  for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
+  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, sos: loadSos, promos: loadPromos })[tab]();
+}
+
+const money = (v) => '$' + Number(v || 0).toLocaleString('es-CO');
+const when = (iso) => iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+function loadMetrics() {
+  api('/admin/metrics').then((m) => {
+    document.getElementById('metrics-grid').innerHTML = [
+      [m.trips.todayRequested, 'Viajes pedidos hoy'],
+      [m.trips.todayCompleted, 'Completados hoy'],
+      [m.trips.activeNow, 'Viajes activos ahora'],
+      [m.trips.last7dCompleted, 'Completados 7 días'],
+      [money(m.money.todayGmv), 'GMV hoy'],
+      [money(m.money.todayCommission), 'Comisión hoy'],
+      [money(m.money.paymentsApprovedToday), 'Pagos Wompi hoy'],
+      [m.drivers.onlineNow + ' / ' + m.drivers.total, 'Conductores en línea'],
+      [m.drivers.verified, 'Verificados'],
+      [m.drivers.pendingDocuments, 'Docs pendientes'],
+      [m.users.total + ' (+' + m.users.newToday + ' hoy)', 'Usuarios'],
+      [m.safety.sosLast24h, 'SOS últimas 24 h'],
+    ].map(([v, l]) => '<div class="metric"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function loadDocs() {
+  const status = document.getElementById('status-filter').value;
+  api('/admin/verifications' + (status ? '?status=' + status : '')).then((docs) => {
+    const tb = document.getElementById('docs-body');
+    if (!docs.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin documentos.</td></tr>'; return; }
+    tb.innerHTML = docs.map((d) => '<tr><td><strong>' + esc(d.driverName) + '</strong></td><td>' + esc(d.label) +
+      '</td><td><a href="' + esc(d.fileUrl) + '" target="_blank">Ver archivo</a></td><td><span class="badge badge-' + d.status + '">' + d.status +
+      '</span></td><td>' + when(d.uploadedAt) + '</td><td>' +
+      (d.status !== 'APPROVED' ? '<button class="btn-sm btn-approve" onclick="reviewDoc(\\'' + d.docId + '\\', true)">Aprobar</button>' : '') +
+      (d.status !== 'REJECTED' ? '<button class="btn-sm btn-reject" onclick="reviewDoc(\\'' + d.docId + '\\', false)">Rechazar</button>' : '') +
+      '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function reviewDoc(id, approve) {
+  const body = approve ? {} : { rejectionReason: prompt('Motivo de rechazo (opcional):') || '' };
+  api('/admin/verifications/' + id + (approve ? '/approve' : '/reject'), { method: 'POST', body: JSON.stringify(body) })
+    .then(() => { showMsg(approve ? 'Documento aprobado.' : 'Documento rechazado.', false); loadDocs(); })
+    .catch((e) => showMsg(e.message, true));
+}
+
+function loadDrivers() {
+  api('/admin/drivers').then((rows) => {
+    const tb = document.getElementById('drivers-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Sin conductores.</td></tr>'; return; }
+    tb.innerHTML = rows.map((d) => '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
+      '</td><td><span class="badge badge-' + d.status + '">' + d.status + '</span></td><td>' + (d.isVerified ? '✅' : '—') +
+      '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function loadSos() {
+  api('/admin/sos').then((rows) => {
+    const tb = document.getElementById('sos-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin eventos SOS. 🎉</td></tr>'; return; }
+    tb.innerHTML = rows.map((e) => '<tr><td>' + when(e.createdAt) + '</td><td><span class="badge badge-' + e.type + '">' + e.type +
+      '</span></td><td>' + esc(e.actorName) + ' (' + e.actorRole + ')</td><td>' + esc(e.actorPhoneMasked) + '</td><td>' + esc(e.tripId || '—') +
+      '</td><td><a href="' + esc(e.mapLink) + '" target="_blank">Ver mapa</a></td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function loadPromos() {
+  api('/admin/promos').then((rows) => {
+    const tb = document.getElementById('promos-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Sin cupones aún.</td></tr>'; return; }
+    tb.innerHTML = rows.map((p) => '<tr><td><strong>' + esc(p.code) + '</strong></td><td>' + (p.type === 'PERCENT' ? '%' : 'COP') +
+      '</td><td>' + (p.type === 'PERCENT' ? p.value + '%' : money(p.value)) + '</td><td>' + p.scope + '</td><td>' + p.redemptions +
+      (p.maxRedemptions ? ' / ' + p.maxRedemptions : '') + '</td><td>' + (p.expiresAt ? when(p.expiresAt) : '—') +
+      '</td><td><span class="badge ' + (p.active ? 'badge-ok' : 'badge-OFFLINE') + '">' + (p.active ? 'Activo' : 'Inactivo') +
+      '</span></td><td><button class="btn-sm" onclick="togglePromo(\\'' + p.id + '\\', ' + !p.active + ')">' + (p.active ? 'Desactivar' : 'Activar') + '</button></td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function createPromo(ev) {
+  ev.preventDefault();
+  const max = document.getElementById('p-max').value;
+  const exp = document.getElementById('p-exp').value;
+  api('/admin/promos', {
+    method: 'POST',
+    body: JSON.stringify({
+      code: document.getElementById('p-code').value,
+      type: document.getElementById('p-type').value,
+      value: Number(document.getElementById('p-value').value),
+      scope: document.getElementById('p-scope').value,
+      maxRedemptions: max ? Number(max) : undefined,
+      perUserLimit: 1,
+      expiresAt: exp ? exp + 'T23:59:59-05:00' : undefined,
+    }),
+  }).then(() => { showMsg('Cupón creado.', false); loadPromos(); })
+    .catch((e) => showMsg(e.message, true));
+}
+
+function togglePromo(id, active) {
+  api('/admin/promos/' + id + '/toggle', { method: 'POST', body: JSON.stringify({ active }) })
+    .then(() => loadPromos()).catch((e) => showMsg(e.message, true));
+}
+
+function showMsg(text, isErr) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = isErr ? 'err' : 'ok';
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+</script>
+</body>
+</html>`;
+
+// GET /admin — panel HTML (público; el acceso real lo da el OTP + JWT).
+router.get('/', (_req: Request, res: Response): void => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(PANEL_HTML);
 });
 
 export default router;

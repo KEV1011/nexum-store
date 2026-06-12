@@ -14,11 +14,23 @@
 const TWILIO_ACCOUNT_SID = process.env['TWILIO_ACCOUNT_SID'] ?? '';
 const TWILIO_AUTH_TOKEN = process.env['TWILIO_AUTH_TOKEN'] ?? '';
 const TWILIO_VERIFY_SID = process.env['TWILIO_VERIFY_SID'] ?? '';
+// Remitente para SMS transaccionales (alertas SOS): un Messaging Service SID
+// ("MG...") o un número Twilio en E.164. Independiente de Verify.
+const TWILIO_MESSAGING_SERVICE_SID = process.env['TWILIO_MESSAGING_SERVICE_SID'] ?? '';
+const TWILIO_FROM_NUMBER = process.env['TWILIO_FROM_NUMBER'] ?? '';
 
 const VERIFY_BASE = 'https://verify.twilio.com/v2/Services';
+const MESSAGES_URL = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
 
 export function isSmsConfigured(): boolean {
   return Boolean(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_VERIFY_SID);
+}
+
+/** Hay credenciales para SMS transaccionales (no OTP), p. ej. alertas SOS. */
+export function isSmsSenderConfigured(): boolean {
+  return Boolean(
+    TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && (TWILIO_MESSAGING_SERVICE_SID || TWILIO_FROM_NUMBER),
+  );
 }
 
 /** Teléfono en E.164 estricto (Twilio rechaza espacios): "+573124567890". */
@@ -67,5 +79,37 @@ export async function checkSmsVerification(phone: string, code: string): Promise
     // para el llamador eso es simplemente un código inválido.
     if (err instanceof Error && /404|not found/i.test(err.message)) return false;
     throw err;
+  }
+}
+
+/**
+ * Envía un SMS transaccional (alertas SOS, links de seguimiento).
+ * Devuelve true si Twilio aceptó el mensaje. No lanza: las alertas nunca
+ * deben tumbar el flujo que las origina.
+ */
+export async function sendSms(to: string, body: string): Promise<boolean> {
+  if (!isSmsSenderConfigured()) return false;
+  try {
+    const form: Record<string, string> = { To: toE164(to), Body: body };
+    if (TWILIO_MESSAGING_SERVICE_SID) form['MessagingServiceSid'] = TWILIO_MESSAGING_SERVICE_SID;
+    else form['From'] = TWILIO_FROM_NUMBER;
+
+    const res = await fetch(MESSAGES_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: _authHeader(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(form).toString(),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      console.error(`[SMS] Twilio rechazó el envío (HTTP ${res.status}): ${String(err['message'] ?? '')}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[SMS] Error de red enviando SMS:', err instanceof Error ? err.message : 'unknown');
+    return false;
   }
 }
