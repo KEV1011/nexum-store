@@ -6,35 +6,42 @@ Pasos para poner la app lista para Play Store / producción real.
 
 ## 1. Google Maps API Key
 
+> **Arquitectura actual:** las apps NO usan la key directamente. El mapa
+> visual se dibuja con OpenStreetMap (sin key). Lo que usa Google es el
+> **backend**, vía el proxy `/geo/*`: autocompletado de direcciones (Places
+> API New), dirección desde GPS (Geocoding API) y ruta+ETA real (Routes API).
+> Por eso la key se configura **en Render**, no en GitHub ni en la app.
+
 ### Conseguir la key (5 min)
 1. Ir a https://console.cloud.google.com/google/maps-apis/start
 2. Crear un proyecto nuevo (o seleccionar uno existente)
-3. **Habilitar estas APIs:**
-   - Maps SDK for Android
-   - Maps JavaScript API (para web)
-   - Places API (opcional — autocompletado de direcciones)
-4. Ir a **Credentials → Create Credentials → API Key**
-5. Copiar la key (`AIza...`)
-6. **Restringir la key** (importante — evita uso indebido):
-   - Application restrictions → Android apps → agregar `com.nexum.driver_app` con el SHA-1 de tu keystore
-   - HTTP referrers → agregar `kev1011.github.io/*` para web
+3. **Habilitar billing** en el proyecto (obligatorio — sin billing TODAS las
+   llamadas fallan con `REQUEST_DENIED`; el crédito gratuito mensual de
+   Google cubre de sobra el uso de un piloto)
+4. **Habilitar estas 3 APIs** (Library → buscar → Enable):
+   - **Places API (New)** — ojo: la "(New)", no la legacy
+   - **Routes API**
+   - **Geocoding API**
+5. Ir a **Credentials → Create Credentials → API Key** y copiar la key (`AIza...`)
+6. **Restringir la key** (importante — pero del modo correcto):
+   - **Application restrictions → None** (la key se usa desde el servidor;
+     restringirla a Android/HTTP referrers hace que Google RECHACE las
+     llamadas del backend)
+   - **API restrictions → Restrict key** → marcar solo las 3 APIs de arriba
 
 ### Configurar en el proyecto
 
-**Opción A — Para builds locales (Android):**
-Agregar a `AppTransport/android/local.properties`:
-```
-google.maps.api.key=AIzaXXXXXXXXXXXXXXX
-```
+En https://dashboard.render.com → servicio `nexum-api` → **Environment**:
+- Key: `GOOGLE_MAPS_API_KEY` · Value: `AIzaXXXXXXXXXXXXXXX`
 
-**Opción B — Para builds en CI/CD (recomendado):**
-En GitHub → Settings → Secrets and variables → Actions → New repository secret:
-- Name: `GOOGLE_MAPS_API_KEY`
-- Value: `AIzaXXXXXXXXXXXXXXX`
+Render reinicia el servicio solo. Nada que tocar en las apps ni en GitHub.
 
-Al hacer push, el workflow inyecta la key automáticamente en:
-- APK / AAB (manifestPlaceholders)
-- Build web (sed en `build/web/index.html`)
+### Verificar que quedó bien
+Abrir en el navegador: `https://nexum-api.onrender.com/geo/health`
+- `keyConfigured: false` → falta la variable en Render.
+- `upstreamOk: false` + `upstreamError` → ahí dice la causa exacta
+  (API no habilitada, billing apagado, key restringida, etc.).
+- `upstreamOk: true` → búsqueda de direcciones, ETA y rutas funcionando.
 
 ---
 

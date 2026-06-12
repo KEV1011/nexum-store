@@ -7,10 +7,19 @@ import {
   placeDetails,
   reverseGeocode,
   directions,
+  geoHealth,
   GeoError,
 } from '../services/geo.service';
 
 const router = Router();
+
+// GET /geo/health — diagnóstico del proxy de Google Maps. Público y sin PII:
+// abre https://<api>/geo/health en el navegador para ver por qué fallan los
+// mapas (key ausente, API no habilitada, billing, restricciones de la key…).
+router.get('/health', async (_req: Request, res: Response) => {
+  const health = await geoHealth();
+  res.status(health.upstreamOk ? 200 : 503).json({ success: health.upstreamOk, data: health });
+});
 
 // Acepta token de cliente O de conductor: ambos usan los servicios geo.
 function anyAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
