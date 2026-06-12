@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { clientAuthMiddleware } from '../middleware/client-auth.middleware';
+import { OtpRateLimitError } from '../services/otp.service';
 import {
   sendClientOtp,
   verifyClientOtp,
@@ -54,7 +55,7 @@ import {
   INTERCITY_REMOVE_CAP,
   INTERCITY_DUAL_MODEL,
 } from '../config/constants';
-import { createPaymentLink } from '../services/payment.service';
+import { createPaymentLink, getPaymentByReference, reconcilePayment } from '../services/payment.service';
 import { getFareEstimate } from '../services/surge.service';
 import {
   RequestClientErrandDTO,
@@ -74,7 +75,8 @@ router.post('/auth/send-otp', async (req, res) => {
     await sendClientOtp(phone);
     res.json({ success: true, data: { success: true } });
   } catch (err) {
-    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Error sending OTP' });
+    const status = err instanceof OtpRateLimitError ? 429 : 400;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error sending OTP' });
   }
 });
 
@@ -463,6 +465,29 @@ router.post('/payments/init', clientAuthMiddleware, async (req, res) => {
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to create payment' });
   }
+});
+
+// GET /client/payments/:ref — estado del pago (la app hace poll tras abrir el
+// checkout). Reconcilia contra Wompi si sigue pendiente, por si el webhook
+// se perdió.
+router.get('/payments/:ref', clientAuthMiddleware, async (req, res) => {
+  const ref = req.params['ref']!;
+  await reconcilePayment(ref);
+  const payment = await getPaymentByReference(ref);
+  if (!payment || payment.clientId !== req.clientId) {
+    res.status(404).json({ success: false, error: 'Payment not found' });
+    return;
+  }
+  res.json({
+    success: true,
+    data: {
+      referenceCode: payment.referenceCode,
+      status: payment.status,
+      amount: payment.amount,
+      orderId: payment.orderId ?? null,
+      tripId: payment.tripId ?? null,
+    },
+  });
 });
 
 export default router;

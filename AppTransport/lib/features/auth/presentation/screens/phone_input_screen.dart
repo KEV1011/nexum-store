@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -160,15 +161,16 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                       validator: _validatePhone,
                     ),
 
-                    const SizedBox(height: AppConstants.spacingS),
-
-                    // ── Demo hint ─────────────────────────────────────────
-                    Text(
-                      'Demo: usa ${AppConstants.mockDriverPhone}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                    // ── Demo hint (solo builds de desarrollo) ─────────────
+                    if (kDebugMode) ...[
+                      const SizedBox(height: AppConstants.spacingS),
+                      Text(
+                        'Demo: usa ${AppConstants.mockDriverPhone}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    ),
+                    ],
 
                     const SizedBox(height: AppConstants.spacingXL),
 

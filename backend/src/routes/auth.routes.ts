@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { isValidColombianPhone, sendOtp, verifyOtp, registerDriver, verifyToken } from '../services/auth.service';
+import { OtpRateLimitError } from '../services/otp.service';
 import { RegisterDriverDTO } from '../types';
 
 const router = Router();
@@ -26,7 +27,7 @@ router.post('/send-otp', async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({ success: true, data: { success: true } });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to send OTP';
-    res.status(500).json({ success: false, error: message });
+    res.status(err instanceof OtpRateLimitError ? 429 : 500).json({ success: false, error: message });
   }
 });
 

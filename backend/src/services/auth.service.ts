@@ -1,9 +1,8 @@
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, JWT_EXPIRES_IN, MOCK_OTP } from '../config/constants';
+import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/constants';
 import { DriverDTO, JwtPayload, RegisterDriverDTO } from '../types';
 import { prisma } from '../lib/prisma';
-
-const OTP_TTL_MS = 5 * 60 * 1000;
+import { requestOtp, validateOtp } from './otp.service';
 
 export function isValidColombianPhone(phone: string): boolean {
   const cleaned = phone.replace(/\s+/g, '');
@@ -11,36 +10,15 @@ export function isValidColombianPhone(phone: string): boolean {
 }
 
 export async function sendOtp(phone: string): Promise<void> {
-  const code = MOCK_OTP ?? Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-  // Invalidate old sessions for this phone
-  await prisma.otpSession.updateMany({
-    where: { phone, used: false },
-    data: { used: true },
-  });
   const driver = await prisma.driver.findUnique({ where: { phone } });
-  await prisma.otpSession.create({
-    data: { phone, code, expiresAt, driverId: driver?.id },
-  });
+  await requestOtp(phone, driver?.id);
 }
 
 export async function verifyOtp(
   phone: string,
   otp: string,
 ): Promise<{ token: string; driver: DriverDTO; isRegistered: boolean }> {
-  const session = await prisma.otpSession.findFirst({
-    where: { phone, used: false, expiresAt: { gte: new Date() } },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  if (!session) throw new Error('No OTP requested for this phone number');
-  if (new Date() > session.expiresAt) {
-    await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
-    throw new Error('OTP has expired');
-  }
-  if (session.code !== otp) throw new Error('Invalid OTP');
-
-  await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
+  await validateOtp(phone, otp);
 
   const existingDriver = await prisma.driver.findUnique({
     where: { phone },
