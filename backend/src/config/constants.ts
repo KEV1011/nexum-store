@@ -11,9 +11,14 @@ export const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-export const JWT_SECRET = process.env['JWT_SECRET'] ?? 'nexum-driver-secret-key-2024';
+// En producción el secreto JWT debe venir del entorno: con el default
+// publicado en el repo cualquiera podría firmar tokens válidos.
+const _jwtSecret = process.env['JWT_SECRET'];
+if (NODE_ENV === 'production' && (!_jwtSecret || _jwtSecret === 'CHANGE_ME_IN_PRODUCTION')) {
+  throw new Error('JWT_SECRET must be set to a strong random value in production (openssl rand -hex 32)');
+}
+export const JWT_SECRET = _jwtSecret ?? 'nexum-driver-secret-key-2024';
 export const JWT_EXPIRES_IN = '30d';
-export const MOCK_OTP = '123456';
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 

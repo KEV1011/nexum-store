@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
@@ -8,10 +10,10 @@ import 'package:nexum_driver/shared/services/ws_service.dart';
 
 /// Servicio de geolocalización para el app del conductor.
 ///
-/// NOTA MVP: El tracking en background está PREPARADO pero NO activado.
-/// Se activará en la siguiente fase cuando exista backend real.
-/// Por ahora, simula el envío de coordenadas con print() cada
-/// [AppConstants.locationBatchIntervalSeconds] segundos.
+/// En Android el tracking corre dentro de un foreground service (notificación
+/// persistente "Estás en línea"), así el GPS sigue reportando al backend con
+/// la pantalla apagada o la app minimizada — requisito para recibir viajes
+/// como en Uber/DiDi. En web/iOS degrada a tracking en primer plano.
 class LocationService {
   LocationService._();
   static final LocationService _instance = LocationService._();
@@ -81,22 +83,48 @@ class LocationService {
 
   // ── Background tracking ────────────────────────────────────────────────────
 
-  /// Inicia el tracking simulado de ubicación.
+  /// Ajustes del stream de posición por plataforma. En Android adjunta el
+  /// foreground service que mantiene vivo el GPS en segundo plano.
+  LocationSettings _platformSettings() {
+    if (!kIsWeb && Platform.isAndroid) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: 'Nexum Conductor — en línea',
+          notificationText:
+              'Compartiendo tu ubicación para asignarte viajes cercanos',
+          notificationChannelName: 'Ubicación en segundo plano',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
+      );
+    }
+    if (!kIsWeb && Platform.isIOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+        showBackgroundLocationIndicator: true,
+        pauseLocationUpdatesAutomatically: false,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+    );
+  }
+
+  /// Inicia el tracking de ubicación y el envío periódico al backend.
   ///
   /// Envía coordenadas cada [AppConstants.locationBatchIntervalSeconds]
-  /// segundos.
-  ///
-  /// TODO(backend): Reemplazar print() con llamada real al API.
+  /// segundos vía WebSocket (alimenta el matching geoespacial).
   void startTracking() {
     if (_isTracking) return;
     _isTracking = true;
 
     // Listen to the position stream to keep _lastPosition fresh
     _positionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
-      ),
+      locationSettings: _platformSettings(),
     ).listen((pos) {
       _lastPosition = pos;
     });

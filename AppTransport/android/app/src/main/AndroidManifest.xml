@@ -29,6 +29,12 @@
     -->
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <!--
+        POST_NOTIFICATIONS (API 33+): notificaciones push FCM y la
+        notificación persistente del foreground service de ubicación.
+    -->
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- ─── Permisos de dispositivo ────────────────────────────────────── -->
     <uses-permission
         android:name="android.permission.VIBRATE"/>

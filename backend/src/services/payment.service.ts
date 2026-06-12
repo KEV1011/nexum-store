@@ -1,9 +1,14 @@
 import { randomUUID, createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
+import { sendPushToClient } from './push.service';
 
 const WOMPI_PUBLIC_KEY = process.env['WOMPI_PUBLIC_KEY'] ?? '';
 const WOMPI_PRIVATE_KEY = process.env['WOMPI_PRIVATE_KEY'] ?? '';
 const WOMPI_EVENTS_SECRET = process.env['WOMPI_EVENTS_SECRET'] ?? '';
+// Secreto de integridad del comercio (Wompi → Desarrolladores → Llaves).
+// Obligatorio para que el checkout web acepte el link cuando la cuenta tiene
+// firma de integridad activada (default en cuentas nuevas).
+const WOMPI_INTEGRITY_SECRET = process.env['WOMPI_INTEGRITY_SECRET'] ?? '';
 const APP_URL = process.env['APP_URL'] ?? 'http://localhost:3000';
 
 type PaymentStatus = 'pending' | 'approved' | 'rejected' | 'voided';
@@ -20,6 +25,12 @@ export interface PaymentRecord {
   status: PaymentStatus;
   createdAt: Date;
   paymentUrl: string;
+}
+
+/** API base según el ambiente de las llaves (test → sandbox). */
+function _wompiApiBase(): string {
+  const isTest = WOMPI_PRIVATE_KEY.startsWith('prv_test_') || WOMPI_PUBLIC_KEY.startsWith('pub_test_');
+  return isTest ? 'https://sandbox.wompi.co/v1' : 'https://production.wompi.co/v1';
 }
 
 export async function createPaymentLink(
@@ -45,6 +56,13 @@ export async function createPaymentLink(
       `&amount-in-cents=${amountCents}` +
       `&reference=${referenceCode}` +
       `&redirect-url=${redirectUrl}`;
+    if (WOMPI_INTEGRITY_SECRET) {
+      // SHA256(referencia + monto-en-centavos + moneda + secreto de integridad)
+      const integrity = createHash('sha256')
+        .update(`${referenceCode}${amountCents}COP${WOMPI_INTEGRITY_SECRET}`)
+        .digest('hex');
+      paymentUrl += `&signature%3Aintegrity=${integrity}`;
+    }
   } else {
     paymentUrl = `https://checkout.wompi.co/p/?public-key=pub_test_nexum_demo&currency=COP&amount-in-cents=${amountCents}&reference=${referenceCode}`;
   }
@@ -66,6 +84,38 @@ export async function createPaymentLink(
   return { paymentId: payment.id, referenceCode: payment.referenceCode, paymentUrl: payment.paymentUrl, amount: payment.amount };
 }
 
+/**
+ * Aplica un cambio de estado a un pago y dispara los efectos colaterales
+ * (push al cliente). Idempotente: re-aplicar el mismo estado no duplica nada.
+ */
+async function _applyPaymentStatus(referenceCode: string, newStatus: PaymentStatus): Promise<void> {
+  const existing = await prisma.payment.findUnique({ where: { referenceCode } });
+  if (!existing || existing.status === newStatus) return;
+
+  await prisma.payment.update({ where: { referenceCode }, data: { status: newStatus } });
+
+  if (newStatus === 'approved') {
+    void sendPushToClient(existing.clientId, {
+      title: 'Pago aprobado',
+      body: `Tu pago de $${existing.amount.toLocaleString('es-CO')} fue aprobado. ¡Gracias!`,
+      data: { type: 'payment_approved', referenceCode },
+    });
+  } else if (newStatus === 'rejected') {
+    void sendPushToClient(existing.clientId, {
+      title: 'Pago rechazado',
+      body: 'Tu pago no pudo procesarse. Puedes intentarlo de nuevo desde la app.',
+      data: { type: 'payment_rejected', referenceCode },
+    });
+  }
+}
+
+function _mapWompiStatus(status: string | undefined): PaymentStatus {
+  return status === 'APPROVED' ? 'approved'
+    : status === 'DECLINED' ? 'rejected'
+    : status === 'VOIDED' || status === 'ERROR' ? 'voided'
+    : 'pending';
+}
+
 export async function handleWompiWebhook(body: unknown, signature: string): Promise<{ handled: boolean; referenceCode?: string }> {
   if (WOMPI_EVENTS_SECRET) {
     const evt = body as Record<string, unknown>;
@@ -85,18 +135,37 @@ export async function handleWompiWebhook(body: unknown, signature: string): Prom
     const ref = tx?.['reference'] as string | undefined;
     const status = tx?.['status'] as string | undefined;
     if (ref) {
-      const newStatus: PaymentStatus = status === 'APPROVED' ? 'approved'
-        : status === 'DECLINED' ? 'rejected'
-        : status === 'VOIDED' ? 'voided'
-        : 'pending';
-      await prisma.payment.update({
-        where: { referenceCode: ref },
-        data: { status: newStatus },
-      }).catch(() => { /* payment may not exist */ });
+      await _applyPaymentStatus(ref, _mapWompiStatus(status)).catch(() => { /* payment may not exist */ });
     }
     return { handled: true, referenceCode: ref };
   }
   return { handled: true };
+}
+
+/**
+ * Reconciliación activa: consulta el estado real de la transacción en la API
+ * de Wompi (fallback para webhooks perdidos). Solo actúa sobre pagos
+ * `pending` y cuando hay llave privada configurada.
+ */
+export async function reconcilePayment(referenceCode: string): Promise<void> {
+  if (!WOMPI_PRIVATE_KEY) return;
+  const payment = await prisma.payment.findUnique({ where: { referenceCode } });
+  if (!payment || payment.status !== 'pending') return;
+
+  try {
+    const res = await fetch(
+      `${_wompiApiBase()}/transactions?reference=${encodeURIComponent(referenceCode)}`,
+      { headers: { Authorization: `Bearer ${WOMPI_PRIVATE_KEY}` } },
+    );
+    if (!res.ok) return;
+    const body = (await res.json()) as { data?: Array<{ status?: string }> };
+    const tx = body.data?.[0];
+    if (!tx) return; // el usuario aún no completa el checkout
+    const mapped = _mapWompiStatus(tx.status);
+    if (mapped !== 'pending') await _applyPaymentStatus(referenceCode, mapped);
+  } catch {
+    // Red caída o Wompi no disponible: el webhook o el próximo poll resolverá.
+  }
 }
 
 export async function getPaymentByReference(ref: string): Promise<PaymentRecord | undefined> {
@@ -116,6 +185,3 @@ export async function getPaymentByReference(ref: string): Promise<PaymentRecord 
     paymentUrl: p.paymentUrl,
   };
 }
-
-// Suppress unused variable warning for WOMPI_PRIVATE_KEY (reserved for future server-side use)
-void WOMPI_PRIVATE_KEY;

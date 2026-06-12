@@ -2,7 +2,10 @@ services:
   - type: web
     name: nexum-api
     env: docker
-    plan: free
+    # Plan pago (Starter ~US$7/mes): sin cold-starts — el plan free duerme el
+    # servicio tras 15 min y cada arranque tarda ~50 s, inaceptable para una
+    # app de transporte en tiempo real. Cambia a "free" si solo estás probando.
+    plan: starter
     region: oregon
     branch: main
     dockerfilePath: ./Dockerfile
@@ -33,10 +36,36 @@ services:
       # Sin definir → push en modo mock (solo logs).
       - key: FIREBASE_SERVICE_ACCOUNT
         sync: false
+      # ── SMS OTP (Twilio Verify) ──────────────────────────────────────────
+      # Con las tres definidas el OTP llega por SMS real. Sin ellas, el login
+      # en producción queda cerrado salvo que definas OTP_FALLBACK_CODE
+      # (código fijo, solo para pilotos controlados).
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_VERIFY_SID
+        sync: false
+      - key: OTP_FALLBACK_CODE
+        sync: false
+      # ── Pagos (Wompi) ────────────────────────────────────────────────────
+      - key: WOMPI_PUBLIC_KEY
+        sync: false
+      - key: WOMPI_PRIVATE_KEY
+        sync: false
+      - key: WOMPI_EVENTS_SECRET
+        sync: false
+      - key: WOMPI_INTEGRITY_SECRET
+        sync: false
+      # URL pública del backend — Wompi redirige al usuario a /payment/result.
+      - key: APP_URL
+        value: https://nexum-api.onrender.com
 
 databases:
   - name: nexum-db
-    plan: free
+    # Plan pago (basic-256mb ~US$6/mes): la Postgres free de Render SE BORRA
+    # a los 30 días de creada — inviable para datos reales de producción.
+    plan: basic-256mb
     region: oregon
     databaseName: nexum_db
     user: nexum

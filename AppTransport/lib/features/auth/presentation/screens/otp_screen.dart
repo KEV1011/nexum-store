@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -311,42 +312,43 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                   ),
                 ),
 
-                const SizedBox(height: AppConstants.spacingM),
-
-                // ── Test hint ──────────────────────────────────────────
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppConstants.spacingM,
-                    vertical: AppConstants.spacingS,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.08),
-                    borderRadius:
-                        BorderRadius.circular(AppConstants.radiusSmall),
-                    border: Border.all(
-                      color: AppColors.primary.withOpacity(0.3),
+                // ── Test hint (solo builds de desarrollo) ──────────────
+                if (kDebugMode) ...[
+                  const SizedBox(height: AppConstants.spacingM),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppConstants.spacingM,
+                      vertical: AppConstants.spacingS,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.08),
+                      borderRadius:
+                          BorderRadius.circular(AppConstants.radiusSmall),
+                      border: Border.all(
+                        color: AppColors.primary.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.info_outline_rounded,
+                          color: AppColors.primary,
+                          size: 16,
+                        ),
+                        const SizedBox(width: AppConstants.spacingXS),
+                        Text(
+                          'Código de prueba: ${AppConstants.mockOtpCode}',
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.info_outline_rounded,
-                        color: AppColors.primary,
-                        size: 16,
-                      ),
-                      const SizedBox(width: AppConstants.spacingXS),
-                      Text(
-                        'Código de prueba: ${AppConstants.mockOtpCode}',
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                ],
 
                 const SizedBox(height: AppConstants.spacingXXL),
 

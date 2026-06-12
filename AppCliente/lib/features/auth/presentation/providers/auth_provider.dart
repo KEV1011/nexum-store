@@ -1,9 +1,12 @@
+import 'dart:async' show unawaited;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_client/core/errors/failures.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/services/push_notification_service.dart';
 import 'package:nexum_client/features/auth/data/datasources/'
     'auth_datasource.dart';
 import 'package:nexum_client/features/auth/data/datasources/'
@@ -77,11 +80,12 @@ final authDioProvider = Provider<Dio>((ref) => ref.watch(apiClientProvider));
 // ── AuthNotifier ─────────────────────────────────────────────────────────────
 
 class AuthNotifier extends StateNotifier<AuthState> {
-  AuthNotifier(this._repository) : super(const AuthInitial()) {
+  AuthNotifier(this._repository, this._dio) : super(const AuthInitial()) {
     checkAuth();
   }
 
   final AuthRepository _repository;
+  final Dio _dio;
 
   Future<void> sendOtp(String phone) async {
     state = const AuthLoading();
@@ -101,6 +105,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return;
     }
     state = AuthAuthenticated(client: result.client!);
+    _registerPushToken();
   }
 
   Future<void> logout() async {
@@ -121,13 +126,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return;
     }
     state = AuthAuthenticated(client: client);
+    _registerPushToken();
+  }
+
+  /// Registra el token FCM del dispositivo en el backend para recibir push
+  /// (conductor asignado, pedido en camino, pago aprobado…). Fire-and-forget.
+  void _registerPushToken() {
+    if (kIsWeb) return;
+    unawaited(PushNotificationService().syncTokenToBackend(_dio));
   }
 }
 
 // ── Providers públicos ───────────────────────────────────────────────────────
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  return AuthNotifier(ref.watch(authRepositoryProvider));
+  return AuthNotifier(
+    ref.watch(authRepositoryProvider),
+    ref.watch(apiClientProvider),
+  );
 });
 
 final currentClientProvider = Provider<ClientEntity?>((ref) {

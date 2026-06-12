@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -203,18 +204,21 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                         child: const Text('Continuar'),
                       ),
                     ),
-                    const SizedBox(height: AppConstants.spacingL),
-                    Text(
-                      'Para demo: cualquier número y código 123456',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        color: isDark
-                            ? AppColors.textSecondaryDark
-                            : AppColors.textTertiary,
+                    // Pista de demo — solo builds de desarrollo.
+                    if (kDebugMode) ...[
+                      const SizedBox(height: AppConstants.spacingL),
+                      Text(
+                        'Para demo: cualquier número y código 123456',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          color: isDark
+                              ? AppColors.textSecondaryDark
+                              : AppColors.textTertiary,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

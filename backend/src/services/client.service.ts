@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, JWT_EXPIRES_IN, MOCK_OTP } from '../config/constants';
+import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/constants';
 import {
   ClientDTO,
   ClientJwtPayload,
@@ -14,8 +14,7 @@ import { prisma } from '../lib/prisma';
 import { startMatchingCycle } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
-
-const OTP_TTL = 5 * 60 * 1000;
+import { requestOtp, validateOtp } from './otp.service';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -31,27 +30,14 @@ const tripListeners = new Map<string, Set<TripCallback>>();
 // ─── OTP ──────────────────────────────────────────────────────────────────────
 
 export async function sendClientOtp(phone: string): Promise<void> {
-  const code = MOCK_OTP ?? Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = new Date(Date.now() + OTP_TTL);
-  await prisma.otpSession.updateMany({ where: { phone, used: false }, data: { used: true } });
-  await prisma.otpSession.create({ data: { phone, code, expiresAt } });
+  await requestOtp(phone);
 }
 
 export async function verifyClientOtp(
   phone: string,
   otp: string,
 ): Promise<{ token: string; client: ClientDTO }> {
-  const session = await prisma.otpSession.findFirst({
-    where: { phone, used: false, expiresAt: { gte: new Date() } },
-    orderBy: { createdAt: 'desc' },
-  });
-  if (!session) throw new Error('No OTP requested for this phone number');
-  if (new Date() > session.expiresAt) {
-    await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
-    throw new Error('OTP has expired');
-  }
-  if (session.code !== otp) throw new Error('Invalid OTP');
-  await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
+  await validateOtp(phone, otp);
 
   let user = await prisma.user.findUnique({ where: { phone } });
   if (!user) {
