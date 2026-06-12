@@ -7,6 +7,7 @@ import { WebSocketServer } from 'ws';
 
 import { PORT, CORS_ORIGIN } from './config/constants';
 import { setupWebSocket } from './websocket/ws.handler';
+import { scheduleDocumentExpiryChecks } from './services/document-expiry.service';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -72,6 +73,7 @@ server.listen(PORT, () => {
   console.log(`[Nexum Driver] REST API listening on http://localhost:${PORT}`);
   console.log(`[Nexum Driver] WebSocket listening on ws://localhost:${PORT}`);
   console.log(`[Nexum Driver] Environment: ${process.env['NODE_ENV'] ?? 'development'}`);
+  scheduleDocumentExpiryChecks();
 });
 
 export default app;
