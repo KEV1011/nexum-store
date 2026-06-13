@@ -28,6 +28,57 @@ enum PooledCity {
       );
 }
 
+/// Clase de vehículo para viajes compartidos. Define la capacidad sugerida y
+/// el tope de puestos, y le dice al pasajero si viaja en carro o en van.
+/// Los valores `name` coinciden con el enum del backend ('sedan'/'suv'/...).
+enum PooledVehicleType {
+  sedan,
+  suv,
+  van,
+  minibus;
+
+  static PooledVehicleType fromApi(String? s) => PooledVehicleType.values
+      .firstWhere((v) => v.name == s, orElse: () => PooledVehicleType.sedan);
+
+  String get label => switch (this) {
+        PooledVehicleType.sedan => 'Carro',
+        PooledVehicleType.suv => 'Camioneta',
+        PooledVehicleType.van => 'Van',
+        PooledVehicleType.minibus => 'Buseta',
+      };
+
+  String get hint => switch (this) {
+        PooledVehicleType.sedan => 'Sedán · hasta 4 pasajeros',
+        PooledVehicleType.suv => 'Camioneta · hasta 6 pasajeros',
+        PooledVehicleType.van => 'Van · hasta 14 pasajeros',
+        PooledVehicleType.minibus => 'Buseta · hasta 19 pasajeros',
+      };
+
+  IconData get icon => switch (this) {
+        PooledVehicleType.sedan => Icons.directions_car_rounded,
+        PooledVehicleType.suv => Icons.directions_car_filled_rounded,
+        PooledVehicleType.van => Icons.airport_shuttle_rounded,
+        PooledVehicleType.minibus => Icons.directions_bus_rounded,
+      };
+
+  /// Puestos precargados al elegir el tipo (el conductor puede ajustar).
+  int get defaultSeats => switch (this) {
+        PooledVehicleType.sedan => 4,
+        PooledVehicleType.suv => 5,
+        PooledVehicleType.van => 11,
+        PooledVehicleType.minibus => 16,
+      };
+
+  /// Tope de puestos por tipo — debe coincidir con POOLED_VEHICLE_MAX_SEATS
+  /// del backend (carro 4, camioneta 6, van 14, buseta 19).
+  int get maxSeats => switch (this) {
+        PooledVehicleType.sedan => 4,
+        PooledVehicleType.suv => 6,
+        PooledVehicleType.van => 14,
+        PooledVehicleType.minibus => 19,
+      };
+}
+
 enum PooledTripStatus {
   open,
   full,
@@ -104,6 +155,7 @@ class PooledTripEntity {
     required this.maxFarePerSeat,
     required this.allowFleet,
     required this.status,
+    required this.vehicleType,
     required this.vehicleDescription,
     this.notes,
     this.distanceKm,
@@ -122,6 +174,7 @@ class PooledTripEntity {
   final double maxFarePerSeat;
   final bool allowFleet;
   final PooledTripStatus status;
+  final PooledVehicleType vehicleType;
   final String vehicleDescription;
   final String? notes;
   final double? distanceKm;
@@ -143,6 +196,7 @@ class PooledTripEntity {
         maxFarePerSeat: (j['maxFarePerSeat'] as num?)?.toDouble() ?? 0,
         allowFleet: j['allowFleet'] as bool? ?? false,
         status: PooledTripStatus.fromApi(j['status'] as String?),
+        vehicleType: PooledVehicleType.fromApi(j['vehicleType'] as String?),
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         notes: j['notes'] as String?,
         distanceKm: (j['distanceKm'] as num?)?.toDouble(),

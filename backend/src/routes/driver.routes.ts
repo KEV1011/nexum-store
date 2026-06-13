@@ -320,6 +320,7 @@ router.post('/intercity/pool/publish', async (req: Request, res: Response): Prom
       departureTime: dto.departureTime,
       totalSeats: dto.totalSeats,
       farePerSeat: dto.farePerSeat,
+      vehicleType: dto.vehicleType ?? 'sedan',
       vehicleDescription: dto.vehicleDescription,
       notes: dto.notes,
       allowFleet: dto.allowFleet,

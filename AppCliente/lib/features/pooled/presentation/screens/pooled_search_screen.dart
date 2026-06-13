@@ -299,11 +299,11 @@ class _TripCard extends StatelessWidget {
               const Divider(height: 20),
               Row(
                 children: [
-                  const Icon(Icons.person_rounded, size: 16, color: AppColors.textSecondary),
-                  const SizedBox(width: 6),
+                  _VehicleTypePill(type: trip.vehicleType),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${trip.driverName} · ${trip.vehicleDescription}',
+                      '${trip.vehicleDescription} · ${trip.driverName}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -312,6 +312,8 @@ class _TripCard extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              _SeatStrip(available: trip.availableSeats, total: trip.totalSeats),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -327,6 +329,60 @@ class _TripCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Pill con el tipo de vehículo (carro / camioneta / van / buseta).
+class _VehicleTypePill extends StatelessWidget {
+  const _VehicleTypePill({required this.type});
+  final PooledVehicleType type;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: _kPooledColor.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(type.icon, size: 15, color: _kPooledColor),
+          const SizedBox(width: 5),
+          Text(type.label,
+              style: const TextStyle(
+                  color: _kPooledColor,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11.5)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tira visual de asientos: ocupados en gris, libres en verde. Da una lectura
+/// de un vistazo de cuántos puestos quedan sin recurrir a un mapa posicional.
+class _SeatStrip extends StatelessWidget {
+  const _SeatStrip({required this.available, required this.total});
+  final int available;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final booked = total - available;
+    return Wrap(
+      spacing: 3,
+      runSpacing: 3,
+      children: [
+        for (var i = 0; i < total; i++)
+          Icon(
+            i < booked ? Icons.event_seat_rounded : Icons.event_seat_outlined,
+            size: 15,
+            color: i < booked ? AppColors.textTertiary : AppColors.success,
+          ),
+      ],
     );
   }
 }
@@ -452,6 +508,24 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
             const SizedBox(height: 4),
             Text('${trip.driverName} · ${trip.vehicleDescription}',
                 style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _VehicleTypePill(type: trip.vehicleType),
+                const SizedBox(width: 8),
+                Text(
+                  trip.availableSeats == 0
+                      ? 'Completo'
+                      : '${trip.availableSeats} de ${trip.totalSeats} puestos libres',
+                  style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _SeatStrip(available: trip.availableSeats, total: trip.totalSeats),
             const SizedBox(height: 20),
 
             const Text('¿Cuántos puestos?',

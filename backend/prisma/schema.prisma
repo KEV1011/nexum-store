@@ -622,6 +622,7 @@ model PooledTrip {
   driverId           String
   driverName         String
   driverPhone        String
+  vehicleType        PooledVehicleType @default(SEDAN)
   vehicleDescription String
   origin             IntercityCity
   destination        IntercityCity
@@ -669,6 +670,13 @@ enum PooledTripStatus {
   DEPARTED
   COMPLETED
   CANCELLED
+}
+
+enum PooledVehicleType {
+  SEDAN
+  SUV
+  VAN
+  MINIBUS
 }
 
 enum SeatBookingStatus {

@@ -48,6 +48,32 @@ IntercityCity _cityFromApi(String? s) => IntercityCity.values.firstWhere(
       orElse: () => IntercityCity.pamplona,
     );
 
+/// Clase de vehículo del viaje compartido, para que el pasajero sepa si viaja
+/// en carro, camioneta, van o buseta. Coincide con el enum del backend.
+enum PooledVehicleType {
+  sedan,
+  suv,
+  van,
+  minibus;
+
+  static PooledVehicleType fromApi(String? s) => PooledVehicleType.values
+      .firstWhere((v) => v.name == s, orElse: () => PooledVehicleType.sedan);
+
+  String get label => switch (this) {
+        PooledVehicleType.sedan => 'Carro',
+        PooledVehicleType.suv => 'Camioneta',
+        PooledVehicleType.van => 'Van',
+        PooledVehicleType.minibus => 'Buseta',
+      };
+
+  IconData get icon => switch (this) {
+        PooledVehicleType.sedan => Icons.directions_car_rounded,
+        PooledVehicleType.suv => Icons.directions_car_filled_rounded,
+        PooledVehicleType.van => Icons.airport_shuttle_rounded,
+        PooledVehicleType.minibus => Icons.directions_bus_rounded,
+      };
+}
+
 /// La reserva del propio pasajero dentro de un viaje compartido.
 class SeatBookingEntity {
   const SeatBookingEntity({
@@ -86,6 +112,7 @@ class PooledTripEntity {
     required this.tripRef,
     required this.driverName,
     required this.driverPhone,
+    required this.vehicleType,
     required this.vehicleDescription,
     required this.origin,
     required this.destination,
@@ -105,6 +132,7 @@ class PooledTripEntity {
   final String tripRef;
   final String driverName;
   final String driverPhone;
+  final PooledVehicleType vehicleType;
   final String vehicleDescription;
   final IntercityCity origin;
   final IntercityCity destination;
@@ -138,6 +166,7 @@ class PooledTripEntity {
         tripRef: j['tripRef'] as String? ?? '',
         driverName: j['driverName'] as String? ?? 'Conductor',
         driverPhone: j['driverPhone'] as String? ?? '',
+        vehicleType: PooledVehicleType.fromApi(j['vehicleType'] as String?),
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         origin: _cityFromApi(j['origin'] as String?),
         destination: _cityFromApi(j['destination'] as String?),
@@ -165,6 +194,7 @@ class PooledTripEntity {
         tripRef: tripRef,
         driverName: driverName,
         driverPhone: driverPhone,
+        vehicleType: vehicleType,
         vehicleDescription: vehicleDescription,
         origin: origin,
         destination: destination,

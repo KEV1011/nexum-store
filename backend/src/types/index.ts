@@ -685,13 +685,20 @@ export type PooledTripStatus =
 
 export type SeatBookingStatus = 'confirmed' | 'cancelled';
 
+/**
+ * Clase de vehículo para viajes compartidos. Determina la capacidad sugerida
+ * y el tope de puestos, y permite al pasajero saber si viaja en carro o van.
+ */
+export type PooledVehicleType = 'sedan' | 'suv' | 'van' | 'minibus';
+
 /** Driver-supplied payload when publishing a shared trip. */
 export interface PublishPooledTripDTO {
   origin: IntercityCity;
   destination: IntercityCity;
   departureTime: string;
-  totalSeats: number; // total seats offered (1-7)
+  totalSeats: number; // total seats offered (depende del tipo de vehículo)
   farePerSeat: number; // cost-share per seat (validated against legal cap)
+  vehicleType: PooledVehicleType; // carro / camioneta / van / buseta
   vehicleDescription: string; // e.g. "Toyota Corolla Blanco • ABC 123"
   notes?: string;
   allowFleet?: boolean; // passenger may book the whole vehicle at once
@@ -728,6 +735,7 @@ export interface PooledTripDTO {
   driverPhone: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
+  vehicleType: PooledVehicleType;
   vehicleDescription: string;
   origin: IntercityCity;
   destination: IntercityCity;

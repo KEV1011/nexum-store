@@ -50,6 +50,60 @@ async function main() {
 
   console.log(`User seeded: ${user.id} (${user.phone})`);
 
+  // ─── Viajes compartidos de ejemplo (van + carro) ──────────────────────────────
+  // Permiten que la búsqueda intermunicipal del cliente muestre datos reales,
+  // con distinto tipo de vehículo y ocupación de asientos.
+  const tomorrow2pm = new Date();
+  tomorrow2pm.setDate(tomorrow2pm.getDate() + 1);
+  tomorrow2pm.setHours(14, 0, 0, 0);
+  const tomorrow6am = new Date();
+  tomorrow6am.setDate(tomorrow6am.getDate() + 1);
+  tomorrow6am.setHours(6, 30, 0, 0);
+
+  const pooledSeed: Array<{
+    tripRef: string;
+    vehicleType: 'VAN' | 'SEDAN';
+    vehicleDescription: string;
+    departureTime: Date;
+    totalSeats: number;
+    farePerSeat: number;
+    allowFleet: boolean;
+  }> = [
+    {
+      tripRef: 'NXP-SEED1', vehicleType: 'VAN',
+      vehicleDescription: 'Toyota Hiace Blanca · WGV 311',
+      departureTime: tomorrow2pm, totalSeats: 12, farePerSeat: 8000, allowFleet: false,
+    },
+    {
+      tripRef: 'NXP-SEED2', vehicleType: 'SEDAN',
+      vehicleDescription: 'Chevrolet Spark GT Gris · KLP 871',
+      departureTime: tomorrow6am, totalSeats: 4, farePerSeat: 22000, allowFleet: true,
+    },
+  ];
+  for (const p of pooledSeed) {
+    await prisma.pooledTrip.upsert({
+      where: { tripRef: p.tripRef },
+      update: {},
+      create: {
+        tripRef: p.tripRef,
+        driverId: driver.id,
+        driverName: driver.name,
+        driverPhone: driver.phone,
+        vehicleType: p.vehicleType,
+        vehicleDescription: p.vehicleDescription,
+        origin: 'PAMPLONA',
+        destination: 'CUCUTA',
+        departureTime: p.departureTime,
+        totalSeats: p.totalSeats,
+        farePerSeat: p.farePerSeat,
+        maxFarePerSeat: p.farePerSeat,
+        allowFleet: p.allowFleet,
+        status: 'OPEN',
+      },
+    });
+  }
+  console.log(`Pooled trips seeded: ${pooledSeed.length} (van + carro)`);
+
   // ─── Demo businesses ──────────────────────────────────────────────────────────
   const restaurante = await prisma.business.upsert({
     where: { token: 'biz-token-restaurante-demo' },

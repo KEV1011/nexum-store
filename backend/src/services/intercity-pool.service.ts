@@ -1,6 +1,7 @@
 import {
   IntercityCity,
   PooledTripStatus,
+  PooledVehicleType,
   PublishPooledTripDTO,
   BookSeatsDTO,
   PooledTripDTO,
@@ -10,6 +11,7 @@ import {
 import {
   getIntercityRoute,
   getMaxFarePerSeat,
+  POOLED_VEHICLE_MAX_SEATS,
   INTERCITY_REMOVE_CAP,
   INTERCITY_DUAL_MODEL,
 } from '../config/constants';
@@ -20,7 +22,12 @@ import { maskPhone } from './safe-contact.service';
 type TripCallback = (tripId: string, trip: PooledTripDTO) => void;
 const tripListeners = new Map<string, Set<TripCallback>>();
 
-const MAX_SEATS = 7;
+const VEHICLE_TYPE_TO_PRISMA: Record<PooledVehicleType, 'SEDAN' | 'SUV' | 'VAN' | 'MINIBUS'> = {
+  sedan: 'SEDAN', suv: 'SUV', van: 'VAN', minibus: 'MINIBUS',
+};
+const VEHICLE_TYPE_FROM_PRISMA: Record<string, PooledVehicleType> = {
+  SEDAN: 'sedan', SUV: 'suv', VAN: 'van', MINIBUS: 'minibus',
+};
 
 export class PooledTripError extends Error {
   constructor(message: string) {
@@ -49,7 +56,7 @@ const STATUS_FROM_PRISMA: Record<string, PooledTripStatus> = {
 
 type DbPooledTrip = {
   id: string; tripRef: string; driverId: string; driverName: string; driverPhone: string;
-  vehicleDescription: string; origin: string; destination: string; departureTime: Date;
+  vehicleType: string; vehicleDescription: string; origin: string; destination: string; departureTime: Date;
   totalSeats: number; farePerSeat: number; maxFarePerSeat: number; allowFleet: boolean;
   status: string; notes: string | null; createdAt: Date;
   bookings?: DbSeatBooking[];
@@ -94,6 +101,7 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     driverPhone: maskPhone(t.driverPhone) ?? '',
     contactChannel: 'in_app_chat',
     maskedPhone: maskPhone(t.driverPhone),
+    vehicleType: (VEHICLE_TYPE_FROM_PRISMA[t.vehicleType] ?? 'sedan') as PooledVehicleType,
     vehicleDescription: t.vehicleDescription,
     origin: (CITY_FROM_PRISMA[t.origin] ?? t.origin.toLowerCase()) as IntercityCity,
     destination: (CITY_FROM_PRISMA[t.destination] ?? t.destination.toLowerCase()) as IntercityCity,
@@ -147,8 +155,13 @@ export async function publishPooledTrip(
     );
   }
 
-  if (!Number.isInteger(dto.totalSeats) || dto.totalSeats < 1 || dto.totalSeats > MAX_SEATS) {
-    throw new PooledTripError(`Los puestos deben estar entre 1 y ${MAX_SEATS}`);
+  const vehicleType = (dto.vehicleType ?? 'sedan') as PooledVehicleType;
+  const maxSeatsForVehicle = POOLED_VEHICLE_MAX_SEATS[vehicleType];
+  if (maxSeatsForVehicle === undefined) {
+    throw new PooledTripError('Tipo de vehículo no válido');
+  }
+  if (!Number.isInteger(dto.totalSeats) || dto.totalSeats < 1 || dto.totalSeats > maxSeatsForVehicle) {
+    throw new PooledTripError(`Los puestos deben estar entre 1 y ${maxSeatsForVehicle} para este tipo de vehículo`);
   }
   const departure = new Date(dto.departureTime);
   if (Number.isNaN(departure.getTime()) || departure.getTime() < Date.now()) {
@@ -172,6 +185,7 @@ export async function publishPooledTrip(
       driverId,
       driverName,
       driverPhone,
+      vehicleType: VEHICLE_TYPE_TO_PRISMA[vehicleType],
       vehicleDescription: dto.vehicleDescription,
       origin: CITY_TO_PRISMA[dto.origin] ?? dto.origin.toUpperCase(),
       destination: CITY_TO_PRISMA[dto.destination] ?? dto.destination.toUpperCase(),
@@ -282,9 +296,12 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
 }
 
 export async function getPooledTripById(tripId: string, includeBookings = false): Promise<PooledTripDTO | null> {
+  // Las reservas se cargan siempre: availableSeats se calcula desde ellas.
+  // `includeBookings` solo decide si se EXPONE la lista de pasajeros (vista
+  // del conductor), no si se cuenta la ocupación.
   const t = await prisma.pooledTrip.findUnique({
     where: { id: tripId },
-    include: { bookings: includeBookings },
+    include: { bookings: true },
   });
   return t ? _toDTO(t as DbPooledTrip, includeBookings) : null;
 }

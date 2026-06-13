@@ -150,6 +150,22 @@ export const MOCK_ROUTES: MockRoute[] = [
 
 export const ERRAND_SERVICE_FEE = 6000;
 
+// ─── Viajes compartidos: capacidad por tipo de vehículo ───────────────────────
+//
+// Tope de puestos que un conductor puede ofrecer según la clase de vehículo, y
+// la capacidad sugerida que la app del conductor precarga al elegir el tipo.
+import { PooledVehicleType } from '../types';
+
+export const POOLED_VEHICLE_MAX_SEATS: Record<PooledVehicleType, number> = {
+  sedan: 4,    // carro particular / taxi
+  suv: 6,      // camioneta
+  van: 14,     // van tipo Hiace/Sprinter
+  minibus: 19, // buseta / microbús
+};
+
+/** Tope global de puestos en cualquier viaje compartido (la van/buseta mayor). */
+export const POOLED_MAX_SEATS = Math.max(...Object.values(POOLED_VEHICLE_MAX_SEATS));
+
 // ─── Intercity Routes ─────────────────────────────────────────────────────────
 
 import { IntercityCity } from '../types';
