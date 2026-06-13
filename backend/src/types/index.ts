@@ -248,7 +248,12 @@ export type WsMessageType =
   | 'chat_send'
   | 'chat_message'
   | 'subscribe_chat'
-  | 'unsubscribe_chat';
+  | 'unsubscribe_chat'
+  // Chat de pedidos de domicilio (cliente ↔ repartidor asignado)
+  | 'subscribe_order_chat'
+  | 'unsubscribe_order_chat'
+  | 'order_chat_send'
+  | 'order_chat_message';
 
 export interface WsMessage {
   type: WsMessageType;
@@ -564,6 +569,10 @@ export interface RequestClientErrandDTO {
   description: string;
   pickupAddress: string;
   dropoffAddress: string;
+  // Coordenadas de recogida (opcionales). Si la app no las manda, el matching
+  // usa el centro de Pamplona como referencia — igual que los viajes urbanos.
+  pickupLat?: number;
+  pickupLng?: number;
   purchaseBudget?: number;
   notes?: string;
 }
@@ -596,6 +605,9 @@ export interface ErrandRequestDTO {
   description: string;
   pickupAddress: string;
   dropoffAddress: string;
+  // Coordenadas de recogida cuando el cliente las proporcionó.
+  pickupLat?: number;
+  pickupLng?: number;
   serviceFee: number;
   purchaseBudget?: number;
   notes?: string;
@@ -818,6 +830,17 @@ export interface RideRequestDTO {
 export interface ChatMessageDTO {
   id: string;
   rideId: string;
+  fromRole: ChatRole;
+  fromId: string;
+  text: string;
+  sentAt: string;
+}
+
+// ─── Chat de pedidos de domicilio (cliente ↔ repartidor asignado) ───────────────
+
+export interface OrderChatMessageDTO {
+  id: string;
+  orderId: string;
   fromRole: ChatRole;
   fromId: string;
   text: string;

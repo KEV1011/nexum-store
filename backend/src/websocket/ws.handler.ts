@@ -1,13 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { verifyToken } from '../services/auth.service';
-import {
-  startDispatch,
-  stopDispatch,
-  acknowledgeErrandResponse,
-  resumeDispatch,
-  setDriverWorkMode,
-} from '../services/dispatch.service';
 import { getTripService } from '../services/trip.service';
 import {
   verifyClientToken,
@@ -23,11 +16,20 @@ import {
 } from '../services/client.service';
 import {
   getClientErrandRaw,
-  acceptClientErrand,
   updateErrandStatus,
   subscribeClientErrand,
   getClientErrandSnapshot,
+  driverAcceptErrand,
+  driverDeclineErrand,
+  registerErrandSendToDriver,
+  kickPendingErrandMatching,
 } from '../services/errand.service';
+import {
+  addOrderChatMessage,
+  subscribeOrderChat,
+  canAccessOrderChat,
+  OrderChatError,
+} from '../services/order-chat.service';
 import {
   subscribeIntercityBooking,
   getIntercityBookingSnapshot,
@@ -58,6 +60,7 @@ import {
 import {
   getDriverProfile,
   isDriverVerified,
+  setDriverWorkMode,
 } from '../services/driver-profile.service';
 import { getBusinessService } from '../services/business.service';
 import {
@@ -80,7 +83,6 @@ import {
 let driverSocket: WebSocket | null = null;
 let driverWorkMode: WorkMode = 'pasajero';
 let driverActiveTripId: string | null = null;
-let driverActiveErrandId: string | null = null;
 
 const clientSockets = new Map<string, WebSocket>();
 const clientSubscriptions = new Map<WebSocket, Array<() => void>>();
@@ -94,8 +96,10 @@ const businessSockets = new Map<string, WebSocket>();
 const businessSubscriptions = new Map<WebSocket, Array<() => void>>();
 
 // Per-driver active trip (supports multi-driver matching; driverActiveTripId is the
-// legacy singleton fallback kept for backward compatibility with errand dispatch).
+// legacy singleton fallback kept for backward compatibility).
 const driverActiveTripIdMap = new Map<string, string>(); // driverId → tripId
+// Per-driver active errand (un mandado a la vez por conductor).
+const driverActiveErrandIdMap = new Map<string, string>(); // driverId → errandId
 
 // ─── Ride negotiation (multi-driver pool + bids + chat) ─────────────────────────
 
@@ -112,6 +116,8 @@ const ridePoolUnsub = new Map<WebSocket, () => void>();
 // Ride-specific subscriptions per socket (client + matched driver).
 const rideSubs = new Map<WebSocket, Map<string, () => void>>();
 const chatSubs = new Map<WebSocket, Map<string, () => void>>();
+// Chat de pedidos de domicilio (cliente + repartidor asignado).
+const orderChatSubs = new Map<WebSocket, Map<string, () => void>>();
 // Identify a client socket by its clientId for direct relays.
 const clientIdByWs = new Map<WebSocket, string>();
 
@@ -136,19 +142,15 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
     // Register in driverConnections so matching can reach this driver via sendToDriverById.
     driverConnections.set(payload.driverId, { ws, driverId: payload.driverId, workMode });
     void getTripService().setDriverStatus('online', payload.driverId);
+    // Persistir el modo de trabajo: el matching de mandados filtra por MANDADO.
+    void setDriverWorkMode(payload.driverId, workMode);
 
     sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workMode });
 
-    // Trip dispatch is handled by the real geo-matching engine (matching.service.ts).
-    // Only errand simulation remains here until Phase 4 wires real errand matching.
-    startDispatch(
-      (id) => {
-        sendDriver({ type: 'errand_cancelled', errandId: id, reason: 'No response within 15 seconds' });
-        resumeDispatch();
-      },
-      workMode,
-      (errand) => sendDriver({ type: 'errand_request', errand }),
-    );
+    // Trip + errand dispatch are handled by the real geo-matching engines
+    // (matching.service.ts / errand.service.ts). Al entrar en modo mandado se
+    // reintentan los mandados que quedaron buscando conductor.
+    if (workMode === 'mandado') void kickPendingErrandMatching();
   } catch {
     sendTo(ws, { type: 'auth_error', message: 'Invalid or expired token' });
     ws.close();
@@ -157,13 +159,14 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
 
 function handleDriverModeChange(ws: WebSocket, mode: WorkMode): void {
   driverWorkMode = mode;
-  setDriverWorkMode(mode);
   const driverId = driverIdByWs.get(ws);
   if (driverId) {
     const conn = driverConnections.get(driverId);
     if (conn) conn.workMode = mode;
+    void setDriverWorkMode(driverId, mode);
+    if (mode === 'mandado') void kickPendingErrandMatching();
   }
-  sendDriver({ type: 'auth_ok', workMode: mode });
+  sendTo(ws, { type: 'auth_ok', workMode: mode });
 }
 
 async function handleAccept(ws: WebSocket, tripId: string): Promise<void> {
@@ -220,86 +223,95 @@ async function handleReject(ws: WebSocket, tripId: string): Promise<void> {
   sendTo(ws, { type: 'trip_rejected', tripId });
 }
 
-async function handleAcceptErrand(errandId: string): Promise<void> {
-  if (driverActiveErrandId && driverActiveErrandId !== errandId) {
-    sendDriver({ type: 'error', message: 'Already handling an errand' });
+async function handleAcceptErrand(ws: WebSocket, errandId: string): Promise<void> {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) {
+    sendTo(ws, { type: 'error', message: 'Driver not authenticated' });
+    return;
+  }
+  const active = driverActiveErrandIdMap.get(driverId);
+  if (active && active !== errandId) {
+    sendTo(ws, { type: 'error', message: 'Already handling an errand' });
     return;
   }
 
-  // Real client errand
-  const clientErrand = await getClientErrandRaw(errandId);
-  if (clientErrand) {
-    const updated = await acceptClientErrand(errandId, 'Carlos Méndez', '+57 310 456 7890');
-    if (updated) {
-      sendDriver({ type: 'errand_update', errandId, errand: updated });
-      driverActiveErrandId = errandId;
-
-      const clientWs = clientSockets.get(clientErrand.clientId);
-      if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
-    }
+  const updated = await driverAcceptErrand(driverId, errandId);
+  if (!updated) {
+    sendTo(ws, { type: 'error', message: `Errand ${errandId} is no longer available` });
+    // Limpia el popup de solicitud si seguía visible en la app del conductor.
+    sendTo(ws, { type: 'errand_cancelled', errandId, reason: 'El mandado ya no está disponible' });
     return;
   }
 
-  // Mock dispatch errand
-  const acked = acknowledgeErrandResponse(errandId);
-  if (!acked) {
-    sendDriver({ type: 'error', message: `Errand ${errandId} is no longer available` });
-    return;
+  driverActiveErrandIdMap.set(driverId, errandId);
+  sendTo(ws, { type: 'errand_accepted', errandId });
+  sendTo(ws, { type: 'errand_update', errandId, errand: updated });
+
+  // Aviso directo al cliente (además del push y de los listeners subscribe_errand).
+  const raw = await getClientErrandRaw(errandId);
+  if (raw) {
+    const clientWs = clientSockets.get(raw.clientId);
+    if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
   }
-  driverActiveErrandId = errandId;
-  sendDriver({ type: 'errand_accepted', errandId });
 }
 
-function handleRejectErrand(errandId: string): void {
-  const acked = acknowledgeErrandResponse(errandId);
-  if (!acked) {
-    sendDriver({ type: 'error', message: `Errand ${errandId} is no longer available` });
+function handleRejectErrand(ws: WebSocket, errandId: string): void {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) {
+    sendTo(ws, { type: 'error', message: 'Driver not authenticated' });
     return;
   }
-  sendDriver({ type: 'errand_rejected', errandId });
-  resumeDispatch();
+  // El ciclo de matching avanza al siguiente candidato.
+  void driverDeclineErrand(driverId, errandId);
+  sendTo(ws, { type: 'errand_rejected', errandId });
 }
 
 async function handleErrandStatus(
+  ws: WebSocket,
   errandId: string,
   status: string,
   actualCost: number | null,
 ): Promise<void> {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) {
+    sendTo(ws, { type: 'error', message: 'Driver not authenticated' });
+    return;
+  }
   const validStatuses: ErrandStatus[] = ['shopping', 'on_the_way', 'delivered', 'cancelled'];
   if (!validStatuses.includes(status as ErrandStatus)) {
-    sendDriver({ type: 'error', message: `Invalid errand status: ${status}` });
+    sendTo(ws, { type: 'error', message: `Invalid errand status: ${status}` });
     return;
   }
+
+  const clientErrand = await getClientErrandRaw(errandId);
+  if (!clientErrand) {
+    sendTo(ws, { type: 'error', message: `Errand ${errandId} not found` });
+    return;
+  }
+  // Solo el conductor asignado puede avanzar el estado del mandado.
+  if (clientErrand.driverId !== driverId) {
+    sendTo(ws, { type: 'error', message: 'Not assigned to this errand' });
+    return;
+  }
+
+  const updated = await updateErrandStatus(
+    errandId,
+    status as ErrandStatus,
+    actualCost ?? undefined,
+  );
+  if (!updated) {
+    sendTo(ws, { type: 'error', message: `Errand ${errandId} not found` });
+    return;
+  }
+
+  sendTo(ws, { type: 'errand_update', errandId, errand: updated });
+  const clientWs = clientSockets.get(clientErrand.clientId);
+  if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
 
   const terminal = status === 'delivered' || status === 'cancelled';
-
-  // Update real client errand
-  const clientErrand = await getClientErrandRaw(errandId);
-  if (clientErrand) {
-    const updated = await updateErrandStatus(
-      errandId,
-      status as ErrandStatus,
-      actualCost ?? undefined,
-    );
-    if (updated) {
-      sendDriver({ type: 'errand_update', errandId, errand: updated });
-      const clientWs = clientSockets.get(clientErrand.clientId);
-      if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
-
-      if (terminal) {
-        driverActiveErrandId = null;
-        void getTripService().setDriverStatus('online', driverSocket ? driverIdByWs.get(driverSocket) : undefined);
-        resumeDispatch();
-      }
-    }
-    return;
-  }
-
-  // Mock errand — echo back to driver
-  sendDriver({ type: 'errand_status_ack', errandId, status });
   if (terminal) {
-    driverActiveErrandId = null;
-    resumeDispatch();
+    driverActiveErrandIdMap.delete(driverId);
+    void getTripService().setDriverStatus('online', driverId);
   }
 }
 
@@ -398,12 +410,31 @@ async function handleBusinessAuth(ws: WebSocket, token: string): Promise<void> {
   }
 }
 
+// El re-kick de mandados al autenticarse puede no encontrar al conductor (aún
+// sin fix de GPS fresco). Reintento al llegar fixes en modo mandado, con
+// throttle para no consultar la BD en cada actualización de posición.
+let lastErrandKickAt = 0;
+const ERRAND_KICK_THROTTLE_MS = 20_000;
+
+function maybeKickErrandMatching(): void {
+  const now = Date.now();
+  if (now - lastErrandKickAt < ERRAND_KICK_THROTTLE_MS) return;
+  lastErrandKickAt = now;
+  void kickPendingErrandMatching();
+}
+
 async function handleLocationUpdate(ws: WebSocket, lat: number, lng: number, tripId: string | null): Promise<void> {
   // Persist the driver's position into PostGIS first — this powers nearest-driver
   // matching and must happen on every fix, even while the driver is idle/ONLINE
   // (no active trip).
   const driverId = driverIdByWs.get(ws);
   if (driverId) await updateDriverGeo(driverId, lat, lng);
+
+  if (driverId
+    && driverConnections.get(driverId)?.workMode === 'mandado'
+    && !driverActiveErrandIdMap.has(driverId)) {
+    maybeKickErrandMatching();
+  }
 
   // Relay the live position to the passenger of the active trip, if any.
   // Prefer the per-driver map (multi-driver matching), fall back to singleton.
@@ -596,6 +627,45 @@ function handleChatSend(ws: WebSocket, rideId: string, text: string): void {
   }
 }
 
+// ─── Chat de pedidos de domicilio (cliente ↔ repartidor asignado) ───────────────
+
+async function handleSubscribeOrderChat(ws: WebSocket, orderId: string): Promise<void> {
+  const clientId = clientIdByWs.get(ws);
+  const driverId = driverIdByWs.get(ws);
+  const role: ChatRole | null = clientId ? 'client' : driverId ? 'driver' : null;
+  const participantId = clientId ?? driverId;
+  if (!role || !participantId) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+  if (!(await canAccessOrderChat(orderId, role, participantId))) {
+    sendTo(ws, { type: 'error', message: 'No autorizado para este chat' });
+    return;
+  }
+
+  const unsub = subscribeOrderChat(orderId, (msg) => {
+    sendTo(ws, { type: 'order_chat_message', message: msg });
+  });
+  const map = orderChatSubs.get(ws) ?? new Map<string, () => void>();
+  map.get(orderId)?.();
+  map.set(orderId, unsub);
+  orderChatSubs.set(ws, map);
+}
+
+async function handleOrderChatSend(ws: WebSocket, orderId: string, text: string): Promise<void> {
+  const clientId = clientIdByWs.get(ws);
+  const driverId = driverIdByWs.get(ws);
+  const role: ChatRole | null = clientId ? 'client' : driverId ? 'driver' : null;
+  const fromId = clientId ?? driverId;
+  if (!role || !fromId) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+  try {
+    await addOrderChatMessage(orderId, role, fromId, text);
+    // Listeners (subscribe_order_chat) fan the message out to both parties.
+  } catch (err) {
+    sendTo(ws, {
+      type: 'error',
+      message: err instanceof OrderChatError ? err.message : 'No se pudo enviar el mensaje',
+    });
+  }
+}
+
 // ─── Message dispatcher ───────────────────────────────────────────────────────
 
 function onMessage(ws: WebSocket, raw: string): void {
@@ -623,7 +693,7 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Driver work mode change ──────────────────────────────────────────────
     case 'driver_mode': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const mode = msg['workMode'];
       if (typeof mode !== 'string') { sendTo(ws, { type: 'error', message: 'workMode required' }); return; }
       handleDriverModeChange(ws, mode as WorkMode);
@@ -672,23 +742,23 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Errand accept / reject ───────────────────────────────────────────────
     case 'accept_errand': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
-      void handleAcceptErrand(errandId);
+      void handleAcceptErrand(ws, errandId);
       break;
     }
     case 'reject_errand': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
-      handleRejectErrand(errandId);
+      handleRejectErrand(ws, errandId);
       break;
     }
 
     // ── Errand status update ─────────────────────────────────────────────────
     case 'errand_status': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
       const errandId = msg['errandId'];
       const status = msg['status'];
       if (typeof errandId !== 'string' || typeof status !== 'string') {
@@ -696,7 +766,7 @@ function onMessage(ws: WebSocket, raw: string): void {
         return;
       }
       const actualCost = typeof msg['actualCost'] === 'number' ? msg['actualCost'] : null;
-      void handleErrandStatus(errandId, status, actualCost);
+      void handleErrandStatus(ws, errandId, status, actualCost);
       break;
     }
 
@@ -921,6 +991,30 @@ function onMessage(ws: WebSocket, raw: string): void {
       break;
     }
 
+    // ── Chat de pedidos de domicilio ─────────────────────────────────────────
+    case 'subscribe_order_chat': {
+      const orderId = msg['orderId'];
+      if (typeof orderId !== 'string') { sendTo(ws, { type: 'error', message: 'orderId required' }); return; }
+      void handleSubscribeOrderChat(ws, orderId);
+      break;
+    }
+    case 'unsubscribe_order_chat': {
+      const orderId = msg['orderId'];
+      if (typeof orderId !== 'string') break;
+      const map = orderChatSubs.get(ws);
+      if (map) { map.get(orderId)?.(); map.delete(orderId); }
+      break;
+    }
+    case 'order_chat_send': {
+      const orderId = msg['orderId'];
+      const text = msg['text'];
+      if (typeof orderId !== 'string' || typeof text !== 'string') {
+        sendTo(ws, { type: 'error', message: 'orderId and text required' }); return;
+      }
+      void handleOrderChatSend(ws, orderId, text);
+      break;
+    }
+
     case 'ping':
       sendTo(ws, { type: 'pong' });
       break;
@@ -949,18 +1043,25 @@ function onClose(ws: WebSocket): void {
   const driverId = driverIdByWs.get(ws);
   if (driverId && driverConnections.get(driverId)?.ws === ws) {
     driverConnections.delete(driverId);
+    // Presencia real para el matching: un conductor desconectado no debe
+    // seguir ONLINE (los mandados/viajes ya no pueden llegarle por WS).
+    void getTripService().setDriverStatus('offline', driverId);
   }
-  if (driverId) driverActiveTripIdMap.delete(driverId);
+  if (driverId) {
+    driverActiveTripIdMap.delete(driverId);
+    driverActiveErrandIdMap.delete(driverId);
+  }
   driverIdByWs.delete(ws);
   clientIdByWs.delete(ws);
 
+  // Chat de pedidos: puede vivir en sockets de cliente o de conductor.
+  const orderChatMap = orderChatSubs.get(ws);
+  if (orderChatMap) { for (const fn of orderChatMap.values()) fn(); orderChatSubs.delete(ws); }
+
   if (ws === driverSocket) {
-    stopDispatch();
     driverSocket = null;
     driverActiveTripId = null;
-    driverActiveErrandId = null;
     driverWorkMode = 'pasajero';
-    void getTripService().setDriverStatus('offline', driverIdByWs.get(ws));
     console.log('[WS] Driver disconnected');
     return;
   }
@@ -1003,6 +1104,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
   registerSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   registerNotifyTripUpdate(notifyClientTripUpdateById);
   registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+  registerErrandSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
 
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
     console.log('[WS] New connection');

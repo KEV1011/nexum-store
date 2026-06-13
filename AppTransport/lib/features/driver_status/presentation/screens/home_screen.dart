@@ -322,12 +322,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// Build a [TripRequestEntity] (with [ErrandDetails]) from a raw errand
-  /// JSON map received via WS. Uses Pamplona-centre placeholder coords
-  /// because the WS errand payload does not include coordinates.
+  /// JSON map received via WS. Uses the pickup coordinates when the backend
+  /// includes them (matching geoespacial real); falls back to Pamplona-centre
+  /// placeholder coords for payloads without coordinates.
   TripRequestEntity? _errandRequestFromMap(Map<String, dynamic> e) {
     try {
       const double pamplonaCenterLat = MapConstants.pamplonaCenterLat;
       const double pamplonaCenterLng = MapConstants.pamplonaCenterLng;
+      final pickupLat = (e['pickupLat'] as num?)?.toDouble() ?? pamplonaCenterLat;
+      final pickupLng = (e['pickupLng'] as num?)?.toDouble() ?? pamplonaCenterLng;
 
       final categoryStr = e['category'] as String? ?? 'other';
       final category = ErrandCategory.values.firstWhere(
@@ -353,8 +356,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           photoUrl: '',
         ),
         origin: LocationModel(
-          latitude: pamplonaCenterLat,
-          longitude: pamplonaCenterLng,
+          latitude: pickupLat,
+          longitude: pickupLng,
           address: e['pickupAddress'] as String? ?? '',
         ),
         destination: LocationModel(
