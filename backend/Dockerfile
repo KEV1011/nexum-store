@@ -44,6 +44,10 @@ COPY --from=builder --chown=nexum:nexum /app/package.json ./package.json
 # Copy Prisma schema so @prisma/client can locate it at runtime
 COPY --from=builder --chown=nexum:nexum /app/prisma ./prisma
 
+# Carpeta de subidas con permiso para el usuario no-root (upload.ts la crea al
+# arrancar; sin esto el contenedor cae con EACCES porque /app es de root).
+RUN mkdir -p /app/uploads/driver-documents && chown -R nexum:nexum /app/uploads
+
 USER nexum
 
 EXPOSE 3000
