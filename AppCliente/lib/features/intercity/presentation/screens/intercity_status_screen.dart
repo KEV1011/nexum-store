@@ -2,12 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 
 const _kInterColor = Color(0xFF1E3A8A);
+
+/// Marca el número de contacto que entrega el backend (proxy o enmascarado),
+/// igual que el flujo de reservas del pool.
+Future<void> _dialPhone(String phone) async {
+  final uri = Uri.parse('tel:$phone');
+  if (await canLaunchUrl(uri)) await launchUrl(uri);
+}
 
 class IntercityStatusScreen extends ConsumerWidget {
   const IntercityStatusScreen({super.key});
@@ -607,7 +615,7 @@ class _DriverConfirmedCard extends StatelessWidget {
               ),
               if (request.driverPhone != null)
                 GestureDetector(
-                  onTap: () {},
+                  onTap: () => _dialPhone(request.driverPhone!),
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(

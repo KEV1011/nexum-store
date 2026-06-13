@@ -246,7 +246,8 @@ class _PooledTripCard extends StatelessWidget {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '${b.passengerName} · ${b.seatsBooked} puesto(s)'
+                          '${b.passengerName} · '
+                          '${b.seatNumbers.isNotEmpty ? "asiento(s) ${b.seatNumbers.join(', ')}" : "${b.seatsBooked} puesto(s)"}'
                           '${b.pickupAddress != null && b.pickupAddress!.isNotEmpty ? " · ${b.pickupAddress}" : ""}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

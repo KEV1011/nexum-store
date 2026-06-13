@@ -651,6 +651,9 @@ model SeatBooking {
   passengerName  String
   passengerPhone String
   seatsBooked    Int
+  // Números de asiento específicos que ocupa esta reserva (1..totalSeats).
+  // Permite el mapa de asientos posicional. Vacío en reservas por conteo.
+  seatNumbers    Int[]             @default([])
   pickupAddress  String?
   notes          String?
   status         SeatBookingStatus @default(CONFIRMED)

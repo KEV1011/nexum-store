@@ -72,6 +72,14 @@ enum PooledVehicleType {
         PooledVehicleType.van => Icons.airport_shuttle_rounded,
         PooledVehicleType.minibus => Icons.directions_bus_rounded,
       };
+
+  /// Columnas del mapa de asientos según el tipo (da una sensación de cabina).
+  int get seatColumns => switch (this) {
+        PooledVehicleType.sedan => 2,
+        PooledVehicleType.suv => 3,
+        PooledVehicleType.van => 4,
+        PooledVehicleType.minibus => 4,
+      };
 }
 
 /// La reserva del propio pasajero dentro de un viaje compartido.
@@ -82,6 +90,7 @@ class SeatBookingEntity {
     required this.passengerName,
     required this.seatsBooked,
     required this.status,
+    this.seatNumbers = const [],
     this.pickupAddress,
     this.notes,
   });
@@ -90,6 +99,7 @@ class SeatBookingEntity {
   final String tripId;
   final String passengerName;
   final int seatsBooked;
+  final List<int> seatNumbers;
   final String status;
   final String? pickupAddress;
   final String? notes;
@@ -99,6 +109,10 @@ class SeatBookingEntity {
         tripId: j['tripId'] as String? ?? '',
         passengerName: j['passengerName'] as String? ?? '',
         seatsBooked: (j['seatsBooked'] as num?)?.toInt() ?? 1,
+        seatNumbers: (j['seatNumbers'] as List<dynamic>? ?? [])
+            .whereType<num>()
+            .map((n) => n.toInt())
+            .toList(),
         status: j['status'] as String? ?? 'confirmed',
         pickupAddress: j['pickupAddress'] as String?,
         notes: j['notes'] as String?,
@@ -122,6 +136,7 @@ class PooledTripEntity {
     required this.farePerSeat,
     required this.allowFleet,
     required this.status,
+    this.occupiedSeats = const [],
     this.notes,
     this.distanceKm,
     this.durationMinutes,
@@ -139,6 +154,7 @@ class PooledTripEntity {
   final DateTime departureTime;
   final int totalSeats;
   final int availableSeats;
+  final List<int> occupiedSeats;
   final double farePerSeat;
   final bool allowFleet;
   final PooledTripStatus status;
@@ -174,6 +190,10 @@ class PooledTripEntity {
             DateTime.tryParse(j['departureTime'] as String? ?? '') ?? DateTime.now(),
         totalSeats: (j['totalSeats'] as num?)?.toInt() ?? 0,
         availableSeats: (j['availableSeats'] as num?)?.toInt() ?? 0,
+        occupiedSeats: (j['occupiedSeats'] as List<dynamic>? ?? [])
+            .whereType<num>()
+            .map((n) => n.toInt())
+            .toList(),
         farePerSeat: (j['farePerSeat'] as num?)?.toDouble() ?? 0,
         allowFleet: j['allowFleet'] as bool? ?? false,
         status: PooledTripStatus.fromApi(j['status'] as String?),
@@ -187,6 +207,7 @@ class PooledTripEntity {
 
   PooledTripEntity copyWith({
     int? availableSeats,
+    List<int>? occupiedSeats,
     PooledTripStatus? status,
   }) =>
       PooledTripEntity(
@@ -201,6 +222,7 @@ class PooledTripEntity {
         departureTime: departureTime,
         totalSeats: totalSeats,
         availableSeats: availableSeats ?? this.availableSeats,
+        occupiedSeats: occupiedSeats ?? this.occupiedSeats,
         farePerSeat: farePerSeat,
         allowFleet: allowFleet,
         status: status ?? this.status,

@@ -713,15 +713,21 @@ export interface SeatBookingDTO {
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
   seatsBooked: number;
+  seatNumbers: number[]; // puestos específicos ocupados (1..totalSeats)
   pickupAddress?: string;
   notes?: string;
   status: SeatBookingStatus;
   bookedAt: string;
 }
 
-/** Client-supplied payload when reserving seats on a pooled trip. */
+/**
+ * Client-supplied payload when reserving seats on a pooled trip.
+ * `seatNumbers` (mapa de asientos) tiene prioridad; si no se envía, se reserva
+ * `seatsBooked` puestos asignados automáticamente (compatibilidad por conteo).
+ */
 export interface BookSeatsDTO {
   seatsBooked: number;
+  seatNumbers?: number[];
   pickupAddress?: string;
   notes?: string;
 }
@@ -742,6 +748,7 @@ export interface PooledTripDTO {
   departureTime: string;
   totalSeats: number;
   availableSeats: number;
+  occupiedSeats: number[]; // puestos ya reservados (1..totalSeats) para el mapa
   farePerSeat: number;
   maxFarePerSeat: number; // legal cost-share cap for this route
   allowFleet: boolean;

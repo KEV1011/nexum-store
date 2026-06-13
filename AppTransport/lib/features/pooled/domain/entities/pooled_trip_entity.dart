@@ -121,6 +121,7 @@ class PooledSeatBooking {
     required this.passengerName,
     required this.passengerPhone,
     required this.seatsBooked,
+    this.seatNumbers = const [],
     this.pickupAddress,
     this.notes,
   });
@@ -129,6 +130,7 @@ class PooledSeatBooking {
   final String passengerName;
   final String passengerPhone;
   final int seatsBooked;
+  final List<int> seatNumbers;
   final String? pickupAddress;
   final String? notes;
 
@@ -137,6 +139,10 @@ class PooledSeatBooking {
         passengerName: j['passengerName'] as String? ?? '',
         passengerPhone: j['passengerPhone'] as String? ?? '',
         seatsBooked: (j['seatsBooked'] as num?)?.toInt() ?? 1,
+        seatNumbers: (j['seatNumbers'] as List<dynamic>? ?? [])
+            .whereType<num>()
+            .map((n) => n.toInt())
+            .toList(),
         pickupAddress: j['pickupAddress'] as String?,
         notes: j['notes'] as String?,
       );

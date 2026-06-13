@@ -392,11 +392,17 @@ router.get('/intercity/pool/:id', clientAuthMiddleware, async (req, res) => {
 
 router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Partial<BookSeatsDTO>;
-  if (dto.seatsBooked === undefined) { res.status(400).json({ success: false, error: 'seatsBooked is required' }); return; }
+  const hasSeatNumbers = Array.isArray(dto.seatNumbers) && dto.seatNumbers.length > 0;
+  if (dto.seatsBooked === undefined && !hasSeatNumbers) {
+    res.status(400).json({ success: false, error: 'seatsBooked or seatNumbers is required' });
+    return;
+  }
   const passengerName = (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero Nexum';
   try {
     const result = await bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
-      seatsBooked: dto.seatsBooked, pickupAddress: dto.pickupAddress, notes: dto.notes,
+      seatsBooked: dto.seatsBooked ?? (dto.seatNumbers?.length ?? 0),
+      seatNumbers: hasSeatNumbers ? dto.seatNumbers : undefined,
+      pickupAddress: dto.pickupAddress, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: result });
   } catch (err) {
