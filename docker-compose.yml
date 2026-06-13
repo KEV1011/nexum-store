@@ -20,6 +20,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Servicio de un solo uso: aplica migraciones y siembra datos demo (conductor
+  # verificado, negocios y viajes compartidos van/carro) y luego termina. Usa
+  # una imagen Node con el código montado para tener ts-node disponible (la
+  # imagen de producción de nexum-api no lo trae). Así "docker compose up" deja
+  # todo listo para el demo sin instalar nada más en tu máquina.
+  nexum-seed:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://nexum:nexum_dev_secret@nexum-db:5432/nexum_db
+    depends_on:
+      nexum-db:
+        condition: service_healthy
+    command: sh -c "npm install --no-audit --no-fund && npx prisma generate && npx prisma migrate deploy && npx prisma db seed"
+    restart: "no"
+
   nexum-db:
     # PostGIS-enabled image: the postgis extension ships preinstalled and the
     # POSTGRES_USER is a superuser, so the `CREATE EXTENSION postgis` in the
