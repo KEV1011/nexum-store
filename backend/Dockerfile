@@ -1,7 +1,13 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+# Debian slim en lugar de Alpine: Prisma (motor de migración/consulta) carga
+# OpenSSL de forma fiable aquí; en alpine fallaba con "failed to detect libssl".
+FROM node:20-slim AS builder
 
 WORKDIR /app
+
+# OpenSSL es necesario para que el motor de Prisma cargue.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies (including dev deps needed for TypeScript compilation)
 COPY package*.json ./
@@ -17,14 +23,18 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: runner ───────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 ENV NODE_ENV=production
 
 WORKDIR /app
 
+# OpenSSL para el motor de consultas de Prisma en runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Run as non-root user
-RUN addgroup -S nexum && adduser -S nexum -G nexum
+RUN groupadd -r nexum && useradd -r -g nexum nexum
 
 # Copy compiled output and production node_modules from builder
 COPY --from=builder --chown=nexum:nexum /app/dist ./dist

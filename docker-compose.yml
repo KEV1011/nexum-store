@@ -30,7 +30,9 @@ services:
   # imagen de producción de nexum-api no lo trae). Así "docker compose up" deja
   # todo listo para el demo sin instalar nada más en tu máquina.
   nexum-seed:
-    image: node:20-alpine
+    # Debian slim: Prisma carga OpenSSL de forma fiable (alpine fallaba con
+    # "failed to detect libssl"). Instala openssl y luego migra + siembra.
+    image: node:20-slim
     working_dir: /app
     volumes:
       - ./backend:/app
@@ -39,7 +41,7 @@ services:
     depends_on:
       nexum-db:
         condition: service_healthy
-    command: sh -c "npm ci --no-audit --no-fund && npx prisma generate && npx prisma migrate deploy && npx prisma db seed"
+    command: sh -c "apt-get update && apt-get install -y --no-install-recommends openssl && npm ci --no-audit --no-fund && npx prisma generate && npx prisma migrate deploy && npx prisma db seed"
     restart: "no"
 
   nexum-db:
