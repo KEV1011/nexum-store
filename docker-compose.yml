@@ -12,7 +12,9 @@ services:
       NODE_ENV: production
       CORS_ORIGIN: "*"
       PORTAL_BASE_URL: http://localhost:3000
-      MOCK_OTP: "123456"
+      # Código OTP fijo para el demo local (sin Twilio): el login funciona con
+      # cualquier teléfono usando el código 123456. NO usar en producción real.
+      OTP_FALLBACK_CODE: "123456"
     depends_on:
       nexum-db:
         condition: service_healthy
@@ -27,6 +29,10 @@ services:
       POSTGRES_DB: nexum_db
       POSTGRES_USER: nexum
       POSTGRES_PASSWORD: nexum_dev_secret
+    # Puerto expuesto al host para poder sembrar datos demo y/o inspeccionar la
+    # BD desde tu máquina (npm run db:seed apuntando a localhost:5432).
+    ports:
+      - "5432:5432"
     volumes:
       - nexum-pg-data:/var/lib/postgresql/data
     healthcheck:

@@ -6,7 +6,9 @@ async function main() {
   // ─── Demo driver ─────────────────────────────────────────────────────────────
   const driver = await prisma.driver.upsert({
     where: { phone: '+57 312 456 7890' },
-    update: {},
+    // Verificado para que pueda salir en línea y recibir mandados/viajes en el
+    // demo (el matching exige isVerified = true).
+    update: { isVerified: true },
     create: {
       phone: '+57 312 456 7890',
       name: 'Juan Carlos Villamizar Contreras',
@@ -18,6 +20,7 @@ async function main() {
       rating: 4.87,
       totalTrips: 312,
       status: 'OFFLINE',
+      isVerified: true,
     },
   });
 
