@@ -7,8 +7,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-# Copy source and compile
+# Copy source, generate the Prisma client (provee los tipos de los modelos que
+# usa el build de TypeScript) y compila. Sin `prisma generate` el tsc falla.
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 # Prune devDependencies so we only ship production modules
