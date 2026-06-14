@@ -80,6 +80,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             right: 0,
             bottom: 52,
             child: Column(
+              // Sin esto la Column toma toda la altura disponible del Stack
+              // (queda mal posicionada y rompe el hit-test de los botones).
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
