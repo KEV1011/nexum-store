@@ -129,6 +129,10 @@ class _BookingCard extends StatelessWidget {
     final timeLabel =
         '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
     final seats = booking?.seatsBooked ?? 1;
+    final seatNumbers = booking?.seatNumbers ?? const <int>[];
+    final seatsLabel = seatNumbers.isNotEmpty
+        ? 'Asiento(s) ${seatNumbers.join(', ')} · ${CurrencyFormatter.format(trip.farePerSeat * seats)}'
+        : '$seats puesto(s) · ${CurrencyFormatter.format(trip.farePerSeat * seats)}';
     final canCancel = trip.status == PooledTripStatus.open ||
         trip.status == PooledTripStatus.full;
 
@@ -170,10 +174,9 @@ class _BookingCard extends StatelessWidget {
           const SizedBox(height: 8),
           _row(Icons.schedule_rounded,
               '$timeLabel · ${t.day}/${t.month}/${t.year}'),
-          _row(Icons.event_seat_rounded,
-              '$seats puesto(s) · ${CurrencyFormatter.format(trip.farePerSeat * seats)}'),
-          _row(Icons.directions_car_rounded,
-              '${trip.driverName} · ${trip.vehicleDescription}'),
+          _row(Icons.event_seat_rounded, seatsLabel),
+          _row(trip.vehicleType.icon,
+              '${trip.vehicleType.label} · ${trip.vehicleDescription} · ${trip.driverName}'),
           if (booking?.pickupAddress != null && booking!.pickupAddress!.isNotEmpty)
             _row(Icons.my_location_rounded, booking.pickupAddress!),
           const SizedBox(height: 12),

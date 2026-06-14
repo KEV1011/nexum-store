@@ -2,10 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
+
+/// Marca el número de contacto que entrega el backend (proxy o enmascarado).
+Future<void> _dialPhone(String phone) async {
+  final uri = Uri.parse('tel:$phone');
+  if (await canLaunchUrl(uri)) await launchUrl(uri);
+}
 
 class ErrandStatusScreen extends ConsumerWidget {
   const ErrandStatusScreen({super.key});
@@ -382,7 +389,7 @@ class _MessengerCard extends StatelessWidget {
           ),
           if (errand.messengerPhone != null)
             GestureDetector(
-              onTap: () {},
+              onTap: () => _dialPhone(errand.messengerPhone!),
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(

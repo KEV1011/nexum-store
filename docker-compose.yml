@@ -12,11 +12,37 @@ services:
       NODE_ENV: production
       CORS_ORIGIN: "*"
       PORTAL_BASE_URL: http://localhost:3000
-      MOCK_OTP: "123456"
+      # Código OTP fijo para el demo local (sin Twilio): el login funciona con
+      # cualquier teléfono usando el código 123456. NO usar en producción real.
+      OTP_FALLBACK_CODE: "123456"
     depends_on:
       nexum-db:
         condition: service_healthy
+      # Espera a que las migraciones + seed terminen antes de servir, para que
+      # la API no consulte tablas que aún no existen.
+      nexum-seed:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  # Servicio de un solo uso: aplica migraciones y siembra datos demo (conductor
+  # verificado, negocios y viajes compartidos van/carro) y luego termina. Usa
+  # una imagen Node con el código montado para tener ts-node disponible (la
+  # imagen de producción de nexum-api no lo trae). Así "docker compose up" deja
+  # todo listo para el demo sin instalar nada más en tu máquina.
+  nexum-seed:
+    # Debian slim: Prisma carga OpenSSL de forma fiable (alpine fallaba con
+    # "failed to detect libssl"). Instala openssl y luego migra + siembra.
+    image: node:20-slim
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    environment:
+      DATABASE_URL: postgresql://nexum:nexum_dev_secret@nexum-db:5432/nexum_db
+    depends_on:
+      nexum-db:
+        condition: service_healthy
+    command: sh -c "apt-get update && apt-get install -y --no-install-recommends openssl && npm ci --no-audit --no-fund && npx prisma generate && npx prisma migrate deploy && npx prisma db seed"
+    restart: "no"
 
   nexum-db:
     # PostGIS-enabled image: the postgis extension ships preinstalled and the
@@ -27,6 +53,10 @@ services:
       POSTGRES_DB: nexum_db
       POSTGRES_USER: nexum
       POSTGRES_PASSWORD: nexum_dev_secret
+    # Puerto expuesto al host para poder sembrar datos demo y/o inspeccionar la
+    # BD desde tu máquina (npm run db:seed apuntando a localhost:5432).
+    ports:
+      - "5432:5432"
     volumes:
       - nexum-pg-data:/var/lib/postgresql/data
     healthcheck:

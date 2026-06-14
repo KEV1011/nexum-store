@@ -1,6 +1,7 @@
 import {
   IntercityCity,
   PooledTripStatus,
+  PooledVehicleType,
   PublishPooledTripDTO,
   BookSeatsDTO,
   PooledTripDTO,
@@ -10,6 +11,7 @@ import {
 import {
   getIntercityRoute,
   getMaxFarePerSeat,
+  POOLED_VEHICLE_MAX_SEATS,
   INTERCITY_REMOVE_CAP,
   INTERCITY_DUAL_MODEL,
 } from '../config/constants';
@@ -20,7 +22,12 @@ import { maskPhone } from './safe-contact.service';
 type TripCallback = (tripId: string, trip: PooledTripDTO) => void;
 const tripListeners = new Map<string, Set<TripCallback>>();
 
-const MAX_SEATS = 7;
+const VEHICLE_TYPE_TO_PRISMA: Record<PooledVehicleType, 'SEDAN' | 'SUV' | 'VAN' | 'MINIBUS'> = {
+  sedan: 'SEDAN', suv: 'SUV', van: 'VAN', minibus: 'MINIBUS',
+};
+const VEHICLE_TYPE_FROM_PRISMA: Record<string, PooledVehicleType> = {
+  SEDAN: 'sedan', SUV: 'suv', VAN: 'van', MINIBUS: 'minibus',
+};
 
 export class PooledTripError extends Error {
   constructor(message: string) {
@@ -49,7 +56,7 @@ const STATUS_FROM_PRISMA: Record<string, PooledTripStatus> = {
 
 type DbPooledTrip = {
   id: string; tripRef: string; driverId: string; driverName: string; driverPhone: string;
-  vehicleDescription: string; origin: string; destination: string; departureTime: Date;
+  vehicleType: string; vehicleDescription: string; origin: string; destination: string; departureTime: Date;
   totalSeats: number; farePerSeat: number; maxFarePerSeat: number; allowFleet: boolean;
   status: string; notes: string | null; createdAt: Date;
   bookings?: DbSeatBooking[];
@@ -57,8 +64,30 @@ type DbPooledTrip = {
 
 type DbSeatBooking = {
   id: string; tripId: string; userId: string; passengerName: string; passengerPhone: string;
-  seatsBooked: number; pickupAddress: string | null; notes: string | null; status: string; bookedAt: Date;
+  seatsBooked: number; seatNumbers: number[]; pickupAddress: string | null; notes: string | null; status: string; bookedAt: Date;
 };
+
+/**
+ * Conjunto de puestos ocupados (1..totalSeats) a partir de las reservas
+ * confirmadas. Usa los seatNumbers explícitos y, para reservas por conteo
+ * (sin números), rellena los puestos libres más bajos. Garantiza el invariante
+ * occupied.length === Σ seatsBooked.
+ */
+function _occupiedSeats(bookings: DbSeatBooking[], totalSeats: number): number[] {
+  const occupied = new Set<number>();
+  for (const b of bookings) {
+    for (const n of b.seatNumbers ?? []) {
+      if (n >= 1 && n <= totalSeats) occupied.add(n);
+    }
+  }
+  for (const b of bookings) {
+    let need = b.seatsBooked - (b.seatNumbers ?? []).filter((n) => n >= 1 && n <= totalSeats).length;
+    for (let n = 1; n <= totalSeats && need > 0; n++) {
+      if (!occupied.has(n)) { occupied.add(n); need--; }
+    }
+  }
+  return [...occupied].sort((a, b) => a - b);
+}
 
 function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
   return {
@@ -70,6 +99,7 @@ function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
     contactChannel: 'in_app_chat',
     maskedPhone: maskPhone(b.passengerPhone),
     seatsBooked: b.seatsBooked,
+    seatNumbers: [...(b.seatNumbers ?? [])].sort((a, b) => a - b),
     pickupAddress: b.pickupAddress ?? undefined,
     notes: b.notes ?? undefined,
     status: (b.status === 'CONFIRMED' ? 'confirmed' : 'cancelled') as SeatBookingStatus,
@@ -94,12 +124,14 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     driverPhone: maskPhone(t.driverPhone) ?? '',
     contactChannel: 'in_app_chat',
     maskedPhone: maskPhone(t.driverPhone),
+    vehicleType: (VEHICLE_TYPE_FROM_PRISMA[t.vehicleType] ?? 'sedan') as PooledVehicleType,
     vehicleDescription: t.vehicleDescription,
     origin: (CITY_FROM_PRISMA[t.origin] ?? t.origin.toLowerCase()) as IntercityCity,
     destination: (CITY_FROM_PRISMA[t.destination] ?? t.destination.toLowerCase()) as IntercityCity,
     departureTime: t.departureTime.toISOString(),
     totalSeats: t.totalSeats,
     availableSeats: t.totalSeats - takenSeats,
+    occupiedSeats: _occupiedSeats(confirmedBookings, t.totalSeats),
     farePerSeat: t.farePerSeat,
     maxFarePerSeat: t.maxFarePerSeat,
     allowFleet: t.allowFleet,
@@ -147,8 +179,13 @@ export async function publishPooledTrip(
     );
   }
 
-  if (!Number.isInteger(dto.totalSeats) || dto.totalSeats < 1 || dto.totalSeats > MAX_SEATS) {
-    throw new PooledTripError(`Los puestos deben estar entre 1 y ${MAX_SEATS}`);
+  const vehicleType = (dto.vehicleType ?? 'sedan') as PooledVehicleType;
+  const maxSeatsForVehicle = POOLED_VEHICLE_MAX_SEATS[vehicleType];
+  if (maxSeatsForVehicle === undefined) {
+    throw new PooledTripError('Tipo de vehículo no válido');
+  }
+  if (!Number.isInteger(dto.totalSeats) || dto.totalSeats < 1 || dto.totalSeats > maxSeatsForVehicle) {
+    throw new PooledTripError(`Los puestos deben estar entre 1 y ${maxSeatsForVehicle} para este tipo de vehículo`);
   }
   const departure = new Date(dto.departureTime);
   if (Number.isNaN(departure.getTime()) || departure.getTime() < Date.now()) {
@@ -172,6 +209,7 @@ export async function publishPooledTrip(
       driverId,
       driverName,
       driverPhone,
+      vehicleType: VEHICLE_TYPE_TO_PRISMA[vehicleType],
       vehicleDescription: dto.vehicleDescription,
       origin: CITY_TO_PRISMA[dto.origin] ?? dto.origin.toUpperCase(),
       destination: CITY_TO_PRISMA[dto.destination] ?? dto.destination.toUpperCase(),
@@ -282,9 +320,12 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
 }
 
 export async function getPooledTripById(tripId: string, includeBookings = false): Promise<PooledTripDTO | null> {
+  // Las reservas se cargan siempre: availableSeats se calcula desde ellas.
+  // `includeBookings` solo decide si se EXPONE la lista de pasajeros (vista
+  // del conductor), no si se cuenta la ocupación.
   const t = await prisma.pooledTrip.findUnique({
     where: { id: tripId },
-    include: { bookings: includeBookings },
+    include: { bookings: true },
   });
   return t ? _toDTO(t as DbPooledTrip, includeBookings) : null;
 }
@@ -308,11 +349,34 @@ export async function bookSeats(
     const existing = (t.bookings as DbSeatBooking[]).find((b) => b.userId === clientId);
     if (existing) throw new PooledTripError('Ya tienes una reserva en este viaje');
 
-    const takenSeats = (t.bookings as DbSeatBooking[]).reduce((sum, b) => sum + b.seatsBooked, 0);
-    const available = t.totalSeats - takenSeats;
-    const requested = dto.seatsBooked;
+    const confirmed = t.bookings as DbSeatBooking[];
+    const occupied = new Set(_occupiedSeats(confirmed, t.totalSeats));
+    const available = t.totalSeats - occupied.size;
 
-    if (!Number.isInteger(requested) || requested < 1) throw new PooledTripError('Debes reservar al menos un puesto');
+    // Mapa de asientos: el cliente puede elegir puestos específicos. Si no los
+    // envía, se asignan automáticamente los libres más bajos (por conteo).
+    let seatNumbers: number[];
+    if (dto.seatNumbers && dto.seatNumbers.length > 0) {
+      const unique = [...new Set(dto.seatNumbers)];
+      if (unique.length !== dto.seatNumbers.length) throw new PooledTripError('Puestos repetidos en la selección');
+      for (const n of unique) {
+        if (!Number.isInteger(n) || n < 1 || n > t.totalSeats) {
+          throw new PooledTripError(`El puesto ${n} no existe en este vehículo`);
+        }
+        if (occupied.has(n)) throw new PooledTripError(`El puesto ${n} ya está reservado`);
+      }
+      seatNumbers = [...unique].sort((a, b) => a - b);
+    } else {
+      const requested = dto.seatsBooked;
+      if (!Number.isInteger(requested) || requested < 1) throw new PooledTripError('Debes reservar al menos un puesto');
+      if (requested > available) throw new PooledTripError(`Solo quedan ${available} puesto(s) disponible(s)`);
+      seatNumbers = [];
+      for (let n = 1; n <= t.totalSeats && seatNumbers.length < requested; n++) {
+        if (!occupied.has(n)) seatNumbers.push(n);
+      }
+    }
+
+    const requested = seatNumbers.length;
     if (requested > available) throw new PooledTripError(`Solo quedan ${available} puesto(s) disponible(s)`);
     if (requested === t.totalSeats && requested > 1 && !t.allowFleet) {
       throw new PooledTripError('Este conductor no permite reservar el vehículo completo');
@@ -325,6 +389,7 @@ export async function bookSeats(
         passengerName,
         passengerPhone,
         seatsBooked: requested,
+        seatNumbers,
         pickupAddress: dto.pickupAddress ?? null,
         notes: dto.notes ?? null,
         status: 'CONFIRMED',

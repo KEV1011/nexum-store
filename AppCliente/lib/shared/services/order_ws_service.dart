@@ -18,6 +18,13 @@ class OrderUpdateEvent {
   final Map<String, dynamic> payload;
 }
 
+/// Mensaje del chat de un pedido recibido por WebSocket (mapa crudo).
+class OrderChatMessageEvent {
+  const OrderChatMessageEvent({required this.message});
+
+  final Map<String, dynamic> message;
+}
+
 /// Singleton WebSocket client para recibir actualizaciones de pedidos
 /// en tiempo real desde el backend Nexum.
 ///
@@ -25,11 +32,15 @@ class OrderUpdateEvent {
 ///   {"type": "client_auth", "token": "..."}   ← autenticación
 ///   {"type": "subscribe_order", "orderId": "..."}
 ///   {"type": "unsubscribe_order", "orderId": "..."}
+///   {"type": "subscribe_order_chat", "orderId": "..."}
+///   {"type": "unsubscribe_order_chat", "orderId": "..."}
+///   {"type": "order_chat_send", "orderId": "...", "text": "..."}
 ///
 /// Protocolo servidor → cliente:
 ///   {"type": "client_auth_ok", "clientId": "..."}
 ///   {"type": "client_auth_error", "message": "..."}
 ///   {"type": "order_update", "orderId": "...", ...campos del pedido}
+///   {"type": "order_chat_message", "message": {...}}
 class OrderWsService {
   factory OrderWsService() => _instance;
   OrderWsService._();
@@ -46,8 +57,11 @@ class OrderWsService {
   Completer<bool>? _authCompleter;
 
   final _updateCtrl = StreamController<OrderUpdateEvent>.broadcast();
+  final _chatCtrl = StreamController<OrderChatMessageEvent>.broadcast();
 
   Stream<OrderUpdateEvent> get updates => _updateCtrl.stream;
+
+  Stream<OrderChatMessageEvent> get chatMessages => _chatCtrl.stream;
 
   bool get isConnected => _channel != null && _authenticated;
 
@@ -108,6 +122,20 @@ class OrderWsService {
     _send({'type': 'unsubscribe_order', 'orderId': orderId});
   }
 
+  // ── chat del pedido ────────────────────────────────────────────────────────
+
+  void subscribeOrderChat(String orderId) {
+    _send({'type': 'subscribe_order_chat', 'orderId': orderId});
+  }
+
+  void unsubscribeOrderChat(String orderId) {
+    _send({'type': 'unsubscribe_order_chat', 'orderId': orderId});
+  }
+
+  void sendOrderChat(String orderId, String text) {
+    _send({'type': 'order_chat_send', 'orderId': orderId, 'text': text});
+  }
+
   // ── disconnect ─────────────────────────────────────────────────────────────
 
   void disconnect() {
@@ -148,6 +176,11 @@ class OrderWsService {
         final orderId = msg['orderId'] as String?;
         if (orderId != null) {
           _updateCtrl.add(OrderUpdateEvent(orderId: orderId, payload: msg));
+        }
+      } else if (type == 'order_chat_message') {
+        final m = msg['message'];
+        if (m is Map<String, dynamic>) {
+          _chatCtrl.add(OrderChatMessageEvent(message: m));
         }
       }
     } catch (_) {}
