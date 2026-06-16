@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -77,7 +76,6 @@ class DriverWsService {
   /// If [token] is `null` the JWT is read from [FlutterSecureStorage].
   /// Returns `true` on successful authentication, `false` otherwise.
   Future<bool> connect(String? token, WorkMode workMode) async {
-    if (kIsWeb) return false;
     if (_channel != null) return true;
 
     final jwt = token ?? await _storage.read(key: AppConstants.authTokenKey);

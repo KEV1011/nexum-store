@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
@@ -71,7 +70,6 @@ class OrderWsService {
   ///
   /// Devuelve `true` si `client_auth_ok` llega en menos de 3 s.
   Future<bool> connect() async {
-    if (kIsWeb) return false;
     if (_channel != null) return _authenticated;
 
     final token = await _storage.read(key: AppConstants.authTokenKey);
