@@ -6,7 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
-import 'package:nexum_driver/shared/services/ws_service.dart';
+import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
 /// Servicio de geolocalización para el app del conductor.
 ///
@@ -25,6 +25,17 @@ class LocationService {
   StreamSubscription<Position>? _positionSub;
   Position? _lastPosition;
   bool _isTracking = false;
+
+  // Override de ubicación para demos/pruebas. Compila con
+  //   --dart-define=DEMO_LAT=7.3754 --dart-define=DEMO_LNG=-72.6486
+  // y el conductor reporta esa posición fija: sirve para probar el matching
+  // geoespacial sin GPS real ni tener que tocar las DevTools del navegador.
+  // Vacío en producción → se usa el GPS real del dispositivo.
+  static const String _demoLatRaw = String.fromEnvironment('DEMO_LAT');
+  static const String _demoLngRaw = String.fromEnvironment('DEMO_LNG');
+  static final double? _demoLat = double.tryParse(_demoLatRaw);
+  static final double? _demoLng = double.tryParse(_demoLngRaw);
+  static bool get _hasDemoLocation => _demoLat != null && _demoLng != null;
 
   // ── Permissions ────────────────────────────────────────────────────────────
 
@@ -55,6 +66,15 @@ class LocationService {
   /// location access.  Falls back to the centre of Pamplona if the GPS
   /// hardware call fails for any other reason.
   Future<LocationModel> getCurrentLocation() async {
+    // En modo demo reportamos una posición fija sin pedir permisos ni tocar GPS.
+    if (_hasDemoLocation) {
+      return LocationModel(
+        latitude: _demoLat!,
+        longitude: _demoLng!,
+        address: 'Ubicación demo',
+      );
+    }
+
     final hasPermission = await requestPermissions();
     if (!hasPermission) {
       throw const LocationPermissionException();
@@ -122,12 +142,17 @@ class LocationService {
     if (_isTracking) return;
     _isTracking = true;
 
-    // Listen to the position stream to keep _lastPosition fresh
-    _positionSub = Geolocator.getPositionStream(
-      locationSettings: _platformSettings(),
-    ).listen((pos) {
-      _lastPosition = pos;
-    });
+    // En modo demo la posición es fija: no abrimos el stream de GPS (evita
+    // pedir permisos de ubicación en web); el timer de abajo igual envía las
+    // coordenadas demo al backend.
+    if (!_hasDemoLocation) {
+      // Listen to the position stream to keep _lastPosition fresh
+      _positionSub = Geolocator.getPositionStream(
+        locationSettings: _platformSettings(),
+      ).listen((pos) {
+        _lastPosition = pos;
+      });
+    }
 
     _batchTimer = Timer.periodic(
       Duration(seconds: AppConstants.locationBatchIntervalSeconds),
@@ -162,13 +187,14 @@ class LocationService {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   void _sendLocationBatch() {
-    if (_lastPosition == null) return;
-    final ws = WsService();
-    ws.sendLocationUpdate(
-      _lastPosition!.latitude,
-      _lastPosition!.longitude,
-      ws.activeTripId,
-    );
+    final lat = _hasDemoLocation ? _demoLat! : _lastPosition?.latitude;
+    final lng = _hasDemoLocation ? _demoLng! : _lastPosition?.longitude;
+    if (lat == null || lng == null) return;
+    // Se envía por la conexión autenticada del conductor (la misma que recibe
+    // viajes/mandados); el backend escribe `geo`+`lastSeenAt`, que alimentan el
+    // matching geoespacial. Antes salía por WsService —otra conexión que no se
+    // abría en este flujo— y la posición nunca llegaba al backend.
+    DriverWsService().sendLocationUpdate(lat, lng);
   }
 
   /// Cancels any active timer and releases resources.

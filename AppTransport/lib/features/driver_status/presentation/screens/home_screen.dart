@@ -35,6 +35,7 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -214,6 +215,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _wsErrandSub?.cancel();
       _wsCancelSub?.cancel();
       _wsErrandCancelSub?.cancel();
+      LocationService().stopTracking();
       DriverWsService().disconnect();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
@@ -247,6 +249,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
 
+    // Empezar a reportar la ubicación: sin esto el conductor queda ONLINE pero
+    // sin `geo`, y el matching por cercanía (mandados/viajes) nunca lo encuentra.
+    unawaited(_beginLocationUpdates());
+
     // Subscribe to incoming trip requests from the server.
     _wsTripSub = DriverWsService().tripRequests.listen((tripMap) {
       if (!mounted) return;
@@ -279,6 +285,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() => _state = _state.copyWith(clearPending: true));
       }
     });
+  }
+
+  /// Arranca el reporte de ubicación al backend cuando el conductor entra en
+  /// línea: pide un primer fix (o usa el override de demo) y lo envía de una,
+  /// luego deja corriendo el tracking periódico.
+  Future<void> _beginLocationUpdates() async {
+    try {
+      final loc = await LocationService().getCurrentLocation();
+      DriverWsService().sendLocationUpdate(loc.latitude, loc.longitude);
+    } catch (_) {
+      // Sin permiso de ubicación: el conductor sigue online pero no recibirá
+      // solicitudes por cercanía hasta que lo habilite.
+    }
+    LocationService().startTracking();
   }
 
   /// Build a [TripRequestEntity] from a raw trip JSON map received via WS.
