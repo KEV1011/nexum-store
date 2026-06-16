@@ -44,7 +44,6 @@ model User {
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
   ratings           Rating[]          @relation("RatingAuthor")
-  otpSessions       OtpSession[]
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
@@ -124,7 +123,6 @@ model OtpSession {
 
   driverId  String?
   driver    Driver?  @relation(fields: [driverId], references: [id])
-  user      User?    @relation(fields: [phone], references: [phone])
 
   @@index([phone])
   @@map("otp_sessions")
