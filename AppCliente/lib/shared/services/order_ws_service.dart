@@ -45,6 +45,14 @@ class OrderWsService {
   bool _waitingForAuth = false;
   Completer<bool>? _authCompleter;
 
+  // Auto-reconexión: mantenemos el socket vivo entre caídas y reenviamos las
+  // suscripciones de pedidos activas en cada (re)autenticación.
+  bool _shouldReconnect = false;
+  bool _connecting = false;
+  int _reconnectAttempts = 0;
+  Timer? _reconnectTimer;
+  final Map<String, Map<String, dynamic>> _activeSubs = {};
+
   final _updateCtrl = StreamController<OrderUpdateEvent>.broadcast();
 
   Stream<OrderUpdateEvent> get updates => _updateCtrl.stream;
@@ -58,12 +66,21 @@ class OrderWsService {
   /// Devuelve `true` si `client_auth_ok` llega en menos de 3 s.
   Future<bool> connect() async {
     if (kIsWeb) return false;
+    _shouldReconnect = true;
     if (_channel != null) return _authenticated;
+    return _openAndAuth();
+  }
 
-    final token = await _storage.read(key: AppConstants.authTokenKey);
-    if (token == null || token.isEmpty) return false;
+  Future<bool> _openAndAuth() async {
+    if (kIsWeb) return false;
+    if (_channel != null) return _authenticated;
+    if (_connecting) return false;
+    _connecting = true;
 
     try {
+      final token = await _storage.read(key: AppConstants.authTokenKey);
+      if (token == null || token.isEmpty) return false;
+
       _channel = WebSocketChannel.connect(Uri.parse(ApiConfig.wsUrl));
       await _channel!.ready.timeout(const Duration(seconds: 3));
 
@@ -72,14 +89,8 @@ class OrderWsService {
 
       _sub = _channel!.stream.listen(
         _onMessage,
-        onError: (_) {
-          _authCompleter?.complete(false);
-          _cleanup();
-        },
-        onDone: () {
-          _authCompleter?.complete(false);
-          _cleanup();
-        },
+        onError: (_) => _handleDrop(),
+        onDone: _handleDrop,
         cancelOnError: true,
       );
 
@@ -90,33 +101,77 @@ class OrderWsService {
         const Duration(seconds: 4),
         onTimeout: () => false,
       );
-      if (!ok) _cleanup();
+      if (ok) {
+        _reconnectAttempts = 0;
+        _replaySubs();
+      } else {
+        _handleDrop();
+      }
       return ok;
     } catch (_) {
-      _cleanup();
+      _handleDrop();
       return false;
+    } finally {
+      _connecting = false;
+    }
+  }
+
+  /// Maneja una caída: completa el handshake pendiente, limpia el socket y, si
+  /// seguimos queriendo estar conectados, programa una reconexión con backoff.
+  void _handleDrop() {
+    if (_authCompleter != null && !_authCompleter!.isCompleted) {
+      _authCompleter!.complete(false);
+    }
+    _cleanup();
+    if (_shouldReconnect && !kIsWeb) _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_reconnectTimer != null) return;
+    if (_reconnectAttempts < 10) _reconnectAttempts++;
+    // Backoff exponencial 2,4,8,16,… con techo de 30 s.
+    final backoff = 1 << _reconnectAttempts;
+    final seconds = backoff > 30 ? 30 : backoff;
+    _reconnectTimer = Timer(Duration(seconds: seconds), () {
+      _reconnectTimer = null;
+      if (_shouldReconnect && _channel == null) unawaited(_openAndAuth());
+    });
+  }
+
+  void _replaySubs() {
+    for (final msg in _activeSubs.values) {
+      _send(msg);
     }
   }
 
   // ── subscribeOrder ─────────────────────────────────────────────────────────
 
   void subscribeOrder(String orderId) {
+    _activeSubs['order:$orderId'] = {
+      'type': 'subscribe_order',
+      'orderId': orderId,
+    };
     _send({'type': 'subscribe_order', 'orderId': orderId});
   }
 
   void unsubscribeOrder(String orderId) {
+    _activeSubs.remove('order:$orderId');
     _send({'type': 'unsubscribe_order', 'orderId': orderId});
   }
 
   // ── disconnect ─────────────────────────────────────────────────────────────
 
   void disconnect() {
-    _sub?.cancel();
-    _channel?.sink.close();
+    _shouldReconnect = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _activeSubs.clear();
     _cleanup();
   }
 
   void _cleanup() {
+    _sub?.cancel();
+    _channel?.sink.close();
     _channel = null;
     _sub = null;
     _authenticated = false;
