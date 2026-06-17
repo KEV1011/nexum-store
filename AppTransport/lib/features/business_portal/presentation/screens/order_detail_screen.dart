@@ -402,8 +402,9 @@ class _PhotoThumb extends StatelessWidget {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.file(
-            File(path),
+          child: Image(
+            image: (kIsWeb ? NetworkImage(path) : FileImage(File(path)))
+                as ImageProvider,
             width: 64,
             height: 64,
             fit: BoxFit.cover,

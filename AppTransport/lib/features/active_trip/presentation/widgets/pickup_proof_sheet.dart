@@ -531,8 +531,10 @@ class _PhotoCapture extends StatelessWidget {
             borderRadius: BorderRadius.circular(
               AppConstants.radiusMedium,
             ),
-            child: Image.file(
-              File(photoPath!),
+            child: Image(
+              image: (kIsWeb
+                  ? NetworkImage(photoPath!)
+                  : FileImage(File(photoPath!))) as ImageProvider,
               height: 200,
               width: double.infinity,
               fit: BoxFit.cover,
