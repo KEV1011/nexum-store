@@ -69,6 +69,12 @@ class DriverWsService {
 
   bool get isConnected => _channel != null;
 
+  /// Id del viaje activo. Lo fija la pantalla de viaje activo y lo usa
+  /// [LocationService] para etiquetar los `location_update` que transmite
+  /// mientras el conductor lleva un pasajero (cuando es null, el GPS alimenta
+  /// solo el matching geoespacial sin asociarse a un viaje).
+  String? activeTripId;
+
   // ── connect ───────────────────────────────────────────────────────────────
 
   /// Connects to the backend WebSocket, sends an `auth` frame with the
@@ -131,6 +137,7 @@ class DriverWsService {
   // ── disconnect ────────────────────────────────────────────────────────────
 
   void disconnect() {
+    activeTripId = null;
     _sub?.cancel();
     _channel?.sink.close();
     _cleanup();

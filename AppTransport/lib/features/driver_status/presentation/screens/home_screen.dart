@@ -35,6 +35,7 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -214,6 +215,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _wsErrandSub?.cancel();
       _wsCancelSub?.cancel();
       _wsErrandCancelSub?.cancel();
+      LocationService().stopTracking();
       DriverWsService().disconnect();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
@@ -246,6 +248,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _scheduleWebMockRequest();
       return;
     }
+
+    // Transmite el GPS real al backend: alimenta el matching geoespacial para
+    // que este conductor sea asignable y, durante un viaje, mueve su punto en
+    // el mapa del pasajero. Sin esto el conductor nunca reporta su posición.
+    unawaited(
+      LocationService().requestPermissions().then((granted) {
+        if (granted) LocationService().startTracking();
+      }),
+    );
 
     // Subscribe to incoming trip requests from the server.
     _wsTripSub = DriverWsService().tripRequests.listen((tripMap) {
