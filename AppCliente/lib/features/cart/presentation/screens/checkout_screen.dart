@@ -16,8 +16,11 @@ import 'package:nexum_client/features/cart/presentation/widgets/'
     'cart_summary.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
+import 'package:nexum_client/features/payments/data/payment_api.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// Métodos de pago disponibles (mock para MVP).
+/// Métodos de pago disponibles. Efectivo se paga al recibir; tarjeta y Nequi se
+/// cobran en línea con Wompi (checkout abierto en el navegador).
 enum PaymentMethod { cash, card, nequi }
 
 extension on PaymentMethod {
@@ -135,9 +138,60 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       }
     }
     if (!mounted) return;
-    ref.read(cartProvider.notifier).clear();
 
+    // Pago en línea (tarjeta/Nequi) vía Wompi. El efectivo se paga al recibir.
+    if (_payment != PaymentMethod.cash) {
+      final amountToPay =
+          (cart.total - _promoDiscount).clamp(0, double.infinity).toDouble();
+      await _startOnlinePayment(
+        orderId: orderId,
+        amount: amountToPay,
+        businessName: cart.business?.name,
+      );
+      if (!mounted) return;
+    }
+
+    ref.read(cartProvider.notifier).clear();
     context.go(AppRoutes.orderPath(orderId));
+  }
+
+  /// Inicia el pago Wompi y abre el checkout en el navegador. Si algo falla, el
+  /// pedido sigue su curso (el cliente puede pagar contra entrega) y se avisa.
+  Future<void> _startOnlinePayment({
+    required String orderId,
+    required double amount,
+    String? businessName,
+  }) async {
+    try {
+      final payment = await ref.read(paymentApiProvider).init(
+            amount: amount,
+            description: 'Pedido en ${businessName ?? 'Nexum'}',
+            orderId: orderId,
+          );
+      final opened = await launchUrl(
+        Uri.parse(payment.paymentUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!mounted) return;
+      AppSnackbar.showInfo(
+        context,
+        opened
+            ? 'Completa el pago con ${_payment.label} en la ventana de Wompi. '
+                'Tu pedido ya está en curso.'
+            : 'No se pudo abrir el pago. Podrás pagar al recibir.',
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final msg = (e.response?.data as Map?)?['error'] as String? ??
+          'No se pudo iniciar el pago. Podrás pagar al recibir.';
+      AppSnackbar.showError(context, msg);
+    } catch (_) {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo abrir el pago. Podrás pagar al recibir.',
+      );
+    }
   }
 
   @override
