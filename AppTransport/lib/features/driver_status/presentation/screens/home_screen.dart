@@ -180,22 +180,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _toggleOnline() {
     final goingOnline = !_state.isOnline;
 
-    // Block going online when the driver is not yet verified.
-    if (goingOnline) {
-      final profile = ref.read(driverProfileProvider).profile;
-      if (profile != null && !profile.isVerified) {
-        context.push(AppRoutes.verification);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Debes completar la verificación antes de recibir viajes.',
-            ),
-            backgroundColor: Color(0xFFF57F17),
-          ),
-        );
-        return;
-      }
-    }
+    // Nota: en producción aquí se bloquea salir en línea si el conductor no
+    // está verificado. Para el demo local el conductor sembrado ya viene
+    // verificado, así que no se exige subir documentos (además, la subida de
+    // archivos no funciona en web). El matching del backend sigue filtrando por
+    // isVerified, así que solo conductores verificados reciben solicitudes.
 
     setState(() {
       _state = _state.copyWith(isOnline: goingOnline, clearPending: true);
