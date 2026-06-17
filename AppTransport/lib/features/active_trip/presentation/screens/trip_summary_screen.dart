@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -677,8 +678,9 @@ class _PhotoThumb extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: Stack(
         children: [
-          Image.file(
-            File(path),
+          Image(
+            image: (kIsWeb ? NetworkImage(path) : FileImage(File(path)))
+                as ImageProvider,
             width: 64,
             height: 64,
             fit: BoxFit.cover,

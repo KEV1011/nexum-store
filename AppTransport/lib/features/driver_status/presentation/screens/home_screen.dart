@@ -35,6 +35,7 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/audio_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -179,22 +180,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _toggleOnline() {
     final goingOnline = !_state.isOnline;
 
-    // Block going online when the driver is not yet verified.
-    if (goingOnline) {
-      final profile = ref.read(driverProfileProvider).profile;
-      if (profile != null && !profile.isVerified) {
-        context.push(AppRoutes.verification);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Debes completar la verificación antes de recibir viajes.',
-            ),
-            backgroundColor: Color(0xFFF57F17),
-          ),
-        );
-        return;
-      }
-    }
+    // Nota: en producción aquí se bloquea salir en línea si el conductor no
+    // está verificado. Para el demo local el conductor sembrado ya viene
+    // verificado, así que no se exige subir documentos (además, la subida de
+    // archivos no funciona en web). El matching del backend sigue filtrando por
+    // isVerified, así que solo conductores verificados reciben solicitudes.
 
     setState(() {
       _state = _state.copyWith(isOnline: goingOnline, clearPending: true);
@@ -214,6 +204,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _wsErrandSub?.cancel();
       _wsCancelSub?.cancel();
       _wsErrandCancelSub?.cancel();
+      LocationService().stopTracking();
       DriverWsService().disconnect();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
     }
@@ -247,6 +238,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
 
+    // Empezar a reportar la ubicación: sin esto el conductor queda ONLINE pero
+    // sin `geo`, y el matching por cercanía (mandados/viajes) nunca lo encuentra.
+    unawaited(_beginLocationUpdates());
+
     // Subscribe to incoming trip requests from the server.
     _wsTripSub = DriverWsService().tripRequests.listen((tripMap) {
       if (!mounted) return;
@@ -279,6 +274,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() => _state = _state.copyWith(clearPending: true));
       }
     });
+  }
+
+  /// Arranca el reporte de ubicación al backend cuando el conductor entra en
+  /// línea: pide un primer fix (o usa el override de demo) y lo envía de una,
+  /// luego deja corriendo el tracking periódico.
+  Future<void> _beginLocationUpdates() async {
+    try {
+      final loc = await LocationService().getCurrentLocation();
+      DriverWsService().sendLocationUpdate(loc.latitude, loc.longitude);
+    } catch (_) {
+      // Sin permiso de ubicación: el conductor sigue online pero no recibirá
+      // solicitudes por cercanía hasta que lo habilite.
+    }
+    LocationService().startTracking();
   }
 
   /// Build a [TripRequestEntity] from a raw trip JSON map received via WS.
@@ -322,12 +331,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// Build a [TripRequestEntity] (with [ErrandDetails]) from a raw errand
-  /// JSON map received via WS. Uses Pamplona-centre placeholder coords
-  /// because the WS errand payload does not include coordinates.
+  /// JSON map received via WS. Uses the pickup coordinates when the backend
+  /// includes them (matching geoespacial real); falls back to Pamplona-centre
+  /// placeholder coords for payloads without coordinates.
   TripRequestEntity? _errandRequestFromMap(Map<String, dynamic> e) {
     try {
       const double pamplonaCenterLat = MapConstants.pamplonaCenterLat;
       const double pamplonaCenterLng = MapConstants.pamplonaCenterLng;
+      final pickupLat = (e['pickupLat'] as num?)?.toDouble() ?? pamplonaCenterLat;
+      final pickupLng = (e['pickupLng'] as num?)?.toDouble() ?? pamplonaCenterLng;
 
       final categoryStr = e['category'] as String? ?? 'other';
       final category = ErrandCategory.values.firstWhere(
@@ -353,8 +365,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           photoUrl: '',
         ),
         origin: LocationModel(
-          latitude: pamplonaCenterLat,
-          longitude: pamplonaCenterLng,
+          latitude: pickupLat,
+          longitude: pickupLng,
           address: e['pickupAddress'] as String? ?? '',
         ),
         destination: LocationModel(

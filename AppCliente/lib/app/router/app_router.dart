@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_transitions.dart';
 import 'package:nexum_client/app/router/splash_screen.dart';
-import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/features/addresses/presentation/screens/'
     'addresses_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/'
@@ -52,7 +51,6 @@ import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_tracking_screen.dart';
 import 'package:nexum_client/features/transport/presentation/screens/'
     'trip_history_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Rutas con nombre de la app Nexum Cliente.
 abstract final class AppRoutes {
@@ -287,14 +285,8 @@ class _SplashGateState extends ConsumerState<_SplashGate> {
   Future<void> _navigate() async {
     if (!mounted) return;
     final router = GoRouter.of(context);
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    final done =
-        prefs.getBool(AppConstants.onboardingCompleteKey) ?? false;
-    if (!done) {
-      router.go(AppRoutes.onboarding);
-      return;
-    }
+    // Onboarding deshabilitado: su layout rompía el hit-test y bloqueaba la app.
+    // Vamos directo al login (o al home si ya hay sesión).
     final auth = ref.read(authProvider);
     router.go(
       auth is AuthAuthenticated ? AppRoutes.home : AppRoutes.login,

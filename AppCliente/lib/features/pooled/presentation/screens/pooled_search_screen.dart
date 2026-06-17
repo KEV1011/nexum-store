@@ -299,11 +299,11 @@ class _TripCard extends StatelessWidget {
               const Divider(height: 20),
               Row(
                 children: [
-                  const Icon(Icons.person_rounded, size: 16, color: AppColors.textSecondary),
-                  const SizedBox(width: 6),
+                  _VehicleTypePill(type: trip.vehicleType),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '${trip.driverName} · ${trip.vehicleDescription}',
+                      '${trip.vehicleDescription} · ${trip.driverName}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -312,6 +312,8 @@ class _TripCard extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              _SeatStrip(available: trip.availableSeats, total: trip.totalSeats),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -327,6 +329,60 @@ class _TripCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Pill con el tipo de vehículo (carro / camioneta / van / buseta).
+class _VehicleTypePill extends StatelessWidget {
+  const _VehicleTypePill({required this.type});
+  final PooledVehicleType type;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: _kPooledColor.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(type.icon, size: 15, color: _kPooledColor),
+          const SizedBox(width: 5),
+          Text(type.label,
+              style: const TextStyle(
+                  color: _kPooledColor,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11.5)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tira visual de asientos: ocupados en gris, libres en verde. Da una lectura
+/// de un vistazo de cuántos puestos quedan sin recurrir a un mapa posicional.
+class _SeatStrip extends StatelessWidget {
+  const _SeatStrip({required this.available, required this.total});
+  final int available;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final booked = total - available;
+    return Wrap(
+      spacing: 3,
+      runSpacing: 3,
+      children: [
+        for (var i = 0; i < total; i++)
+          Icon(
+            i < booked ? Icons.event_seat_rounded : Icons.event_seat_outlined,
+            size: 15,
+            color: i < booked ? AppColors.textTertiary : AppColors.success,
+          ),
+      ],
     );
   }
 }
@@ -375,10 +431,20 @@ class _BookSeatsSheet extends ConsumerStatefulWidget {
 }
 
 class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
-  int _seats = 1;
+  final Set<int> _selected = <int>{};
   final _pickupCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   bool _submitting = false;
+
+  void _toggleSeat(int n) {
+    setState(() {
+      if (_selected.contains(n)) {
+        _selected.remove(n);
+      } else if (_selected.length < _maxSelectable) {
+        _selected.add(n);
+      }
+    });
+  }
 
   int get _maxSelectable {
     final t = widget.trip;
@@ -399,10 +465,13 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   }
 
   Future<void> _confirm() async {
+    if (_selected.isEmpty) return;
     setState(() => _submitting = true);
+    final seatNumbers = _selected.toList()..sort();
     final err = await ref.read(pooledProvider.notifier).bookSeats(
           tripId: widget.trip.id,
-          seats: _seats,
+          seats: seatNumbers.length,
+          seatNumbers: seatNumbers,
           pickupAddress: _pickupCtrl.text.trim(),
           notes: _notesCtrl.text.trim(),
         );
@@ -421,8 +490,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   @override
   Widget build(BuildContext context) {
     final trip = widget.trip;
-    final total = trip.farePerSeat * _seats;
-    final maxSel = _maxSelectable;
+    final total = trip.farePerSeat * _selected.length;
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -452,31 +520,51 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
             const SizedBox(height: 4),
             Text('${trip.driverName} · ${trip.vehicleDescription}',
                 style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 20),
-
-            const Text('¿Cuántos puestos?',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Row(
               children: [
-                _stepBtn(Icons.remove_rounded, _seats > 1, () {
-                  setState(() => _seats--);
-                }),
-                Expanded(
-                  child: Center(
-                    child: Text('$_seats',
-                        style: const TextStyle(
-                            fontSize: 28, fontWeight: FontWeight.w800)),
-                  ),
+                _VehicleTypePill(type: trip.vehicleType),
+                const SizedBox(width: 8),
+                Text(
+                  trip.availableSeats == 0
+                      ? 'Completo'
+                      : '${trip.availableSeats} de ${trip.totalSeats} puestos libres',
+                  style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary),
                 ),
-                _stepBtn(Icons.add_rounded, _seats < maxSel, () {
-                  setState(() => _seats++);
-                }),
               ],
             ),
-            if (trip.allowFleet && _seats == trip.totalSeats)
+            const SizedBox(height: 20),
+
+            Row(
+              children: [
+                const Text('Elige tus asientos',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Text(
+                  _selected.isEmpty
+                      ? 'Toca un puesto libre'
+                      : '${_selected.length} seleccionado(s)',
+                  style: const TextStyle(
+                      fontSize: 12.5, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _SeatMapPicker(
+              totalSeats: trip.totalSeats,
+              columns: trip.vehicleType.seatColumns,
+              occupied: trip.occupiedSeats.toSet(),
+              selected: _selected,
+              onToggle: _toggleSeat,
+            ),
+            const SizedBox(height: 12),
+            const _SeatLegend(),
+            if (trip.allowFleet && _selected.length == trip.totalSeats)
               const Padding(
-                padding: EdgeInsets.only(top: 4),
+                padding: EdgeInsets.only(top: 8),
                 child: Text('Reservando el vehículo completo (flete)',
                     style: TextStyle(color: _kPooledColor, fontSize: 12)),
               ),
@@ -532,10 +620,11 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               width: double.infinity,
               height: 52,
               child: ElevatedButton(
-                onPressed: _submitting ? null : _confirm,
+                onPressed: (_submitting || _selected.isEmpty) ? null : _confirm,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kPooledColor,
                   foregroundColor: Colors.white,
+                  disabledBackgroundColor: AppColors.outlineLight,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
@@ -546,8 +635,11 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2.5, color: Colors.white),
                       )
-                    : const Text('Confirmar reserva',
-                        style: TextStyle(
+                    : Text(
+                        _selected.isEmpty
+                            ? 'Elige al menos un puesto'
+                            : 'Confirmar reserva',
+                        style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w700)),
               ),
             ),
@@ -557,20 +649,172 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
       ),
     );
   }
+}
 
-  Widget _stepBtn(IconData icon, bool enabled, VoidCallback onTap) {
-    return Material(
-      color: enabled ? _kPooledColor.withValues(alpha: 0.1) : AppColors.surfaceVariantLight,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Icon(icon,
-              color: enabled ? _kPooledColor : AppColors.textSecondary),
+/// Mapa de asientos: una cuadrícula de puestos numerados donde el pasajero
+/// elige cuáles ocupa. Ocupados en gris (no tocables), libres con borde verde,
+/// seleccionados en azul. El conductor va al frente (volante).
+class _SeatMapPicker extends StatelessWidget {
+  const _SeatMapPicker({
+    required this.totalSeats,
+    required this.columns,
+    required this.occupied,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final int totalSeats;
+  final int columns;
+  final Set<int> occupied;
+  final Set<int> selected;
+  final ValueChanged<int> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Frente del vehículo (conductor).
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariantLight,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.airline_seat_recline_normal_rounded,
+                      size: 15, color: AppColors.textSecondary),
+                  SizedBox(width: 4),
+                  Text('Conductor',
+                      style: TextStyle(
+                          fontSize: 11, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var n = 1; n <= totalSeats; n++)
+              _SeatTile(
+                number: n,
+                state: occupied.contains(n)
+                    ? _SeatState.occupied
+                    : selected.contains(n)
+                        ? _SeatState.selected
+                        : _SeatState.free,
+                onTap: () => onToggle(n),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+enum _SeatState { free, selected, occupied }
+
+class _SeatTile extends StatelessWidget {
+  const _SeatTile({
+    required this.number,
+    required this.state,
+    required this.onTap,
+  });
+
+  final int number;
+  final _SeatState state;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (bg, border, fg) = switch (state) {
+      _SeatState.occupied => (
+          AppColors.surfaceVariantLight,
+          AppColors.outlineLight,
+          AppColors.textTertiary,
+        ),
+      _SeatState.selected => (_kPooledColor, _kPooledColor, Colors.white),
+      _SeatState.free => (Colors.white, AppColors.success, AppColors.success),
+    };
+    return InkWell(
+      onTap: state == _SeatState.occupied ? null : onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: bg,
+          border: Border.all(color: border, width: 1.4),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.event_seat_rounded, size: 16, color: fg),
+            Text('$number',
+                style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700, color: fg)),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _SeatLegend extends StatelessWidget {
+  const _SeatLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 6,
+      children: const [
+        _LegendDot(color: AppColors.success, label: 'Libre', filled: false),
+        _LegendDot(color: _kPooledColor, label: 'Tu selección', filled: true),
+        _LegendDot(color: AppColors.textTertiary, label: 'Ocupado', filled: true),
+      ],
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  const _LegendDot({
+    required this.color,
+    required this.label,
+    required this.filled,
+  });
+
+  final Color color;
+  final String label;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 14,
+          height: 14,
+          decoration: BoxDecoration(
+            color: filled ? color : Colors.white,
+            border: Border.all(color: color, width: 1.4),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11.5, color: AppColors.textSecondary)),
+      ],
     );
   }
 }

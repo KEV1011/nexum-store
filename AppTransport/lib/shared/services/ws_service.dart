@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -56,7 +55,6 @@ class WsService {
   // ── connect ────────────────────────────────────────────────────────────────
 
   Future<void> connect() async {
-    if (kIsWeb) return; // Web demo uses local mock dispatch in HomeScreen
     if (_channel != null) return;
 
     final token = await _storage.read(key: AppConstants.authTokenKey);

@@ -44,7 +44,6 @@ model User {
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
   ratings           Rating[]          @relation("RatingAuthor")
-  otpSessions       OtpSession[]
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
@@ -124,7 +123,6 @@ model OtpSession {
 
   driverId  String?
   driver    Driver?  @relation(fields: [driverId], references: [id])
-  user      User?    @relation(fields: [phone], references: [phone])
 
   @@index([phone])
   @@map("otp_sessions")
@@ -145,6 +143,9 @@ model Driver {
   isVerified        Boolean      @default(false)
   // Disponibilidad para recibir solicitudes de viajes intermunicipales.
   intercityEnabled  Boolean      @default(false)
+  // Modo de trabajo activo (lo reporta la app al autenticarse o cambiar de
+  // modo). El matching de mandados solo ofrece a conductores en MANDADO.
+  workMode          WorkMode     @default(PASAJERO)
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
   fcmToken          String?
   rating            Float        @default(5.0)
@@ -332,11 +333,29 @@ model Order {
   user             User?       @relation(fields: [userId], references: [id])
   business         Business    @relation(fields: [businessId], references: [id])
   lines            OrderLine[]
+  chatMessages     OrderChatMessage[]
 
   @@index([userId])
   @@index([driverId])
   @@index([status])
   @@map("orders")
+}
+
+// Chat en pedidos de domicilio (cliente ↔ repartidor asignado). A diferencia
+// del chat de rides (efímero, en memoria), los pedidos viven en BD y su
+// historial de chat también.
+model OrderChatMessage {
+  id        String   @id @default(cuid())
+  orderId   String
+  fromRole  String // 'client' | 'driver'
+  fromId    String
+  text      String
+  sentAt    DateTime @default(now())
+
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  @@index([orderId])
+  @@map("order_chat_messages")
 }
 
 enum OrderStatus {
@@ -486,6 +505,10 @@ model Errand {
   description      String
   pickupAddress    String
   dropoffAddress   String
+  // Coordenadas de recogida (opcionales: la app puede mandar solo texto).
+  // El matching geoespacial usa estas o el centro de Pamplona por defecto.
+  pickupLat        Float?
+  pickupLng        Float?
   serviceFee       Float         @default(6000)
   purchaseBudget   Float?
   actualCost       Float?
@@ -597,6 +620,7 @@ model PooledTrip {
   driverId           String
   driverName         String
   driverPhone        String
+  vehicleType        PooledVehicleType @default(SEDAN)
   vehicleDescription String
   origin             IntercityCity
   destination        IntercityCity
@@ -625,6 +649,9 @@ model SeatBooking {
   passengerName  String
   passengerPhone String
   seatsBooked    Int
+  // Números de asiento específicos que ocupa esta reserva (1..totalSeats).
+  // Permite el mapa de asientos posicional. Vacío en reservas por conteo.
+  seatNumbers    Int[]             @default([])
   pickupAddress  String?
   notes          String?
   status         SeatBookingStatus @default(CONFIRMED)
@@ -644,6 +671,13 @@ enum PooledTripStatus {
   DEPARTED
   COMPLETED
   CANCELLED
+}
+
+enum PooledVehicleType {
+  SEDAN
+  SUV
+  VAN
+  MINIBUS
 }
 
 enum SeatBookingStatus {

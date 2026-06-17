@@ -94,9 +94,12 @@ class PooledNotifier extends StateNotifier<PooledState> {
   // ── Book ─────────────────────────────────────────────────────────────────
 
   /// Returns `null` on success, or a human error message on failure.
+  /// `seatNumbers` (mapa de asientos) tiene prioridad; si va vacío, el backend
+  /// asigna `seats` puestos automáticamente.
   Future<String?> bookSeats({
     required String tripId,
     required int seats,
+    List<int>? seatNumbers,
     String? pickupAddress,
     String? notes,
   }) async {
@@ -105,6 +108,8 @@ class PooledNotifier extends StateNotifier<PooledState> {
         '/client/intercity/pool/$tripId/book',
         data: {
           'seatsBooked': seats,
+          if (seatNumbers != null && seatNumbers.isNotEmpty)
+            'seatNumbers': seatNumbers,
           if (pickupAddress != null && pickupAddress.isNotEmpty)
             'pickupAddress': pickupAddress,
           if (notes != null && notes.isNotEmpty) 'notes': notes,

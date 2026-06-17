@@ -248,7 +248,12 @@ export type WsMessageType =
   | 'chat_send'
   | 'chat_message'
   | 'subscribe_chat'
-  | 'unsubscribe_chat';
+  | 'unsubscribe_chat'
+  // Chat de pedidos de domicilio (cliente ↔ repartidor asignado)
+  | 'subscribe_order_chat'
+  | 'unsubscribe_order_chat'
+  | 'order_chat_send'
+  | 'order_chat_message';
 
 export interface WsMessage {
   type: WsMessageType;
@@ -564,6 +569,10 @@ export interface RequestClientErrandDTO {
   description: string;
   pickupAddress: string;
   dropoffAddress: string;
+  // Coordenadas de recogida (opcionales). Si la app no las manda, el matching
+  // usa el centro de Pamplona como referencia — igual que los viajes urbanos.
+  pickupLat?: number;
+  pickupLng?: number;
   purchaseBudget?: number;
   notes?: string;
 }
@@ -596,6 +605,9 @@ export interface ErrandRequestDTO {
   description: string;
   pickupAddress: string;
   dropoffAddress: string;
+  // Coordenadas de recogida cuando el cliente las proporcionó.
+  pickupLat?: number;
+  pickupLng?: number;
   serviceFee: number;
   purchaseBudget?: number;
   notes?: string;
@@ -673,13 +685,20 @@ export type PooledTripStatus =
 
 export type SeatBookingStatus = 'confirmed' | 'cancelled';
 
+/**
+ * Clase de vehículo para viajes compartidos. Determina la capacidad sugerida
+ * y el tope de puestos, y permite al pasajero saber si viaja en carro o van.
+ */
+export type PooledVehicleType = 'sedan' | 'suv' | 'van' | 'minibus';
+
 /** Driver-supplied payload when publishing a shared trip. */
 export interface PublishPooledTripDTO {
   origin: IntercityCity;
   destination: IntercityCity;
   departureTime: string;
-  totalSeats: number; // total seats offered (1-7)
+  totalSeats: number; // total seats offered (depende del tipo de vehículo)
   farePerSeat: number; // cost-share per seat (validated against legal cap)
+  vehicleType: PooledVehicleType; // carro / camioneta / van / buseta
   vehicleDescription: string; // e.g. "Toyota Corolla Blanco • ABC 123"
   notes?: string;
   allowFleet?: boolean; // passenger may book the whole vehicle at once
@@ -694,15 +713,21 @@ export interface SeatBookingDTO {
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
   seatsBooked: number;
+  seatNumbers: number[]; // puestos específicos ocupados (1..totalSeats)
   pickupAddress?: string;
   notes?: string;
   status: SeatBookingStatus;
   bookedAt: string;
 }
 
-/** Client-supplied payload when reserving seats on a pooled trip. */
+/**
+ * Client-supplied payload when reserving seats on a pooled trip.
+ * `seatNumbers` (mapa de asientos) tiene prioridad; si no se envía, se reserva
+ * `seatsBooked` puestos asignados automáticamente (compatibilidad por conteo).
+ */
 export interface BookSeatsDTO {
   seatsBooked: number;
+  seatNumbers?: number[];
   pickupAddress?: string;
   notes?: string;
 }
@@ -716,12 +741,14 @@ export interface PooledTripDTO {
   driverPhone: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
+  vehicleType: PooledVehicleType;
   vehicleDescription: string;
   origin: IntercityCity;
   destination: IntercityCity;
   departureTime: string;
   totalSeats: number;
   availableSeats: number;
+  occupiedSeats: number[]; // puestos ya reservados (1..totalSeats) para el mapa
   farePerSeat: number;
   maxFarePerSeat: number; // legal cost-share cap for this route
   allowFleet: boolean;
@@ -818,6 +845,17 @@ export interface RideRequestDTO {
 export interface ChatMessageDTO {
   id: string;
   rideId: string;
+  fromRole: ChatRole;
+  fromId: string;
+  text: string;
+  sentAt: string;
+}
+
+// ─── Chat de pedidos de domicilio (cliente ↔ repartidor asignado) ───────────────
+
+export interface OrderChatMessageDTO {
+  id: string;
+  orderId: string;
   fromRole: ChatRole;
   fromId: string;
   text: string;

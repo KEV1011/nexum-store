@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -531,8 +532,10 @@ class _PhotoCapture extends StatelessWidget {
             borderRadius: BorderRadius.circular(
               AppConstants.radiusMedium,
             ),
-            child: Image.file(
-              File(photoPath!),
+            child: Image(
+              image: (kIsWeb
+                  ? NetworkImage(photoPath!)
+                  : FileImage(File(photoPath!))) as ImageProvider,
               height: 200,
               width: double.infinity,
               fit: BoxFit.cover,

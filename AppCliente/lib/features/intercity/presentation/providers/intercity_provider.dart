@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,16 +45,6 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
 
   /// Server-assigned booking ID for the active request.
   String? _activeServerId;
-
-  final _rng = math.Random();
-  Timer? _matchTimer;
-
-  static const _mockDrivers = [
-    ('Carlos Vega', '3174521890', 'Toyota Hilux · VBN 432', 4.8),
-    ('Jhon Díaz', '3123456789', 'Chevrolet Spark GT · KLP 871', 4.6),
-    ('Andrés Ruiz', '3185556677', 'Kia Picanto · ZMX 209', 4.9),
-    ('Mauricio Cáceres', '3001122334', 'Renault Logan · TRC 654', 4.7),
-  ];
 
   // ── WS listener ─────────────────────────────────────────────────────────────
 
@@ -111,10 +100,11 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
 
   // ── Public API ───────────────────────────────────────────────────────────────
 
-  /// Creates an intercity request. Returns `null` on success (or accepted mock
-  /// fallback when the server is unreachable), or an error message when the
-  /// server rejects the request for a business reason — e.g. a trunk route that
-  /// requires a habilitated operator under the dual model (Option B).
+  /// Creates an intercity request. Returns `null` on success, or an error
+  /// message when the request can't be created — ya sea un rechazo de negocio
+  /// del servidor (p. ej. ruta troncal que requiere operador habilitado) o un
+  /// fallo de conexión. El emparejamiento con el conductor es siempre real
+  /// (vía WebSocket); no se simula ningún conductor.
   Future<String?> createRequest(IntercityRequestEntity request) async {
     state = state.copyWith(active: request, isLoading: true);
 
@@ -146,36 +136,28 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
       );
       state = state.copyWith(active: serverRequest, isLoading: false);
 
-      // Subscribe to real-time updates.
+      // Subscribe to real-time updates. El conductor llega por matching real;
+      // si el WS no conecta, la solicitud queda en búsqueda (sin conductor
+      // falso) y recibirá la actualización cuando el canal se restablezca.
       final wsOk = await _wsService.connect();
-      if (wsOk) {
-        _wsService.subscribeIntercity(serverId);
-      } else {
-        _simulateDriverMatch(serverId);
-      }
+      if (wsOk) _wsService.subscribeIntercity(serverId);
       return null;
     } on DioException catch (e) {
+      final body = e.response?.data;
+      final msg = body is Map<String, dynamic> ? body['error'] as String? : null;
+      state = state.copyWith(clearActive: true, isLoading: false);
+      _activeServerId = null;
       final status = e.response?.statusCode ?? 0;
-      // 4xx = the server deliberately rejected the request (validation or a
-      // legal/business rule). Surface it instead of faking a driver match.
+      // 4xx = rechazo deliberado (validación o regla legal/negocio).
       if (status >= 400 && status < 500) {
-        final body = e.response?.data;
-        final msg = body is Map<String, dynamic> ? body['error'] as String? : null;
-        state = state.copyWith(clearActive: true, isLoading: false);
-        _activeServerId = null;
         return msg ?? 'No se pudo crear la solicitud.';
       }
-      // Network/5xx — fall back to mock simulation so the flow stays usable.
-      state = state.copyWith(isLoading: false);
-      _activeServerId = request.id;
-      _simulateDriverMatch(request.id);
-      return null;
+      // Red caída / 5xx: informar en vez de fabricar un conductor.
+      return 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
     } catch (_) {
-      // Unknown/transport error — fall back to mock simulation.
-      state = state.copyWith(isLoading: false);
-      _activeServerId = request.id;
-      _simulateDriverMatch(request.id);
-      return null;
+      state = state.copyWith(clearActive: true, isLoading: false);
+      _activeServerId = null;
+      return 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
     }
   }
 
@@ -220,24 +202,18 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
     );
     state = state.copyWith(active: reset);
 
-    // Fire-and-forget reject to server.
+    // Fire-and-forget reject to server. El servidor empuja un nuevo
+    // driver_found por WS cuando otro conductor real se ofrece; ya estamos
+    // suscritos, así que no hace falta nada más.
     final serverId = _activeServerId;
     if (serverId != null) {
       try {
         await _dio.post<void>('/client/intercity/$serverId/reject-offer');
-      } catch (_) {
-        // On failure, fall back to local simulation.
-        _simulateDriverMatch(current.id);
-      }
-      // Server will push a new driver_found event via WS; no need to
-      // re-subscribe — we are already subscribed.
-    } else {
-      _simulateDriverMatch(current.id);
+      } catch (_) {}
     }
   }
 
   Future<void> cancelRequest() async {
-    _matchTimer?.cancel();
     final current = state.active;
     if (current == null) return;
 
@@ -320,34 +296,8 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
     );
   }
 
-  // ── Mock simulation (fallback) ────────────────────────────────────────────
-
-  void _simulateDriverMatch(String requestId) {
-    final delay = Duration(seconds: 6 + _rng.nextInt(8));
-    _matchTimer?.cancel();
-    _matchTimer = Timer(delay, () {
-      if (!mounted) return;
-      final current = state.active;
-      if (current == null || current.id != requestId) return;
-      final driver = _mockDrivers[_rng.nextInt(_mockDrivers.length)];
-      state = state.copyWith(
-        active: current.copyWith(
-          status: IntercityStatus.driverFound,
-          driverName: driver.$1,
-          driverPhone: driver.$2,
-          driverVehicle: driver.$3,
-          driverRating: driver.$4,
-          counterFare: _rng.nextBool()
-              ? current.offeredFare
-              : current.offeredFare * (1.05 + _rng.nextDouble() * 0.1),
-        ),
-      );
-    });
-  }
-
   @override
   void dispose() {
-    _matchTimer?.cancel();
     _sub?.cancel();
     super.dispose();
   }

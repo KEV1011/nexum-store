@@ -42,12 +42,6 @@ export const SURGE_RADIUS_M = 5_000;
 /** Only count SEARCHING trips created in the last N minutes as "demand". */
 export const SURGE_WINDOW_MIN = 15;
 
-// ─── Dispatch Timing (ms) ─────────────────────────────────────────────────────
-
-export const DISPATCH_MIN_INTERVAL_MS = 45_000;
-export const DISPATCH_MAX_INTERVAL_MS = 90_000;
-export const TRIP_REQUEST_TIMEOUT_MS = 15_000;
-
 // ─── Mock Driver ─────────────────────────────────────────────────────────────
 
 export const MOCK_DRIVER: Driver = {
@@ -152,65 +146,25 @@ export const MOCK_ROUTES: MockRoute[] = [
   },
 ];
 
-// ─── Mock Errands (Mandados) ──────────────────────────────────────────────────
-
-import { ErrandCategory, ErrandRequestDTO } from '../types';
+// ─── Mandados ─────────────────────────────────────────────────────────────────
 
 export const ERRAND_SERVICE_FEE = 6000;
 
-export const MOCK_ERRANDS: Omit<ErrandRequestDTO, 'id'>[] = [
-  {
-    category: 'pharmacy' as ErrandCategory,
-    description: 'Comprar acetaminofén 500mg x10 y alcohol antiséptico en Farmatodo del centro.',
-    pickupAddress: 'Farmatodo · Calle 5 con Carrera 6',
-    dropoffAddress: 'Barrio Cariongo, Casa 12-34',
-    serviceFee: ERRAND_SERVICE_FEE,
-    purchaseBudget: 35000,
-    notes: 'Si no hay acetaminofén, traer ibuprofeno.',
-  },
-  {
-    category: 'groceries' as ErrandCategory,
-    description: 'Mercado pequeño: 1 docena de huevos, 2 litros de leche, pan tajado y 1 libra de arroz en el Éxito.',
-    pickupAddress: 'Éxito Pamplona · Av. Santander',
-    dropoffAddress: 'Conjunto El Buque, Torre 3 Apto 502',
-    serviceFee: ERRAND_SERVICE_FEE,
-    purchaseBudget: 45000,
-  },
-  {
-    category: 'documents' as ErrandCategory,
-    description: 'Recoger un sobre con documentos donde mi mamá y traerlo a mi oficina. Ella ya lo tiene listo.',
-    pickupAddress: 'Barrio Chapinero, Casa esquinera azul',
-    dropoffAddress: 'Notaría Primera, Calle 6 #4-20',
-    serviceFee: ERRAND_SERVICE_FEE,
-    notes: 'Preguntar por la señora Rosa.',
-  },
-  {
-    category: 'payments' as ErrandCategory,
-    description: 'Pagar la factura de energía (CENS) en Efecty. Llevo el código de pago en la foto del chat.',
-    pickupAddress: 'Efecty · Carrera 5 #7-15',
-    dropoffAddress: 'Barrio San Francisco, Casa 8-90',
-    serviceFee: ERRAND_SERVICE_FEE,
-    purchaseBudget: 120000,
-    notes: 'Guardar el comprobante de pago.',
-  },
-  {
-    category: 'food' as ErrandCategory,
-    description: 'Recoger un almuerzo ejecutivo encargado donde Doña Rosa y llevarlo a la universidad.',
-    pickupAddress: 'Restaurante Doña Rosa · Calle 4',
-    dropoffAddress: 'Universidad de Pamplona, Bloque Jorge Gaitán',
-    serviceFee: ERRAND_SERVICE_FEE,
-    purchaseBudget: 18000,
-  },
-  {
-    category: 'shopping' as ErrandCategory,
-    description: 'Comprar un cargador tipo C de carga rápida y un protector de pantalla para iPhone en el centro.',
-    pickupAddress: 'Centro comercial · locales de tecnología',
-    dropoffAddress: 'Barrio El Escorial, Casa 23',
-    serviceFee: ERRAND_SERVICE_FEE,
-    purchaseBudget: 60000,
-    notes: 'Que el cargador sea de carga rápida.',
-  },
-];
+// ─── Viajes compartidos: capacidad por tipo de vehículo ───────────────────────
+//
+// Tope de puestos que un conductor puede ofrecer según la clase de vehículo, y
+// la capacidad sugerida que la app del conductor precarga al elegir el tipo.
+import { PooledVehicleType } from '../types';
+
+export const POOLED_VEHICLE_MAX_SEATS: Record<PooledVehicleType, number> = {
+  sedan: 4,    // carro particular / taxi
+  suv: 6,      // camioneta
+  van: 14,     // van tipo Hiace/Sprinter
+  minibus: 19, // buseta / microbús
+};
+
+/** Tope global de puestos en cualquier viaje compartido (la van/buseta mayor). */
+export const POOLED_MAX_SEATS = Math.max(...Object.values(POOLED_VEHICLE_MAX_SEATS));
 
 // ─── Intercity Routes ─────────────────────────────────────────────────────────
 

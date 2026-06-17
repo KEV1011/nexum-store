@@ -25,6 +25,7 @@ import {
   RideNegotiationError,
 } from '../services/ride-negotiation.service';
 import { getDriverPublicProfile } from '../services/driver-profile.service';
+import { getOrderChatHistory } from '../services/order-chat.service';
 import {
   searchPooledTrips,
   getPooledTripById,
@@ -150,6 +151,13 @@ router.get('/orders/:id', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: order });
 });
 
+// Historial del chat del pedido (solo el dueño; el repartidor usa /driver/orders/:id/chat).
+router.get('/orders/:id/chat', clientAuthMiddleware, async (req, res) => {
+  const order = await getClientOrderById(req.clientId!, req.params['id']!);
+  if (!order) { res.status(404).json({ success: false, error: 'Order not found' }); return; }
+  res.json({ success: true, data: await getOrderChatHistory(req.params['id']!) });
+});
+
 // ─── Trips (auth required) ────────────────────────────────────────────────────
 
 router.get('/trips/estimate', async (req, res) => {
@@ -246,6 +254,8 @@ router.post('/errands/request', clientAuthMiddleware, async (req, res) => {
     const errand = await requestClientErrand(req.clientId!, {
       category: dto.category, description: dto.description,
       pickupAddress: dto.pickupAddress, dropoffAddress: dto.dropoffAddress,
+      pickupLat: typeof dto.pickupLat === 'number' ? dto.pickupLat : undefined,
+      pickupLng: typeof dto.pickupLng === 'number' ? dto.pickupLng : undefined,
       purchaseBudget: dto.purchaseBudget, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: errand });
@@ -382,11 +392,17 @@ router.get('/intercity/pool/:id', clientAuthMiddleware, async (req, res) => {
 
 router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Partial<BookSeatsDTO>;
-  if (dto.seatsBooked === undefined) { res.status(400).json({ success: false, error: 'seatsBooked is required' }); return; }
+  const hasSeatNumbers = Array.isArray(dto.seatNumbers) && dto.seatNumbers.length > 0;
+  if (dto.seatsBooked === undefined && !hasSeatNumbers) {
+    res.status(400).json({ success: false, error: 'seatsBooked or seatNumbers is required' });
+    return;
+  }
   const passengerName = (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero Nexum';
   try {
     const result = await bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
-      seatsBooked: dto.seatsBooked, pickupAddress: dto.pickupAddress, notes: dto.notes,
+      seatsBooked: dto.seatsBooked ?? (dto.seatNumbers?.length ?? 0),
+      seatNumbers: hasSeatNumbers ? dto.seatNumbers : undefined,
+      pickupAddress: dto.pickupAddress, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: result });
   } catch (err) {

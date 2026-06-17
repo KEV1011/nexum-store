@@ -193,6 +193,24 @@ class _PooledTripCard extends StatelessWidget {
                       fontWeight: FontWeight.w700, color: _kPooledColor)),
             ],
           ),
+          const SizedBox(height: 10),
+
+          // Vehicle type + description
+          Row(
+            children: [
+              Icon(trip.vehicleType.icon, size: 15, color: AppColors.textSecondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${trip.vehicleType.label} · ${trip.vehicleDescription}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
 
           // Occupancy
@@ -228,7 +246,8 @@ class _PooledTripCard extends StatelessWidget {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '${b.passengerName} · ${b.seatsBooked} puesto(s)'
+                          '${b.passengerName} · '
+                          '${b.seatNumbers.isNotEmpty ? "asiento(s) ${b.seatNumbers.join(', ')}" : "${b.seatsBooked} puesto(s)"}'
                           '${b.pickupAddress != null && b.pickupAddress!.isNotEmpty ? " · ${b.pickupAddress}" : ""}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

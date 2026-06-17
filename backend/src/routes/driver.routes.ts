@@ -19,6 +19,7 @@ import {
   reviewDriverDocument,
 } from '../services/driver-profile.service';
 import { getActiveDriverRide, getChatHistory } from '../services/ride-negotiation.service';
+import { canAccessOrderChat, getOrderChatHistory } from '../services/order-chat.service';
 import {
   PublishPooledTripDTO,
   IntercityCity,
@@ -166,6 +167,17 @@ router.get('/rides/:id/chat', (req: Request, res: Response): void => {
   res.status(200).json({ success: true, data: getChatHistory(req.params['id']!) });
 });
 
+// GET /driver/orders/:id/chat — historial del chat del pedido (solo el repartidor asignado)
+router.get('/orders/:id/chat', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  const orderId = req.params['id']!;
+  if (!driverId || !(await canAccessOrderChat(orderId, 'driver', driverId))) {
+    res.status(404).json({ success: false, error: 'Order not found' });
+    return;
+  }
+  res.status(200).json({ success: true, data: await getOrderChatHistory(orderId) });
+});
+
 // GET /driver/status
 router.get('/status', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
@@ -308,6 +320,7 @@ router.post('/intercity/pool/publish', async (req: Request, res: Response): Prom
       departureTime: dto.departureTime,
       totalSeats: dto.totalSeats,
       farePerSeat: dto.farePerSeat,
+      vehicleType: dto.vehicleType ?? 'sedan',
       vehicleDescription: dto.vehicleDescription,
       notes: dto.notes,
       allowFleet: dto.allowFleet,

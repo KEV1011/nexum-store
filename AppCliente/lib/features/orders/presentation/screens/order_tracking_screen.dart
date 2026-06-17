@@ -13,6 +13,8 @@ import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
+import 'package:nexum_client/features/orders/presentation/screens/'
+    'order_chat_screen.dart';
 import 'package:nexum_client/features/orders/presentation/widgets/'
     'custody_proof_card.dart';
 import 'package:nexum_client/features/orders/presentation/widgets/'
@@ -350,8 +352,14 @@ class _DriverCard extends StatelessWidget {
           const SizedBox(width: AppConstants.spacingS),
           _CircleAction(
             icon: Icons.chat_rounded,
-            onTap: () =>
-                AppSnackbar.showInfo(context, 'Chat no disponible en demo'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => OrderChatScreen(
+                  orderId: order.id,
+                  peerName: order.driverName ?? 'Repartidor',
+                ),
+              ),
+            ),
           ),
         ],
       ),

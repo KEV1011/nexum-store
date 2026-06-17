@@ -104,7 +104,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.otp,
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
-          child: OtpScreen(phone: state.uri.queryParameters['phone'] ?? ''),
+          child: OtpScreen(phone: (state.extra as String?) ?? ''),
         ),
       ),
       GoRoute(

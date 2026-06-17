@@ -23,7 +23,8 @@ class _PublishPooledTripScreenState
   PooledCity _origin = PooledCity.pamplona;
   PooledCity _destination = PooledCity.cucuta;
   DateTime _departure = DateTime.now().add(const Duration(hours: 2));
-  int _seats = 3;
+  PooledVehicleType _vehicleType = PooledVehicleType.sedan;
+  late int _seats = _vehicleType.defaultSeats;
   bool _allowFleet = false;
   bool _submitting = false;
 
@@ -78,6 +79,16 @@ class _PublishPooledTripScreenState
   bool get _fareExceedsCap =>
       _cap != null && _fare != null && _fare! > _cap!.maxFarePerSeat;
 
+  /// Al cambiar de tipo de vehículo, precarga los puestos sugeridos y respeta
+  /// el tope de capacidad del nuevo tipo.
+  void _selectVehicleType(PooledVehicleType t) {
+    setState(() {
+      _vehicleType = t;
+      _seats = t.defaultSeats;
+    });
+    _refreshCap();
+  }
+
   Future<void> _pickDateTime() async {
     final now = DateTime.now();
     final date = await showDatePicker(
@@ -128,6 +139,7 @@ class _PublishPooledTripScreenState
           departureTime: _departure,
           totalSeats: _seats,
           farePerSeat: fare,
+          vehicleType: _vehicleType,
           vehicleDescription: _vehicleCtrl.text.trim(),
           notes: _notesCtrl.text.trim(),
           allowFleet: _allowFleet,
@@ -191,6 +203,14 @@ class _PublishPooledTripScreenState
           ),
           const SizedBox(height: 16),
 
+          _label('Tipo de vehículo'),
+          _vehicleTypeSelector(),
+          const SizedBox(height: 6),
+          Text(_vehicleType.hint,
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary)),
+          const SizedBox(height: 16),
+
           _label('Puestos disponibles'),
           Row(
             children: [
@@ -205,7 +225,7 @@ class _PublishPooledTripScreenState
                           fontSize: 26, fontWeight: FontWeight.w800)),
                 ),
               ),
-              _stepBtn(Icons.add_rounded, _seats < 7, () {
+              _stepBtn(Icons.add_rounded, _seats < _vehicleType.maxSeats, () {
                 setState(() => _seats++);
                 _refreshCap();
               }),
@@ -217,10 +237,10 @@ class _PublishPooledTripScreenState
           TextField(
             controller: _vehicleCtrl,
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: 'Ej: Chevrolet Spark Blanco · ABC 123',
-              prefixIcon: Icon(Icons.directions_car_rounded),
-              border: OutlineInputBorder(),
+              prefixIcon: Icon(_vehicleType.icon),
+              border: const OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 16),
@@ -339,6 +359,55 @@ class _PublishPooledTripScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _vehicleTypeSelector() {
+    final types = PooledVehicleType.values;
+    return Row(
+      children: [
+        for (var i = 0; i < types.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: _vehicleTypeCard(types[i])),
+        ],
+      ],
+    );
+  }
+
+  Widget _vehicleTypeCard(PooledVehicleType t) {
+    final selected = _vehicleType == t;
+    return InkWell(
+      onTap: () => _selectVehicleType(t),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? _kPooledColor.withValues(alpha: 0.10)
+              : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? _kPooledColor : AppColors.outlineLight,
+            width: selected ? 1.6 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(t.icon,
+                size: 26,
+                color: selected ? _kPooledColor : AppColors.textSecondary),
+            const SizedBox(height: 6),
+            Text(
+              t.label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: selected ? _kPooledColor : AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

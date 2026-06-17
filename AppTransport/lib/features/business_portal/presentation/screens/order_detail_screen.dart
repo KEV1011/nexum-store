@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
@@ -402,8 +403,9 @@ class _PhotoThumb extends StatelessWidget {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.file(
-            File(path),
+          child: Image(
+            image: (kIsWeb ? NetworkImage(path) : FileImage(File(path)))
+                as ImageProvider,
             width: 64,
             height: 64,
             fit: BoxFit.cover,

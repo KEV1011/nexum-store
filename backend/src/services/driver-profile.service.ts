@@ -1,4 +1,4 @@
-import { DocumentType, DocumentStatus as PrismaDocumentStatus } from '@prisma/client';
+import { DocumentType, DocumentStatus as PrismaDocumentStatus, WorkMode as PrismaWorkMode } from '@prisma/client';
 import {
   DriverProfileDTO,
   DriverPublicProfileDTO,
@@ -6,6 +6,7 @@ import {
   DriverDocumentType,
   DocumentStatus,
   UpsertDriverDocumentDTO,
+  WorkMode,
 } from '../types';
 import { prisma } from '../lib/prisma';
 
@@ -85,6 +86,24 @@ export async function isDriverVerified(driverId: string): Promise<boolean> {
     select: { isVerified: true },
   });
   return driver?.isVerified ?? false;
+}
+
+const WORK_MODE_TO_PRISMA: Record<WorkMode, PrismaWorkMode> = {
+  pasajero: PrismaWorkMode.PASAJERO,
+  pedido: PrismaWorkMode.PEDIDO,
+  paquete: PrismaWorkMode.PAQUETE,
+  mandado: PrismaWorkMode.MANDADO,
+};
+
+/**
+ * Persiste el modo de trabajo que reporta la app (auth / driver_mode). El
+ * matching de mandados filtra conductores por `workMode = MANDADO`.
+ */
+export async function setDriverWorkMode(driverId: string, mode: WorkMode): Promise<void> {
+  const workMode = WORK_MODE_TO_PRISMA[mode] ?? PrismaWorkMode.PASAJERO;
+  try {
+    await prisma.driver.update({ where: { id: driverId }, data: { workMode } });
+  } catch { /* el conductor puede no existir en escenarios de seed */ }
 }
 
 export async function getDriverProfile(driverId: string): Promise<DriverProfileDTO> {
