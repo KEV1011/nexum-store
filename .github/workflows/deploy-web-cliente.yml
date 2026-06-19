@@ -46,8 +46,8 @@ jobs:
       - name: Build Flutter Web
         working-directory: AppCliente
         env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL || 'http://10.0.2.2:3000' }}
-          WS_BASE_URL: ${{ secrets.WS_BASE_URL || 'ws://10.0.2.2:3000' }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL || 'https://nexum-api.onrender.com' }}
+          WS_BASE_URL: ${{ secrets.WS_BASE_URL || 'wss://nexum-api.onrender.com' }}
         run: |
           flutter build web --release --no-tree-shake-icons \
             --base-href /nexum-store/cliente/ \
