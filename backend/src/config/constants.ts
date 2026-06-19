@@ -33,6 +33,11 @@ export const FARE_PER_MIN = 150;
 export const FARE_MINIMUM = 5000;
 export const COMMISSION_RATE = 0.15;
 
+// ─── Payouts (retiros del conductor) ──────────────────────────────────────────
+
+/** Monto mínimo de retiro en COP. Configurable por entorno. */
+export const MIN_PAYOUT_COP = Number(process.env['MIN_PAYOUT_COP'] ?? 20_000);
+
 // ─── Surge Pricing ────────────────────────────────────────────────────────────
 
 /** Hard upper cap on the surge multiplier (e.g. 2.0 = at most 2× base fare). */
