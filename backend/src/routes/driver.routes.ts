@@ -106,7 +106,7 @@ router.post(
     }
 
     try {
-      const fileUrl = fileToUrl(req.file.filename);
+      const fileUrl = fileToUrl(req.file);
       const updated = await uploadDriverDocument(
         driverId,
         type as DocumentType,
