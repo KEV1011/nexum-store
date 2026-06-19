@@ -2,18 +2,22 @@
 
 ## Document Storage
 
-Files are stored on the local server disk under `uploads/driver-documents/`.
+El almacenamiento es **conmutable por entorno** (`src/lib/upload.ts`):
 
-- **Path**: `<project-root>/uploads/driver-documents/<timestamp>-<random>.<ext>`
-- **Served at**: `GET /uploads/driver-documents/<filename>` (static, no directory listing)
-- **Access control**: Files are publicly accessible by URL; the filenames contain no PII (timestamp + random suffix only).
-- **Allowed formats**: JPG, PNG, WebP, PDF — max 10 MB per file.
+- **Con `S3_BUCKET` definido → S3 / Cloudflare R2** (recomendado en producción).
+  La clave es `driver-documents/<timestamp>-<random>.<ext>` (sin PII). La URL la
+  arma `fileToUrl()` como `S3_PUBLIC_URL/<key>` (bucket público/CDN/dominio) o,
+  en su defecto, la `location` que devuelve el SDK. Variables: `S3_BUCKET`,
+  `S3_REGION` (o `auto`), `S3_ENDPOINT` (R2/MinIO → estilo path), `S3_ACCESS_KEY_ID`,
+  `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`.
+- **Sin `S3_BUCKET` → disco local** bajo `uploads/driver-documents/`, servido en
+  `GET /uploads/driver-documents/<filename>`. ⚠️ El filesystem de Render es
+  **efímero**: los documentos se pierden al redeploy. Usar solo en desarrollo o
+  en un host con volumen persistente.
+- **Formatos**: JPG, PNG, WebP, PDF — máx. 10 MB por archivo.
 
-### Production upgrade path
-For production, replace `multer` disk storage with an S3/R2/GCS bucket:
-1. Swap `StorageEngine` in `src/lib/upload.ts` for `multer-s3` or equivalent.
-2. `fileToUrl()` returns the bucket URL instead of `/uploads/…`.
-3. No other code changes needed.
+> Implementado con `multer-s3` + `@aws-sdk/client-s3`. El resto del flujo
+> (rutas, panel admin) no cambia: solo cambia de dónde sale la URL del archivo.
 
 > ⚠️ **Ley 1581 de habeas data (Colombia)**: The storage and processing of identity
 > documents constitutes sensitive personal data. Before production deployment, obtain
