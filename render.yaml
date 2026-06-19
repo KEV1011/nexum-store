@@ -22,6 +22,14 @@ services:
         fromDatabase:
           name: nexum-db
           property: connectionString
+      # Redis para escala horizontal (opcional). Sin definir, el WS corre en
+      # modo de una sola instancia. Para multi-instancia, provisiona un Redis
+      # (Render Key Value u otro) y pega aquí su URL — ver docs/SCALING.md.
+      - key: REDIS_URL
+        sync: false
+      # Monto mínimo de retiro del conductor en COP (default 20000).
+      - key: MIN_PAYOUT_COP
+        sync: false
       - key: INTERCITY_SIMULATE
         value: "false"
       - key: INTERCITY_DUAL_MODEL
