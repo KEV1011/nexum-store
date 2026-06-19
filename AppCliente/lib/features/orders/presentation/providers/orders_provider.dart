@@ -80,6 +80,23 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     final history = await _dataSource.fetchOrderHistory();
     if (!mounted) return;
     state = state.copyWith(orders: history, isLoading: false);
+    unawaited(_resumeActiveTracking(history));
+  }
+
+  /// Al reabrir la app, reconecta el WS y se resuscribe a los pedidos que siguen
+  /// activos para reanudar el seguimiento en vivo. El backend reenvía el estado
+  /// actual al suscribirse, así que el pedido se reconcilia solo. En web el WS
+  /// está deshabilitado y esto es un no-op.
+  Future<void> _resumeActiveTracking(List<CustomerOrderEntity> orders) async {
+    final active = orders.where((o) => o.isActive).toList();
+    if (active.isEmpty) return;
+    final wsOk = await _wsService.connect();
+    if (!wsOk || !mounted) return;
+    for (final o in active) {
+      if (_wsSubscribed.add(o.id)) {
+        _wsService.subscribeOrder(o.id);
+      }
+    }
   }
 
   void _listenToWs() {

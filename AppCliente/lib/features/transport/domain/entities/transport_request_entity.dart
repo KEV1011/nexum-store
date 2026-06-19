@@ -130,6 +130,10 @@ class TransportRequestEntity {
     this.ratingComment,
     this.driverLat,
     this.driverLng,
+    this.originLat,
+    this.originLng,
+    this.destLat,
+    this.destLng,
   });
 
   factory TransportRequestEntity.fromJson(Map<String, dynamic> json) =>
@@ -177,6 +181,10 @@ class TransportRequestEntity {
         ratingComment: json['ratingComment'] as String?,
         driverLat: (json['driverLat'] as num?)?.toDouble(),
         driverLng: (json['driverLng'] as num?)?.toDouble(),
+        originLat: (json['originLat'] as num?)?.toDouble(),
+        originLng: (json['originLng'] as num?)?.toDouble(),
+        destLat: (json['destLat'] as num?)?.toDouble(),
+        destLng: (json['destLng'] as num?)?.toDouble(),
       );
 
   final String id;
@@ -203,6 +211,13 @@ class TransportRequestEntity {
   final String? ratingComment;
   final double? driverLat;
   final double? driverLng;
+  // Coordenadas reales del origen/destino resueltas por el autocompletado.
+  // Null = el cliente escribió texto libre; el mapa cae a una posición
+  // aproximada por hash de la dirección.
+  final double? originLat;
+  final double? originLng;
+  final double? destLat;
+  final double? destLng;
 
   bool get isActive => status.isActive;
   bool get isCompleted => status.isCompleted;
@@ -234,6 +249,10 @@ class TransportRequestEntity {
     String? ratingComment,
     double? driverLat,
     double? driverLng,
+    double? originLat,
+    double? originLng,
+    double? destLat,
+    double? destLng,
   }) {
     return TransportRequestEntity(
       id: id ?? this.id,
@@ -260,6 +279,10 @@ class TransportRequestEntity {
       ratingComment: ratingComment ?? this.ratingComment,
       driverLat: driverLat ?? this.driverLat,
       driverLng: driverLng ?? this.driverLng,
+      originLat: originLat ?? this.originLat,
+      originLng: originLng ?? this.originLng,
+      destLat: destLat ?? this.destLat,
+      destLng: destLng ?? this.destLng,
     );
   }
 
@@ -288,5 +311,9 @@ class TransportRequestEntity {
         if (ratingComment != null) 'ratingComment': ratingComment,
         if (driverLat != null) 'driverLat': driverLat,
         if (driverLng != null) 'driverLng': driverLng,
+        if (originLat != null) 'originLat': originLat,
+        if (originLng != null) 'originLng': originLng,
+        if (destLat != null) 'destLat': destLat,
+        if (destLng != null) 'destLng': destLng,
       };
 }

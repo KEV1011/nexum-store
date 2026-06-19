@@ -95,6 +95,16 @@ class TransportWsService {
   bool _waitingForAuth = false;
   Completer<bool>? _authCompleter;
 
+  // Auto-reconexión: una vez que la app pidió conectar, mantenemos el socket
+  // vivo entre caídas (un viaje en curso no puede perder el seguimiento) y
+  // reenviamos las suscripciones activas en cada (re)autenticación. La clave
+  // del mapa es '<tipo>:<id>' para deduplicar; el valor es el mensaje a reenviar.
+  bool _shouldReconnect = false;
+  bool _connecting = false;
+  int _reconnectAttempts = 0;
+  Timer? _reconnectTimer;
+  final Map<String, Map<String, dynamic>> _activeSubs = {};
+
   final _tripCtrl = StreamController<TripUpdateEvent>.broadcast();
   final _locationCtrl = StreamController<DriverLocationEvent>.broadcast();
   final _errandCtrl = StreamController<ErrandUpdateEvent>.broadcast();
@@ -117,12 +127,21 @@ class TransportWsService {
 
   Future<bool> connect() async {
     if (kIsWeb) return false;
+    _shouldReconnect = true;
     if (_channel != null) return _authenticated;
+    return _openAndAuth();
+  }
 
-    final token = await _storage.read(key: AppConstants.authTokenKey);
-    if (token == null || token.isEmpty) return false;
+  Future<bool> _openAndAuth() async {
+    if (kIsWeb) return false;
+    if (_channel != null) return _authenticated;
+    if (_connecting) return false;
+    _connecting = true;
 
     try {
+      final token = await _storage.read(key: AppConstants.authTokenKey);
+      if (token == null || token.isEmpty) return false;
+
       _channel = WebSocketChannel.connect(Uri.parse(ApiConfig.wsUrl));
       await _channel!.ready.timeout(const Duration(seconds: 3));
 
@@ -131,14 +150,8 @@ class TransportWsService {
 
       _sub = _channel!.stream.listen(
         _onMessage,
-        onError: (_) {
-          _authCompleter?.complete(false);
-          _cleanup();
-        },
-        onDone: () {
-          _authCompleter?.complete(false);
-          _cleanup();
-        },
+        onError: (_) => _handleDrop(),
+        onDone: _handleDrop,
         cancelOnError: true,
       );
 
@@ -148,45 +161,85 @@ class TransportWsService {
         const Duration(seconds: 4),
         onTimeout: () => false,
       );
-      if (!ok) _cleanup();
+      if (ok) {
+        _reconnectAttempts = 0;
+        _replaySubs();
+      } else {
+        _handleDrop();
+      }
       return ok;
     } catch (_) {
-      _cleanup();
+      _handleDrop();
       return false;
+    } finally {
+      _connecting = false;
+    }
+  }
+
+  /// Maneja una caída (error, cierre o auth fallida): completa el handshake
+  /// pendiente, limpia el socket y, si seguimos queriendo estar conectados,
+  /// programa una reconexión con backoff.
+  void _handleDrop() {
+    if (_authCompleter != null && !_authCompleter!.isCompleted) {
+      _authCompleter!.complete(false);
+    }
+    _cleanup();
+    if (_shouldReconnect && !kIsWeb) _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_reconnectTimer != null) return;
+    if (_reconnectAttempts < 10) _reconnectAttempts++;
+    // Backoff exponencial 2,4,8,16,… con techo de 30 s.
+    final backoff = 1 << _reconnectAttempts;
+    final seconds = backoff > 30 ? 30 : backoff;
+    _reconnectTimer = Timer(Duration(seconds: seconds), () {
+      _reconnectTimer = null;
+      if (_shouldReconnect && _channel == null) unawaited(_openAndAuth());
+    });
+  }
+
+  /// Reenvía todas las suscripciones activas tras una (re)autenticación. El
+  /// backend responde a cada `subscribe_*` con un snapshot, así que el estado
+  /// se reconcilia sin pasos extra.
+  void _replaySubs() {
+    for (final msg in _activeSubs.values) {
+      _send(msg);
     }
   }
 
   void subscribeTrip(String tripId) =>
-      _send({'type': 'subscribe_trip', 'tripId': tripId});
+      _recordSub('trip:$tripId', {'type': 'subscribe_trip', 'tripId': tripId});
 
   void unsubscribeTrip(String tripId) =>
-      _send({'type': 'unsubscribe_trip', 'tripId': tripId});
+      _dropSub('trip:$tripId', {'type': 'unsubscribe_trip', 'tripId': tripId});
 
-  void subscribeErrand(String errandId) =>
-      _send({'type': 'subscribe_errand', 'errandId': errandId});
+  void subscribeErrand(String errandId) => _recordSub(
+      'errand:$errandId', {'type': 'subscribe_errand', 'errandId': errandId});
 
-  void unsubscribeErrand(String errandId) =>
-      _send({'type': 'unsubscribe_errand', 'errandId': errandId});
+  void unsubscribeErrand(String errandId) => _dropSub(
+      'errand:$errandId', {'type': 'unsubscribe_errand', 'errandId': errandId});
 
-  void subscribeIntercity(String bookingId) =>
-      _send({'type': 'subscribe_intercity', 'bookingId': bookingId});
+  void subscribeIntercity(String bookingId) => _recordSub('intercity:$bookingId',
+      {'type': 'subscribe_intercity', 'bookingId': bookingId});
 
-  void unsubscribeIntercity(String bookingId) =>
-      _send({'type': 'unsubscribe_intercity', 'bookingId': bookingId});
+  void unsubscribeIntercity(String bookingId) => _dropSub(
+      'intercity:$bookingId',
+      {'type': 'unsubscribe_intercity', 'bookingId': bookingId});
 
   void subscribePooled(String tripId) =>
-      _send({'type': 'subscribe_pooled', 'tripId': tripId});
+      _recordSub('pooled:$tripId', {'type': 'subscribe_pooled', 'tripId': tripId});
 
-  void unsubscribePooled(String tripId) =>
-      _send({'type': 'unsubscribe_pooled', 'tripId': tripId});
+  void unsubscribePooled(String tripId) => _dropSub(
+      'pooled:$tripId', {'type': 'unsubscribe_pooled', 'tripId': tripId});
 
   // ── Ride negotiation (inDriver-style) + chat ────────────────────────────────
 
   void subscribeRide(String rideId) =>
-      _send({'type': 'subscribe_ride', 'rideId': rideId});
+      _recordSub('ride:$rideId', {'type': 'subscribe_ride', 'rideId': rideId});
 
   void unsubscribeRide(String rideId) =>
-      _send({'type': 'unsubscribe_ride', 'rideId': rideId});
+      _dropSub('ride:$rideId', {'type': 'unsubscribe_ride', 'rideId': rideId});
 
   /// Accept a driver's bid on the ride.
   void acceptBid(String rideId, String bidId) =>
@@ -196,21 +249,37 @@ class TransportWsService {
       _send({'type': 'ride_cancel', 'rideId': rideId});
 
   void subscribeChat(String rideId) =>
-      _send({'type': 'subscribe_chat', 'rideId': rideId});
+      _recordSub('chat:$rideId', {'type': 'subscribe_chat', 'rideId': rideId});
 
   void unsubscribeChat(String rideId) =>
-      _send({'type': 'unsubscribe_chat', 'rideId': rideId});
+      _dropSub('chat:$rideId', {'type': 'unsubscribe_chat', 'rideId': rideId});
 
   void sendChat(String rideId, String text) =>
       _send({'type': 'chat_send', 'rideId': rideId, 'text': text});
 
+  // Registra/borra una suscripción y la envía. El registro permite reenviarla
+  // automáticamente tras una reconexión.
+  void _recordSub(String key, Map<String, dynamic> msg) {
+    _activeSubs[key] = msg;
+    _send(msg);
+  }
+
+  void _dropSub(String key, Map<String, dynamic> msg) {
+    _activeSubs.remove(key);
+    _send(msg);
+  }
+
   void disconnect() {
-    _sub?.cancel();
-    _channel?.sink.close();
+    _shouldReconnect = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _activeSubs.clear();
     _cleanup();
   }
 
   void _cleanup() {
+    _sub?.cancel();
+    _channel?.sink.close();
     _channel = null;
     _sub = null;
     _authenticated = false;

@@ -6,7 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
-import 'package:nexum_driver/shared/services/ws_service.dart';
+import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
 /// Servicio de geolocalización para el app del conductor.
 ///
@@ -163,11 +163,16 @@ class LocationService {
 
   void _sendLocationBatch() {
     if (_lastPosition == null) return;
-    final ws = WsService();
+    final ws = DriverWsService();
+    if (!ws.isConnected) return;
+    // Durante un viaje, la pantalla de viaje activo transmite la posición
+    // sincronizada con la ruta y el id del viaje; aquí solo alimentamos el
+    // matching geoespacial cuando el conductor está libre, para no duplicar
+    // los `location_update` del viaje.
+    if (ws.activeTripId != null) return;
     ws.sendLocationUpdate(
       _lastPosition!.latitude,
       _lastPosition!.longitude,
-      ws.activeTripId,
     );
   }
 

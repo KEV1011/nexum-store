@@ -405,8 +405,15 @@ class _TripMapState extends State<_TripMap>
     final live = request.isActive && hasDriver;
     final color = _colorOf(request.serviceType);
 
-    final origin = _hashLatLng(request.originAddress, 0x1A);
-    final destination = _hashLatLng(request.destinationAddress, 0x2B);
+    // Coordenadas reales del autocompletado cuando existen; si el cliente
+    // escribió texto libre, se cae a una posición aproximada por hash para que
+    // el mapa siga teniendo dónde dibujar los pines.
+    final origin = (request.originLat != null && request.originLng != null)
+        ? LatLng(request.originLat!, request.originLng!)
+        : _hashLatLng(request.originAddress, 0x1A);
+    final destination = (request.destLat != null && request.destLng != null)
+        ? LatLng(request.destLat!, request.destLng!)
+        : _hashLatLng(request.destinationAddress, 0x2B);
     final driver =
         hasDriver ? LatLng(request.driverLat!, request.driverLng!) : null;
     final center = LatLng(

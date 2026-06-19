@@ -35,6 +35,20 @@ class DriverWsService {
   StreamSubscription<dynamic>? _sub;
   Completer<bool>? _authCompleter;
 
+  // Auto-reconexión: mantenemos el socket vivo entre caídas (un conductor en
+  // viaje no puede dejar de reportar su posición ni de recibir eventos) y
+  // reautenticamos con las credenciales y el modo de trabajo vigentes.
+  bool _shouldReconnect = false;
+  bool _connecting = false;
+  int _reconnectAttempts = 0;
+  Timer? _reconnectTimer;
+  String? _token;
+  WorkMode? _workMode;
+  // Estado a restaurar tras reconectar: registro en el pool de ofertas y
+  // suscripciones activas (ride/chat), por clave '<tipo>:<id>'.
+  bool _registeredForRides = false;
+  final Map<String, Map<String, dynamic>> _activeSubs = {};
+
   final _tripCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _errandCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelCtrl = StreamController<String>.broadcast();
@@ -69,6 +83,12 @@ class DriverWsService {
 
   bool get isConnected => _channel != null;
 
+  /// Id del viaje activo. Lo fija la pantalla de viaje activo y lo usa
+  /// [LocationService] para etiquetar los `location_update` que transmite
+  /// mientras el conductor lleva un pasajero (cuando es null, el GPS alimenta
+  /// solo el matching geoespacial sin asociarse a un viaje).
+  String? activeTripId;
+
   // ── connect ───────────────────────────────────────────────────────────────
 
   /// Connects to the backend WebSocket, sends an `auth` frame with the
@@ -78,10 +98,25 @@ class DriverWsService {
   /// Returns `true` on successful authentication, `false` otherwise.
   Future<bool> connect(String? token, WorkMode workMode) async {
     if (kIsWeb) return false;
-    if (_channel != null) return true;
+    _shouldReconnect = true;
 
     final jwt = token ?? await _storage.read(key: AppConstants.authTokenKey);
     if (jwt == null || jwt.isEmpty) return false;
+    _token = jwt;
+    _workMode = workMode;
+
+    if (_channel != null) return true;
+    return _openAndAuth();
+  }
+
+  Future<bool> _openAndAuth() async {
+    if (kIsWeb) return false;
+    if (_channel != null) return true;
+    if (_connecting) return false;
+    final jwt = _token;
+    final workMode = _workMode;
+    if (jwt == null || jwt.isEmpty || workMode == null) return false;
+    _connecting = true;
 
     try {
       _channel = WebSocketChannel.connect(Uri.parse(ApiConfig.wsUrl));
@@ -91,18 +126,8 @@ class DriverWsService {
 
       _sub = _channel!.stream.listen(
         _onMessage,
-        onError: (_) {
-          if (_authCompleter != null && !_authCompleter!.isCompleted) {
-            _authCompleter!.complete(false);
-          }
-          _cleanup();
-        },
-        onDone: () {
-          if (_authCompleter != null && !_authCompleter!.isCompleted) {
-            _authCompleter!.complete(false);
-          }
-          _cleanup();
-        },
+        onError: (_) => _handleDrop(),
+        onDone: _handleDrop,
         cancelOnError: true,
       );
 
@@ -117,26 +142,69 @@ class DriverWsService {
         onTimeout: () => false,
       );
 
-      if (!authenticated) {
-        _cleanup();
+      if (authenticated) {
+        _reconnectAttempts = 0;
+        _replayState();
+      } else {
+        _handleDrop();
       }
 
       return authenticated;
     } catch (_) {
-      _cleanup();
+      _handleDrop();
       return false;
+    } finally {
+      _connecting = false;
+    }
+  }
+
+  /// Maneja una caída (error, cierre o auth fallida): completa el handshake
+  /// pendiente, limpia el socket y, si seguimos queriendo estar conectados,
+  /// programa una reconexión con backoff exponencial.
+  void _handleDrop() {
+    if (_authCompleter != null && !_authCompleter!.isCompleted) {
+      _authCompleter!.complete(false);
+    }
+    _cleanup();
+    if (_shouldReconnect && !kIsWeb) _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_reconnectTimer != null) return;
+    if (_reconnectAttempts < 10) _reconnectAttempts++;
+    // Backoff exponencial 2,4,8,16,… con techo de 30 s.
+    final backoff = 1 << _reconnectAttempts;
+    final seconds = backoff > 30 ? 30 : backoff;
+    _reconnectTimer = Timer(Duration(seconds: seconds), () {
+      _reconnectTimer = null;
+      if (_shouldReconnect && _channel == null) unawaited(_openAndAuth());
+    });
+  }
+
+  /// Tras reautenticar, restaura el registro en el pool de ofertas y las
+  /// suscripciones activas (ride/chat) para no perder eventos.
+  void _replayState() {
+    if (_registeredForRides) _send({'type': 'driver_register'});
+    for (final msg in _activeSubs.values) {
+      _send(msg);
     }
   }
 
   // ── disconnect ────────────────────────────────────────────────────────────
 
   void disconnect() {
-    _sub?.cancel();
-    _channel?.sink.close();
+    _shouldReconnect = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    activeTripId = null;
+    _registeredForRides = false;
+    _activeSubs.clear();
     _cleanup();
   }
 
   void _cleanup() {
+    _sub?.cancel();
+    _channel?.sink.close();
     _channel = null;
     _sub = null;
     _authCompleter = null;
@@ -194,13 +262,19 @@ class DriverWsService {
   }
 
   /// Notify the backend that the driver is switching work mode.
-  void changeWorkMode(WorkMode workMode) =>
-      _send({'type': 'driver_mode', 'workMode': workMode.name});
+  void changeWorkMode(WorkMode workMode) {
+    // Recordar el modo para reautenticar con él si el socket se reconecta.
+    _workMode = workMode;
+    _send({'type': 'driver_mode', 'workMode': workMode.name});
+  }
 
   // ── Ride negotiation (inDriver-style) ───────────────────────────────────────
 
   /// Opt into the live ride pool to start receiving open ride requests.
-  void registerForRides() => _send({'type': 'driver_register'});
+  void registerForRides() {
+    _registeredForRides = true;
+    _send({'type': 'driver_register'});
+  }
 
   /// Bid on an open ride: accept the offered fare or counter-offer with [fare].
   void placeBid(String rideId, double fare, int etaMinutes) => _send({
@@ -229,21 +303,33 @@ class DriverWsService {
 
   /// Watch a specific ride for live updates.
   void subscribeRide(String rideId) =>
-      _send({'type': 'subscribe_ride', 'rideId': rideId});
+      _recordSub('ride:$rideId', {'type': 'subscribe_ride', 'rideId': rideId});
 
   void unsubscribeRide(String rideId) =>
-      _send({'type': 'unsubscribe_ride', 'rideId': rideId});
+      _dropSub('ride:$rideId', {'type': 'unsubscribe_ride', 'rideId': rideId});
 
   // ── Chat ────────────────────────────────────────────────────────────────────
 
   void subscribeChat(String rideId) =>
-      _send({'type': 'subscribe_chat', 'rideId': rideId});
+      _recordSub('chat:$rideId', {'type': 'subscribe_chat', 'rideId': rideId});
 
   void unsubscribeChat(String rideId) =>
-      _send({'type': 'unsubscribe_chat', 'rideId': rideId});
+      _dropSub('chat:$rideId', {'type': 'unsubscribe_chat', 'rideId': rideId});
 
   void sendChat(String rideId, String text) =>
       _send({'type': 'chat_send', 'rideId': rideId, 'text': text});
+
+  // Registra/borra una suscripción y la envía. El registro permite reenviarla
+  // automáticamente tras una reconexión.
+  void _recordSub(String key, Map<String, dynamic> msg) {
+    _activeSubs[key] = msg;
+    _send(msg);
+  }
+
+  void _dropSub(String key, Map<String, dynamic> msg) {
+    _activeSubs.remove(key);
+    _send(msg);
+  }
 
   void _send(Map<String, dynamic> msg) {
     if (_channel == null) return;

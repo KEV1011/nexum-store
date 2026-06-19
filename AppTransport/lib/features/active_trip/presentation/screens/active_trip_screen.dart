@@ -23,6 +23,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/trip_in_p
 import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_passenger_card.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/location_service.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
   const ActiveTripScreen({this.tripExtra, super.key});
@@ -70,6 +71,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final trip = ref.read(activeTripProvider);
       if (trip != null) {
+        // Etiqueta el GPS del conductor con este viaje para que el backend lo
+        // reenvíe al mapa del pasajero (driver_location).
+        DriverWsService().activeTripId = trip.request.id;
         _startSimulatedMovement(trip);
         _startEtaCountdown(trip);
       }
@@ -78,6 +82,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
   @override
   void dispose() {
+    DriverWsService().activeTripId = null;
     _pulse.dispose();
     _movementTimer?.cancel();
     _etaTimer?.cancel();
@@ -123,12 +128,15 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         _waypointIndex++;
       });
 
-      // Relay GPS to server → forwarded to client tracking map
+      // Relay GPS to server → forwarded to client tracking map. Usa el GPS real
+      // del dispositivo cuando hay fix; cae a la posición simulada (demo/web o
+      // sin señal) para que el mapa del pasajero no se congele.
       final current = ref.read(activeTripProvider);
       if (current != null) {
+        final realPos = LocationService().lastPosition;
         DriverWsService().sendLocationUpdate(
-          next.latitude,
-          next.longitude,
+          realPos?.latitude ?? next.latitude,
+          realPos?.longitude ?? next.longitude,
           tripId: current.request.id,
         );
       }

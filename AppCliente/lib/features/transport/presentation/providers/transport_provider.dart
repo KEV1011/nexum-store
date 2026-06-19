@@ -77,6 +77,26 @@ class TransportNotifier extends StateNotifier<TransportState> {
         )
         .toList();
     state = state.copyWith(requests: requests, isLoading: false);
+    unawaited(_resumeActiveTracking(requests));
+  }
+
+  /// Al reabrir la app, reconecta el WS y se resuscribe a los viajes que siguen
+  /// activos para reanudar el seguimiento en vivo. El backend responde a cada
+  /// `subscribe_trip` con un snapshot `trip_update`, así que el estado (estado
+  /// del viaje, conductor, ubicación) se reconcilia solo. En web el WS está
+  /// deshabilitado y esto es un no-op silencioso.
+  Future<void> _resumeActiveTracking(
+    List<TransportRequestEntity> requests,
+  ) async {
+    final active = requests.where((r) => r.isActive).toList();
+    if (active.isEmpty) return;
+    final wsOk = await _wsService.connect();
+    if (!wsOk || !mounted) return;
+    for (final r in active) {
+      if (_wsSubscribed.add(r.id)) {
+        _wsService.subscribeTrip(r.id);
+      }
+    }
   }
 
   void _listenToWs() {
@@ -149,6 +169,10 @@ class TransportNotifier extends StateNotifier<TransportState> {
       recipientName: recipientName,
       recipientPhone: recipientPhone,
       packageDescription: packageDescription,
+      originLat: originLat,
+      originLng: originLng,
+      destLat: destLat,
+      destLng: destLng,
     );
 
     final updated = [req, ...state.requests];
