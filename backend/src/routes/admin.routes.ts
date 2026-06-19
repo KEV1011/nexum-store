@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { DocumentStatus } from '@prisma/client';
+import { DocumentStatus, PayoutStatus } from '@prisma/client';
 import {
   requireAdmin,
   isAdminPhone,
@@ -13,6 +13,7 @@ import {
 import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
 import { getAdminMetrics, listDriversForAdmin, listSosForAdmin } from '../services/admin.service';
 import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
+import { listPayoutsForAdmin, adminUpdatePayout } from '../services/payout.service';
 
 const router = Router();
 
@@ -64,7 +65,7 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos', '/payouts'], requireAdmin);
 
 // GET /admin/metrics
 router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
@@ -137,6 +138,41 @@ router.post('/promos/:id/toggle', async (req: Request, res: Response): Promise<v
     res.json({ success: true });
   } catch {
     res.status(404).json({ success: false, error: 'Promo no encontrada' });
+  }
+});
+
+// ─── Payouts (retiros) ───────────────────────────────────────────────────────
+
+const PAYOUT_STATUSES = new Set<string>(['REQUESTED', 'PROCESSING', 'PAID', 'REJECTED']);
+
+// GET /admin/payouts?status=REQUESTED|PROCESSING|PAID|REJECTED
+router.get('/payouts', async (req: Request, res: Response): Promise<void> => {
+  const raw = (req.query['status'] as string | undefined)?.toUpperCase();
+  const status = raw && PAYOUT_STATUSES.has(raw) ? (raw as PayoutStatus) : undefined;
+  try {
+    res.json({ success: true, data: await listPayoutsForAdmin(status) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /admin/payouts/:id { status, reference?, notes? } — actualiza un retiro.
+router.post('/payouts/:id', async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as { status?: string; reference?: string; notes?: string };
+  if (!b.status || !PAYOUT_STATUSES.has(b.status)) {
+    res.status(400).json({ success: false, error: 'status válido es requerido (REQUESTED|PROCESSING|PAID|REJECTED)' });
+    return;
+  }
+  try {
+    const updated = await adminUpdatePayout(req.params['id']!, b.status as PayoutStatus, {
+      processedBy: req.adminPhone!,
+      reference: typeof b.reference === 'string' ? b.reference : undefined,
+      notes: typeof b.notes === 'string' ? b.notes : undefined,
+    });
+    if (!updated) { res.status(404).json({ success: false, error: 'Retiro no encontrado' }); return; }
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
 
@@ -218,6 +254,9 @@ const PANEL_HTML = `<!DOCTYPE html>
     .badge-REJECTED, .badge-PANIC { background: #fce4ec; color: #c62828; }
     .badge-OFFLINE { background: #eceff1; color: #607d8b; }
     .badge-ON_TRIP { background: #e3f2fd; color: #1565c0; }
+    .badge-REQUESTED { background: #fff8e1; color: #f57f17; }
+    .badge-PROCESSING { background: #e3f2fd; color: #1565c0; }
+    .badge-PAID { background: #e8f5e9; color: #2e7d32; }
     .btn-sm { width:auto; padding: 5px 12px; border-radius: 6px; font-size: .78rem; margin-right: 4px; }
     .btn-approve { background: #2e7d32; }
     .btn-reject { background: #c62828; }
@@ -264,6 +303,7 @@ const PANEL_HTML = `<!DOCTYPE html>
       <button data-tab="drivers" onclick="show('drivers')">Conductores</button>
       <button data-tab="sos" onclick="show('sos')">SOS</button>
       <button data-tab="promos" onclick="show('promos')">Promos</button>
+      <button data-tab="payouts" onclick="show('payouts')">Retiros</button>
     </nav>
 
     <section id="tab-metrics"><div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div></section>
@@ -303,6 +343,20 @@ const PANEL_HTML = `<!DOCTYPE html>
       </form>
       <table><thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Aplica</th><th>Canjes</th><th>Vence</th><th>Estado</th><th></th></tr></thead>
       <tbody id="promos-body"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+
+    <section id="tab-payouts" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <select id="payout-filter" style="width:auto" onchange="loadPayouts()">
+          <option value="REQUESTED">Solicitados</option>
+          <option value="PROCESSING">En proceso</option>
+          <option value="PAID">Pagados</option>
+          <option value="REJECTED">Rechazados</option>
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <table><thead><tr><th>Conductor</th><th>Teléfono</th><th>Monto</th><th>Destino</th><th>Estado</th><th>Solicitado</th><th>Acciones</th></tr></thead>
+      <tbody id="payouts-body"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody></table>
     </section>
   </div>
 </div>
@@ -367,7 +421,7 @@ function show(tab) {
   for (const s of document.querySelectorAll('section[id^="tab-"]')) s.style.display = 'none';
   document.getElementById('tab-' + tab).style.display = 'block';
   for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
-  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, sos: loadSos, promos: loadPromos })[tab]();
+  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, sos: loadSos, promos: loadPromos, payouts: loadPayouts })[tab]();
 }
 
 const money = (v) => '$' + Number(v || 0).toLocaleString('es-CO');
@@ -467,6 +521,39 @@ function createPromo(ev) {
 function togglePromo(id, active) {
   api('/admin/promos/' + id + '/toggle', { method: 'POST', body: JSON.stringify({ active }) })
     .then(() => loadPromos()).catch((e) => showMsg(e.message, true));
+}
+
+function payoutLabel(s) {
+  return ({ REQUESTED: 'Solicitado', PROCESSING: 'En proceso', PAID: 'Pagado', REJECTED: 'Rechazado' })[s] || s;
+}
+
+function loadPayouts() {
+  const status = document.getElementById('payout-filter').value;
+  api('/admin/payouts' + (status ? '?status=' + status : '')).then((rows) => {
+    const tb = document.getElementById('payouts-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">Sin retiros.</td></tr>'; return; }
+    tb.innerHTML = rows.map((p) => '<tr><td><strong>' + esc(p.driverName) + '</strong></td><td>' + esc(p.driverPhone) +
+      '</td><td>' + money(p.amount) + '</td><td>' + esc(p.accountInfo || '—') +
+      '</td><td><span class="badge badge-' + p.status + '">' + payoutLabel(p.status) + '</span></td><td>' + when(p.requestedAt) +
+      '</td><td>' +
+      (p.status === 'REQUESTED' ? '<button class="btn-sm" onclick="setPayout(\\'' + p.id + '\\', \\'PROCESSING\\')">Procesar</button>' : '') +
+      (p.status === 'REQUESTED' || p.status === 'PROCESSING' ? '<button class="btn-sm btn-approve" onclick="payPayout(\\'' + p.id + '\\')">Pagar</button><button class="btn-sm btn-reject" onclick="setPayout(\\'' + p.id + '\\', \\'REJECTED\\')">Rechazar</button>' : '') +
+      (p.reference ? '<div style="font-size:.72rem;color:#777;margin-top:3px">Ref: ' + esc(p.reference) + '</div>' : '') +
+      '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function setPayout(id, status) {
+  api('/admin/payouts/' + id, { method: 'POST', body: JSON.stringify({ status }) })
+    .then(() => { showMsg('Retiro actualizado.', false); loadPayouts(); })
+    .catch((e) => showMsg(e.message, true));
+}
+
+function payPayout(id) {
+  const reference = prompt('Referencia de la transferencia (opcional):') || '';
+  api('/admin/payouts/' + id, { method: 'POST', body: JSON.stringify({ status: 'PAID', reference }) })
+    .then(() => { showMsg('Retiro pagado.', false); loadPayouts(); })
+    .catch((e) => showMsg(e.message, true));
 }
 
 function showMsg(text, isErr) {

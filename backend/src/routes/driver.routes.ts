@@ -29,6 +29,12 @@ import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
 import { prisma } from '../lib/prisma';
 import { registerDriverFcmToken } from '../services/push.service';
 import { getSurgeMultiplier } from '../services/surge.service';
+import {
+  getDriverBalance,
+  getDriverPayouts,
+  requestPayout,
+  PayoutError,
+} from '../services/payout.service';
 
 const router = Router();
 
@@ -406,6 +412,53 @@ router.get('/demand-zones', async (_req: Request, res: Response): Promise<void> 
     res.json({ success: true, data: zones });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Payouts (retiros del conductor) ──────────────────────────────────────────
+
+// GET /driver/payouts/balance — saldo disponible + datos bancarios.
+router.get('/payouts/balance', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getDriverBalance(driverId) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /driver/payouts — historial de retiros del conductor.
+router.get('/payouts', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getDriverPayouts(driverId) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /driver/payouts { amount, method?, accountInfo?, notes? } — solicita un retiro.
+router.post('/payouts', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  const b = req.body as { amount?: number; method?: string; accountInfo?: string; notes?: string };
+  if (typeof b.amount !== 'number') {
+    res.status(400).json({ success: false, error: 'amount (número) es requerido' });
+    return;
+  }
+  try {
+    const payout = await requestPayout(driverId, {
+      amount: b.amount,
+      method: typeof b.method === 'string' ? b.method : undefined,
+      accountInfo: typeof b.accountInfo === 'string' ? b.accountInfo : undefined,
+      notes: typeof b.notes === 'string' ? b.notes : undefined,
+    });
+    res.status(201).json({ success: true, data: payout });
+  } catch (err) {
+    const status = err instanceof PayoutError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
 

@@ -74,6 +74,7 @@ import {
   RideNegotiationStatus,
   ChatRole,
 } from '../types';
+import { initBus, publishDelivery, BusTarget } from '../lib/bus';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -423,11 +424,29 @@ async function handleLocationUpdate(ws: WebSocket, lat: number, lng: number, tri
 function sendToClient(clientId: string, payload: Record<string, unknown>): void {
   const ws = clientSockets.get(clientId);
   if (ws) sendTo(ws, payload);
+  // Fan-out a otras instancias (no-op sin Redis).
+  publishDelivery({ kind: 'client', id: clientId }, payload);
 }
 
 function sendToDriverById(driverId: string, payload: Record<string, unknown>): void {
   const conn = driverConnections.get(driverId);
   if (conn) sendTo(conn.ws, payload);
+  publishDelivery({ kind: 'driver', id: driverId }, payload);
+}
+
+// Entrega a un socket LOCAL sin re-publicar; la usa el bus al recibir un mensaje
+// originado en otra instancia.
+function deliverLocally(target: BusTarget, payload: Record<string, unknown>): void {
+  if (target.kind === 'client') {
+    const ws = clientSockets.get(target.id);
+    if (ws) sendTo(ws, payload);
+  } else if (target.kind === 'driver') {
+    const conn = driverConnections.get(target.id);
+    if (conn) sendTo(conn.ws, payload);
+  } else {
+    const ws = businessSockets.get(target.id);
+    if (ws) sendTo(ws, payload);
+  }
 }
 
 /** Relay a ride update to the client (full view) and matched driver (own view). */
@@ -1003,6 +1022,11 @@ export function setupWebSocket(wss: WebSocketServer): void {
   registerSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   registerNotifyTripUpdate(notifyClientTripUpdateById);
   registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+
+  // Bus de entrega entre instancias. Con REDIS_URL propaga las entregas por id
+  // (sendToClient / sendToDriverById) a las demás instancias; sin él, entrega
+  // local — comportamiento de instancia única, idéntico al actual.
+  void initBus(deliverLocally);
 
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
     console.log('[WS] New connection');

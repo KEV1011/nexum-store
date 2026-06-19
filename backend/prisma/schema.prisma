@@ -179,6 +179,7 @@ model Driver {
   earnings      DriverEarning[]
   documents     DriverDocument[]
   emergencyEvents EmergencyEvent[]
+  payouts         Payout[]
 
   @@index([status])
   @@map("drivers")
@@ -456,6 +457,45 @@ model DriverEarning {
   @@unique([driverId, date])
   @@index([driverId])
   @@map("driver_earnings")
+}
+
+// ── Retiros (payouts) del conductor ───────────────────────────────────────────
+//
+// El conductor acumula ganancias netas en driver_earnings. Cuando solicita un
+// retiro se crea un Payout en estado REQUESTED contra su saldo disponible
+// (neto acumulado − retiros ya solicitados/procesando/pagados). La operación lo
+// procesa desde el panel /admin y marca PAID con la referencia de la
+// transferencia. La dispersión bancaria automática (Nequi/Daviplata/ACH) es un
+// paso posterior; hoy el saldo y el ciclo de vida del retiro son reales.
+model Payout {
+  id          String       @id @default(cuid())
+  driverId    String
+  amount      Float
+  status      PayoutStatus @default(REQUESTED)
+  /// Canal de pago: 'bank' | 'nequi' | 'daviplata'.
+  method      String?
+  /// Snapshot del destino (banco/cuenta o teléfono) al momento de solicitar.
+  accountInfo String?
+  notes       String?
+  /// Referencia de la transferencia, registrada por la operación al pagar.
+  reference   String?
+  /// Teléfono del admin que procesó el retiro.
+  processedBy String?
+  requestedAt DateTime     @default(now())
+  processedAt DateTime?
+
+  driver      Driver       @relation(fields: [driverId], references: [id])
+
+  @@index([driverId])
+  @@index([status])
+  @@map("payouts")
+}
+
+enum PayoutStatus {
+  REQUESTED
+  PROCESSING
+  PAID
+  REJECTED
 }
 
 // ── Direcciones guardadas del usuario ─────────────────────────────────────────
