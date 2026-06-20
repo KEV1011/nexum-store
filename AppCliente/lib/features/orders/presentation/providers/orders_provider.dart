@@ -298,6 +298,20 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     );
   }
 
+  /// Solicita una propina para el pedido [id]. Devuelve la URL de checkout de
+  /// Wompi para abrir el pago, o null si falla. El 100% va al repartidor.
+  Future<String?> tipOrder(String id, double amount) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/client/orders/$id/tip',
+        data: {'amount': amount},
+      );
+      return (res.data?['data'] as Map<String, dynamic>?)?['paymentUrl'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   void _updateOrder(
