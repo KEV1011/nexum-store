@@ -3,9 +3,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
@@ -82,6 +84,10 @@ class TransportTrackingScreen extends ConsumerWidget {
           if (request.isCompleted && request.isRated) ...[
             const SizedBox(height: 16),
             _RatingDisplay(rating: request.rating!),
+          ],
+          if (request.isCompleted && request.driverName != null) ...[
+            const SizedBox(height: 16),
+            _TipSection(requestId: requestId),
           ],
           const SizedBox(height: 24),
         ],
@@ -1135,6 +1141,137 @@ class _RatingSectionState extends ConsumerState<_RatingSection> {
         5 => '¡Excelente!',
         _ => '',
       };
+}
+
+// ── Propina ──────────────────────────────────────────────────────────────────
+
+class _TipSection extends ConsumerStatefulWidget {
+  const _TipSection({required this.requestId});
+
+  final String requestId;
+
+  @override
+  ConsumerState<_TipSection> createState() => _TipSectionState();
+}
+
+class _TipSectionState extends ConsumerState<_TipSection> {
+  static const _amounts = [2000.0, 5000.0, 10000.0];
+  bool _loading = false;
+  bool _sent = false;
+
+  Future<void> _tip(double amount) async {
+    setState(() => _loading = true);
+    final url =
+        await ref.read(transportProvider.notifier).tipTrip(widget.requestId, amount);
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (url == null) {
+      AppSnackbar.showError(
+        context,
+        'No se pudo iniciar la propina. Intenta de nuevo.',
+      );
+      return;
+    }
+    final opened =
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    setState(() => _sent = true);
+    AppSnackbar.showInfo(
+      context,
+      opened
+          ? 'Completa el pago de tu propina en Wompi. ¡Gracias por apoyar al conductor!'
+          : 'No se pudo abrir el pago de la propina.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_sent) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.primaryContainer,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.volunteer_activism_rounded,
+                color: AppColors.primary, size: 20),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '¡Gracias! Tu propina va 100% al conductor.',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.outlineLight),
+        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.volunteer_activism_rounded,
+                  color: AppColors.primary, size: 20),
+              SizedBox(width: 8),
+              Text('Dejar propina',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'El 100% va para tu conductor.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (_loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
+            )
+          else
+            Row(
+              children: [
+                for (final a in _amounts) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _tip(a),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: const BorderSide(color: AppColors.primary),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: Text(
+                        CurrencyFormatter.format(a),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  if (a != _amounts.last) const SizedBox(width: 8),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _RatingDisplay extends StatelessWidget {
