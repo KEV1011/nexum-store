@@ -39,8 +39,11 @@ final apiClientProvider = Provider<Dio>((ref) {
   final dio = Dio(
     BaseOptions(
       baseUrl: ApiConfig.baseUrl,
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 12),
+      // Timeouts holgados para tolerar el cold-start del backend (el plan free
+      // de Render tarda ~50s en despertar el primer request). En un backend
+      // siempre encendido las respuestas son rápidas y nunca se alcanzan.
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 60),
       headers: {'Content-Type': 'application/json'},
     ),
   );
