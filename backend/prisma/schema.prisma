@@ -323,6 +323,8 @@ model Order {
   customerName     String?
   driverName       String?
   driverPhone      String?
+  tipAmount        Float       @default(0)
+  tipPaid          Boolean     @default(false)
   rating           Int?
   ratingComment    String?
   createdAt        DateTime    @default(now())
@@ -395,6 +397,8 @@ model Trip {
   passengerRating    Float?
   netEarning         Float?
   commission         Float?
+  tipAmount          Float           @default(0)
+  tipPaid            Boolean         @default(false)
   rating             Int?
   ratingComment      String?
   createdAt          DateTime        @default(now())

@@ -31,6 +31,27 @@ export function recordCompletedTrip(entry: TripEarningEntry, driverId?: string):
   }).catch(() => { /* ignore DB errors */ });
 }
 
+/**
+ * Acredita una propina al conductor (100%, sin comisión). Se suma a la ganancia
+ * neta del día, así que entra directo al saldo de retiro y al dashboard.
+ */
+export async function creditDriverTip(driverId: string, amount: number): Promise<void> {
+  if (!driverId || !(amount > 0)) return;
+  const date = todayStart();
+  await prisma.driverEarning
+    .upsert({
+      where: { driverId_date: { driverId, date } },
+      create: { driverId, date, grossFare: amount, commission: 0, netEarning: amount, tripCount: 0 },
+      update: {
+        grossFare: { increment: amount },
+        netEarning: { increment: amount },
+      },
+    })
+    .catch(() => {
+      /* ignore DB errors */
+    });
+}
+
 export async function getDailyEarnings(driverId?: string): Promise<DailyEarningsDTO> {
   const today = new Date().toISOString().split('T')[0]!;
 

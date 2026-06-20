@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendPushToClient } from './push.service';
+import { creditDriverTip } from './earnings.service';
 
 const WOMPI_PUBLIC_KEY = process.env['WOMPI_PUBLIC_KEY'] ?? '';
 const WOMPI_PRIVATE_KEY = process.env['WOMPI_PRIVATE_KEY'] ?? '';
@@ -95,6 +96,8 @@ async function _applyPaymentStatus(referenceCode: string, newStatus: PaymentStat
   await prisma.payment.update({ where: { referenceCode }, data: { status: newStatus } });
 
   if (newStatus === 'approved') {
+    // Si el pago es una propina, acreditar al conductor (100%, sin comisión).
+    void _creditTipIfApplicable(existing);
     void sendPushToClient(existing.clientId, {
       title: 'Pago aprobado',
       body: `Tu pago de $${existing.amount.toLocaleString('es-CO')} fue aprobado. ¡Gracias!`,
@@ -106,6 +109,51 @@ async function _applyPaymentStatus(referenceCode: string, newStatus: PaymentStat
       body: 'Tu pago no pudo procesarse. Puedes intentarlo de nuevo desde la app.',
       data: { type: 'payment_rejected', referenceCode },
     });
+  }
+}
+
+/**
+ * Si el pago aprobado corresponde a una propina (su viaje/pedido tiene una
+ * propina pendiente del mismo monto), acredita al conductor el 100% y marca la
+ * propina como pagada. Idempotente por el flag tipPaid.
+ */
+async function _creditTipIfApplicable(payment: {
+  tripId: string | null;
+  orderId: string | null;
+  amount: number;
+}): Promise<void> {
+  try {
+    if (payment.tripId) {
+      const trip = await prisma.trip.findUnique({
+        where: { id: payment.tripId },
+        select: { driverId: true, tipAmount: true, tipPaid: true },
+      });
+      if (
+        trip?.driverId &&
+        !trip.tipPaid &&
+        trip.tipAmount > 0 &&
+        Math.round(trip.tipAmount) === Math.round(payment.amount)
+      ) {
+        await prisma.trip.update({ where: { id: payment.tripId }, data: { tipPaid: true } });
+        await creditDriverTip(trip.driverId, trip.tipAmount);
+      }
+    } else if (payment.orderId) {
+      const order = await prisma.order.findUnique({
+        where: { id: payment.orderId },
+        select: { driverId: true, tipAmount: true, tipPaid: true },
+      });
+      if (
+        order?.driverId &&
+        !order.tipPaid &&
+        order.tipAmount > 0 &&
+        Math.round(order.tipAmount) === Math.round(payment.amount)
+      ) {
+        await prisma.order.update({ where: { id: payment.orderId }, data: { tipPaid: true } });
+        await creditDriverTip(order.driverId, order.tipAmount);
+      }
+    }
+  } catch {
+    /* no bloquear el flujo de pago */
   }
 }
 

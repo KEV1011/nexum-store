@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
@@ -94,6 +95,10 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
             const SizedBox(height: AppConstants.spacingL),
             _RatingCard(order: order),
           ],
+          if (order.isDelivered && order.driverName != null) ...[
+            const SizedBox(height: AppConstants.spacingL),
+            _OrderTipSection(orderId: order.id),
+          ],
           const SizedBox(height: AppConstants.spacingL),
           _OrderSummary(order: order),
           if (order.status == CustomerOrderStatus.confirmed) ...[
@@ -138,6 +143,139 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
         router.go(AppRoutes.home);
       }
     });
+  }
+}
+
+// ── Propina ──────────────────────────────────────────────────────────────────
+
+class _OrderTipSection extends ConsumerStatefulWidget {
+  const _OrderTipSection({required this.orderId});
+
+  final String orderId;
+
+  @override
+  ConsumerState<_OrderTipSection> createState() => _OrderTipSectionState();
+}
+
+class _OrderTipSectionState extends ConsumerState<_OrderTipSection> {
+  static const _amounts = [2000.0, 5000.0, 10000.0];
+  bool _loading = false;
+  bool _sent = false;
+
+  Future<void> _tip(double amount) async {
+    setState(() => _loading = true);
+    final url =
+        await ref.read(ordersProvider.notifier).tipOrder(widget.orderId, amount);
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (url == null) {
+      AppSnackbar.showError(
+        context,
+        'No se pudo iniciar la propina. Intenta de nuevo.',
+      );
+      return;
+    }
+    final opened =
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    setState(() => _sent = true);
+    AppSnackbar.showInfo(
+      context,
+      opened
+          ? 'Completa el pago de tu propina en Wompi. ¡Gracias por apoyar al repartidor!'
+          : 'No se pudo abrir el pago de la propina.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (_sent) {
+      return Container(
+        padding: const EdgeInsets.all(AppConstants.spacingM),
+        decoration: BoxDecoration(
+          color: AppColors.primaryContainer,
+          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.volunteer_activism_rounded,
+                color: AppColors.primary, size: 20),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '¡Gracias! Tu propina va 100% al repartidor.',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(
+          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.volunteer_activism_rounded,
+                  color: AppColors.primary, size: 20),
+              SizedBox(width: 8),
+              Text('Dejar propina',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'El 100% va para tu repartidor.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+          if (_loading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
+            )
+          else
+            Row(
+              children: [
+                for (final a in _amounts) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _tip(a),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: const BorderSide(color: AppColors.primary),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      child: Text(
+                        CurrencyFormatter.format(a),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  if (a != _amounts.last) const SizedBox(width: 8),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
   }
 }
 

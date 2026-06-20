@@ -284,6 +284,20 @@ class TransportNotifier extends StateNotifier<TransportState> {
     _update(id, (r) => r.copyWith(rating: stars, ratingComment: comment));
   }
 
+  /// Solicita una propina para el viaje [id]. Devuelve la URL de checkout de
+  /// Wompi para abrir el pago, o null si falla. El 100% va al conductor.
+  Future<String?> tipTrip(String id, double amount) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/client/trips/$id/tip',
+        data: {'amount': amount},
+      );
+      return (res.data?['data'] as Map<String, dynamic>?)?['paymentUrl'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _update(
     String id,
     TransportRequestEntity Function(TransportRequestEntity) fn,
