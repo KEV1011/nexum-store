@@ -56,6 +56,7 @@ import {
   INTERCITY_DUAL_MODEL,
 } from '../config/constants';
 import { createPaymentLink, getPaymentByReference, reconcilePayment } from '../services/payment.service';
+import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
 import {
   getClientPromoOverview,
   validatePromo,
@@ -150,6 +151,19 @@ router.get('/orders/:id', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: order });
 });
 
+// POST /client/orders/:id/tip { amount } — propina al repartidor (pago Wompi).
+router.post('/orders/:id/tip', clientAuthMiddleware, async (req, res) => {
+  const { amount } = req.body as { amount?: number };
+  if (typeof amount !== 'number') { res.status(400).json({ success: false, error: 'amount (número) es requerido' }); return; }
+  try {
+    const payment = await requestOrderTip(req.clientId!, req.params['id']!, amount);
+    res.status(201).json({ success: true, data: payment });
+  } catch (err) {
+    const status = err instanceof TipError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
 // ─── Trips (auth required) ────────────────────────────────────────────────────
 
 router.get('/trips/estimate', async (req, res) => {
@@ -219,6 +233,19 @@ router.post('/trips/:id/cancel', clientAuthMiddleware, async (req, res) => {
   const ok = await cancelClientTrip(req.clientId!, req.params['id']!);
   if (!ok) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
   res.json({ success: true });
+});
+
+// POST /client/trips/:id/tip { amount } — propina al conductor (pago Wompi).
+router.post('/trips/:id/tip', clientAuthMiddleware, async (req, res) => {
+  const { amount } = req.body as { amount?: number };
+  if (typeof amount !== 'number') { res.status(400).json({ success: false, error: 'amount (número) es requerido' }); return; }
+  try {
+    const payment = await requestTripTip(req.clientId!, req.params['id']!, amount);
+    res.status(201).json({ success: true, data: payment });
+  } catch (err) {
+    const status = err instanceof TipError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
 });
 
 // ─── Push notifications ───────────────────────────────────────────────────────
