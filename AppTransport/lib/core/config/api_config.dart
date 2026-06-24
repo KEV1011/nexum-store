@@ -1,18 +1,30 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
+
 /// Backend connection constants.
 ///
-/// Por defecto apunta a PRODUCCIÓN para que el APK instalado funcione sin
-/// configuración. Para desarrollo local, sobreescribe en tiempo de compilación:
+/// - En **debug** (flutter run / Android Studio) apunta por defecto al backend
+///   LOCAL del emulador Android (`10.0.2.2` = localhost del host). Es el flujo
+///   de desarrollo normal: levantas el backend en tu máquina y corres la app.
+/// - En **release** (APK publicado) apunta por defecto a PRODUCCIÓN, para que
+///   el APK instalado en un dispositivo real funcione sin configuración.
+///
+/// Cualquiera se puede sobreescribir en tiempo de compilación:
 ///   --dart-define=API_BASE_URL=http://10.0.2.2:3000 --dart-define=WS_BASE_URL=ws://10.0.2.2:3000
 abstract final class ApiConfig {
+  static const String _prodBase = 'https://nexum-api.onrender.com';
+  static const String _prodWs = 'wss://nexum-api.onrender.com';
+  static const String _devBase = 'http://10.0.2.2:3000';
+  static const String _devWs = 'ws://10.0.2.2:3000';
+
   /// Base URL for REST API calls.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://nexum-api.onrender.com',
+    defaultValue: kDebugMode ? _devBase : _prodBase,
   );
 
   /// WebSocket URL.
   static const String wsUrl = String.fromEnvironment(
     'WS_BASE_URL',
-    defaultValue: 'wss://nexum-api.onrender.com',
+    defaultValue: kDebugMode ? _devWs : _prodWs,
   );
 }
