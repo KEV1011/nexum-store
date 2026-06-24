@@ -10,6 +10,7 @@ import { PORT, CORS_ORIGIN } from './config/constants';
 import { setupWebSocket } from './websocket/ws.handler';
 import { scheduleDocumentExpiryChecks } from './services/document-expiry.service';
 import { logger } from './lib/logger';
+import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
 
@@ -24,6 +25,9 @@ import paymentRouter from './routes/payment.routes';
 import safetyRouter from './routes/safety.routes';
 import adminRouter from './routes/admin.routes';
 import geoRouter from './routes/geo.routes';
+
+// Crash reporting (no-op sin SENTRY_DSN).
+initSentry();
 
 // ─── Express App ──────────────────────────────────────────────────────────────
 
@@ -104,6 +108,7 @@ app.use(
     next: express.NextFunction,
   ): void => {
     req.log.error({ err }, 'Unhandled request error');
+    captureError(err);
     if (res.headersSent) {
       next(err);
       return;
@@ -111,6 +116,17 @@ app.use(
     res.status(500).json({ success: false, error: 'Internal server error' });
   },
 );
+
+// ─── Errores a nivel de proceso (no tumban el server en silencio) ──────────────
+
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'Unhandled promise rejection');
+  captureError(reason);
+});
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'Uncaught exception');
+  captureError(err);
+});
 
 // ─── HTTP + WebSocket Server ──────────────────────────────────────────────────
 
