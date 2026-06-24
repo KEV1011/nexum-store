@@ -37,9 +37,10 @@ abstract final class AppConstants {
   // Velocidad promedio urbana Pamplona (km/h)
   static const double averageUrbanSpeedKmh = 25.0;
 
-  // Timeouts de red
-  static const int connectTimeoutMs = 10000;
-  static const int receiveTimeoutMs = 15000;
+  // Timeouts de red. Holgados para tolerar el cold-start del backend (el plan
+  // free de Render tarda ~50s en despertar el primer request).
+  static const int connectTimeoutMs = 30000;
+  static const int receiveTimeoutMs = 60000;
 
   // Animaciones
   static const Duration shortAnimation = Duration(milliseconds: 200);
