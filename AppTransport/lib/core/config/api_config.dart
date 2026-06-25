@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
 /// Backend connection constants.
 ///
@@ -13,8 +13,12 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 abstract final class ApiConfig {
   static const String _prodBase = 'https://nexum-api.onrender.com';
   static const String _prodWs = 'wss://nexum-api.onrender.com';
-  static const String _devBase = 'http://10.0.2.2:3000';
-  static const String _devWs = 'ws://10.0.2.2:3000';
+  // En debug local: web/escritorio usan localhost; el emulador Android usa
+  // 10.0.2.2 (su alias para el localhost del host).
+  static const String _devBase =
+      kIsWeb ? 'http://localhost:3000' : 'http://10.0.2.2:3000';
+  static const String _devWs =
+      kIsWeb ? 'ws://localhost:3000' : 'ws://10.0.2.2:3000';
 
   /// Base URL for REST API calls.
   static const String baseUrl = String.fromEnvironment(
