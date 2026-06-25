@@ -10,8 +10,6 @@ import 'package:nexum_client/core/services/push_notification_service.dart';
 import 'package:nexum_client/features/auth/data/datasources/'
     'auth_datasource.dart';
 import 'package:nexum_client/features/auth/data/datasources/'
-    'auth_mock_datasource.dart';
-import 'package:nexum_client/features/auth/data/datasources/'
     'auth_real_datasource.dart';
 import 'package:nexum_client/features/auth/data/repositories/auth_repository.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
@@ -64,9 +62,10 @@ final _secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  final AuthDataSource dataSource = kIsWeb
-      ? AuthMockDataSource()
-      : AuthRealDataSource(dio: ref.watch(apiClientProvider));
+  // App real: siempre backend, también en web. (El mock de demo se retiró;
+  // para un demo público sin backend se reintroduciría tras un flag explícito.)
+  final AuthDataSource dataSource =
+      AuthRealDataSource(dio: ref.watch(apiClientProvider));
   return AuthRepository(
     dataSource: dataSource,
     secureStorage: ref.watch(_secureStorageProvider),
