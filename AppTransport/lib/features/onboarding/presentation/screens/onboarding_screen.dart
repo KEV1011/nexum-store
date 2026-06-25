@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -70,10 +72,20 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _slideControllers[page].forward(from: 0);
   }
 
-  Future<void> _finish() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(AppConstants.onboardingCompleteKey, true);
-    if (mounted) context.go(AppRoutes.login);
+  void _finish() {
+    // Navega de inmediato; el flag se persiste en segundo plano (no bloquea el
+    // tap si SharedPreferences tarda o falla, p. ej. en web).
+    context.go(AppRoutes.login);
+    unawaited(_persistOnboardingDone());
+  }
+
+  Future<void> _persistOnboardingDone() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(AppConstants.onboardingCompleteKey, true);
+    } catch (_) {
+      // Si falla, el onboarding reaparece la próxima vez — mejor que bloquear.
+    }
   }
 
   void _next() {
