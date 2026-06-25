@@ -114,6 +114,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     horizontal: AppConstants.spacingL,
                   ),
                   child: Row(
+                    // spaceBetween en vez de Spacer(): el Spacer obliga a medir
+                    // el ElevatedButton con ancho infinito y, en web, eso tumba
+                    // el render de toda la fila (los botones dejan de responder).
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       if (!isLast)
                         TextButton(
@@ -125,24 +129,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               color: Colors.white.withValues(alpha: 0.7),
                             ),
                           ),
-                        ),
-                      const Spacer(),
-                      ElevatedButton(
-                        onPressed: isLast ? _complete : _next,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: page.gradient.first,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 28,
-                            vertical: 14,
+                        )
+                      else
+                        const SizedBox.shrink(),
+                      ConstrainedBox(
+                        // Cota de ancho: impide que el botón Material se mida con
+                        // ancho infinito dentro del Row (causa del crash en web).
+                        constraints: const BoxConstraints(maxWidth: 260),
+                        child: ElevatedButton(
+                          onPressed: isLast ? _complete : _next,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: page.gradient.first,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 28,
+                              vertical: 14,
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          textStyle: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          child: Text(isLast ? 'Comenzar' : 'Siguiente'),
                         ),
-                        child: Text(isLast ? 'Comenzar' : 'Siguiente'),
                       ),
                     ],
                   ),
