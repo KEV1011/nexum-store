@@ -44,7 +44,6 @@ model User {
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
   ratings           Rating[]          @relation("RatingAuthor")
-  otpSessions       OtpSession[]
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
@@ -124,7 +123,9 @@ model OtpSession {
 
   driverId  String?
   driver    Driver?  @relation(fields: [driverId], references: [id])
-  user      User?    @relation(fields: [phone], references: [phone])
+  // Sin relación a User por `phone`: el OTP es para login/registro y el número
+  // puede no existir aún en `users`. La FK otp_sessions_phone_fkey rompía el
+  // envío de OTP para cualquier teléfono no registrado.
 
   @@index([phone])
   @@map("otp_sessions")
