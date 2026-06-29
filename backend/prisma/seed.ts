@@ -4,11 +4,13 @@ const prisma = new PrismaClient();
 
 async function main() {
   // ─── Demo driver ─────────────────────────────────────────────────────────────
+  // Sin espacios: la app envía '+57' + dígitos (replaceAll(' ', '')). El seed
+  // debe coincidir EXACTO o el conductor demo no se reconocería al loguear.
   const driver = await prisma.driver.upsert({
-    where: { phone: '+57 312 456 7890' },
+    where: { phone: '+573124567890' },
     update: { isVerified: true },
     create: {
-      phone: '+57 312 456 7890',
+      phone: '+573124567890',
       name: 'Juan Carlos Villamizar Contreras',
       documentType: 'CC',
       documentNumber: '1090512345',
@@ -26,7 +28,7 @@ async function main() {
 
   await prisma.vehicle.upsert({
     where: { plate: 'KGB-742' },
-    update: {},
+    update: { driverId: driver.id },
     create: {
       driverId: driver.id,
       type: 'PARTICULAR',
@@ -43,10 +45,10 @@ async function main() {
 
   // ─── Demo user (for client-side testing) ─────────────────────────────────────
   const user = await prisma.user.upsert({
-    where: { phone: '+57 315 000 0001' },
+    where: { phone: '+573150000001' },
     update: {},
     create: {
-      phone: '+57 315 000 0001',
+      phone: '+573150000001',
       name: 'Usuario Demo',
     },
   });
