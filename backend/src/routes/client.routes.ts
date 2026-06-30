@@ -39,6 +39,7 @@ import {
   getClientErrandById,
   cancelClientErrand,
 } from '../services/errand.service';
+import { startErrandMatchingCycle } from '../services/matching.service';
 import {
   requestIntercityBooking,
   confirmIntercityBooking,
@@ -54,6 +55,7 @@ import {
   getIntercityRoute,
   INTERCITY_REMOVE_CAP,
   INTERCITY_DUAL_MODEL,
+  INTERCITY_CITY_COORDS,
 } from '../config/constants';
 import { createPaymentLink, getPaymentByReference, reconcilePayment } from '../services/payment.service';
 import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
@@ -264,7 +266,7 @@ router.put('/fcm-token', clientAuthMiddleware, async (req, res) => {
 // ─── Errands (Mandados) ───────────────────────────────────────────────────────
 
 router.post('/errands/request', clientAuthMiddleware, async (req, res) => {
-  const dto = req.body as Partial<RequestClientErrandDTO>;
+  const dto = req.body as Partial<RequestClientErrandDTO> & { pickupLat?: number; pickupLng?: number };
   if (!dto.category || !dto.description || !dto.pickupAddress || !dto.dropoffAddress) {
     res.status(400).json({ success: false, error: 'category, description, pickupAddress, dropoffAddress are required' });
     return;
@@ -276,6 +278,14 @@ router.post('/errands/request', clientAuthMiddleware, async (req, res) => {
       purchaseBudget: dto.purchaseBudget, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: errand });
+
+    // Matching real: ofrece el mandado a conductores cercanos en línea (mismo
+    // motor geoespacial que los viajes). La ubicación de recogida la envía el
+    // cliente; si no llega, se ancla al centro de Pamplona. Fire-and-forget para
+    // no demorar la respuesta HTTP.
+    const lat = typeof dto.pickupLat === 'number' ? dto.pickupLat : INTERCITY_CITY_COORDS.pamplona.lat;
+    const lng = typeof dto.pickupLng === 'number' ? dto.pickupLng : INTERCITY_CITY_COORDS.pamplona.lng;
+    void startErrandMatchingCycle(errand.id, lat, lng);
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to request errand' });
   }

@@ -2,10 +2,6 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { verifyToken } from '../services/auth.service';
 import {
-  startDispatch,
-  stopDispatch,
-  acknowledgeErrandResponse,
-  resumeDispatch,
   setDriverWorkMode,
 } from '../services/dispatch.service';
 import { getTripService } from '../services/trip.service';
@@ -66,6 +62,8 @@ import {
   registerNotifyTripUpdate,
   onDriverAccept,
   onDriverDeclineOrTimeout,
+  onErrandAccept,
+  onErrandDeclineOrTimeout,
 } from '../services/matching.service';
 import {
   WsMessage,
@@ -140,16 +138,9 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
 
     sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workMode });
 
-    // Trip dispatch is handled by the real geo-matching engine (matching.service.ts).
-    // Only errand simulation remains here until Phase 4 wires real errand matching.
-    startDispatch(
-      (id) => {
-        sendDriver({ type: 'errand_cancelled', errandId: id, reason: 'No response within 15 seconds' });
-        resumeDispatch();
-      },
-      workMode,
-      (errand) => sendDriver({ type: 'errand_request', errand }),
-    );
+    // Viajes y mandados se despachan por el motor de matching geoespacial real
+    // (matching.service.ts): se ofrecen a conductores cercanos en línea cuando
+    // un cliente los solicita. Ya no hay simulación de pedidos en el servidor.
   } catch {
     sendTo(ws, { type: 'auth_error', message: 'Invalid or expired token' });
     ws.close();
@@ -221,86 +212,92 @@ async function handleReject(ws: WebSocket, tripId: string): Promise<void> {
   sendTo(ws, { type: 'trip_rejected', tripId });
 }
 
-async function handleAcceptErrand(errandId: string): Promise<void> {
+async function handleAcceptErrand(ws: WebSocket, errandId: string): Promise<void> {
+  const driverId = driverIdByWs.get(ws);
+  if (!driverId) {
+    sendTo(ws, { type: 'error', message: 'Driver not authenticated' });
+    return;
+  }
   if (driverActiveErrandId && driverActiveErrandId !== errandId) {
-    sendDriver({ type: 'error', message: 'Already handling an errand' });
+    sendTo(ws, { type: 'error', message: 'Already handling an errand' });
     return;
   }
 
-  // Real client errand
+  // Solo el conductor con la oferta activa puede aceptar (cierra el ciclo de
+  // oferta del matching; rechaza aceptaciones tardías o de otros conductores).
+  if (!onErrandAccept(errandId, driverId)) {
+    sendTo(ws, { type: 'error', message: `Errand ${errandId} is no longer available` });
+    return;
+  }
+
+  // Identidad real del conductor que acepta (antes estaba hardcodeada).
+  let driverName = 'Conductor';
+  let driverPhone = '';
+  try {
+    const profile = await getDriverProfile(driverId);
+    driverName = profile.fullName;
+    driverPhone = profile.phone;
+  } catch { /* sin perfil aún; se usan valores por defecto */ }
+
   const clientErrand = await getClientErrandRaw(errandId);
-  if (clientErrand) {
-    const updated = await acceptClientErrand(errandId, 'Carlos Méndez', '+57 310 456 7890');
-    if (updated) {
-      sendDriver({ type: 'errand_update', errandId, errand: updated });
-      driverActiveErrandId = errandId;
-
-      const clientWs = clientSockets.get(clientErrand.clientId);
-      if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
-    }
+  const updated = await acceptClientErrand(errandId, driverName, driverPhone, driverId);
+  if (!updated) {
+    sendTo(ws, { type: 'error', message: `Errand ${errandId} is no longer available` });
     return;
   }
 
-  // Mock dispatch errand
-  const acked = acknowledgeErrandResponse(errandId);
-  if (!acked) {
-    sendDriver({ type: 'error', message: `Errand ${errandId} is no longer available` });
-    return;
-  }
   driverActiveErrandId = errandId;
-  sendDriver({ type: 'errand_accepted', errandId });
+  sendTo(ws, { type: 'errand_update', errandId, errand: updated });
+  // El cliente suscrito recibe la actualización vía _notify; este envío directo
+  // es un respaldo por si la suscripción aún no estaba activa.
+  if (clientErrand) {
+    const clientWs = clientSockets.get(clientErrand.clientId);
+    if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
+  }
 }
 
-function handleRejectErrand(errandId: string): void {
-  const acked = acknowledgeErrandResponse(errandId);
-  if (!acked) {
-    sendDriver({ type: 'error', message: `Errand ${errandId} is no longer available` });
-    return;
-  }
-  sendDriver({ type: 'errand_rejected', errandId });
-  resumeDispatch();
+async function handleRejectErrand(ws: WebSocket, errandId: string): Promise<void> {
+  const driverId = driverIdByWs.get(ws);
+  // Avanza la oferta al siguiente conductor cercano.
+  await onErrandDeclineOrTimeout(errandId, driverId);
+  sendTo(ws, { type: 'errand_rejected', errandId });
 }
 
 async function handleErrandStatus(
+  ws: WebSocket,
   errandId: string,
   status: string,
   actualCost: number | null,
 ): Promise<void> {
   const validStatuses: ErrandStatus[] = ['shopping', 'on_the_way', 'delivered', 'cancelled'];
   if (!validStatuses.includes(status as ErrandStatus)) {
-    sendDriver({ type: 'error', message: `Invalid errand status: ${status}` });
+    sendTo(ws, { type: 'error', message: `Invalid errand status: ${status}` });
     return;
   }
 
   const terminal = status === 'delivered' || status === 'cancelled';
 
-  // Update real client errand
   const clientErrand = await getClientErrandRaw(errandId);
-  if (clientErrand) {
-    const updated = await updateErrandStatus(
-      errandId,
-      status as ErrandStatus,
-      actualCost ?? undefined,
-    );
-    if (updated) {
-      sendDriver({ type: 'errand_update', errandId, errand: updated });
-      const clientWs = clientSockets.get(clientErrand.clientId);
-      if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
-
-      if (terminal) {
-        driverActiveErrandId = null;
-        void getTripService().setDriverStatus('online', driverSocket ? driverIdByWs.get(driverSocket) : undefined);
-        resumeDispatch();
-      }
-    }
+  if (!clientErrand) {
+    sendTo(ws, { type: 'error', message: `Errand ${errandId} not found` });
     return;
   }
 
-  // Mock errand — echo back to driver
-  sendDriver({ type: 'errand_status_ack', errandId, status });
-  if (terminal) {
-    driverActiveErrandId = null;
-    resumeDispatch();
+  const updated = await updateErrandStatus(
+    errandId,
+    status as ErrandStatus,
+    actualCost ?? undefined,
+  );
+  if (updated) {
+    sendTo(ws, { type: 'errand_update', errandId, errand: updated });
+    const clientWs = clientSockets.get(clientErrand.clientId);
+    if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
+
+    if (terminal) {
+      driverActiveErrandId = null;
+      // Libera al conductor (estaba ON_TRIP) para recibir nuevos servicios.
+      void getTripService().setDriverStatus('online', driverIdByWs.get(ws));
+    }
   }
 }
 
@@ -691,23 +688,23 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Errand accept / reject ───────────────────────────────────────────────
     case 'accept_errand': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
-      void handleAcceptErrand(errandId);
+      void handleAcceptErrand(ws, errandId);
       break;
     }
     case 'reject_errand': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
-      handleRejectErrand(errandId);
+      void handleRejectErrand(ws, errandId);
       break;
     }
 
     // ── Errand status update ─────────────────────────────────────────────────
     case 'errand_status': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const errandId = msg['errandId'];
       const status = msg['status'];
       if (typeof errandId !== 'string' || typeof status !== 'string') {
@@ -715,7 +712,7 @@ function onMessage(ws: WebSocket, raw: string): void {
         return;
       }
       const actualCost = typeof msg['actualCost'] === 'number' ? msg['actualCost'] : null;
-      void handleErrandStatus(errandId, status, actualCost);
+      void handleErrandStatus(ws, errandId, status, actualCost);
       break;
     }
 
@@ -974,7 +971,6 @@ function onClose(ws: WebSocket): void {
   clientIdByWs.delete(ws);
 
   if (ws === driverSocket) {
-    stopDispatch();
     driverSocket = null;
     driverActiveTripId = null;
     driverActiveErrandId = null;

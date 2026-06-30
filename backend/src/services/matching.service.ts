@@ -2,6 +2,7 @@ import { DriverStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { TripRequestDTO } from '../types';
 import { sendPushToDriver, sendPushToClient } from '../services/push.service';
+import { getErrandOfferInfo } from './errand.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -259,5 +260,119 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
   }
 
   console.log(`[Matching] Driver ${driverId} accepted trip ${tripId}`);
+  return true;
+}
+
+// ─── Errand offer cycle (mandados) ─────────────────────────────────────────────
+//
+// Misma mecánica que los viajes: el mandado se ofrece a un conductor cercano a
+// la vez, con timeout de 15s y fallback al siguiente candidato. Reutiliza la
+// búsqueda geoespacial (findNearestAvailableDrivers) y el canal _sendToDriver ya
+// registrado por ws.handler. La escritura en BD y la notificación al cliente las
+// hace errand.service tras la aceptación; aquí solo gestionamos la oferta.
+
+interface ErrandOfferState {
+  errandId: string;
+  candidates: NearbyDriver[];
+  candidateIndex: number;
+  currentDriverId: string;
+  timeout: NodeJS.Timeout;
+}
+
+const activeErrandOffers = new Map<string, ErrandOfferState>();
+
+/**
+ * Punto de entrada — se llama desde la ruta /client/errands/request tras crear
+ * el mandado. Fire-and-forget. [pickupLat]/[pickupLng] anclan la búsqueda de
+ * conductores cercanos (el cliente envía su ubicación; si no, centro de Pamplona).
+ */
+export async function startErrandMatchingCycle(
+  errandId: string,
+  pickupLat: number,
+  pickupLng: number,
+): Promise<void> {
+  const candidates = await findNearestAvailableDrivers(
+    pickupLat,
+    pickupLng,
+    SEARCH_RADIUS_M,
+    MAX_CANDIDATES,
+    GEO_FRESHNESS_S,
+  );
+  if (candidates.length === 0) {
+    console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for errand ${errandId}`);
+    return;
+  }
+  await _offerErrandToCandidate(errandId, candidates, 0);
+}
+
+async function _offerErrandToCandidate(
+  errandId: string,
+  candidates: NearbyDriver[],
+  index: number,
+): Promise<void> {
+  if (index >= candidates.length) {
+    console.log(`[Matching] All ${candidates.length} candidates exhausted for errand ${errandId}`);
+    return;
+  }
+
+  const candidate = candidates[index]!;
+
+  // El mandado debe seguir en búsqueda (pudo cancelarse o aceptarse entretanto).
+  const info = await getErrandOfferInfo(errandId);
+  if (!info || info.status !== 'searching') return;
+
+  const timeout = setTimeout(() => {
+    void onErrandDeclineOrTimeout(errandId);
+  }, OFFER_TIMEOUT_MS);
+
+  activeErrandOffers.set(errandId, {
+    errandId,
+    candidates,
+    candidateIndex: index,
+    currentDriverId: candidate.driverId,
+    timeout,
+  });
+
+  _sendToDriver?.(candidate.driverId, { type: 'errand_request', errand: info.dto });
+  // Push FCM en paralelo al WS: despierta la app si está en background.
+  void sendPushToDriver(candidate.driverId, {
+    title: 'Nuevo mandado disponible',
+    body: info.dto.description,
+    data: { type: 'errand_request', errandId },
+  });
+  console.log(
+    `[Matching] Offered errand ${errandId} to driver ${candidate.driverId} ` +
+      `(${Math.round(candidate.distanceMeters)}m away, candidate ${index + 1}/${candidates.length})`,
+  );
+}
+
+/**
+ * Avanza al siguiente candidato cuando el conductor actual rechaza o expira la
+ * ventana de 15s. Si se pasa [driverId], solo avanza cuando coincide con el
+ * conductor pendiente (evita que un timeout viejo avance tras una aceptación).
+ */
+export async function onErrandDeclineOrTimeout(
+  errandId: string,
+  driverId?: string,
+): Promise<void> {
+  const state = activeErrandOffers.get(errandId);
+  if (!state) return;
+  if (driverId && state.currentDriverId !== driverId) return;
+  clearTimeout(state.timeout);
+  activeErrandOffers.delete(errandId);
+  await _offerErrandToCandidate(errandId, state.candidates, state.candidateIndex + 1);
+}
+
+/**
+ * Cierra el ciclo de oferta cuando el conductor ofertado acepta el mandado.
+ * Devuelve true solo si ese conductor era el que tenía la oferta activa (evita
+ * que una aceptación tardía/duplicada gane tras un timeout). La escritura en BD
+ * y la notificación al cliente las realiza errand.service.
+ */
+export function onErrandAccept(errandId: string, driverId: string): boolean {
+  const state = activeErrandOffers.get(errandId);
+  if (!state || state.currentDriverId !== driverId) return false;
+  clearTimeout(state.timeout);
+  activeErrandOffers.delete(errandId);
   return true;
 }

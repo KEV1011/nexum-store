@@ -257,12 +257,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
 
-    // Transmite el GPS real al backend: alimenta el matching geoespacial para
-    // que este conductor sea asignable y, durante un viaje, mueve su punto en
-    // el mapa del pasajero. Sin esto el conductor nunca reporta su posición.
+    // Transmite el GPS al backend: alimenta el matching geoespacial para que
+    // este conductor sea asignable y, durante un viaje, mueve su punto en el
+    // mapa del pasajero. Arranca el tracking tras resolver el permiso, con o
+    // sin GPS: si se deniega (p. ej. web), LocationService reporta el centro de
+    // Pamplona como heartbeat para que el conductor siga siendo asignable.
     unawaited(
-      LocationService().requestPermissions().then((granted) {
-        if (granted) LocationService().startTracking();
+      LocationService().requestPermissions().then((_) {
+        LocationService().startTracking();
       }),
     );
 
