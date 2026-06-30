@@ -206,6 +206,82 @@ export async function getFleetPositions(operatorId: string): Promise<FleetVehicl
   }));
 }
 
+// ─── Viajes de la flota (trazabilidad + liquidación) ─────────────────────────────
+// Lee los viajes SELLADOS con esta empresa (operatorId), que se fija cuando un
+// conductor afiliado acepta una carrera (despacho de pool abierto).
+
+export interface OperatorTripDTO {
+  id: string;
+  status: string;
+  serviceType: string;
+  originAddress: string;
+  destAddress: string;
+  fare: number; // finalFare ?? estimatedFare
+  distanceKm: number | null;
+  driverId: string | null;
+  driverName: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface OperatorTripsResult {
+  trips: OperatorTripDTO[];
+  summary: { total: number; completed: number; grossFare: number };
+}
+
+export async function listOperatorTrips(
+  operatorId: string,
+  limit = 50,
+): Promise<OperatorTripsResult> {
+  const [rows, completedAgg, total] = await Promise.all([
+    prisma.trip.findMany({
+      where: { operatorId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        serviceType: true,
+        originAddress: true,
+        destAddress: true,
+        estimatedFare: true,
+        finalFare: true,
+        distanceKm: true,
+        createdAt: true,
+        completedAt: true,
+        driver: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.trip.aggregate({
+      where: { operatorId, status: 'COMPLETED' },
+      _sum: { finalFare: true },
+      _count: true,
+    }),
+    prisma.trip.count({ where: { operatorId } }),
+  ]);
+
+  return {
+    trips: rows.map((t) => ({
+      id: t.id,
+      status: t.status,
+      serviceType: t.serviceType,
+      originAddress: t.originAddress,
+      destAddress: t.destAddress,
+      fare: t.finalFare ?? t.estimatedFare,
+      distanceKm: t.distanceKm,
+      driverId: t.driver?.id ?? null,
+      driverName: t.driver?.name ?? null,
+      createdAt: t.createdAt.toISOString(),
+      completedAt: t.completedAt?.toISOString() ?? null,
+    })),
+    summary: {
+      total,
+      completed: completedAgg._count,
+      grossFare: completedAgg._sum.finalFare ?? 0,
+    },
+  };
+}
+
 // ─── Documentos legales de la empresa ────────────────────────────────────────────
 
 export async function listOperatorDocuments(operatorId: string) {

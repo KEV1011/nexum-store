@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Building2, Car, Users, Radio, RefreshCw, LogOut, MapPin, ShieldCheck, ShieldAlert, Loader2,
+  Route, Wallet,
 } from 'lucide-react'
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000'
@@ -28,6 +29,25 @@ interface FleetPos {
   internalCode: string | null
 }
 
+interface OperatorTrip {
+  id: string
+  status: string
+  serviceType: string
+  originAddress: string
+  destAddress: string
+  fare: number
+  distanceKm: number | null
+  driverId: string | null
+  driverName: string | null
+  createdAt: string
+  completedAt: string | null
+}
+
+interface TripsResult {
+  trips: OperatorTrip[]
+  summary: { total: number; completed: number; grossFare: number }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function relTime(iso: string | null): string {
@@ -41,10 +61,33 @@ function relTime(iso: string | null): string {
   return `hace ${Math.floor(h / 24)} d`
 }
 
+function formatCOP(value: number): string {
+  return `$${Math.round(value).toLocaleString('es-CO')}`
+}
+
 const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   ONLINE: { label: 'En línea', cls: 'bg-emerald-100 text-emerald-700' },
   ON_TRIP: { label: 'En viaje', cls: 'bg-blue-100 text-blue-700' },
   OFFLINE: { label: 'Desconectado', cls: 'bg-slate-100 text-slate-500' },
+}
+
+const SERVICE_LABEL: Record<string, string> = {
+  TAXI: 'Taxi', MOTO: 'Moto', PARTICULAR: 'Particular', ENVIOS: 'Envío', MANDADO: 'Mandado',
+}
+
+const TRIP_STATUS_STYLE: Record<string, { label: string; cls: string }> = {
+  COMPLETED: { label: 'Completado', cls: 'bg-emerald-100 text-emerald-700' },
+  CANCELLED: { label: 'Cancelado', cls: 'bg-rose-100 text-rose-600' },
+  SEARCHING: { label: 'Buscando', cls: 'bg-amber-100 text-amber-700' },
+}
+const TRIP_IN_PROGRESS: Record<string, true> = {
+  ACCEPTED: true, ARRIVING: true, ARRIVED: true, IN_PROGRESS: true,
+}
+function tripStatusStyle(status: string): { label: string; cls: string } {
+  const known = TRIP_STATUS_STYLE[status]
+  if (known) return known
+  if (TRIP_IN_PROGRESS[status]) return { label: 'En curso', cls: 'bg-blue-100 text-blue-700' }
+  return { label: status, cls: 'bg-slate-100 text-slate-500' }
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -197,6 +240,8 @@ function Dashboard({ token, operator, onLogout }: {
 }) {
   const [fleet, setFleet] = useState<FleetPos[]>([])
   const [counts, setCounts] = useState<{ vehicles: number; drivers: number }>({ vehicles: 0, drivers: 0 })
+  const [trips, setTrips] = useState<OperatorTrip[]>([])
+  const [tripsSummary, setTripsSummary] = useState<{ total: number; completed: number; grossFare: number }>({ total: 0, completed: 0, grossFare: 0 })
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -216,12 +261,17 @@ function Dashboard({ token, operator, onLogout }: {
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true)
     try {
-      const [fleetData, profile] = await Promise.all([
+      const [fleetData, profile, tripsData] = await Promise.all([
         api('/operator/fleet') as Promise<FleetPos[]>,
         api('/operator/profile') as Promise<{ _count?: { vehicles: number; drivers: number } }>,
+        api('/operator/trips?limit=20') as Promise<TripsResult>,
       ])
       setFleet(Array.isArray(fleetData) ? fleetData : [])
       if (profile?._count) setCounts({ vehicles: profile._count.vehicles, drivers: profile._count.drivers })
+      if (tripsData?.trips) {
+        setTrips(tripsData.trips)
+        setTripsSummary(tripsData.summary)
+      }
       setError(null)
     } catch (e) {
       if (!expired.current) setError(e instanceof Error ? e.message : 'Error')
@@ -309,8 +359,43 @@ function Dashboard({ token, operator, onLogout }: {
           )}
         </section>
 
+        {/* Viajes de la flota */}
+        <section>
+          <h2 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
+            <Route className="w-4 h-4 text-emerald-600" /> Viajes de la flota
+            <span className="text-slate-400 font-normal">({tripsSummary.total})</span>
+          </h2>
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+              <div className="inline-flex p-2 rounded-lg bg-emerald-50 text-emerald-600 mb-2"><Route className="w-4 h-4" /></div>
+              <p className="text-2xl font-bold text-slate-900">{tripsSummary.completed}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Viajes completados</p>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+              <div className="inline-flex p-2 rounded-lg bg-blue-50 text-blue-600 mb-2"><Wallet className="w-4 h-4" /></div>
+              <p className="text-2xl font-bold text-slate-900">{formatCOP(tripsSummary.grossFare)}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Facturación (completados)</p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-400 text-sm">Cargando viajes…</div>
+          ) : trips.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
+              <Route className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+              <p className="font-medium text-slate-600">Aún no hay viajes registrados</p>
+              <p className="text-slate-400 text-sm mt-1">Cuando tus conductores afiliados completen carreras, aparecerán aquí para tu liquidación.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {trips.map((t) => <TripRow key={t.id} t={t} />)}
+            </div>
+          )}
+        </section>
+
         <footer className="text-center py-2">
-          <p className="text-xs text-slate-400">Las posiciones se actualizan automáticamente cada 10 s.</p>
+          <p className="text-xs text-slate-400">Los datos se actualizan automáticamente cada 10 s.</p>
         </footer>
       </div>
     </div>
@@ -325,6 +410,33 @@ function Stat({ icon: Icon, label, value, color }: {
       <div className={`inline-flex p-2 rounded-lg ${color} mb-2`}><Icon className="w-4 h-4" /></div>
       <p className="text-2xl font-bold text-slate-900">{value}</p>
       <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+    </div>
+  )
+}
+
+function TripRow({ t }: { t: OperatorTrip }) {
+  const st = tripStatusStyle(t.status)
+  const service = SERVICE_LABEL[t.serviceType] ?? t.serviceType
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-600">{service}</span>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${st.cls}`}>{st.label}</span>
+          </div>
+          <p className="text-sm text-slate-900 truncate">
+            <span className="text-slate-400">De</span> {t.originAddress}
+          </p>
+          <p className="text-sm text-slate-900 truncate">
+            <span className="text-slate-400">A</span> {t.destAddress}
+          </p>
+          <p className="text-xs text-slate-400 mt-1 truncate">
+            {t.driverName ?? 'Sin conductor'}{t.distanceKm != null ? ` · ${t.distanceKm.toFixed(1)} km` : ''} · {relTime(t.completedAt ?? t.createdAt)}
+          </p>
+        </div>
+        <p className="font-bold text-slate-900 text-sm shrink-0">{formatCOP(t.fare)}</p>
+      </div>
     </div>
   )
 }

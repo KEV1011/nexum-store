@@ -230,6 +230,14 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
   clearTimeout(state.timeout);
   activeOffers.delete(tripId);
 
+  // Despacho de pool abierto: el viaje queda SELLADO con la empresa del conductor
+  // (operatorId) si está afiliado, para trazabilidad legal y liquidación. Los
+  // conductores independientes dejan operatorId en null.
+  const driverInfo = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { operatorId: true },
+  });
+
   const updated = await prisma.$transaction(async (tx) => {
     const current = await tx.trip.findUnique({
       where: { id: tripId },
@@ -238,7 +246,12 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
     if (!current || current.status !== 'SEARCHING') return null;
     return tx.trip.update({
       where: { id: tripId },
-      data: { status: 'ACCEPTED', driverId, acceptedAt: new Date() },
+      data: {
+        status: 'ACCEPTED',
+        driverId,
+        acceptedAt: new Date(),
+        ...(driverInfo?.operatorId ? { operatorId: driverInfo.operatorId } : {}),
+      },
     });
   });
 

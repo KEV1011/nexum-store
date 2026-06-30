@@ -124,6 +124,12 @@ class ProfileScreen extends ConsumerWidget {
             _buildAvatarCard(context, ref, theme, profile),
             const SizedBox(height: AppConstants.spacingM),
 
+            // ── Affiliation (empresa / operador) ───────────────────────────
+            if (profile.affiliation != null) ...[
+              _buildAffiliationCard(theme, profile.affiliation!),
+              const SizedBox(height: AppConstants.spacingM),
+            ],
+
             // ── Rating breakdown ───────────────────────────────────────────
             _buildRatingCard(theme, profile),
             const SizedBox(height: AppConstants.spacingM),
@@ -279,6 +285,108 @@ class ProfileScreen extends ConsumerWidget {
                   visualDensity: VisualDensity.compact,
                 );
               }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Affiliation card (empresa / operador) ────────────────────────────────────
+
+  Widget _buildAffiliationCard(ThemeData theme, DriverAffiliation aff) {
+    final (statusColor, statusIcon) = switch (aff.status) {
+      'ACTIVE' => (AppColors.success, Icons.verified_rounded),
+      'SUSPENDED' => (AppColors.error, Icons.block_rounded),
+      _ => (AppColors.warning, Icons.hourglass_top_rounded),
+    };
+    final employmentLabel =
+        aff.employmentType == 'OWN' ? 'Vehículo propio' : 'Vehículo afiliado';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.spacingM),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _CardHeader(
+              icon: Icons.apartment_rounded,
+              label: 'Empresa',
+              iconColor: AppColors.primary,
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                  ),
+                  child: const Icon(Icons.business_rounded,
+                      color: AppColors.primary, size: 24),
+                ),
+                const SizedBox(width: AppConstants.spacingM),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Conduces para',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                      Text(
+                        aff.legalName,
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${aff.typeLabel} · $employmentLabel',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppConstants.spacingM,
+                vertical: AppConstants.spacingS,
+              ),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(statusIcon, color: statusColor, size: 18),
+                  const SizedBox(width: AppConstants.spacingS),
+                  Expanded(
+                    child: Text(
+                      aff.isActiveVerified
+                          ? 'Empresa habilitada y verificada por Nexum.'
+                          : aff.status == 'SUSPENDED'
+                              ? 'Empresa suspendida. No puedes operar bajo ella.'
+                              : 'Empresa en verificación. Podrás operar cuando Nexum la habilite.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

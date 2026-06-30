@@ -93,6 +93,7 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
     include: {
       vehicles: { where: { isActive: true }, take: 1 },
       documents: true,
+      operator: { select: { id: true, legalName: true, type: true, status: true, isVerified: true } },
     },
   });
   if (!driver) throw new Error('Driver not found');
@@ -125,6 +126,16 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
     documents: docs,
     requiredDocsCount: REQUIRED_DOCS.length,
     approvedDocsCount: approvedCount,
+    affiliation: driver.operator
+      ? {
+          operatorId: driver.operator.id,
+          legalName: driver.operator.legalName,
+          type: driver.operator.type,
+          status: driver.operator.status,
+          isVerified: driver.operator.isVerified,
+          employmentType: driver.employmentType ?? 'AFFILIATED',
+        }
+      : undefined,
   };
 }
 

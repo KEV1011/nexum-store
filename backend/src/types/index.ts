@@ -880,6 +880,18 @@ export interface DriverProfileDTO {
   documents: DriverDocumentDTO[];
   requiredDocsCount: number;
   approvedDocsCount: number;
+  // Afiliación a empresa/operador. Ausente = conductor independiente. Permite que la
+  // app conductor muestre "Conduces para {empresa}" y su estado de verificación.
+  affiliation?: DriverAffiliationDTO;
+}
+
+export interface DriverAffiliationDTO {
+  operatorId: string;
+  legalName: string;
+  type: string; // TAXI | INTERCITY | MIXED
+  status: string; // PENDING | ACTIVE | SUSPENDED
+  isVerified: boolean;
+  employmentType: string; // OWN | AFFILIATED
 }
 
 export interface DriverPublicProfileDTO {

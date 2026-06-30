@@ -16,6 +16,7 @@ import {
   listOperatorDrivers,
   affiliateDriver,
   getFleetPositions,
+  listOperatorTrips,
   listOperatorDocuments,
   uploadOperatorDocument,
 } from '../services/operator.service';
@@ -178,6 +179,13 @@ router.post('/vehicles', requireOperatorRole('OWNER', 'DISPATCHER'), async (req:
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo crear el vehículo' });
   }
+});
+
+// GET /operator/trips — viajes sellados con la empresa (trazabilidad + liquidación).
+router.get('/trips', async (req: Request, res: Response): Promise<void> => {
+  const raw = Number((req.query as Record<string, unknown>)['limit']);
+  const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 200) : 50;
+  res.json({ success: true, data: await listOperatorTrips(req.operatorId!, limit) });
 });
 
 // GET /operator/drivers · POST /operator/drivers/invite
