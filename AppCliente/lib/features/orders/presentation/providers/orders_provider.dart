@@ -77,7 +77,37 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
   // ── init ───────────────────────────────────────────────────────────────────
 
   Future<void> _loadHistory() async {
-    final history = await _dataSource.fetchOrderHistory();
+    List<CustomerOrderEntity> history;
+    try {
+      // Historial REAL desde el backend (GET /client/orders).
+      final res = await _dio.get<Map<String, dynamic>>('/client/orders');
+      final list = res.data?['data'] as List<dynamic>?;
+      if (list == null) throw Exception('sin datos');
+      final remote = list
+          .map((e) => CustomerOrderEntity.fromApi(e as Map<String, dynamic>))
+          .toList();
+      // La calificación es local del cliente (el backend no la guarda en el
+      // resumen): se conserva superponiéndola por id sobre el historial remoto.
+      final local = await _dataSource.fetchOrderHistory();
+      final ratedById = {
+        for (final o in local)
+          if (o.isRated) o.id: o,
+      };
+      history = remote.map((o) {
+        final r = ratedById[o.id];
+        return r == null
+            ? o
+            : o.copyWith(
+                rating: r.rating,
+                ratingComment: r.ratingComment,
+                ratedAt: r.ratedAt,
+              );
+      }).toList();
+      unawaited(_dataSource.saveOrders(history));
+    } catch (_) {
+      // Sin conexión: historial local (cache).
+      history = await _dataSource.fetchOrderHistory();
+    }
     if (!mounted) return;
     state = state.copyWith(orders: history, isLoading: false);
     unawaited(_resumeActiveTracking(history));
