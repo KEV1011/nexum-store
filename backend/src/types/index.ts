@@ -863,6 +863,18 @@ export interface DriverProfileDTO {
   rating: number;
   totalTrips: number;
   vehicleDescription: string;
+  // Desglose del vehículo activo (para la pantalla de perfil del conductor).
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleYear?: number;
+  vehiclePlate?: string;
+  vehicleColor?: string;
+  vehicleType?: string;
+  // Identidad y datos bancarios (ya existen en el modelo Driver).
+  documentNumber?: string;
+  bankName?: string;
+  bankAccountType?: string;
+  bankAccountNumber?: string;
   memberSince: string;
   isVerified: boolean;
   documents: DriverDocumentDTO[];

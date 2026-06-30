@@ -99,6 +99,7 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
 
   const docs = _buildDocList(driver.documents as DbDoc[]);
   const approvedCount = docs.filter((d) => d.status === 'APPROVED').length;
+  const vehicle = driver.vehicles[0];
 
   return {
     driverId: driver.id,
@@ -108,7 +109,17 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
     bio: driver.bio ?? undefined,
     rating: driver.rating,
     totalTrips: driver.totalTrips,
-    vehicleDescription: _vehicleDescription(driver.vehicles[0]),
+    vehicleDescription: _vehicleDescription(vehicle),
+    vehicleBrand: vehicle?.brand,
+    vehicleModel: vehicle?.model,
+    vehicleYear: vehicle?.year,
+    vehiclePlate: vehicle?.plate,
+    vehicleColor: vehicle?.color,
+    vehicleType: vehicle?.type,
+    documentNumber: driver.documentNumber ?? undefined,
+    bankName: driver.bankName ?? undefined,
+    bankAccountType: driver.bankAccountType ?? undefined,
+    bankAccountNumber: driver.bankAccountNumber ?? undefined,
     memberSince: driver.createdAt.toISOString(),
     isVerified: driver.isVerified,
     documents: docs,

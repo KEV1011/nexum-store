@@ -1,11 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/mock_data/driver_mock.dart';
+import 'package:nexum_driver/core/network/dio_client.dart';
 
-/// Perfil editable del conductor en memoria (fase MVP, sin backend).
+/// Perfil del conductor mostrado y editable en la pantalla de perfil.
 ///
-/// Se siembra con los valores de [DriverMock] y permite que el conductor
-/// edite su identidad y los datos de su vehículo durante la sesión.
+/// Se siembra con [DriverMock] para que la pantalla pinte de inmediato y, al
+/// construirse el notifier, se reemplaza con el perfil REAL del backend
+/// (`GET /driver/profile`). La edición de identidad/vehículo permanece local
+/// (MVP): el backend aún no persiste ese formulario.
 class EditableProfile {
   const EditableProfile({
     required this.firstName,
@@ -18,6 +21,13 @@ class EditableProfile {
     required this.vehiclePlate,
     required this.vehicleColor,
     required this.vehicleType,
+    required this.rating,
+    required this.totalTrips,
+    required this.isVerified,
+    required this.documentNumber,
+    required this.bankName,
+    required this.bankAccountType,
+    required this.bankAccountNumber,
   });
 
   factory EditableProfile.fromMock() => const EditableProfile(
@@ -31,6 +41,13 @@ class EditableProfile {
         vehiclePlate: DriverMock.vehiclePlate,
         vehicleColor: DriverMock.vehicleColor,
         vehicleType: DriverMock.vehicleType,
+        rating: DriverMock.rating,
+        totalTrips: DriverMock.totalTrips,
+        isVerified: DriverMock.isVerified,
+        documentNumber: DriverMock.documentNumber,
+        bankName: DriverMock.bankName,
+        bankAccountType: DriverMock.bankAccountType,
+        bankAccountNumber: DriverMock.bankAccountNumber,
       );
 
   final String firstName;
@@ -43,6 +60,13 @@ class EditableProfile {
   final String vehiclePlate;
   final String vehicleColor;
   final String vehicleType;
+  final double rating;
+  final int totalTrips;
+  final bool isVerified;
+  final String documentNumber;
+  final String bankName;
+  final String bankAccountType;
+  final String bankAccountNumber;
 
   String get fullName => '$firstName $lastName';
 
@@ -67,6 +91,13 @@ class EditableProfile {
     String? vehiclePlate,
     String? vehicleColor,
     String? vehicleType,
+    double? rating,
+    int? totalTrips,
+    bool? isVerified,
+    String? documentNumber,
+    String? bankName,
+    String? bankAccountType,
+    String? bankAccountNumber,
   }) {
     return EditableProfile(
       firstName: firstName ?? this.firstName,
@@ -79,12 +110,60 @@ class EditableProfile {
       vehiclePlate: vehiclePlate ?? this.vehiclePlate,
       vehicleColor: vehicleColor ?? this.vehicleColor,
       vehicleType: vehicleType ?? this.vehicleType,
+      rating: rating ?? this.rating,
+      totalTrips: totalTrips ?? this.totalTrips,
+      isVerified: isVerified ?? this.isVerified,
+      documentNumber: documentNumber ?? this.documentNumber,
+      bankName: bankName ?? this.bankName,
+      bankAccountType: bankAccountType ?? this.bankAccountType,
+      bankAccountNumber: bankAccountNumber ?? this.bankAccountNumber,
     );
   }
 }
 
 class EditableProfileNotifier extends StateNotifier<EditableProfile> {
-  EditableProfileNotifier() : super(EditableProfile.fromMock());
+  EditableProfileNotifier(this._client) : super(EditableProfile.fromMock()) {
+    _load();
+  }
+
+  final DioClient _client;
+
+  /// Carga el perfil REAL del backend y reemplaza el seed mock. Si falla (sin
+  /// conexión), se conserva el seed para que la pantalla no quede vacía.
+  Future<void> _load() async {
+    try {
+      final res = await _client.get<Map<String, dynamic>>('/driver/profile');
+      final d = res.data?['data'] as Map<String, dynamic>?;
+      if (d == null || !mounted) return;
+
+      final fullName = (d['fullName'] as String?)?.trim() ?? '';
+      final parts = fullName.isEmpty ? <String>[] : fullName.split(RegExp(r'\s+'));
+      final firstName = parts.isNotEmpty ? parts.first : state.firstName;
+      final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+
+      state = state.copyWith(
+        firstName: firstName,
+        lastName: lastName,
+        phone: d['phone'] as String? ?? state.phone,
+        rating: (d['rating'] as num?)?.toDouble() ?? state.rating,
+        totalTrips: (d['totalTrips'] as num?)?.toInt() ?? state.totalTrips,
+        isVerified: d['isVerified'] as bool? ?? state.isVerified,
+        documentNumber: d['documentNumber'] as String? ?? state.documentNumber,
+        bankName: d['bankName'] as String? ?? state.bankName,
+        bankAccountType: d['bankAccountType'] as String? ?? state.bankAccountType,
+        bankAccountNumber:
+            d['bankAccountNumber'] as String? ?? state.bankAccountNumber,
+        vehicleBrand: d['vehicleBrand'] as String? ?? state.vehicleBrand,
+        vehicleModel: d['vehicleModel'] as String? ?? state.vehicleModel,
+        vehicleYear: (d['vehicleYear'] as num?)?.toInt() ?? state.vehicleYear,
+        vehiclePlate: d['vehiclePlate'] as String? ?? state.vehiclePlate,
+        vehicleColor: d['vehicleColor'] as String? ?? state.vehicleColor,
+        vehicleType: d['vehicleType'] as String? ?? state.vehicleType,
+      );
+    } catch (_) {
+      // Sin conexión: se conserva el seed mock.
+    }
+  }
 
   void updateIdentity({
     required String firstName,
@@ -119,8 +198,8 @@ class EditableProfileNotifier extends StateNotifier<EditableProfile> {
   }
 }
 
-/// Proveedor del perfil editable del conductor.
+/// Proveedor del perfil del conductor (real, cargado desde el backend).
 final editableProfileProvider =
     StateNotifierProvider<EditableProfileNotifier, EditableProfile>((ref) {
-  return EditableProfileNotifier();
+  return EditableProfileNotifier(DioClient());
 });
