@@ -1,4 +1,11 @@
+import path from 'path';
+import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+
+// Carga backend/.env aunque el seed se ejecute con `ts-node` directo (sin pasar
+// por el CLI de prisma). Ruta explícita relativa a este archivo (backend/prisma)
+// para que funcione tanto desde backend/ como desde la raíz del repo.
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
 
