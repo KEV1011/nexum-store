@@ -1,3 +1,4 @@
+import { OperatorStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 
@@ -186,4 +187,58 @@ export async function listSosForAdmin(): Promise<AdminSosRow[]> {
       createdAt: e.createdAt.toISOString(),
     };
   });
+}
+
+// ─── Empresas de transporte (operadores) ──────────────────────────────────────
+
+export interface AdminOperatorRow {
+  id: string;
+  legalName: string;
+  nit: string;
+  type: string;
+  status: string;
+  isVerified: boolean;
+  city: string | null;
+  contactPhone: string | null;
+  vehicles: number;
+  drivers: number;
+  pendingDocs: number;
+  createdAt: string;
+}
+
+export async function listOperatorsForAdmin(status?: OperatorStatus): Promise<AdminOperatorRow[]> {
+  const ops = await prisma.operator.findMany({
+    where: status ? { status } : undefined,
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+    include: {
+      _count: { select: { vehicles: true, drivers: true } },
+      documents: { where: { status: 'PENDING' }, select: { id: true } },
+    },
+  });
+  return ops.map((o) => ({
+    id: o.id,
+    legalName: o.legalName,
+    nit: o.nit,
+    type: o.type,
+    status: o.status,
+    isVerified: o.isVerified,
+    city: o.city,
+    contactPhone: o.contactPhone,
+    vehicles: o._count.vehicles,
+    drivers: o._count.drivers,
+    pendingDocs: o.documents.length,
+    createdAt: o.createdAt.toISOString(),
+  }));
+}
+
+/** Verifica (ACTIVE) o suspende (SUSPENDED) una empresa. isVerified sigue a ACTIVE. */
+export async function setOperatorStatus(id: string, status: OperatorStatus): Promise<boolean> {
+  const op = await prisma.operator.findUnique({ where: { id }, select: { id: true } });
+  if (!op) return false;
+  await prisma.operator.update({
+    where: { id },
+    data: { status, isVerified: status === 'ACTIVE' },
+  });
+  return true;
 }
