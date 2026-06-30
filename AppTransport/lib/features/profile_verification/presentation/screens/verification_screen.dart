@@ -88,7 +88,16 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
 
     setState(() => _uploading = true);
     final notifier = ref.read(driverProfileProvider.notifier);
-    final ok = await notifier.uploadDocument(doc.type, picked.path);
+
+    bool ok;
+    try {
+      // XFile.readAsBytes funciona en móvil y web; en web `picked.path` es una
+      // URL blob, no una ruta de archivo, por lo que hay que leer los bytes.
+      final bytes = await picked.readAsBytes();
+      ok = await notifier.uploadDocument(doc.type, bytes, picked.name);
+    } catch (_) {
+      ok = false;
+    }
 
     if (!mounted) return;
     setState(() => _uploading = false);
