@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 
@@ -14,7 +15,25 @@ class TripHistoryNotifier extends StateNotifier<List<TripModel>> {
   }
 
   Future<void> _load() async {
+    // Historial REAL del backend (viajes COMPLETED del conductor). Alimenta
+    // tanto la pantalla de Historial como el desglose de Ganancias.
+    try {
+      final res =
+          await DioClient().get<Map<String, dynamic>>('/earnings/history');
+      final list = res.data?['data'] as List<dynamic>?;
+      if (list != null && mounted) {
+        state = list
+            .map((e) => _tripFromApi(e as Map<String, dynamic>))
+            .toList();
+        unawaited(_persist(state));
+        return;
+      }
+    } catch (_) {
+      // Sin conexión: cae al cache local (o semilla en el primer arranque).
+    }
+
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final raw = prefs.getStringList(AppConstants.tripHistoryKey);
     if (raw == null) {
       final seed = _buildSeedTrips();
@@ -30,6 +49,33 @@ class TripHistoryNotifier extends StateNotifier<List<TripModel>> {
           .toList();
     }
   }
+
+  /// Mapea el DTO de `/earnings/history` (camelCase) a [TripModel].
+  TripModel _tripFromApi(Map<String, dynamic> j) => TripModel(
+        id: j['id'] as String? ?? '',
+        passengerId: '',
+        passengerName: j['passengerName'] as String? ?? 'Pasajero',
+        origin: LocationModel(
+          latitude: (j['originLat'] as num?)?.toDouble() ?? 0,
+          longitude: (j['originLng'] as num?)?.toDouble() ?? 0,
+          address: j['originAddress'] as String? ?? '',
+        ),
+        destination: LocationModel(
+          latitude: (j['destLat'] as num?)?.toDouble() ?? 0,
+          longitude: (j['destLng'] as num?)?.toDouble() ?? 0,
+          address: j['destAddress'] as String? ?? '',
+        ),
+        distanceKm: (j['distanceKm'] as num?)?.toDouble() ?? 0,
+        durationMinutes: (j['durationMinutes'] as num?)?.toInt() ?? 0,
+        grossFare: (j['grossFare'] as num?)?.toDouble() ?? 0,
+        netEarning: (j['netEarning'] as num?)?.toDouble() ?? 0,
+        commission: (j['commission'] as num?)?.toDouble() ?? 0,
+        startedAt:
+            DateTime.tryParse(j['startedAt'] as String? ?? '') ?? DateTime.now(),
+        finishedAt: DateTime.tryParse(j['finishedAt'] as String? ?? '') ??
+            DateTime.now(),
+        rating: (j['rating'] as num?)?.toDouble(),
+      );
 
   void add(TripModel trip) {
     if (state.any((t) => t.id == trip.id)) return;
