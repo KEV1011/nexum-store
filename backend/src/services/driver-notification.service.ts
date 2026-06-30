@@ -50,12 +50,18 @@ function formatCop(n: number): string {
 export async function getDriverNotifications(
   driverId: string,
 ): Promise<DriverNotificationDTO[]> {
-  const [trips, payouts, documents] = await Promise.all([
+  const [trips, errands, payouts, documents] = await Promise.all([
     prisma.trip.findMany({
       where: { driverId, status: 'COMPLETED' },
       select: { id: true, destAddress: true, netEarning: true, completedAt: true },
       orderBy: { completedAt: 'desc' },
       take: 15,
+    }),
+    prisma.errand.findMany({
+      where: { driverId, status: 'DELIVERED' },
+      select: { id: true, serviceFee: true, description: true, deliveredAt: true },
+      orderBy: { deliveredAt: 'desc' },
+      take: 10,
     }),
     prisma.payout.findMany({
       where: { driverId },
@@ -78,6 +84,16 @@ export async function getDriverNotifications(
       title: 'Viaje completado',
       body: `Ganaste ${formatCop(net)}${t.destAddress ? ` · ${t.destAddress}` : ''}`,
       timestamp: (t.completedAt ?? new Date()).toISOString(),
+    });
+  }
+
+  for (const e of errands) {
+    items.push({
+      id: `errand-${e.id}`,
+      type: 'trip',
+      title: 'Mandado entregado',
+      body: `Ganaste ${formatCop(e.serviceFee)} · ${e.description}`,
+      timestamp: (e.deliveredAt ?? new Date()).toISOString(),
     });
   }
 

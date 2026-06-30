@@ -4,6 +4,62 @@ Pasos para poner la app lista para Play Store / producción real.
 
 ---
 
+## 0. Desplegar el backend en Render (Blueprint)
+
+El repo ya trae todo lo necesario: `render.yaml` (define el servicio web + la
+base de datos PostgreSQL) y el `Dockerfile` (que en cada despliegue corre
+`prisma migrate deploy` y arranca el servidor). **No hay que tocar código.**
+
+> El blueprint despliega desde la rama **`main`**. Si trabajas en una rama,
+> primero haz merge del PR a `main`.
+
+### Pasos (10–15 min)
+1. Crea cuenta en https://render.com y conéctala a tu GitHub.
+2. **New → Blueprint** → elige el repo `kev1011/nexum-store`. Render detecta
+   `render.yaml` y propone crear `nexum-api` (web) + `nexum-db` (Postgres).
+3. Aplica el blueprint. `DATABASE_URL` y `JWT_SECRET` se generan solos.
+4. En `nexum-api` → **Environment**, define los secretos `sync: false` que
+   apliquen (ver tabla abajo). **Mínimo para que el login funcione.**
+5. Render construye y despliega. Al arrancar corre las migraciones
+   automáticamente (incluida la extensión PostGIS). Listo.
+
+### Variables que SÍ o SÍ definir (si no, la app no sirve en prod)
+
+| Variable | Por qué es crítica |
+|---|---|
+| **OTP**: `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_VERIFY_SID` | Sin Twilio (ni el fallback de abajo) **el login queda cerrado**: el código OTP no se entrega por ningún canal. |
+| `OTP_FALLBACK_CODE` | Alternativa a Twilio para un **piloto controlado**: código fijo (ej. `123456`) que sirve para todos. Define ESTE *o* Twilio, no ambos. |
+| `ADMIN_PHONES` | Teléfonos (coma-separados) con acceso a `/admin`. Vacío = **panel cerrado** en producción. Ej: `+573001112233`. |
+
+### Variables recomendadas (opcionales)
+
+| Variable | Para qué |
+|---|---|
+| `S3_BUCKET` (+ `S3_*`) | Guardar los documentos de conductores en S3/R2. **Sin esto el disco de Render es efímero y los documentos se pierden en cada redeploy.** |
+| `GOOGLE_MAPS_API_KEY` | Autocompletado de direcciones, ETA y rutas reales (ver sección 1). |
+| `SENTRY_DSN` | Reporte de errores. |
+| `FIREBASE_SERVICE_ACCOUNT` | Push notifications reales (ver sección 2). |
+| `WOMPI_*` | Pagos con tarjeta/PSE/Nequi. |
+
+### Verificar el despliegue
+- `https://nexum-api.onrender.com/health` → `{"status":"ok"}`.
+- `https://nexum-api.onrender.com/admin` → panel de operación (entra con un
+  teléfono de `ADMIN_PHONES` + su OTP).
+- Las apps en modo release ya apuntan a `https://nexum-api.onrender.com`
+  (ver `core/config/api_config.dart`). Si usas otro nombre de servicio,
+  actualiza esa URL y `APP_URL` en `render.yaml`.
+
+### (Opcional) Datos demo en producción
+La BD de producción arranca **vacía** (lo correcto: los conductores y negocios
+reales se registran desde las apps). Si quieres sembrar datos demo para una
+presentación, corre el seed apuntando a la `DATABASE_URL` de Render:
+```
+cd backend
+DATABASE_URL="<external connection string de Render>" npx ts-node prisma/seed.ts
+```
+
+---
+
 ## 1. Google Maps API Key
 
 > **Arquitectura actual:** las apps NO usan la key directamente. El mapa
@@ -117,11 +173,13 @@ Y usar el SDK admin con la `serviceAccountKey.json` (descargable desde Firebase 
 
 ## Estado actual
 
-- [x] Backend Node.js + WebSocket funcionando localmente
-- [x] App Flutter conectada al backend
-- [x] Audio de notificación en solicitudes
-- [x] Web demo en GitHub Pages (mock data)
-- [x] CI/CD configurado (APK + web deploy automáticos)
-- [ ] Google Maps API Key real → **necesito que la consigas**
-- [ ] Firebase google-services.json → **necesito que lo descargues**
-- [ ] Backend hosteado en cloud (Render, Railway, Fly.io…) → próximo paso
+- [x] Backend Node.js + WebSocket + PostGIS (matching geoespacial real)
+- [x] Apps Flutter (cliente + conductor) conectadas al backend real
+- [x] Viajes y mandados con emparejamiento real conductor↔cliente
+- [x] Pantallas del conductor con datos reales (ganancias, perfil, notificaciones)
+- [x] Panel de operación `/admin` (verificaciones, retiros, métricas, SOS, promos)
+- [x] Blueprint de Render (`render.yaml`) + Dockerfile con migraciones automáticas
+- [x] CI/CD configurado (APK + análisis automáticos)
+- [ ] Definir en Render: OTP (Twilio u `OTP_FALLBACK_CODE`) y `ADMIN_PHONES`
+- [ ] (Recomendado) `S3_BUCKET` para documentos persistentes
+- [ ] (Opcional) `GOOGLE_MAPS_API_KEY`, Firebase, Wompi
