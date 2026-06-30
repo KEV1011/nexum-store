@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
+import 'package:nexum_driver/core/widgets/picked_image.dart';
 
 /// Proof-of-delivery data collected at the end of an Envíos trip.
 class DeliveryProof {
@@ -398,11 +397,10 @@ class _PhotoCapture extends StatelessWidget {
           ClipRRect(
             borderRadius:
                 BorderRadius.circular(AppConstants.radiusMedium),
-            child: Image.file(
-              File(photoPath!),
+            child: PickedImage(
+              photoPath!,
               height: 200,
               width: double.infinity,
-              fit: BoxFit.cover,
             ),
           ),
           Positioned(

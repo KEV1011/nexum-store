@@ -1,10 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
+import 'package:nexum_driver/core/widgets/picked_image.dart';
 import 'package:nexum_driver/features/business_portal/domain/entities/'
     'business_order_entity.dart';
 
@@ -402,11 +401,10 @@ class _PhotoThumb extends StatelessWidget {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Image.file(
-            File(path),
+          child: PickedImage(
+            path,
             width: 64,
             height: 64,
-            fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => Container(
               width: 64,
               height: 64,

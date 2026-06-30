@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +6,7 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
+import 'package:nexum_driver/core/widgets/picked_image.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/passenger_rating_sheet.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/trip_history/presentation/providers/trip_history_provider.dart';
@@ -677,11 +676,10 @@ class _PhotoThumb extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: Stack(
         children: [
-          Image.file(
-            File(path),
+          PickedImage(
+            path,
             width: 64,
             height: 64,
-            fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => Container(
               width: 64,
               height: 64,
