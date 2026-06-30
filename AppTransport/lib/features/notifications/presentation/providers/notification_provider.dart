@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:nexum_driver/core/network/dio_client.dart';
+
 enum NotificationType { trip, payment, document, promo, system, rating }
 
 class AppNotification {
@@ -29,10 +31,54 @@ class AppNotification {
       );
 }
 
+/// Feed de notificaciones del conductor.
+///
+/// Carga el feed REAL del backend (`GET /driver/notifications`), derivado de los
+/// viajes completados, retiros y documentos del conductor. El estado "leído" se
+/// gestiona localmente (el backend no lo persiste).
 class NotificationNotifier extends StateNotifier<List<AppNotification>> {
-  NotificationNotifier() : super(_initial());
+  NotificationNotifier(this._client) : super(const []) {
+    _load();
+  }
+
+  final DioClient _client;
 
   int get unreadCount => state.where((n) => !n.isRead).length;
+
+  Future<void> _load() async {
+    try {
+      final res =
+          await _client.get<Map<String, dynamic>>('/driver/notifications');
+      final list = res.data?['data'] as List<dynamic>?;
+      if (list == null || !mounted) return;
+      state = list
+          .map((e) => _fromDto(e as Map<String, dynamic>))
+          .toList(growable: false);
+    } catch (_) {
+      // Sin conexión: el feed queda vacío (la pantalla muestra su estado vacío).
+    }
+  }
+
+  /// Recarga el feed desde el backend.
+  Future<void> refresh() => _load();
+
+  AppNotification _fromDto(Map<String, dynamic> d) => AppNotification(
+        id: d['id'] as String? ?? '',
+        type: _typeFromString(d['type'] as String?),
+        title: d['title'] as String? ?? '',
+        body: d['body'] as String? ?? '',
+        timestamp:
+            DateTime.tryParse(d['timestamp'] as String? ?? '') ?? DateTime.now(),
+      );
+
+  NotificationType _typeFromString(String? raw) => switch (raw) {
+        'trip' => NotificationType.trip,
+        'payment' => NotificationType.payment,
+        'document' => NotificationType.document,
+        'promo' => NotificationType.promo,
+        'rating' => NotificationType.rating,
+        _ => NotificationType.system,
+      };
 
   void markAsRead(String id) {
     state = [
@@ -60,75 +106,5 @@ class NotificationNotifier extends StateNotifier<List<AppNotification>> {
 
 final notificationProvider =
     StateNotifierProvider<NotificationNotifier, List<AppNotification>>(
-  (ref) => NotificationNotifier(),
+  (ref) => NotificationNotifier(DioClient()),
 );
-
-List<AppNotification> _initial() {
-  final now = DateTime.now();
-  return [
-    AppNotification(
-      id: 'n1',
-      type: NotificationType.trip,
-      title: 'Viaje completado',
-      body: 'Ganaste \$18.500 por el viaje a Barrio Obrero',
-      timestamp: now.subtract(const Duration(hours: 2)),
-      isRead: true,
-    ),
-    AppNotification(
-      id: 'n2',
-      type: NotificationType.payment,
-      title: 'Pago acreditado',
-      body: '\$18.500 han sido acreditados en tu billetera Nexum',
-      timestamp: now.subtract(const Duration(hours: 2, minutes: 1)),
-      isRead: true,
-    ),
-    AppNotification(
-      id: 'n3',
-      type: NotificationType.document,
-      title: 'Documento por vencer',
-      body: 'Tu SOAT vence en 30 días. Renuévalo para seguir activo.',
-      timestamp: now.subtract(const Duration(hours: 5)),
-      isRead: false,
-    ),
-    AppNotification(
-      id: 'n4',
-      type: NotificationType.promo,
-      title: 'Bono desbloqueado 🎉',
-      body: 'Completaste 10 viajes esta semana. +\$15.000 en tu billetera.',
-      timestamp: now.subtract(const Duration(days: 1, hours: 3)),
-      isRead: false,
-    ),
-    AppNotification(
-      id: 'n5',
-      type: NotificationType.trip,
-      title: 'Viaje completado',
-      body: 'Ganaste \$12.000 por el viaje al Centro de Pamplona',
-      timestamp: now.subtract(const Duration(days: 1, hours: 6)),
-      isRead: true,
-    ),
-    AppNotification(
-      id: 'n6',
-      type: NotificationType.rating,
-      title: 'Nueva calificación ⭐',
-      body: 'Jorge Martínez te calificó con 5 estrellas. ¡Excelente servicio!',
-      timestamp: now.subtract(const Duration(days: 3, hours: 2)),
-      isRead: true,
-    ),
-    AppNotification(
-      id: 'n7',
-      type: NotificationType.system,
-      title: 'Actualización disponible',
-      body: 'Nexum Driver 1.1.0 ya está disponible con nuevas funciones.',
-      timestamp: now.subtract(const Duration(days: 3, hours: 4)),
-      isRead: true,
-    ),
-    AppNotification(
-      id: 'n8',
-      type: NotificationType.promo,
-      title: 'Meta semanal',
-      body: 'Llevas 8 de 15 viajes para el bono de turno completo (\$25.000).',
-      timestamp: now.subtract(const Duration(days: 4)),
-      isRead: false,
-    ),
-  ];
-}

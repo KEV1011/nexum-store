@@ -35,6 +35,7 @@ import {
   requestPayout,
   PayoutError,
 } from '../services/payout.service';
+import { getDriverNotifications } from '../services/driver-notification.service';
 
 const router = Router();
 
@@ -410,6 +411,19 @@ router.get('/demand-zones', async (_req: Request, res: Response): Promise<void> 
     // Zonas calientes primero.
     zones.sort((a, b) => b.multiplier - a.multiplier || b.demand - a.demand);
     res.json({ success: true, data: zones });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Notificaciones (feed derivado de viajes, pagos y documentos reales) ──────
+
+// GET /driver/notifications — feed del conductor armado desde datos reales.
+router.get('/notifications', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getDriverNotifications(driverId) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
