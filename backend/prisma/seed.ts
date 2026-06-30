@@ -50,6 +50,50 @@ async function main() {
 
   console.log(`Driver seeded: ${driver.id} (${driver.phone})`);
 
+  // ─── Demo operator (empresa de transporte) ────────────────────────────────────
+  // Empresa verificada para probar el portal de empresa: login con el teléfono
+  // del miembro OWNER (+573150000020) y el OTP de dev (123456). El conductor y el
+  // vehículo demo quedan afiliados a ella.
+  const operator = await prisma.operator.upsert({
+    where: { nit: '900123456-7' },
+    update: { isVerified: true, status: 'ACTIVE' },
+    create: {
+      legalName: 'Cooperativa de Transporte de Pamplona',
+      nit: '900123456-7',
+      tradeName: 'Trans-Pamplona',
+      type: 'MIXED',
+      status: 'ACTIVE',
+      isVerified: true,
+      contactName: 'Operador Demo',
+      contactPhone: '+573150000020',
+      contactEmail: 'operador@nexum.demo',
+      city: 'Pamplona',
+    },
+  });
+
+  await prisma.operatorMember.upsert({
+    where: { operatorId_phone: { operatorId: operator.id, phone: '+573150000020' } },
+    update: {},
+    create: {
+      operatorId: operator.id,
+      phone: '+573150000020',
+      name: 'Operador Demo',
+      role: 'OWNER',
+    },
+  });
+
+  // Afilia el conductor y su vehículo demo a la empresa.
+  await prisma.driver.update({
+    where: { id: driver.id },
+    data: { operatorId: operator.id, employmentType: 'AFFILIATED' },
+  });
+  await prisma.vehicle.updateMany({
+    where: { driverId: driver.id },
+    data: { operatorId: operator.id },
+  });
+
+  console.log(`Operator seeded: ${operator.id} (${operator.legalName})`);
+
   // ─── Demo user (for client-side testing) ─────────────────────────────────────
   const user = await prisma.user.upsert({
     where: { phone: '+573150000001' },

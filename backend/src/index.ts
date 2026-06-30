@@ -24,6 +24,7 @@ import webhooksRouter from './routes/webhooks.routes';
 import paymentRouter from './routes/payment.routes';
 import safetyRouter from './routes/safety.routes';
 import adminRouter from './routes/admin.routes';
+import operatorRouter from './routes/operator.routes';
 import geoRouter from './routes/geo.routes';
 
 // Crash reporting (no-op sin SENTRY_DSN).
@@ -71,7 +72,7 @@ app.get('/health', async (_req, res) => {
 // ─── Rate limiting ─────────────────────────────────────────────────────────────
 // Estricto en autenticación/OTP; global (generoso) en el resto.
 
-app.use(['/auth', '/client/auth', '/admin/auth'], authLimiter);
+app.use(['/auth', '/client/auth', '/admin/auth', '/operator/auth'], authLimiter);
 app.use(globalLimiter);
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -86,6 +87,7 @@ app.use('/webhooks', webhooksRouter);
 app.use('/payment', paymentRouter);
 app.use('/safety', safetyRouter);
 app.use('/admin', adminRouter);
+app.use('/operator', operatorRouter);
 app.use('/geo', geoRouter);
 
 // Serve uploaded driver documents (protected path — no directory listing).
