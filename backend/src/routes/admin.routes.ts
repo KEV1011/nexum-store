@@ -17,6 +17,8 @@ import {
   listSosForAdmin,
   listOperatorsForAdmin,
   setOperatorStatus,
+  listOperatorRoutesForAdmin,
+  setOperatorRouteAuthorized,
 } from '../services/admin.service';
 import { OperatorStatus } from '@prisma/client';
 import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
@@ -72,7 +74,7 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos', '/payouts', '/operators'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos', '/payouts', '/operators', '/routes'], requireAdmin);
 
 // GET /admin/metrics
 router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
@@ -118,6 +120,24 @@ router.post('/operators/:id/verify', async (req: Request, res: Response): Promis
 router.post('/operators/:id/suspend', async (req: Request, res: Response): Promise<void> => {
   const ok = await setOperatorStatus(req.params['id']!, 'SUSPENDED');
   if (!ok) { res.status(404).json({ success: false, error: 'Empresa no encontrada' }); return; }
+  res.json({ success: true });
+});
+
+// GET /admin/operators/:id/routes — rutas troncales declaradas por la empresa.
+router.get('/operators/:id/routes', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listOperatorRoutesForAdmin(req.params['id']!) });
+});
+
+// POST /admin/routes/:id/authorize · /admin/routes/:id/revoke
+router.post('/routes/:id/authorize', async (req: Request, res: Response): Promise<void> => {
+  const ok = await setOperatorRouteAuthorized(req.params['id']!, true);
+  if (!ok) { res.status(404).json({ success: false, error: 'Ruta no encontrada' }); return; }
+  res.json({ success: true });
+});
+
+router.post('/routes/:id/revoke', async (req: Request, res: Response): Promise<void> => {
+  const ok = await setOperatorRouteAuthorized(req.params['id']!, false);
+  if (!ok) { res.status(404).json({ success: false, error: 'Ruta no encontrada' }); return; }
   res.json({ success: true });
 });
 
@@ -374,6 +394,14 @@ const PANEL_HTML = `<!DOCTYPE html>
       </div>
       <table><thead><tr><th>Empresa</th><th>Tipo</th><th>Ciudad</th><th>Veh/Cond</th><th>Docs pend.</th><th>Estado</th><th>Creada</th><th>Acciones</th></tr></thead>
       <tbody id="operators-body"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table>
+      <div id="routes-panel" style="display:none;margin-top:18px;padding:16px;background:#fafafe;border:1px solid #e4e4ef;border-radius:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <strong id="routes-title" style="color:#3949ab">Rutas troncales</strong>
+          <button class="btn-sm" style="background:#eee;color:#555" onclick="document.getElementById('routes-panel').style.display='none'">Cerrar</button>
+        </div>
+        <table><thead><tr><th>Ruta</th><th>Estado</th><th>Declarada</th><th>Acciones</th></tr></thead>
+        <tbody id="routes-body"><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody></table>
+      </div>
     </section>
 
     <section id="tab-sos" style="display:none">
@@ -537,8 +565,39 @@ function loadOperators() {
       '</td><td><span class="badge badge-' + (o.status === 'ACTIVE' ? 'ok' : o.status === 'SUSPENDED' ? 'REJECTED' : 'PENDING') + '">' + o.status + '</span></td><td>' + when(o.createdAt) + '</td><td>' +
       (o.status !== 'ACTIVE' ? '<button class="btn-sm btn-approve" onclick="setOperator(\\'' + o.id + '\\', \\'verify\\')">Verificar</button>' : '') +
       (o.status !== 'SUSPENDED' ? '<button class="btn-sm btn-reject" onclick="setOperator(\\'' + o.id + '\\', \\'suspend\\')">Suspender</button>' : '') +
+      (o.type !== 'TAXI' ? '<button class="btn-sm" style="background:#e8eaf6;color:#3949ab" onclick="loadRoutes(\\'' + o.id + '\\', \\'' + encodeURIComponent(o.legalName).replace(/'/g, '%27') + '\\')">Rutas</button>' : '') +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
+}
+
+function loadRoutes(id, encName) {
+  const panel = document.getElementById('routes-panel');
+  panel.style.display = 'block';
+  panel.dataset.op = id;
+  document.getElementById('routes-title').textContent = 'Rutas troncales · ' + decodeURIComponent(encName);
+  renderRoutes(id);
+}
+
+function renderRoutes(id) {
+  document.getElementById('routes-body').innerHTML = '<tr><td colspan="4" class="empty">Cargando…</td></tr>';
+  api('/admin/operators/' + id + '/routes').then((rows) => {
+    const tb = document.getElementById('routes-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Esta empresa no ha declarado rutas.</td></tr>'; return; }
+    tb.innerHTML = rows.map((r) => '<tr><td><strong>' + esc(r.originCity) + '</strong> → <strong>' + esc(r.destCity) + '</strong></td>' +
+      '<td><span class="badge badge-' + (r.authorized ? 'ok' : 'PENDING') + '">' + (r.authorized ? 'Autorizada' : 'Pendiente') + '</span></td>' +
+      '<td>' + when(r.createdAt) + '</td><td>' +
+      (r.authorized
+        ? '<button class="btn-sm btn-reject" onclick="setRoute(\\'' + r.id + '\\', \\'revoke\\')">Revocar</button>'
+        : '<button class="btn-sm btn-approve" onclick="setRoute(\\'' + r.id + '\\', \\'authorize\\')">Autorizar</button>') +
+      '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function setRoute(rid, action) {
+  const opId = document.getElementById('routes-panel').dataset.op;
+  api('/admin/routes/' + rid + '/' + action, { method: 'POST' })
+    .then(() => { showMsg(action === 'authorize' ? 'Ruta autorizada.' : 'Ruta revocada.', false); renderRoutes(opId); })
+    .catch((e) => showMsg(e.message, true));
 }
 
 function setOperator(id, action) {

@@ -282,6 +282,97 @@ export async function listOperatorTrips(
   };
 }
 
+/** Reporte de liquidación: viajes sellados de la empresa en formato CSV. */
+export async function exportOperatorTripsCsv(operatorId: string): Promise<string> {
+  const rows = await prisma.trip.findMany({
+    where: { operatorId },
+    orderBy: { createdAt: 'desc' },
+    take: 1000,
+    select: {
+      requestRef: true,
+      status: true,
+      serviceType: true,
+      originAddress: true,
+      destAddress: true,
+      estimatedFare: true,
+      finalFare: true,
+      distanceKm: true,
+      createdAt: true,
+      completedAt: true,
+      driver: { select: { name: true } },
+    },
+  });
+
+  const header = [
+    'Referencia', 'Estado', 'Servicio', 'Origen', 'Destino',
+    'Conductor', 'Distancia_km', 'Tarifa_COP', 'Creado', 'Completado',
+  ];
+  const lines = rows.map((t) => [
+    t.requestRef,
+    t.status,
+    t.serviceType,
+    t.originAddress,
+    t.destAddress,
+    t.driver?.name ?? '',
+    t.distanceKm != null ? t.distanceKm.toFixed(2) : '',
+    String(Math.round(t.finalFare ?? t.estimatedFare)),
+    t.createdAt.toISOString(),
+    t.completedAt?.toISOString() ?? '',
+  ]);
+
+  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  return [header, ...lines].map((cols) => cols.map((c) => escape(String(c))).join(',')).join('\r\n');
+}
+
+// ─── Rutas troncales (intermunicipal) ────────────────────────────────────────────
+// La empresa declara las rutas que sirve; el admin las AUTORIZA (authorized=true)
+// tras verificar la habilitación. El matching intermunicipal (Option B) solo
+// despacha troncales a flotas con la ruta autorizada. Ver intercity.service.ts.
+
+export const INTERCITY_CITY_CODES = [
+  'PAMPLONA', 'CUCUTA', 'BUCARAMANGA', 'CHITAGA', 'MALAGA', 'OCANA', 'BOGOTA',
+] as const;
+const INTERCITY_CITY_SET = new Set<string>(INTERCITY_CITY_CODES);
+
+export async function listOperatorRoutes(operatorId: string) {
+  return prisma.operatorRoute.findMany({
+    where: { operatorId },
+    orderBy: [{ authorized: 'desc' }, { originCity: 'asc' }, { destCity: 'asc' }],
+  });
+}
+
+export async function addOperatorRoute(operatorId: string, originCity: string, destCity: string) {
+  const o = originCity.trim().toUpperCase();
+  const d = destCity.trim().toUpperCase();
+  if (!INTERCITY_CITY_SET.has(o) || !INTERCITY_CITY_SET.has(d)) {
+    throw new Error('Ciudad de origen o destino no válida.');
+  }
+  if (o === d) throw new Error('El origen y el destino deben ser diferentes.');
+
+  const operator = await prisma.operator.findUnique({
+    where: { id: operatorId },
+    select: { type: true },
+  });
+  if (!operator || (operator.type !== 'INTERCITY' && operator.type !== 'MIXED')) {
+    throw new Error('Solo las empresas intermunicipales o mixtas pueden declarar rutas troncales.');
+  }
+
+  const existing = await prisma.operatorRoute.findUnique({
+    where: { operatorId_originCity_destCity: { operatorId, originCity: o, destCity: d } },
+  });
+  if (existing) throw new Error('Esa ruta ya está registrada.');
+
+  return prisma.operatorRoute.create({
+    data: { operatorId, originCity: o, destCity: d, authorized: false },
+  });
+}
+
+/** Borra una ruta del operador dueño (deleteMany acota al operador, sin tocar otras). */
+export async function removeOperatorRoute(operatorId: string, routeId: string): Promise<boolean> {
+  const res = await prisma.operatorRoute.deleteMany({ where: { id: routeId, operatorId } });
+  return res.count > 0;
+}
+
 // ─── Documentos legales de la empresa ────────────────────────────────────────────
 
 export async function listOperatorDocuments(operatorId: string) {

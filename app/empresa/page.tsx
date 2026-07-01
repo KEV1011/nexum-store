@@ -1,11 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Building2, Car, Users, Radio, RefreshCw, LogOut, MapPin, ShieldCheck, ShieldAlert, Loader2,
-  Route, Wallet,
+  Route, Wallet, Download,
 } from 'lucide-react'
+import { createOperatorApi } from './api'
+import FleetMap, { type FleetMapPoint } from './FleetMap'
+import RoutesManager from './RoutesManager'
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000'
 
@@ -244,27 +247,22 @@ function Dashboard({ token, operator, onLogout }: {
   const [tripsSummary, setTripsSummary] = useState<{ total: number; completed: number; grossFare: number }>({ total: 0, completed: 0, grossFare: 0 })
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const expired = useRef(false)
 
-  const api = useCallback(async (path: string) => {
-    const res = await fetch(`${BACKEND_URL}${path}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    })
-    if (res.status === 401) { expired.current = true; onLogout(); throw new Error('Sesión expirada') }
-    const json = await res.json().catch(() => ({})) as { success?: boolean; data?: unknown; error?: string }
-    if (!res.ok || json.success === false) throw new Error(json.error || 'Error')
-    return json.data
-  }, [token, onLogout])
+  const api = useMemo(
+    () => createOperatorApi(token, () => { expired.current = true; onLogout() }),
+    [token, onLogout],
+  )
 
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true)
     try {
       const [fleetData, profile, tripsData] = await Promise.all([
-        api('/operator/fleet') as Promise<FleetPos[]>,
-        api('/operator/profile') as Promise<{ _count?: { vehicles: number; drivers: number } }>,
-        api('/operator/trips?limit=20') as Promise<TripsResult>,
+        api<FleetPos[]>('/operator/fleet'),
+        api<{ _count?: { vehicles: number; drivers: number } }>('/operator/profile'),
+        api<TripsResult>('/operator/trips?limit=20'),
       ])
       setFleet(Array.isArray(fleetData) ? fleetData : [])
       if (profile?._count) setCounts({ vehicles: profile._count.vehicles, drivers: profile._count.drivers })
@@ -287,7 +285,46 @@ function Dashboard({ token, operator, onLogout }: {
     return () => clearInterval(t)
   }, [load])
 
+  async function downloadCsv() {
+    setDownloading(true)
+    try {
+      const res = await fetch(`${BACKEND_URL}/operator/trips/export.csv`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
+      if (!res.ok) throw new Error('No se pudo generar el reporte.')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'nexum-viajes.csv'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo descargar el reporte.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const online = fleet.filter((f) => f.online).length
+
+  const mapPoints: FleetMapPoint[] = fleet
+    .filter((f) => f.lat != null && f.lng != null)
+    .map((f) => ({
+      id: f.driverId,
+      name: f.driverName,
+      lat: f.lat as number,
+      lng: f.lng as number,
+      status: f.status,
+      online: f.online,
+      plate: f.vehiclePlate,
+      lastSeen: relTime(f.lastSeenAt),
+    }))
+
+  const isIntercity = operator?.type === 'INTERCITY' || operator?.type === 'MIXED'
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -340,6 +377,8 @@ function Dashboard({ token, operator, onLogout }: {
             <span className="text-slate-400 font-normal">({fleet.length})</span>
           </h2>
 
+          {mapPoints.length > 0 && <FleetMap points={mapPoints} />}
+
           {loading ? (
             <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-400 text-sm">Cargando flota…</div>
           ) : error ? (
@@ -361,10 +400,22 @@ function Dashboard({ token, operator, onLogout }: {
 
         {/* Viajes de la flota */}
         <section>
-          <h2 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
-            <Route className="w-4 h-4 text-emerald-600" /> Viajes de la flota
-            <span className="text-slate-400 font-normal">({tripsSummary.total})</span>
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+              <Route className="w-4 h-4 text-emerald-600" /> Viajes de la flota
+              <span className="text-slate-400 font-normal">({tripsSummary.total})</span>
+            </h2>
+            {tripsSummary.total > 0 && (
+              <button
+                onClick={downloadCsv}
+                disabled={downloading}
+                className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 transition-colors disabled:opacity-60"
+              >
+                {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Exportar CSV
+              </button>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
@@ -393,6 +444,8 @@ function Dashboard({ token, operator, onLogout }: {
             </div>
           )}
         </section>
+
+        {isIntercity && <RoutesManager api={api} />}
 
         <footer className="text-center py-2">
           <p className="text-xs text-slate-400">Los datos se actualizan automáticamente cada 10 s.</p>

@@ -17,6 +17,10 @@ import {
   affiliateDriver,
   getFleetPositions,
   listOperatorTrips,
+  exportOperatorTripsCsv,
+  listOperatorRoutes,
+  addOperatorRoute,
+  removeOperatorRoute,
   listOperatorDocuments,
   uploadOperatorDocument,
 } from '../services/operator.service';
@@ -186,6 +190,41 @@ router.get('/trips', async (req: Request, res: Response): Promise<void> => {
   const raw = Number((req.query as Record<string, unknown>)['limit']);
   const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 200) : 50;
   res.json({ success: true, data: await listOperatorTrips(req.operatorId!, limit) });
+});
+
+// GET /operator/trips/export.csv — reporte de liquidación descargable.
+router.get('/trips/export.csv', async (req: Request, res: Response): Promise<void> => {
+  const csv = await exportOperatorTripsCsv(req.operatorId!);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="nexum-viajes.csv"');
+  // BOM para que Excel reconozca UTF-8 (acentos en direcciones/nombres).
+  res.send('﻿' + csv);
+});
+
+// ─── Rutas troncales (intermunicipal) ────────────────────────────────────────
+// GET /operator/routes · POST /operator/routes · DELETE /operator/routes/:id
+router.get('/routes', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listOperatorRoutes(req.operatorId!) });
+});
+
+router.post('/routes', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const { originCity, destCity } = req.body as { originCity?: string; destCity?: string };
+  if (!originCity || !destCity) {
+    res.status(400).json({ success: false, error: 'originCity y destCity son requeridos' });
+    return;
+  }
+  try {
+    const route = await addOperatorRoute(req.operatorId!, originCity, destCity);
+    res.status(201).json({ success: true, data: route });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo registrar la ruta' });
+  }
+});
+
+router.delete('/routes/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const ok = await removeOperatorRoute(req.operatorId!, req.params['id'] as string);
+  if (!ok) { res.status(404).json({ success: false, error: 'Ruta no encontrada' }); return; }
+  res.json({ success: true, data: { deleted: true } });
 });
 
 // GET /operator/drivers · POST /operator/drivers/invite

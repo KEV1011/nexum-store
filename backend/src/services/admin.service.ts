@@ -242,3 +242,35 @@ export async function setOperatorStatus(id: string, status: OperatorStatus): Pro
   });
   return true;
 }
+
+// ─── Rutas troncales de una empresa (autorización del admin) ─────────────────────
+
+export interface AdminOperatorRouteRow {
+  id: string;
+  originCity: string;
+  destCity: string;
+  authorized: boolean;
+  createdAt: string;
+}
+
+export async function listOperatorRoutesForAdmin(operatorId: string): Promise<AdminOperatorRouteRow[]> {
+  const routes = await prisma.operatorRoute.findMany({
+    where: { operatorId },
+    orderBy: [{ authorized: 'asc' }, { originCity: 'asc' }, { destCity: 'asc' }],
+  });
+  return routes.map((r) => ({
+    id: r.id,
+    originCity: r.originCity,
+    destCity: r.destCity,
+    authorized: r.authorized,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+/** Autoriza o revoca una ruta troncal declarada por la empresa. */
+export async function setOperatorRouteAuthorized(routeId: string, authorized: boolean): Promise<boolean> {
+  const route = await prisma.operatorRoute.findUnique({ where: { id: routeId }, select: { id: true } });
+  if (!route) return false;
+  await prisma.operatorRoute.update({ where: { id: routeId }, data: { authorized } });
+  return true;
+}

@@ -5,6 +5,7 @@ import {
   RequestIntercityDTO,
   IntercityBookingDTO,
 } from '../types';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { getDriverProfile } from './driver-profile.service';
@@ -184,9 +185,35 @@ export function registerIntercitySendToDriver(
 
 async function _findIntercityDrivers(
   origin: IntercityCity,
+  dest: IntercityCity,
   exclude: Set<string>,
+  requireLicensed: boolean,
 ): Promise<string[]> {
   const c = INTERCITY_CITY_COORDS[origin];
+
+  // Ruta troncal (Option B): solo conductores afiliados a una empresa INTERCITY
+  // o MIXTA habilitada (ACTIVE + verificada) que tenga AUTORIZADA esa ruta
+  // origen→destino en operator_routes. Los códigos de ciudad provienen de un
+  // mapa fijo (no de strings de usuario) y van parametrizados igualmente.
+  const licensedFilter = requireLicensed
+    ? Prisma.sql`
+      AND d."operatorId" IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM "operators" o
+        WHERE o."id" = d."operatorId"
+          AND o."status"::text = 'ACTIVE'
+          AND o."isVerified" = true
+          AND o."type"::text IN ('INTERCITY', 'MIXED')
+      )
+      AND EXISTS (
+        SELECT 1 FROM "operator_routes" r
+        WHERE r."operatorId" = d."operatorId"
+          AND r."originCity" = ${CITY_TO_PRISMA[origin]}
+          AND r."destCity" = ${CITY_TO_PRISMA[dest]}
+          AND r."authorized" = true
+      )`
+    : Prisma.empty;
+
   // Parámetros internos (constantes + centroide de tabla fija): sin strings de
   // usuario. SQL parametrizado vía tagged template — nunca interpolación.
   const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
@@ -205,7 +232,7 @@ async function _findIntercityDrivers(
             d."geo",
             ST_SetSRID(ST_MakePoint(${c.lng}, ${c.lat}), 4326)::geography,
             ${INTERCITY_SEARCH_RADIUS_M}
-          )
+          )${licensedFilter}
     ORDER BY distance_m ASC
     LIMIT ${INTERCITY_MAX_CANDIDATES + 5}`;
   return rows
@@ -220,8 +247,11 @@ export async function startIntercityMatching(bookingId: string): Promise<void> {
   if (!b || b.status !== 'SEARCHING') return;
 
   const origin = (CITY_FROM_PRISMA[b.origin] ?? 'pamplona') as IntercityCity;
+  const dest = (CITY_FROM_PRISMA[b.destination] ?? 'cucuta') as IntercityCity;
+  // En el modelo dual, las rutas troncales solo se ofrecen a flotas habilitadas.
+  const requireLicensed = INTERCITY_DUAL_MODEL && routeRequiresLicensedOperator(origin, dest);
   const declined = intercityDeclined.get(bookingId) ?? new Set<string>();
-  const candidates = await _findIntercityDrivers(origin, declined);
+  const candidates = await _findIntercityDrivers(origin, dest, declined, requireLicensed);
   if (candidates.length === 0) {
     // Sin datos personales en logs: solo ids técnicos.
     console.log(`[Intercity] No drivers available for booking ${bookingId}`);
@@ -382,12 +412,26 @@ export async function requestIntercityBooking(
     throw new IntercityError('El origen y el destino deben ser diferentes.');
   }
 
-  // Option B (dual model): trunk routes require a habilitated operator.
+  // Option B (dual model): las rutas troncales requieren empresa habilitada. En
+  // vez de bloquearlas, se despachan EXCLUSIVAMENTE a conductores afiliados a un
+  // operador INTERCITY/MIXTO verificado con esa ruta autorizada (ver el filtro en
+  // _findIntercityDrivers). Solo si aún no hay ninguna empresa habilitada para el
+  // trayecto se informa con claridad, en lugar de buscar en vano.
   if (INTERCITY_DUAL_MODEL && routeRequiresLicensedOperator(dto.origin, dto.destination)) {
-    throw new IntercityError(
-      'Esta es una ruta troncal que requiere operador de transporte habilitado. ' +
-        'Por ahora no está disponible para viajes con conductores particulares.',
-    );
+    const licensed = await prisma.operatorRoute.count({
+      where: {
+        originCity: CITY_TO_PRISMA[dto.origin],
+        destCity: CITY_TO_PRISMA[dto.destination],
+        authorized: true,
+        operator: { status: 'ACTIVE', isVerified: true, type: { in: ['INTERCITY', 'MIXED'] } },
+      },
+    });
+    if (licensed === 0) {
+      throw new IntercityError(
+        'Esta ruta troncal requiere una empresa de transporte habilitada y aún no ' +
+          'hay ninguna disponible para este trayecto. Vuelve a intentarlo más tarde.',
+      );
+    }
   }
 
   const requestRef = `NXI-${Math.floor(1000 + Math.random() * 8000)}`;
