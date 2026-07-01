@@ -15,6 +15,8 @@ import { startMatchingCycle } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
+import { calcFare } from '../lib/fare';
+import { recordCompletedTrip } from './earnings.service';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -26,6 +28,15 @@ const businessOrderListeners = new Map<string, Set<BusinessNewOrderCallback>>();
 
 type TripCallback = (tripId: string, trip: ClientTripDTO) => void;
 const tripListeners = new Map<string, Set<TripCallback>>();
+
+// Inyectado por ws.handler al arrancar — este servicio no conoce sockets. Permite
+// avisar al conductor (p. ej. trip_cancelled) desde flujos REST del cliente.
+let _sendToDriver: ((driverId: string, msg: Record<string, unknown>) => void) | null = null;
+export function registerClientSendToDriver(
+  fn: (driverId: string, msg: Record<string, unknown>) => void,
+): void {
+  _sendToDriver = fn;
+}
 
 // ─── OTP ──────────────────────────────────────────────────────────────────────
 
@@ -284,13 +295,57 @@ export async function updateClientTripLocation(tripId: string, _lat: number, _ln
 }
 
 export async function updateClientTripStatus(tripId: string, status: ClientTripStatus): Promise<ClientTripDTO | null> {
-  const prismaStatus = status.toUpperCase().replace('_', '_') as 'SEARCHING' | 'ACCEPTED' | 'ARRIVING' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  const prismaStatus = status.toUpperCase() as 'SEARCHING' | 'ACCEPTED' | 'ARRIVING' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+  // Al COMPLETAR se liquida el viaje real: se calcula la tarifa, se persisten
+  // finalFare/netEarning/commission, se registra la ganancia del conductor (que
+  // alimenta wallet + dashboard) y se libera al conductor (ONLINE). Sin esto, un
+  // viaje real completado dejaba saldo en cero.
+  if (status === 'completed') {
+    const trip = await prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { distanceKm: true, etaMinutes: true, driverId: true, originAddress: true, destAddress: true, finalFare: true },
+    });
+    const distanceKm = trip?.distanceKm ?? 0;
+    const minutes = trip?.etaMinutes ?? Math.max(1, Math.round(distanceKm * 3));
+    const { grossFare, commission, netEarning } = calcFare(distanceKm, minutes);
+
+    const updated = await prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date(),
+        // Si ya se selló una tarifa final, se respeta; si no, la calculada.
+        finalFare: trip?.finalFare ?? grossFare,
+        netEarning,
+        commission,
+      },
+    });
+
+    if (trip?.driverId) {
+      recordCompletedTrip(
+        {
+          tripId,
+          origin: trip.originAddress,
+          destination: trip.destAddress,
+          grossFare: updated.finalFare ?? grossFare,
+          netEarning,
+          completedAt: new Date().toISOString(),
+        },
+        trip.driverId,
+      );
+      // El conductor queda libre para nuevos viajes.
+      await prisma.driver.update({ where: { id: trip.driverId }, data: { status: 'ONLINE' } }).catch(() => { /* noop */ });
+    }
+
+    const dto = _toTripDTO(updated, updated.passengerId ?? '');
+    _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+    return dto;
+  }
+
   const updated = await prisma.trip.update({
     where: { id: tripId },
-    data: {
-      status: prismaStatus,
-      completedAt: status === 'completed' ? new Date() : undefined,
-    },
+    data: { status: prismaStatus },
   });
   const dto = _toTripDTO(updated, updated.passengerId ?? '');
   _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
@@ -304,11 +359,35 @@ export async function cancelClientTrip(clientId: string, tripId: string): Promis
   if (!cancellable.includes(trip.status)) return false;
   const updated = await prisma.trip.update({
     where: { id: tripId },
-    data: { status: 'CANCELLED' },
+    data: { status: 'CANCELLED', cancelReason: 'CANCELLED_BY_PASSENGER' },
   });
+
+  // Si ya había conductor asignado, se le avisa y se libera (ONLINE) para que no
+  // quede con un viaje colgado en ON_TRIP.
+  if (trip.driverId) {
+    _sendToDriver?.(trip.driverId, { type: 'trip_cancelled', tripId });
+    await prisma.driver.update({ where: { id: trip.driverId }, data: { status: 'ONLINE' } }).catch(() => { /* noop */ });
+  }
+
   const dto = _toTripDTO(updated, clientId);
   _notifyTripListeners(tripId, clientId, dto);
   return true;
+}
+
+/**
+ * El matching agotó candidatos sin conseguir conductor. Se cierra el viaje
+ * (CANCELLED, motivo NO_DRIVERS_AVAILABLE) y se avisa al pasajero por WS para
+ * que deje de "Buscando conductor…" en lugar de colgarse indefinidamente.
+ */
+export async function handleNoDriversFound(tripId: string): Promise<void> {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { status: true, passengerId: true } });
+  if (!trip || trip.status !== 'SEARCHING') return;
+  const updated = await prisma.trip.update({
+    where: { id: tripId },
+    data: { status: 'CANCELLED', cancelReason: 'NO_DRIVERS_AVAILABLE' },
+  });
+  const dto = _toTripDTO(updated, updated.passengerId ?? '');
+  _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
 }
 
 export async function getActiveClientTrip(clientId: string): Promise<ClientTripDTO | null> {

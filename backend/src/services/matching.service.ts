@@ -60,6 +60,9 @@ const activeOffers = new Map<string, OfferState>();
 // Injected by ws.handler.ts at startup — keeps this service free of WS internals.
 let _sendToDriver: ((driverId: string, msg: Record<string, unknown>) => void) | null = null;
 let _notifyTripUpdate: ((tripId: string) => Promise<void>) | null = null;
+// Inyectado desde ws.handler para avisar al pasajero cuando no hay conductores.
+// Evita un import circular con client.service (que ya importa este módulo).
+let _onNoDrivers: ((tripId: string) => void) | null = null;
 
 export function registerSendToDriver(
   fn: (driverId: string, msg: Record<string, unknown>) => void,
@@ -69,6 +72,10 @@ export function registerSendToDriver(
 
 export function registerNotifyTripUpdate(fn: (tripId: string) => Promise<void>): void {
   _notifyTripUpdate = fn;
+}
+
+export function registerOnNoDrivers(fn: (tripId: string) => void): void {
+  _onNoDrivers = fn;
 }
 
 // ─── Geo query ────────────────────────────────────────────────────────────────
@@ -146,6 +153,7 @@ export async function startMatchingCycle(
   );
   if (candidates.length === 0) {
     console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for trip ${tripId}`);
+    _onNoDrivers?.(tripId);
     return;
   }
   await _offerToCandidate(tripId, candidates, 0);
@@ -158,6 +166,7 @@ async function _offerToCandidate(
 ): Promise<void> {
   if (index >= candidates.length) {
     console.log(`[Matching] All ${candidates.length} candidates exhausted for trip ${tripId}`);
+    _onNoDrivers?.(tripId);
     return;
   }
 

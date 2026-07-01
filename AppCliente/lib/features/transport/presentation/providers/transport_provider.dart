@@ -197,9 +197,15 @@ class TransportNotifier extends StateNotifier<TransportState> {
 
     _update(event.tripId, (r) {
       final statusStr = payload['status'] as String?;
-      final status = statusStr != null
+      // El backend envía snake_case ('in_progress'); el enum usa camelCase
+      // ('inProgress'). Sin esta conversión el estado "En trayecto" se descartaba.
+      final normalized = statusStr?.replaceAllMapped(
+        RegExp(r'_([a-z])'),
+        (m) => m[1]!.toUpperCase(),
+      );
+      final status = normalized != null
           ? TransportStatus.values.firstWhere(
-              (s) => s.name == statusStr,
+              (s) => s.name == normalized,
               orElse: () => r.status,
             )
           : r.status;
@@ -278,6 +284,16 @@ class TransportNotifier extends StateNotifier<TransportState> {
     _timers.remove(id);
     _wsService.unsubscribeTrip(id);
     _update(id, (r) => r.copyWith(status: TransportStatus.cancelled));
+    // Cancela también en el backend para liberar/avisar al conductor asignado.
+    unawaited(_cancelOnServer(id));
+  }
+
+  Future<void> _cancelOnServer(String id) async {
+    try {
+      await _dio.post<Map<String, dynamic>>('/client/trips/$id/cancel');
+    } catch (_) {
+      // Silencioso: la cancelación local ya se aplicó a la UI.
+    }
   }
 
   void rateRequest(String id, int stars, {String? comment}) {

@@ -4,6 +4,7 @@ import {
   OperatorDocType,
   VehicleType,
 } from '@prisma/client';
+import { isValidColombianPhone, normalizeColombianPhone } from './auth.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Empresas de transporte (operadores): registro, perfil, flota, conductores,
@@ -135,25 +136,38 @@ export async function listOperatorDrivers(operatorId: string) {
  * por registrar), lo vincula; si no existe, crea una ficha mínima que el
  * conductor completará al loguearse en la app. Rechaza robar conductores de
  * otra empresa.
+ *
+ * El teléfono se normaliza a E.164 canónico (+57 + 10 dígitos) para que case
+ * EXACTO con el login por OTP; y si la empresa es INTERCITY/MIXTA se habilita
+ * intermunicipal automáticamente (si no, el matching troncal lo descartaría).
  */
 export async function affiliateDriver(operatorId: string, phone: string, name?: string) {
-  const existing = await prisma.driver.findUnique({ where: { phone: phone.trim() } });
+  const normalized = normalizeColombianPhone(phone);
+  if (!isValidColombianPhone(normalized)) {
+    throw new Error('El teléfono no es un celular colombiano válido.');
+  }
+
+  const operator = await prisma.operator.findUnique({ where: { id: operatorId }, select: { type: true } });
+  const enableIntercity = operator?.type === 'INTERCITY' || operator?.type === 'MIXED';
+
+  const existing = await prisma.driver.findUnique({ where: { phone: normalized } });
   if (existing) {
     if (existing.operatorId && existing.operatorId !== operatorId) {
       throw new Error('El conductor ya está afiliado a otra empresa.');
     }
     return prisma.driver.update({
       where: { id: existing.id },
-      data: { operatorId, employmentType: 'AFFILIATED' },
+      data: { operatorId, employmentType: 'AFFILIATED', ...(enableIntercity ? { intercityEnabled: true } : {}) },
       select: { id: true, name: true, phone: true, employmentType: true },
     });
   }
   return prisma.driver.create({
     data: {
-      phone: phone.trim(),
+      phone: normalized,
       name: name?.trim() || 'Conductor',
       operatorId,
       employmentType: 'AFFILIATED',
+      ...(enableIntercity ? { intercityEnabled: true } : {}),
     },
     select: { id: true, name: true, phone: true, employmentType: true },
   });

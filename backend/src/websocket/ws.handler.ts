@@ -16,6 +16,8 @@ import {
   getClientTripRaw,
   onNewClientOrderForBusiness,
   notifyClientTripUpdateById,
+  registerClientSendToDriver,
+  handleNoDriversFound,
 } from '../services/client.service';
 import {
   getClientErrandRaw,
@@ -60,6 +62,7 @@ import {
   updateDriverGeo,
   registerSendToDriver,
   registerNotifyTripUpdate,
+  registerOnNoDrivers,
   onDriverAccept,
   onDriverDeclineOrTimeout,
   onErrandAccept,
@@ -1017,6 +1020,8 @@ export function setupWebSocket(wss: WebSocketServer): void {
   // notify passengers, without importing WebSocket internals directly.
   registerSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   registerNotifyTripUpdate(notifyClientTripUpdateById);
+  registerOnNoDrivers((tripId) => void handleNoDriversFound(tripId));
+  registerClientSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
 
   // Bus de entrega entre instancias. Con REDIS_URL propaga las entregas por id

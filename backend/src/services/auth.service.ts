@@ -9,6 +9,17 @@ export function isValidColombianPhone(phone: string): boolean {
   return /^\+57[3][0-9]{9}$/.test(cleaned);
 }
 
+/**
+ * Normaliza cualquier variante (con/sin +57, con espacios o guiones) al formato
+ * canónico E.164 que la app envía: "+57" + 10 dígitos. Imprescindible para que
+ * la afiliación por teléfono case EXACTO con el login por OTP.
+ */
+export function normalizeColombianPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  const local = digits.startsWith('57') ? digits.slice(2) : digits;
+  return `+57${local}`;
+}
+
 export async function sendOtp(phone: string): Promise<void> {
   const driver = await prisma.driver.findUnique({ where: { phone } });
   await requestOtp(phone, driver?.id);

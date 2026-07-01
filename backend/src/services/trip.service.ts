@@ -1,6 +1,7 @@
 import { Trip, TripState, TripSummaryDTO, TripRequestDTO, DriverStatus } from '../types';
-import { FARE_BASE, FARE_PER_KM, FARE_PER_MIN, FARE_MINIMUM, COMMISSION_RATE } from '../config/constants';
+import { COMMISSION_RATE } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
+import { calcFare } from '../lib/fare';
 import { prisma } from '../lib/prisma';
 
 // ─── In-memory dispatch state (ephemeral) ─────────────────────────────────────
@@ -10,16 +11,6 @@ import { prisma } from '../lib/prisma';
 const trips = new Map<string, Trip>();
 let driverStatus: DriverStatus = 'offline';
 let activeDriverId: string | null = null;  // set when driver authenticates
-
-// ─── Fare ─────────────────────────────────────────────────────────────────────
-
-function calcFare(distanceKm: number, minutes: number) {
-  const raw = FARE_BASE + distanceKm * FARE_PER_KM + minutes * FARE_PER_MIN;
-  const grossFare = Math.round(Math.max(raw, FARE_MINIMUM));
-  const commission = Math.round(grossFare * COMMISSION_RATE);
-  const netEarning = grossFare - commission;
-  return { grossFare, commission, netEarning };
-}
 
 // ─── Trip state machine helpers ───────────────────────────────────────────────
 
