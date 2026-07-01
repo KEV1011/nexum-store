@@ -863,11 +863,35 @@ export interface DriverProfileDTO {
   rating: number;
   totalTrips: number;
   vehicleDescription: string;
+  // Desglose del vehículo activo (para la pantalla de perfil del conductor).
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleYear?: number;
+  vehiclePlate?: string;
+  vehicleColor?: string;
+  vehicleType?: string;
+  // Identidad y datos bancarios (ya existen en el modelo Driver).
+  documentNumber?: string;
+  bankName?: string;
+  bankAccountType?: string;
+  bankAccountNumber?: string;
   memberSince: string;
   isVerified: boolean;
   documents: DriverDocumentDTO[];
   requiredDocsCount: number;
   approvedDocsCount: number;
+  // Afiliación a empresa/operador. Ausente = conductor independiente. Permite que la
+  // app conductor muestre "Conduces para {empresa}" y su estado de verificación.
+  affiliation?: DriverAffiliationDTO;
+}
+
+export interface DriverAffiliationDTO {
+  operatorId: string;
+  legalName: string;
+  type: string; // TAXI | INTERCITY | MIXED
+  status: string; // PENDING | ACTIVE | SUSPENDED
+  isVerified: boolean;
+  employmentType: string; // OWN | AFFILIATED
 }
 
 export interface DriverPublicProfileDTO {

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
@@ -126,14 +125,12 @@ class TransportWsService {
   bool get isConnected => _channel != null && _authenticated;
 
   Future<bool> connect() async {
-    if (kIsWeb) return false;
     _shouldReconnect = true;
     if (_channel != null) return _authenticated;
     return _openAndAuth();
   }
 
   Future<bool> _openAndAuth() async {
-    if (kIsWeb) return false;
     if (_channel != null) return _authenticated;
     if (_connecting) return false;
     _connecting = true;
@@ -184,7 +181,7 @@ class TransportWsService {
       _authCompleter!.complete(false);
     }
     _cleanup();
-    if (_shouldReconnect && !kIsWeb) _scheduleReconnect();
+    if (_shouldReconnect) _scheduleReconnect();
   }
 
   void _scheduleReconnect() {

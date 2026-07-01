@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
@@ -114,6 +115,9 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
     state = state.copyWith(active: errand, isLoading: true);
 
     try {
+      // Ubicación del cliente (mejor esfuerzo) para anclar el matching del
+      // mandado a conductores cercanos. Si no hay GPS, el backend usa el centro.
+      final coords = await _currentCoords();
       final res = await _dio.post<Map<String, dynamic>>(
         '/client/errands/request',
         data: {
@@ -124,6 +128,8 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
           if (errand.purchaseBudget != null)
             'purchaseBudget': errand.purchaseBudget,
           if (errand.notes != null) 'notes': errand.notes,
+          if (coords != null) 'pickupLat': coords.$1,
+          if (coords != null) 'pickupLng': coords.$2,
         },
       );
 
@@ -150,6 +156,27 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
       state = state.copyWith(isLoading: false);
       _activeServerId = errand.id;
       _simulateLifecycle(errand.id);
+    }
+  }
+
+  /// Ubicación actual del cliente (mejor esfuerzo) para el matching del mandado.
+  /// Devuelve null si el GPS no está disponible o el permiso se deniega
+  /// (p. ej. web): en ese caso el backend ancla la búsqueda al centro de Pamplona.
+  Future<(double, double)?> _currentCoords() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return null;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return null;
+      }
+      final pos = await Geolocator.getCurrentPosition();
+      return (pos.latitude, pos.longitude);
+    } catch (_) {
+      return null;
     }
   }
 

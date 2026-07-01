@@ -96,6 +96,60 @@ export async function getDailyEarnings(driverId?: string): Promise<DailyEarnings
   };
 }
 
+// ── Historial de viajes completados (alimenta ganancias + historial en la app) ──
+
+export interface DriverTripHistoryDTO {
+  id: string;
+  passengerName: string;
+  originAddress: string;
+  originLat: number;
+  originLng: number;
+  destAddress: string;
+  destLat: number;
+  destLng: number;
+  distanceKm: number;
+  durationMinutes: number;
+  grossFare: number;
+  netEarning: number;
+  commission: number;
+  startedAt: string;
+  finishedAt: string;
+  rating: number | null;
+}
+
+export async function getDriverTripHistory(
+  driverId: string,
+  take = 50,
+): Promise<DriverTripHistoryDTO[]> {
+  const trips = await prisma.trip.findMany({
+    where: { driverId, status: 'COMPLETED' },
+    orderBy: { completedAt: 'desc' },
+    take,
+  });
+  return trips.map((t) => {
+    const gross = t.finalFare ?? t.estimatedFare;
+    const net = t.netEarning ?? 0;
+    return {
+      id: t.id,
+      passengerName: t.passengerName ?? 'Pasajero',
+      originAddress: t.originAddress,
+      originLat: t.originLat,
+      originLng: t.originLng,
+      destAddress: t.destAddress,
+      destLat: t.destLat,
+      destLng: t.destLng,
+      distanceKm: t.distanceKm ?? 0,
+      durationMinutes: t.etaMinutes ?? 0,
+      grossFare: gross,
+      netEarning: net,
+      commission: t.commission ?? Math.max(0, gross - net),
+      startedAt: (t.startedAt ?? t.acceptedAt ?? t.createdAt).toISOString(),
+      finishedAt: (t.completedAt ?? t.createdAt).toISOString(),
+      rating: t.rating ?? null,
+    };
+  });
+}
+
 export async function getWeeklyHistory(driverId?: string): Promise<DailyEarningsDTO[]> {
   const result: DailyEarningsDTO[] = [];
 

@@ -1,3 +1,4 @@
+import { OperatorStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 
@@ -186,4 +187,90 @@ export async function listSosForAdmin(): Promise<AdminSosRow[]> {
       createdAt: e.createdAt.toISOString(),
     };
   });
+}
+
+// ─── Empresas de transporte (operadores) ──────────────────────────────────────
+
+export interface AdminOperatorRow {
+  id: string;
+  legalName: string;
+  nit: string;
+  type: string;
+  status: string;
+  isVerified: boolean;
+  city: string | null;
+  contactPhone: string | null;
+  vehicles: number;
+  drivers: number;
+  pendingDocs: number;
+  createdAt: string;
+}
+
+export async function listOperatorsForAdmin(status?: OperatorStatus): Promise<AdminOperatorRow[]> {
+  const ops = await prisma.operator.findMany({
+    where: status ? { status } : undefined,
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+    include: {
+      _count: { select: { vehicles: true, drivers: true } },
+      documents: { where: { status: 'PENDING' }, select: { id: true } },
+    },
+  });
+  return ops.map((o) => ({
+    id: o.id,
+    legalName: o.legalName,
+    nit: o.nit,
+    type: o.type,
+    status: o.status,
+    isVerified: o.isVerified,
+    city: o.city,
+    contactPhone: o.contactPhone,
+    vehicles: o._count.vehicles,
+    drivers: o._count.drivers,
+    pendingDocs: o.documents.length,
+    createdAt: o.createdAt.toISOString(),
+  }));
+}
+
+/** Verifica (ACTIVE) o suspende (SUSPENDED) una empresa. isVerified sigue a ACTIVE. */
+export async function setOperatorStatus(id: string, status: OperatorStatus): Promise<boolean> {
+  const op = await prisma.operator.findUnique({ where: { id }, select: { id: true } });
+  if (!op) return false;
+  await prisma.operator.update({
+    where: { id },
+    data: { status, isVerified: status === 'ACTIVE' },
+  });
+  return true;
+}
+
+// ─── Rutas troncales de una empresa (autorización del admin) ─────────────────────
+
+export interface AdminOperatorRouteRow {
+  id: string;
+  originCity: string;
+  destCity: string;
+  authorized: boolean;
+  createdAt: string;
+}
+
+export async function listOperatorRoutesForAdmin(operatorId: string): Promise<AdminOperatorRouteRow[]> {
+  const routes = await prisma.operatorRoute.findMany({
+    where: { operatorId },
+    orderBy: [{ authorized: 'asc' }, { originCity: 'asc' }, { destCity: 'asc' }],
+  });
+  return routes.map((r) => ({
+    id: r.id,
+    originCity: r.originCity,
+    destCity: r.destCity,
+    authorized: r.authorized,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+/** Autoriza o revoca una ruta troncal declarada por la empresa. */
+export async function setOperatorRouteAuthorized(routeId: string, authorized: boolean): Promise<boolean> {
+  const route = await prisma.operatorRoute.findUnique({ where: { id: routeId }, select: { id: true } });
+  if (!route) return false;
+  await prisma.operatorRoute.update({ where: { id: routeId }, data: { authorized } });
+  return true;
 }

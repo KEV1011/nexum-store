@@ -237,7 +237,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _connectWs() async {
     final token = await _storage.read(key: AppConstants.authTokenKey);
     if (token == null || token.isEmpty) {
-      _scheduleWebMockRequest();
+      if (mounted) {
+        AppSnackbar.showInfo(
+          context, 'Tu sesión expiró. Cierra sesión y vuelve a entrar.');
+      }
       return;
     }
 
@@ -245,16 +248,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final connected = await DriverWsService().connect(token, workMode);
 
     if (!connected || !mounted) {
-      _scheduleWebMockRequest();
+      // App real: sin conexión NO inventamos pedidos. Avisamos y el socket
+      // reintenta solo (auto-reconexión en DriverWsService).
+      if (mounted) {
+        AppSnackbar.showInfo(
+          context, 'No se pudo conectar con el servidor. Reintentando…');
+      }
       return;
     }
 
-    // Transmite el GPS real al backend: alimenta el matching geoespacial para
-    // que este conductor sea asignable y, durante un viaje, mueve su punto en
-    // el mapa del pasajero. Sin esto el conductor nunca reporta su posición.
+    // Transmite el GPS al backend: alimenta el matching geoespacial para que
+    // este conductor sea asignable y, durante un viaje, mueve su punto en el
+    // mapa del pasajero. Arranca el tracking tras resolver el permiso, con o
+    // sin GPS: si se deniega (p. ej. web), LocationService reporta el centro de
+    // Pamplona como heartbeat para que el conductor siga siendo asignable.
     unawaited(
-      LocationService().requestPermissions().then((granted) {
-        if (granted) LocationService().startTracking();
+      LocationService().requestPermissions().then((_) {
+        LocationService().startTracking();
       }),
     );
 
@@ -470,9 +480,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (newLeft <= 0) {
         timer.cancel();
         setState(() => _state = _state.copyWith(clearPending: true));
-        if (_state.isOnline && !DriverWsService().isConnected) {
-          _scheduleWebMockRequest();
-        }
       } else {
         setState(() => _state = _state.copyWith(requestSecondsLeft: newLeft));
       }
@@ -502,9 +509,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       } else {
         DriverWsService().sendReject(request.id);
       }
-    }
-    if (_state.isOnline && !DriverWsService().isConnected) {
-      _scheduleWebMockRequest();
     }
   }
 

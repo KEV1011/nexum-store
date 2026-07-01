@@ -1,16 +1,27 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '../config/constants';
+import { JWT_SECRET, NODE_ENV } from '../config/constants';
+
+// Teléfono admin demo para desarrollo: permite entrar al panel sin configurar
+// nada. En producción NO se usa — allí ADMIN_PHONES debe definirse explícito o
+// el panel queda cerrado.
+const DEV_ADMIN_PHONE = '+573150000000';
 
 // Admin phones are stored in the ADMIN_PHONES env var as comma-separated values.
 // Example: ADMIN_PHONES="+573001234567,+573009876543"
 export function getAdminPhones(): Set<string> {
   const raw = process.env['ADMIN_PHONES'] ?? '';
-  return new Set(
-    raw.split(',')
-      .map((p) => p.trim())
-      .filter(Boolean),
-  );
+  const phones = raw
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  // En desarrollo, si no se configuró ADMIN_PHONES, se habilita el teléfono
+  // demo para poder abrir el panel (login OTP con el código de dev 123456).
+  if (phones.length === 0 && NODE_ENV !== 'production') {
+    return new Set([DEV_ADMIN_PHONE]);
+  }
+  return new Set(phones);
 }
 
 export function isAdminPhone(phone: string): boolean {

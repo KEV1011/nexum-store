@@ -1,8 +1,6 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:nexum_driver/core/errors/failures.dart';
-import 'package:nexum_driver/features/auth/data/datasources/auth_mock_datasource.dart';
 import 'package:nexum_driver/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:nexum_driver/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:nexum_driver/features/auth/domain/entities/driver_entity.dart';
@@ -77,7 +75,7 @@ final _secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
 /// En web (GitHub Pages demo) usa mock; en Android/iOS usa el backend real.
 final authRepositoryProvider = Provider<AuthRepositoryImpl>((ref) {
   return AuthRepositoryImpl(
-    dataSource: kIsWeb ? AuthMockDataSource() : AuthRemoteDataSource(),
+    dataSource: AuthRemoteDataSource(),
     secureStorage: ref.watch(_secureStorageProvider),
   );
 });

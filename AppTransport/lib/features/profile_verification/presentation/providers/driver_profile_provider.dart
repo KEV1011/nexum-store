@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -51,13 +53,27 @@ class DriverProfileNotifier extends StateNotifier<DriverProfileState> {
   }
 
   /// Uploads a document file via multipart POST /driver/documents.
-  /// [filePath] is the local file system path returned by image_picker.
-  Future<bool> uploadDocument(String type, String filePath, {String? expiresAt}) async {
+  ///
+  /// Recibe los [bytes] ya leídos (no una ruta de archivo) para funcionar igual
+  /// en móvil y en web. En web `image_picker` devuelve una URL `blob:` y
+  /// `MultipartFile.fromFile` no está soportado (no hay sistema de archivos),
+  /// así que la subida fallaba siempre con "no se pudo subir el documento". Con
+  /// bytes + content-type explícito funciona en ambas plataformas y supera el
+  /// filtro de tipo MIME del backend (solo acepta imágenes/PDF).
+  Future<bool> uploadDocument(
+    String type,
+    Uint8List bytes,
+    String filename, {
+    String? expiresAt,
+  }) async {
     try {
-      final filename = filePath.split('/').last;
       final formData = FormData.fromMap({
         'type': type,
-        'file': await MultipartFile.fromFile(filePath, filename: filename),
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: filename,
+          contentType: _mediaTypeFor(filename),
+        ),
         if (expiresAt != null) 'expiresAt': expiresAt,
       });
       final res = await _client.dio.post<Map<String, dynamic>>(
@@ -72,6 +88,16 @@ class DriverProfileNotifier extends StateNotifier<DriverProfileState> {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Deriva el content-type a partir de la extensión del archivo. El backend
+  /// solo acepta JPG, PNG, WebP o PDF; por defecto JPEG (fotos de galería).
+  DioMediaType _mediaTypeFor(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return DioMediaType('image', 'png');
+    if (lower.endsWith('.webp')) return DioMediaType('image', 'webp');
+    if (lower.endsWith('.pdf')) return DioMediaType('application', 'pdf');
+    return DioMediaType('image', 'jpeg');
   }
 
   Future<bool> updateProfile({String? bio, String? vehicleDescription}) async {

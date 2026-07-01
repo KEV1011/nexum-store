@@ -124,12 +124,18 @@ class ProfileScreen extends ConsumerWidget {
             _buildAvatarCard(context, ref, theme, profile),
             const SizedBox(height: AppConstants.spacingM),
 
+            // ── Affiliation (empresa / operador) ───────────────────────────
+            if (profile.affiliation != null) ...[
+              _buildAffiliationCard(theme, profile.affiliation!),
+              const SizedBox(height: AppConstants.spacingM),
+            ],
+
             // ── Rating breakdown ───────────────────────────────────────────
-            _buildRatingCard(theme),
+            _buildRatingCard(theme, profile),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Session + performance stats ────────────────────────────────
-            _buildStatsCard(theme, driverStatus),
+            _buildStatsCard(theme, driverStatus, profile),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Vehicle ────────────────────────────────────────────────────
@@ -141,7 +147,7 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Bank account ───────────────────────────────────────────────
-            _buildBankCard(theme),
+            _buildBankCard(theme, profile),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Account actions ────────────────────────────────────────────
@@ -216,7 +222,7 @@ class ProfileScreen extends ConsumerWidget {
                     textAlign: TextAlign.center,
                   ),
                 ),
-                if (DriverMock.isVerified) ...[
+                if (profile.isVerified) ...[
                   const SizedBox(width: 6),
                   const Icon(Icons.verified_rounded,
                       color: AppColors.info, size: 18),
@@ -286,9 +292,111 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  // ── Affiliation card (empresa / operador) ────────────────────────────────────
+
+  Widget _buildAffiliationCard(ThemeData theme, DriverAffiliation aff) {
+    final (statusColor, statusIcon) = switch (aff.status) {
+      'ACTIVE' => (AppColors.success, Icons.verified_rounded),
+      'SUSPENDED' => (AppColors.error, Icons.block_rounded),
+      _ => (AppColors.warning, Icons.hourglass_top_rounded),
+    };
+    final employmentLabel =
+        aff.employmentType == 'OWN' ? 'Vehículo propio' : 'Vehículo afiliado';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.spacingM),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _CardHeader(
+              icon: Icons.apartment_rounded,
+              label: 'Empresa',
+              iconColor: AppColors.primary,
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                  ),
+                  child: const Icon(Icons.business_rounded,
+                      color: AppColors.primary, size: 24),
+                ),
+                const SizedBox(width: AppConstants.spacingM),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Conduces para',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                      Text(
+                        aff.legalName,
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${aff.typeLabel} · $employmentLabel',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppConstants.spacingM,
+                vertical: AppConstants.spacingS,
+              ),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(statusIcon, color: statusColor, size: 18),
+                  const SizedBox(width: AppConstants.spacingS),
+                  Expanded(
+                    child: Text(
+                      aff.isActiveVerified
+                          ? 'Empresa habilitada y verificada por Nexum.'
+                          : aff.status == 'SUSPENDED'
+                              ? 'Empresa suspendida. No puedes operar bajo ella.'
+                              : 'Empresa en verificación. Podrás operar cuando Nexum la habilite.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Rating breakdown card ────────────────────────────────────────────────────
 
-  Widget _buildRatingCard(ThemeData theme) {
+  Widget _buildRatingCard(ThemeData theme, EditableProfile profile) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.spacingM),
@@ -308,7 +416,7 @@ class ProfileScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      DriverMock.rating.toStringAsFixed(2),
+                      profile.rating.toStringAsFixed(2),
                       style: theme.textTheme.displaySmall?.copyWith(
                         fontWeight: FontWeight.w800,
                         color: AppColors.star,
@@ -316,10 +424,10 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                     Row(
                       children: List.generate(5, (i) {
-                        final filled = i < DriverMock.rating.floor();
+                        final filled = i < profile.rating.floor();
                         final half = !filled &&
-                            i < DriverMock.rating &&
-                            (DriverMock.rating - i) >= 0.5;
+                            i < profile.rating &&
+                            (profile.rating - i) >= 0.5;
                         return Icon(
                           filled
                               ? Icons.star_rounded
@@ -359,7 +467,11 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Stats card ───────────────────────────────────────────────────────────────
 
-  Widget _buildStatsCard(ThemeData theme, DriverStatusEntity driverStatus) {
+  Widget _buildStatsCard(
+    ThemeData theme,
+    DriverStatusEntity driverStatus,
+    EditableProfile profile,
+  ) {
     final todayTrips = driverStatus.dailyTrips;
     final todayEarnings = driverStatus.dailyEarnings;
     final onlineMinutes = driverStatus.timeOnline.inMinutes;
@@ -408,7 +520,7 @@ class ProfileScreen extends ConsumerWidget {
             const Divider(height: AppConstants.spacingM),
             _StatRow(
               label: 'Viajes totales',
-              value: DriverMock.totalTrips.toString(),
+              value: profile.totalTrips.toString(),
               icon: Icons.route_rounded,
               color: AppColors.textSecondary,
               sublabel: 'histórico',
@@ -548,7 +660,7 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Bank card ────────────────────────────────────────────────────────────────
 
-  Widget _buildBankCard(ThemeData theme) {
+  Widget _buildBankCard(ThemeData theme, EditableProfile profile) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.spacingM),
@@ -561,9 +673,9 @@ class ProfileScreen extends ConsumerWidget {
               iconColor: AppColors.primary,
             ),
             const SizedBox(height: AppConstants.spacingM),
-            _InfoRow(label: 'Banco', value: DriverMock.bankName),
-            _InfoRow(label: 'Tipo', value: DriverMock.bankAccountType),
-            _InfoRow(label: 'Número', value: DriverMock.bankAccountNumber),
+            _InfoRow(label: 'Banco', value: profile.bankName),
+            _InfoRow(label: 'Tipo', value: profile.bankAccountType),
+            _InfoRow(label: 'Número', value: profile.bankAccountNumber),
             const SizedBox(height: AppConstants.spacingXS),
             Text(
               'Los pagos se depositan cada lunes antes de las 10 a.m.',

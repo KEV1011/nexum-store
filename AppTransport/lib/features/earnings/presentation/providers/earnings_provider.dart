@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/features/earnings/data/datasources/earnings_datasource.dart';
+import 'package:nexum_driver/features/earnings/data/datasources/earnings_remote_datasource.dart';
 import 'package:nexum_driver/features/earnings/data/repositories/earnings_repository_impl.dart';
 import 'package:nexum_driver/features/earnings/domain/entities/daily_earnings_entity.dart';
 import 'package:nexum_driver/features/earnings/domain/repositories/earnings_repository.dart';
@@ -7,9 +9,10 @@ import 'package:nexum_driver/features/earnings/domain/usecases/get_daily_earning
 import 'package:nexum_driver/features/earnings/domain/usecases/get_weekly_history_usecase.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 
-// ── Infraestructura (singleton del datasource para compartir estado en memoria)
-final _earningsDatasourceProvider = Provider<EarningsMockDataSource>(
-  (ref) => EarningsMockDataSource(),
+// ── Infraestructura ──────────────────────────────────────────────────────────
+// Fuente de datos REAL: consume /earnings/daily y /earnings/weekly del backend.
+final _earningsDatasourceProvider = Provider<EarningsDataSource>(
+  (ref) => EarningsRemoteDataSource(DioClient()),
 );
 
 final earningsRepositoryProvider = Provider<EarningsRepository>((ref) {

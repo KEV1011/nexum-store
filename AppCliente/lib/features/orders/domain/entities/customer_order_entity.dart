@@ -130,6 +130,41 @@ class CustomerOrderEntity {
             : null,
       );
 
+  /// Construye la entidad desde el DTO del backend (`GET /client/orders`), que
+  /// usa `items` (no `lines`), `pickupPhotoUrl`/`deliveryPhotoUrl` y no trae
+  /// `businessAddress` ni la calificación (esta última es local del cliente).
+  factory CustomerOrderEntity.fromApi(Map<String, dynamic> j) =>
+      CustomerOrderEntity(
+        id: j['id'] as String,
+        orderRef: j['orderRef'] as String? ?? '',
+        businessName: j['businessName'] as String? ?? '',
+        businessAddress: '',
+        deliveryAddress: j['deliveryAddress'] as String? ?? '',
+        status: CustomerOrderStatus.values.firstWhere(
+          (s) => s.name == j['status'],
+          orElse: () => CustomerOrderStatus.confirmed,
+        ),
+        lines: (j['items'] as List<dynamic>? ?? const [])
+            .map((l) => OrderLineEntity.fromJson(l as Map<String, dynamic>))
+            .toList(),
+        subtotal: (j['subtotal'] as num?)?.toDouble() ?? 0,
+        deliveryFee: (j['deliveryFee'] as num?)?.toDouble() ?? 0,
+        createdAt:
+            DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
+        driverName: j['driverName'] as String?,
+        driverPhone: j['driverPhone'] as String?,
+        etaMinutes: (j['etaMinutes'] as num?)?.toInt(),
+        pickedUpAt: j['pickedUpAt'] != null
+            ? DateTime.tryParse(j['pickedUpAt'] as String)
+            : null,
+        deliveredAt: j['deliveredAt'] != null
+            ? DateTime.tryParse(j['deliveredAt'] as String)
+            : null,
+        pickupPhotoPath: j['pickupPhotoUrl'] as String?,
+        deliveryPhotoPath: j['deliveryPhotoUrl'] as String?,
+        hasSignature: j['hasSignature'] as bool? ?? false,
+      );
+
   final String id;
   final String orderRef;
   final String businessName;

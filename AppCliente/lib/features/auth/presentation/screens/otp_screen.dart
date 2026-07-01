@@ -133,42 +133,87 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
     ref.listen<AuthState>(authProvider, _handleAuthState);
 
     final isLoading = ref.watch(authProvider) is AuthLoading;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return LoadingOverlay(
       isLoading: isLoading,
       child: Scaffold(
-        appBar: AppBar(title: const Text('Verificar número')),
+        backgroundColor:
+            isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          title: const Text('Verificación'),
+        ),
         body: SafeArea(
           child: GestureDetector(
             onTap: () => FocusScope.of(context).unfocus(),
             behavior: HitTestBehavior.opaque,
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppConstants.spacingL,
-                vertical: AppConstants.spacingXL,
+                vertical: AppConstants.spacingM,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Código de verificación',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
+                  // Icono de marca
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryContainer,
+                      borderRadius:
+                          BorderRadius.circular(AppConstants.radiusXLarge),
+                    ),
+                    child: const Icon(
+                      Icons.sms_outlined,
+                      size: 32,
+                      color: AppColors.primary,
                     ),
                   ),
-                  const SizedBox(height: AppConstants.spacingS),
+                  const SizedBox(height: AppConstants.spacingL),
                   Text(
-                    'Ingresaste el código enviado a ${widget.phone}',
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 15,
-                      color: AppColors.textSecondary,
-                      height: 1.4,
+                    'Verifica tu número',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: AppConstants.spacingXXL),
+                  const SizedBox(height: AppConstants.spacingXS),
+                  Text.rich(
+                    TextSpan(
+                      text: 'Ingresa el código de 6 dígitos que enviamos al ',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                        height: 1.45,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: widget.phone,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => context.pop(),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Cambiar número'),
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.spacingXL),
                   AnimatedBuilder(
                     animation: _shakeAnim,
                     builder: (context, child) => Transform.translate(
@@ -192,26 +237,38 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                   ),
                   const SizedBox(height: AppConstants.spacingXL),
                   SizedBox(
-                    height: AppConstants.minTouchTarget + 8,
+                    height: AppConstants.minTouchTarget + 10,
                     child: ElevatedButton(
                       onPressed: (isLoading || !_isComplete) ? null : _verify,
-                      child: const Text('Verificar'),
+                      style: ElevatedButton.styleFrom(
+                        elevation: _isComplete ? 2 : 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppConstants.radiusLarge),
+                        ),
+                      ),
+                      child: const Text(
+                        'Verificar',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: AppConstants.spacingM),
                   Center(
                     child: _resendSeconds > 0
                         ? Text(
-                            'Reenviar en $_resendSeconds s',
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 14,
+                            'Reenviar código en $_resendSeconds s',
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               color: AppColors.textSecondary,
                             ),
                           )
-                        : TextButton(
+                        : TextButton.icon(
                             onPressed: _resend,
-                            child: const Text('Reenviar código'),
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('Reenviar código'),
                           ),
                   ),
                 ],

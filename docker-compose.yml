@@ -9,10 +9,14 @@ services:
       DATABASE_URL: postgresql://nexum:nexum_dev_secret@nexum-db:5432/nexum_db
       JWT_SECRET: nexum_jwt_dev_secret_change_in_prod
       PORT: "3000"
-      NODE_ENV: production
+      # Desarrollo local: en development el OTP usa OTP_DEV_CODE (sin Twilio),
+      # así puedes entrar con el código fijo. En production el login exigiría
+      # Twilio u OTP_FALLBACK_CODE y quedaría cerrado para pruebas locales.
+      NODE_ENV: development
       CORS_ORIGIN: "*"
-      PORTAL_BASE_URL: http://localhost:3000
-      MOCK_OTP: "123456"
+      APP_URL: http://localhost:3000
+      # Código fijo de OTP para desarrollo: entra con 123456 en cualquier número.
+      OTP_DEV_CODE: "123456"
     depends_on:
       nexum-db:
         condition: service_healthy
@@ -27,6 +31,10 @@ services:
       POSTGRES_DB: nexum_db
       POSTGRES_USER: nexum
       POSTGRES_PASSWORD: nexum_dev_secret
+    # Puerto expuesto al host para que el backend corriendo con `npm run dev`
+    # (fuera de Docker, para hot-reload + seed) pueda conectarse a la BD.
+    ports:
+      - "5432:5432"
     volumes:
       - nexum-pg-data:/var/lib/postgresql/data
     healthcheck:
