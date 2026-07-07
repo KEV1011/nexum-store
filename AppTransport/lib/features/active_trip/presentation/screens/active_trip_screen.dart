@@ -74,6 +74,11 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         // Etiqueta el GPS del conductor con este viaje para que el backend lo
         // reenvíe al mapa del pasajero (driver_location).
         DriverWsService().activeTripId = trip.request.id;
+        if (trip.isToPickup) {
+          // El pasajero ve "Conductor en camino" (ARRIVING) desde que arranca
+          // la navegación al pickup; antes se saltaba directo a ARRIVED.
+          DriverWsService().sendTripStatus(trip.request.id, 'arriving');
+        }
         _startSimulatedMovement(trip);
         _startEtaCountdown(trip);
       }

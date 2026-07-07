@@ -77,12 +77,10 @@ class TripHistoryNotifier extends StateNotifier<List<TripModel>> {
         rating: (j['rating'] as num?)?.toDouble(),
       );
 
-  void add(TripModel trip) {
-    if (state.any((t) => t.id == trip.id)) return;
-    final updated = [trip, ...state];
-    state = updated;
-    unawaited(_persist(updated));
-  }
+  /// Recarga el historial desde el backend. Se llama al completar un viaje:
+  /// la liquidación (finalFare/netEarning) la calcula el servidor, así que la
+  /// verdad se refetchea en lugar de insertar un viaje sintético local.
+  Future<void> refresh() => _load();
 
   Future<void> _persist(List<TripModel> trips) async {
     final prefs = await SharedPreferences.getInstance();

@@ -30,7 +30,9 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(tripHistoryProvider.notifier).add(trip);
+      // La liquidación real la hace el backend al recibir trip_status
+      // 'completed'; aquí solo se refetchea el historial (nada sintético).
+      ref.read(tripHistoryProvider.notifier).refresh();
       if (!trip.isDeliveryTrip) {
         Future.delayed(const Duration(milliseconds: 600), () {
           if (mounted) {
