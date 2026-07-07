@@ -19,6 +19,7 @@ import {
   setOperatorStatus,
   listOperatorRoutesForAdmin,
   setOperatorRouteAuthorized,
+  setDriverVerified,
 } from '../services/admin.service';
 import { OperatorStatus } from '@prisma/client';
 import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
@@ -92,6 +93,19 @@ router.get('/drivers', async (_req: Request, res: Response): Promise<void> => {
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
+});
+
+// POST /admin/drivers/:id/verify · /:id/unverify — atajo de piloto.
+router.post('/drivers/:id/verify', async (req: Request, res: Response): Promise<void> => {
+  const ok = await setDriverVerified(req.params['id']!, true);
+  if (!ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
+  res.json({ success: true });
+});
+
+router.post('/drivers/:id/unverify', async (req: Request, res: Response): Promise<void> => {
+  const ok = await setDriverVerified(req.params['id']!, false);
+  if (!ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
+  res.json({ success: true });
 });
 
 // ─── Empresas de transporte (operadores) ──────────────────────────────────────
@@ -379,8 +393,8 @@ const PANEL_HTML = `<!DOCTYPE html>
     </section>
 
     <section id="tab-drivers" style="display:none">
-      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Rating</th><th>Viajes</th><th>Última conexión</th></tr></thead>
-      <tbody id="drivers-body"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
+      <tbody id="drivers-body"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-operators" style="display:none">
@@ -548,11 +562,21 @@ function reviewDoc(id, approve) {
 function loadDrivers() {
   api('/admin/drivers').then((rows) => {
     const tb = document.getElementById('drivers-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Sin conductores.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">Sin conductores.</td></tr>'; return; }
     tb.innerHTML = rows.map((d) => '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
       '</td><td><span class="badge badge-' + d.status + '">' + d.status + '</span></td><td>' + (d.isVerified ? '✅' : '—') +
-      '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td></tr>').join('');
+      '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
+      (d.isVerified
+        ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
+        : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
+      '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
+}
+
+function setDriverVerified(id, action) {
+  api('/admin/drivers/' + id + '/' + action, { method: 'POST' })
+    .then(() => { showMsg(action === 'verify' ? 'Conductor verificado.' : 'Verificación retirada.', false); loadDrivers(); })
+    .catch((e) => showMsg(e.message, true));
 }
 
 function loadOperators() {

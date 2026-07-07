@@ -148,6 +148,17 @@ export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
   });
 }
 
+/**
+ * Marca/desmarca un conductor como verificado directamente (atajo de piloto para
+ * habilitarlo en el matching sin pasar por la aprobación documento a documento).
+ */
+export async function setDriverVerified(driverId: string, verified: boolean): Promise<boolean> {
+  const d = await prisma.driver.findUnique({ where: { id: driverId }, select: { id: true } });
+  if (!d) return false;
+  await prisma.driver.update({ where: { id: driverId }, data: { isVerified: verified } });
+  return true;
+}
+
 // ─── Eventos SOS ──────────────────────────────────────────────────────────────
 
 export interface AdminSosRow {
