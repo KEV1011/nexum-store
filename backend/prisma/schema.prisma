@@ -619,10 +619,14 @@ model IntercityBooking {
   rating         Int?
   ratingComment  String?
 
+  // Empresa bajo la cual se prestó el servicio (troncales legales + liquidación).
+  operatorId     String?
+
   user           User            @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([status])
+  @@index([operatorId])
   @@map("intercity_bookings")
 }
 

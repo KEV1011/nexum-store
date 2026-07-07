@@ -268,24 +268,8 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   return _toTripDTO(trip, clientId);
 }
 
-export async function acceptClientTrip(
-  tripId: string,
-  driverName: string,
-  driverPhone: string,
-  driverVehicle?: string,
-): Promise<ClientTripDTO | null> {
-  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
-  if (!trip || trip.status !== 'SEARCHING') return null;
-
-  const updated = await prisma.trip.update({
-    where: { id: tripId },
-    data: { status: 'ACCEPTED', acceptedAt: new Date() },
-  });
-  const dto = _toTripDTOWithDriver(updated, driverName, driverPhone, driverVehicle);
-  _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
-  void _startTripSimulation(tripId, updated.passengerId ?? '');
-  return dto;
-}
+// (acceptClientTrip + _startTripSimulation eliminados: eran restos del flujo
+// demo. La aceptación real es transaccional en matching.service.onDriverAccept.)
 
 export async function updateClientTripLocation(tripId: string, _lat: number, _lng: number): Promise<string | null> {
   const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { passengerId: true } });
@@ -437,26 +421,6 @@ export async function getClientTripSnapshot(tripId: string): Promise<ClientTripD
   return _toTripDTO(trip, trip.passengerId ?? '');
 }
 
-// ─── Trip simulation ──────────────────────────────────────────────────────────
-
-async function _startTripSimulation(tripId: string, passengerId: string): Promise<void> {
-  const step = async (status: string, extras: { completedAt?: Date } = {}) => {
-    const current = await prisma.trip.findUnique({ where: { id: tripId }, select: { status: true } });
-    const active = ['ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'];
-    if (!current || !active.includes(current.status)) return;
-    const updated = await prisma.trip.update({
-      where: { id: tripId },
-      data: { status: status as never, ...extras },
-    });
-    const dto = _toTripDTO(updated, passengerId);
-    _notifyTripListeners(tripId, passengerId, dto);
-  };
-  setTimeout(() => void step('ARRIVING'), 8_000);
-  setTimeout(() => void step('ARRIVED'), 20_000);
-  setTimeout(() => void step('IN_PROGRESS'), 30_000);
-  setTimeout(() => void step('COMPLETED', { completedAt: new Date() }), 55_000);
-}
-
 function _notifyTripListeners(tripId: string, _passengerId: string, dto: ClientTripDTO): void {
   for (const cb of tripListeners.get(tripId) ?? []) cb(tripId, dto);
 }
@@ -568,8 +532,4 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     recipientPhone: trip.recipientPhone ?? undefined,
     packageDescription: trip.packageDescription ?? undefined,
   };
-}
-
-function _toTripDTOWithDriver(trip: PrismaTrip, driverName: string, driverPhone: string, driverVehicle?: string): ClientTripDTO {
-  return _toTripDTO(trip, '', driverName, driverPhone, driverVehicle);
 }

@@ -247,7 +247,7 @@ export async function listOperatorTrips(
   operatorId: string,
   limit = 50,
 ): Promise<OperatorTripsResult> {
-  const [rows, completedAgg, total] = await Promise.all([
+  const [rows, intercityRows, completedAgg, intercityAgg, total, intercityTotal] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId },
       orderBy: { createdAt: 'desc' },
@@ -266,73 +266,164 @@ export async function listOperatorTrips(
         driver: { select: { id: true, name: true } },
       },
     }),
+    prisma.intercityBooking.findMany({
+      where: { operatorId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        origin: true,
+        destination: true,
+        pickupAddress: true,
+        dropoffAddress: true,
+        offeredFare: true,
+        counterFare: true,
+        finalFare: true,
+        driverId: true,
+        driverName: true,
+        createdAt: true,
+        completedAt: true,
+      },
+    }),
     prisma.trip.aggregate({
       where: { operatorId, status: 'COMPLETED' },
       _sum: { finalFare: true },
       _count: true,
     }),
+    prisma.intercityBooking.aggregate({
+      where: { operatorId, status: 'COMPLETED' },
+      _sum: { finalFare: true },
+      _count: true,
+    }),
     prisma.trip.count({ where: { operatorId } }),
+    prisma.intercityBooking.count({ where: { operatorId } }),
   ]);
 
+  const urban: OperatorTripDTO[] = rows.map((t) => ({
+    id: t.id,
+    status: t.status,
+    serviceType: t.serviceType,
+    originAddress: t.originAddress,
+    destAddress: t.destAddress,
+    fare: t.finalFare ?? t.estimatedFare,
+    distanceKm: t.distanceKm,
+    driverId: t.driver?.id ?? null,
+    driverName: t.driver?.name ?? null,
+    createdAt: t.createdAt.toISOString(),
+    completedAt: t.completedAt?.toISOString() ?? null,
+  }));
+
+  const intercity: OperatorTripDTO[] = intercityRows.map((b) => ({
+    id: b.id,
+    status: b.status,
+    serviceType: 'INTERCITY',
+    originAddress: b.pickupAddress || b.origin,
+    destAddress: b.dropoffAddress || b.destination,
+    fare: b.finalFare ?? b.counterFare ?? b.offeredFare,
+    distanceKm: null,
+    driverId: b.driverId,
+    driverName: b.driverName,
+    createdAt: b.createdAt.toISOString(),
+    completedAt: b.completedAt?.toISOString() ?? null,
+  }));
+
+  // Fusión urbano + intermunicipal, más recientes primero.
+  const trips = [...urban, ...intercity]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
+
   return {
-    trips: rows.map((t) => ({
-      id: t.id,
-      status: t.status,
-      serviceType: t.serviceType,
-      originAddress: t.originAddress,
-      destAddress: t.destAddress,
-      fare: t.finalFare ?? t.estimatedFare,
-      distanceKm: t.distanceKm,
-      driverId: t.driver?.id ?? null,
-      driverName: t.driver?.name ?? null,
-      createdAt: t.createdAt.toISOString(),
-      completedAt: t.completedAt?.toISOString() ?? null,
-    })),
+    trips,
     summary: {
-      total,
-      completed: completedAgg._count,
-      grossFare: completedAgg._sum.finalFare ?? 0,
+      total: total + intercityTotal,
+      completed: completedAgg._count + intercityAgg._count,
+      grossFare: (completedAgg._sum.finalFare ?? 0) + (intercityAgg._sum.finalFare ?? 0),
     },
   };
 }
 
-/** Reporte de liquidación: viajes sellados de la empresa en formato CSV. */
+/** Reporte de liquidación: viajes sellados (urbanos + intermunicipales) en CSV. */
 export async function exportOperatorTripsCsv(operatorId: string): Promise<string> {
-  const rows = await prisma.trip.findMany({
-    where: { operatorId },
-    orderBy: { createdAt: 'desc' },
-    take: 1000,
-    select: {
-      requestRef: true,
-      status: true,
-      serviceType: true,
-      originAddress: true,
-      destAddress: true,
-      estimatedFare: true,
-      finalFare: true,
-      distanceKm: true,
-      createdAt: true,
-      completedAt: true,
-      driver: { select: { name: true } },
-    },
-  });
+  const [rows, intercityRows] = await Promise.all([
+    prisma.trip.findMany({
+      where: { operatorId },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      select: {
+        requestRef: true,
+        status: true,
+        serviceType: true,
+        originAddress: true,
+        destAddress: true,
+        estimatedFare: true,
+        finalFare: true,
+        distanceKm: true,
+        createdAt: true,
+        completedAt: true,
+        driver: { select: { name: true } },
+      },
+    }),
+    prisma.intercityBooking.findMany({
+      where: { operatorId },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      select: {
+        requestRef: true,
+        status: true,
+        origin: true,
+        destination: true,
+        pickupAddress: true,
+        dropoffAddress: true,
+        offeredFare: true,
+        counterFare: true,
+        finalFare: true,
+        driverName: true,
+        createdAt: true,
+        completedAt: true,
+      },
+    }),
+  ]);
+
+  type CsvRow = { createdAt: Date; cols: string[] };
+  const urban: CsvRow[] = rows.map((t) => ({
+    createdAt: t.createdAt,
+    cols: [
+      t.requestRef,
+      t.status,
+      t.serviceType,
+      t.originAddress,
+      t.destAddress,
+      t.driver?.name ?? '',
+      t.distanceKm != null ? t.distanceKm.toFixed(2) : '',
+      String(Math.round(t.finalFare ?? t.estimatedFare)),
+      t.createdAt.toISOString(),
+      t.completedAt?.toISOString() ?? '',
+    ],
+  }));
+  const intercity: CsvRow[] = intercityRows.map((b) => ({
+    createdAt: b.createdAt,
+    cols: [
+      b.requestRef,
+      b.status,
+      'INTERCITY',
+      b.pickupAddress || b.origin,
+      b.dropoffAddress || b.destination,
+      b.driverName ?? '',
+      '',
+      String(Math.round(b.finalFare ?? b.counterFare ?? b.offeredFare)),
+      b.createdAt.toISOString(),
+      b.completedAt?.toISOString() ?? '',
+    ],
+  }));
 
   const header = [
     'Referencia', 'Estado', 'Servicio', 'Origen', 'Destino',
     'Conductor', 'Distancia_km', 'Tarifa_COP', 'Creado', 'Completado',
   ];
-  const lines = rows.map((t) => [
-    t.requestRef,
-    t.status,
-    t.serviceType,
-    t.originAddress,
-    t.destAddress,
-    t.driver?.name ?? '',
-    t.distanceKm != null ? t.distanceKm.toFixed(2) : '',
-    String(Math.round(t.finalFare ?? t.estimatedFare)),
-    t.createdAt.toISOString(),
-    t.completedAt?.toISOString() ?? '',
-  ]);
+  const lines = [...urban, ...intercity]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .map((r) => r.cols);
 
   const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
   return [header, ...lines].map((cols) => cols.map((c) => escape(String(c))).join(',')).join('\r\n');

@@ -78,15 +78,17 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
 
 const SERVICE_LABEL: Record<string, string> = {
   TAXI: 'Taxi', MOTO: 'Moto', PARTICULAR: 'Particular', ENVIOS: 'Envío', MANDADO: 'Mandado',
+  INTERCITY: 'Intermunicipal',
 }
 
 const TRIP_STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   COMPLETED: { label: 'Completado', cls: 'bg-emerald-100 text-emerald-700' },
   CANCELLED: { label: 'Cancelado', cls: 'bg-rose-100 text-rose-600' },
   SEARCHING: { label: 'Buscando', cls: 'bg-amber-100 text-amber-700' },
+  DRIVER_FOUND: { label: 'Contraoferta', cls: 'bg-amber-100 text-amber-700' },
 }
 const TRIP_IN_PROGRESS: Record<string, true> = {
-  ACCEPTED: true, ARRIVING: true, ARRIVED: true, IN_PROGRESS: true,
+  ACCEPTED: true, ARRIVING: true, ARRIVED: true, IN_PROGRESS: true, CONFIRMED: true,
 }
 function tripStatusStyle(status: string): { label: string; cls: string } {
   const known = TRIP_STATUS_STYLE[status]

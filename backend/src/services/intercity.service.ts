@@ -337,6 +337,16 @@ export async function driverAcceptIntercity(
     driverVehicle = profile.vehicleDescription;
   } catch { /* sin perfil completo; se ofrece igual */ }
 
+  // La reserva queda SELLADA con la empresa del conductor (liquidación +
+  // trazabilidad legal de troncales). Independientes → null.
+  const driverInfo = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { operatorId: true },
+  });
+  const operatorSeal = driverInfo?.operatorId
+    ? { operatorId: driverInfo.operatorId }
+    : {};
+
   const hasCounter =
     typeof counterFare === 'number' && counterFare > 0;
 
@@ -356,6 +366,7 @@ export async function driverAcceptIntercity(
             driverPhone,
             driverVehicle,
             counterFare: Math.round(counterFare),
+            ...operatorSeal,
           }
         : {
             status: 'CONFIRMED',
@@ -364,6 +375,7 @@ export async function driverAcceptIntercity(
             driverPhone,
             driverVehicle,
             confirmedAt: new Date(),
+            ...operatorSeal,
           },
     });
   });
