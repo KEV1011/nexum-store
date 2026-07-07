@@ -16,7 +16,9 @@ import {
   INTERCITY_DUAL_MODEL,
   INTERCITY_SIMULATE,
   INTERCITY_CITY_COORDS,
+  COMMISSION_RATE,
 } from '../config/constants';
+import { recordCompletedTrip } from './earnings.service';
 
 export class IntercityError extends Error {
   constructor(message: string) {
@@ -394,6 +396,75 @@ export async function driverRejectIntercity(
   await _offerIntercityTo(bookingId, state.candidates, state.candidateIndex + 1);
 }
 
+/** El conductor asignado inicia el viaje (CONFIRMED → IN_PROGRESS). */
+export async function driverStartIntercity(
+  driverId: string,
+  bookingId: string,
+): Promise<IntercityBookingDTO | null> {
+  const updated = await prisma.$transaction(async (tx) => {
+    const current = await tx.intercityBooking.findUnique({
+      where: { id: bookingId },
+      select: { status: true, driverId: true },
+    });
+    if (!current || current.driverId !== driverId || current.status !== 'CONFIRMED') return null;
+    return tx.intercityBooking.update({
+      where: { id: bookingId },
+      data: { status: 'IN_PROGRESS' },
+    });
+  });
+  if (!updated) return null;
+
+  const dto = _toDTO(updated as DbBooking);
+  _notify(bookingId, dto);
+  console.log(`[Intercity] Driver ${driverId} started booking ${bookingId}`);
+  return dto;
+}
+
+/**
+ * El conductor asignado finaliza el viaje: sella finalFare/completedAt, pasa a
+ * COMPLETED (habilita historial y calificación del cliente) y liquida la
+ * ganancia real del conductor (wallet + dashboard), igual que un viaje urbano.
+ */
+export async function driverCompleteIntercity(
+  driverId: string,
+  bookingId: string,
+): Promise<IntercityBookingDTO | null> {
+  const updated = await prisma.$transaction(async (tx) => {
+    const current = await tx.intercityBooking.findUnique({
+      where: { id: bookingId },
+      select: { status: true, driverId: true, offeredFare: true, counterFare: true, finalFare: true },
+    });
+    // Se permite completar desde CONFIRMED por si el conductor no marcó el inicio.
+    if (!current || current.driverId !== driverId) return null;
+    if (current.status !== 'CONFIRMED' && current.status !== 'IN_PROGRESS') return null;
+    const finalFare = current.finalFare ?? current.counterFare ?? current.offeredFare;
+    return tx.intercityBooking.update({
+      where: { id: bookingId },
+      data: { status: 'COMPLETED', completedAt: new Date(), finalFare: Math.round(finalFare) },
+    });
+  });
+  if (!updated) return null;
+
+  const grossFare = Math.round(updated.finalFare ?? updated.offeredFare);
+  const netEarning = grossFare - Math.round(grossFare * COMMISSION_RATE);
+  recordCompletedTrip(
+    {
+      tripId: updated.id,
+      origin: updated.pickupAddress ?? updated.origin,
+      destination: updated.dropoffAddress ?? updated.destination,
+      grossFare,
+      netEarning,
+      completedAt: new Date().toISOString(),
+    },
+    driverId,
+  );
+
+  const dto = _toDTO(updated as DbBooking);
+  _notify(bookingId, dto);
+  console.log(`[Intercity] Driver ${driverId} completed booking ${bookingId}`);
+  return dto;
+}
+
 function _dispatchDriverSearch(bookingId: string, offeredFare: number): void {
   if (INTERCITY_SIMULATE) {
     _scheduleDriverResponse(bookingId, offeredFare);
@@ -468,6 +539,10 @@ export async function confirmIntercityBooking(
   });
   const dto = _toDTO(updated as DbBooking);
   _notify(bookingId, dto);
+  // El conductor que contraofertó necesita saber que el pasajero confirmó.
+  if (updated.driverId) {
+    _sendToDriver?.(updated.driverId, { type: 'intercity_update', bookingId, booking: dto });
+  }
   return dto;
 }
 
@@ -484,11 +559,13 @@ export async function rejectIntercityOffer(clientId: string, bookingId: string):
       counterFare: null,
     },
   });
-  // El conductor cuya contraoferta fue rechazada no vuelve a recibir la reserva.
+  // El conductor cuya contraoferta fue rechazada no vuelve a recibir la reserva,
+  // y se le avisa para que no siga esperando la confirmación.
   if (b.driverId) {
     const declined = intercityDeclined.get(bookingId) ?? new Set<string>();
     declined.add(b.driverId);
     intercityDeclined.set(bookingId, declined);
+    _sendToDriver?.(b.driverId, { type: 'intercity_cancelled', bookingId });
   }
   const dto = _toDTO(updated as DbBooking);
   _notify(bookingId, dto);
@@ -512,6 +589,11 @@ export async function cancelIntercityBooking(clientId: string, bookingId: string
       type: 'intercity_cancelled',
       bookingId,
     });
+  }
+  // Y al conductor YA ASIGNADO (DRIVER_FOUND/CONFIRMED), que no está en el ciclo
+  // de ofertas: sin este aviso se quedaba con un viaje fantasma.
+  if (b.driverId && b.driverId !== state?.currentDriverId) {
+    _sendToDriver?.(b.driverId, { type: 'intercity_cancelled', bookingId });
   }
   intercityDeclined.delete(bookingId);
 

@@ -32,6 +32,8 @@ import {
   registerIntercitySendToDriver,
   driverAcceptIntercity,
   driverRejectIntercity,
+  driverStartIntercity,
+  driverCompleteIntercity,
 } from '../services/intercity.service';
 import {
   subscribePooledTrip,
@@ -805,6 +807,37 @@ function onMessage(ws: WebSocket, raw: string): void {
       const bookingId = msg['bookingId'];
       if (typeof bookingId !== 'string') break;
       void driverRejectIntercity(driverId, bookingId);
+      break;
+    }
+    // ── Intercity: inicio y fin del viaje por el conductor asignado ──────────
+    case 'intercity_start': {
+      const driverId = driverIdByWs.get(ws);
+      if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
+      const bookingId = msg['bookingId'];
+      if (typeof bookingId !== 'string') { sendTo(ws, { type: 'error', message: 'bookingId required' }); return; }
+      void (async () => {
+        const booking = await driverStartIntercity(driverId, bookingId);
+        if (booking) {
+          sendTo(ws, { type: 'intercity_start_ok', bookingId, booking });
+        } else {
+          sendTo(ws, { type: 'error', message: 'No se pudo iniciar el viaje (¿ya iniciado o cancelado?)' });
+        }
+      })();
+      break;
+    }
+    case 'intercity_complete': {
+      const driverId = driverIdByWs.get(ws);
+      if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
+      const bookingId = msg['bookingId'];
+      if (typeof bookingId !== 'string') { sendTo(ws, { type: 'error', message: 'bookingId required' }); return; }
+      void (async () => {
+        const booking = await driverCompleteIntercity(driverId, bookingId);
+        if (booking) {
+          sendTo(ws, { type: 'intercity_complete_ok', bookingId, booking });
+        } else {
+          sendTo(ws, { type: 'error', message: 'No se pudo finalizar el viaje (¿aún no confirmado o ya cerrado?)' });
+        }
+      })();
       break;
     }
 

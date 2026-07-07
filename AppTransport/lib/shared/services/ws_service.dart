@@ -8,16 +8,30 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
-import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
-import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
-import 'package:nexum_driver/shared/models/location_model.dart';
 
-/// Singleton WebSocket client for real-time driver ↔ backend communication.
-///
-/// Lifecycle:
-///   connect()    → authenticate → stream trip_request events
-///   acceptTrip() / rejectTrip() → send WS messages
-///   disconnect() → clean close
+/// Evento de ciclo de vida de una reserva intermunicipal ya aceptada.
+/// `type`: accept_ok | start_ok | complete_ok | update.
+class IntercityLifecycleEvent {
+  const IntercityLifecycleEvent({
+    required this.type,
+    required this.bookingId,
+    this.status,
+    this.finalFare,
+  });
+
+  final String type;
+  final String bookingId;
+
+  /// Estado del booking según el backend:
+  /// searching | driver_found | confirmed | in_progress | completed | cancelled.
+  final String? status;
+  final double? finalFare;
+}
+
+/// Cliente WebSocket singleton para el flujo INTERMUNICIPAL del conductor
+/// (ofertas, aceptación/contraoferta, inicio y fin del viaje). Los viajes
+/// urbanos usan [DriverWsService]; aquí solo se conserva el tracking de
+/// `activeTripId` que consume la pantalla de seguridad.
 class WsService {
   WsService._();
   static final WsService _instance = WsService._();
@@ -32,13 +46,12 @@ class WsService {
 
   String? _activeTripId;
 
-  final _tripCtrl = StreamController<TripRequestEntity>.broadcast();
   final _intercityCtrl =
       StreamController<IntercityRequestEntity>.broadcast();
   final _intercityCancelCtrl = StreamController<String>.broadcast();
-
-  /// Emits every incoming trip request dispatched by the backend.
-  Stream<TripRequestEntity> get tripRequests => _tripCtrl.stream;
+  final _intercityLifecycleCtrl =
+      StreamController<IntercityLifecycleEvent>.broadcast();
+  final _errorCtrl = StreamController<String>.broadcast();
 
   /// Ofertas de reservas intermunicipales (`intercity_request`).
   Stream<IntercityRequestEntity> get intercityRequests =>
@@ -46,6 +59,15 @@ class WsService {
 
   /// IDs de reservas intermunicipales canceladas por el cliente.
   Stream<String> get intercityCancellations => _intercityCancelCtrl.stream;
+
+  /// Confirmaciones del backend sobre la reserva aceptada
+  /// (accept_ok / start_ok / complete_ok / update).
+  Stream<IntercityLifecycleEvent> get intercityLifecycle =>
+      _intercityLifecycleCtrl.stream;
+
+  /// Errores enviados por el backend (`{type:'error', message}`), p. ej.
+  /// "La reserva ya no está disponible" cuando otro conductor ganó la carrera.
+  Stream<String> get wsErrors => _errorCtrl.stream;
 
   /// The ID of the currently active trip, or `null` when no trip is in progress.
   String? get activeTripId => _activeTripId;
@@ -94,12 +116,6 @@ class WsService {
 
   // ── actions ────────────────────────────────────────────────────────────────
 
-  void acceptTrip(String tripId) =>
-      _send({'type': 'accept', 'tripId': tripId});
-
-  void rejectTrip(String tripId) =>
-      _send({'type': 'reject', 'tripId': tripId});
-
   /// Acepta una reserva intermunicipal; con [counterFare] propone otra tarifa.
   void acceptIntercity(String bookingId, {double? counterFare}) => _send({
         'type': 'intercity_accept',
@@ -109,6 +125,14 @@ class WsService {
 
   void rejectIntercity(String bookingId) =>
       _send({'type': 'intercity_reject', 'bookingId': bookingId});
+
+  /// Inicia el viaje confirmado (CONFIRMED → IN_PROGRESS).
+  void startIntercity(String bookingId) =>
+      _send({'type': 'intercity_start', 'bookingId': bookingId});
+
+  /// Finaliza el viaje: el backend liquida y responde `intercity_complete_ok`.
+  void completeIntercity(String bookingId) =>
+      _send({'type': 'intercity_complete', 'bookingId': bookingId});
 
   void sendLocationUpdate(double lat, double lng, String? tripId) {
     _send({
@@ -133,11 +157,7 @@ class WsService {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
       final type = msg['type'] as String?;
 
-      if (type == 'trip_request') {
-        final trip =
-            _parseTripRequest(msg['trip'] as Map<String, dynamic>);
-        if (trip != null) _tripCtrl.add(trip);
-      } else if (type == 'trip_accepted') {
+      if (type == 'trip_accepted') {
         // Extract trip ID from either trip.id or top-level tripId
         final tripData = msg['trip'];
         if (tripData is Map) {
@@ -151,46 +171,32 @@ class WsService {
       } else if (type == 'intercity_cancelled') {
         final bookingId = msg['bookingId'] as String?;
         if (bookingId != null) _intercityCancelCtrl.add(bookingId);
+      } else if (type == 'intercity_accept_ok' ||
+          type == 'intercity_start_ok' ||
+          type == 'intercity_complete_ok' ||
+          type == 'intercity_update') {
+        final event = _parseLifecycle(type!, msg);
+        if (event != null) _intercityLifecycleCtrl.add(event);
+      } else if (type == 'error') {
+        final message = msg['message'] as String?;
+        if (message != null && message.isNotEmpty) _errorCtrl.add(message);
       }
     } catch (_) {}
   }
 
-  TripRequestEntity? _parseTripRequest(Map<String, dynamic> t) {
-    try {
-      final p = t['passenger'] as Map<String, dynamic>;
-      final o = t['origin'] as Map<String, dynamic>;
-      final d = t['destination'] as Map<String, dynamic>;
-
-      final name = p['name'] as String;
-      return TripRequestEntity(
-        id: t['id'] as String,
-        passenger: PassengerEntity(
-          id: p['id'] as String,
-          name: name,
-          rating: (p['rating'] as num).toDouble(),
-          totalTrips: 0,
-          photoUrl:
-              'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}&background=00C853&color=fff&size=128',
-        ),
-        origin: LocationModel(
-          latitude: (o['lat'] as num).toDouble(),
-          longitude: (o['lng'] as num).toDouble(),
-          address: o['address'] as String,
-        ),
-        destination: LocationModel(
-          latitude: (d['lat'] as num).toDouble(),
-          longitude: (d['lng'] as num).toDouble(),
-          address: d['address'] as String,
-        ),
-        distanceKm: (t['distanceKm'] as num).toDouble(),
-        durationMinutes: (t['estimatedMinutes'] as num).toInt(),
-        estimatedFare: (t['netEarning'] as num).toDouble(),
-        distanceToPickupKm: 0.5,
-        etaToPickupMinutes: 3,
-        requestedAt: DateTime.now(),
-      );
-    } catch (_) {
-      return null;
-    }
+  IntercityLifecycleEvent? _parseLifecycle(
+    String type,
+    Map<String, dynamic> msg,
+  ) {
+    final bookingId = msg['bookingId'] as String?;
+    if (bookingId == null) return null;
+    final booking = msg['booking'] as Map<String, dynamic>?;
+    return IntercityLifecycleEvent(
+      // 'intercity_accept_ok' → 'accept_ok', 'intercity_update' → 'update'.
+      type: type.replaceFirst('intercity_', ''),
+      bookingId: bookingId,
+      status: booking?['status'] as String?,
+      finalFare: (booking?['finalFare'] as num?)?.toDouble(),
+    );
   }
 }

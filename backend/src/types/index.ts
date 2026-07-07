@@ -228,6 +228,10 @@ export type WsMessageType =
   | 'intercity_reject' // driver → server: rechaza la oferta
   | 'intercity_accept_ok' // server → driver: aceptación registrada
   | 'intercity_cancelled' // server → driver: el cliente canceló la reserva
+  | 'intercity_start' // driver → server: inicia el viaje confirmado
+  | 'intercity_start_ok' // server → driver: inicio registrado (IN_PROGRESS)
+  | 'intercity_complete' // driver → server: finaliza el viaje
+  | 'intercity_complete_ok' // server → driver: viaje liquidado (COMPLETED)
   // Shared pooled-ride (Modelo A) messages
   | 'subscribe_pooled'
   | 'unsubscribe_pooled'

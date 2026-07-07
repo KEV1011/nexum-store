@@ -49,18 +49,16 @@ NUNCA empresas — esas entran por `/empresa/registro` + verificación del admin
 
 ## HECHO y verificado (no re-auditar)
 
-Ciclo empresa completo (registro→verificación→afiliación→sellado→liquidación+CSV+rutas troncales+matching restringido), mapa Leaflet del portal, liquidación real de viajes urbanos, cancelación coherente cliente↔conductor, aviso "sin conductores", estado `in_progress` en el cliente, afiliación E.164, `intercityEnabled` automático, ganancias reales (`/earnings/history` → `trip_history_provider`), subida de documentos web-safe, panel admin (docs/conductores/empresas/rutas/SOS/promos/payouts).
+Ciclo empresa completo (registro→verificación→afiliación→sellado→liquidación+CSV+rutas troncales+matching restringido), **onboarding del portal** (afiliar conductores + registrar vehículos con estado de verificación: `DriversManager.tsx`/`VehiclesManager.tsx`), mapa Leaflet del portal, liquidación real de viajes urbanos, cancelación coherente cliente↔conductor, aviso "sin conductores", estado `in_progress` en el cliente, afiliación E.164, `intercityEnabled` automático, ganancias reales (`/earnings/history` → `trip_history_provider`), subida de documentos web-safe, panel admin (docs/conductores/empresas/rutas/SOS/promos/payouts), **ciclo intermunicipal completo** (WS `intercity_start`/`intercity_complete` → CONFIRMED→IN_PROGRESS→COMPLETED con `finalFare`/`completedAt` + liquidación al conductor vía `recordCompletedTrip`; avisos al conductor en confirm/reject/cancel del cliente; UI de viaje activo con fases en `intercity_requests_screen.dart`; feedback `intercity_accept_ok`/error en `ws_service.dart`, que además ya no parsea `trip_request` muerto).
 
-## PENDIENTE (Tanda 2) — punteros exactos
+## PENDIENTE (Tanda 3) — punteros exactos
 
-1. **Ciclo intermunicipal incompleto (bug conocido):** `IntercityBooking` nunca sale de `CONFIRMED` — no existen transiciones a `IN_PROGRESS`/`COMPLETED` ni acciones del conductor para iniciar/terminar. Añadir WS `intercity_start`/`intercity_complete` en `ws.handler.ts` (zona de `intercity_accept`), transiciones + `completedAt`/`finalFare` en `intercity.service.ts`, y UI en `AppTransport`. Sin esto, historial (`getIntercityHistory`) y calificación (`rateIntercityBooking`) son inalcanzables.
-2. **`IntercityBooking` sin `operatorId`:** los viajes troncales que la autorización de la empresa habilitó no aparecen en su liquidación. Requiere migración offline + sellar al aceptar (mismo patrón que `onDriverAccept`).
-3. **Portal sin UI de onboarding:** faltan pantallas para `POST /operator/drivers/invite` (afiliar) y `POST /operator/vehicles` (vehículo; `driverId` requerido y debe estar afiliado). Seguir el patrón `RoutesManager.tsx` + `api.ts`. Mostrar `isVerified`/`status` de `listOperatorDrivers` para que la empresa sepa quién puede operar.
-4. **Viaje activo del conductor semi-mock:** `AppTransport .../active_trip/data/datasources/active_trip_datasource.dart` calcula tarifa local y `trip_summary_screen.dart` añade un viaje sintético a `trip_history_provider` — debe refetch de `/earnings/history` (la verdad del backend ya existe).
-5. **Feedback de aceptación intermunicipal:** el conductor acepta de forma optimista sin confirmación; manejar `intercity_accept_ok` y el frame `{type:'error'}` en `AppTransport .../shared/services/ws_service.dart` (el backend ya los emite).
-6. **Estado `arriving` nunca se envía:** la app conductor manda solo arrived/in_progress/completed (`active_trip_screen.dart`); enviar `arriving` al iniciar la navegación al pickup.
-7. **Código muerto:** `WsService` legado de AppTransport parsea `trip_request` leyendo `netEarning` (campo inexistente) — eliminar ese handling (el flujo real usa `DriverWsService`). `_startTripSimulation` server-side en `client.service.ts` (vía `acceptClientTrip`) sigue existiendo — no se usa en el flujo real; considerar flag demo o borrar.
-8. **Decisión de negocio:** `Errand`/`Order` no llevan `operatorId` (mandados/pedidos de conductores afiliados no son atribuibles a la empresa).
+1. **`IntercityBooking` sin `operatorId`:** los viajes troncales que la autorización de la empresa habilitó no aparecen en su liquidación. Requiere migración offline + sellar en `driverAcceptIntercity` (mismo patrón que `onDriverAccept`) + incluirlos en `/operator/trips`.
+2. **Viaje activo del conductor semi-mock:** `AppTransport .../active_trip/data/datasources/active_trip_datasource.dart` calcula tarifa local y `trip_summary_screen.dart` añade un viaje sintético a `trip_history_provider` — debe refetch de `/earnings/history` (la verdad del backend ya existe).
+3. **Estado `arriving` nunca se envía:** la app conductor manda solo arrived/in_progress/completed (`active_trip_screen.dart`); enviar `arriving` al iniciar la navegación al pickup.
+4. **Código muerto restante:** `_startTripSimulation` server-side en `client.service.ts` (vía `acceptClientTrip`) — no se usa en el flujo real; considerar flag demo o borrar.
+5. **Decisión de negocio:** `Errand`/`Order` no llevan `operatorId` (mandados/pedidos de conductores afiliados no son atribuibles a la empresa).
+6. **Activar `INTERCITY_DUAL_MODEL=true` en Render** cuando existan empresas verificadas con rutas autorizadas.
 
 ## Regla de oro (eficiencia de tokens)
 
