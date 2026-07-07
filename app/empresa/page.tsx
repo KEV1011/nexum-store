@@ -9,6 +9,8 @@ import {
 import { createOperatorApi } from './api'
 import FleetMap, { type FleetMapPoint } from './FleetMap'
 import RoutesManager from './RoutesManager'
+import DriversManager from './DriversManager'
+import VehiclesManager from './VehiclesManager'
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000'
 
@@ -249,6 +251,8 @@ function Dashboard({ token, operator, onLogout }: {
   const [refreshing, setRefreshing] = useState(false)
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Se incrementa al afiliar un conductor para que Vehículos recargue su selector.
+  const [teamVersion, setTeamVersion] = useState(0)
   const expired = useRef(false)
 
   const api = useMemo(
@@ -397,6 +401,10 @@ function Dashboard({ token, operator, onLogout }: {
             </div>
           )}
         </section>
+
+        {/* Onboarding: conductores y vehículos */}
+        <DriversManager api={api} onChanged={() => { setTeamVersion((v) => v + 1); void load() }} />
+        <VehiclesManager api={api} refreshKey={teamVersion} />
 
         {/* Viajes de la flota */}
         <section>
