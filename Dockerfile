@@ -30,4 +30,9 @@ USER nexum
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+# Arranque resiliente: si `migrate deploy` falla (típicamente por un historial
+# de migraciones desincronizado al cambiar la rama del servicio), el servidor
+# NO debe quedar muerto — arranca igual y /health reporta el estado real de la
+# BD (db:true/false). Antes, el `&&` tumbaba TODO el backend ante cualquier
+# fallo de migración, dejando apps y portales sin diagnóstico.
+CMD ["sh", "-c", "npx prisma migrate deploy || echo '[start] WARN: prisma migrate deploy falló — el servidor arranca igual; revisa /health (db) y los logs de migración'; exec node dist/index.js"]
