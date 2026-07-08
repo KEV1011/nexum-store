@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -1406,30 +1405,6 @@ class _AppDrawer extends ConsumerWidget {
                       context.push('/safety');
                     },
                   ),
-                  // El portal/registro de negocios del app aún es una demo
-                  // local; el flujo real vive en la web (/negocio). Solo se
-                  // muestra en builds de desarrollo.
-                  if (kDebugMode) ...[
-                    _DrawerSection(label: 'ENVÍOS'),
-                    _DrawerItem(
-                      icon: Icons.storefront_rounded,
-                      label: 'Portal del Negocio (demo)',
-                      iconColor: AppColors.serviceEnvios,
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        context.push('/business-portal');
-                      },
-                    ),
-                    _DrawerItem(
-                      icon: Icons.add_business_rounded,
-                      label: 'Registrar negocio (demo)',
-                      iconColor: AppColors.serviceEnvios,
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        context.push('/business-registration');
-                      },
-                    ),
-                  ],
                   _DrawerSection(label: 'CUENTA'),
                   _DrawerItem(
                     icon: Icons.person_outline_rounded,

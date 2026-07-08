@@ -9,7 +9,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 
-const _kInterColor = Color(0xFF1E3A8A);
+const _kInterColor = AppColors.intercityBrand;
 
 /// Historial de viajes intermunicipales: completados y cancelados,
 /// con calificación post-viaje para los completados.
@@ -54,9 +54,9 @@ class _IntercityHistoryScreenState
     final past = ref.watch(intercityProvider).past;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppColors.intercityBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: AppColors.intercityBg,
         foregroundColor: Colors.white,
         title: const Text(
           'Mis viajes intermunicipales',
@@ -109,7 +109,7 @@ class _DarkEmptyState extends StatelessWidget {
             const Icon(
               Icons.route_rounded,
               size: 64,
-              color: Color(0xFF475569),
+              color: AppColors.intercityOutlineSoft,
             ),
             const SizedBox(height: 16),
             const Text(
@@ -125,7 +125,7 @@ class _DarkEmptyState extends StatelessWidget {
               'Cuando completes un viaje intermunicipal aparecerá aquí.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF94A3B8),
+                color: AppColors.intercityTextDim,
                 fontSize: 13,
                 height: 1.4,
               ),
@@ -134,8 +134,8 @@ class _DarkEmptyState extends StatelessWidget {
             OutlinedButton(
               onPressed: () => context.go('/intercity/booking'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF93C5FD),
-                side: const BorderSide(color: Color(0xFF334155)),
+                foregroundColor: AppColors.intercityAccent,
+                side: const BorderSide(color: AppColors.intercityOutline),
               ),
               child: const Text('Reservar un viaje'),
             ),
@@ -164,9 +164,9 @@ class _HistoryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.intercitySurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: AppColors.intercityOutline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,7 +190,7 @@ class _HistoryCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             '$dateLabel · ${trip.seats.label}',
-            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+            style: const TextStyle(color: AppColors.intercityTextDim, fontSize: 12),
           ),
           if (trip.driverName != null) ...[
             const SizedBox(height: 2),
@@ -199,7 +199,7 @@ class _HistoryCard extends StatelessWidget {
               '${trip.driverVehicle != null ? ' · ${trip.driverVehicle}' : ''}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              style: const TextStyle(color: AppColors.intercityTextMuted, fontSize: 12),
             ),
           ],
           const SizedBox(height: 10),
@@ -210,7 +210,7 @@ class _HistoryCard extends StatelessWidget {
                   trip.counterFare ?? trip.offeredFare,
                 ),
                 style: const TextStyle(
-                  color: Color(0xFF93C5FD),
+                  color: AppColors.intercityAccent,
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
                 ),
@@ -321,7 +321,7 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         decoration: const BoxDecoration(
-          color: Color(0xFF1E293B),
+          color: AppColors.intercitySurface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.all(20),
@@ -334,7 +334,7 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF334155),
+                  color: AppColors.intercityOutline,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -353,7 +353,7 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
               '${trip.origin.displayName} → '
               '${trip.destination.displayName}'
               '${trip.driverName != null ? ' con ${trip.driverName}' : ''}',
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+              style: const TextStyle(color: AppColors.intercityTextDim, fontSize: 13),
             ),
             const SizedBox(height: 20),
             Center(
@@ -373,7 +373,7 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
                             : Icons.star_outline_rounded,
                         color: s <= _stars
                             ? AppColors.star
-                            : const Color(0xFF475569),
+                            : AppColors.intercityOutlineSoft,
                       ),
                     ),
                 ],
@@ -387,16 +387,16 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
               decoration: InputDecoration(
                 hintText: 'Cuéntanos más (opcional)',
                 hintStyle:
-                    const TextStyle(color: Color(0xFF475569), fontSize: 13),
+                    const TextStyle(color: AppColors.intercityOutlineSoft, fontSize: 13),
                 filled: true,
-                fillColor: const Color(0xFF0F172A),
+                fillColor: AppColors.intercityBg,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF334155)),
+                  borderSide: const BorderSide(color: AppColors.intercityOutline),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF334155)),
+                  borderSide: const BorderSide(color: AppColors.intercityOutline),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -414,7 +414,7 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kInterColor,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor: const Color(0xFF334155),
+                  disabledBackgroundColor: AppColors.intercityOutline,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),

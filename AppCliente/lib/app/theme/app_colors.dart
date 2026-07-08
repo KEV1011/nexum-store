@@ -50,6 +50,17 @@ abstract final class AppColors {
   static const Color info = Color(0xFF3B82F6);
   static const Color infoContainer = Color(0xFFDBEAFE);
 
+  // ── Intermunicipal (tema nocturno premium de las pantallas intercity) ─────
+  static const Color intercityBg = Color(0xFF0F172A); // fondo profundo
+  static const Color intercitySurface = Color(0xFF1E293B); // tarjetas/paneles
+  static const Color intercityOutline = Color(0xFF334155); // bordes y hints
+  static const Color intercityOutlineSoft = Color(0xFF475569);
+  static const Color intercityTextMuted = Color(0xFF64748B); // texto secundario
+  static const Color intercityTextDim = Color(0xFF94A3B8); // texto terciario
+  static const Color intercityTextSoft = Color(0xFFCBD5E1); // texto suave
+  static const Color intercityAccent = Color(0xFF93C5FD); // acento azul claro
+  static const Color intercityBrand = Color(0xFF1E3A8A); // azul intermunicipal
+
   // ── Tipos de servicio ─────────────────────────────────────────────────────
   static const Color serviceParticular = Color(0xFF3949AB);
   static const Color serviceTaxi = Color(0xFFF57F17);
@@ -75,6 +86,8 @@ abstract final class AppColors {
   static const Color shadowMedium = Color(0x29000000);
   static const Color star = Color(0xFFFBBF24);
   static const Color starContainer = Color(0xFFFEF9C3);
+  // Texto legible sobre starContainer (ámbar oscuro).
+  static const Color starText = Color(0xFF78350F);
   static const Color overlay = Color(0x80000000);
   static const Color overlayLight = Color(0x33000000);
 }

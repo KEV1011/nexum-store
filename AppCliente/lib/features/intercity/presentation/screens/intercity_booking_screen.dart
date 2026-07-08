@@ -8,7 +8,7 @@ import 'package:nexum_client/features/intercity/domain/entities/intercity_entity
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 
 // Color de identidad del módulo intermunicipal
-const _kInterColor = Color(0xFF1E3A8A);
+const _kInterColor = AppColors.intercityBrand;
 
 class IntercityBookingScreen extends ConsumerStatefulWidget {
   const IntercityBookingScreen({super.key});
@@ -163,9 +163,9 @@ class _IntercityBookingScreenState
     final route = _route;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppColors.intercityBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: AppColors.intercityBg,
         foregroundColor: Colors.white,
         title: const Text(
           'Viaje Intermunicipal',
@@ -221,12 +221,12 @@ class _IntercityBookingScreenState
                         margin: const EdgeInsets.symmetric(horizontal: 8),
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                          color: AppColors.intercityBrand.withValues(alpha: 0.3),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons.swap_horiz_rounded,
-                          color: Color(0xFF93C5FD),
+                          color: AppColors.intercityAccent,
                           size: 20,
                         ),
                       ),
@@ -299,14 +299,14 @@ class _IntercityBookingScreenState
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
+                      color: AppColors.intercityBg,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF334155)),
+                      border: Border.all(color: AppColors.intercityOutline),
                     ),
                     child: Row(
                       children: [
                         const Icon(Icons.calendar_month_rounded,
-                            color: Color(0xFF93C5FD), size: 20),
+                            color: AppColors.intercityAccent, size: 20),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -319,7 +319,7 @@ class _IntercityBookingScreenState
                           ),
                         ),
                         const Icon(Icons.edit_rounded,
-                            color: Color(0xFF64748B), size: 16),
+                            color: AppColors.intercityTextMuted, size: 16),
                       ],
                     ),
                   ),
@@ -356,12 +356,12 @@ class _IntercityBookingScreenState
                         decoration: BoxDecoration(
                           color: selected
                               ? _kInterColor
-                              : const Color(0xFF0F172A),
+                              : AppColors.intercityBg,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: selected
                                 ? _kInterColor
-                                : const Color(0xFF334155),
+                                : AppColors.intercityOutline,
                           ),
                           boxShadow: selected
                               ? [
@@ -384,7 +384,7 @@ class _IntercityBookingScreenState
                               size: 15,
                               color: selected
                                   ? Colors.white
-                                  : const Color(0xFF94A3B8),
+                                  : AppColors.intercityTextDim,
                             ),
                             const SizedBox(width: 6),
                             Text(
@@ -394,7 +394,7 @@ class _IntercityBookingScreenState
                                 fontWeight: FontWeight.w600,
                                 color: selected
                                     ? Colors.white
-                                    : const Color(0xFFCBD5E1),
+                                    : AppColors.intercityTextSoft,
                               ),
                             ),
                           ],
@@ -421,7 +421,7 @@ class _IntercityBookingScreenState
                           '${route.isEstimated ? ' (aprox.)' : ''}'
                       : 'Elige un origen y un destino diferentes',
                   style: const TextStyle(
-                    color: Color(0xFF64748B),
+                    color: AppColors.intercityTextMuted,
                     fontSize: 12,
                   ),
                 ),
@@ -437,21 +437,21 @@ class _IntercityBookingScreenState
                   decoration: InputDecoration(
                     prefixText: '\$ ',
                     prefixStyle: const TextStyle(
-                      color: Color(0xFF93C5FD),
+                      color: AppColors.intercityAccent,
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
                     ),
                     hintText: '0',
-                    hintStyle: const TextStyle(color: Color(0xFF334155)),
+                    hintStyle: const TextStyle(color: AppColors.intercityOutline),
                     filled: true,
-                    fillColor: const Color(0xFF0F172A),
+                    fillColor: AppColors.intercityBg,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF334155)),
+                      borderSide: const BorderSide(color: AppColors.intercityOutline),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF334155)),
+                      borderSide: const BorderSide(color: AppColors.intercityOutline),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -464,13 +464,13 @@ class _IntercityBookingScreenState
                 const Row(
                   children: [
                     Icon(Icons.info_outline_rounded,
-                        size: 13, color: Color(0xFF64748B)),
+                        size: 13, color: AppColors.intercityTextMuted),
                     SizedBox(width: 4),
                     Flexible(
                       child: Text(
                         'El conductor puede aceptar o hacer una contraoferta.',
                         style: TextStyle(
-                            color: Color(0xFF64748B), fontSize: 11),
+                            color: AppColors.intercityTextMuted, fontSize: 11),
                       ),
                     ),
                   ],
@@ -505,7 +505,7 @@ class _IntercityBookingScreenState
                   controller: _notesCtrl,
                   hint: 'Notas para el conductor (equipaje, paradas, etc.)',
                   icon: Icons.notes_rounded,
-                  iconColor: const Color(0xFF64748B),
+                  iconColor: AppColors.intercityTextMuted,
                   maxLines: 2,
                 ),
               ],
@@ -569,9 +569,9 @@ class _DarkCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.intercitySurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: AppColors.intercityOutline),
       ),
       child: child,
     );
@@ -587,7 +587,7 @@ class _SectionTitle extends StatelessWidget {
     return Text(
       text,
       style: const TextStyle(
-        color: Color(0xFF94A3B8),
+        color: AppColors.intercityTextDim,
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.6,
@@ -622,14 +622,14 @@ class _CityDropdown extends StatelessWidget {
             const SizedBox(width: 4),
             Text(label,
                 style: const TextStyle(
-                    color: Color(0xFF64748B), fontSize: 10)),
+                    color: AppColors.intercityTextMuted, fontSize: 10)),
           ],
         ),
         const SizedBox(height: 4),
         DropdownButtonFormField<IntercityCity>(
           value: value,
           isExpanded: true,
-          dropdownColor: const Color(0xFF1E293B),
+          dropdownColor: AppColors.intercitySurface,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 14,
@@ -639,14 +639,14 @@ class _CityDropdown extends StatelessWidget {
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             filled: true,
-            fillColor: const Color(0xFF0F172A),
+            fillColor: AppColors.intercityBg,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF334155)),
+              borderSide: const BorderSide(color: AppColors.intercityOutline),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: Color(0xFF334155)),
+              borderSide: const BorderSide(color: AppColors.intercityOutline),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
@@ -681,13 +681,13 @@ class _RouteInfo extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 13, color: const Color(0xFF93C5FD)),
+        Icon(icon, size: 13, color: AppColors.intercityAccent),
         const SizedBox(width: 4),
         Flexible(
           child: Text(
             label,
             style: const TextStyle(
-              color: Color(0xFFCBD5E1),
+              color: AppColors.intercityTextSoft,
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
@@ -721,19 +721,19 @@ class _DarkTextField extends StatelessWidget {
       style: const TextStyle(color: Colors.white, fontSize: 13),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Color(0xFF475569), fontSize: 13),
+        hintStyle: const TextStyle(color: AppColors.intercityOutlineSoft, fontSize: 13),
         prefixIcon: Icon(icon, size: 18, color: iconColor),
         filled: true,
-        fillColor: const Color(0xFF0F172A),
+        fillColor: AppColors.intercityBg,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF334155)),
+          borderSide: const BorderSide(color: AppColors.intercityOutline),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF334155)),
+          borderSide: const BorderSide(color: AppColors.intercityOutline),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
@@ -765,8 +765,8 @@ class _BottomBar extends StatelessWidget {
     return Container(
       padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad + 12),
       decoration: const BoxDecoration(
-        color: Color(0xFF1E293B),
-        border: Border(top: BorderSide(color: Color(0xFF334155))),
+        color: AppColors.intercitySurface,
+        border: Border(top: BorderSide(color: AppColors.intercityOutline)),
       ),
       child: Row(
         children: [
@@ -778,12 +778,12 @@ class _BottomBar extends StatelessWidget {
                 Text(
                   '${route!.distanceKm.toInt()} km · ${route!.durationLabel}',
                   style: const TextStyle(
-                      color: Color(0xFF64748B), fontSize: 11),
+                      color: AppColors.intercityTextMuted, fontSize: 11),
                 ),
                 Text(
                   seats.label,
                   style: const TextStyle(
-                    color: Color(0xFFCBD5E1),
+                    color: AppColors.intercityTextSoft,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),

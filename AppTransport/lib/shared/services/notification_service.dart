@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import 'package:nexum_driver/shared/services/audio_service.dart';
+
 /// Servicio de notificaciones y retroalimentación háptica/sonora.
 /// Usado principalmente cuando llega una solicitud de viaje nueva.
 class NotificationService {
@@ -57,20 +59,20 @@ class NotificationService {
 
   // ── Audio feedback ────────────────────────────────────────────────────────
 
-  /// Reproduce sonido de solicitud de viaje.
-  ///
-  /// TODO(backend): Implementar con audioplayers package cuando se
-  /// incluyan assets de audio en la siguiente fase.
+  /// Sonido real de solicitud (assets/sounds/trip_request.wav) + vibración.
   Future<void> playTripRequestSound() async {
-    // Mock: solo vibración por ahora
-    await vibrateForTripRequest();
+    await Future.wait([
+      AudioService().playTripRequest(),
+      vibrateForTripRequest(),
+    ]);
   }
 
-  /// Reproduce sonido de confirmación (viaje aceptado).
-  ///
-  /// TODO(backend): Implementar con audioplayers package en la siguiente fase.
+  /// Confirmación (viaje aceptado): mismo beep corto + vibración de éxito.
+  /// (Único asset de audio disponible por ahora.)
   Future<void> playSuccessSound() async {
-    // Mock: vibración de confirmación por ahora
-    await vibrateSuccess();
+    await Future.wait([
+      AudioService().playTripRequest(),
+      vibrateSuccess(),
+    ]);
   }
 }

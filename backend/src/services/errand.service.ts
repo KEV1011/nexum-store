@@ -108,6 +108,17 @@ export async function acceptClientErrand(
   const existing = await prisma.errand.findUnique({ where: { id: errandId } });
   if (!existing || existing.status !== 'SEARCHING') return null;
 
+  // Sella la empresa del conductor al aceptar: el mandado queda atribuido a
+  // su flota y aparece en la liquidación del portal (/operator/trips + CSV).
+  let operatorSeal: string | null = null;
+  if (driverId) {
+    const d = await prisma.driver.findUnique({
+      where: { id: driverId },
+      select: { operatorId: true },
+    });
+    operatorSeal = d?.operatorId ?? null;
+  }
+
   const updated = await prisma.errand.update({
     where: { id: errandId },
     data: {
@@ -116,6 +127,7 @@ export async function acceptClientErrand(
       driverName,
       driverPhone,
       ...(driverId ? { driverId } : {}),
+      ...(operatorSeal ? { operatorId: operatorSeal } : {}),
     },
   });
 

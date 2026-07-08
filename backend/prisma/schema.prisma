@@ -545,6 +545,8 @@ model Errand {
   requestRef       String        @unique
   userId           String
   driverId         String?
+  // Empresa del conductor al momento de aceptar (sellado para liquidación).
+  operatorId       String?
   category         ErrandCategory
   description      String
   pickupAddress    String
@@ -568,6 +570,7 @@ model Errand {
 
   @@index([userId])
   @@index([driverId])
+  @@index([operatorId])
   @@index([status])
   @@map("errands")
 }

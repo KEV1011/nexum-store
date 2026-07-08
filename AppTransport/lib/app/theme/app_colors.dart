@@ -77,4 +77,9 @@ abstract final class AppColors {
   static const Color starContainer = Color(0xFFFEF9C3);
   static const Color overlay = Color(0x80000000);
   static const Color overlayLight = Color(0x33000000);
+
+  // ── Intermunicipal ────────────────────────────────────────────────────────
+  // Azul de marca del servicio intermunicipal (mismo token que en el app
+  // cliente para mantener la identidad visual entre apps).
+  static const Color intercityBrand = Color(0xFF1E3A8A);
 }

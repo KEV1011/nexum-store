@@ -247,7 +247,7 @@ export async function listOperatorTrips(
   operatorId: string,
   limit = 50,
 ): Promise<OperatorTripsResult> {
-  const [rows, intercityRows, completedAgg, intercityAgg, total, intercityTotal] = await Promise.all([
+  const [rows, intercityRows, errandRows, completedAgg, intercityAgg, errandAgg, total, intercityTotal, errandTotal] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId },
       orderBy: { createdAt: 'desc' },
@@ -286,6 +286,22 @@ export async function listOperatorTrips(
         completedAt: true,
       },
     }),
+    prisma.errand.findMany({
+      where: { operatorId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        pickupAddress: true,
+        dropoffAddress: true,
+        serviceFee: true,
+        driverId: true,
+        driverName: true,
+        createdAt: true,
+        deliveredAt: true,
+      },
+    }),
     prisma.trip.aggregate({
       where: { operatorId, status: 'COMPLETED' },
       _sum: { finalFare: true },
@@ -296,8 +312,14 @@ export async function listOperatorTrips(
       _sum: { finalFare: true },
       _count: true,
     }),
+    prisma.errand.aggregate({
+      where: { operatorId, status: 'DELIVERED' },
+      _sum: { serviceFee: true },
+      _count: true,
+    }),
     prisma.trip.count({ where: { operatorId } }),
     prisma.intercityBooking.count({ where: { operatorId } }),
+    prisma.errand.count({ where: { operatorId } }),
   ]);
 
   const urban: OperatorTripDTO[] = rows.map((t) => ({
@@ -328,24 +350,53 @@ export async function listOperatorTrips(
     completedAt: b.completedAt?.toISOString() ?? null,
   }));
 
-  // Fusión urbano + intermunicipal, más recientes primero.
-  const trips = [...urban, ...intercity]
+  // Mandados: estados propios normalizados al vocabulario de viajes para que
+  // el portal los pinte con los mismos badges (DELIVERED→COMPLETED, etc.).
+  const errands: OperatorTripDTO[] = errandRows.map((e) => ({
+    id: e.id,
+    status: _errandStatusForPortal(e.status),
+    serviceType: 'MANDADO',
+    originAddress: e.pickupAddress,
+    destAddress: e.dropoffAddress,
+    fare: e.serviceFee,
+    distanceKm: null,
+    driverId: e.driverId,
+    driverName: e.driverName,
+    createdAt: e.createdAt.toISOString(),
+    completedAt: e.deliveredAt?.toISOString() ?? null,
+  }));
+
+  // Fusión urbano + intermunicipal + mandados, más recientes primero.
+  const trips = [...urban, ...intercity, ...errands]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit);
 
   return {
     trips,
     summary: {
-      total: total + intercityTotal,
-      completed: completedAgg._count + intercityAgg._count,
-      grossFare: (completedAgg._sum.finalFare ?? 0) + (intercityAgg._sum.finalFare ?? 0),
+      total: total + intercityTotal + errandTotal,
+      completed: completedAgg._count + intercityAgg._count + errandAgg._count,
+      grossFare:
+        (completedAgg._sum.finalFare ?? 0) +
+        (intercityAgg._sum.finalFare ?? 0) +
+        (errandAgg._sum.serviceFee ?? 0),
     },
   };
 }
 
-/** Reporte de liquidación: viajes sellados (urbanos + intermunicipales) en CSV. */
+/** Estados de mandado → vocabulario de viajes del portal. */
+function _errandStatusForPortal(status: string): string {
+  switch (status) {
+    case 'DELIVERED': return 'COMPLETED';
+    case 'SHOPPING':
+    case 'ON_THE_WAY': return 'IN_PROGRESS';
+    default: return status; // SEARCHING | ACCEPTED | CANCELLED
+  }
+}
+
+/** Reporte de liquidación: viajes sellados (urbanos + intermunicipales + mandados) en CSV. */
 export async function exportOperatorTripsCsv(operatorId: string): Promise<string> {
-  const [rows, intercityRows] = await Promise.all([
+  const [rows, intercityRows, errandRows] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId },
       orderBy: { createdAt: 'desc' },
@@ -383,6 +434,21 @@ export async function exportOperatorTripsCsv(operatorId: string): Promise<string
         completedAt: true,
       },
     }),
+    prisma.errand.findMany({
+      where: { operatorId },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      select: {
+        requestRef: true,
+        status: true,
+        pickupAddress: true,
+        dropoffAddress: true,
+        serviceFee: true,
+        driverName: true,
+        createdAt: true,
+        deliveredAt: true,
+      },
+    }),
   ]);
 
   type CsvRow = { createdAt: Date; cols: string[] };
@@ -417,11 +483,27 @@ export async function exportOperatorTripsCsv(operatorId: string): Promise<string
     ],
   }));
 
+  const errands: CsvRow[] = errandRows.map((e) => ({
+    createdAt: e.createdAt,
+    cols: [
+      e.requestRef,
+      _errandStatusForPortal(e.status),
+      'MANDADO',
+      e.pickupAddress,
+      e.dropoffAddress,
+      e.driverName ?? '',
+      '',
+      String(Math.round(e.serviceFee)),
+      e.createdAt.toISOString(),
+      e.deliveredAt?.toISOString() ?? '',
+    ],
+  }));
+
   const header = [
     'Referencia', 'Estado', 'Servicio', 'Origen', 'Destino',
     'Conductor', 'Distancia_km', 'Tarifa_COP', 'Creado', 'Completado',
   ];
-  const lines = [...urban, ...intercity]
+  const lines = [...urban, ...intercity, ...errands]
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map((r) => r.cols);
 

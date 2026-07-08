@@ -8,7 +8,7 @@ import 'package:nexum_driver/features/intercity/domain/entities/intercity_reques
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
 import 'package:nexum_driver/shared/services/ws_service.dart';
 
-const _kIntercityColor = Color(0xFF1E3A8A);
+const _kIntercityColor = AppColors.intercityBrand;
 
 /// Solicitudes intermunicipales en vivo: el conductor publica su
 /// disponibilidad y recibe reservas privadas para aceptar, contraofertar o
