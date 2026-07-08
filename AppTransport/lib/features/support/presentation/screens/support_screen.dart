@@ -41,10 +41,10 @@ class _SupportScreenState extends State<SupportScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          _FaqTab(),
-          _ChatTab(),
-          _TicketsTab(),
+        children: [
+          const _FaqTab(),
+          const _ChatTab(),
+          _TicketsTab(onGoToChat: () => _tabController.animateTo(1)),
         ],
       ),
     );
@@ -576,231 +576,52 @@ class _ChatInput extends StatelessWidget {
 
 // ── Tickets tab ────────────────────────────────────────────────────────────────
 
-class _TicketsTab extends StatefulWidget {
-  const _TicketsTab();
-
-  @override
-  State<_TicketsTab> createState() => _TicketsTabState();
-}
-
-class _TicketsTabState extends State<_TicketsTab> {
-  String? _expandedId;
+class _TicketsTab extends StatelessWidget {
+  const _TicketsTab({required this.onGoToChat});
+  final VoidCallback onGoToChat;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    return ListView(
-      padding: const EdgeInsets.all(AppConstants.spacingM),
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Mis tickets de soporte',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: () =>
-                  ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content:
-                        Text('Formulario de nuevo ticket próximamente')),
-              ),
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Nuevo'),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppConstants.spacingM),
-        ..._mockTickets.map(
-          (t) => _TicketCard(
-            ticket: t,
-            isExpanded: _expandedId == t.id,
-            onTap: () => setState(
-              () => _expandedId = _expandedId == t.id ? null : t.id,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TicketCard extends StatelessWidget {
-  const _TicketCard({
-    required this.ticket,
-    required this.isExpanded,
-    required this.onTap,
-  });
-  final _Ticket ticket;
-  final bool isExpanded;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final (statusLabel, statusColor, statusBg) = _statusStyle(ticket.status);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-        border: Border.all(
-          color: isExpanded
-              ? AppColors.primary
-              : (isDark ? AppColors.outlineDark : AppColors.outlineLight),
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+    // Los tickets con seguimiento aún no existen en el backend: estado vacío
+    // honesto que dirige al chat de soporte (sin tickets de demostración).
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppConstants.spacingXL),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: statusBg,
-                  borderRadius:
-                      BorderRadius.circular(AppConstants.radiusSmall),
-                ),
-                child: Icon(_statusIcon(ticket.status),
-                    size: 18, color: statusColor),
-              ),
-              title: Text(
-                ticket.subject,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                '${ticket.id} · ${ticket.date}',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: AppColors.textSecondary),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: statusBg,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      statusLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: statusColor,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  AnimatedRotation(
-                    turns: isExpanded ? 0.5 : 0,
-                    duration: AppConstants.shortAnimation,
-                    child: const Icon(Icons.expand_more_rounded,
-                        color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-              onTap: onTap,
+            const Icon(
+              Icons.confirmation_number_outlined,
+              size: 48,
+              color: AppColors.textTertiary,
             ),
-            if (isExpanded)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppConstants.spacingL,
-                  0,
-                  AppConstants.spacingM,
-                  AppConstants.spacingM,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Divider(),
-                    const SizedBox(height: AppConstants.spacingS),
-                    Text(
-                      'Descripción',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: AppColors.textTertiary,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      ticket.description,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary, height: 1.5),
-                    ),
-                    if (ticket.status == _TicketStatus.resolved) ...[
-                      const SizedBox(height: AppConstants.spacingM),
-                      Container(
-                        padding: const EdgeInsets.all(AppConstants.spacingS),
-                        decoration: BoxDecoration(
-                          color: AppColors.successContainer,
-                          borderRadius: BorderRadius.circular(
-                              AppConstants.radiusSmall),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.check_circle_rounded,
-                                size: 16, color: AppColors.success),
-                            SizedBox(width: 6),
-                            Text(
-                              'Ticket resuelto. ¿Necesitas ayuda adicional? Abre un nuevo ticket.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.primaryDim,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+            const SizedBox(height: AppConstants.spacingM),
+            Text(
+              'No tienes tickets abiertos',
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: AppConstants.spacingXS),
+            Text(
+              'Si tienes un problema con un viaje, un pago o tus documentos, '
+              'escríbenos por el chat y le haremos seguimiento.',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppConstants.spacingL),
+            FilledButton.icon(
+              onPressed: onGoToChat,
+              icon: const Icon(Icons.support_agent_rounded, size: 18),
+              label: const Text('Ir al chat de soporte'),
+            ),
           ],
         ),
       ),
     );
   }
-
-  (String, Color, Color) _statusStyle(_TicketStatus s) => switch (s) {
-        _TicketStatus.open => (
-            'Abierto',
-            AppColors.warning,
-            AppColors.warningContainer
-          ),
-        _TicketStatus.inProgress => (
-            'En proceso',
-            AppColors.info,
-            AppColors.infoContainer
-          ),
-        _TicketStatus.resolved => (
-            'Resuelto',
-            AppColors.success,
-            AppColors.successContainer
-          ),
-      };
-
-  IconData _statusIcon(_TicketStatus s) => switch (s) {
-        _TicketStatus.open => Icons.pending_outlined,
-        _TicketStatus.inProgress => Icons.sync_rounded,
-        _TicketStatus.resolved => Icons.check_circle_outline_rounded,
-      };
 }
-
-// ── Models ─────────────────────────────────────────────────────────────────────
 
 class _Faq {
   const _Faq({
@@ -822,23 +643,6 @@ class _ChatMessage {
   final String text;
   final bool isAgent;
   final String time;
-}
-
-enum _TicketStatus { open, inProgress, resolved }
-
-class _Ticket {
-  const _Ticket({
-    required this.id,
-    required this.subject,
-    required this.description,
-    required this.date,
-    required this.status,
-  });
-  final String id;
-  final String subject;
-  final String description;
-  final String date;
-  final _TicketStatus status;
 }
 
 // ── Static data ────────────────────────────────────────────────────────────────
@@ -891,32 +695,5 @@ const _faqs = [
     question: '¿Por qué puede bloquearse mi cuenta?',
     answer:
         'Las causas más comunes son: tasa de cancelación alta (>5%), reportes de pasajeros, documentos vencidos o comportamiento contrario a las políticas de Nexum. Contacta soporte para apelar una suspensión.',
-  ),
-];
-
-const _mockTickets = [
-  _Ticket(
-    id: '#10342',
-    subject: 'Cobro incorrecto en viaje del 15 de mayo',
-    description:
-        'El monto cobrado fue mayor al acordado con el pasajero. Solicito revisión del viaje #VJ-20250515-001. La tarifa aplicada fue \$18.500 pero el valor acordado era \$14.000.',
-    date: '15 may 2025',
-    status: _TicketStatus.inProgress,
-  ),
-  _Ticket(
-    id: '#10198',
-    subject: 'Actualización de cuenta bancaria a Nequi',
-    description:
-        'Solicité el cambio de mi cuenta bancaria de Bancolombia a Nequi el 2 de mayo. El proceso fue exitoso y mi información bancaria está actualizada.',
-    date: '2 may 2025',
-    status: _TicketStatus.resolved,
-  ),
-  _Ticket(
-    id: '#9847',
-    subject: 'Problema con verificación de SOAT',
-    description:
-        'Mi SOAT fue rechazado por error del sistema. El documento está vigente hasta diciembre de 2025. Adjunté la póliza digital para revisión.',
-    date: '18 abr 2025',
-    status: _TicketStatus.resolved,
   ),
 ];

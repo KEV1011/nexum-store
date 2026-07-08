@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
@@ -99,6 +100,18 @@ class _TransportBookingScreenState
                 icon: const Icon(Icons.bookmarks_outlined, size: 20),
                 tooltip: 'Mis direcciones',
                 onPressed: () => _pickAddress(_originCtrl),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _useCurrentLocation,
+                icon: const Icon(Icons.my_location_rounded, size: 18),
+                label: const Text('Usar mi ubicación actual'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ),
             Padding(
@@ -227,6 +240,40 @@ class _TransportBookingScreenState
     }
   }
 
+  /// Toma la ubicación actual del dispositivo (GPS en móvil, API del navegador
+  /// en web) y la fija como origen. Así se puede pedir un viaje sin depender del
+  /// autocompletado de Google: el matching solo necesita el punto de recogida.
+  Future<void> _useCurrentLocation() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Activa la ubicación (GPS) del dispositivo.')));
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Permiso de ubicación denegado.')));
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      setState(() {
+        _originLat = pos.latitude;
+        _originLng = pos.longitude;
+        _originCtrl.text = 'Mi ubicación actual';
+      });
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('No se pudo obtener tu ubicación.')));
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
@@ -246,29 +293,42 @@ class _TransportBookingScreenState
           );
     }
 
-    final id = await ref.read(transportProvider.notifier).request(
-          serviceType: widget.serviceType,
-          origin: _originCtrl.text.trim(),
-          destination: _destCtrl.text.trim(),
-          originLat: _originLat,
-          originLng: _originLng,
-          destLat: _destLat,
-          destLng: _destLng,
-          distanceKm: route?.distanceKm,
-          etaMinutes: route?.durationMinutes,
-          recipientName: _isEnvios ? _recipientNameCtrl.text.trim() : null,
-          recipientPhone: _isEnvios
-              ? (_recipientPhoneCtrl.text.trim().isEmpty
-                  ? null
-                  : _recipientPhoneCtrl.text.trim())
-              : null,
-          packageDescription: _isEnvios
-              ? (_packageCtrl.text.trim().isEmpty
-                  ? null
-                  : _packageCtrl.text.trim())
-              : null,
-          surgeMultiplier: surgeMultiplier,
-        );
+    final String id;
+    try {
+      id = await ref.read(transportProvider.notifier).request(
+            serviceType: widget.serviceType,
+            origin: _originCtrl.text.trim(),
+            destination: _destCtrl.text.trim(),
+            originLat: _originLat,
+            originLng: _originLng,
+            destLat: _destLat,
+            destLng: _destLng,
+            distanceKm: route?.distanceKm,
+            etaMinutes: route?.durationMinutes,
+            recipientName: _isEnvios ? _recipientNameCtrl.text.trim() : null,
+            recipientPhone: _isEnvios
+                ? (_recipientPhoneCtrl.text.trim().isEmpty
+                    ? null
+                    : _recipientPhoneCtrl.text.trim())
+                : null,
+            packageDescription: _isEnvios
+                ? (_packageCtrl.text.trim().isEmpty
+                    ? null
+                    : _packageCtrl.text.trim())
+                : null,
+            surgeMultiplier: surgeMultiplier,
+          );
+    } catch (_) {
+      // El servidor no recibió el viaje: se informa en lugar de simular.
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+          'No se pudo solicitar el viaje. Revisa tu conexión e inténtalo de nuevo.',
+        ),
+      ));
+      return;
+    }
 
     if (!mounted) return;
 

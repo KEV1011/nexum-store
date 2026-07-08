@@ -8,7 +8,7 @@ import 'package:nexum_driver/features/intercity/domain/entities/intercity_reques
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
 import 'package:nexum_driver/shared/services/ws_service.dart';
 
-const _kIntercityColor = Color(0xFF1E3A8A);
+const _kIntercityColor = AppColors.intercityBrand;
 
 /// Solicitudes intermunicipales en vivo: el conductor publica su
 /// disponibilidad y recibe reservas privadas para aceptar, contraofertar o
@@ -103,6 +103,25 @@ class _IntercityRequestsScreenState
     final state = ref.watch(intercityDriverProvider);
     final notifier = ref.read(intercityDriverProvider.notifier);
 
+    // Avisos de transición del viaje activo (rechazo, cancelación, liquidación).
+    ref.listen<IntercityDriverState>(intercityDriverProvider, (prev, next) {
+      final prevActive = prev?.active;
+      final nextActive = next.active;
+      if (prevActive != null && nextActive == null) {
+        final msg = switch (prevActive.phase) {
+          IntercityTripPhase.pending => 'La reserva ya no está disponible.',
+          IntercityTripPhase.waitingClient =>
+            'El pasajero no aceptó tu contraoferta.',
+          IntercityTripPhase.completed => null, // cierre manual de la tarjeta
+          _ => 'El pasajero canceló la reserva.',
+        };
+        if (msg != null) _showSent(msg);
+      } else if (nextActive?.phase == IntercityTripPhase.completed &&
+          prevActive?.phase != IntercityTripPhase.completed) {
+        _showSent('¡Viaje finalizado! La ganancia ya está en tu billetera.');
+      }
+    });
+
     return Scaffold(
       backgroundColor: AppColors.backgroundLight,
       appBar: AppBar(
@@ -130,6 +149,17 @@ class _IntercityRequestsScreenState
             ),
           ),
           const SizedBox(height: 16),
+
+          // ── Viaje activo ──────────────────────────────────────────────────
+          if (state.active != null) ...[
+            _ActiveTripCard(
+              trip: state.active!,
+              onStart: notifier.startTrip,
+              onComplete: notifier.completeTrip,
+              onDismiss: notifier.dismissCompleted,
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // ── Solicitudes entrantes ─────────────────────────────────────────
           Row(
@@ -178,14 +208,147 @@ class _IntercityRequestsScreenState
                 request: req,
                 onAccept: () {
                   notifier.accept(req.bookingId);
-                  _showSent('¡Viaje aceptado! Revisa los detalles con '
-                      'el pasajero por el chat.');
+                  _showSent('Aceptación enviada. Espera la confirmación.');
                 },
                 onCounter: () => _counterOffer(req),
                 onReject: () => notifier.reject(req.bookingId),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Tarjeta del viaje activo ──────────────────────────────────────────────────
+
+class _ActiveTripCard extends StatelessWidget {
+  const _ActiveTripCard({
+    required this.trip,
+    required this.onStart,
+    required this.onComplete,
+    required this.onDismiss,
+  });
+
+  final IntercityActiveTrip trip;
+  final VoidCallback onStart;
+  final VoidCallback onComplete;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final req = trip.request;
+    final (chipColor, chipLabel) = switch (trip.phase) {
+      IntercityTripPhase.pending => (AppColors.warning, 'Confirmando…'),
+      IntercityTripPhase.waitingClient => (
+          AppColors.warning,
+          'Esperando al pasajero'
+        ),
+      IntercityTripPhase.confirmed => (_kIntercityColor, 'Confirmado'),
+      IntercityTripPhase.inProgress => (AppColors.success, 'En viaje'),
+      IntercityTripPhase.completed => (AppColors.success, 'Finalizado'),
+    };
+
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: chipColor.withValues(alpha: 0.4)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Viaje activo · ${req.routeLabel}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: chipColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    chipLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: chipColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            _InfoRow(
+              icon: Icons.payments_outlined,
+              text: 'Tarifa: ${CurrencyFormatter.format(trip.fare)}',
+            ),
+            if (req.pickupAddress != null && req.pickupAddress!.isNotEmpty)
+              _InfoRow(
+                icon: Icons.trip_origin_rounded,
+                text: 'Recogida: ${req.pickupAddress}',
+              ),
+            if (req.dropoffAddress != null && req.dropoffAddress!.isNotEmpty)
+              _InfoRow(
+                icon: Icons.flag_outlined,
+                text: 'Destino: ${req.dropoffAddress}',
+              ),
+            const SizedBox(height: 12),
+            switch (trip.phase) {
+              IntercityTripPhase.pending => const LinearProgressIndicator(
+                  minHeight: 4,
+                ),
+              IntercityTripPhase.waitingClient => const Text(
+                  'Tu contraoferta fue enviada. Te avisaremos cuando el '
+                  'pasajero decida.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              IntercityTripPhase.confirmed => SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onStart,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _kIntercityColor,
+                    ),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Iniciar viaje'),
+                  ),
+                ),
+              IntercityTripPhase.inProgress => SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onComplete,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                    ),
+                    icon: const Icon(Icons.flag_rounded),
+                    label: const Text('Finalizar viaje'),
+                  ),
+                ),
+              IntercityTripPhase.completed => SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onDismiss,
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('Cerrar'),
+                  ),
+                ),
+            },
+          ],
+        ),
       ),
     );
   }

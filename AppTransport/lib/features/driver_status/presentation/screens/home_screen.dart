@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,10 +17,6 @@ import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/core/domain/work_mode_provider.dart';
-import 'package:nexum_driver/core/mock_data/driver_mock.dart';
-import 'package:nexum_driver/core/mock_data/errands_mock.dart';
-import 'package:nexum_driver/core/mock_data/passengers_mock.dart';
-import 'package:nexum_driver/core/mock_data/trips_mock.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
@@ -139,12 +134,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Timer? _countdownTimer;
-  Timer? _webMockTimer;
   StreamSubscription<Map<String, dynamic>>? _wsTripSub;
   StreamSubscription<Map<String, dynamic>>? _wsErrandSub;
   StreamSubscription<String>? _wsCancelSub;
   StreamSubscription<String>? _wsErrandCancelSub;
-  final _rng = math.Random();
 
   static const _center = LatLng(
     MapConstants.pamplonaCenterLat,
@@ -166,7 +159,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
-    _webMockTimer?.cancel();
     _wsTripSub?.cancel();
     _wsErrandSub?.cancel();
     _wsCancelSub?.cancel();
@@ -209,7 +201,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
       _connectWs();
     } else {
-      _webMockTimer?.cancel();
       _countdownTimer?.cancel();
       _wsTripSub?.cancel();
       _wsErrandSub?.cancel();
@@ -237,7 +228,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _connectWs() async {
     final token = await _storage.read(key: AppConstants.authTokenKey);
     if (token == null || token.isEmpty) {
-      _scheduleWebMockRequest();
+      if (mounted) {
+        AppSnackbar.showInfo(
+          context, 'Tu sesión expiró. Cierra sesión y vuelve a entrar.');
+      }
       return;
     }
 
@@ -245,16 +239,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final connected = await DriverWsService().connect(token, workMode);
 
     if (!connected || !mounted) {
-      _scheduleWebMockRequest();
+      // App real: sin conexión NO inventamos pedidos. Avisamos y el socket
+      // reintenta solo (auto-reconexión en DriverWsService).
+      if (mounted) {
+        AppSnackbar.showInfo(
+          context, 'No se pudo conectar con el servidor. Reintentando…');
+      }
       return;
     }
 
-    // Transmite el GPS real al backend: alimenta el matching geoespacial para
-    // que este conductor sea asignable y, durante un viaje, mueve su punto en
-    // el mapa del pasajero. Sin esto el conductor nunca reporta su posición.
+    // Transmite el GPS al backend: alimenta el matching geoespacial para que
+    // este conductor sea asignable y, durante un viaje, mueve su punto en el
+    // mapa del pasajero. Arranca el tracking tras resolver el permiso, con o
+    // sin GPS: si se deniega (p. ej. web), LocationService reporta el centro de
+    // Pamplona como heartbeat para que el conductor siga siendo asignable.
     unawaited(
-      LocationService().requestPermissions().then((granted) {
-        if (granted) LocationService().startTracking();
+      LocationService().requestPermissions().then((_) {
+        LocationService().startTracking();
       }),
     );
 
@@ -387,66 +388,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  // ── Mock trip dispatch ─────────────────────────────────────────────────
-
-  void _scheduleWebMockRequest() {
-    _webMockTimer?.cancel();
-    final delay = Duration(
-      seconds: AppConstants.minTripRequestIntervalSeconds +
-          _rng.nextInt(
-            AppConstants.maxTripRequestIntervalSeconds -
-                AppConstants.minTripRequestIntervalSeconds,
-          ),
-    );
-    _webMockTimer = Timer(delay, _fireWebMockRequest);
-  }
-
-  void _fireWebMockRequest() {
-    if (!mounted || !_state.isOnline) return;
-    final tripData =
-        TripsMock.tripRequests[_rng.nextInt(TripsMock.tripRequests.length)];
-    final passenger = PassengersMock
-        .passengers[_rng.nextInt(PassengersMock.passengers.length)];
-    final dist = tripData.distanceKm;
-    final dur = tripData.durationMinutes;
-    final workMode = ref.read(selectedWorkModeProvider);
-    final fare = workMode.estimateFare(dist, dur.toDouble()) *
-        (1 - workMode.platformCommission);
-
-    // En modo Mandado, adjuntamos un mandado de ejemplo descrito por el
-    // cliente. La tarifa para el conductor es la del servicio (sin las
-    // compras, que las paga aparte el cliente).
-    ErrandDetails? errand;
-    if (workMode.isErrand) {
-      final mock =
-          ErrandsMock.errands[_rng.nextInt(ErrandsMock.errands.length)];
-      errand = mock.toDetails();
-    }
-
-    final request = TripRequestEntity(
-      id: '${tripData.id}_${DateTime.now().millisecondsSinceEpoch}',
-      passenger: passenger,
-      origin: LocationModel(
-        latitude: tripData.originLat,
-        longitude: tripData.originLng,
-        address: tripData.originAddress,
-      ),
-      destination: LocationModel(
-        latitude: tripData.destinationLat,
-        longitude: tripData.destinationLng,
-        address: tripData.destinationAddress,
-      ),
-      distanceKm: dist,
-      durationMinutes: dur,
-      estimatedFare: fare,
-      distanceToPickupKm: 0.5,
-      etaToPickupMinutes: 3,
-      requestedAt: DateTime.now(),
-      errand: errand,
-    );
-    _onTripRequest(request);
-  }
-
   void _onTripRequest(TripRequestEntity request) {
     if (!mounted || !_state.isOnline) return;
     AudioService().playTripRequest();
@@ -470,9 +411,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (newLeft <= 0) {
         timer.cancel();
         setState(() => _state = _state.copyWith(clearPending: true));
-        if (_state.isOnline && !DriverWsService().isConnected) {
-          _scheduleWebMockRequest();
-        }
       } else {
         setState(() => _state = _state.copyWith(requestSecondsLeft: newLeft));
       }
@@ -502,9 +440,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       } else {
         DriverWsService().sendReject(request.id);
       }
-    }
-    if (_state.isOnline && !DriverWsService().isConnected) {
-      _scheduleWebMockRequest();
     }
   }
 
@@ -775,8 +710,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '${_greeting()}, '
-                '${DriverMock.firstName.split(' ').first}',
+                // Nombre real del perfil; solo el saludo mientras carga.
+                switch (ref.watch(driverProfileProvider
+                    .select((s) => s.profile?.fullName))) {
+                  final String name when name.trim().isNotEmpty =>
+                    '${_greeting()}, ${name.trim().split(' ').first}',
+                  _ => _greeting(),
+                },
                 style: const TextStyle(
                   color: _panelText,
                   fontWeight: FontWeight.w700,
@@ -1199,10 +1139,13 @@ class _AppDrawer extends ConsumerWidget {
   final ServiceType selectedServiceType;
   final bool isOnline;
 
-  static String _initials() {
-    final first = DriverMock.firstName.split(' ').first;
-    final last = DriverMock.lastName.split(' ').first;
-    return '${first[0]}${last[0]}';
+  static String _initials(String? fullName) {
+    final parts = (fullName ?? '').trim().split(RegExp(r'\s+'))
+      ..removeWhere((p) => p.isEmpty);
+    if (parts.isEmpty) return '·';
+    final first = parts.first[0];
+    final last = parts.length > 1 ? parts.last[0] : '';
+    return '$first$last'.toUpperCase();
   }
 
   @override
@@ -1212,6 +1155,9 @@ class _AppDrawer extends ConsumerWidget {
     final themeDark = ref.watch(
       themeProvider.select((m) => m == ThemeMode.dark),
     );
+    // Identidad real del conductor (perfil del backend); mientras carga se
+    // muestra un encabezado neutro, nunca datos de demostración.
+    final profile = ref.watch(driverProfileProvider).profile;
 
     return Drawer(
       backgroundColor:
@@ -1240,7 +1186,7 @@ class _AppDrawer extends ConsumerWidget {
                           ),
                           child: Center(
                             child: Text(
-                              _initials(),
+                              _initials(profile?.fullName),
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 20,
@@ -1277,39 +1223,46 @@ class _AppDrawer extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${DriverMock.firstName} '
-                            '${DriverMock.lastName.split(' ').first}',
+                            profile?.fullName ?? 'Tu perfil',
                             style: theme.textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w700),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.star_rounded,
-                                color: AppColors.star,
-                                size: 14,
+                          if (profile == null)
+                            Text(
+                              'Completa tu registro',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: AppColors.textTertiary,
                               ),
-                              const SizedBox(width: 2),
-                              Text(
-                                DriverMock.rating.toStringAsFixed(2),
-                                style: theme.textTheme.bodySmall
-                                    ?.copyWith(
-                                  fontWeight: FontWeight.w700,
+                            )
+                          else
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.star_rounded,
+                                  color: AppColors.star,
+                                  size: 14,
                                 ),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '(${DriverMock.totalRatings})',
-                                style: theme.textTheme.bodySmall
-                                    ?.copyWith(
-                                  color: AppColors.textTertiary,
+                                const SizedBox(width: 2),
+                                Text(
+                                  profile.rating.toStringAsFixed(2),
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '· ${profile.totalTrips} viajes',
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
                         ],
                       ),
                     ),
@@ -1438,7 +1391,9 @@ class _AppDrawer extends ConsumerWidget {
                     iconColor: const Color(0xFF01579B),
                     onTap: () {
                       Navigator.of(context).pop();
-                      context.push('/documents');
+                      // Pantalla real de verificación (sube documentos al
+                      // backend); la antigua /documents era una simulación.
+                      context.push('/verification');
                     },
                   ),
                   _DrawerItem(
@@ -1448,25 +1403,6 @@ class _AppDrawer extends ConsumerWidget {
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/safety');
-                    },
-                  ),
-                  _DrawerSection(label: 'ENVÍOS'),
-                  _DrawerItem(
-                    icon: Icons.storefront_rounded,
-                    label: 'Portal del Negocio',
-                    iconColor: AppColors.serviceEnvios,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      context.push('/business-portal');
-                    },
-                  ),
-                  _DrawerItem(
-                    icon: Icons.add_business_rounded,
-                    label: 'Registrar negocio',
-                    iconColor: AppColors.serviceEnvios,
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      context.push('/business-registration');
                     },
                   ),
                   _DrawerSection(label: 'CUENTA'),

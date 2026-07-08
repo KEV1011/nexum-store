@@ -3,10 +3,11 @@ import 'package:nexum_driver/features/earnings/domain/entities/daily_earnings_en
 import 'package:nexum_driver/features/earnings/domain/repositories/earnings_repository.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 
-/// Implementación mock del repositorio de ganancias.
+/// Repositorio de ganancias. La fuente de datos concreta (remota o mock) se
+/// inyecta por el provider.
 class EarningsRepositoryImpl implements EarningsRepository {
   EarningsRepositoryImpl(this._dataSource);
-  final EarningsMockDataSource _dataSource;
+  final EarningsDataSource _dataSource;
 
   @override
   Future<DailyEarningsEntity> getDailyEarnings(DateTime date) =>

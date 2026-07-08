@@ -206,48 +206,68 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
 class _NexumDriverLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius:
-                BorderRadius.circular(AppConstants.radiusLarge),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x3300C853),
-                blurRadius: 20,
-                offset: Offset(0, 8),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.local_taxi_rounded,
-            color: AppColors.textOnPrimary,
-            size: 44,
-          ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppConstants.spacingL,
+        vertical: AppConstants.spacingXL,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primary,
+            AppColors.primary.withValues(alpha: 0.82),
+          ],
         ),
-        const SizedBox(height: AppConstants.spacingM),
-        Text(
-          AppConstants.appName,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: AppColors.secondary,
-            letterSpacing: 0.5,
+        borderRadius: BorderRadius.circular(AppConstants.radiusXLarge),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.30),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
           ),
-        ),
-        const SizedBox(height: AppConstants.spacingXS),
-        const Text(
-          'Pamplona, Norte de Santander',
-          style: TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 66,
+            height: 66,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+            ),
+            child: const Icon(
+              Icons.local_taxi_rounded,
+              color: Colors.white,
+              size: 38,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: AppConstants.spacingM),
+          const Text(
+            'Nexum Conductor',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingXS),
+          Text(
+            'Conduce y gana en Pamplona',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13.5,
+              color: Colors.white.withValues(alpha: 0.92),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -26,6 +26,12 @@ class LocationService {
   Position? _lastPosition;
   bool _isTracking = false;
 
+  // Centro de Pamplona — heartbeat de respaldo cuando aún no hay fix de GPS
+  // (p. ej. web con permiso denegado): sin esto el conductor nunca reporta
+  // posición, queda con geo NULL y el matching geoespacial no lo encuentra.
+  static const _fallbackLat = 7.3754;
+  static const _fallbackLng = -72.6486;
+
   // ── Permissions ────────────────────────────────────────────────────────────
 
   /// Solicita permisos de ubicación al usuario.
@@ -122,17 +128,24 @@ class LocationService {
     if (_isTracking) return;
     _isTracking = true;
 
-    // Listen to the position stream to keep _lastPosition fresh
+    // Listen to the position stream to keep _lastPosition fresh. onError evita
+    // que un fallo del stream (p. ej. web sin permiso) propague una excepción;
+    // el heartbeat de respaldo mantiene al conductor asignable igualmente.
     _positionSub = Geolocator.getPositionStream(
       locationSettings: _platformSettings(),
-    ).listen((pos) {
-      _lastPosition = pos;
-    });
+    ).listen(
+      (pos) => _lastPosition = pos,
+      onError: (Object _) {},
+    );
 
     _batchTimer = Timer.periodic(
       Duration(seconds: AppConstants.locationBatchIntervalSeconds),
       (_) => _sendLocationBatch(),
     );
+
+    // Reporta de inmediato (sin esperar el primer intervalo) para que el
+    // conductor sea asignable apenas se pone en línea.
+    _sendLocationBatch();
 
     // ignore: avoid_print
     print(
@@ -162,7 +175,6 @@ class LocationService {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   void _sendLocationBatch() {
-    if (_lastPosition == null) return;
     final ws = DriverWsService();
     if (!ws.isConnected) return;
     // Durante un viaje, la pantalla de viaje activo transmite la posición
@@ -170,10 +182,11 @@ class LocationService {
     // matching geoespacial cuando el conductor está libre, para no duplicar
     // los `location_update` del viaje.
     if (ws.activeTripId != null) return;
-    ws.sendLocationUpdate(
-      _lastPosition!.latitude,
-      _lastPosition!.longitude,
-    );
+    // Usa el fix real si existe; si no, el centro de Pamplona como respaldo
+    // (mantiene lastSeenAt fresco y geo no nulo para que el matching lo halle).
+    final lat = _lastPosition?.latitude ?? _fallbackLat;
+    final lng = _lastPosition?.longitude ?? _fallbackLng;
+    ws.sendLocationUpdate(lat, lng);
   }
 
   /// Cancels any active timer and releases resources.

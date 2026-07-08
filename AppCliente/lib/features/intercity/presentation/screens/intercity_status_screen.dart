@@ -7,7 +7,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 
-const _kInterColor = Color(0xFF1E3A8A);
+const _kInterColor = AppColors.intercityBrand;
 
 class IntercityStatusScreen extends ConsumerWidget {
   const IntercityStatusScreen({super.key});
@@ -28,7 +28,7 @@ class IntercityStatusScreen extends ConsumerWidget {
         }
       });
       return const Scaffold(
-        backgroundColor: Color(0xFF0F172A),
+        backgroundColor: AppColors.intercityBg,
         body: Center(
           child: CircularProgressIndicator(color: _kInterColor),
         ),
@@ -39,9 +39,9 @@ class IntercityStatusScreen extends ConsumerWidget {
       canPop: false,
       onPopInvokedWithResult: (_, __) => _showCancelDialog(context, ref),
       child: Scaffold(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: AppColors.intercityBg,
         appBar: AppBar(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: AppColors.intercityBg,
           foregroundColor: Colors.white,
           title: const Text(
             'Estado del viaje',
@@ -118,18 +118,18 @@ class IntercityStatusScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.intercitySurface,
         title: const Text('¿Cancelar el viaje?',
             style: TextStyle(color: Colors.white)),
         content: const Text(
           'Se cancelará la búsqueda de conductor.',
-          style: TextStyle(color: Color(0xFF94A3B8)),
+          style: TextStyle(color: AppColors.intercityTextDim),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Mantener',
-                style: TextStyle(color: Color(0xFF93C5FD))),
+                style: TextStyle(color: AppColors.intercityAccent)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -205,7 +205,7 @@ class _StatusHeader extends StatelessWidget {
                 Text(
                   _subtitleForStatus(status, request),
                   style: const TextStyle(
-                    color: Color(0xFF94A3B8),
+                    color: AppColors.intercityTextDim,
                     fontSize: 12,
                   ),
                 ),
@@ -255,9 +255,9 @@ class _RouteSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.intercitySurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: AppColors.intercityOutline),
       ),
       child: Column(
         children: [
@@ -281,7 +281,7 @@ class _RouteSummaryCard extends StatelessWidget {
                     Text(
                       request.origin.department,
                       style: const TextStyle(
-                          color: Color(0xFF64748B), fontSize: 11),
+                          color: AppColors.intercityTextMuted, fontSize: 11),
                     ),
                   ],
                 ),
@@ -293,7 +293,7 @@ class _RouteSummaryCard extends StatelessWidget {
             child: Container(
               width: 1,
               height: 20,
-              color: const Color(0xFF334155),
+              color: AppColors.intercityOutline,
             ),
           ),
           Row(
@@ -316,7 +316,7 @@ class _RouteSummaryCard extends StatelessWidget {
                     Text(
                       request.destination.department,
                       style: const TextStyle(
-                          color: Color(0xFF64748B), fontSize: 11),
+                          color: AppColors.intercityTextMuted, fontSize: 11),
                     ),
                   ],
                 ),
@@ -325,7 +325,7 @@ class _RouteSummaryCard extends StatelessWidget {
           ),
           if (route != null) ...[
             const SizedBox(height: 12),
-            const Divider(color: Color(0xFF334155), height: 1),
+            const Divider(color: AppColors.intercityOutline, height: 1),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -375,7 +375,7 @@ class _DriverOfferCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.intercitySurface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.info.withValues(alpha: 0.4)),
       ),
@@ -392,7 +392,7 @@ class _DriverOfferCard extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.person_rounded,
-                    color: Color(0xFF93C5FD), size: 24),
+                    color: AppColors.intercityAccent, size: 24),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -410,7 +410,7 @@ class _DriverOfferCard extends StatelessWidget {
                     Text(
                       request.driverVehicle ?? '',
                       style: const TextStyle(
-                          color: Color(0xFF94A3B8), fontSize: 12),
+                          color: AppColors.intercityTextDim, fontSize: 12),
                     ),
                   ],
                 ),
@@ -434,7 +434,7 @@ class _DriverOfferCard extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF78350F),
+                          color: AppColors.starText,
                         ),
                       ),
                     ],
@@ -446,7 +446,7 @@ class _DriverOfferCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
+              color: AppColors.intercityBg,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -458,13 +458,13 @@ class _DriverOfferCard extends StatelessWidget {
                       Text(
                         isCounterOffer ? 'Tu oferta' : 'Precio acordado',
                         style: const TextStyle(
-                            color: Color(0xFF64748B), fontSize: 11),
+                            color: AppColors.intercityTextMuted, fontSize: 11),
                       ),
                       Text(
                         CurrencyFormatter.format(request.offeredFare),
                         style: TextStyle(
                           color: isCounterOffer
-                              ? const Color(0xFF64748B)
+                              ? AppColors.intercityTextMuted
                               : AppColors.primary,
                           fontWeight: FontWeight.w700,
                           fontSize: 16,
@@ -478,7 +478,7 @@ class _DriverOfferCard extends StatelessWidget {
                 ),
                 if (isCounterOffer) ...[
                   const Icon(Icons.arrow_forward_rounded,
-                      color: Color(0xFF334155), size: 18),
+                      color: AppColors.intercityOutline, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -487,7 +487,7 @@ class _DriverOfferCard extends StatelessWidget {
                         const Text(
                           'Contraoferta',
                           style: TextStyle(
-                              color: Color(0xFF64748B), fontSize: 11),
+                              color: AppColors.intercityTextMuted, fontSize: 11),
                         ),
                         Text(
                           CurrencyFormatter.format(finalFare),
@@ -511,8 +511,8 @@ class _DriverOfferCard extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: onReject,
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF334155)),
-                    foregroundColor: const Color(0xFF94A3B8),
+                    side: const BorderSide(color: AppColors.intercityOutline),
+                    foregroundColor: AppColors.intercityTextDim,
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -565,7 +565,7 @@ class _DriverConfirmedCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.intercitySurface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
       ),
@@ -600,7 +600,7 @@ class _DriverConfirmedCard extends StatelessWidget {
                     Text(
                       request.driverVehicle ?? '',
                       style: const TextStyle(
-                          color: Color(0xFF94A3B8), fontSize: 12),
+                          color: AppColors.intercityTextDim, fontSize: 12),
                     ),
                   ],
                 ),
@@ -660,9 +660,9 @@ class _TripDetailsCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: AppColors.intercitySurface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF334155)),
+        border: Border.all(color: AppColors.intercityOutline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,7 +670,7 @@ class _TripDetailsCard extends StatelessWidget {
           const Text(
             'DETALLES DEL VIAJE',
             style: TextStyle(
-              color: Color(0xFF64748B),
+              color: AppColors.intercityTextMuted,
               fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.6,
@@ -743,21 +743,21 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15, color: const Color(0xFF64748B)),
+          Icon(icon, size: 15, color: AppColors.intercityTextMuted),
           const SizedBox(width: 10),
           SizedBox(
             width: 72,
             child: Text(
               label,
               style: const TextStyle(
-                  color: Color(0xFF64748B), fontSize: 12),
+                  color: AppColors.intercityTextMuted, fontSize: 12),
             ),
           ),
           Expanded(
             child: Text(
               value,
               style: const TextStyle(
-                color: Color(0xFFCBD5E1),
+                color: AppColors.intercityTextSoft,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -811,12 +811,12 @@ class _InfoChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 13, color: const Color(0xFF64748B)),
+        Icon(icon, size: 13, color: AppColors.intercityTextMuted),
         const SizedBox(width: 4),
         Text(
           label,
           style: const TextStyle(
-            color: Color(0xFFCBD5E1),
+            color: AppColors.intercityTextSoft,
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),

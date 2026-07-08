@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
@@ -45,12 +47,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  Future<void> _complete() async {
-    final router = GoRouter.of(context);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(AppConstants.onboardingCompleteKey, true);
-    if (!mounted) return;
-    router.go(AppRoutes.login);
+  void _complete() {
+    // Navega de inmediato; el flag se persiste en segundo plano. Así el tap
+    // nunca queda colgado si SharedPreferences tarda o falla (típico en web).
+    GoRouter.of(context).go(AppRoutes.login);
+    unawaited(_persistOnboardingDone());
+  }
+
+  Future<void> _persistOnboardingDone() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(AppConstants.onboardingCompleteKey, true);
+    } catch (_) {
+      // Si falla, el onboarding reaparece la próxima vez — mejor que bloquear.
+    }
   }
 
   void _next() {
@@ -104,6 +114,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     horizontal: AppConstants.spacingL,
                   ),
                   child: Row(
+                    // spaceBetween en vez de Spacer(): el Spacer obliga a medir
+                    // el ElevatedButton con ancho infinito y, en web, eso tumba
+                    // el render de toda la fila (los botones dejan de responder).
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       if (!isLast)
                         TextButton(
@@ -115,24 +129,30 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               color: Colors.white.withValues(alpha: 0.7),
                             ),
                           ),
-                        ),
-                      const Spacer(),
-                      ElevatedButton(
-                        onPressed: isLast ? _complete : _next,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: page.gradient.first,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 28,
-                            vertical: 14,
+                        )
+                      else
+                        const SizedBox.shrink(),
+                      ConstrainedBox(
+                        // Cota de ancho: impide que el botón Material se mida con
+                        // ancho infinito dentro del Row (causa del crash en web).
+                        constraints: const BoxConstraints(maxWidth: 260),
+                        child: ElevatedButton(
+                          onPressed: isLast ? _complete : _next,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: page.gradient.first,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 28,
+                              vertical: 14,
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          textStyle: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          child: Text(isLast ? 'Comenzar' : 'Siguiente'),
                         ),
-                        child: Text(isLast ? 'Comenzar' : 'Siguiente'),
                       ),
                     ],
                   ),

@@ -10,7 +10,6 @@ import 'package:nexum_driver/features/active_trip/presentation/screens/trip_summ
 import 'package:nexum_driver/features/auth/presentation/screens/otp_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/phone_input_screen.dart';
 import 'package:nexum_driver/features/auth/presentation/screens/register_screen.dart';
-import 'package:nexum_driver/features/documents/presentation/screens/documents_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/screens/home_screen.dart';
 import 'package:nexum_driver/features/earnings/presentation/screens/earnings_screen.dart';
 import 'package:nexum_driver/features/onboarding/presentation/screens/onboarding_screen.dart';
@@ -28,14 +27,6 @@ import 'package:nexum_driver/features/safety/presentation/screens/safety_screen.
 import 'package:nexum_driver/features/safety/presentation/screens/trusted_contact_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nexum_driver/features/support/presentation/screens/support_screen.dart';
-import 'package:nexum_driver/features/business_portal/domain/entities/'
-    'business_order_entity.dart';
-import 'package:nexum_driver/features/business_portal/presentation/screens/'
-    'business_portal_screen.dart';
-import 'package:nexum_driver/features/business_portal/presentation/screens/'
-    'business_registration_screen.dart';
-import 'package:nexum_driver/features/business_portal/presentation/screens/'
-    'order_detail_screen.dart';
 import 'package:nexum_driver/features/trip_history/presentation/screens/trip_history_screen.dart';
 import 'package:nexum_driver/features/wallet/presentation/screens/wallet_screen.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
@@ -62,10 +53,6 @@ abstract final class AppRoutes {
   static const String promotions = '/promotions';
   static const String notifications = '/notifications';
   static const String performance = '/performance';
-  static const String documents = '/documents';
-  static const String businessPortal = '/business-portal';
-  static const String orderDetail = '/business-portal/order/:id';
-  static const String businessRegistration = '/business-registration';
   static const String pooledTrips = '/pooled-trips';
   static const String intercityRequests = '/intercity-requests';
   static const String pooledPublish = '/pooled-publish';
@@ -104,7 +91,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.otp,
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
-          child: OtpScreen(phone: state.uri.queryParameters['phone'] ?? ''),
+          child: OtpScreen(phone: state.extra as String? ?? ''),
         ),
       ),
       GoRoute(
@@ -255,43 +242,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const PerformanceScreen(),
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.documents,
-        pageBuilder: (context, state) => AppTransitions.slideUp(
-          pageKey: state.pageKey,
-          child: const DocumentsScreen(),
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.businessPortal,
-        pageBuilder: (context, state) => AppTransitions.slideUp(
-          pageKey: state.pageKey,
-          child: const BusinessPortalScreen(),
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.orderDetail,
-        pageBuilder: (context, state) {
-          final order = state.extra as BusinessOrderEntity?;
-          if (order == null) {
-            return AppTransitions.fade(
-              pageKey: state.pageKey,
-              child: const BusinessPortalScreen(),
-            );
-          }
-          return AppTransitions.slideLeft(
-            pageKey: state.pageKey,
-            child: OrderDetailScreen(order: order),
-          );
-        },
-      ),
-      GoRoute(
-        path: AppRoutes.businessRegistration,
-        pageBuilder: (context, state) => AppTransitions.slideLeft(
-          pageKey: state.pageKey,
-          child: const BusinessRegistrationScreen(),
         ),
       ),
     ],

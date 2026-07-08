@@ -115,13 +115,23 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
 
     setState(() => _placing = true);
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
 
-    final orderId = await ref.read(ordersProvider.notifier).placeOrder(
-          cart: cart,
-          deliveryAddress: address.fullAddress,
-        );
+    final String orderId;
+    try {
+      orderId = await ref.read(ordersProvider.notifier).placeOrder(
+            cart: cart,
+            deliveryAddress: address.fullAddress,
+          );
+    } catch (_) {
+      // El negocio nunca recibió el pedido: informar en lugar de simular.
+      if (!mounted) return;
+      setState(() => _placing = false);
+      AppSnackbar.showError(
+        context,
+        'No se pudo enviar el pedido. Revisa tu conexión e inténtalo de nuevo.',
+      );
+      return;
+    }
     if (!mounted) return;
 
     // Canjea el cupón ya validado; si el canje falla (p. ej. carrera con otro

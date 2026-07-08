@@ -5,6 +5,7 @@ import {
   RequestIntercityDTO,
   IntercityBookingDTO,
 } from '../types';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { getDriverProfile } from './driver-profile.service';
@@ -15,7 +16,9 @@ import {
   INTERCITY_DUAL_MODEL,
   INTERCITY_SIMULATE,
   INTERCITY_CITY_COORDS,
+  COMMISSION_RATE,
 } from '../config/constants';
+import { recordCompletedTrip } from './earnings.service';
 
 export class IntercityError extends Error {
   constructor(message: string) {
@@ -184,9 +187,35 @@ export function registerIntercitySendToDriver(
 
 async function _findIntercityDrivers(
   origin: IntercityCity,
+  dest: IntercityCity,
   exclude: Set<string>,
+  requireLicensed: boolean,
 ): Promise<string[]> {
   const c = INTERCITY_CITY_COORDS[origin];
+
+  // Ruta troncal (Option B): solo conductores afiliados a una empresa INTERCITY
+  // o MIXTA habilitada (ACTIVE + verificada) que tenga AUTORIZADA esa ruta
+  // origen→destino en operator_routes. Los códigos de ciudad provienen de un
+  // mapa fijo (no de strings de usuario) y van parametrizados igualmente.
+  const licensedFilter = requireLicensed
+    ? Prisma.sql`
+      AND d."operatorId" IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM "operators" o
+        WHERE o."id" = d."operatorId"
+          AND o."status"::text = 'ACTIVE'
+          AND o."isVerified" = true
+          AND o."type"::text IN ('INTERCITY', 'MIXED')
+      )
+      AND EXISTS (
+        SELECT 1 FROM "operator_routes" r
+        WHERE r."operatorId" = d."operatorId"
+          AND r."originCity" = ${CITY_TO_PRISMA[origin]}
+          AND r."destCity" = ${CITY_TO_PRISMA[dest]}
+          AND r."authorized" = true
+      )`
+    : Prisma.empty;
+
   // Parámetros internos (constantes + centroide de tabla fija): sin strings de
   // usuario. SQL parametrizado vía tagged template — nunca interpolación.
   const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
@@ -205,7 +234,7 @@ async function _findIntercityDrivers(
             d."geo",
             ST_SetSRID(ST_MakePoint(${c.lng}, ${c.lat}), 4326)::geography,
             ${INTERCITY_SEARCH_RADIUS_M}
-          )
+          )${licensedFilter}
     ORDER BY distance_m ASC
     LIMIT ${INTERCITY_MAX_CANDIDATES + 5}`;
   return rows
@@ -220,8 +249,11 @@ export async function startIntercityMatching(bookingId: string): Promise<void> {
   if (!b || b.status !== 'SEARCHING') return;
 
   const origin = (CITY_FROM_PRISMA[b.origin] ?? 'pamplona') as IntercityCity;
+  const dest = (CITY_FROM_PRISMA[b.destination] ?? 'cucuta') as IntercityCity;
+  // En el modelo dual, las rutas troncales solo se ofrecen a flotas habilitadas.
+  const requireLicensed = INTERCITY_DUAL_MODEL && routeRequiresLicensedOperator(origin, dest);
   const declined = intercityDeclined.get(bookingId) ?? new Set<string>();
-  const candidates = await _findIntercityDrivers(origin, declined);
+  const candidates = await _findIntercityDrivers(origin, dest, declined, requireLicensed);
   if (candidates.length === 0) {
     // Sin datos personales en logs: solo ids técnicos.
     console.log(`[Intercity] No drivers available for booking ${bookingId}`);
@@ -305,6 +337,16 @@ export async function driverAcceptIntercity(
     driverVehicle = profile.vehicleDescription;
   } catch { /* sin perfil completo; se ofrece igual */ }
 
+  // La reserva queda SELLADA con la empresa del conductor (liquidación +
+  // trazabilidad legal de troncales). Independientes → null.
+  const driverInfo = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { operatorId: true },
+  });
+  const operatorSeal = driverInfo?.operatorId
+    ? { operatorId: driverInfo.operatorId }
+    : {};
+
   const hasCounter =
     typeof counterFare === 'number' && counterFare > 0;
 
@@ -324,6 +366,7 @@ export async function driverAcceptIntercity(
             driverPhone,
             driverVehicle,
             counterFare: Math.round(counterFare),
+            ...operatorSeal,
           }
         : {
             status: 'CONFIRMED',
@@ -332,6 +375,7 @@ export async function driverAcceptIntercity(
             driverPhone,
             driverVehicle,
             confirmedAt: new Date(),
+            ...operatorSeal,
           },
     });
   });
@@ -364,6 +408,75 @@ export async function driverRejectIntercity(
   await _offerIntercityTo(bookingId, state.candidates, state.candidateIndex + 1);
 }
 
+/** El conductor asignado inicia el viaje (CONFIRMED → IN_PROGRESS). */
+export async function driverStartIntercity(
+  driverId: string,
+  bookingId: string,
+): Promise<IntercityBookingDTO | null> {
+  const updated = await prisma.$transaction(async (tx) => {
+    const current = await tx.intercityBooking.findUnique({
+      where: { id: bookingId },
+      select: { status: true, driverId: true },
+    });
+    if (!current || current.driverId !== driverId || current.status !== 'CONFIRMED') return null;
+    return tx.intercityBooking.update({
+      where: { id: bookingId },
+      data: { status: 'IN_PROGRESS' },
+    });
+  });
+  if (!updated) return null;
+
+  const dto = _toDTO(updated as DbBooking);
+  _notify(bookingId, dto);
+  console.log(`[Intercity] Driver ${driverId} started booking ${bookingId}`);
+  return dto;
+}
+
+/**
+ * El conductor asignado finaliza el viaje: sella finalFare/completedAt, pasa a
+ * COMPLETED (habilita historial y calificación del cliente) y liquida la
+ * ganancia real del conductor (wallet + dashboard), igual que un viaje urbano.
+ */
+export async function driverCompleteIntercity(
+  driverId: string,
+  bookingId: string,
+): Promise<IntercityBookingDTO | null> {
+  const updated = await prisma.$transaction(async (tx) => {
+    const current = await tx.intercityBooking.findUnique({
+      where: { id: bookingId },
+      select: { status: true, driverId: true, offeredFare: true, counterFare: true, finalFare: true },
+    });
+    // Se permite completar desde CONFIRMED por si el conductor no marcó el inicio.
+    if (!current || current.driverId !== driverId) return null;
+    if (current.status !== 'CONFIRMED' && current.status !== 'IN_PROGRESS') return null;
+    const finalFare = current.finalFare ?? current.counterFare ?? current.offeredFare;
+    return tx.intercityBooking.update({
+      where: { id: bookingId },
+      data: { status: 'COMPLETED', completedAt: new Date(), finalFare: Math.round(finalFare) },
+    });
+  });
+  if (!updated) return null;
+
+  const grossFare = Math.round(updated.finalFare ?? updated.offeredFare);
+  const netEarning = grossFare - Math.round(grossFare * COMMISSION_RATE);
+  recordCompletedTrip(
+    {
+      tripId: updated.id,
+      origin: updated.pickupAddress ?? updated.origin,
+      destination: updated.dropoffAddress ?? updated.destination,
+      grossFare,
+      netEarning,
+      completedAt: new Date().toISOString(),
+    },
+    driverId,
+  );
+
+  const dto = _toDTO(updated as DbBooking);
+  _notify(bookingId, dto);
+  console.log(`[Intercity] Driver ${driverId} completed booking ${bookingId}`);
+  return dto;
+}
+
 function _dispatchDriverSearch(bookingId: string, offeredFare: number): void {
   if (INTERCITY_SIMULATE) {
     _scheduleDriverResponse(bookingId, offeredFare);
@@ -382,12 +495,26 @@ export async function requestIntercityBooking(
     throw new IntercityError('El origen y el destino deben ser diferentes.');
   }
 
-  // Option B (dual model): trunk routes require a habilitated operator.
+  // Option B (dual model): las rutas troncales requieren empresa habilitada. En
+  // vez de bloquearlas, se despachan EXCLUSIVAMENTE a conductores afiliados a un
+  // operador INTERCITY/MIXTO verificado con esa ruta autorizada (ver el filtro en
+  // _findIntercityDrivers). Solo si aún no hay ninguna empresa habilitada para el
+  // trayecto se informa con claridad, en lugar de buscar en vano.
   if (INTERCITY_DUAL_MODEL && routeRequiresLicensedOperator(dto.origin, dto.destination)) {
-    throw new IntercityError(
-      'Esta es una ruta troncal que requiere operador de transporte habilitado. ' +
-        'Por ahora no está disponible para viajes con conductores particulares.',
-    );
+    const licensed = await prisma.operatorRoute.count({
+      where: {
+        originCity: CITY_TO_PRISMA[dto.origin],
+        destCity: CITY_TO_PRISMA[dto.destination],
+        authorized: true,
+        operator: { status: 'ACTIVE', isVerified: true, type: { in: ['INTERCITY', 'MIXED'] } },
+      },
+    });
+    if (licensed === 0) {
+      throw new IntercityError(
+        'Esta ruta troncal requiere una empresa de transporte habilitada y aún no ' +
+          'hay ninguna disponible para este trayecto. Vuelve a intentarlo más tarde.',
+      );
+    }
   }
 
   const requestRef = `NXI-${Math.floor(1000 + Math.random() * 8000)}`;
@@ -424,6 +551,10 @@ export async function confirmIntercityBooking(
   });
   const dto = _toDTO(updated as DbBooking);
   _notify(bookingId, dto);
+  // El conductor que contraofertó necesita saber que el pasajero confirmó.
+  if (updated.driverId) {
+    _sendToDriver?.(updated.driverId, { type: 'intercity_update', bookingId, booking: dto });
+  }
   return dto;
 }
 
@@ -440,11 +571,13 @@ export async function rejectIntercityOffer(clientId: string, bookingId: string):
       counterFare: null,
     },
   });
-  // El conductor cuya contraoferta fue rechazada no vuelve a recibir la reserva.
+  // El conductor cuya contraoferta fue rechazada no vuelve a recibir la reserva,
+  // y se le avisa para que no siga esperando la confirmación.
   if (b.driverId) {
     const declined = intercityDeclined.get(bookingId) ?? new Set<string>();
     declined.add(b.driverId);
     intercityDeclined.set(bookingId, declined);
+    _sendToDriver?.(b.driverId, { type: 'intercity_cancelled', bookingId });
   }
   const dto = _toDTO(updated as DbBooking);
   _notify(bookingId, dto);
@@ -468,6 +601,11 @@ export async function cancelIntercityBooking(clientId: string, bookingId: string
       type: 'intercity_cancelled',
       bookingId,
     });
+  }
+  // Y al conductor YA ASIGNADO (DRIVER_FOUND/CONFIRMED), que no está en el ciclo
+  // de ofertas: sin este aviso se quedaba con un viaje fantasma.
+  if (b.driverId && b.driverId !== state?.currentDriverId) {
+    _sendToDriver?.(b.driverId, { type: 'intercity_cancelled', bookingId });
   }
   intercityDeclined.delete(bookingId);
 

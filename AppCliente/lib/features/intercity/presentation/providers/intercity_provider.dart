@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
@@ -165,17 +166,15 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
         _activeServerId = null;
         return msg ?? 'No se pudo crear la solicitud.';
       }
-      // Network/5xx — fall back to mock simulation so the flow stays usable.
-      state = state.copyWith(isLoading: false);
-      _activeServerId = request.id;
-      _simulateDriverMatch(request.id);
-      return null;
+      // Network/5xx — es un fallo real de conexión, no un match. Se informa al
+      // usuario en vez de fabricar un conductor falso.
+      state = state.copyWith(clearActive: true, isLoading: false);
+      _activeServerId = null;
+      return 'No se pudo conectar con el servidor. Inténtalo de nuevo.';
     } catch (_) {
-      // Unknown/transport error — fall back to mock simulation.
-      state = state.copyWith(isLoading: false);
-      _activeServerId = request.id;
-      _simulateDriverMatch(request.id);
-      return null;
+      state = state.copyWith(clearActive: true, isLoading: false);
+      _activeServerId = null;
+      return 'Ocurrió un error al crear la solicitud. Inténtalo de nuevo.';
     }
   }
 
@@ -323,6 +322,10 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
   // ── Mock simulation (fallback) ────────────────────────────────────────────
 
   void _simulateDriverMatch(String requestId) {
+    // Nunca simular en producción: mostrar un conductor falso al pasajero rompe
+    // el "flujo real". Solo se usa como ayuda de desarrollo offline (no-op en
+    // release).
+    if (!kDebugMode) return;
     final delay = Duration(seconds: 6 + _rng.nextInt(8));
     _matchTimer?.cancel();
     _matchTimer = Timer(delay, () {

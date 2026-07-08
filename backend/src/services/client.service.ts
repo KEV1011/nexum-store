@@ -15,6 +15,8 @@ import { startMatchingCycle } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
+import { calcFare } from '../lib/fare';
+import { recordCompletedTrip } from './earnings.service';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -26,6 +28,15 @@ const businessOrderListeners = new Map<string, Set<BusinessNewOrderCallback>>();
 
 type TripCallback = (tripId: string, trip: ClientTripDTO) => void;
 const tripListeners = new Map<string, Set<TripCallback>>();
+
+// Inyectado por ws.handler al arrancar — este servicio no conoce sockets. Permite
+// avisar al conductor (p. ej. trip_cancelled) desde flujos REST del cliente.
+let _sendToDriver: ((driverId: string, msg: Record<string, unknown>) => void) | null = null;
+export function registerClientSendToDriver(
+  fn: (driverId: string, msg: Record<string, unknown>) => void,
+): void {
+  _sendToDriver = fn;
+}
 
 // ─── OTP ──────────────────────────────────────────────────────────────────────
 
@@ -257,24 +268,8 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   return _toTripDTO(trip, clientId);
 }
 
-export async function acceptClientTrip(
-  tripId: string,
-  driverName: string,
-  driverPhone: string,
-  driverVehicle?: string,
-): Promise<ClientTripDTO | null> {
-  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
-  if (!trip || trip.status !== 'SEARCHING') return null;
-
-  const updated = await prisma.trip.update({
-    where: { id: tripId },
-    data: { status: 'ACCEPTED', acceptedAt: new Date() },
-  });
-  const dto = _toTripDTOWithDriver(updated, driverName, driverPhone, driverVehicle);
-  _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
-  void _startTripSimulation(tripId, updated.passengerId ?? '');
-  return dto;
-}
+// (acceptClientTrip + _startTripSimulation eliminados: eran restos del flujo
+// demo. La aceptación real es transaccional en matching.service.onDriverAccept.)
 
 export async function updateClientTripLocation(tripId: string, _lat: number, _lng: number): Promise<string | null> {
   const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { passengerId: true } });
@@ -284,13 +279,57 @@ export async function updateClientTripLocation(tripId: string, _lat: number, _ln
 }
 
 export async function updateClientTripStatus(tripId: string, status: ClientTripStatus): Promise<ClientTripDTO | null> {
-  const prismaStatus = status.toUpperCase().replace('_', '_') as 'SEARCHING' | 'ACCEPTED' | 'ARRIVING' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  const prismaStatus = status.toUpperCase() as 'SEARCHING' | 'ACCEPTED' | 'ARRIVING' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+  // Al COMPLETAR se liquida el viaje real: se calcula la tarifa, se persisten
+  // finalFare/netEarning/commission, se registra la ganancia del conductor (que
+  // alimenta wallet + dashboard) y se libera al conductor (ONLINE). Sin esto, un
+  // viaje real completado dejaba saldo en cero.
+  if (status === 'completed') {
+    const trip = await prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { distanceKm: true, etaMinutes: true, driverId: true, originAddress: true, destAddress: true, finalFare: true },
+    });
+    const distanceKm = trip?.distanceKm ?? 0;
+    const minutes = trip?.etaMinutes ?? Math.max(1, Math.round(distanceKm * 3));
+    const { grossFare, commission, netEarning } = calcFare(distanceKm, minutes);
+
+    const updated = await prisma.trip.update({
+      where: { id: tripId },
+      data: {
+        status: 'COMPLETED',
+        completedAt: new Date(),
+        // Si ya se selló una tarifa final, se respeta; si no, la calculada.
+        finalFare: trip?.finalFare ?? grossFare,
+        netEarning,
+        commission,
+      },
+    });
+
+    if (trip?.driverId) {
+      recordCompletedTrip(
+        {
+          tripId,
+          origin: trip.originAddress,
+          destination: trip.destAddress,
+          grossFare: updated.finalFare ?? grossFare,
+          netEarning,
+          completedAt: new Date().toISOString(),
+        },
+        trip.driverId,
+      );
+      // El conductor queda libre para nuevos viajes.
+      await prisma.driver.update({ where: { id: trip.driverId }, data: { status: 'ONLINE' } }).catch(() => { /* noop */ });
+    }
+
+    const dto = _toTripDTO(updated, updated.passengerId ?? '');
+    _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+    return dto;
+  }
+
   const updated = await prisma.trip.update({
     where: { id: tripId },
-    data: {
-      status: prismaStatus,
-      completedAt: status === 'completed' ? new Date() : undefined,
-    },
+    data: { status: prismaStatus },
   });
   const dto = _toTripDTO(updated, updated.passengerId ?? '');
   _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
@@ -304,11 +343,35 @@ export async function cancelClientTrip(clientId: string, tripId: string): Promis
   if (!cancellable.includes(trip.status)) return false;
   const updated = await prisma.trip.update({
     where: { id: tripId },
-    data: { status: 'CANCELLED' },
+    data: { status: 'CANCELLED', cancelReason: 'CANCELLED_BY_PASSENGER' },
   });
+
+  // Si ya había conductor asignado, se le avisa y se libera (ONLINE) para que no
+  // quede con un viaje colgado en ON_TRIP.
+  if (trip.driverId) {
+    _sendToDriver?.(trip.driverId, { type: 'trip_cancelled', tripId });
+    await prisma.driver.update({ where: { id: trip.driverId }, data: { status: 'ONLINE' } }).catch(() => { /* noop */ });
+  }
+
   const dto = _toTripDTO(updated, clientId);
   _notifyTripListeners(tripId, clientId, dto);
   return true;
+}
+
+/**
+ * El matching agotó candidatos sin conseguir conductor. Se cierra el viaje
+ * (CANCELLED, motivo NO_DRIVERS_AVAILABLE) y se avisa al pasajero por WS para
+ * que deje de "Buscando conductor…" en lugar de colgarse indefinidamente.
+ */
+export async function handleNoDriversFound(tripId: string): Promise<void> {
+  const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { status: true, passengerId: true } });
+  if (!trip || trip.status !== 'SEARCHING') return;
+  const updated = await prisma.trip.update({
+    where: { id: tripId },
+    data: { status: 'CANCELLED', cancelReason: 'NO_DRIVERS_AVAILABLE' },
+  });
+  const dto = _toTripDTO(updated, updated.passengerId ?? '');
+  _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
 }
 
 export async function getActiveClientTrip(clientId: string): Promise<ClientTripDTO | null> {
@@ -346,6 +409,22 @@ export async function getClientTripRaw(tripId: string): Promise<{ clientId: stri
   return { clientId: trip.passengerId };
 }
 
+/**
+ * Liquidación persistida de un viaje completado. La usa el ws.handler para
+ * devolverla en `trip_status_ack` y que la app del conductor muestre los
+ * montos reales del backend (no la estimación local).
+ */
+export async function getTripSettlement(
+  tripId: string,
+): Promise<{ finalFare: number; netEarning: number; commission: number } | null> {
+  const t = await prisma.trip.findUnique({
+    where: { id: tripId },
+    select: { finalFare: true, netEarning: true, commission: true },
+  });
+  if (!t || t.finalFare == null) return null;
+  return { finalFare: t.finalFare, netEarning: t.netEarning ?? 0, commission: t.commission ?? 0 };
+}
+
 export function subscribeClientTrip(tripId: string, cb: TripCallback): () => void {
   if (!tripListeners.has(tripId)) tripListeners.set(tripId, new Set());
   tripListeners.get(tripId)!.add(cb);
@@ -356,26 +435,6 @@ export async function getClientTripSnapshot(tripId: string): Promise<ClientTripD
   const trip = await prisma.trip.findUnique({ where: { id: tripId } });
   if (!trip) return null;
   return _toTripDTO(trip, trip.passengerId ?? '');
-}
-
-// ─── Trip simulation ──────────────────────────────────────────────────────────
-
-async function _startTripSimulation(tripId: string, passengerId: string): Promise<void> {
-  const step = async (status: string, extras: { completedAt?: Date } = {}) => {
-    const current = await prisma.trip.findUnique({ where: { id: tripId }, select: { status: true } });
-    const active = ['ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'];
-    if (!current || !active.includes(current.status)) return;
-    const updated = await prisma.trip.update({
-      where: { id: tripId },
-      data: { status: status as never, ...extras },
-    });
-    const dto = _toTripDTO(updated, passengerId);
-    _notifyTripListeners(tripId, passengerId, dto);
-  };
-  setTimeout(() => void step('ARRIVING'), 8_000);
-  setTimeout(() => void step('ARRIVED'), 20_000);
-  setTimeout(() => void step('IN_PROGRESS'), 30_000);
-  setTimeout(() => void step('COMPLETED', { completedAt: new Date() }), 55_000);
 }
 
 function _notifyTripListeners(tripId: string, _passengerId: string, dto: ClientTripDTO): void {
@@ -456,6 +515,7 @@ function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine
 type PrismaTrip = {
   id: string; requestRef: string; serviceType: string; status: string;
   originAddress: string; destAddress: string; estimatedFare: number;
+  finalFare: number | null;
   distanceKm: number | null; etaMinutes: number | null;
   createdAt: Date; acceptedAt: Date | null; completedAt: Date | null;
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
@@ -473,6 +533,7 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     originAddress: trip.originAddress,
     destinationAddress: trip.destAddress,
     estimatedFare: trip.estimatedFare,
+    finalFare: trip.finalFare ?? undefined,
     distanceKm: trip.distanceKm ?? 0,
     etaMinutes: trip.etaMinutes ?? 0,
     status: statusMap[trip.status] ?? 'searching',
@@ -489,8 +550,4 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     recipientPhone: trip.recipientPhone ?? undefined,
     packageDescription: trip.packageDescription ?? undefined,
   };
-}
-
-function _toTripDTOWithDriver(trip: PrismaTrip, driverName: string, driverPhone: string, driverVehicle?: string): ClientTripDTO {
-  return _toTripDTO(trip, '', driverName, driverPhone, driverVehicle);
 }

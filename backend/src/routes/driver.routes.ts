@@ -35,6 +35,7 @@ import {
   requestPayout,
   PayoutError,
 } from '../services/payout.service';
+import { getDriverNotifications } from '../services/driver-notification.service';
 
 const router = Router();
 
@@ -351,30 +352,8 @@ router.post('/intercity/pool/:id/cancel', async (req: Request, res: Response): P
   res.json({ success: true, data: trip });
 });
 
-// GET /driver/intercity/availability
-router.get('/intercity/availability', async (req: Request, res: Response): Promise<void> => {
-  const driver = await prisma.driver.findUnique({
-    where: { id: req.driverId! },
-    select: { intercityEnabled: true },
-  });
-  if (!driver) { res.status(404).json({ success: false, error: 'Driver not found' }); return; }
-  res.json({ success: true, data: { enabled: driver.intercityEnabled } });
-});
-
-// PUT /driver/intercity/availability
-router.put('/intercity/availability', async (req: Request, res: Response): Promise<void> => {
-  const enabled = req.body?.enabled;
-  if (typeof enabled !== 'boolean') {
-    res.status(400).json({ success: false, error: '`enabled` boolean required' });
-    return;
-  }
-  const driver = await prisma.driver.update({
-    where: { id: req.driverId! },
-    data: { intercityEnabled: enabled },
-    select: { intercityEnabled: true },
-  });
-  res.json({ success: true, data: { enabled: driver.intercityEnabled } });
-});
+// (Los handlers de /intercity/availability están definidos arriba; este bloque
+// duplicado se eliminó — Express solo usaba la primera definición.)
 
 // ─── Zonas de demanda (surge real por zona) ───────────────────────────────────
 
@@ -410,6 +389,19 @@ router.get('/demand-zones', async (_req: Request, res: Response): Promise<void> 
     // Zonas calientes primero.
     zones.sort((a, b) => b.multiplier - a.multiplier || b.demand - a.demand);
     res.json({ success: true, data: zones });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Notificaciones (feed derivado de viajes, pagos y documentos reales) ──────
+
+// GET /driver/notifications — feed del conductor armado desde datos reales.
+router.get('/notifications', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getDriverNotifications(driverId) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }

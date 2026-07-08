@@ -2,20 +2,30 @@ import 'package:nexum_driver/features/earnings/domain/entities/daily_earnings_en
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 
+/// Contrato de la fuente de datos de ganancias. Lo implementan la fuente mock
+/// (offline) y la remota (backend real).
+abstract class EarningsDataSource {
+  Future<DailyEarningsEntity> getDailyEarnings(DateTime date);
+  Future<List<DailyEarningsEntity>> getWeeklyHistory();
+  Future<DailyEarningsEntity> addCompletedTrip(TripModel trip);
+}
+
 /// Fuente de datos mock para ganancias.
 /// Acumula viajes en memoria durante la sesión.
 /// Provee historial mock de 7 días para poblar la pantalla de ganancias.
-class EarningsMockDataSource {
+class EarningsMockDataSource implements EarningsDataSource {
   // Lista en memoria de viajes completados en la sesión actual
   final List<TripModel> _sessionTrips = [];
 
   /// Agrega un viaje completado al acumulado del día.
+  @override
   Future<DailyEarningsEntity> addCompletedTrip(TripModel trip) async {
     _sessionTrips.add(trip);
     return _buildDailyEarnings(DateTime.now(), _sessionTrips);
   }
 
   /// Obtiene el resumen de ganancias del día indicado.
+  @override
   Future<DailyEarningsEntity> getDailyEarnings(DateTime date) async {
     await Future.delayed(const Duration(milliseconds: 300));
     final isToday = _isSameDay(date, DateTime.now());
@@ -31,6 +41,7 @@ class EarningsMockDataSource {
   }
 
   /// Genera historial mock de los últimos 7 días con datos realistas.
+  @override
   Future<List<DailyEarningsEntity>> getWeeklyHistory() async {
     await Future.delayed(const Duration(milliseconds: 400));
     final now = DateTime.now();

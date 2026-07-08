@@ -5,6 +5,7 @@ import {
   RequestClientErrandDTO,
   ErrandRequestDTO,
 } from '../types';
+import { DriverStatus } from '@prisma/client';
 import { ERRAND_SERVICE_FEE } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
@@ -102,14 +103,43 @@ export async function acceptClientErrand(
   errandId: string,
   driverName: string,
   driverPhone: string,
+  driverId?: string,
 ): Promise<ClientErrandDTO | null> {
   const existing = await prisma.errand.findUnique({ where: { id: errandId } });
   if (!existing || existing.status !== 'SEARCHING') return null;
 
+  // Sella la empresa del conductor al aceptar: el mandado queda atribuido a
+  // su flota y aparece en la liquidación del portal (/operator/trips + CSV).
+  let operatorSeal: string | null = null;
+  if (driverId) {
+    const d = await prisma.driver.findUnique({
+      where: { id: driverId },
+      select: { operatorId: true },
+    });
+    operatorSeal = d?.operatorId ?? null;
+  }
+
   const updated = await prisma.errand.update({
     where: { id: errandId },
-    data: { status: 'ACCEPTED', acceptedAt: new Date(), driverName, driverPhone },
+    data: {
+      status: 'ACCEPTED',
+      acceptedAt: new Date(),
+      driverName,
+      driverPhone,
+      ...(driverId ? { driverId } : {}),
+      ...(operatorSeal ? { operatorId: operatorSeal } : {}),
+    },
   });
+
+  // Marca al conductor en viaje para que el matching geoespacial no le ofrezca
+  // otro servicio mientras hace el mandado (se libera al entregar/cancelar).
+  if (driverId) {
+    await prisma.driver.update({
+      where: { id: driverId },
+      data: { status: DriverStatus.ON_TRIP },
+    });
+  }
+
   const dto = _toDTO(updated);
   _notify(errandId, dto);
   return dto;
@@ -190,5 +220,21 @@ export function toErrandRequestDTO(errand: { id: string; category: string; descr
     serviceFee: errand.serviceFee,
     purchaseBudget: errand.purchaseBudget ?? undefined,
     notes: errand.notes ?? undefined,
+  };
+}
+
+/**
+ * Datos que el motor de matching necesita para ofrecer un mandado a un
+ * conductor: el estado actual (para no ofrecer uno ya aceptado/cancelado) y el
+ * DTO `errand_request` que se envía por WebSocket. Devuelve null si no existe.
+ */
+export async function getErrandOfferInfo(
+  errandId: string,
+): Promise<{ status: ErrandStatus; dto: ErrandRequestDTO } | null> {
+  const errand = await prisma.errand.findUnique({ where: { id: errandId } });
+  if (!errand) return null;
+  return {
+    status: (STATUS_FROM_PRISMA[errand.status] ?? 'searching') as ErrandStatus,
+    dto: toErrandRequestDTO(errand),
   };
 }

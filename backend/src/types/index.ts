@@ -228,6 +228,10 @@ export type WsMessageType =
   | 'intercity_reject' // driver → server: rechaza la oferta
   | 'intercity_accept_ok' // server → driver: aceptación registrada
   | 'intercity_cancelled' // server → driver: el cliente canceló la reserva
+  | 'intercity_start' // driver → server: inicia el viaje confirmado
+  | 'intercity_start_ok' // server → driver: inicio registrado (IN_PROGRESS)
+  | 'intercity_complete' // driver → server: finaliza el viaje
+  | 'intercity_complete_ok' // server → driver: viaje liquidado (COMPLETED)
   // Shared pooled-ride (Modelo A) messages
   | 'subscribe_pooled'
   | 'unsubscribe_pooled'
@@ -502,6 +506,8 @@ export interface ClientTripDTO {
   originAddress: string;
   destinationAddress: string;
   estimatedFare: number;
+  /** Tarifa final liquidada por el backend (solo al completar). */
+  finalFare?: number;
   distanceKm: number;
   etaMinutes: number;
   status: ClientTripStatus;
@@ -863,11 +869,35 @@ export interface DriverProfileDTO {
   rating: number;
   totalTrips: number;
   vehicleDescription: string;
+  // Desglose del vehículo activo (para la pantalla de perfil del conductor).
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleYear?: number;
+  vehiclePlate?: string;
+  vehicleColor?: string;
+  vehicleType?: string;
+  // Identidad y datos bancarios (ya existen en el modelo Driver).
+  documentNumber?: string;
+  bankName?: string;
+  bankAccountType?: string;
+  bankAccountNumber?: string;
   memberSince: string;
   isVerified: boolean;
   documents: DriverDocumentDTO[];
   requiredDocsCount: number;
   approvedDocsCount: number;
+  // Afiliación a empresa/operador. Ausente = conductor independiente. Permite que la
+  // app conductor muestre "Conduces para {empresa}" y su estado de verificación.
+  affiliation?: DriverAffiliationDTO;
+}
+
+export interface DriverAffiliationDTO {
+  operatorId: string;
+  legalName: string;
+  type: string; // TAXI | INTERCITY | MIXED
+  status: string; // PENDING | ACTIVE | SUSPENDED
+  isVerified: boolean;
+  employmentType: string; // OWN | AFFILIATED
 }
 
 export interface DriverPublicProfileDTO {

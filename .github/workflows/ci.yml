@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend:
-    name: Backend (typecheck)
+    name: Backend (typecheck + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +31,10 @@ jobs:
       - name: Typecheck
         working-directory: backend
         run: npx tsc --noEmit
+
+      - name: Test
+        working-directory: backend
+        run: npm test
 
   driver-app:
     name: App Conductor (analyze + test)

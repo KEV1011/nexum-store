@@ -1,13 +1,28 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
+
+/// Liquidación real de un viaje calculada por el backend. Llega dentro del
+/// `trip_status_ack` cuando el conductor reporta `completed`.
+class TripSettlement {
+  const TripSettlement({
+    required this.tripId,
+    required this.finalFare,
+    required this.netEarning,
+    required this.commission,
+  });
+
+  final String tripId;
+  final double finalFare;
+  final double netEarning;
+  final double commission;
+}
 
 /// Singleton WebSocket driver service for real-time communication with the
 /// Nexum backend.
@@ -57,6 +72,10 @@ class DriverWsService {
   final _rideRequestCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _rideUpdateCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _chatCtrl = StreamController<Map<String, dynamic>>.broadcast();
+  // Liquidaciones confirmadas por el backend, bufferizadas por tripId porque
+  // el ack suele llegar antes de que la pantalla de resumen se suscriba.
+  final _settlementCtrl = StreamController<TripSettlement>.broadcast();
+  final Map<String, TripSettlement> _settlements = {};
 
   // ── Public streams ────────────────────────────────────────────────────────
 
@@ -81,6 +100,12 @@ class DriverWsService {
   /// Emits the raw `message` JSON for every `chat_message`.
   Stream<Map<String, dynamic>> get chatMessages => _chatCtrl.stream;
 
+  /// Liquidaciones reales del backend (`trip_status_ack` con `settlement`).
+  Stream<TripSettlement> get settlements => _settlementCtrl.stream;
+
+  /// Última liquidación conocida de [tripId], si su ack ya llegó.
+  TripSettlement? settlementFor(String tripId) => _settlements[tripId];
+
   bool get isConnected => _channel != null;
 
   /// Id del viaje activo. Lo fija la pantalla de viaje activo y lo usa
@@ -97,7 +122,6 @@ class DriverWsService {
   /// If [token] is `null` the JWT is read from [FlutterSecureStorage].
   /// Returns `true` on successful authentication, `false` otherwise.
   Future<bool> connect(String? token, WorkMode workMode) async {
-    if (kIsWeb) return false;
     _shouldReconnect = true;
 
     final jwt = token ?? await _storage.read(key: AppConstants.authTokenKey);
@@ -110,7 +134,6 @@ class DriverWsService {
   }
 
   Future<bool> _openAndAuth() async {
-    if (kIsWeb) return false;
     if (_channel != null) return true;
     if (_connecting) return false;
     final jwt = _token;
@@ -166,7 +189,7 @@ class DriverWsService {
       _authCompleter!.complete(false);
     }
     _cleanup();
-    if (_shouldReconnect && !kIsWeb) _scheduleReconnect();
+    if (_shouldReconnect) _scheduleReconnect();
   }
 
   void _scheduleReconnect() {
@@ -371,6 +394,20 @@ class DriverWsService {
         case 'trip_cancelled':
           final tripId = msg['tripId'] as String?;
           if (tripId != null) _tripCancelCtrl.add(tripId);
+
+        case 'trip_status_ack':
+          final tripId = msg['tripId'] as String?;
+          final settlement = msg['settlement'];
+          if (tripId != null && settlement is Map<String, dynamic>) {
+            final s = TripSettlement(
+              tripId: tripId,
+              finalFare: (settlement['finalFare'] as num?)?.toDouble() ?? 0,
+              netEarning: (settlement['netEarning'] as num?)?.toDouble() ?? 0,
+              commission: (settlement['commission'] as num?)?.toDouble() ?? 0,
+            );
+            _settlements[tripId] = s;
+            _settlementCtrl.add(s);
+          }
 
         case 'errand_cancelled':
           final errandId = msg['errandId'] as String?;

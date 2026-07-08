@@ -79,7 +79,9 @@ class ActiveTripDataSource {
     final netEarning = FareCalculator.calculateNetEarning(grossFare);
 
     return TripModel(
-      id: 'trip_${DateTime.now().millisecondsSinceEpoch}',
+      // El id real del backend: permite casar la liquidación que llega por
+      // WS (`trip_status_ack.settlement`) en la pantalla de resumen.
+      id: trip.request.id,
       passengerId: trip.request.passenger.id,
       passengerName: trip.request.passenger.name,
       origin: trip.request.origin,

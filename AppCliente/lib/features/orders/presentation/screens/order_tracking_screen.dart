@@ -480,16 +480,18 @@ class _DriverCard extends StatelessWidget {
           ),
           _CircleAction(
             icon: Icons.call_rounded,
-            onTap: () => AppSnackbar.showInfo(
-              context,
-              'Llamando a ${order.driverName}…',
-            ),
-          ),
-          const SizedBox(width: AppConstants.spacingS),
-          _CircleAction(
-            icon: Icons.chat_rounded,
-            onTap: () =>
-                AppSnackbar.showInfo(context, 'Chat no disponible en demo'),
+            onTap: () {
+              // Llamada REAL al repartidor (marcador del teléfono).
+              final phone = order.driverPhone;
+              if (phone == null || phone.isEmpty) {
+                AppSnackbar.showInfo(
+                  context,
+                  'El teléfono estará disponible cuando el repartidor acepte.',
+                );
+                return;
+              }
+              launchUrl(Uri.parse('tel:$phone'));
+            },
           ),
         ],
       ),

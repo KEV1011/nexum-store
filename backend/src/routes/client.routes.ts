@@ -12,6 +12,8 @@ import {
   requestClientTrip,
   getActiveClientTrip,
   getClientTripHistory,
+  getClientTripRaw,
+  getClientTripSnapshot,
   cancelClientTrip,
   getClientNameByPhone,
   getClientById,
@@ -39,6 +41,7 @@ import {
   getClientErrandById,
   cancelClientErrand,
 } from '../services/errand.service';
+import { startErrandMatchingCycle, getNearbyDriverPositions } from '../services/matching.service';
 import {
   requestIntercityBooking,
   confirmIntercityBooking,
@@ -54,6 +57,7 @@ import {
   getIntercityRoute,
   INTERCITY_REMOVE_CAP,
   INTERCITY_DUAL_MODEL,
+  INTERCITY_CITY_COORDS,
 } from '../config/constants';
 import { createPaymentLink, getPaymentByReference, reconcilePayment } from '../services/payment.service';
 import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
@@ -166,6 +170,17 @@ router.post('/orders/:id/tip', clientAuthMiddleware, async (req, res) => {
 
 // ─── Trips (auth required) ────────────────────────────────────────────────────
 
+// Posiciones anónimas de conductores en línea cercanos, para el mapa del home.
+router.get('/drivers/nearby', clientAuthMiddleware, async (req, res) => {
+  const lat = Number(req.query['lat']);
+  const lng = Number(req.query['lng']);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    res.status(400).json({ success: false, error: 'lat y lng son requeridos' });
+    return;
+  }
+  res.json({ success: true, data: await getNearbyDriverPositions(lat, lng) });
+});
+
 router.get('/trips/estimate', async (req, res) => {
   const lat = parseFloat(req.query['lat'] as string);
   const lng = parseFloat(req.query['lng'] as string);
@@ -229,6 +244,18 @@ router.get('/trips/history', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: await getClientTripHistory(req.clientId!) });
 });
 
+// Snapshot de un viaje propio: fallback de seguimiento por polling cuando el
+// WS no está disponible (p. ej. cliente web).
+router.get('/trips/:id', clientAuthMiddleware, async (req, res) => {
+  const tripId = req.params['id']!;
+  const raw = await getClientTripRaw(tripId);
+  if (!raw || raw.clientId !== req.clientId) {
+    res.status(404).json({ success: false, error: 'Viaje no encontrado' });
+    return;
+  }
+  res.json({ success: true, data: await getClientTripSnapshot(tripId) });
+});
+
 router.post('/trips/:id/cancel', clientAuthMiddleware, async (req, res) => {
   const ok = await cancelClientTrip(req.clientId!, req.params['id']!);
   if (!ok) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
@@ -264,7 +291,7 @@ router.put('/fcm-token', clientAuthMiddleware, async (req, res) => {
 // ─── Errands (Mandados) ───────────────────────────────────────────────────────
 
 router.post('/errands/request', clientAuthMiddleware, async (req, res) => {
-  const dto = req.body as Partial<RequestClientErrandDTO>;
+  const dto = req.body as Partial<RequestClientErrandDTO> & { pickupLat?: number; pickupLng?: number };
   if (!dto.category || !dto.description || !dto.pickupAddress || !dto.dropoffAddress) {
     res.status(400).json({ success: false, error: 'category, description, pickupAddress, dropoffAddress are required' });
     return;
@@ -276,6 +303,14 @@ router.post('/errands/request', clientAuthMiddleware, async (req, res) => {
       purchaseBudget: dto.purchaseBudget, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: errand });
+
+    // Matching real: ofrece el mandado a conductores cercanos en línea (mismo
+    // motor geoespacial que los viajes). La ubicación de recogida la envía el
+    // cliente; si no llega, se ancla al centro de Pamplona. Fire-and-forget para
+    // no demorar la respuesta HTTP.
+    const lat = typeof dto.pickupLat === 'number' ? dto.pickupLat : INTERCITY_CITY_COORDS.pamplona.lat;
+    const lng = typeof dto.pickupLng === 'number' ? dto.pickupLng : INTERCITY_CITY_COORDS.pamplona.lng;
+    void startErrandMatchingCycle(errand.id, lat, lng);
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to request errand' });
   }

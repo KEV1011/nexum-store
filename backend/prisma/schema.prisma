@@ -44,7 +44,6 @@ model User {
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
   ratings           Rating[]          @relation("RatingAuthor")
-  otpSessions       OtpSession[]
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
@@ -124,7 +123,9 @@ model OtpSession {
 
   driverId  String?
   driver    Driver?  @relation(fields: [driverId], references: [id])
-  user      User?    @relation(fields: [phone], references: [phone])
+  // Sin relación a User por `phone`: el OTP es para login/registro y el número
+  // puede no existir aún en `users`. La FK otp_sessions_phone_fkey rompía el
+  // envío de OTP para cualquier teléfono no registrado.
 
   @@index([phone])
   @@map("otp_sessions")
@@ -153,6 +154,9 @@ model Driver {
   bankName          String?
   bankAccountType   String?
   bankAccountNumber String?
+  // Afiliación a una empresa de transporte (null = conductor independiente).
+  operatorId        String?
+  employmentType    EmploymentType?
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
@@ -180,8 +184,11 @@ model Driver {
   documents     DriverDocument[]
   emergencyEvents EmergencyEvent[]
   payouts         Payout[]
+  operator         Operator?        @relation(fields: [operatorId], references: [id])
+  fleetAssignments FleetAssignment[]
 
   @@index([status])
+  @@index([operatorId])
   @@map("drivers")
 }
 
@@ -235,11 +242,19 @@ model Vehicle {
   plate        String      @unique
   color        String
   isActive     Boolean     @default(true)
+  // Flota de empresa (null = vehículo de conductor independiente).
+  operatorId      String?
+  operationCardNo String?   // tarjeta de operación (taxi/intermunicipal)
+  capacity        Int?      // # de pasajeros
+  internalCode    String?   // "móvil 042" interno de la empresa
   createdAt    DateTime    @default(now())
 
   driver       Driver      @relation(fields: [driverId], references: [id])
   trips        Trip[]
+  operator         Operator?         @relation(fields: [operatorId], references: [id])
+  fleetAssignments FleetAssignment[]
 
+  @@index([operatorId])
   @@map("vehicles")
 }
 
@@ -408,6 +423,9 @@ model Trip {
   arrivedAt          DateTime?
   completedAt        DateTime?
 
+  // Empresa bajo la cual se prestó el servicio (trazabilidad legal + liquidación).
+  operatorId         String?
+
   passenger          User?           @relation("TripPassenger", fields: [passengerId], references: [id])
   driver             Driver?         @relation(fields: [driverId], references: [id])
   vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
@@ -416,6 +434,7 @@ model Trip {
   @@index([passengerId])
   @@index([driverId])
   @@index([status])
+  @@index([operatorId])
   @@map("trips")
 }
 
@@ -526,6 +545,8 @@ model Errand {
   requestRef       String        @unique
   userId           String
   driverId         String?
+  // Empresa del conductor al momento de aceptar (sellado para liquidación).
+  operatorId       String?
   category         ErrandCategory
   description      String
   pickupAddress    String
@@ -549,6 +570,7 @@ model Errand {
 
   @@index([userId])
   @@index([driverId])
+  @@index([operatorId])
   @@index([status])
   @@map("errands")
 }
@@ -600,10 +622,14 @@ model IntercityBooking {
   rating         Int?
   ratingComment  String?
 
+  // Empresa bajo la cual se prestó el servicio (troncales legales + liquidación).
+  operatorId     String?
+
   user           User            @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([status])
+  @@index([operatorId])
   @@map("intercity_bookings")
 }
 
@@ -755,4 +781,140 @@ model EmergencyEvent {
 enum EmergencyType {
   PANIC // botón de pánico pulsado
   SHARE // viaje compartido con contacto de confianza
+}
+
+// ── Empresas de transporte (operadores) + flota ───────────────────────────────
+//
+// Una Operator es una empresa de taxi o de transporte intermunicipal habilitada.
+// De ella cuelgan su flota (Vehicle.operatorId), sus conductores afiliados
+// (Driver.operatorId), sus documentos legales, los usuarios de su portal y las
+// rutas que está autorizada a operar. Cada viaje se sella con operatorId para
+// trazabilidad legal y liquidación. Ver docs/ESTRUCTURA_EMPRESAS_FLOTAS.md.
+
+model Operator {
+  id                    String         @id @default(cuid())
+  legalName             String
+  nit                   String         @unique
+  tradeName             String?
+  type                  OperatorType
+  status                OperatorStatus @default(PENDING)
+  isVerified            Boolean        @default(false)
+  habilitacionNo        String? // número de resolución de habilitación (Mintransporte)
+  habilitacionExpiresAt DateTime?
+  contactName           String?
+  contactPhone          String?
+  contactEmail          String?
+  city                  String?
+  commissionRate        Float? // override de comisión de plataforma (null = global)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  documents   OperatorDocument[]
+  members     OperatorMember[]
+  routes      OperatorRoute[]
+  vehicles    Vehicle[]
+  drivers     Driver[]
+  assignments FleetAssignment[]
+
+  @@map("operators")
+}
+
+model OperatorDocument {
+  id              String          @id @default(cuid())
+  operatorId      String
+  type            OperatorDocType
+  fileUrl         String
+  status          DocumentStatus  @default(PENDING)
+  expiresAt       DateTime?
+  rejectionReason String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  uploadedAt      DateTime        @default(now())
+
+  operator        Operator        @relation(fields: [operatorId], references: [id])
+
+  @@index([operatorId])
+  @@index([status])
+  @@map("operator_documents")
+}
+
+model OperatorMember {
+  id         String       @id @default(cuid())
+  operatorId String
+  phone      String // login OTP al portal de empresa
+  name       String?
+  role       OperatorRole @default(VIEWER)
+  active     Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+
+  operator   Operator     @relation(fields: [operatorId], references: [id])
+
+  @@unique([operatorId, phone])
+  @@index([operatorId])
+  @@map("operator_members")
+}
+
+model OperatorRoute {
+  id         String   @id @default(cuid())
+  operatorId String
+  originCity String
+  destCity   String
+  authorized Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  operator   Operator @relation(fields: [operatorId], references: [id])
+
+  @@unique([operatorId, originCity, destCity])
+  @@index([operatorId])
+  @@map("operator_routes")
+}
+
+model FleetAssignment {
+  id         String    @id @default(cuid())
+  operatorId String
+  driverId   String
+  vehicleId  String
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  active     Boolean   @default(true)
+
+  operator   Operator  @relation(fields: [operatorId], references: [id])
+  driver     Driver    @relation(fields: [driverId], references: [id])
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+
+  @@index([operatorId])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@map("fleet_assignments")
+}
+
+enum OperatorType {
+  TAXI
+  INTERCITY
+  MIXED
+}
+
+enum OperatorStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum OperatorDocType {
+  HABILITACION
+  RUT
+  CAMARA_COMERCIO
+  INSURANCE
+  OTHER
+}
+
+enum OperatorRole {
+  OWNER
+  DISPATCHER
+  VIEWER
+}
+
+enum EmploymentType {
+  OWN
+  AFFILIATED
 }

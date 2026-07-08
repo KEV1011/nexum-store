@@ -30,6 +30,10 @@ services:
       # Monto mínimo de retiro del conductor en COP (default 20000).
       - key: MIN_PAYOUT_COP
         sync: false
+      # Crash reporting (opcional): con un DSN de Sentry, los errores no
+      # manejados se reportan al dashboard. Sin DSN, no-op (cero riesgo).
+      - key: SENTRY_DSN
+        sync: false
       # Almacenamiento de documentos en S3/R2 (recomendado: el disco de Render
       # es efímero y pierde los documentos al redeploy). Sin S3_BUCKET usa disco.
       - key: S3_BUCKET
@@ -89,7 +93,7 @@ services:
         sync: false
       # URL pública del backend — Wompi redirige al usuario a /payment/result.
       - key: APP_URL
-        value: https://nexum-api.onrender.com
+        value: https://nexum-api-trxr.onrender.com
 
 databases:
   - name: nexum-db
