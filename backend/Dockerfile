@@ -9,10 +9,16 @@ RUN npm ci
 
 # Copy source and compile
 COPY . .
+# Generar el cliente Prisma CON el schema ya presente. El postinstall de `npm ci`
+# corre antes del COPY (sin schema), así que produce un cliente sin los tipos del
+# modelo (p. ej. el enum PromoType) y `tsc` falla con TS2305. Regenerar aquí es
+# lo que hace que el build sea consistente con el CI.
+RUN npx prisma generate
 RUN npm run build
 
-# Prune devDependencies so we only ship production modules
-RUN npm prune --omit=dev
+# Prune devDependencies y regenerar el cliente para que sobreviva el prune hacia
+# la imagen de runner.
+RUN npm prune --omit=dev && npx prisma generate
 
 # ── Stage 2: runner ───────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
@@ -36,4 +42,7 @@ USER nexum
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+# Aplica migraciones pendientes al arrancar (aquí sí hay DATABASE_URL). Si
+# `migrate deploy` falla (p. ej. historial desincronizado al cambiar de rama),
+# el servidor arranca igual para no quedar muerto: /health reporta db:true/false.
+CMD ["sh", "-c", "npx prisma migrate deploy || echo '[start] WARN: prisma migrate deploy falló — el servidor arranca igual; revisa /health (db) y los logs de migración'; exec node dist/index.js"]
