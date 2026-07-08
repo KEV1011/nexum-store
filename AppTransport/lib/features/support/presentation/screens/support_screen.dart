@@ -644,3 +644,56 @@ class _ChatMessage {
   final bool isAgent;
   final String time;
 }
+
+// ── Static data ────────────────────────────────────────────────────────────────
+
+const _faqs = [
+  _Faq(
+    icon: Icons.payments_outlined,
+    question: '¿Cuándo recibo mis pagos?',
+    answer:
+        'Los pagos se acreditan automáticamente en tu billetera Nexum al finalizar cada viaje. Puedes solicitar retiros a tu cuenta bancaria en cualquier momento desde la sección Billetera.',
+  ),
+  _Faq(
+    icon: Icons.cancel_outlined,
+    question: '¿Qué pasa si cancelo muchos viajes?',
+    answer:
+        'Una tasa de cancelación mayor al 5% puede afectar tu puntuación y acceso a incentivos. Si necesitas cancelar, hazlo antes de dirigirte al punto de recogida para minimizar el impacto.',
+  ),
+  _Faq(
+    icon: Icons.star_outline_rounded,
+    question: '¿Cómo mejorar mi calificación?',
+    answer:
+        'Mantén el vehículo limpio, sé puntual, confirma los datos del pasajero al subir y ofrece un trato amable. Las calificaciones de 5 estrellas mejoran tu posición para recibir viajes premium.',
+  ),
+  _Faq(
+    icon: Icons.local_taxi_rounded,
+    question: '¿Puedo cambiar mi tipo de servicio?',
+    answer:
+        'Sí, puedes cambiar entre Moto, Particular, Taxi, Moto-carro y Envíos desde la pantalla principal. Asegúrate de que tu vehículo cumpla los requisitos del tipo seleccionado.',
+  ),
+  _Faq(
+    icon: Icons.document_scanner_rounded,
+    question: '¿Qué documentos necesito tener al día?',
+    answer:
+        'Licencia de conducción vigente, SOAT al día, revisión técnico-mecánica (si aplica) y tarjeta de operación. Nexum puede solicitarte verificación en cualquier momento.',
+  ),
+  _Faq(
+    icon: Icons.account_balance_rounded,
+    question: '¿Cómo agrego mi cuenta bancaria?',
+    answer:
+        'Ve a Billetera → Cuenta bancaria → Agregar cuenta. Puedes vincular cuentas de Bancolombia, Nequi, Daviplata, BBVA y otros bancos del sistema financiero colombiano.',
+  ),
+  _Faq(
+    icon: Icons.card_giftcard_rounded,
+    question: '¿Cómo funcionan los bonos e incentivos?',
+    answer:
+        'Nexum ofrece bonos por metas de viajes semanales, zonas de alta demanda (surge) y calificación perfecta. Los bonos se acreditan automáticamente en tu billetera al cumplir los requisitos.',
+  ),
+  _Faq(
+    icon: Icons.block_rounded,
+    question: '¿Por qué puede bloquearse mi cuenta?',
+    answer:
+        'Las causas más comunes son: tasa de cancelación alta (>5%), reportes de pasajeros, documentos vencidos o comportamiento contrario a las políticas de Nexum. Contacta soporte para apelar una suspensión.',
+  ),
+];

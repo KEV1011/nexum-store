@@ -515,6 +515,7 @@ function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine
 type PrismaTrip = {
   id: string; requestRef: string; serviceType: string; status: string;
   originAddress: string; destAddress: string; estimatedFare: number;
+  finalFare: number | null;
   distanceKm: number | null; etaMinutes: number | null;
   createdAt: Date; acceptedAt: Date | null; completedAt: Date | null;
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
