@@ -7,14 +7,18 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 /// Responsabilidades:
 /// 1. Lee el JWT almacenado en [FlutterSecureStorage] antes de cada petición.
 /// 2. Inyecta el header `Authorization: Bearer <token>` si el token existe.
-/// 3. En caso de respuesta 401 (Unauthorized), borra el token local.
-///    TODO(backend): Disparar flujo de re-login cuando exista navegación real.
+/// 3. En caso de respuesta 401 (Unauthorized), borra el token local y dispara
+///    [onSessionExpired] para que la app lleve al conductor al login.
 class AuthInterceptor extends Interceptor {
   AuthInterceptor({FlutterSecureStorage? secureStorage})
       : _secureStorage = secureStorage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             );
+
+  /// Hook global de sesión vencida. Lo registra [NexumDriverApp] al construir
+  /// el router (aquí no hay acceso a GoRouter sin acoplar capas).
+  static void Function()? onSessionExpired;
 
   final FlutterSecureStorage _secureStorage;
 
@@ -50,12 +54,9 @@ class AuthInterceptor extends Interceptor {
     ErrorInterceptorHandler handler,
   ) async {
     if (err.response?.statusCode == 401) {
-      // Token expirado o inválido: limpiar credenciales locales.
+      // Token expirado o inválido: limpiar credenciales y volver al login.
       await _secureStorage.delete(key: AppConstants.authTokenKey);
-
-      // TODO(backend): Navegar a la pantalla de login cuando exista un
-      // NavigationService o GoRouter accesible desde aquí.
-      // NavigationService.instance.pushReplacementNamed(Routes.login);
+      onSessionExpired?.call();
     }
 
     handler.next(err);

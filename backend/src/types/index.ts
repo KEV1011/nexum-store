@@ -506,6 +506,8 @@ export interface ClientTripDTO {
   originAddress: string;
   destinationAddress: string;
   estimatedFare: number;
+  /** Tarifa final liquidada por el backend (solo al completar). */
+  finalFare?: number;
   distanceKm: number;
   etaMinutes: number;
   status: ClientTripStatus;

@@ -293,29 +293,42 @@ class _TransportBookingScreenState
           );
     }
 
-    final id = await ref.read(transportProvider.notifier).request(
-          serviceType: widget.serviceType,
-          origin: _originCtrl.text.trim(),
-          destination: _destCtrl.text.trim(),
-          originLat: _originLat,
-          originLng: _originLng,
-          destLat: _destLat,
-          destLng: _destLng,
-          distanceKm: route?.distanceKm,
-          etaMinutes: route?.durationMinutes,
-          recipientName: _isEnvios ? _recipientNameCtrl.text.trim() : null,
-          recipientPhone: _isEnvios
-              ? (_recipientPhoneCtrl.text.trim().isEmpty
-                  ? null
-                  : _recipientPhoneCtrl.text.trim())
-              : null,
-          packageDescription: _isEnvios
-              ? (_packageCtrl.text.trim().isEmpty
-                  ? null
-                  : _packageCtrl.text.trim())
-              : null,
-          surgeMultiplier: surgeMultiplier,
-        );
+    final String id;
+    try {
+      id = await ref.read(transportProvider.notifier).request(
+            serviceType: widget.serviceType,
+            origin: _originCtrl.text.trim(),
+            destination: _destCtrl.text.trim(),
+            originLat: _originLat,
+            originLng: _originLng,
+            destLat: _destLat,
+            destLng: _destLng,
+            distanceKm: route?.distanceKm,
+            etaMinutes: route?.durationMinutes,
+            recipientName: _isEnvios ? _recipientNameCtrl.text.trim() : null,
+            recipientPhone: _isEnvios
+                ? (_recipientPhoneCtrl.text.trim().isEmpty
+                    ? null
+                    : _recipientPhoneCtrl.text.trim())
+                : null,
+            packageDescription: _isEnvios
+                ? (_packageCtrl.text.trim().isEmpty
+                    ? null
+                    : _packageCtrl.text.trim())
+                : null,
+            surgeMultiplier: surgeMultiplier,
+          );
+    } catch (_) {
+      // El servidor no recibió el viaje: se informa en lugar de simular.
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+          'No se pudo solicitar el viaje. Revisa tu conexión e inténtalo de nuevo.',
+        ),
+      ));
+      return;
+    }
 
     if (!mounted) return;
 

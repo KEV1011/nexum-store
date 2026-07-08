@@ -18,6 +18,7 @@ import {
   notifyClientTripUpdateById,
   registerClientSendToDriver,
   handleNoDriversFound,
+  getTripSettlement,
 } from '../services/client.service';
 import {
   getClientErrandRaw,
@@ -139,7 +140,8 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
     driverIdByWs.set(ws, payload.driverId);
     // Register in driverConnections so matching can reach this driver via sendToDriverById.
     driverConnections.set(payload.driverId, { ws, driverId: payload.driverId, workMode });
-    void getTripService().setDriverStatus('online', payload.driverId);
+    // OFFLINE→ONLINE condicional: reconectar a mitad de viaje no pisa ON_TRIP.
+    void getTripService().noteDriverConnected(payload.driverId);
 
     sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workMode });
 
@@ -644,7 +646,7 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Driver work mode change ──────────────────────────────────────────────
     case 'driver_mode': {
-      if (ws !== driverSocket) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const mode = msg['workMode'];
       if (typeof mode !== 'string') { sendTo(ws, { type: 'error', message: 'workMode required' }); return; }
       handleDriverModeChange(ws, mode as WorkMode);
@@ -669,11 +671,14 @@ function onMessage(ws: WebSocket, raw: string): void {
 
     // ── Trip status (driver → server → client) ───────────────────────────────
     case 'trip_status': {
-      if (ws !== driverSocket) { sendDriver({ type: 'error', message: 'Not authenticated' }); return; }
+      // Cualquier conductor autenticado (multi-conductor), no solo el socket
+      // singleton legado: con 2+ conductores conectados el gate anterior
+      // rechazaba los estados de todos menos el último en autenticarse.
+      if (!driverIdByWs.has(ws)) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const tripId = msg['tripId'];
       const status = msg['status'];
       if (typeof tripId !== 'string' || typeof status !== 'string') {
-        sendDriver({ type: 'error', message: 'tripId and status required' }); return;
+        sendTo(ws, { type: 'error', message: 'tripId and status required' }); return;
       }
       void (async () => {
         const updated = await updateClientTripStatus(tripId, status as import('../types').ClientTripStatus);
@@ -683,9 +688,14 @@ function onMessage(ws: WebSocket, raw: string): void {
             const clientWs = clientSockets.get(raw.clientId);
             if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });
           }
-          sendDriver({ type: 'trip_status_ack', tripId, status });
+          // Al completar, el ack lleva la liquidación real del backend para que
+          // la app del conductor muestre tarifa/neto/comisión verdaderos.
+          const settlement = status === 'completed' ? await getTripSettlement(tripId) : null;
+          sendTo(ws, settlement
+            ? { type: 'trip_status_ack', tripId, status, settlement }
+            : { type: 'trip_status_ack', tripId, status });
         } else {
-          sendDriver({ type: 'error', message: `Trip ${tripId} not found` });
+          sendTo(ws, { type: 'error', message: `Trip ${tripId} not found` });
         }
       })();
       break;
@@ -1006,12 +1016,16 @@ function onClose(ws: WebSocket): void {
   driverIdByWs.delete(ws);
   clientIdByWs.delete(ws);
 
+  // Presencia: el conductor desconectado pasa a OFFLINE solo si estaba ONLINE
+  // (no pisa ON_TRIP: un corte breve no tumba el viaje activo). Antes se leía
+  // driverIdByWs DESPUÉS de borrarlo, así que nunca se marcaba offline.
+  if (driverId) void getTripService().noteDriverDisconnected(driverId);
+
   if (ws === driverSocket) {
     driverSocket = null;
     driverActiveTripId = null;
     driverActiveErrandId = null;
     driverWorkMode = 'pasajero';
-    void getTripService().setDriverStatus('offline', driverIdByWs.get(ws));
     console.log('[WS] Driver disconnected');
     return;
   }

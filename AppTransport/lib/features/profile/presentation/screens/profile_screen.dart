@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
-import 'package:nexum_driver/core/mock_data/driver_mock.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/driver_status/domain/entities/driver_status_entity.dart';
@@ -57,22 +56,6 @@ const _documents = [
     expiryDate: 'Venció: 01 ene 2025',
     icon: Icons.credit_card_rounded,
   ),
-];
-
-// ── Rating categories ─────────────────────────────────────────────────────────
-
-class _RatingCategory {
-  const _RatingCategory({required this.label, required this.score});
-  final String label;
-  final double score;
-}
-
-const _ratingCategories = [
-  _RatingCategory(label: 'Puntualidad', score: 4.9),
-  _RatingCategory(label: 'Amabilidad', score: 4.8),
-  _RatingCategory(label: 'Limpieza', score: 5.0),
-  _RatingCategory(label: 'Conducción', score: 4.7),
-  _RatingCategory(label: 'Comunicación', score: 4.8),
 ];
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -245,7 +228,8 @@ class ProfileScreen extends ConsumerWidget {
             ),
             const SizedBox(height: AppConstants.spacingXS),
             Text(
-              '${DriverMock.city}, ${DriverMock.department}',
+              // Base de operación de la plataforma (no es dato personal).
+              'Pamplona, Norte de Santander',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: AppColors.textTertiary,
               ),
@@ -441,21 +425,12 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${DriverMock.totalRatings} reseñas',
+                      '${profile.totalTrips} viajes completados',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: AppColors.textSecondary,
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(width: AppConstants.spacingXL),
-                // Category breakdown
-                Expanded(
-                  child: Column(
-                    children: _ratingCategories
-                        .map((c) => _RatingBar(category: c))
-                        .toList(),
-                  ),
                 ),
               ],
             ),
@@ -807,58 +782,6 @@ class _CardHeader extends StatelessWidget {
               ?.copyWith(fontWeight: FontWeight.w700),
         ),
       ],
-    );
-  }
-}
-
-class _RatingBar extends StatelessWidget {
-  const _RatingBar({required this.category});
-  final _RatingCategory category;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(
-              category.label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-                fontSize: 11,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: category.score / 5.0,
-                minHeight: 6,
-                backgroundColor: AppColors.star.withValues(alpha: 0.15),
-                valueColor:
-                    const AlwaysStoppedAnimation<Color>(AppColors.star),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 28,
-            child: Text(
-              category.score.toStringAsFixed(1),
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                fontSize: 11,
-              ),
-              textAlign: TextAlign.end,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

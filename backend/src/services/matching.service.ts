@@ -110,6 +110,32 @@ async function findNearestAvailableDrivers(
   return rows.map((r) => ({ driverId: r.driver_id, distanceMeters: Number(r.distance_m) }));
 }
 
+/**
+ * Posiciones anónimas de conductores ONLINE y frescos alrededor del cliente,
+ * para pintar los vehículos cercanos en el mapa del home (solo coordenadas,
+ * sin identidad del conductor).
+ */
+export async function getNearbyDriverPositions(
+  lat: number,
+  lng: number,
+): Promise<Array<{ lat: number; lng: number }>> {
+  const rows = await prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+    SELECT ST_Y(d."geo"::geometry) AS lat,
+           ST_X(d."geo"::geometry) AS lng
+    FROM "drivers" d
+    WHERE d."geo" IS NOT NULL
+      AND d."status" = 'ONLINE'
+      AND d."isVerified" = true
+      AND d."lastSeenAt" >= now() - ${GEO_FRESHNESS_S} * INTERVAL '1 second'
+      AND ST_DWithin(
+            d."geo",
+            ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+            ${SEARCH_RADIUS_M}
+          )
+    LIMIT 25`;
+  return rows.map((r) => ({ lat: Number(r.lat), lng: Number(r.lng) }));
+}
+
 // ─── TripRequestDTO builder ───────────────────────────────────────────────────
 
 async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | null> {

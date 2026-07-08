@@ -71,7 +71,16 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
     );
 
-    await ref.read(errandProvider.notifier).createErrand(errand);
+    try {
+      await ref.read(errandProvider.notifier).createErrand(errand);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      _showError(
+        'No se pudo solicitar el mandado. Revisa tu conexión e inténtalo de nuevo.',
+      );
+      return;
+    }
     if (!mounted) return;
     context.go('/errand/status');
   }

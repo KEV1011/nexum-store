@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,14 +10,6 @@ import 'package:nexum_client/features/orders/data/datasources/'
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
 import 'package:nexum_client/shared/services/order_ws_service.dart';
-
-/// Conductores mock para la simulación de demo.
-const _mockDrivers = <(String, String)>[
-  ('Andrés Villamizar', '+57 312 678 9012'),
-  ('Laura Sepúlveda', '+57 318 234 5678'),
-  ('Jorge Contreras', '+57 320 987 6543'),
-  ('Diana Rangel', '+57 315 456 7788'),
-];
 
 /// Estado de la lista de pedidos del cliente (activos + historial).
 class OrdersState {
@@ -64,7 +55,6 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
   final OrdersDataSource _dataSource;
   final OrderWsService _wsService;
   final Dio _dio;
-  final _random = Random();
 
   /// Timers de simulación por pedido (fallback cuando WS no conecta).
   final _timers = <String, List<Timer>>{};
@@ -135,11 +125,9 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
   // ── placeOrder ─────────────────────────────────────────────────────────────
 
-  /// Crea un pedido desde el carrito.
-  ///
-  /// 1. Llama al backend real (POST /client/orders).
-  /// 2. Si tiene éxito → usa el ID y ref del servidor, luego conecta WS.
-  /// 3. Si falla (sin red) → genera IDs locales y cae en simulación por Timer.
+  /// Crea un pedido desde el carrito contra el backend real. Si no hay red,
+  /// lanza (el checkout muestra el error): un pedido que el negocio nunca
+  /// recibió no debe aparecer como confirmado.
   ///
   /// Devuelve el id del pedido para navegar al tracking.
   Future<String> placeOrder({
@@ -172,9 +160,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       id = data['id'] as String;
       orderRef = data['orderRef'] as String;
     } catch (_) {
-      // Fallback: IDs locales si no hay backend disponible.
-      id = 'ord-${DateTime.now().millisecondsSinceEpoch}';
-      orderRef = 'NX-${1000 + _random.nextInt(8000)}';
+      throw Exception('No se pudo enviar el pedido. Revisa tu conexión.');
     }
 
     final order = CustomerOrderEntity(
@@ -203,14 +189,12 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     state = state.copyWith(orders: newOrders);
     unawaited(_dataSource.saveOrders(newOrders));
 
-    // Intentar WS real (el backend ya inició la simulación server-side).
     final wsOk = await _wsService.connect();
-    if (wsOk && !_wsSubscribed.contains(id)) {
-      _wsSubscribed.add(id);
-      _wsService.subscribeOrder(id);
+    if (wsOk) {
+      if (_wsSubscribed.add(id)) _wsService.subscribeOrder(id);
     } else {
-      // Fallback local si no hay WS disponible.
-      _startSimulation(id);
+      // Sin WS (p. ej. web): seguimiento real por polling del backend.
+      _startPolling(id);
     }
 
     return id;
@@ -257,51 +241,28 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     });
   }
 
-  // ── Timer simulation (fallback) ────────────────────────────────────────────
+  // ── Polling REST (fallback sin WS) ─────────────────────────────────────────
 
-  void _startSimulation(String id) {
-    final driver = _mockDrivers[_random.nextInt(_mockDrivers.length)];
-
-    void schedule(
-      int seconds,
-      CustomerOrderEntity Function(CustomerOrderEntity) update,
-    ) {
-      final timer = Timer(Duration(seconds: seconds), () {
-        if (!mounted) return;
-        _updateOrder(id, update);
-      });
-      _timers.putIfAbsent(id, () => []).add(timer);
-    }
-
-    schedule(
-      5,
-      (o) => o.copyWith(
-        status: CustomerOrderStatus.driverToPickup,
-        driverName: driver.$1,
-        driverPhone: driver.$2,
-      ),
-    );
-    schedule(
-      12,
-      (o) => o.copyWith(status: CustomerOrderStatus.atPickup),
-    );
-    schedule(
-      18,
-      (o) => o.copyWith(
-        status: CustomerOrderStatus.inTransit,
-        pickedUpAt: DateTime.now(),
-        pickupPhotoPath: 'mock://pickup/$id',
-      ),
-    );
-    schedule(
-      28,
-      (o) => o.copyWith(
-        status: CustomerOrderStatus.delivered,
-        deliveredAt: DateTime.now(),
-        deliveryPhotoPath: 'mock://delivery/$id',
-        hasSignature: true,
-      ),
-    );
+  /// Consulta el estado real del pedido cada 5 s cuando no hay WebSocket
+  /// disponible; el DTO del backend es el mismo del `order_update` del WS.
+  void _startPolling(String id) {
+    final timer = Timer.periodic(const Duration(seconds: 5), (t) async {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      try {
+        final res = await _dio.get<Map<String, dynamic>>('/client/orders/$id');
+        final data = res.data?['data'] as Map<String, dynamic>?;
+        if (data == null || !mounted) return;
+        _applyWsUpdate(OrderUpdateEvent(orderId: id, payload: data));
+        final status = data['status'] as String?;
+        if (status == 'delivered' || status == 'cancelled') t.cancel();
+      } catch (_) {
+        // Red intermitente: se reintenta en el siguiente tick.
+      }
+    });
+    _timers.putIfAbsent(id, () => []).add(timer);
   }
 
   // ── cancelOrder ────────────────────────────────────────────────────────────

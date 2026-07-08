@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
-import 'package:nexum_driver/core/mock_data/driver_mock.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
+import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
+import 'package:nexum_driver/features/trip_history/presentation/providers/trip_history_provider.dart';
 
 // ── Tier system ───────────────────────────────────────────────────────────────
 
@@ -60,26 +62,17 @@ _Tier _tierFrom(int trips) {
   return _Tier.bronce;
 }
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const _acceptanceRate = 0.94;
-const _completionRate = 0.97;
-const _onTimeRate = 0.91;
-const _weeklyHours = 38.5;
-const _streak = 7;
-const _weeklyTrips = 47;
-const _weeklyEarnings = 234000.0;
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-class PerformanceScreen extends StatefulWidget {
+class PerformanceScreen extends ConsumerStatefulWidget {
   const PerformanceScreen({super.key});
 
   @override
-  State<PerformanceScreen> createState() => _PerformanceScreenState();
+  ConsumerState<PerformanceScreen> createState() =>
+      _PerformanceScreenState();
 }
 
-class _PerformanceScreenState extends State<PerformanceScreen>
+class _PerformanceScreenState extends ConsumerState<PerformanceScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _anim;
@@ -106,7 +99,19 @@ class _PerformanceScreenState extends State<PerformanceScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final tier = _tierFrom(DriverMock.totalTrips);
+    // Datos reales: perfil del backend (viajes/calificación) e historial
+    // liquidado (/earnings/history) para las cifras de la semana.
+    final profile = ref.watch(driverProfileProvider).profile;
+    final history = ref.watch(tripHistoryProvider);
+    final totalTrips = profile?.totalTrips ?? 0;
+    final rating = profile?.rating ?? 0;
+    final tier = _tierFrom(totalTrips);
+
+    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
+    final weekTrips =
+        history.where((t) => t.finishedAt.isAfter(weekAgo)).toList();
+    final weeklyEarnings =
+        weekTrips.fold<double>(0, (sum, t) => sum + t.netEarning);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mi rendimiento')),
@@ -116,45 +121,13 @@ class _PerformanceScreenState extends State<PerformanceScreen>
           // ── Tier card ────────────────────────────────────────────────────
           _TierCard(
             tier: tier,
-            totalTrips: DriverMock.totalTrips,
+            totalTrips: totalTrips,
+            rating: rating,
             anim: _anim,
           ),
           const SizedBox(height: AppConstants.spacingL),
 
-          // ── Metric gauges ─────────────────────────────────────────────────
-          Text(
-            'Métricas clave',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _Gauge(
-                label: 'Aceptación',
-                value: _acceptanceRate,
-                anim: _anim,
-                color: AppColors.success,
-              ),
-              _Gauge(
-                label: 'Completación',
-                value: _completionRate,
-                anim: _anim,
-                color: AppColors.info,
-              ),
-              _Gauge(
-                label: 'A tiempo',
-                value: _onTimeRate,
-                anim: _anim,
-                color: AppColors.warning,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppConstants.spacingL),
-
-          // ── Weekly stats ──────────────────────────────────────────────────
+          // ── Weekly stats (historial real) ─────────────────────────────────
           Text(
             'Esta semana',
             style: theme.textTheme.titleSmall?.copyWith(
@@ -166,30 +139,9 @@ class _PerformanceScreenState extends State<PerformanceScreen>
             children: [
               Expanded(
                 child: _StatTile(
-                  icon: Icons.access_time_rounded,
-                  label: 'Horas en línea',
-                  value: '${_weeklyHours.toStringAsFixed(1)} h',
-                ),
-              ),
-              const SizedBox(width: AppConstants.spacingM),
-              Expanded(
-                child: _StatTile(
-                  icon: Icons.local_fire_department_rounded,
-                  label: 'Racha activa',
-                  value: '$_streak días',
-                  accent: AppColors.error,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppConstants.spacingS),
-          Row(
-            children: [
-              Expanded(
-                child: _StatTile(
                   icon: Icons.two_wheeler_rounded,
                   label: 'Viajes',
-                  value: '$_weeklyTrips',
+                  value: '${weekTrips.length}',
                 ),
               ),
               const SizedBox(width: AppConstants.spacingM),
@@ -197,18 +149,40 @@ class _PerformanceScreenState extends State<PerformanceScreen>
                 child: _StatTile(
                   icon: Icons.payments_rounded,
                   label: 'Ganancias',
-                  value: CurrencyFormatter.format(_weeklyEarnings),
+                  value: CurrencyFormatter.format(weeklyEarnings),
                 ),
               ),
             ],
           ),
           const SizedBox(height: AppConstants.spacingL),
 
-          // ── Tips ──────────────────────────────────────────────────────────
-          _TipsSection(
-            acceptance: _acceptanceRate,
-            completion: _completionRate,
-            onTime: _onTimeRate,
+          // ── Totales de la carrera ─────────────────────────────────────────
+          Text(
+            'Histórico',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+          Row(
+            children: [
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.route_rounded,
+                  label: 'Viajes totales',
+                  value: '$totalTrips',
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingM),
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.star_rounded,
+                  label: 'Calificación',
+                  value: rating.toStringAsFixed(2),
+                  accent: AppColors.star,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: AppConstants.spacingM),
         ],
@@ -223,11 +197,13 @@ class _TierCard extends StatelessWidget {
   const _TierCard({
     required this.tier,
     required this.totalTrips,
+    required this.rating,
     required this.anim,
   });
 
   final _Tier tier;
   final int totalTrips;
+  final double rating;
   final Animation<double> anim;
 
   @override
@@ -284,7 +260,7 @@ class _TierCard extends StatelessWidget {
                 ),
               ),
               Text(
-                '⭐ ${DriverMock.rating}',
+                '⭐ ${rating.toStringAsFixed(2)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
@@ -354,67 +330,6 @@ class _TierCard extends StatelessWidget {
     );
   }
 }
-
-class _Gauge extends StatelessWidget {
-  const _Gauge({
-    required this.label,
-    required this.value,
-    required this.anim,
-    required this.color,
-  });
-
-  final String label;
-  final double value;
-  final Animation<double> anim;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SizedBox(
-          width: 90,
-          height: 90,
-          child: AnimatedBuilder(
-            animation: anim,
-            builder: (_, __) {
-              final v = value * anim.value;
-              return Stack(
-                alignment: Alignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    value: v,
-                    strokeWidth: 7,
-                    backgroundColor: Colors.grey.shade200,
-                    valueColor: AlwaysStoppedAnimation<Color>(color),
-                  ),
-                  Text(
-                    '${(v * 100).toInt()}%',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: AppConstants.spacingS),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w500,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
-}
-
 class _StatTile extends StatelessWidget {
   const _StatTile({
     required this.icon,
@@ -470,105 +385,6 @@ class _StatTile extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _TipsSection extends StatelessWidget {
-  const _TipsSection({
-    required this.acceptance,
-    required this.completion,
-    required this.onTime,
-  });
-
-  final double acceptance;
-  final double completion;
-  final double onTime;
-
-  @override
-  Widget build(BuildContext context) {
-    final tips = <String>[
-      if (acceptance < 0.85)
-        'Acepta más solicitudes para mejorar tu tasa '
-            'de aceptación.',
-      if (completion < 0.95)
-        'Evita cancelar viajes en curso para subir tu '
-            'tasa de completación.',
-      if (onTime < 0.90)
-        'Llega puntualmente al pickup para mejorar tu '
-            'calificación a tiempo.',
-    ];
-
-    if (tips.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(AppConstants.spacingM),
-        decoration: BoxDecoration(
-          color: AppColors.successContainer,
-          borderRadius:
-              BorderRadius.circular(AppConstants.radiusMedium),
-        ),
-        child: const Row(
-          children: [
-            Icon(
-              Icons.check_circle_rounded,
-              color: AppColors.success,
-              size: 18,
-            ),
-            SizedBox(width: AppConstants.spacingS),
-            Expanded(
-              child: Text(
-                '¡Excelente rendimiento! Sigue así para '
-                'mantener tu nivel.',
-                style: TextStyle(
-                  color: AppColors.success,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Consejos para mejorar',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        const SizedBox(height: AppConstants.spacingS),
-        ...tips.map(
-          (tip) => Padding(
-            padding: const EdgeInsets.only(
-              bottom: AppConstants.spacingS,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.lightbulb_outline_rounded,
-                  size: 16,
-                  color: AppColors.warning,
-                ),
-                const SizedBox(width: AppConstants.spacingS),
-                Expanded(
-                  child: Text(
-                    tip,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

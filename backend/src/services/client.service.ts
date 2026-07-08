@@ -409,6 +409,22 @@ export async function getClientTripRaw(tripId: string): Promise<{ clientId: stri
   return { clientId: trip.passengerId };
 }
 
+/**
+ * Liquidación persistida de un viaje completado. La usa el ws.handler para
+ * devolverla en `trip_status_ack` y que la app del conductor muestre los
+ * montos reales del backend (no la estimación local).
+ */
+export async function getTripSettlement(
+  tripId: string,
+): Promise<{ finalFare: number; netEarning: number; commission: number } | null> {
+  const t = await prisma.trip.findUnique({
+    where: { id: tripId },
+    select: { finalFare: true, netEarning: true, commission: true },
+  });
+  if (!t || t.finalFare == null) return null;
+  return { finalFare: t.finalFare, netEarning: t.netEarning ?? 0, commission: t.commission ?? 0 };
+}
+
 export function subscribeClientTrip(tripId: string, cb: TripCallback): () => void {
   if (!tripListeners.has(tripId)) tripListeners.set(tripId, new Set());
   tripListeners.get(tripId)!.add(cb);
@@ -516,6 +532,7 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     originAddress: trip.originAddress,
     destinationAddress: trip.destAddress,
     estimatedFare: trip.estimatedFare,
+    finalFare: trip.finalFare ?? undefined,
     distanceKm: trip.distanceKm ?? 0,
     etaMinutes: trip.etaMinutes ?? 0,
     status: statusMap[trip.status] ?? 'searching',

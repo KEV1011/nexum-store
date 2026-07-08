@@ -11,13 +11,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _kKey = 'nexum_transport_v1';
 
-const _mockDrivers = <(String, String, String)>[
-  ('Carlos Méndez', '+57 310 456 7890', 'Toyota Yaris • NEX 123'),
-  ('Diana Ruiz', '+57 315 234 5678', 'Honda CB 190 • TRX 456'),
-  ('Andrés Peña', '+57 312 876 5432', 'Nissan Versa • PLM 789'),
-  ('Valentina Cruz', '+57 320 123 4567', 'Bajaj Pulsar • MOT 321'),
-];
-
 class TransportState {
   const TransportState({
     this.requests = const [],
@@ -151,8 +144,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
       id = data['id'] as String;
       ref = data['requestRef'] as String;
     } catch (_) {
-      id = 'tr-${DateTime.now().millisecondsSinceEpoch}';
-      ref = 'NXM-${1000 + _random.nextInt(8000)}';
+      // Sin backend no hay viaje real que despachar: se propaga el error para
+      // que la pantalla lo muestre (nada de ids locales inventados).
+      throw Exception('No se pudo solicitar el viaje. Revisa tu conexión.');
     }
 
     final req = TransportRequestEntity(
@@ -180,11 +174,12 @@ class TransportNotifier extends StateNotifier<TransportState> {
     unawaited(_persist(updated));
 
     final wsOk = await _wsService.connect();
-    if (wsOk && !_wsSubscribed.contains(id)) {
-      _wsSubscribed.add(id);
-      _wsService.subscribeTrip(id);
+    if (wsOk) {
+      if (_wsSubscribed.add(id)) _wsService.subscribeTrip(id);
     } else {
-      _startSimulation(id);
+      // Sin WS (p. ej. web): seguimiento REAL por polling del backend, no
+      // una simulación con conductores inventados.
+      _startPolling(id);
     }
 
     return id;
@@ -241,40 +236,27 @@ class TransportNotifier extends StateNotifier<TransportState> {
     );
   }
 
-  void _startSimulation(String id) {
-    final driver = _mockDrivers[_random.nextInt(_mockDrivers.length)];
-
-    void schedule(
-      int seconds,
-      TransportRequestEntity Function(TransportRequestEntity) update,
-    ) {
-      final timer = Timer(Duration(seconds: seconds), () {
-        if (!mounted) return;
-        _update(id, update);
-      });
-      _timers.putIfAbsent(id, () => []).add(timer);
-    }
-
-    schedule(
-      3,
-      (r) => r.copyWith(
-        status: TransportStatus.accepted,
-        driverName: driver.$1,
-        driverPhone: driver.$2,
-        driverVehicle: driver.$3,
-        acceptedAt: DateTime.now(),
-      ),
-    );
-    schedule(8, (r) => r.copyWith(status: TransportStatus.arriving));
-    schedule(20, (r) => r.copyWith(status: TransportStatus.arrived));
-    schedule(30, (r) => r.copyWith(status: TransportStatus.inProgress));
-    schedule(
-      50,
-      (r) => r.copyWith(
-        status: TransportStatus.completed,
-        completedAt: DateTime.now(),
-      ),
-    );
+  /// Seguimiento por REST cuando el WS no está disponible: consulta el estado
+  /// real del viaje cada 5 s y lo aplica igual que un `trip_update`, hasta que
+  /// el viaje termina.
+  void _startPolling(String id) {
+    final timer = Timer.periodic(const Duration(seconds: 5), (t) async {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      try {
+        final res = await _dio.get<Map<String, dynamic>>('/client/trips/$id');
+        final trip = res.data?['data'] as Map<String, dynamic>?;
+        if (trip == null || !mounted) return;
+        _applyTripUpdate(TripUpdateEvent(tripId: id, payload: {'trip': trip}));
+        final status = trip['status'] as String?;
+        if (status == 'completed' || status == 'cancelled') t.cancel();
+      } catch (_) {
+        // Red intermitente: se reintenta en el siguiente tick.
+      }
+    });
+    _timers.putIfAbsent(id, () => []).add(timer);
   }
 
   void cancelRequest(String id) {

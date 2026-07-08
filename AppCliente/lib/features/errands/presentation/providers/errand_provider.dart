@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -49,15 +48,7 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
   /// used while the request is in flight).
   String? _activeServerId;
 
-  final _rng = math.Random();
   final _timers = <Timer>[];
-
-  static const _mockMessengers = [
-    ('Laura Mendoza', '3174521890', 4.9),
-    ('Sergio Ramírez', '3123456789', 4.7),
-    ('Diana Parra', '3185556677', 4.8),
-    ('Felipe Acosta', '3001122334', 4.6),
-  ];
 
   // ── WS listener ─────────────────────────────────────────────────────────────
 
@@ -149,13 +140,15 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
       if (wsOk) {
         _wsService.subscribeErrand(serverId);
       } else {
-        _simulateLifecycle(serverId);
+        // Sin WS (p. ej. web): seguimiento real por polling del backend.
+        _startPolling(serverId);
       }
     } catch (_) {
-      // Server unavailable — fall back to mock simulation.
-      state = state.copyWith(isLoading: false);
-      _activeServerId = errand.id;
-      _simulateLifecycle(errand.id);
+      // El servidor nunca recibió el mandado: se limpia y se informa en la
+      // pantalla (nada de mensajeros simulados).
+      state = state.copyWith(clearActive: true, isLoading: false);
+      _activeServerId = null;
+      throw Exception('No se pudo solicitar el mandado. Revisa tu conexión.');
     }
   }
 
@@ -215,59 +208,30 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
     }
   }
 
-  // ── Mock simulation (fallback) ────────────────────────────────────────────
+  // ── Polling REST (fallback sin WS) ─────────────────────────────────────────
 
-  void _simulateLifecycle(String errandId) {
+  /// Consulta el estado real del mandado cada 5 s cuando no hay WebSocket;
+  /// aplica cada snapshot igual que un `errand_update` del WS.
+  void _startPolling(String errandId) {
     _clearTimers();
-
-    // 1. Assign messenger (4–9 s)
-    _schedule(Duration(seconds: 4 + _rng.nextInt(5)), () {
-      final current = state.active;
-      if (current == null || current.id != errandId) return;
-      final m = _mockMessengers[_rng.nextInt(_mockMessengers.length)];
-      state = state.copyWith(
-        active: current.copyWith(
-          status: ErrandStatus.accepted,
-          messengerName: m.$1,
-          messengerPhone: m.$2,
-          messengerRating: m.$3,
-        ),
-      );
-    });
-
-    // 2. Shopping (12 s)
-    _schedule(const Duration(seconds: 12), () {
-      final current = state.active;
-      if (current == null || current.id != errandId) return;
-      if (current.status != ErrandStatus.accepted) return;
-      state = state.copyWith(
-        active: current.copyWith(status: ErrandStatus.shopping),
-      );
-    });
-
-    // 3. On the way (20 s) — report actual purchase cost
-    _schedule(const Duration(seconds: 20), () {
-      final current = state.active;
-      if (current == null || current.id != errandId) return;
-      if (current.status != ErrandStatus.shopping) return;
-      double? actualCost;
-      if (current.hasBudget) {
-        actualCost =
-            current.purchaseBudget! * (0.75 + _rng.nextDouble() * 0.2);
-        actualCost = (actualCost / 100).round() * 100;
+    _timers.add(Timer.periodic(const Duration(seconds: 5), (t) async {
+      if (!mounted || _activeServerId != errandId) {
+        t.cancel();
+        return;
       }
-      state = state.copyWith(
-        active: current.copyWith(
-          status: ErrandStatus.onTheWay,
-          actualPurchaseCost: actualCost,
-        ),
-      );
-    });
-  }
-
-  void _schedule(Duration d, void Function() action) {
-    _timers.add(Timer(d, () {
-      if (mounted) action();
+      try {
+        final res =
+            await _dio.get<Map<String, dynamic>>('/client/errands/$errandId');
+        final data = res.data?['data'] as Map<String, dynamic>?;
+        if (data == null || !mounted) return;
+        _applyErrandUpdate(
+          ErrandUpdateEvent(errandId: errandId, payload: {'errand': data}),
+        );
+        final status = data['status'] as String?;
+        if (status == 'delivered' || status == 'cancelled') t.cancel();
+      } catch (_) {
+        // Red intermitente: se reintenta en el siguiente tick.
+      }
     }));
   }
 

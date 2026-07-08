@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/passenger
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/trip_history/presentation/providers/trip_history_provider.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
+import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
 /// Pantalla de resumen de viaje completado.
 /// Recibe un [TripModel] como `extra` desde el router tras finalizar el viaje.
@@ -26,9 +29,34 @@ class TripSummaryScreen extends ConsumerStatefulWidget {
 class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   TripModel get trip => widget.trip;
 
+  // Liquidación real del backend (llega por WS en el trip_status_ack). Mientras
+  // no llegue se muestran los montos estimados localmente; si en ~6 s no hay
+  // ack (p. ej. mandados, que liquidan por otro canal) se oculta el badge.
+  TripSettlement? _settlement;
+  StreamSubscription<TripSettlement>? _settlementSub;
+  Timer? _settlementTimeout;
+  bool _waitingSettlement = true;
+
   @override
   void initState() {
     super.initState();
+
+    _settlement = DriverWsService().settlementFor(trip.id);
+    if (_settlement == null) {
+      _settlementSub = DriverWsService().settlements.listen((s) {
+        if (s.tripId == trip.id && mounted) {
+          setState(() => _settlement = s);
+          // El registro ya existe en el backend: se refetchea el historial.
+          ref.read(tripHistoryProvider.notifier).refresh();
+        }
+      });
+      _settlementTimeout = Timer(const Duration(seconds: 6), () {
+        if (mounted && _settlement == null) {
+          setState(() => _waitingSettlement = false);
+        }
+      });
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // La liquidación real la hace el backend al recibir trip_status
       // 'completed'; aquí solo se refetchea el historial (nada sintético).
@@ -47,9 +75,20 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   }
 
   @override
+  void dispose() {
+    _settlementSub?.cancel();
+    _settlementTimeout?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final driverStatus = ref.watch(driverStatusProvider);
+    // Montos: los del backend si ya llegó la liquidación; si no, la estimación.
+    final netEarning = _settlement?.netEarning ?? trip.netEarning;
+    final grossFare = _settlement?.finalFare ?? trip.grossFare;
+    final commission = _settlement?.commission ?? trip.commission;
 
     return Scaffold(
       body: SafeArea(
@@ -122,23 +161,31 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                         ),
                       ),
                       const SizedBox(height: AppConstants.spacingS),
-                      Text(
-                        CurrencyFormatter.format(trip.netEarning),
-                        style: theme.textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.primary,
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Text(
+                          CurrencyFormatter.format(netEarning),
+                          key: ValueKey(netEarning),
+                          style: theme.textTheme.displaySmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                          ),
                         ),
                       ),
+                      if (_settlement != null || _waitingSettlement) ...[
+                        const SizedBox(height: AppConstants.spacingXS),
+                        _SettlementBadge(confirmed: _settlement != null),
+                      ],
                       const SizedBox(height: AppConstants.spacingM),
                       Divider(color: AppColors.primary.withOpacity(0.15)),
                       const SizedBox(height: AppConstants.spacingS),
                       _FareRow(
                         label: 'Tarifa bruta',
-                        value: CurrencyFormatter.format(trip.grossFare),
+                        value: CurrencyFormatter.format(grossFare),
                       ),
                       _FareRow(
                         label: 'Comisión Nexum (${(AppConstants.platformCommissionRate * 100).toInt()}%)',
-                        value: '- ${CurrencyFormatter.format(trip.commission)}',
+                        value: '- ${CurrencyFormatter.format(commission)}',
                         valueColor: AppColors.error,
                       ),
                     ],
@@ -286,6 +333,52 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
 }
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
+
+/// Píldora bajo la ganancia: "Confirmando liquidación…" mientras se espera el
+/// ack del backend y "Liquidación confirmada" cuando los montos son reales.
+class _SettlementBadge extends StatelessWidget {
+  const _SettlementBadge({required this.confirmed});
+  final bool confirmed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = confirmed ? AppColors.success : AppColors.textSecondary;
+    return Center(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        child: Container(
+          key: ValueKey(confirmed),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                confirmed ? Icons.verified_rounded : Icons.sync_rounded,
+                size: 13,
+                color: color,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                confirmed
+                    ? 'Liquidación confirmada'
+                    : 'Confirmando liquidación…',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _FareRow extends StatelessWidget {
   const _FareRow({required this.label, required this.value, this.valueColor});

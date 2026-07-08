@@ -12,6 +12,8 @@ import {
   requestClientTrip,
   getActiveClientTrip,
   getClientTripHistory,
+  getClientTripRaw,
+  getClientTripSnapshot,
   cancelClientTrip,
   getClientNameByPhone,
   getClientById,
@@ -39,7 +41,7 @@ import {
   getClientErrandById,
   cancelClientErrand,
 } from '../services/errand.service';
-import { startErrandMatchingCycle } from '../services/matching.service';
+import { startErrandMatchingCycle, getNearbyDriverPositions } from '../services/matching.service';
 import {
   requestIntercityBooking,
   confirmIntercityBooking,
@@ -168,6 +170,17 @@ router.post('/orders/:id/tip', clientAuthMiddleware, async (req, res) => {
 
 // ─── Trips (auth required) ────────────────────────────────────────────────────
 
+// Posiciones anónimas de conductores en línea cercanos, para el mapa del home.
+router.get('/drivers/nearby', clientAuthMiddleware, async (req, res) => {
+  const lat = Number(req.query['lat']);
+  const lng = Number(req.query['lng']);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    res.status(400).json({ success: false, error: 'lat y lng son requeridos' });
+    return;
+  }
+  res.json({ success: true, data: await getNearbyDriverPositions(lat, lng) });
+});
+
 router.get('/trips/estimate', async (req, res) => {
   const lat = parseFloat(req.query['lat'] as string);
   const lng = parseFloat(req.query['lng'] as string);
@@ -229,6 +242,18 @@ router.get('/trips/active', clientAuthMiddleware, async (req, res) => {
 // Historial de viajes finalizados (completados/cancelados), más reciente primero.
 router.get('/trips/history', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: await getClientTripHistory(req.clientId!) });
+});
+
+// Snapshot de un viaje propio: fallback de seguimiento por polling cuando el
+// WS no está disponible (p. ej. cliente web).
+router.get('/trips/:id', clientAuthMiddleware, async (req, res) => {
+  const tripId = req.params['id']!;
+  const raw = await getClientTripRaw(tripId);
+  if (!raw || raw.clientId !== req.clientId) {
+    res.status(404).json({ success: false, error: 'Viaje no encontrado' });
+    return;
+  }
+  res.json({ success: true, data: await getClientTripSnapshot(tripId) });
 });
 
 router.post('/trips/:id/cancel', clientAuthMiddleware, async (req, res) => {

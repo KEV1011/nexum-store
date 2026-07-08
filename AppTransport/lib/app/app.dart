@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_theme.dart';
 import 'package:nexum_driver/app/theme/theme_provider.dart';
+import 'package:nexum_driver/core/network/interceptors/auth_interceptor.dart';
 
 class NexumDriverApp extends ConsumerWidget {
   const NexumDriverApp({super.key});
@@ -12,6 +13,9 @@ class NexumDriverApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeProvider);
+
+    // Sesión vencida (401 del backend) → de vuelta al login.
+    AuthInterceptor.onSessionExpired = () => router.go(AppRoutes.login);
 
     return MaterialApp.router(
       title: 'Nexum Driver',

@@ -6,8 +6,8 @@ import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
-import 'package:nexum_driver/core/mock_data/driver_mock.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
+import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 
 enum _MapApp { googleMaps, waze, mapsDotMe, system }
 
@@ -205,6 +205,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Widget _buildDriverCard(ThemeData theme) {
     final isDark = theme.brightness == Brightness.dark;
+    // Identidad real del backend; encabezado neutro mientras carga.
+    final profile = ref.watch(driverProfileProvider).profile;
+    final name = profile?.fullName.trim();
+    final initials = (name == null || name.isEmpty)
+        ? '·'
+        : name
+            .split(RegExp(r'\s+'))
+            .take(2)
+            .map((w) => w[0].toUpperCase())
+            .join();
 
     return GestureDetector(
       onTap: () => context.go(AppRoutes.profile),
@@ -224,11 +234,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               radius: 28,
               backgroundColor: AppColors.primaryContainer,
               child: Text(
-                DriverMock.name
-                    .split(' ')
-                    .take(2)
-                    .map((w) => w[0])
-                    .join(),
+                initials,
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -242,31 +248,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    DriverMock.name.split(' ').take(3).join(' '),
+                    name ?? 'Tu perfil',
                     style: theme.textTheme.bodyMedium
                         ?.copyWith(fontWeight: FontWeight.w700),
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    DriverMock.email,
+                    profile?.phone ?? 'Completa tu registro',
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: AppColors.textSecondary),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(Icons.star_rounded,
-                          size: 14, color: AppColors.star),
-                      const SizedBox(width: 2),
-                      Text(
-                        DriverMock.rating.toStringAsFixed(2),
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
+                  if (profile != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded,
+                            size: 14, color: AppColors.star),
+                        const SizedBox(width: 2),
+                        Text(
+                          profile.rating.toStringAsFixed(2),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -8,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
@@ -18,26 +18,6 @@ import 'package:nexum_client/features/transport/presentation/providers/transport
 
 // Centro de Pamplona, Norte de Santander (misma referencia que el backend).
 const _pamplona = LatLng(7.3754, -72.6486);
-
-// Vehículos cercanos simulados (se animan periódicamente)
-final _seedVehicles = <_NearbyVehicle>[
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3773, -72.6513)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3730, -72.6467)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3766, -72.6445)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3790, -72.6497)),
-  _NearbyVehicle(TransportServiceType.transporte, const LatLng(7.3726, -72.6522)),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3780, -72.6477)),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3747, -72.6504)),
-  _NearbyVehicle(TransportServiceType.moto, const LatLng(7.3759, -72.6443)),
-  _NearbyVehicle(TransportServiceType.envios, const LatLng(7.3761, -72.6537)),
-  _NearbyVehicle(TransportServiceType.envios, const LatLng(7.3793, -72.6434)),
-];
-
-class _NearbyVehicle {
-  _NearbyVehicle(this.type, this.position);
-  final TransportServiceType type;
-  LatLng position;
-}
 
 // ── Pantalla principal ────────────────────────────────────────────────────────
 
@@ -53,8 +33,10 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   final _mapController = MapController();
   TransportServiceType _selected = TransportServiceType.transporte;
   Timer? _vehicleTimer;
-  final _rng = math.Random();
-  late final List<_NearbyVehicle> _vehicles;
+
+  // Posiciones REALES (anónimas) de los conductores en línea cercanos,
+  // refrescadas del backend. Nada de vehículos simulados en el mapa.
+  List<LatLng> _nearby = const [];
 
   // Tamaños del panel arrastrable (fracción de la pantalla). Colapsado deja
   // visible solo el asa + la barra de búsqueda para poder usar el mapa.
@@ -62,30 +44,39 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   static const _sheetInitial = 0.42;
   static const _sheetMax = 0.9;
 
-  static const Map<TransportServiceType, int> _driverCounts = {
-    TransportServiceType.transporte: 5,
-    TransportServiceType.moto: 3,
-    TransportServiceType.envios: 2,
-  };
-
   @override
   void initState() {
     super.initState();
-    _vehicles = _seedVehicles
-        .map((v) => _NearbyVehicle(v.type, v.position))
-        .toList();
+    _refreshNearby();
+    _vehicleTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _refreshNearby(),
+    );
+  }
 
-    _vehicleTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+  Future<void> _refreshNearby() async {
+    try {
+      final res = await ref.read(apiClientProvider).get<Map<String, dynamic>>(
+        '/client/drivers/nearby',
+        queryParameters: {
+          'lat': _pamplona.latitude,
+          'lng': _pamplona.longitude,
+        },
+      );
+      final data = res.data?['data'] as List<dynamic>? ?? const [];
       if (!mounted) return;
       setState(() {
-        for (final v in _vehicles) {
-          v.position = LatLng(
-            v.position.latitude + (_rng.nextDouble() - 0.5) * 0.0006,
-            v.position.longitude + (_rng.nextDouble() - 0.5) * 0.0006,
-          );
-        }
+        _nearby = [
+          for (final e in data.cast<Map<String, dynamic>>())
+            LatLng(
+              (e['lat'] as num).toDouble(),
+              (e['lng'] as num).toDouble(),
+            ),
+        ];
       });
-    });
+    } catch (_) {
+      // Sin red: se conservan las últimas posiciones conocidas.
+    }
   }
 
   @override
@@ -130,17 +121,15 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
                     height: 22,
                     child: _MyLocationDot(),
                   ),
-                  // Vehículos cercanos del servicio seleccionado
-                  ..._vehicles
-                      .where((v) => v.type == _selected)
-                      .map(
-                        (v) => Marker(
-                          point: v.position,
-                          width: 44,
-                          height: 44,
-                          child: _VehicleMarker(type: v.type),
-                        ),
-                      ),
+                  // Conductores en línea reales cercanos (anónimos)
+                  ..._nearby.map(
+                    (p) => Marker(
+                      point: p,
+                      width: 44,
+                      height: 44,
+                      child: _VehicleMarker(type: _selected),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -204,7 +193,13 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
             builder: (context, scrollController) => _BottomPanel(
               scrollController: scrollController,
               selected: _selected,
-              driverCounts: _driverCounts,
+              // Conteo real de conductores en línea cercanos (misma flota
+              // para los tres servicios en Pamplona).
+              driverCounts: {
+                TransportServiceType.transporte: _nearby.length,
+                TransportServiceType.moto: _nearby.length,
+                TransportServiceType.envios: _nearby.length,
+              },
               history: state.past.take(3).toList(),
               onServiceTap: (t) => setState(() => _selected = t),
             ),
