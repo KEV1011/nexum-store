@@ -93,7 +93,7 @@ services:
         sync: false
       # URL pública del backend — Wompi redirige al usuario a /payment/result.
       - key: APP_URL
-        value: https://nexum-api.onrender.com
+        value: https://nexum-api-trxr.onrender.com
 
 databases:
   - name: nexum-db

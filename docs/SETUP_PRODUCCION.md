@@ -42,10 +42,10 @@ base de datos PostgreSQL) y el `Dockerfile` (que en cada despliegue corre
 | `WOMPI_*` | Pagos con tarjeta/PSE/Nequi. |
 
 ### Verificar el despliegue
-- `https://nexum-api.onrender.com/health` → `{"status":"ok"}`.
-- `https://nexum-api.onrender.com/admin` → panel de operación (entra con un
+- `https://nexum-api-trxr.onrender.com/health` → `{"status":"ok"}`.
+- `https://nexum-api-trxr.onrender.com/admin` → panel de operación (entra con un
   teléfono de `ADMIN_PHONES` + su OTP).
-- Las apps en modo release ya apuntan a `https://nexum-api.onrender.com`
+- Las apps en modo release ya apuntan a `https://nexum-api-trxr.onrender.com`
   (ver `core/config/api_config.dart`). Si usas otro nombre de servicio,
   actualiza esa URL y `APP_URL` en `render.yaml`.
 
@@ -93,7 +93,7 @@ En https://dashboard.render.com → servicio `nexum-api` → **Environment**:
 Render reinicia el servicio solo. Nada que tocar en las apps ni en GitHub.
 
 ### Verificar que quedó bien
-Abrir en el navegador: `https://nexum-api.onrender.com/geo/health`
+Abrir en el navegador: `https://nexum-api-trxr.onrender.com/geo/health`
 - `keyConfigured: false` → falta la variable en Render.
 - `upstreamOk: false` + `upstreamError` → ahí dice la causa exacta
   (API no habilitada, billing apagado, key restringida, etc.).

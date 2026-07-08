@@ -13,8 +13,8 @@ import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 ///   iOS simulator    : --dart-define=API_BASE_URL=http://localhost:3000  --dart-define=WS_BASE_URL=ws://localhost:3000
 ///   Dispositivo real : --dart-define=API_BASE_URL=http://<IP-LAN>:3000    --dart-define=WS_BASE_URL=ws://<IP-LAN>:3000
 abstract final class ApiConfig {
-  static const String _prodBase = 'https://nexum-api.onrender.com';
-  static const String _prodWs = 'wss://nexum-api.onrender.com';
+  static const String _prodBase = 'https://nexum-api-trxr.onrender.com';
+  static const String _prodWs = 'wss://nexum-api-trxr.onrender.com';
   // En debug local: web/escritorio usan localhost; el emulador Android usa
   // 10.0.2.2 (su alias para el localhost del host).
   static const String _devBase =
