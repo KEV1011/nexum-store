@@ -78,7 +78,7 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
 
 const SERVICE_LABEL: Record<string, string> = {
   TAXI: 'Taxi', MOTO: 'Moto', PARTICULAR: 'Particular', ENVIOS: 'Envío', MANDADO: 'Mandado',
-  INTERCITY: 'Intermunicipal',
+  PEDIDO: 'Pedido', INTERCITY: 'Intermunicipal',
 }
 
 const TRIP_STATUS_STYLE: Record<string, { label: string; cls: string }> = {

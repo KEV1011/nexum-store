@@ -66,6 +66,7 @@ class DriverWsService {
 
   final _tripCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _errandCtrl = StreamController<Map<String, dynamic>>.broadcast();
+  final _orderCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelCtrl = StreamController<String>.broadcast();
   final _errandCancelCtrl = StreamController<String>.broadcast();
   // Ride negotiation (inDriver-style) + chat.
@@ -84,6 +85,10 @@ class DriverWsService {
 
   /// Emits the raw errand JSON map from every `errand_request` server message.
   Stream<Map<String, dynamic>> get errandRequests => _errandCtrl.stream;
+
+  /// Ofertas de PEDIDOS a negocios (`order_request`): el repartidor recibe el
+  /// negocio de recogida, la dirección de entrega y el domicilio a ganar.
+  Stream<Map<String, dynamic>> get orderRequests => _orderCtrl.stream;
 
   /// Emits the `tripId` from every `trip_cancelled` server message.
   Stream<String> get tripCancellations => _tripCancelCtrl.stream;
@@ -274,6 +279,21 @@ class DriverWsService {
   void sendTripStatus(String tripId, String status) =>
       _send({'type': 'trip_status', 'tripId': tripId, 'status': status});
 
+  /// Accept a business-order delivery offer.
+  void sendAcceptOrder(String orderId) =>
+      _send({'type': 'accept_order', 'orderId': orderId});
+
+  /// Reject a business-order delivery offer.
+  void sendRejectOrder(String orderId) =>
+      _send({'type': 'reject_order', 'orderId': orderId});
+
+  /// Advance a business-order delivery.
+  ///
+  /// [status] ∈ {'at_pickup', 'in_transit', 'delivered'}. Al entregar, el
+  /// backend liquida el domicilio en la billetera del repartidor.
+  void sendOrderStatus(String orderId, String status) =>
+      _send({'type': 'order_status', 'orderId': orderId, 'status': status});
+
   /// Send a GPS location update, optionally associated with an active trip.
   void sendLocationUpdate(double lat, double lng, {String? tripId}) {
     _send({
@@ -389,6 +409,12 @@ class DriverWsService {
           final errand = msg['errand'];
           if (errand is Map<String, dynamic>) {
             _errandCtrl.add(errand);
+          }
+
+        case 'order_request':
+          final order = msg['order'];
+          if (order is Map<String, dynamic>) {
+            _orderCtrl.add(order);
           }
 
         case 'trip_cancelled':

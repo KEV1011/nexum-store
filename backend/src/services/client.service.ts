@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/constants';
+import { JWT_SECRET, JWT_EXPIRES_IN, COMMISSION_RATE } from '../config/constants';
 import {
   ClientDTO,
   ClientJwtPayload,
@@ -130,7 +130,9 @@ export async function placeClientOrder(
   });
 
   const summary = _toSummary(order, biz.name, order.lines);
-  void _startSimulation(order.id, biz.name);
+  // El despacho a un repartidor real lo dispara la ruta (startOrderMatchingCycle),
+  // igual que los mandados. Ya no existe la simulación server-side con
+  // repartidores inventados.
   for (const cb of businessOrderListeners.get(dto.businessId) ?? []) cb(summary);
   return summary;
 }
@@ -185,44 +187,106 @@ export async function getClientOrderSnapshot(orderId: string): Promise<ClientOrd
   return _toSummary(o, o.business?.name ?? 'Negocio', o.lines);
 }
 
-// ─── Server-side order simulation ────────────────────────────────────────────
+// ─── Despacho real de pedidos (repartidores) ─────────────────────────────────
+// Reemplaza la antigua simulación server-side (MOCK_DRIVERS + timeouts): el
+// ciclo de oferta vive en matching.service (startOrderMatchingCycle) y aquí
+// están las escrituras que ejecuta el ws.handler cuando el repartidor actúa.
 
-const MOCK_DRIVERS = [
-  { name: 'Andrés Villamizar', phone: '+57 312 678 9012' },
-  { name: 'Laura Sepúlveda', phone: '+57 318 234 5678' },
-  { name: 'Jorge Contreras', phone: '+57 320 987 6543' },
-  { name: 'Diana Rangel', phone: '+57 315 456 7788' },
-];
+/**
+ * Acepta un pedido para un repartidor: sella driverId + identidad + la empresa
+ * del conductor (operatorId, para la liquidación del portal) y pasa el pedido a
+ * DRIVER_TO_PICKUP. Devuelve null si ya no está disponible (otro repartidor lo
+ * tomó o el pedido se canceló).
+ */
+export async function acceptClientOrder(
+  orderId: string,
+  driverName: string,
+  driverPhone: string,
+  driverId: string,
+): Promise<ClientOrderSummaryDTO | null> {
+  const existing = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!existing || existing.status !== 'CONFIRMED' || existing.driverId) return null;
 
-async function _startSimulation(orderId: string, bizName: string): Promise<void> {
-  const driver = MOCK_DRIVERS[Math.floor(Math.random() * MOCK_DRIVERS.length)]!;
+  const d = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { operatorId: true },
+  });
 
-  const update = async (
-    status: string,
-    extras: {
-      pickedUpAt?: Date;
-      deliveredAt?: Date;
-      pickupPhotoUrl?: string;
-      deliveryPhotoUrl?: string;
-      hasSignature?: boolean;
-    } = {},
-  ) => {
-    const updated = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: status as never,
-        ...extras,
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      status: 'DRIVER_TO_PICKUP',
+      driverId,
+      driverName,
+      driverPhone,
+      ...(d?.operatorId ? { operatorId: d.operatorId } : {}),
+    },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+
+  // El repartidor queda ocupado para el matching mientras entrega.
+  await prisma.driver
+    .update({ where: { id: driverId }, data: { status: 'ON_TRIP' } })
+    .catch(() => { /* noop */ });
+
+  const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  return summary;
+}
+
+/** Estados que el repartidor puede reportar sobre un pedido. */
+export type DriverOrderStatus = 'at_pickup' | 'in_transit' | 'delivered';
+
+/**
+ * Avanza el estado de un pedido reportado por SU repartidor. Al entregar,
+ * liquida el domicilio (deliveryFee, menos comisión) en la billetera del
+ * conductor y lo libera (ONLINE) para nuevos servicios.
+ */
+export async function updateOrderStatusByDriver(
+  orderId: string,
+  driverId: string,
+  status: DriverOrderStatus,
+): Promise<ClientOrderSummaryDTO | null> {
+  const existing = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!existing || existing.driverId !== driverId) return null;
+
+  const map = {
+    at_pickup: 'AT_PICKUP',
+    in_transit: 'IN_TRANSIT',
+    delivered: 'DELIVERED',
+  } as const;
+
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      status: map[status],
+      ...(status === 'in_transit' ? { pickedUpAt: new Date() } : {}),
+      ...(status === 'delivered' ? { deliveredAt: new Date() } : {}),
+    },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+
+  if (status === 'delivered') {
+    const commission = Math.round(updated.deliveryFee * COMMISSION_RATE);
+    recordCompletedTrip(
+      {
+        tripId: orderId,
+        origin: updated.business?.name ?? 'Negocio',
+        destination: updated.deliveryAddress,
+        grossFare: updated.deliveryFee,
+        netEarning: updated.deliveryFee - commission,
+        completedAt: new Date().toISOString(),
       },
-      include: { lines: true },
-    });
-    const summary = _toSummary({ ...updated, driverName: driver.name, driverPhone: driver.phone }, bizName, updated.lines);
-    for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
-  };
+      driverId,
+    );
+    await prisma.driver
+      .update({ where: { id: driverId }, data: { status: 'ONLINE' } })
+      .catch(() => { /* noop */ });
+  }
 
-  setTimeout(() => void update('DRIVER_TO_PICKUP'), 8_000);
-  setTimeout(() => void update('AT_PICKUP'), 22_000);
-  setTimeout(() => void update('IN_TRANSIT', { pickedUpAt: new Date(), pickupPhotoUrl: `mock://pickup/${orderId}` }), 38_000);
-  setTimeout(() => void update('DELIVERED', { deliveredAt: new Date(), deliveryPhotoUrl: `mock://delivery/${orderId}`, hasSignature: true }), 65_000);
+  const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  return summary;
 }
 
 // ─── Client Trips ─────────────────────────────────────────────────────────────

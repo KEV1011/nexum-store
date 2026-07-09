@@ -219,6 +219,14 @@ export type WsMessageType =
   | 'errand_cancelled'
   | 'subscribe_errand'
   | 'unsubscribe_errand'
+  // Pedidos: despacho real a repartidores
+  | 'order_request' // server → driver: oferta de pedido para entregar
+  | 'accept_order'
+  | 'reject_order'
+  | 'order_accept_ok'
+  | 'order_rejected'
+  | 'order_status'
+  | 'order_status_ack'
   // Intercity messages
   | 'subscribe_intercity'
   | 'unsubscribe_intercity'

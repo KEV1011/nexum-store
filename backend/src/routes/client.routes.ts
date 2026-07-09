@@ -41,7 +41,7 @@ import {
   getClientErrandById,
   cancelClientErrand,
 } from '../services/errand.service';
-import { startErrandMatchingCycle, getNearbyDriverPositions } from '../services/matching.service';
+import { startErrandMatchingCycle, startOrderMatchingCycle, getNearbyDriverPositions } from '../services/matching.service';
 import {
   requestIntercityBooking,
   confirmIntercityBooking,
@@ -140,6 +140,10 @@ router.post('/orders', clientAuthMiddleware, async (req, res) => {
       items: dto.items as Array<{ productId: string; quantity: number; unitPrice: number }>,
     });
     res.status(201).json({ success: true, data: order });
+
+    // Despacho REAL a repartidores cercanos al negocio (mismo motor geoespacial
+    // que viajes y mandados). Fire-and-forget para no demorar la respuesta.
+    void startOrderMatchingCycle(order.id);
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to place order' });
   }

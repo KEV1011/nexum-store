@@ -324,6 +324,8 @@ model Order {
   userId           String?
   businessId       String
   driverId         String?
+  // Empresa del conductor al momento de aceptar (sellado para liquidación).
+  operatorId       String?
   status           OrderStatus @default(CONFIRMED)
   deliveryAddress  String
   deliveryLat      Float?
@@ -353,6 +355,7 @@ model Order {
 
   @@index([userId])
   @@index([driverId])
+  @@index([operatorId])
   @@index([status])
   @@map("orders")
 }
