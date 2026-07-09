@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { use, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -215,9 +215,11 @@ function InfoRow({
 export default function PedidoDetailPage({
   params,
 }: {
-  params: { token: string; id: string }
+  // Next 15+: params es una Promise incluso en client components (ver nota en
+  // negocio/[token]/page.tsx).
+  params: Promise<{ token: string; id: string }>
 }) {
-  const { token, id } = params
+  const { token, id } = use(params)
 
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(true)

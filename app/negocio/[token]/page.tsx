@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { use, useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   Package,
@@ -248,8 +248,16 @@ function Toast({ order, onDismiss }: { order: ClientOrder; onDismiss: () => void
 
 type Tab = 'delivery' | 'online'
 
-export default function PortalDashboard({ params }: { params: { token: string } }) {
-  const { token } = params
+export default function PortalDashboard({
+  params,
+}: {
+  // Next 15+: params llega como Promise incluso en client components; hay que
+  // desenvolverlo con `use()`. Leerlo como objeto plano daba `token: undefined`
+  // en el primer render → fetch a `/business/undefined/orders` (404 fantasma)
+  // antes de que el valor real llegara.
+  params: Promise<{ token: string }>
+}) {
+  const { token } = use(params)
 
   const [data, setData] = useState<ApiResponse | null>(null)
   const [clientOrders, setClientOrders] = useState<ClientOrder[]>([])
