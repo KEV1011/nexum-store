@@ -21,6 +21,11 @@ export interface OrderRequestDTO {
   deliveryFee: number;
   itemsCount: number;
   total: number;
+  // Coordenadas reales para el mapa del repartidor (fallback centro Pamplona).
+  businessLat: number;
+  businessLng: number;
+  deliveryLat: number | null;
+  deliveryLng: number | null;
 }
 
 export async function getOrderOfferInfo(orderId: string): Promise<{
@@ -38,6 +43,8 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
     },
   });
   if (!o) return null;
+  const businessLat = o.business.lat ?? PAMPLONA.lat;
+  const businessLng = o.business.lng ?? PAMPLONA.lng;
   return {
     status: o.status,
     hasDriver: o.driverId != null,
@@ -50,8 +57,12 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
       deliveryFee: o.deliveryFee,
       itemsCount: o.lines.reduce((sum, l) => sum + l.quantity, 0),
       total: o.total,
+      businessLat,
+      businessLng,
+      deliveryLat: o.deliveryLat,
+      deliveryLng: o.deliveryLng,
     },
-    lat: o.business.lat ?? PAMPLONA.lat,
-    lng: o.business.lng ?? PAMPLONA.lng,
+    lat: businessLat,
+    lng: businessLng,
   };
 }

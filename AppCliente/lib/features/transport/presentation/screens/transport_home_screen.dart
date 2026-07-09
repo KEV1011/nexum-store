@@ -414,10 +414,10 @@ class _BottomPanel extends StatelessWidget {
   final ValueChanged<TransportServiceType> onServiceTap;
 
   // Colores fijos dark panel
-  static const _panelBg = Color(0xFF1A1D27);
-  static const _cardBg = Color(0xFF252836);
-  static const _handleColor = Color(0xFF2E3347);
-  static const _subText = Color(0xFF94A3B8);
+  static const _panelBg = AppColors.surfaceDark;
+  static const _cardBg = AppColors.surfaceVariantDark;
+  static const _handleColor = AppColors.outlineDark;
+  static const _subText = AppColors.textSecondaryDark;
 
   @override
   Widget build(BuildContext context) {
@@ -608,9 +608,9 @@ class _ServiceTab extends StatelessWidget {
   final int count;
   final VoidCallback onTap;
 
-  static const _cardBg = Color(0xFF252836);
-  static const _borderColor = Color(0xFF2E3347);
-  static const _subText = Color(0xFF94A3B8);
+  static const _cardBg = AppColors.surfaceVariantDark;
+  static const _borderColor = AppColors.outlineDark;
+  static const _subText = AppColors.textSecondaryDark;
 
   @override
   Widget build(BuildContext context) {
@@ -618,7 +618,7 @@ class _ServiceTab extends StatelessWidget {
     final bg = isSelected ? color : _cardBg;
     final iconColor = isSelected ? Colors.white : color;
     final labelColor =
-        isSelected ? Colors.white : const Color(0xFFE2E8F0);
+        isSelected ? Colors.white : AppColors.textOnDark;
 
     return GestureDetector(
       onTap: onTap,
@@ -708,9 +708,9 @@ class _RecentTile extends StatelessWidget {
 
   final TransportRequestEntity request;
 
-  static const _textColor = Color(0xFFE2E8F0);
-  static const _subText = Color(0xFF94A3B8);
-  static const _iconBg = Color(0xFF252836);
+  static const _textColor = AppColors.textOnDark;
+  static const _subText = AppColors.textSecondaryDark;
+  static const _iconBg = AppColors.surfaceVariantDark;
 
   @override
   Widget build(BuildContext context) {
@@ -769,8 +769,8 @@ class _RecentTile extends StatelessWidget {
 // privados o con cupos compartidos. Por eso ocupa el lugar protagonista.
 
 class _IntercityHeroCard extends StatelessWidget {
-  static const _blue = Color(0xFF1E3A8A);
-  static const _lightBlue = Color(0xFF93C5FD);
+  static const _blue = AppColors.intercityBrand;
+  static const _lightBlue = AppColors.intercityAccent;
 
   @override
   Widget build(BuildContext context) {
@@ -779,7 +779,7 @@ class _IntercityHeroCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1E3A8A), Color(0xFF172554)],
+          colors: [AppColors.intercityBrand, AppColors.intercityBrandDark],
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _blue.withValues(alpha: 0.7)),
@@ -817,16 +817,16 @@ class _IntercityHeroCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF22C55E).withValues(alpha: 0.18),
+                  color: AppColors.liveGreen.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: const Color(0xFF22C55E).withValues(alpha: 0.5),
+                    color: AppColors.liveGreen.withValues(alpha: 0.5),
                   ),
                 ),
                 child: const Text(
                   'NUEVO',
                   style: TextStyle(
-                    color: Color(0xFF4ADE80),
+                    color: AppColors.liveGreenBright,
                     fontSize: 9,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 0.8,
@@ -927,7 +927,7 @@ class _NegotiateCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF00C853), Color(0xFF00963D)],
+            colors: [AppColors.primary, AppColors.primaryDim],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -981,7 +981,7 @@ class _IntercityActiveBanner extends StatelessWidget {
 
   final IntercityRequestEntity request;
 
-  static const _bg = Color(0xFF1E3A8A);
+  static const _bg = AppColors.intercityBrand;
 
   @override
   Widget build(BuildContext context) {
@@ -1054,7 +1054,7 @@ class _IntercityActiveBanner extends StatelessWidget {
 void _showEnviosOptions(BuildContext context) {
   showModalBottomSheet<void>(
     context: context,
-    backgroundColor: const Color(0xFF1A1D27),
+    backgroundColor: AppColors.surfaceDark,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
     ),
@@ -1070,7 +1070,7 @@ void _showEnviosOptions(BuildContext context) {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2E3347),
+                  color: AppColors.outlineDark,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -1127,8 +1127,8 @@ class _EnviosOption extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
-  static const _cardBg = Color(0xFF252836);
-  static const _subText = Color(0xFF94A3B8);
+  static const _cardBg = AppColors.surfaceVariantDark;
+  static const _subText = AppColors.textSecondaryDark;
 
   @override
   Widget build(BuildContext context) {

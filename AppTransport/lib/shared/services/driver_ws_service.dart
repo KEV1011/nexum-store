@@ -69,6 +69,7 @@ class DriverWsService {
   final _orderCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelCtrl = StreamController<String>.broadcast();
   final _errandCancelCtrl = StreamController<String>.broadcast();
+  final _orderCancelCtrl = StreamController<String>.broadcast();
   // Ride negotiation (inDriver-style) + chat.
   final _rideRequestCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _rideUpdateCtrl = StreamController<Map<String, dynamic>>.broadcast();
@@ -95,6 +96,10 @@ class DriverWsService {
 
   /// Emits the `errandId` from every `errand_cancelled` server message.
   Stream<String> get errandCancellations => _errandCancelCtrl.stream;
+
+  /// Emits the `orderId` from every `order_cancelled` server message (el cliente
+  /// canceló el pedido antes de que el repartidor lo recogiera).
+  Stream<String> get orderCancellations => _orderCancelCtrl.stream;
 
   /// Emits the raw `ride` JSON for every new open request (`ride_request_new`).
   Stream<Map<String, dynamic>> get rideRequests => _rideRequestCtrl.stream;
@@ -438,6 +443,10 @@ class DriverWsService {
         case 'errand_cancelled':
           final errandId = msg['errandId'] as String?;
           if (errandId != null) _errandCancelCtrl.add(errandId);
+
+        case 'order_cancelled':
+          final orderId = msg['orderId'] as String?;
+          if (orderId != null) _orderCancelCtrl.add(orderId);
 
         case 'ride_request_new':
           final ride = msg['ride'];

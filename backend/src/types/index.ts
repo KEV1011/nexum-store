@@ -227,6 +227,7 @@ export type WsMessageType =
   | 'order_rejected'
   | 'order_status'
   | 'order_status_ack'
+  | 'order_cancelled' // server → driver: el cliente canceló el pedido
   // Intercity messages
   | 'subscribe_intercity'
   | 'unsubscribe_intercity'

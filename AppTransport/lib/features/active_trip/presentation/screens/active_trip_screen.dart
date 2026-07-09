@@ -60,6 +60,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   List<LatLng> _waypoints = const [];
   int _waypointIndex = 0;
   bool _nearDestinationShown = false;
+  StreamSubscription<String>? _orderCancelSub;
 
   @override
   void initState() {
@@ -84,6 +85,19 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         }
         _startSimulatedMovement(trip);
         _startEtaCountdown(trip);
+
+        // Pedido cancelado por el cliente (permitido hasta la recogida): se
+        // avisa y se libera al repartidor de vuelta al inicio.
+        if (trip.request.isOrder) {
+          _orderCancelSub =
+              DriverWsService().orderCancellations.listen((orderId) {
+            if (!mounted) return;
+            if (orderId == trip.request.orderId) {
+              AppSnackbar.showInfo(context, 'El cliente canceló el pedido.');
+              _handleCancelled();
+            }
+          });
+        }
       }
     });
   }
@@ -91,6 +105,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   @override
   void dispose() {
     DriverWsService().activeTripId = null;
+    _orderCancelSub?.cancel();
     _pulse.dispose();
     _movementTimer?.cancel();
     _etaTimer?.cancel();

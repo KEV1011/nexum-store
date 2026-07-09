@@ -60,6 +60,11 @@ abstract final class AppColors {
   static const Color intercityTextSoft = Color(0xFFCBD5E1); // texto suave
   static const Color intercityAccent = Color(0xFF93C5FD); // acento azul claro
   static const Color intercityBrand = Color(0xFF1E3A8A); // azul intermunicipal
+  static const Color intercityBrandDark = Color(0xFF172554); // fin del degradé
+  // Verde "en vivo" (conductores cercanos en línea) — más brillante que el
+  // primary de marca; se usa en badges de disponibilidad del mapa.
+  static const Color liveGreen = Color(0xFF22C55E);
+  static const Color liveGreenBright = Color(0xFF4ADE80);
 
   // ── Tipos de servicio ─────────────────────────────────────────────────────
   static const Color serviceParticular = Color(0xFF3949AB);
