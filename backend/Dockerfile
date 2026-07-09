@@ -1,6 +1,14 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
+# Alpine no trae OpenSSL por defecto: sin esto Prisma no puede detectar la
+# versión de libssl ("Prisma failed to detect the libssl/openssl version"),
+# genera el cliente para un motor que no coincide con el runtime, y
+# `migrate deploy` revienta al arrancar con un motor que ni siquiera responde
+# JSON válido. Se instala también aquí (no solo en runner) para que
+# `prisma generate` detecte la versión correcta desde este paso.
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Install dependencies (including dev deps needed for TypeScript compilation)
@@ -23,6 +31,10 @@ RUN npm prune --omit=dev && npx prisma generate
 # ── Stage 2: runner ───────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 
+# Mismo motivo que en el builder: el motor de Prisma que corre `migrate deploy`
+# y las queries en producción necesita libssl real, no la detección por defecto.
+RUN apk add --no-cache openssl
+
 ENV NODE_ENV=production
 
 WORKDIR /app
@@ -37,6 +49,12 @@ COPY --from=builder --chown=nexum:nexum /app/package.json ./package.json
 
 # Copy Prisma schema so @prisma/client can locate it at runtime
 COPY --from=builder --chown=nexum:nexum /app/prisma ./prisma
+
+# Carpeta de subida de documentos (fallback a disco sin S3_BUCKET). /app es de
+# root por defecto (WORKDIR la crea antes del USER nexum de abajo): sin este
+# chown, el mkdir que hace lib/upload.ts al arrancar revienta con
+# EACCES y tumbaba el proceso completo.
+RUN mkdir -p /app/uploads/driver-documents && chown -R nexum:nexum /app/uploads
 
 USER nexum
 
