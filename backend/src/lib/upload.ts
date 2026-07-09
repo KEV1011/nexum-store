@@ -31,9 +31,20 @@ const S3_PUBLIC_URL = (process.env['S3_PUBLIC_URL'] ?? '').replace(/\/+$/, '');
 
 const UPLOAD_DIR = path.resolve(process.cwd(), 'uploads', 'driver-documents');
 
-// Crea el directorio local solo cuando se usa disco.
+// Crea el directorio local solo cuando se usa disco. Nunca debe tumbar el
+// arranque del servidor: sin S3 configurado, un permiso de escritura faltante
+// (contenedor con usuario sin privilegios, disco de solo lectura, etc.) solo
+// debe romper la subida de documentos, no todo el backend.
 if (!useS3 && !fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  } catch (err) {
+    console.error(
+      `[upload] No se pudo crear ${UPLOAD_DIR} (subida de documentos a disco deshabilitada): ${
+        err instanceof Error ? err.message : err
+      }`,
+    );
+  }
 }
 
 // Nombre/clave sin PII: timestamp + sufijo aleatorio.

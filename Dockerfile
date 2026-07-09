@@ -1,6 +1,10 @@
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
+# Alpine no trae OpenSSL por defecto: sin esto Prisma no detecta la versión de
+# libssl y genera un cliente para un motor que no coincide con el runtime.
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Copy only backend source (build context is repo root)
@@ -15,6 +19,8 @@ RUN npm prune --omit=dev && npx prisma generate
 # ── Stage 2: runner ───────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 
+RUN apk add --no-cache openssl
+
 ENV NODE_ENV=production
 
 WORKDIR /app
@@ -25,6 +31,10 @@ COPY --from=builder --chown=nexum:nexum /app/dist ./dist
 COPY --from=builder --chown=nexum:nexum /app/node_modules ./node_modules
 COPY --from=builder --chown=nexum:nexum /app/package.json ./package.json
 COPY --from=builder --chown=nexum:nexum /app/prisma ./prisma
+
+# Carpeta de subida de documentos (fallback a disco sin S3_BUCKET); /app es de
+# root por defecto y el mkdir en tiempo de ejecución revienta con EACCES sin esto.
+RUN mkdir -p /app/uploads/driver-documents && chown -R nexum:nexum /app/uploads
 
 USER nexum
 
