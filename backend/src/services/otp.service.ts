@@ -20,9 +20,16 @@ import { isSmsConfigured, sendSmsVerification, checkSmsVerification } from './sm
 const OTP_TTL_MS = 5 * 60 * 1000;
 
 /** Código fijo para entornos de desarrollo/demo. */
-const OTP_DEV_CODE = process.env['OTP_DEV_CODE'] ?? '123456';
-/** Escape explícito para pilotos en producción sin proveedor de SMS. */
-const OTP_FALLBACK_CODE = process.env['OTP_FALLBACK_CODE'] ?? '';
+const OTP_DEV_CODE = (process.env['OTP_DEV_CODE'] ?? '123456').trim();
+/**
+ * Escape explícito para pilotos en producción sin proveedor de SMS. Se
+ * saneosea el valor: en el dashboard de Render es fácil pegarlo con comillas
+ * (`"123456"`) o espacios finales, que quedan dentro del valor y NUNCA casan
+ * con el `123456` que el usuario escribe. Se recortan espacios y comillas.
+ */
+const OTP_FALLBACK_CODE = (process.env['OTP_FALLBACK_CODE'] ?? '')
+  .trim()
+  .replace(/^["']|["']$/g, '');
 
 // ── Rate limiting (en memoria, por teléfono) ──────────────────────────────────
 
@@ -67,7 +74,17 @@ function _assertRateLimit(phone: string): void {
 function _localCode(): string {
   if (NODE_ENV !== 'production') return OTP_DEV_CODE;
   if (OTP_FALLBACK_CODE) return OTP_FALLBACK_CODE;
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  // Producción SIN Twilio y SIN OTP_FALLBACK_CODE: antes se generaba un código
+  // aleatorio que no se entregaba por ningún canal → login imposible (nadie
+  // puede saber el código). Para un piloto sin SMS es mucho más útil un código
+  // fijo conocido. Se emite una advertencia FUERTE: esto NO es seguro para
+  // producción con usuarios reales — ahí se debe configurar Twilio Verify.
+  console.warn(
+    '[OTP] ⚠️  Sin Twilio ni OTP_FALLBACK_CODE en producción: usando el código ' +
+    'de piloto 123456. Configura Twilio Verify (o OTP_FALLBACK_CODE) antes de ' +
+    'abrir a usuarios reales.',
+  );
+  return OTP_DEV_CODE; // 123456
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
