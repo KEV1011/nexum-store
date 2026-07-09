@@ -74,9 +74,12 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         // Etiqueta el GPS del conductor con este viaje para que el backend lo
         // reenvíe al mapa del pasajero (driver_location).
         DriverWsService().activeTripId = trip.request.id;
-        if (trip.isToPickup) {
+        if (trip.isToPickup && !trip.request.isOrder && !trip.request.isErrand) {
           // El pasajero ve "Conductor en camino" (ARRIVING) desde que arranca
           // la navegación al pickup; antes se saltaba directo a ARRIVED.
+          // Pedidos y mandados tienen sus propios estados (DRIVER_TO_PICKUP /
+          // ACCEPTED se fijan al aceptar) — enviarles trip_status solo genera
+          // errores "Trip not found" en el backend.
           DriverWsService().sendTripStatus(trip.request.id, 'arriving');
         }
         _startSimulatedMovement(trip);
@@ -656,7 +659,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       await ref.read(activeTripProvider.notifier).arrivedAtPassenger();
       if (trip != null) {
         final workMode = ref.read(selectedWorkModeProvider);
-        if (workMode.isErrand) {
+        if (trip.request.isOrder) {
+          // Entrega de pedido: llegó al negocio a recoger.
+          DriverWsService().sendOrderStatus(trip.request.orderId!, 'at_pickup');
+        } else if (workMode.isErrand) {
           DriverWsService().sendErrandStatus(trip.request.id, 'shopping');
         } else {
           DriverWsService().sendTripStatus(trip.request.id, 'arrived');
@@ -707,7 +713,11 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             orderRef: proof.orderRef,
           );
       if (tripBeforeStart != null) {
-        if (workMode.isErrand) {
+        if (tripBeforeStart.request.isOrder) {
+          // Pedido recogido en el negocio: en tránsito al cliente.
+          DriverWsService()
+              .sendOrderStatus(tripBeforeStart.request.orderId!, 'in_transit');
+        } else if (workMode.isErrand) {
           DriverWsService().sendErrandStatus(
             tripBeforeStart.request.id,
             'on_the_way',
@@ -740,7 +750,11 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       final tripBeforeFinish = ref.read(activeTripProvider);
       if (tripBeforeFinish != null) {
         final workMode = ref.read(selectedWorkModeProvider);
-        if (workMode.isErrand) {
+        if (tripBeforeFinish.request.isOrder) {
+          // Entregado: el backend liquida el domicilio en la billetera.
+          DriverWsService()
+              .sendOrderStatus(tripBeforeFinish.request.orderId!, 'delivered');
+        } else if (workMode.isErrand) {
           DriverWsService().sendErrandStatus(tripBeforeFinish.request.id, 'delivered');
         } else {
           DriverWsService().sendTripStatus(tripBeforeFinish.request.id, 'completed');

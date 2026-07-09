@@ -19,6 +19,9 @@ import {
   registerClientSendToDriver,
   handleNoDriversFound,
   getTripSettlement,
+  acceptClientOrder,
+  updateOrderStatusByDriver,
+  DriverOrderStatus,
 } from '../services/client.service';
 import {
   getClientErrandRaw,
@@ -70,6 +73,8 @@ import {
   onDriverDeclineOrTimeout,
   onErrandAccept,
   onErrandDeclineOrTimeout,
+  onOrderAccept,
+  onOrderDeclineOrTimeout,
 } from '../services/matching.service';
 import {
   WsMessage,
@@ -714,6 +719,65 @@ function onMessage(ws: WebSocket, raw: string): void {
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
       void handleRejectErrand(ws, errandId);
+      break;
+    }
+
+    // ── Pedidos: aceptación/rechazo/estado del repartidor ────────────────────
+    case 'accept_order': {
+      const driverId = driverIdByWs.get(ws);
+      if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
+      const orderId = msg['orderId'];
+      if (typeof orderId !== 'string') { sendTo(ws, { type: 'error', message: 'orderId required' }); return; }
+      // Solo el repartidor con la oferta activa puede aceptar.
+      if (!onOrderAccept(orderId, driverId)) {
+        sendTo(ws, { type: 'error', message: 'El pedido ya no está disponible' });
+        return;
+      }
+      void (async () => {
+        let driverName = 'Repartidor';
+        let driverPhone = '';
+        try {
+          const profile = await getDriverProfile(driverId);
+          driverName = profile.fullName;
+          driverPhone = profile.phone;
+        } catch { /* sin perfil aún; valores por defecto */ }
+
+        const updated = await acceptClientOrder(orderId, driverName, driverPhone, driverId);
+        if (updated) {
+          sendTo(ws, { type: 'order_accept_ok', orderId, order: updated });
+        } else {
+          sendTo(ws, { type: 'error', message: 'El pedido ya no está disponible' });
+        }
+      })();
+      break;
+    }
+    case 'reject_order': {
+      const driverId = driverIdByWs.get(ws);
+      if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      const orderId = msg['orderId'];
+      if (typeof orderId !== 'string') break;
+      void onOrderDeclineOrTimeout(orderId, driverId);
+      sendTo(ws, { type: 'order_rejected', orderId });
+      break;
+    }
+    case 'order_status': {
+      const driverId = driverIdByWs.get(ws);
+      if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+      const orderId = msg['orderId'];
+      const status = msg['status'];
+      const valid = ['at_pickup', 'in_transit', 'delivered'];
+      if (typeof orderId !== 'string' || typeof status !== 'string' || !valid.includes(status)) {
+        sendTo(ws, { type: 'error', message: 'orderId y status (at_pickup|in_transit|delivered) requeridos' });
+        return;
+      }
+      void (async () => {
+        const updated = await updateOrderStatusByDriver(orderId, driverId, status as DriverOrderStatus);
+        if (updated) {
+          sendTo(ws, { type: 'order_status_ack', orderId, status });
+        } else {
+          sendTo(ws, { type: 'error', message: `Pedido ${orderId} no encontrado o no es tuyo` });
+        }
+      })();
       break;
     }
 

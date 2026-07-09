@@ -247,7 +247,7 @@ export async function listOperatorTrips(
   operatorId: string,
   limit = 50,
 ): Promise<OperatorTripsResult> {
-  const [rows, intercityRows, errandRows, completedAgg, intercityAgg, errandAgg, total, intercityTotal, errandTotal] = await Promise.all([
+  const [rows, intercityRows, errandRows, orderRows, completedAgg, intercityAgg, errandAgg, orderAgg, total, intercityTotal, errandTotal, orderTotal] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId },
       orderBy: { createdAt: 'desc' },
@@ -302,6 +302,22 @@ export async function listOperatorTrips(
         deliveredAt: true,
       },
     }),
+    prisma.order.findMany({
+      where: { operatorId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        deliveryAddress: true,
+        deliveryFee: true,
+        driverId: true,
+        driverName: true,
+        createdAt: true,
+        deliveredAt: true,
+        business: { select: { name: true } },
+      },
+    }),
     prisma.trip.aggregate({
       where: { operatorId, status: 'COMPLETED' },
       _sum: { finalFare: true },
@@ -317,9 +333,15 @@ export async function listOperatorTrips(
       _sum: { serviceFee: true },
       _count: true,
     }),
+    prisma.order.aggregate({
+      where: { operatorId, status: 'DELIVERED' },
+      _sum: { deliveryFee: true },
+      _count: true,
+    }),
     prisma.trip.count({ where: { operatorId } }),
     prisma.intercityBooking.count({ where: { operatorId } }),
     prisma.errand.count({ where: { operatorId } }),
+    prisma.order.count({ where: { operatorId } }),
   ]);
 
   const urban: OperatorTripDTO[] = rows.map((t) => ({
@@ -366,22 +388,51 @@ export async function listOperatorTrips(
     completedAt: e.deliveredAt?.toISOString() ?? null,
   }));
 
-  // Fusión urbano + intermunicipal + mandados, más recientes primero.
-  const trips = [...urban, ...intercity, ...errands]
+  // Pedidos: el domicilio (deliveryFee) es lo que gana la flota por la entrega.
+  const orders: OperatorTripDTO[] = orderRows.map((o) => ({
+    id: o.id,
+    status: _orderStatusForPortal(o.status),
+    serviceType: 'PEDIDO',
+    originAddress: o.business?.name ?? 'Negocio',
+    destAddress: o.deliveryAddress,
+    fare: o.deliveryFee,
+    distanceKm: null,
+    driverId: o.driverId,
+    driverName: o.driverName,
+    createdAt: o.createdAt.toISOString(),
+    completedAt: o.deliveredAt?.toISOString() ?? null,
+  }));
+
+  // Fusión urbano + intermunicipal + mandados + pedidos, más recientes primero.
+  const trips = [...urban, ...intercity, ...errands, ...orders]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit);
 
   return {
     trips,
     summary: {
-      total: total + intercityTotal + errandTotal,
-      completed: completedAgg._count + intercityAgg._count + errandAgg._count,
+      total: total + intercityTotal + errandTotal + orderTotal,
+      completed:
+        completedAgg._count + intercityAgg._count + errandAgg._count + orderAgg._count,
       grossFare:
         (completedAgg._sum.finalFare ?? 0) +
         (intercityAgg._sum.finalFare ?? 0) +
-        (errandAgg._sum.serviceFee ?? 0),
+        (errandAgg._sum.serviceFee ?? 0) +
+        (orderAgg._sum.deliveryFee ?? 0),
     },
   };
+}
+
+/** Estados de pedido → vocabulario de viajes del portal. */
+function _orderStatusForPortal(status: string): string {
+  switch (status) {
+    case 'DELIVERED': return 'COMPLETED';
+    case 'DRIVER_TO_PICKUP':
+    case 'AT_PICKUP':
+    case 'IN_TRANSIT': return 'IN_PROGRESS';
+    case 'CONFIRMED': return 'SEARCHING';
+    default: return status; // CANCELLED
+  }
 }
 
 /** Estados de mandado → vocabulario de viajes del portal. */
@@ -396,7 +447,7 @@ function _errandStatusForPortal(status: string): string {
 
 /** Reporte de liquidación: viajes sellados (urbanos + intermunicipales + mandados) en CSV. */
 export async function exportOperatorTripsCsv(operatorId: string): Promise<string> {
-  const [rows, intercityRows, errandRows] = await Promise.all([
+  const [rows, intercityRows, errandRows, orderRows] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId },
       orderBy: { createdAt: 'desc' },
@@ -449,6 +500,21 @@ export async function exportOperatorTripsCsv(operatorId: string): Promise<string
         deliveredAt: true,
       },
     }),
+    prisma.order.findMany({
+      where: { operatorId },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      select: {
+        orderRef: true,
+        status: true,
+        deliveryAddress: true,
+        deliveryFee: true,
+        driverName: true,
+        createdAt: true,
+        deliveredAt: true,
+        business: { select: { name: true } },
+      },
+    }),
   ]);
 
   type CsvRow = { createdAt: Date; cols: string[] };
@@ -499,11 +565,27 @@ export async function exportOperatorTripsCsv(operatorId: string): Promise<string
     ],
   }));
 
+  const orders: CsvRow[] = orderRows.map((o) => ({
+    createdAt: o.createdAt,
+    cols: [
+      o.orderRef,
+      _orderStatusForPortal(o.status),
+      'PEDIDO',
+      o.business?.name ?? 'Negocio',
+      o.deliveryAddress,
+      o.driverName ?? '',
+      '',
+      String(Math.round(o.deliveryFee)),
+      o.createdAt.toISOString(),
+      o.deliveredAt?.toISOString() ?? '',
+    ],
+  }));
+
   const header = [
     'Referencia', 'Estado', 'Servicio', 'Origen', 'Destino',
     'Conductor', 'Distancia_km', 'Tarifa_COP', 'Creado', 'Completado',
   ];
-  const lines = [...urban, ...intercity, ...errands]
+  const lines = [...urban, ...intercity, ...errands, ...orders]
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map((r) => r.cols);
 

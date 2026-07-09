@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { TripRequestDTO } from '../types';
 import { sendPushToDriver, sendPushToClient } from '../services/push.service';
 import { getErrandOfferInfo } from './errand.service';
+import { getOrderOfferInfo } from './order-offer.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -422,5 +423,110 @@ export function onErrandAccept(errandId: string, driverId: string): boolean {
   if (!state || state.currentDriverId !== driverId) return false;
   clearTimeout(state.timeout);
   activeErrandOffers.delete(errandId);
+  return true;
+}
+
+// ─── Order offer cycle (pedidos a negocios) ─────────────────────────────────────
+//
+// Mismo patrón que viajes y mandados: oferta secuencial a repartidores cercanos
+// con timeout de 15s y fallback al siguiente. Antes los pedidos se "entregaban"
+// con una simulación server-side (MOCK_DRIVERS): ahora se despachan a
+// repartidores reales en línea. La escritura en BD (acceptClientOrder) y la
+// notificación al cliente las hace client.service tras la aceptación.
+
+interface OrderOfferState {
+  orderId: string;
+  candidates: NearbyDriver[];
+  candidateIndex: number;
+  currentDriverId: string;
+  timeout: NodeJS.Timeout;
+}
+
+const activeOrderOffers = new Map<string, OrderOfferState>();
+
+/**
+ * Punto de entrada — se llama desde POST /client/orders tras crear el pedido.
+ * Fire-and-forget. El matching se ancla a las coordenadas del negocio (donde
+ * el repartidor debe recoger); sin coords, al centro de Pamplona.
+ */
+export async function startOrderMatchingCycle(orderId: string): Promise<void> {
+  const info = await getOrderOfferInfo(orderId);
+  if (!info) return;
+  const candidates = await findNearestAvailableDrivers(
+    info.lat,
+    info.lng,
+    SEARCH_RADIUS_M,
+    MAX_CANDIDATES,
+    GEO_FRESHNESS_S,
+  );
+  if (candidates.length === 0) {
+    console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for order ${orderId}`);
+    return;
+  }
+  await _offerOrderToCandidate(orderId, candidates, 0);
+}
+
+async function _offerOrderToCandidate(
+  orderId: string,
+  candidates: NearbyDriver[],
+  index: number,
+): Promise<void> {
+  if (index >= candidates.length) {
+    console.log(`[Matching] All ${candidates.length} candidates exhausted for order ${orderId}`);
+    return;
+  }
+
+  const candidate = candidates[index]!;
+
+  // El pedido debe seguir disponible (pudo aceptarse o cancelarse entretanto).
+  const info = await getOrderOfferInfo(orderId);
+  if (!info || info.status !== 'CONFIRMED' || info.hasDriver) return;
+
+  const timeout = setTimeout(() => {
+    void onOrderDeclineOrTimeout(orderId);
+  }, OFFER_TIMEOUT_MS);
+
+  activeOrderOffers.set(orderId, {
+    orderId,
+    candidates,
+    candidateIndex: index,
+    currentDriverId: candidate.driverId,
+    timeout,
+  });
+
+  _sendToDriver?.(candidate.driverId, { type: 'order_request', order: info.dto });
+  void sendPushToDriver(candidate.driverId, {
+    title: 'Nuevo pedido para entregar',
+    body: `${info.dto.businessName} → ${info.dto.deliveryAddress}`,
+    data: { type: 'order_request', orderId },
+  });
+  console.log(
+    `[Matching] Offered order ${orderId} to driver ${candidate.driverId} ` +
+      `(${Math.round(candidate.distanceMeters)}m away, candidate ${index + 1}/${candidates.length})`,
+  );
+}
+
+/** Avanza al siguiente repartidor cuando el actual rechaza o expira la ventana. */
+export async function onOrderDeclineOrTimeout(
+  orderId: string,
+  driverId?: string,
+): Promise<void> {
+  const state = activeOrderOffers.get(orderId);
+  if (!state) return;
+  if (driverId && state.currentDriverId !== driverId) return;
+  clearTimeout(state.timeout);
+  activeOrderOffers.delete(orderId);
+  await _offerOrderToCandidate(orderId, state.candidates, state.candidateIndex + 1);
+}
+
+/**
+ * Cierra el ciclo cuando el repartidor ofertado acepta el pedido. Devuelve true
+ * solo si ese conductor tenía la oferta activa (evita aceptaciones tardías).
+ */
+export function onOrderAccept(orderId: string, driverId: string): boolean {
+  const state = activeOrderOffers.get(orderId);
+  if (!state || state.currentDriverId !== driverId) return false;
+  clearTimeout(state.timeout);
+  activeOrderOffers.delete(orderId);
   return true;
 }

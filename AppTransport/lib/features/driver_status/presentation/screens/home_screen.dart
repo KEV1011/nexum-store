@@ -136,6 +136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Timer? _countdownTimer;
   StreamSubscription<Map<String, dynamic>>? _wsTripSub;
   StreamSubscription<Map<String, dynamic>>? _wsErrandSub;
+  StreamSubscription<Map<String, dynamic>>? _wsOrderSub;
   StreamSubscription<String>? _wsCancelSub;
   StreamSubscription<String>? _wsErrandCancelSub;
 
@@ -161,6 +162,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _countdownTimer?.cancel();
     _wsTripSub?.cancel();
     _wsErrandSub?.cancel();
+    _wsOrderSub?.cancel();
     _wsCancelSub?.cancel();
     _wsErrandCancelSub?.cancel();
     _mapController.dispose();
@@ -204,6 +206,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _countdownTimer?.cancel();
       _wsTripSub?.cancel();
       _wsErrandSub?.cancel();
+      _wsOrderSub?.cancel();
       _wsCancelSub?.cancel();
       _wsErrandCancelSub?.cancel();
       LocationService().stopTracking();
@@ -273,6 +276,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (request != null) _onTripRequest(request);
     });
 
+    // Subscribe to incoming business-order delivery offers.
+    _wsOrderSub = DriverWsService().orderRequests.listen((orderMap) {
+      if (!mounted) return;
+      final request = _orderRequestFromMap(orderMap);
+      if (request != null) _onTripRequest(request);
+    });
+
     // Clear the pending request if the server cancels the trip (timeout).
     _wsCancelSub = DriverWsService().tripCancellations.listen((tripId) {
       if (!mounted) return;
@@ -327,6 +337,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         distanceToPickupKm: 0.5,
         etaToPickupMinutes: 3,
         requestedAt: DateTime.now(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Build a [TripRequestEntity] from a raw `order_request` (entrega de pedido
+  /// a negocio). Origen = el negocio donde recoger; destino = dirección de
+  /// entrega; tarifa = el domicilio que gana el repartidor.
+  TripRequestEntity? _orderRequestFromMap(Map<String, dynamic> o) {
+    try {
+      const double lat = MapConstants.pamplonaCenterLat;
+      const double lng = MapConstants.pamplonaCenterLng;
+      final businessName = o['businessName'] as String? ?? 'Negocio';
+      final itemsCount = (o['itemsCount'] as num?)?.toInt() ?? 0;
+
+      return TripRequestEntity(
+        id: o['id'] as String,
+        orderId: o['id'] as String,
+        passenger: PassengerEntity(
+          id: '',
+          name: businessName,
+          rating: 5.0,
+          totalTrips: 0,
+          photoUrl: '',
+        ),
+        origin: LocationModel(
+          latitude: lat,
+          longitude: lng,
+          address: o['businessAddress'] as String? ?? businessName,
+        ),
+        destination: LocationModel(
+          latitude: lat,
+          longitude: lng,
+          address: o['deliveryAddress'] as String? ?? '',
+        ),
+        distanceKm: 0,
+        durationMinutes: 0,
+        estimatedFare: (o['deliveryFee'] as num?)?.toDouble() ?? 0,
+        distanceToPickupKm: 0.5,
+        etaToPickupMinutes: 3,
+        requestedAt: DateTime.now(),
+        errand: ErrandDetails(
+          category: ErrandCategory.other,
+          description:
+              'Pedido ${o['orderRef'] ?? ''} · $itemsCount producto(s) de $businessName',
+        ),
       );
     } catch (_) {
       return null;
@@ -421,7 +478,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _countdownTimer?.cancel();
     setState(() => _state = _state.copyWith(clearPending: true));
     if (DriverWsService().isConnected) {
-      if (request.isErrand) {
+      if (request.isOrder) {
+        DriverWsService().sendAcceptOrder(request.orderId!);
+      } else if (request.isErrand) {
         DriverWsService().sendAcceptErrand(request.id);
       } else {
         DriverWsService().sendAccept(request.id);
@@ -435,7 +494,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _countdownTimer?.cancel();
     setState(() => _state = _state.copyWith(clearPending: true));
     if (DriverWsService().isConnected) {
-      if (request.isErrand) {
+      if (request.isOrder) {
+        DriverWsService().sendRejectOrder(request.orderId!);
+      } else if (request.isErrand) {
         DriverWsService().sendRejectErrand(request.id);
       } else {
         DriverWsService().sendReject(request.id);
