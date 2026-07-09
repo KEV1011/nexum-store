@@ -145,8 +145,8 @@ jobs:
         working-directory: AppTransport
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL || 'https://nexum-api-trxr.onrender.com' }}
-          WS_BASE_URL: ${{ secrets.WS_BASE_URL || 'wss://nexum-api-trxr.onrender.com' }}
+          API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
+          WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
         run: |
           flutter build apk --release \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
@@ -158,8 +158,8 @@ jobs:
         working-directory: AppTransport
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-          API_BASE_URL: ${{ secrets.API_BASE_URL || 'https://nexum-api-trxr.onrender.com' }}
-          WS_BASE_URL: ${{ secrets.WS_BASE_URL || 'wss://nexum-api-trxr.onrender.com' }}
+          API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
+          WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
         run: |
           flutter build appbundle --release \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
