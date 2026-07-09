@@ -234,6 +234,35 @@ export async function acceptClientOrder(
   return summary;
 }
 
+/**
+ * Cancela un pedido del cliente. Permitido hasta que el repartidor recoja el
+ * pedido en el negocio (una vez IN_TRANSIT ya no). Si había repartidor
+ * asignado, se le avisa por WS (`order_cancelled`) y se libera (ONLINE).
+ */
+export async function cancelClientOrder(clientId: string, orderId: string): Promise<boolean> {
+  const order = await prisma.order.findFirst({ where: { id: orderId, userId: clientId } });
+  if (!order) return false;
+  const cancellable = ['CONFIRMED', 'DRIVER_TO_PICKUP', 'AT_PICKUP'];
+  if (!cancellable.includes(order.status)) return false;
+
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: { status: 'CANCELLED' },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+
+  if (order.driverId) {
+    _sendToDriver?.(order.driverId, { type: 'order_cancelled', orderId });
+    await prisma.driver
+      .update({ where: { id: order.driverId }, data: { status: 'ONLINE' } })
+      .catch(() => { /* noop */ });
+  }
+
+  const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  return true;
+}
+
 /** Estados que el repartidor puede reportar sobre un pedido. */
 export type DriverOrderStatus = 'at_pickup' | 'in_transit' | 'delivered';
 

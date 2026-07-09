@@ -274,6 +274,16 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     _timers.remove(id);
     _wsService.unsubscribeOrder(id);
     _updateOrder(id, (o) => o.copyWith(status: CustomerOrderStatus.cancelled));
+    // Cancela también en el backend: libera y avisa al repartidor asignado.
+    unawaited(_cancelOnServer(id));
+  }
+
+  Future<void> _cancelOnServer(String id) async {
+    try {
+      await _dio.post<Map<String, dynamic>>('/client/orders/$id/cancel');
+    } catch (_) {
+      // Silencioso: la cancelación local ya se reflejó en la UI.
+    }
   }
 
   // ── rateOrder ──────────────────────────────────────────────────────────────

@@ -139,6 +139,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   StreamSubscription<Map<String, dynamic>>? _wsOrderSub;
   StreamSubscription<String>? _wsCancelSub;
   StreamSubscription<String>? _wsErrandCancelSub;
+  StreamSubscription<String>? _wsOrderCancelSub;
 
   static const _center = LatLng(
     MapConstants.pamplonaCenterLat,
@@ -165,6 +166,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _wsOrderSub?.cancel();
     _wsCancelSub?.cancel();
     _wsErrandCancelSub?.cancel();
+    _wsOrderCancelSub?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -209,6 +211,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _wsOrderSub?.cancel();
       _wsCancelSub?.cancel();
       _wsErrandCancelSub?.cancel();
+      _wsOrderCancelSub?.cancel();
       LocationService().stopTracking();
       DriverWsService().disconnect();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
@@ -301,6 +304,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() => _state = _state.copyWith(clearPending: true));
       }
     });
+
+    // El cliente canceló un pedido pendiente (aún sin recoger): retira la oferta.
+    _wsOrderCancelSub = DriverWsService().orderCancellations.listen((orderId) {
+      if (!mounted) return;
+      if (_state.pendingRequest?.orderId == orderId) {
+        _countdownTimer?.cancel();
+        setState(() => _state = _state.copyWith(clearPending: true));
+        AppSnackbar.showInfo(context, 'El cliente canceló el pedido.');
+      }
+    });
   }
 
   /// Build a [TripRequestEntity] from a raw trip JSON map received via WS.
@@ -348,10 +361,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// entrega; tarifa = el domicilio que gana el repartidor.
   TripRequestEntity? _orderRequestFromMap(Map<String, dynamic> o) {
     try {
-      const double lat = MapConstants.pamplonaCenterLat;
-      const double lng = MapConstants.pamplonaCenterLng;
+      const double fallbackLat = MapConstants.pamplonaCenterLat;
+      const double fallbackLng = MapConstants.pamplonaCenterLng;
       final businessName = o['businessName'] as String? ?? 'Negocio';
       final itemsCount = (o['itemsCount'] as num?)?.toInt() ?? 0;
+      // Coordenadas reales del backend: negocio (recogida) y entrega. La entrega
+      // cae al negocio si el pedido no trajo coords de destino.
+      final bizLat = (o['businessLat'] as num?)?.toDouble() ?? fallbackLat;
+      final bizLng = (o['businessLng'] as num?)?.toDouble() ?? fallbackLng;
+      final delLat = (o['deliveryLat'] as num?)?.toDouble() ?? bizLat;
+      final delLng = (o['deliveryLng'] as num?)?.toDouble() ?? bizLng;
 
       return TripRequestEntity(
         id: o['id'] as String,
@@ -364,13 +383,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           photoUrl: '',
         ),
         origin: LocationModel(
-          latitude: lat,
-          longitude: lng,
+          latitude: bizLat,
+          longitude: bizLng,
           address: o['businessAddress'] as String? ?? businessName,
         ),
         destination: LocationModel(
-          latitude: lat,
-          longitude: lng,
+          latitude: delLat,
+          longitude: delLng,
           address: o['deliveryAddress'] as String? ?? '',
         ),
         distanceKm: 0,

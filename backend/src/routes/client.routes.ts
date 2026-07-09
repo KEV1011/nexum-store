@@ -9,6 +9,7 @@ import {
   placeClientOrder,
   getClientOrders,
   getClientOrderById,
+  cancelClientOrder,
   requestClientTrip,
   getActiveClientTrip,
   getClientTripHistory,
@@ -157,6 +158,16 @@ router.get('/orders/:id', clientAuthMiddleware, async (req, res) => {
   const order = await getClientOrderById(req.clientId!, req.params['id']!);
   if (!order) { res.status(404).json({ success: false, error: 'Order not found' }); return; }
   res.json({ success: true, data: order });
+});
+
+// Cancela un pedido (hasta que el repartidor lo recoja); avisa al repartidor.
+router.post('/orders/:id/cancel', clientAuthMiddleware, async (req, res) => {
+  const ok = await cancelClientOrder(req.clientId!, req.params['id']!);
+  if (!ok) {
+    res.status(400).json({ success: false, error: 'El pedido no existe o ya no se puede cancelar' });
+    return;
+  }
+  res.json({ success: true });
 });
 
 // POST /client/orders/:id/tip { amount } — propina al repartidor (pago Wompi).
