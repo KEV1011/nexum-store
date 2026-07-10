@@ -112,35 +112,32 @@ jobs:
             echo "No Firebase secret — build will skip Firebase init"
           fi
 
-      # ── 6. Decode keystore ───────────────────────────────────────────────────
-      - name: Decode release keystore
+      # ── 6. Firma release estable (secrets ANDROID_KEYSTORE_*) ───────────────
+      # La MISMA llave en cada build → las actualizaciones instalan sobre la app
+      # existente y Play Protect deja de ver una app con firma nueva cada vez.
+      # Sin los secrets cae a la llave debug (firma efímera: solo pruebas).
+      - name: Configure release signing
         working-directory: AppTransport/android
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 --decode > nexum-driver-release.keystore
-            echo "Keystore loaded from secret"
-          else
-            echo "No keystore secret — using debug signing"
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Sin ANDROID_KEYSTORE_BASE64 — firma debug (solo pruebas)"
+            exit 0
           fi
-
-      - name: Write key.properties
-        working-directory: AppTransport/android
-        env:
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          if [ -f nexum-driver-release.keystore ]; then
-            cat > key.properties <<EOF
-          storePassword=${STORE_PASSWORD:-nexum2024}
-          keyPassword=${KEY_PASSWORD:-nexum2024}
-          keyAlias=nexum-driver
-          storeFile=../nexum-driver-release.keystore
-          EOF
-          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/nexum-release.jks
+          {
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyPassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=nexum"
+            echo "storeFile=nexum-release.jks"
+          } > key.properties
+          echo "Firma release persistente configurada"
 
       # ── 7. Build APK ─────────────────────────────────────────────────────────
+      # --build-number=run_number: cada APK tiene versionCode estrictamente
+      # mayor — Android acepta la actualización sobre la instalación previa.
       - name: Build release APK
         working-directory: AppTransport
         env:
@@ -149,6 +146,7 @@ jobs:
           WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
         run: |
           flutter build apk --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
             --dart-define=WS_BASE_URL=${WS_BASE_URL} \
             -PGOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY}"
@@ -162,6 +160,7 @@ jobs:
           WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
         run: |
           flutter build appbundle --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
             --dart-define=WS_BASE_URL=${WS_BASE_URL} \
             -PGOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY}"

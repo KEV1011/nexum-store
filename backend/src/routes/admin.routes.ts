@@ -10,7 +10,12 @@ import {
   listDocumentsForAdmin,
   adminReviewDocument,
 } from '../services/driver-profile.service';
-import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
+import {
+  requestAdminOtp,
+  validateAdminOtp,
+  OtpRateLimitError,
+  OtpConfigError,
+} from '../services/otp.service';
 import {
   getAdminMetrics,
   listDriversForAdmin,
@@ -46,10 +51,12 @@ router.post('/auth/send-otp', async (req: Request, res: Response): Promise<void>
     return;
   }
   try {
-    await requestOtp(phone.trim());
+    await requestAdminOtp(phone.trim());
     res.json({ success: true, data: { success: true } });
   } catch (err) {
-    const status = err instanceof OtpRateLimitError ? 429 : 500;
+    const status =
+      err instanceof OtpRateLimitError ? 429 :
+      err instanceof OtpConfigError ? 503 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
@@ -66,10 +73,18 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
     return;
   }
   try {
-    await validateOtp(phone.trim(), otp.trim());
+    await validateAdminOtp(phone.trim(), otp.trim());
     res.json({ success: true, data: { token: signAdminToken(phone.trim()) } });
-  } catch {
-    res.status(401).json({ success: false, error: 'Código inválido o expirado' });
+  } catch (err) {
+    // Mensaje específico (rate limit / panel cerrado / inválido): con el panel
+    // en producción y sin acceso a los logs, el texto exacto ES el diagnóstico.
+    const status =
+      err instanceof OtpRateLimitError ? 429 :
+      err instanceof OtpConfigError ? 503 : 401;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Código inválido',
+    });
   }
 });
 
@@ -302,42 +317,43 @@ const PANEL_HTML = `<!DOCTYPE html>
   <title>Nexum — Panel de Operación</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #1a1a1a; }
-    header { background: #1565c0; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+    body { font-family: system-ui, sans-serif; background: #f1f5f9; color: #0f172a; }
+    header { background: #0f172a; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #059669; }
     header h1 { font-size: 1.1rem; flex: 1; }
-    header button { width: auto; background: rgba(255,255,255,.15); padding: 6px 14px; font-size: .8rem; }
-    .card { max-width: 360px; margin: 60px auto; background: #fff; padding: 32px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
-    .card h2 { margin-bottom: 18px; font-size: 1rem; color: #333; }
-    input, select { width: 100%; border: 1px solid #ccc; border-radius: 6px; padding: 10px 12px; font-size: .9rem; margin-bottom: 12px; background:#fff; }
-    button { width: 100%; background: #1565c0; color: #fff; border: none; border-radius: 6px; padding: 11px; font-size: .92rem; cursor: pointer; }
+    header button { width: auto; background: rgba(255,255,255,.12); padding: 6px 14px; font-size: .8rem; }
+    .card { max-width: 360px; margin: 60px auto; background: #fff; padding: 32px; border-radius: 14px; box-shadow: 0 2px 14px rgba(15,23,42,.12); border-top: 4px solid #059669; }
+    .card h2 { margin-bottom: 18px; font-size: 1rem; color: #0f172a; }
+    input, select { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: .9rem; margin-bottom: 12px; background:#fff; }
+    input:focus, select:focus { outline: 2px solid #05966955; border-color: #059669; }
+    button { width: 100%; background: #059669; color: #fff; border: none; border-radius: 8px; padding: 11px; font-size: .92rem; cursor: pointer; font-weight: 600; }
     button:hover { filter: brightness(1.08); }
     #app { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
     nav.tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
-    nav.tabs button { width: auto; padding: 8px 18px; background: #fff; color: #1565c0; border: 1px solid #cfd8dc; font-size: .85rem; border-radius: 20px; }
-    nav.tabs button.active { background: #1565c0; color: #fff; border-color: #1565c0; }
+    nav.tabs button { width: auto; padding: 8px 18px; background: #fff; color: #047857; border: 1px solid #cbd5e1; font-size: .85rem; border-radius: 20px; }
+    nav.tabs button.active { background: #059669; color: #fff; border-color: #059669; }
     table { width: 100%; background: #fff; border-radius: 10px; border-collapse: collapse; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; }
-    th { background: #e3f2fd; color: #1565c0; padding: 11px 13px; text-align: left; font-size: .76rem; text-transform: uppercase; }
+    th { background: #ecfdf5; color: #047857; padding: 11px 13px; text-align: left; font-size: .76rem; text-transform: uppercase; }
     td { padding: 9px 13px; border-top: 1px solid #f0f0f0; font-size: .87rem; vertical-align: middle; }
     .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .73rem; font-weight: 600; }
     .badge-PENDING { background: #fff8e1; color: #f57f17; }
     .badge-APPROVED, .badge-ONLINE, .badge-ok { background: #e8f5e9; color: #2e7d32; }
     .badge-REJECTED, .badge-PANIC { background: #fce4ec; color: #c62828; }
     .badge-OFFLINE { background: #eceff1; color: #607d8b; }
-    .badge-ON_TRIP { background: #e3f2fd; color: #1565c0; }
+    .badge-ON_TRIP { background: #d1fae5; color: #047857; }
     .badge-REQUESTED { background: #fff8e1; color: #f57f17; }
-    .badge-PROCESSING { background: #e3f2fd; color: #1565c0; }
+    .badge-PROCESSING { background: #d1fae5; color: #047857; }
     .badge-PAID { background: #e8f5e9; color: #2e7d32; }
     .btn-sm { width:auto; padding: 5px 12px; border-radius: 6px; font-size: .78rem; margin-right: 4px; }
     .btn-approve { background: #2e7d32; }
     .btn-reject { background: #c62828; }
-    a { color: #1565c0; }
+    a { color: #047857; }
     #msg { padding: 10px 16px; border-radius: 8px; margin-bottom: 14px; display: none; }
     #msg.ok { background: #e8f5e9; color: #2e7d32; }
     #msg.err { background: #fce4ec; color: #c62828; }
     .empty { padding: 36px; text-align: center; color: #888; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
     .metric { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
-    .metric .v { font-size: 1.5rem; font-weight: 700; color: #1565c0; }
+    .metric .v { font-size: 1.5rem; font-weight: 700; color: #059669; }
     .metric .l { font-size: .75rem; color: #777; margin-top: 4px; }
     form.inline { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; align-items:end; }
     form.inline label { font-size:.72rem; color:#666; display:block; margin-bottom:4px; }
@@ -349,14 +365,15 @@ const PANEL_HTML = `<!DOCTYPE html>
 <div id="login" class="card">
   <h2>Panel de operación Nexum</h2>
   <div id="step-phone">
-    <input id="phone" type="tel" placeholder="+573001234567" />
+    <input id="phone" type="tel" autocomplete="tel" placeholder="+573001234567" />
     <button onclick="sendOtp()">Enviarme el código</button>
   </div>
   <div id="step-otp" style="display:none">
-    <input id="otp" inputmode="numeric" maxlength="6" placeholder="Código SMS (6 dígitos)" />
+    <input id="otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Código (6 dígitos)" />
     <button onclick="verifyOtp()">Entrar</button>
   </div>
   <p id="login-err" style="color:#c00;font-size:.8rem;margin-top:8px;"></p>
+  <p id="diag" style="color:#94a3b8;font-size:.7rem;margin-top:14px;"></p>
 </div>
 
 <div id="app">
@@ -458,6 +475,14 @@ let TOKEN = sessionStorage.getItem('nx_admin_token') || '';
 let PHONE = '';
 
 if (TOKEN) { boot(); }
+
+// Pie de diagnóstico del login: build + modo OTP desde /health. Permite saber
+// con una sola mirada qué commit corre Render y qué código espera el panel.
+fetch('/health').then((r) => r.json()).then((h) => {
+  document.getElementById('diag').textContent =
+    'build ' + (h.commit || '?') + ' · OTP usuarios: ' + (h.otp || '?') +
+    ' · OTP admin: ' + (h.otpAdmin || '?') + ' · BD: ' + (h.db ? 'ok' : 'sin conexión');
+}).catch(() => {});
 
 function api(path, opts = {}) {
   return fetch(path, {

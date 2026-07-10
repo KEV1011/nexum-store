@@ -65,7 +65,7 @@ class DriverStatusNotifier extends StateNotifier<DriverStatusEntity> {
       location = const LocationModel(
         latitude: 7.3754,
         longitude: -72.6486,
-        address: 'Parque Águeda Gallardo, Pamplona',
+        address: 'Centro de la ciudad',
       );
     }
 

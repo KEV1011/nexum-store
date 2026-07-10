@@ -117,7 +117,32 @@ jobs:
             echo "No Firebase secret — build will skip Firebase init"
           fi
 
+      # ── 6b. Firma release estable (secrets ANDROID_KEYSTORE_*) ──────────────
+      # Misma llave que la app del conductor: la firma no cambia entre builds y
+      # las actualizaciones instalan sobre la app existente. Sin los secrets cae
+      # a la llave debug (firma efímera: solo pruebas).
+      - name: Configure release signing
+        working-directory: AppCliente/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Sin ANDROID_KEYSTORE_BASE64 — firma debug (solo pruebas)"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > app/nexum-release.jks
+          {
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyPassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=nexum"
+            echo "storeFile=nexum-release.jks"
+          } > key.properties
+          echo "Firma release persistente configurada"
+
       # ── 7. Build APK ─────────────────────────────────────────────────────────
+      # --build-number=run_number: versionCode estrictamente creciente para que
+      # Android acepte actualizar sobre la instalación previa.
       - name: Build release APK
         working-directory: AppCliente
         env:
@@ -125,6 +150,7 @@ jobs:
           WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
         run: |
           flutter build apk --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
             --dart-define=WS_BASE_URL=${WS_BASE_URL}
 
@@ -136,6 +162,7 @@ jobs:
           WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
         run: |
           flutter build appbundle --release \
+            --build-number=${{ github.run_number }} \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
             --dart-define=WS_BASE_URL=${WS_BASE_URL}
 

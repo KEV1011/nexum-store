@@ -17,19 +17,19 @@ const montserrat = Montserrat({
 
 export const metadata: Metadata = {
   title: {
-    default:  'Nexum — Movilidad y envíos en Pamplona',
+    default:  'Nexum — Movilidad y envíos',
     template: '%s | Nexum',
   },
   description:
-    'Plataforma de movilidad, envíos y pedidos para Pamplona, Norte de Santander. ' +
+    'Plataforma de movilidad, envíos y pedidos en Colombia. ' +
     'Portal de negocios aliados con seguimiento de pedidos en tiempo real.',
-  keywords: ['transporte', 'envíos', 'domicilios', 'Pamplona', 'Nexum'],
+  keywords: ['transporte', 'envíos', 'domicilios', 'Colombia', 'Nexum'],
   authors:  [{ name: 'Nexum' }],
   openGraph: {
     type:        'website',
     locale:      'es_CO',
     siteName:    'Nexum',
-    title:       'Nexum — Movilidad y envíos en Pamplona',
+    title:       'Nexum — Movilidad y envíos',
     description: 'Transporte, envíos y pedidos con seguimiento en tiempo real.',
   },
   robots: { index: true, follow: true },

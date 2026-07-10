@@ -34,9 +34,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     _PageData(
       icon: Icons.delivery_dining_rounded,
-      title: 'Pamplona en 30 min',
+      title: 'Tu ciudad en minutos',
       body: 'Restaurantes, droguerías y más, a tu puerta. '
-          'Nexum nació en Pamplona para Pamplona.',
+          'Nexum: movilidad hecha para tu ciudad.',
       gradient: [Color(0xFF4A148C), Color(0xFF311B92)],
     ),
   ];

@@ -32,7 +32,7 @@ const _promos = [
     decorIcon: Icons.delivery_dining_rounded,
   ),
   _PromoData(
-    title: 'Restaurantes Pamplona',
+    title: 'Restaurantes cerca de ti',
     subtitle: 'Platos típicos a tu puerta en 30 min',
     cta: 'Explorar',
     gradient: [Color(0xFFFF7043), Color(0xFFBF360C)],
