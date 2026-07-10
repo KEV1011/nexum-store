@@ -309,16 +309,26 @@ router.post('/intercity/pool/publish', async (req: Request, res: Response): Prom
     return;
   }
   try {
-    const trip = await publishPooledTrip(req.driverId!, MOCK_DRIVER.name, req.driverPhone ?? MOCK_DRIVER.phone, {
-      origin: dto.origin,
-      destination: dto.destination,
-      departureTime: dto.departureTime,
-      totalSeats: dto.totalSeats,
-      farePerSeat: dto.farePerSeat,
-      vehicleDescription: dto.vehicleDescription,
-      notes: dto.notes,
-      allowFleet: dto.allowFleet,
+    // Identidad REAL del conductor en la publicación (antes usaba MOCK_DRIVER).
+    const me = await prisma.driver.findUnique({
+      where: { id: req.driverId! },
+      select: { name: true, phone: true },
     });
+    const trip = await publishPooledTrip(
+      req.driverId!,
+      me?.name ?? 'Conductor Nexum',
+      me?.phone ?? req.driverPhone ?? '',
+      {
+        origin: dto.origin,
+        destination: dto.destination,
+        departureTime: dto.departureTime,
+        totalSeats: dto.totalSeats,
+        farePerSeat: dto.farePerSeat,
+        vehicleDescription: dto.vehicleDescription,
+        notes: dto.notes,
+        allowFleet: dto.allowFleet,
+      },
+    );
     res.status(201).json({ success: true, data: trip });
   } catch (err) {
     const status = err instanceof PooledTripError ? 400 : 500;

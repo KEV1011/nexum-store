@@ -98,6 +98,7 @@ class PooledTripEntity {
     this.notes,
     this.distanceKm,
     this.durationMinutes,
+    this.operatorName,
     this.myBooking,
   });
 
@@ -117,6 +118,9 @@ class PooledTripEntity {
   final String? notes;
   final double? distanceKm;
   final int? durationMinutes;
+
+  /// Razón social de la empresa que publicó la salida (null = particular).
+  final String? operatorName;
 
   /// Present only in "mis reservas": the caller's own booking on this trip.
   final SeatBookingEntity? myBooking;
@@ -151,6 +155,7 @@ class PooledTripEntity {
         notes: j['notes'] as String?,
         distanceKm: (j['distanceKm'] as num?)?.toDouble(),
         durationMinutes: (j['durationMinutes'] as num?)?.toInt(),
+        operatorName: j['operatorName'] as String?,
         myBooking: j['myBooking'] is Map<String, dynamic>
             ? SeatBookingEntity.fromJson(j['myBooking'] as Map<String, dynamic>)
             : null,
@@ -177,6 +182,7 @@ class PooledTripEntity {
         notes: notes,
         distanceKm: distanceKm,
         durationMinutes: durationMinutes,
+        operatorName: operatorName,
         myBooking: myBooking,
       );
 }

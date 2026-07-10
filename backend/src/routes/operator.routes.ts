@@ -2,6 +2,14 @@ import { Router, Request, Response } from 'express';
 import { OperatorType, OperatorDocType, VehicleType } from '@prisma/client';
 import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
 import { isSmsConfigured } from '../services/sms.service';
+import { prisma } from '../lib/prisma';
+import {
+  publishPooledTrip,
+  getOperatorPooledTrips,
+  cancelPooledTripByOperator,
+  PooledTripError,
+} from '../services/intercity-pool.service';
+import { IntercityCity } from '../types';
 import {
   signOperatorToken,
   requireOperator,
@@ -293,6 +301,109 @@ router.post(
     } catch (err) {
       res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error al guardar el documento' });
     }
+  },
+);
+
+// ─── Salidas programadas (cupos intermunicipales de la empresa) ───────────────
+// La empresa publica salidas con horario/puestos asignando un conductor
+// afiliado; el cliente las ve y reserva en "Cupos compartidos" (mismo motor
+// pooled). Empresa verificada ⇒ las rutas troncales del modelo dual están
+// permitidas (licensedOperator).
+
+// GET /operator/pool — salidas publicadas por la empresa.
+router.get('/pool', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await getOperatorPooledTrips(req.operatorId!) });
+});
+
+// POST /operator/pool/publish
+router.post(
+  '/pool/publish',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    const b = req.body as {
+      driverId?: string;
+      origin?: string;
+      destination?: string;
+      departureTime?: string;
+      totalSeats?: number;
+      farePerSeat?: number;
+      vehicleDescription?: string;
+      notes?: string;
+    };
+    if (
+      !b.driverId || !b.origin || !b.destination || !b.departureTime ||
+      b.totalSeats === undefined || b.farePerSeat === undefined
+    ) {
+      res.status(400).json({
+        success: false,
+        error: 'driverId, origin, destination, departureTime, totalSeats y farePerSeat son requeridos',
+      });
+      return;
+    }
+    const driver = await prisma.driver.findFirst({
+      where: { id: b.driverId, operatorId: req.operatorId! },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        vehicles: {
+          where: { isActive: true },
+          take: 1,
+          select: { brand: true, model: true, plate: true },
+        },
+      },
+    });
+    if (!driver) {
+      res.status(404).json({ success: false, error: 'Ese conductor no está afiliado a tu empresa.' });
+      return;
+    }
+    const operator = await prisma.operator.findUnique({
+      where: { id: req.operatorId! },
+      select: { isVerified: true },
+    });
+    const v = driver.vehicles[0];
+    const vehicleDescription =
+      b.vehicleDescription?.trim() ||
+      (v ? `${v.brand} ${v.model} · ${v.plate}` : 'Vehículo de la empresa');
+    try {
+      const trip = await publishPooledTrip(
+        driver.id,
+        driver.name,
+        driver.phone,
+        {
+          origin: b.origin as IntercityCity,
+          destination: b.destination as IntercityCity,
+          departureTime: b.departureTime,
+          totalSeats: b.totalSeats,
+          farePerSeat: b.farePerSeat,
+          vehicleDescription,
+          notes: b.notes,
+          allowFleet: true,
+        },
+        { operatorId: req.operatorId!, licensedOperator: operator?.isVerified === true },
+      );
+      res.status(201).json({ success: true, data: trip });
+    } catch (err) {
+      const status = err instanceof PooledTripError ? 400 : 500;
+      res.status(status).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'No se pudo publicar la salida',
+      });
+    }
+  },
+);
+
+// POST /operator/pool/:id/cancel — cancela una salida propia.
+router.post(
+  '/pool/:id/cancel',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    const trip = await cancelPooledTripByOperator(req.operatorId!, req.params['id']!);
+    if (!trip) {
+      res.status(404).json({ success: false, error: 'Salida no encontrada o ya no se puede cancelar.' });
+      return;
+    }
+    res.json({ success: true, data: trip });
   },
 );
 

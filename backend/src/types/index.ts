@@ -745,6 +745,10 @@ export interface PooledTripDTO {
   distanceKm?: number;
   durationMinutes?: number;
   createdAt: string;
+  /** Empresa que publicó la salida (null/ausente = conductor particular). */
+  operatorId?: string;
+  /** Razón social de la empresa, para mostrar confianza en la búsqueda. */
+  operatorName?: string;
   /** Present only on driver-facing responses. */
   bookings?: SeatBookingDTO[];
 }

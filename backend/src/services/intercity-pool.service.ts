@@ -52,6 +52,7 @@ type DbPooledTrip = {
   vehicleDescription: string; origin: string; destination: string; departureTime: Date;
   totalSeats: number; farePerSeat: number; maxFarePerSeat: number; allowFleet: boolean;
   status: string; notes: string | null; createdAt: Date;
+  operatorId?: string | null;
   bookings?: DbSeatBooking[];
 };
 
@@ -108,6 +109,7 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     distanceKm: route?.distanceKm,
     durationMinutes: route?.durationMinutes,
     createdAt: t.createdAt.toISOString(),
+    operatorId: t.operatorId ?? undefined,
   };
 
   if (includeBookings) {
@@ -129,18 +131,30 @@ function _notify(tripId: string, trip: PooledTripDTO): void {
 
 // ─── Driver: publish & manage ─────────────────────────────────────────────────
 
+export interface PublishPooledTripOpts {
+  /** Empresa que publica la salida — se sella en el registro. */
+  operatorId?: string;
+  /**
+   * true cuando publica una empresa habilitada (verificada): las rutas
+   * troncales del modelo dual SÍ están permitidas para ella — ese es
+   * exactamente el propósito del modelo.
+   */
+  licensedOperator?: boolean;
+}
+
 export async function publishPooledTrip(
   driverId: string,
   driverName: string,
   driverPhone: string,
   dto: PublishPooledTripDTO,
+  opts?: PublishPooledTripOpts,
 ): Promise<PooledTripDTO> {
   if (dto.origin === dto.destination) throw new PooledTripError('El origen y el destino no pueden ser iguales');
   const route = getIntercityRoute(dto.origin, dto.destination);
   if (!route) throw new PooledTripError(`No hay ruta definida entre ${dto.origin} y ${dto.destination}`);
 
   // Option B (dual model): trunk routes require a habilitated operator.
-  if (INTERCITY_DUAL_MODEL && route.requiresLicensedOperator) {
+  if (INTERCITY_DUAL_MODEL && route.requiresLicensedOperator && !opts?.licensedOperator) {
     throw new PooledTripError(
       'Esta es una ruta troncal que requiere operador de transporte habilitado. ' +
         'Por ahora no está disponible para conductores particulares.',
@@ -182,6 +196,7 @@ export async function publishPooledTrip(
       allowFleet: dto.allowFleet ?? false,
       status: 'OPEN',
       notes: dto.notes ?? null,
+      operatorId: opts?.operatorId ?? null,
     },
     include: { bookings: true },
   });
@@ -195,6 +210,34 @@ export async function getDriverPooledTrips(driverId: string): Promise<PooledTrip
     orderBy: { createdAt: 'desc' },
   });
   return trips.map((t) => _toDTO(t as DbPooledTrip, true));
+}
+
+// ─── Empresa: salidas programadas ─────────────────────────────────────────────
+
+export async function getOperatorPooledTrips(operatorId: string): Promise<PooledTripDTO[]> {
+  const trips = await prisma.pooledTrip.findMany({
+    where: { operatorId },
+    include: { bookings: true },
+    orderBy: { departureTime: 'desc' },
+  });
+  return trips.map((t) => _toDTO(t as DbPooledTrip, true));
+}
+
+/** Cancela una salida publicada por la empresa (solo las suyas). */
+export async function cancelPooledTripByOperator(
+  operatorId: string,
+  tripId: string,
+): Promise<PooledTripDTO | null> {
+  const t = await _fetchWithBookings(tripId);
+  if (!t || t.operatorId !== operatorId) return null;
+  if (t.status === 'COMPLETED' || t.status === 'CANCELLED') return null;
+
+  const updated = await prisma.pooledTrip.update({
+    where: { id: tripId }, data: { status: 'CANCELLED' }, include: { bookings: true },
+  });
+  const dto = _toDTO(updated as DbPooledTrip, true);
+  _notify(tripId, dto);
+  return dto;
 }
 
 export async function departPooledTrip(driverId: string, tripId: string): Promise<PooledTripDTO | null> {
@@ -265,8 +308,24 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
     orderBy: { departureTime: 'asc' },
   });
 
+  // Nombre de la empresa para las salidas publicadas por operadores: da
+  // confianza en la búsqueda ("Salida de Cotranal" vs conductor particular).
+  const operatorIds = [...new Set(trips.map((t) => t.operatorId).filter((id): id is string => !!id))];
+  const operatorNames = new Map<string, string>();
+  if (operatorIds.length > 0) {
+    const ops = await prisma.operator.findMany({
+      where: { id: { in: operatorIds } },
+      select: { id: true, legalName: true, tradeName: true },
+    });
+    for (const o of ops) operatorNames.set(o.id, o.tradeName ?? o.legalName);
+  }
+
   return trips
-    .map((t) => _toDTO(t as DbPooledTrip, false))
+    .map((t) => {
+      const dto = _toDTO(t as DbPooledTrip, false);
+      if (dto.operatorId) dto.operatorName = operatorNames.get(dto.operatorId);
+      return dto;
+    })
     .filter((t) => {
       if (t.availableSeats <= 0) return false;
       if (target) {

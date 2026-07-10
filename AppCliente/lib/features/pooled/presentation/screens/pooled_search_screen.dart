@@ -297,6 +297,29 @@ class _TripCard extends StatelessWidget {
                   style: const TextStyle(
                       fontSize: 12, color: AppColors.textSecondary)),
               const Divider(height: 20),
+              // Salida oficial de empresa: sello de confianza (vs particular).
+              if (trip.operatorName != null) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.verified_rounded,
+                        size: 16, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Empresa: ${trip.operatorName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
               Row(
                 children: [
                   const Icon(Icons.person_rounded, size: 16, color: AppColors.textSecondary),
