@@ -433,7 +433,8 @@ class _BottomPanel extends StatelessWidget {
       // el asa o el contenido expande/colapsa el panel con snapping.
       child: ListView(
         controller: scrollController,
-        padding: EdgeInsets.zero,
+        // Fondo despejado bajo la barra de vidrio flotante (extendBody).
+        padding: const EdgeInsets.only(bottom: 84),
         children: [
           // Handle (asa): indica que el panel se arrastra
           Center(
