@@ -533,18 +533,19 @@ class _BottomPanel extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // Tarjeta "Pon tu precio" (negociación estilo inDriver)
+          // Bloque hero intermunicipal PRIMERO: es el plus de Nexum y antes
+          // quedaba bajo el pliegue del panel colapsado (nadie lo veía).
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _NegotiateCard(),
+            child: _IntercityHeroCard(),
           ),
 
           const SizedBox(height: 8),
 
-          // Bloque hero intermunicipal: lo distintivo de Nexum en la región
+          // Tarjeta "Pon tu precio" (negociación estilo inDriver)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _IntercityHeroCard(),
+            child: _NegotiateCard(),
           ),
 
           const SizedBox(height: 10),
