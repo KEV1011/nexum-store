@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { OperatorType, OperatorDocType, VehicleType } from '@prisma/client';
 import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
+import { isSmsConfigured } from '../services/sms.service';
 import {
   signOperatorToken,
   requireOperator,
@@ -85,8 +86,12 @@ router.post('/auth/send-otp', async (req: Request, res: Response): Promise<void>
   }
   try {
     const member = await findOperatorMemberByPhone(phone);
-    // Mismo mensaje exista o no el miembro (no revelar la lista).
-    if (member) await requestOtp(phone.trim());
+    // Con Twilio, solo se envía SMS real a miembros (evita SMS-pumping y no
+    // revela la lista: la respuesta es la misma). En modo local (código fijo)
+    // la sesión se crea SIEMPRE: así el verify puede validar el código primero
+    // y, ya probada la posesión del teléfono, explicar si falta la empresa —
+    // antes un teléfono sin empresa moría en un "Código inválido" indescifrable.
+    if (member || !isSmsConfigured()) await requestOtp(phone.trim());
     res.json({ success: true, data: { success: true } });
   } catch (err) {
     const status = err instanceof OtpRateLimitError ? 429 : 500;
@@ -101,15 +106,27 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
     res.status(400).json({ success: false, error: 'phone y otp son requeridos' });
     return;
   }
-  const member = await findOperatorMemberByPhone(phone);
-  if (!member) {
-    res.status(401).json({ success: false, error: 'Código inválido' });
-    return;
-  }
+  // 1) Validar el código PRIMERO (prueba posesión del teléfono)...
   try {
     await validateOtp(phone.trim(), otp.trim());
-  } catch {
-    res.status(401).json({ success: false, error: 'Código inválido o expirado' });
+  } catch (err) {
+    const status = err instanceof OtpRateLimitError ? 429 : 401;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Código inválido',
+    });
+    return;
+  }
+  // 2) ...y solo entonces revelar el estado de la cuenta: quien validó el OTP
+  // es dueño del teléfono, no hay enumeración posible por terceros.
+  const member = await findOperatorMemberByPhone(phone);
+  if (!member) {
+    res.status(403).json({
+      success: false,
+      error:
+        'Este teléfono no está asociado a ninguna empresa. Regístrala en ' +
+        '"Regístrala aquí" (o entra con el teléfono de contacto que usaste al registrarla).',
+    });
     return;
   }
   const token = signOperatorToken({

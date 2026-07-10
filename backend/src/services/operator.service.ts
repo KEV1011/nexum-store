@@ -23,6 +23,9 @@ export interface RegisterOperatorDTO {
 }
 
 export async function registerOperator(dto: RegisterOperatorDTO) {
+  // E.164 canónico desde el registro: el login del portal busca por match
+  // exacto, y la afiliación de conductores ya normaliza igual.
+  const phone = normalizeColombianPhone(dto.contactPhone);
   return prisma.operator.create({
     data: {
       legalName: dto.legalName,
@@ -30,12 +33,12 @@ export async function registerOperator(dto: RegisterOperatorDTO) {
       tradeName: dto.tradeName ?? null,
       type: dto.type,
       contactName: dto.contactName ?? null,
-      contactPhone: dto.contactPhone,
+      contactPhone: phone,
       contactEmail: dto.contactEmail ?? null,
       city: dto.city ?? null,
       members: {
         create: {
-          phone: dto.contactPhone,
+          phone,
           name: dto.contactName ?? null,
           role: 'OWNER',
         },
@@ -48,7 +51,7 @@ export async function registerOperator(dto: RegisterOperatorDTO) {
 /** Para el login del portal: encuentra un miembro activo por teléfono. */
 export async function findOperatorMemberByPhone(phone: string) {
   return prisma.operatorMember.findFirst({
-    where: { phone: phone.trim(), active: true },
+    where: { phone: normalizeColombianPhone(phone), active: true },
     include: { operator: true },
     orderBy: { createdAt: 'asc' },
   });
