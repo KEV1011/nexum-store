@@ -74,7 +74,13 @@ interface ApiResponse {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3001'
+// Producción (Render) sin NEXT_PUBLIC_BACKEND_URL → backend real, no localhost
+// (Next.js hornea este valor en el bundle del navegador en tiempo de build).
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  (process.env.NODE_ENV === 'development'
+    ? 'http://localhost:3000'
+    : 'https://nexum-api-trxr.onrender.com')
 
 const WS_URL = (() => {
   try {
@@ -82,7 +88,7 @@ const WS_URL = (() => {
     u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
     return u.toString()
   } catch {
-    return 'ws://localhost:3001'
+    return 'wss://nexum-api-trxr.onrender.com'
   }
 })()
 

@@ -4,7 +4,11 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Building2, CheckCircle2, Loader2 } from 'lucide-react'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000'
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  (process.env.NODE_ENV === 'development'
+    ? 'http://localhost:3000'
+    : 'https://nexum-api-trxr.onrender.com')
 
 type OperatorType = 'TAXI' | 'INTERCITY' | 'MIXED'
 
