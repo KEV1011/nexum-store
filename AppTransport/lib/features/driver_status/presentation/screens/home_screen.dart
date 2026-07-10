@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -606,6 +607,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         selectedServiceType: serviceType,
         isOnline: _state.isOnline,
       ),
+      // El cuerpo se extiende bajo la barra de vidrio (efecto Rappi/Instagram);
+      // el panel inferior compensa solo vía MediaQuery.padding.bottom.
+      extendBody: true,
+      // Sin barra mientras hay una oferta en pantalla: nada debe estorbar el
+      // aceptar/rechazar.
+      bottomNavigationBar: _state.pendingRequest == null
+          ? _GlassNavBar(
+              items: [
+                _GlassNavItem(
+                  icon: Icons.home_rounded,
+                  label: 'Inicio',
+                  active: true,
+                  onTap: () {},
+                ),
+                _GlassNavItem(
+                  icon: Icons.payments_rounded,
+                  label: 'Ganancias',
+                  onTap: () => context.push(AppRoutes.earnings),
+                ),
+                _GlassNavItem(
+                  icon: Icons.route_rounded,
+                  label: 'Intermunicipal',
+                  onTap: () => context.push(AppRoutes.intercityRequests),
+                ),
+                _GlassNavItem(
+                  icon: Icons.person_rounded,
+                  label: 'Perfil',
+                  onTap: () => context.push(AppRoutes.profile),
+                ),
+              ],
+            )
+          : null,
       body: Stack(
         children: [
           // Map
@@ -953,6 +986,105 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Barra de vidrio flotante ─────────────────────────────────────────────────
+// Píldora translúcida con blur (estilo Rappi/Instagram). En el conductor no es
+// un shell de pestañas: Inicio es esta pantalla y el resto navega con push.
+
+class _GlassNavItem {
+  const _GlassNavItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+}
+
+class _GlassNavBar extends StatelessWidget {
+  const _GlassNavBar({required this.items});
+
+  final List<_GlassNavItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+      child: Container(
+        // La sombra vive FUERA del ClipRRect: un clip recorta su propia sombra.
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.30),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1D27).withValues(alpha: 0.66),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  for (final item in items)
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          item.onTap();
+                        },
+                        borderRadius: BorderRadius.circular(30),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              item.icon,
+                              size: 23,
+                              color: item.active
+                                  ? AppColors.primary
+                                  : const Color(0xFF94A3B8),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              item.label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: item.active
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                                color: item.active
+                                    ? AppColors.primary
+                                    : const Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
