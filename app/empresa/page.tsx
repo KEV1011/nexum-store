@@ -9,6 +9,7 @@ import {
 import { createOperatorApi } from './api'
 import FleetMap, { type FleetMapPoint } from './FleetMap'
 import RoutesManager from './RoutesManager'
+import SchedulesManager from './SchedulesManager'
 import DriversManager from './DriversManager'
 import VehiclesManager from './VehiclesManager'
 
@@ -467,6 +468,7 @@ function Dashboard({ token, operator, onLogout }: {
           )}
         </section>
 
+        {isIntercity && <SchedulesManager api={api} />}
         {isIntercity && <RoutesManager api={api} />}
 
         <footer className="text-center py-2">
