@@ -200,6 +200,8 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="3001234567"
                 inputMode="tel"
+                autoComplete="tel"
+                name="phone"
                 className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
               />
               <button
@@ -213,11 +215,17 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
           ) : (
             <>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5">Código (6 dígitos)</label>
+              {/* autoComplete=one-time-code: sin él, Chrome autollenaba el campo con
+                  valores recordados (p. ej. un número guardado) y, con maxLength 6,
+                  el usuario no podía escribir el código real. */}
               <input
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="••••••"
                 inputMode="numeric"
+                autoComplete="one-time-code"
+                name="otp"
+                autoFocus
                 className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-center text-lg tracking-[0.4em] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
               />
               <button

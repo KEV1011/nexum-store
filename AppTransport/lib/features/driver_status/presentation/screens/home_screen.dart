@@ -110,7 +110,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return const _Opportunity(
         icon: Icons.local_fire_department_rounded,
         title: 'Hora pico · tarifa dinámica',
-        subtitle: 'Demanda elevada en toda Pamplona · +30%',
+        subtitle: 'Demanda elevada en tu zona · +30%',
         color: AppColors.error,
         badge: '+30%',
       );

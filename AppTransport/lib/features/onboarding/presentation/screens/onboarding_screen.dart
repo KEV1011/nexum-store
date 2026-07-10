@@ -369,7 +369,7 @@ class _SlideWelcomeState extends State<_SlideWelcome>
               ),
               const SizedBox(height: AppConstants.spacingM),
               const Text(
-                'Tu plataforma de transporte y domicilios\nen Pamplona, Norte de Santander.',
+                'Tu plataforma de transporte y domicilios,\nestés donde estés.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white70,

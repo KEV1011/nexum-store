@@ -13,6 +13,7 @@ import { logger } from './lib/logger';
 import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
+import { otpMode } from './services/otp.service';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -62,10 +63,17 @@ app.get('/health', async (_req, res) => {
   } catch {
     /* DB no disponible */
   }
+  // commit + modo OTP: diagnóstico remoto de producción con una sola captura
+  // (¿qué build corre Render? ¿qué código de login espera?). No expone secretos:
+  // solo el MODO, nunca el valor del código.
+  const modes = otpMode();
   res.status(200).json({
     status: 'ok',
     db,
     uptime: Math.floor((Date.now() - startTime) / 1000),
+    commit: (process.env['RENDER_GIT_COMMIT'] ?? '').slice(0, 7) || 'desconocido',
+    otp: modes.users,
+    otpAdmin: modes.admin,
   });
 });
 

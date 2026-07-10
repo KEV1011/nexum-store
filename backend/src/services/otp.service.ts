@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { NODE_ENV } from '../config/constants';
 import { isSmsConfigured, sendSmsVerification, checkSmsVerification } from './sms.service';
@@ -69,6 +70,35 @@ function _assertRateLimit(phone: string): void {
   }
 }
 
+// ── Límite de intentos de verificación (anti fuerza bruta, por teléfono) ─────
+// El authLimiter HTTP protege por IP; esto protege por TELÉFONO aunque el
+// atacante rote IPs. En memoria: suficiente para una sola instancia.
+
+const VERIFY_MAX_ATTEMPTS = 8;
+const VERIFY_WINDOW_MS = 15 * 60 * 1000;
+
+const _verifyLog = new Map<string, number[]>();
+
+function _assertVerifyLimit(phone: string): void {
+  const now = Date.now();
+  const fails = (_verifyLog.get(phone) ?? []).filter((t) => now - t < VERIFY_WINDOW_MS);
+  _verifyLog.set(phone, fails);
+  if (fails.length >= VERIFY_MAX_ATTEMPTS) {
+    throw new OtpRateLimitError('Demasiados intentos fallidos. Espera 15 minutos.');
+  }
+  if (_verifyLog.size > 10_000) {
+    for (const [key, times] of _verifyLog) {
+      if (times.every((t) => now - t >= VERIFY_WINDOW_MS)) _verifyLog.delete(key);
+    }
+  }
+}
+
+function _recordVerifyFail(phone: string): void {
+  const list = _verifyLog.get(phone) ?? [];
+  list.push(Date.now());
+  _verifyLog.set(phone, list);
+}
+
 // ── Código local ──────────────────────────────────────────────────────────────
 
 function _localCode(): string {
@@ -85,6 +115,86 @@ function _localCode(): string {
     'abrir a usuarios reales.',
   );
   return OTP_DEV_CODE; // 123456
+}
+
+// ── Diagnóstico ───────────────────────────────────────────────────────────────
+
+/**
+ * Modo OTP efectivo para usuarios (conductor/cliente/empresa) y para el panel
+ * admin. Valores en español porque se muestran tal cual en /health y en el
+ * pie del panel — permiten diagnosticar producción con una sola captura.
+ */
+export function otpMode(): { users: string; admin: string } {
+  if (isSmsConfigured()) return { users: 'twilio-sms', admin: 'twilio-sms' };
+  if (NODE_ENV !== 'production') return { users: 'dev-123456', admin: 'dev-123456' };
+  if (OTP_FALLBACK_CODE) return { users: 'codigo-fijo-propio', admin: 'codigo-fijo-propio' };
+  return { users: 'piloto-123456', admin: 'cerrado' };
+}
+
+// ── Admin (panel de operación) ────────────────────────────────────────────────
+// El admin NUNCA acepta el código piloto público en producción: el repositorio
+// es público y 123456 está documentado — sería una puerta abierta. Además la
+// validación es directa contra el secreto (sin otp_sessions): así nadie puede
+// "sembrar" una sesión con el código de usuario desde el login de conductor y
+// reutilizarla contra el panel.
+
+export class OtpConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OtpConfigError';
+  }
+}
+
+function _adminCode(): string | null {
+  if (NODE_ENV !== 'production') return OTP_DEV_CODE;
+  if (OTP_FALLBACK_CODE) return OTP_FALLBACK_CODE;
+  return null; // cerrado por diseño
+}
+
+function _safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a.padEnd(32, '\0'));
+  const bufB = Buffer.from(b.padEnd(32, '\0'));
+  return a.length === b.length && timingSafeEqual(bufA, bufB);
+}
+
+/** Envía (o habilita) el OTP del panel admin. Lanza OtpConfigError si está cerrado. */
+export async function requestAdminOtp(phone: string): Promise<void> {
+  _assertRateLimit(phone);
+  if (isSmsConfigured()) {
+    await sendSmsVerification(phone);
+    return;
+  }
+  if (_adminCode() === null) {
+    throw new OtpConfigError(
+      'El acceso admin en producción está cerrado: define OTP_FALLBACK_CODE ' +
+      '(o configura Twilio Verify) en Render y redespliega.',
+    );
+  }
+  // Código fijo conocido por el operador: no hay nada que enviar ni guardar.
+}
+
+/** Valida el OTP del panel admin. Lanza Error legible si es inválido. */
+export async function validateAdminOtp(phone: string, otp: string): Promise<void> {
+  _assertVerifyLimit(phone);
+  if (isSmsConfigured()) {
+    const ok = await checkSmsVerification(phone, otp);
+    if (!ok) {
+      _recordVerifyFail(phone);
+      throw new Error('Código inválido');
+    }
+    return;
+  }
+  const expected = _adminCode();
+  if (expected === null) {
+    throw new OtpConfigError(
+      'El acceso admin en producción está cerrado: define OTP_FALLBACK_CODE ' +
+      '(o configura Twilio Verify) en Render y redespliega.',
+    );
+  }
+  if (!_safeEqual(otp, expected)) {
+    _recordVerifyFail(phone);
+    throw new Error('Código inválido');
+  }
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -124,9 +234,14 @@ export async function requestOtp(phone: string, driverId?: string): Promise<void
  * Valida el OTP. Lanza Error con mensaje legible si es inválido/expirado.
  */
 export async function validateOtp(phone: string, otp: string): Promise<void> {
+  _assertVerifyLimit(phone);
+
   if (isSmsConfigured()) {
     const ok = await checkSmsVerification(phone, otp);
-    if (!ok) throw new Error('Invalid OTP');
+    if (!ok) {
+      _recordVerifyFail(phone);
+      throw new Error('Código inválido');
+    }
     return;
   }
 
@@ -135,12 +250,18 @@ export async function validateOtp(phone: string, otp: string): Promise<void> {
     orderBy: { createdAt: 'desc' },
   });
 
-  if (!session) throw new Error('No OTP requested for this phone number');
+  if (!session) {
+    _recordVerifyFail(phone);
+    throw new Error('No hay un código solicitado para este teléfono. Pide uno nuevo.');
+  }
   if (new Date() > session.expiresAt) {
     await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
-    throw new Error('OTP has expired');
+    throw new Error('El código expiró. Pide uno nuevo.');
   }
-  if (session.code !== otp) throw new Error('Invalid OTP');
+  if (!_safeEqual(session.code, otp)) {
+    _recordVerifyFail(phone);
+    throw new Error('Código inválido');
+  }
 
   await prisma.otpSession.update({ where: { id: session.id }, data: { used: true } });
 }

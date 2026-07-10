@@ -53,7 +53,7 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
             slivers: [
               SliverToBoxAdapter(
                 child: _LocationHeader(
-                  address: address?.fullAddress ?? 'Barrio Belén, Pamplona',
+                  address: address?.fullAddress ?? 'Tu dirección',
                   onTap: () => context.push(AppRoutes.addresses),
                 ),
               ),

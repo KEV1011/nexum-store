@@ -8,7 +8,7 @@ const SERVICES = [
   {
     icon: Car,
     title: 'Transporte',
-    sub: 'Carro, taxi y moto en Pamplona y rutas intermunicipales.',
+    sub: 'Carro, taxi y moto en tu ciudad y rutas intermunicipales.',
   },
   {
     icon: Package,
@@ -31,11 +31,11 @@ export default function HomePage() {
             Nexum
           </p>
           <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight mb-4">
-            Movilidad y envíos para Pamplona
+            Movilidad y envíos para tu ciudad
           </h1>
           <p className="text-slate-400 text-lg mb-10">
             Transporte, domicilios y mandados con seguimiento en tiempo real,
-            en Pamplona, Norte de Santander.
+            estés donde estés.
           </p>
 
           <div className="grid sm:grid-cols-3 gap-4 mb-12 text-left">
@@ -66,7 +66,7 @@ export default function HomePage() {
       </section>
 
       <footer className="border-t border-slate-800 py-6 text-center text-sm text-slate-500">
-        © {new Date().getFullYear()} Nexum · Pamplona, Norte de Santander
+        © {new Date().getFullYear()} Nexum · Colombia
       </footer>
     </main>
   )

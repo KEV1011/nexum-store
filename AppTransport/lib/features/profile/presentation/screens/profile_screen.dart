@@ -229,7 +229,7 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: AppConstants.spacingXS),
             Text(
               // Base de operación de la plataforma (no es dato personal).
-              'Pamplona, Norte de Santander',
+              'Colombia',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: AppColors.textTertiary,
               ),

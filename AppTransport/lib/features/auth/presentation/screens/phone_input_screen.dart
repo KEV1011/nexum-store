@@ -259,7 +259,7 @@ class _NexumDriverLogo extends StatelessWidget {
           ),
           const SizedBox(height: AppConstants.spacingXS),
           Text(
-            'Conduce y gana en Pamplona',
+            'Conduce y gana con Nexum',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 13.5,

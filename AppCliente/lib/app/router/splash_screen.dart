@@ -48,7 +48,7 @@ class SplashScreen extends StatelessWidget {
             ),
             const SizedBox(height: AppConstants.spacingXS),
             Text(
-              'Domicilios de Pamplona',
+              'Movilidad y domicilios',
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 15,

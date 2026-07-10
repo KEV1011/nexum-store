@@ -287,7 +287,7 @@ class _LocationChip extends StatelessWidget {
               size: 15, color: AppColors.serviceMoto),
           SizedBox(width: 4),
           Text(
-            'Pamplona, Nariño',
+            'Tu ubicación',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -837,7 +837,7 @@ class _IntercityHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Pamplona · Cúcuta · Bucaramanga · Chitagá · Málaga y más',
+            'Viaja entre ciudades: Cúcuta, Bucaramanga y más',
             style: TextStyle(color: _lightBlue, fontSize: 11.5),
           ),
           const SizedBox(height: 12),

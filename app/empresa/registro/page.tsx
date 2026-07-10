@@ -19,7 +19,7 @@ export default function OperatorRegisterPage() {
   const [contactName, setContactName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
-  const [city, setCity] = useState('Pamplona')
+  const [city, setCity] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -124,7 +124,7 @@ export default function OperatorRegisterPage() {
           <Field label="Nombre del contacto" value={contactName} onChange={setContactName} placeholder="Representante legal" />
           <Field label="Teléfono de contacto (ingreso al portal)" value={contactPhone} onChange={setContactPhone} placeholder="3001234567" />
           <Field label="Correo (opcional)" value={contactEmail} onChange={setContactEmail} placeholder="contacto@empresa.com" />
-          <Field label="Ciudad" value={city} onChange={setCity} placeholder="Pamplona" />
+          <Field label="Ciudad" value={city} onChange={setCity} placeholder="Tu ciudad" />
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
