@@ -35,7 +35,9 @@ const OTP_FALLBACK_CODE = (process.env['OTP_FALLBACK_CODE'] ?? '')
 // ── Rate limiting (en memoria, por teléfono) ──────────────────────────────────
 
 const SEND_MIN_INTERVAL_MS = 45 * 1000;
-const SEND_MAX_PER_HOUR = 5;
+// 10/hora: suficiente contra abuso y no frena una sesión de pruebas del piloto
+// (con 5/hora el operador se bloqueaba a sí mismo probando los portales).
+const SEND_MAX_PER_HOUR = 10;
 
 const _sendLog = new Map<string, number[]>();
 
