@@ -22,6 +22,7 @@ import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
+import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
@@ -151,7 +152,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     // Load driver profile so isVerified is available when toggle is pressed.
     WidgetsBinding.instance.addPostFrameCallback(
-      (_) => ref.read(driverProfileProvider.notifier).load(),
+      (_) {
+        ref.read(driverProfileProvider.notifier).load();
+        // Estado real del modo intermunicipal para el switch del panel.
+        ref.read(intercityDriverProvider.notifier).loadAvailability();
+      },
     );
     // Con sesión activa, registrar el token FCM en el backend para recibir
     // solicitudes de viaje aunque la app esté en background.
@@ -909,6 +914,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
 
+          // Intermunicipal: el plus de Nexum — switch de disponibilidad + acceso
+          // directo a las reservas (antes vivía escondido en el drawer).
+          _IntercityPanelCard(
+            onOpen: () => context.push('/intercity-requests'),
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+
           // Status message
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -941,6 +953,121 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Tarjeta intermunicipal del panel ─────────────────────────────────────────
+// Switch de disponibilidad (GET/PUT /driver/intercity/availability vía
+// intercityDriverProvider) + navegación a las reservas, con badge de
+// solicitudes pendientes. Tocar la tarjeta abre /intercity-requests.
+
+class _IntercityPanelCard extends ConsumerWidget {
+  const _IntercityPanelCard({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  static const _text = Color(0xFFE2E8F0);
+  static const _sub = Color(0xFF94A3B8);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final intercity = ref.watch(intercityDriverProvider);
+    final pending = intercity.requests.length;
+
+    return Material(
+      color: AppColors.intercityBrand.withValues(alpha: 0.16),
+      borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+            border: Border.all(
+              color: AppColors.intercityBrand.withValues(alpha: 0.45),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.intercityBrand,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.route_rounded,
+                  color: Colors.white,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'Intermunicipal',
+                          style: TextStyle(
+                            color: _text,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (pending > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.error,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$pending',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      intercity.enabled
+                          ? 'Recibes reservas entre ciudades'
+                          : 'Actívalo y recibe reservas entre ciudades',
+                      style: const TextStyle(color: _sub, fontSize: 11.5),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: intercity.enabled,
+                onChanged: (v) async {
+                  HapticFeedback.selectionClick();
+                  final error = await ref
+                      .read(intercityDriverProvider.notifier)
+                      .setAvailability(enabled: v);
+                  if (error != null && context.mounted) {
+                    AppSnackbar.showError(context, error);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

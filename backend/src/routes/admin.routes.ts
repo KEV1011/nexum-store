@@ -25,6 +25,7 @@ import {
   listOperatorRoutesForAdmin,
   setOperatorRouteAuthorized,
   setDriverVerified,
+  diagnoseMatching,
 } from '../services/admin.service';
 import { OperatorStatus } from '@prisma/client';
 import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
@@ -90,7 +91,27 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos', '/payouts', '/operators', '/routes'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos', '/payouts', '/operators', '/routes', '/matching'], requireAdmin);
+
+// GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
+// por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.
+router.get('/matching/diagnose', async (req: Request, res: Response): Promise<void> => {
+  const lat = Number(req.query['lat'] ?? 7.3754);
+  const lng = Number(req.query['lng'] ?? -72.6486);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    res.status(400).json({ success: false, error: 'lat/lng inválidos' });
+    return;
+  }
+  try {
+    const drivers = await diagnoseMatching(lat, lng);
+    res.json({
+      success: true,
+      data: { lat, lng, radiusMeters: 5000, freshnessSeconds: 120, drivers },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
 
 // GET /admin/metrics
 router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
@@ -410,8 +431,18 @@ const PANEL_HTML = `<!DOCTYPE html>
     </section>
 
     <section id="tab-drivers" style="display:none">
-      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
-      <tbody id="drivers-body"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table>
+      <form class="inline" onsubmit="runDiag(event)">
+        <div><label>Lat del punto de recogida</label><input id="diag-lat" value="7.3754" /></div>
+        <div><label>Lng</label><input id="diag-lng" value="-72.6486" /></div>
+        <div><button type="submit" style="width:auto">Diagnóstico de despacho</button></div>
+      </form>
+      <div id="diag-wrap" style="display:none;margin-bottom:16px">
+        <p style="font-size:.78rem;color:#64748b;margin-bottom:8px">Para recibir la oferta, el conductor debe cumplir LAS CUATRO: ONLINE + verificado + GPS fresco (≤120 s) + a ≤5 km del punto.</p>
+        <table><thead><tr><th>Conductor</th><th>Estado</th><th>Verif.</th><th>GPS hace</th><th>Distancia</th><th>Radio 5 km</th><th>GPS fresco</th><th>¿Recibiría oferta?</th></tr></thead>
+        <tbody id="diag-body"></tbody></table>
+      </div>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
+      <tbody id="drivers-body"><tr><td colspan="10" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-operators" style="display:none">
@@ -587,14 +618,37 @@ function reviewDoc(id, approve) {
 function loadDrivers() {
   api('/admin/drivers').then((rows) => {
     const tb = document.getElementById('drivers-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">Sin conductores.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">Sin conductores.</td></tr>'; return; }
     tb.innerHTML = rows.map((d) => '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
       '</td><td><span class="badge badge-' + d.status + '">' + d.status + '</span></td><td>' + (d.isVerified ? '✅' : '—') +
+      '</td><td>' + (d.intercityEnabled ? '🛣️' : '—') +
       '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
       (d.isVerified
         ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
       '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+// Radiografía del despacho: evalúa los 4 filtros del matching por conductor.
+function runDiag(ev) {
+  ev.preventDefault();
+  const lat = document.getElementById('diag-lat').value.trim();
+  const lng = document.getElementById('diag-lng').value.trim();
+  api('/admin/matching/diagnose?lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng)).then((d) => {
+    const tb = document.getElementById('diag-body');
+    document.getElementById('diag-wrap').style.display = 'block';
+    if (!d.drivers.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">No hay conductores registrados.</td></tr>'; return; }
+    const ok = '<span class="badge badge-ok">Sí</span>';
+    const no = '<span class="badge badge-REJECTED">No</span>';
+    tb.innerHTML = d.drivers.map((r) => '<tr><td><strong>' + esc(r.name) + '</strong><br><span style="color:#94a3b8;font-size:.72rem">' + esc(r.phone) + '</span></td>' +
+      '<td><span class="badge badge-' + r.status + '">' + r.status + '</span></td>' +
+      '<td>' + (r.isVerified ? ok : no) + '</td>' +
+      '<td>' + (r.geoAgeSeconds === null ? 'nunca' : r.geoAgeSeconds + ' s') + '</td>' +
+      '<td>' + (r.distanceMeters === null ? '—' : (r.distanceMeters / 1000).toFixed(2) + ' km') + '</td>' +
+      '<td>' + (r.inRadius ? ok : no) + '</td>' +
+      '<td>' + (r.fresh ? ok : no) + '</td>' +
+      '<td>' + (r.dispatchable ? '<strong style="color:#059669">SÍ</strong>' : '<strong style="color:#c62828">NO</strong>') + '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
 

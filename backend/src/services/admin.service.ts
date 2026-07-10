@@ -118,6 +118,7 @@ export interface AdminDriverRow {
   phone: string;
   status: string;
   isVerified: boolean;
+  intercityEnabled: boolean;
   rating: number;
   totalTrips: number;
   vehicle: string | null;
@@ -139,11 +140,84 @@ export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
       phone: d.phone,
       status: d.status,
       isVerified: d.isVerified,
+      intercityEnabled: d.intercityEnabled,
       rating: d.rating,
       totalTrips: d.totalTrips,
       vehicle: v ? `${v.brand} ${v.model} · ${v.plate}` : null,
       lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
       createdAt: d.createdAt.toISOString(),
+    };
+  });
+}
+
+// ─── Diagnóstico de despacho ──────────────────────────────────────────────────
+// "Las apps no interactúan" casi siempre es UNO de los cuatro filtros del
+// matching fallando en silencio. Esta radiografía evalúa cada filtro por
+// conductor contra un punto de recogida dado — el panel la muestra como tabla.
+
+export interface MatchingDiagRow {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  isVerified: boolean;
+  intercityEnabled: boolean;
+  /** Segundos desde el último heartbeat GPS; null si nunca reportó. */
+  geoAgeSeconds: number | null;
+  /** Distancia al punto consultado en metros; null sin posición. */
+  distanceMeters: number | null;
+  online: boolean;
+  fresh: boolean;
+  inRadius: boolean;
+  /** Pasa TODOS los filtros del matching urbano: recibiría la oferta. */
+  dispatchable: boolean;
+}
+
+const URBAN_RADIUS_M = 5000;
+const URBAN_FRESHNESS_S = 120;
+
+export async function diagnoseMatching(lat: number, lng: number): Promise<MatchingDiagRow[]> {
+  const rows = await prisma.$queryRaw<Array<{
+    id: string;
+    name: string;
+    phone: string;
+    status: string;
+    isVerified: boolean;
+    intercityEnabled: boolean;
+    geo_age_s: number | null;
+    distance_m: number | null;
+  }>>`
+    SELECT d."id", d."name", d."phone", d."status", d."isVerified", d."intercityEnabled",
+           CASE WHEN d."lastSeenAt" IS NULL THEN NULL
+                ELSE EXTRACT(EPOCH FROM (now() - d."lastSeenAt")) END AS geo_age_s,
+           CASE WHEN d."geo" IS NULL THEN NULL
+                ELSE ST_Distance(
+                       d."geo",
+                       ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+                     ) END AS distance_m
+    FROM "drivers" d
+    ORDER BY distance_m ASC NULLS LAST
+    LIMIT 100`;
+
+  return rows.map((r) => {
+    const geoAge = r.geo_age_s === null ? null : Math.round(Number(r.geo_age_s));
+    const dist = r.distance_m === null ? null : Math.round(Number(r.distance_m));
+    const online = r.status === 'ONLINE';
+    const fresh = geoAge !== null && geoAge <= URBAN_FRESHNESS_S;
+    const inRadius = dist !== null && dist <= URBAN_RADIUS_M;
+    return {
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      status: r.status,
+      isVerified: r.isVerified,
+      intercityEnabled: r.intercityEnabled,
+      geoAgeSeconds: geoAge,
+      distanceMeters: dist,
+      online,
+      fresh,
+      inRadius,
+      dispatchable: online && r.isVerified && fresh && inRadius,
     };
   });
 }
