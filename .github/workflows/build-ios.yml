@@ -1,0 +1,199 @@
+name: Build iOS (sin firma)
+
+# Builds de iOS SIN firma (--no-codesign): validan que el código compila para
+# iPhone y producen un .ipa que sirve para TestFlight/App Store cuando exista
+# una cuenta Apple Developer (US$99/año) — ahí se firmará con los certificados
+# de esa cuenta. Un iPhone normal NO puede instalar este .ipa directamente:
+# para probar en iPhone HOY, usa la app web (GitHub Pages) desde Safari.
+#
+# Solo se ejecuta manualmente (workflow_dispatch): los runners macOS son más
+# lentos y no hacen falta en cada push.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ios-cliente:
+    name: Cliente iOS (.ipa sin firma)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      - name: Install Python image tools
+        run: python3 -m pip install --break-system-packages Pillow || pip3 install Pillow
+
+      - name: Generate app icons
+        working-directory: AppCliente
+        run: |
+          python3 - <<'PYEOF'
+          from PIL import Image, ImageDraw
+          import os
+
+          os.makedirs('assets/icons', exist_ok=True)
+          size = 1024
+          primary = (0, 200, 83, 255)
+          white = (255, 255, 255, 240)
+          navy = (26, 35, 126, 255)
+
+          def draw_pin(draw, ox=0, oy=0, scale=1.0):
+              def sx(v): return int(ox + v * scale)
+              def sy(v): return int(oy + v * scale)
+              draw.ellipse([sx(262), sy(160), sx(762), sy(660)], fill=white)
+              draw.polygon(
+                  [(sx(352), sy(560)), (sx(672), sy(560)), (sx(512), sy(880))],
+                  fill=white,
+              )
+              draw.ellipse([sx(412), sy(310), sx(612), sy(510)], fill=navy)
+
+          img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+          draw = ImageDraw.Draw(img)
+          draw.ellipse([0, 0, size - 1, size - 1], fill=primary)
+          draw_pin(draw)
+          img.save('assets/icons/app_icon.png')
+
+          img2 = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+          draw_pin(ImageDraw.Draw(img2), ox=int(size*0.125), oy=int(size*0.125), scale=0.75)
+          img2.save('assets/icons/app_icon_foreground.png')
+
+          img3 = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+          d3 = ImageDraw.Draw(img3)
+          d3.ellipse([int(size*0.2), int(size*0.2), int(size*0.8), int(size*0.8)], fill=primary)
+          draw_pin(d3, ox=int(size*0.25), oy=int(size*0.25), scale=0.5)
+          img3.save('assets/icons/splash_logo.png')
+          print("Icons generated")
+          PYEOF
+
+      - name: Get dependencies
+        working-directory: AppCliente
+        run: flutter pub get
+
+      # Branding: si fallan, el build sigue con los íconos default (no bloquea).
+      - name: Generate launcher icons
+        working-directory: AppCliente
+        continue-on-error: true
+        run: dart run flutter_launcher_icons
+
+      - name: Generate native splash
+        working-directory: AppCliente
+        continue-on-error: true
+        run: dart run flutter_native_splash:create
+
+      - name: Build iOS (no codesign)
+        working-directory: AppCliente
+        env:
+          API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
+          WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
+        run: |
+          flutter build ios --release --no-codesign \
+            --build-number=${{ github.run_number }} \
+            --dart-define=API_BASE_URL=${API_BASE_URL} \
+            --dart-define=WS_BASE_URL=${WS_BASE_URL}
+
+      - name: Package unsigned IPA
+        working-directory: AppCliente/build/ios/iphoneos
+        run: |
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -qry nexum-cliente-ios-unsigned.ipa Payload
+          ls -la
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexum-cliente-ipa-unsigned
+          path: AppCliente/build/ios/iphoneos/nexum-cliente-ios-unsigned.ipa
+          retention-days: 30
+
+  ios-driver:
+    name: Conductor iOS (.ipa sin firma)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      - name: Install Python image tools
+        run: python3 -m pip install --break-system-packages Pillow || pip3 install Pillow
+
+      - name: Generate app icons
+        working-directory: AppTransport
+        run: |
+          python3 - <<'PYEOF'
+          from PIL import Image, ImageDraw
+          import os
+          os.makedirs('assets/icons', exist_ok=True)
+          size = 1024
+          primary = (0, 200, 83, 255)
+          white = (255, 255, 255, 240)
+          glass = (180, 255, 210, 200)
+          wc = (26, 35, 126, 255)
+          def car(draw, ox=0, oy=0, sc=1.0):
+              def x(v): return int(ox + v*sc)
+              def y(v): return int(oy + v*sc)
+              wr = int(58*sc)
+              draw.rounded_rectangle([x(180),y(380),x(844),y(660)],radius=int(60*sc),fill=white)
+              draw.rounded_rectangle([x(270),y(280),x(754),y(460)],radius=int(50*sc),fill=white)
+              draw.rounded_rectangle([x(300),y(300),x(724),y(440)],radius=int(30*sc),fill=glass)
+              for xo,yo in [(x(180)-wr+10,y(380)+30),(x(844)-3*wr-10,y(380)+30),(x(180)-wr+10,y(660)-30-wr*2),(x(844)-3*wr-10,y(660)-30-wr*2)]:
+                  draw.ellipse([xo,yo,xo+wr*2,yo+wr*2],fill=wc)
+          img = Image.new('RGBA',(size,size),(0,0,0,0))
+          d = ImageDraw.Draw(img); d.ellipse([0,0,size-1,size-1],fill=primary); car(d)
+          img.save('assets/icons/app_icon.png')
+          img2 = Image.new('RGBA',(size,size),(0,0,0,0)); car(ImageDraw.Draw(img2)); img2.save('assets/icons/app_icon_foreground.png')
+          img3 = Image.new('RGBA',(size,size),(0,0,0,0)); car(ImageDraw.Draw(img3),int(size*.225),int(size*.225),.55); img3.save('assets/icons/splash_logo.png')
+          print('Icons OK')
+          PYEOF
+
+      - name: Get dependencies
+        working-directory: AppTransport
+        run: flutter pub get
+
+      - name: Generate launcher icons
+        working-directory: AppTransport
+        continue-on-error: true
+        run: dart run flutter_launcher_icons
+
+      - name: Generate native splash
+        working-directory: AppTransport
+        continue-on-error: true
+        run: dart run flutter_native_splash:create
+
+      - name: Build iOS (no codesign)
+        working-directory: AppTransport
+        env:
+          API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
+          WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
+        run: |
+          flutter build ios --release --no-codesign \
+            --build-number=${{ github.run_number }} \
+            --dart-define=API_BASE_URL=${API_BASE_URL} \
+            --dart-define=WS_BASE_URL=${WS_BASE_URL}
+
+      - name: Package unsigned IPA
+        working-directory: AppTransport/build/ios/iphoneos
+        run: |
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -qry nexum-driver-ios-unsigned.ipa Payload
+          ls -la
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexum-driver-ipa-unsigned
+          path: AppTransport/build/ios/iphoneos/nexum-driver-ios-unsigned.ipa
+          retention-days: 30
