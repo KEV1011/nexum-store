@@ -12,7 +12,11 @@ import RoutesManager from './RoutesManager'
 import DriversManager from './DriversManager'
 import VehiclesManager from './VehiclesManager'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3000'
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  (process.env.NODE_ENV === 'development'
+    ? 'http://localhost:3000'
+    : 'https://nexum-api-trxr.onrender.com')
 
 interface OperatorInfo {
   id: string

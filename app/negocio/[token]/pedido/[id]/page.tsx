@@ -54,7 +54,11 @@ interface ApiDetailResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3001'
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  (process.env.NODE_ENV === 'development'
+    ? 'http://localhost:3000'
+    : 'https://nexum-api-trxr.onrender.com')
 
 function formatCOP(amount: number): string {
   return new Intl.NumberFormat('es-CO', {
