@@ -23,7 +23,9 @@ export const JWT_EXPIRES_IN = '30d';
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
 export const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? '*';
-export const PORTAL_BASE_URL = process.env['PORTAL_BASE_URL'] ?? 'https://nexum.app';
+// URL del portal web (links de negocio). El default apunta al portal REAL
+// de producción — 'nexum.app' no existe y generaba enlaces muertos.
+export const PORTAL_BASE_URL = process.env['PORTAL_BASE_URL'] ?? 'https://nexum-store.onrender.com';
 
 // ─── Fare Rates (COP) ─────────────────────────────────────────────────────────
 
