@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
-import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
@@ -31,7 +30,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = ref.watch(themeProvider) == ThemeMode.dark;
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -87,12 +85,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             icon: Icons.dark_mode_rounded,
             iconColor: const Color(0xFF6366F1),
             title: 'Modo oscuro',
-            subtitle: isDark ? 'Activado' : 'Desactivado',
-            trailing: Switch(
-              value: isDark,
-              onChanged: (v) =>
-                  ref.read(themeProvider.notifier).setDark(dark: v),
-            ),
+            // Deshabilitado hasta completar el pase de contraste del tema
+            // dark (había textos ilegibles).
+            subtitle: 'Próximamente',
+            trailing: const Switch(value: false, onChanged: null),
           ),
           const Divider(),
           _SectionHeader(title: 'Navegación'),
@@ -217,7 +213,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             .join();
 
     return GestureDetector(
-      onTap: () => context.go(AppRoutes.profile),
+      // push (no go): conserva el historial para poder volver atrás.
+      onTap: () => context.push(AppRoutes.profile),
       child: Container(
         margin: const EdgeInsets.all(AppConstants.spacingM),
         padding: const EdgeInsets.all(AppConstants.spacingM),

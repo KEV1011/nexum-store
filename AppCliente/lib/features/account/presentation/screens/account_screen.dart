@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
-import 'package:nexum_client/app/theme/theme_provider.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -21,8 +20,6 @@ class AccountScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeNotifier = ref.read(themeProvider.notifier);
-    final isDark = ref.watch(themeProvider) == ThemeMode.dark;
     final client = ref.watch(currentClientProvider);
 
     ref.listen(authProvider, (_, next) {
@@ -66,10 +63,7 @@ class AccountScreen extends ConsumerWidget {
                 subtitle: 'Tu código de referido y cupones',
                 onTap: () => _showPromosSheet(context),
               ),
-              _DarkModeTile(
-                isDark: isDark,
-                onChanged: (v) => themeNotifier.setDark(dark: v),
-              ),
+              const _DarkModeTile(),
             ],
           ),
           const SizedBox(height: AppConstants.spacingM),
@@ -536,16 +530,15 @@ class _PromosSheetState extends ConsumerState<_PromosSheet> {
 }
 
 class _DarkModeTile extends StatelessWidget {
-  const _DarkModeTile({required this.isDark, required this.onChanged});
-
-  final bool isDark;
-  final ValueChanged<bool> onChanged;
+  const _DarkModeTile();
 
   @override
   Widget build(BuildContext context) {
     return SwitchListTile(
-      value: isDark,
-      onChanged: onChanged,
+      // Deshabilitado hasta completar el pase de contraste del tema dark
+      // (había textos ilegibles).
+      value: false,
+      onChanged: null,
       secondary: const Icon(
         Icons.dark_mode_rounded,
         color: AppColors.primary,
@@ -558,6 +551,7 @@ class _DarkModeTile extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
+      subtitle: const Text('Próximamente'),
     );
   }
 }

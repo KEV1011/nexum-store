@@ -619,11 +619,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onTap: () {},
                 ),
                 _GlassNavItem(
-                  icon: Icons.route_rounded,
-                  label: 'Intermunicipal',
-                  onTap: () => context.push(AppRoutes.intercityRequests),
-                ),
-                _GlassNavItem(
                   icon: Icons.person_rounded,
                   label: 'Perfil',
                   onTap: () => context.push(AppRoutes.profile),
@@ -1189,8 +1184,8 @@ class _GlassNavBar extends StatelessWidget {
     required this.onConnectTap,
   });
 
-  /// Ítems laterales (el primero va a la izquierda; el resto a la derecha
-  /// del botón central de Conectar/Desconectar).
+  /// Ítems laterales: el primero a la izquierda y el resto a la derecha del
+  /// botón central Conectar/Desconectar (integrado en la píldora, sin flotar).
   final List<_GlassNavItem> items;
   final bool isOnline;
   final VoidCallback onConnectTap;
@@ -1199,119 +1194,94 @@ class _GlassNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-      // El botón central sobresale de la píldora: vive FUERA del ClipRRect
-      // (el clip del blur cortaría cualquier desborde).
-      child: SizedBox(
-        height: 80,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Container(
-                // Sombra fuera del clip: un clip recorta su propia sombra.
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.30),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(30),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-                    child: Container(
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A1D27).withValues(alpha: 0.66),
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.16),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(child: _buildItem(items[0])),
-                          // Hueco del botón central (el círculo flota encima).
-                          const SizedBox(width: 92),
-                          for (final item in items.skip(1))
-                            Expanded(child: _buildItem(item)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // Botón central Conectar/Desconectar (sobresale de la barra).
-            Positioned(
-              bottom: 20,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedback.mediumImpact();
-                    onConnectTap();
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: isOnline
-                              ? const Color(0xFF2E3347)
-                              : AppColors.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.30),
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (isOnline
-                                      ? Colors.black
-                                      : AppColors.primary)
-                                  .withValues(alpha: 0.50),
-                              blurRadius: 14,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.power_settings_new_rounded,
-                          color: isOnline
-                              ? const Color(0xFFFCA5A5)
-                              : Colors.white,
-                          size: 26,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        isOnline ? 'Desconectar' : 'Conectar',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          color: isOnline
-                              ? const Color(0xFF94A3B8)
-                              : AppColors.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+      child: Container(
+        // Sombra fuera del clip: un clip recorta su propia sombra.
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.30),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+            child: Container(
+              height: 66,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1D27).withValues(alpha: 0.66),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.16),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: _buildItem(items[0])),
+                  Expanded(child: _buildConnect()),
+                  for (final item in items.skip(1))
+                    Expanded(child: _buildItem(item)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Botón central integrado: círculo compacto dentro de la píldora.
+  Widget _buildConnect() {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        onConnectTap();
+      },
+      borderRadius: BorderRadius.circular(30),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: isOnline ? const Color(0xFF2E3347) : AppColors.primary,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.28),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: (isOnline ? Colors.black : AppColors.primary)
+                      .withValues(alpha: 0.45),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.power_settings_new_rounded,
+              color: isOnline ? const Color(0xFFFCA5A5) : Colors.white,
+              size: 19,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            isOnline ? 'Desconectar' : 'Conectar',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: isOnline
+                  ? const Color(0xFF94A3B8)
+                  : AppColors.primary,
+            ),
+          ),
+        ],
       ),
     );
   }
