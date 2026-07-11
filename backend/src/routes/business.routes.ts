@@ -4,19 +4,22 @@ import { getNotificationService } from '../services/notification.service';
 import { getClientOrdersForBusiness } from '../services/client.service';
 import { RegisterBusinessDTO, OrderStatusUpdateDTO, CreateDeliveryOrderDTO } from '../types';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { authLimiter } from '../middleware/rate-limit.middleware';
 import { PORTAL_BASE_URL } from '../config/constants';
 
 const router = Router();
 
-// ─── Public: business registration (called by driver/admin) ──────────────────
+// ─── Registro público de negocios ─────────────────────────────────────────────
+// Autoservicio desde /negocio/registro (el flujo "lo registra el repartidor"
+// se eliminó junto con el business_portal del app). Protegido por rate-limit.
 
-router.post('/register', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.post('/register', authLimiter, async (req: Request, res: Response): Promise<void> => {
   const dto = req.body as RegisterBusinessDTO;
 
   if (!dto.name || !dto.ownerName || !dto.phone || !dto.address || !dto.category) {
     res.status(400).json({
       success: false,
-      error: 'Missing required fields: name, ownerName, phone, address, category',
+      error: 'Faltan campos requeridos: nombre, dueño, teléfono, dirección y categoría.',
     });
     return;
   }
