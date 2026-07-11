@@ -204,10 +204,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     if (goingOnline) {
-      final workMode = ref.read(selectedWorkModeProvider);
       AppSnackbar.showSuccess(
         context,
-        'En línea · Buscando ${workMode.seekingLabel}...',
+        'En línea · Recibes viajes, envíos, mandados y pedidos',
       );
       _connectWs();
     } else {
@@ -971,8 +970,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Flexible(
                 child: Text(
                   _state.isOnline
-                      ? 'En línea · Buscando ${workMode.seekingLabel}...'
-                      : 'Desconectado · Elige qué quieres hacer y activa el toggle',
+                      ? 'En línea · Recibes viajes, envíos, mandados y pedidos'
+                      : 'Desconectado · Conéctate para recibir todos los servicios',
                   style: TextStyle(
                     color: _state.isOnline
                         ? AppColors.online
@@ -1224,12 +1223,17 @@ class _WorkModeSelector extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '¿Qué quieres hacer?',
+          'Tu enfoque principal',
           style: TextStyle(
             color: _subText,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
+        ),
+        const SizedBox(height: 2),
+        const Text(
+          'En línea recibes de todo — tú decides cada solicitud.',
+          style: TextStyle(color: _subText, fontSize: 10.5),
         ),
         const SizedBox(height: AppConstants.spacingS),
         Row(

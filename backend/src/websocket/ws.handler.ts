@@ -1,9 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { verifyToken } from '../services/auth.service';
-import {
-  setDriverWorkMode,
-} from '../services/dispatch.service';
 import { getTripService } from '../services/trip.service';
 import {
   verifyClientToken,
@@ -160,8 +157,11 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
 }
 
 function handleDriverModeChange(ws: WebSocket, mode: WorkMode): void {
+  // El modo es solo informativo: el matching real ofrece TODOS los tipos de
+  // servicio (viaje, mandado, envío, pedido) a cualquier conductor en línea y
+  // cercano. El conductor decide en cada oferta. (Antes esto alimentaba un
+  // simulador de mandados falsos, ya eliminado.)
   driverWorkMode = mode;
-  setDriverWorkMode(mode);
   const driverId = driverIdByWs.get(ws);
   if (driverId) {
     const conn = driverConnections.get(driverId);
