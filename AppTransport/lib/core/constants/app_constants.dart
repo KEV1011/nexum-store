@@ -1,3 +1,8 @@
+/// Número de build inyectado por CI (--dart-define=BUILD_TAG=<run_number>).
+/// "dev" en compilaciones locales. Visible en el drawer: identifica de una
+/// mirada qué versión corre el dispositivo.
+const String kBuildTag = String.fromEnvironment('BUILD_TAG', defaultValue: 'dev');
+
 /// Constantes globales de la aplicación Nexum Driver.
 abstract final class AppConstants {
   // Nombre de la app

@@ -287,7 +287,17 @@ export default function PortalDashboard({
         fetch(`${BACKEND_URL}/business/${token}/client-orders`, { cache: 'no-store' }),
       ])
 
-      if (deliveryRes.status === 404) { setError('Portal no encontrado. Verifica que el enlace sea correcto.'); return }
+      if (deliveryRes.status === 404) {
+        // 404 real del backend: este token no existe en ESTA base de datos.
+        // Caso típico: probar un enlace de negocio semilla (solo existe en
+        // desarrollo local) contra producción.
+        setError(
+          `El negocio "${token}" no está registrado en este servidor. ` +
+          'Los negocios de prueba (semillas) solo existen en desarrollo. ' +
+          'Registra tu negocio real y usa el enlace que te entrega el registro.',
+        )
+        return
+      }
       if (!deliveryRes.ok) { setError('Error al cargar los pedidos. Intenta de nuevo.'); return }
 
       const deliveryJson = await deliveryRes.json() as { success: boolean; data: ApiResponse }
@@ -392,8 +402,12 @@ export default function PortalDashboard({
           </div>
           <h1 className="font-bold text-slate-900 text-lg mb-2">Acceso no disponible</h1>
           <p className="text-slate-500 text-sm leading-relaxed">{error}</p>
+          <a href="/negocio/registro"
+            className="mt-6 block w-full py-2.5 px-4 bg-teal-700 text-white rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors">
+            Registrar mi negocio
+          </a>
           <button onClick={() => fetchOrders(true)}
-            className="mt-6 w-full py-2.5 px-4 bg-teal-700 text-white rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors">
+            className="mt-2 w-full py-2.5 px-4 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
             Reintentar
           </button>
         </div>
