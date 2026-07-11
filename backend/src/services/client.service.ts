@@ -3,6 +3,7 @@ import { JWT_SECRET, JWT_EXPIRES_IN, COMMISSION_RATE } from '../config/constants
 import {
   ClientDTO,
   ClientJwtPayload,
+  ClientProfileDTO,
   ClientPlaceOrderDTO,
   ClientOrderSummaryDTO,
   ClientTripDTO,
@@ -76,6 +77,46 @@ export async function getClientById(clientId: string): Promise<ClientDTO | null>
   const user = await prisma.user.findUnique({ where: { id: clientId } });
   if (!user) return null;
   return { id: user.id, phone: user.phone, name: user.name ?? 'Usuario Nexum' };
+}
+
+// ─── Perfil del cliente ───────────────────────────────────────────────────────
+
+export async function getClientProfile(clientId: string): Promise<ClientProfileDTO> {
+  const user = await prisma.user.findUnique({ where: { id: clientId } });
+  if (!user) throw new Error('Usuario no encontrado');
+  return {
+    id: user.id,
+    phone: user.phone,
+    name: user.name ?? 'Usuario Nexum',
+    email: user.email ?? undefined,
+    avatarUrl: user.avatarUrl ?? undefined,
+    memberSince: user.createdAt.toISOString(),
+  };
+}
+
+export async function updateClientProfile(
+  clientId: string,
+  patch: { name?: string; email?: string; avatarUrl?: string },
+): Promise<ClientProfileDTO> {
+  const name = patch.name?.trim();
+  const email = patch.email?.trim();
+  try {
+    await prisma.user.update({
+      where: { id: clientId },
+      data: {
+        ...(name !== undefined && name.length > 0 && { name }),
+        ...(email !== undefined && { email: email.length > 0 ? email : null }),
+        ...(patch.avatarUrl !== undefined && { avatarUrl: patch.avatarUrl }),
+      },
+    });
+  } catch (err) {
+    // P2002 = índice único violado (el email pertenece a otra cuenta)
+    if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'P2002') {
+      throw new Error('Ese correo ya está registrado en otra cuenta.');
+    }
+    throw err;
+  }
+  return getClientProfile(clientId);
 }
 
 // ─── Businesses (delegated to business.service) ────────────────────────────

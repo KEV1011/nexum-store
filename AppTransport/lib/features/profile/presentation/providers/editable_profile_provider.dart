@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/mock_data/driver_mock.dart';
@@ -74,6 +77,7 @@ class EditableProfile {
     required this.bankAccountType,
     required this.bankAccountNumber,
     this.affiliation,
+    this.photoUrl,
   });
 
   factory EditableProfile.fromMock() => const EditableProfile(
@@ -115,6 +119,9 @@ class EditableProfile {
   final String bankAccountNumber;
   final DriverAffiliation? affiliation;
 
+  /// URL del avatar subido al backend (null = sin foto, se muestran iniciales).
+  final String? photoUrl;
+
   String get fullName => '$firstName $lastName';
 
   String get initials {
@@ -146,6 +153,7 @@ class EditableProfile {
     String? bankAccountType,
     String? bankAccountNumber,
     DriverAffiliation? affiliation,
+    String? photoUrl,
   }) {
     return EditableProfile(
       firstName: firstName ?? this.firstName,
@@ -166,6 +174,7 @@ class EditableProfile {
       bankAccountType: bankAccountType ?? this.bankAccountType,
       bankAccountNumber: bankAccountNumber ?? this.bankAccountNumber,
       affiliation: affiliation ?? this.affiliation,
+      photoUrl: photoUrl ?? this.photoUrl,
     );
   }
 }
@@ -213,10 +222,48 @@ class EditableProfileNotifier extends StateNotifier<EditableProfile> {
         vehicleColor: d['vehicleColor'] as String? ?? state.vehicleColor,
         vehicleType: d['vehicleType'] as String? ?? state.vehicleType,
         affiliation: affiliation,
+        photoUrl: d['photoUrl'] as String?,
       );
     } catch (_) {
       // Sin conexión: se conserva el seed mock.
     }
+  }
+
+  /// Sube el avatar al backend (multipart, bytes para funcionar también en
+  /// web) y actualiza el estado con la URL persistida. Devuelve `null` si todo
+  /// salió bien o el mensaje de error para mostrar al usuario.
+  Future<String?> uploadPhoto(Uint8List bytes, String filename) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: filename,
+          contentType: _mediaTypeFor(filename),
+        ),
+      });
+      final res = await _client.dio.post<Map<String, dynamic>>(
+        '/driver/profile/photo',
+        data: formData,
+      );
+      final d = res.data?['data'] as Map<String, dynamic>?;
+      final url = d?['photoUrl'] as String?;
+      if (url != null && mounted) {
+        state = state.copyWith(photoUrl: url);
+      }
+      return null;
+    } on DioException catch (e) {
+      return (e.response?.data as Map?)?['error'] as String? ??
+          'No se pudo subir la foto. Revisa tu conexión.';
+    } catch (_) {
+      return 'No se pudo subir la foto. Revisa tu conexión.';
+    }
+  }
+
+  DioMediaType _mediaTypeFor(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png')) return DioMediaType('image', 'png');
+    if (lower.endsWith('.webp')) return DioMediaType('image', 'webp');
+    return DioMediaType('image', 'jpeg');
   }
 
   void updateIdentity({
@@ -231,6 +278,17 @@ class EditableProfileNotifier extends StateNotifier<EditableProfile> {
       phone: phone.trim(),
       email: email.trim(),
     );
+    // Persiste el nombre en el backend (PATCH /driver/profile). El teléfono es
+    // la identidad de login y no se toca; el email sigue local (MVP).
+    final fullName = '${firstName.trim()} ${lastName.trim()}'.trim();
+    if (fullName.isNotEmpty) {
+      _client.dio
+          .patch<Map<String, dynamic>>(
+            '/driver/profile',
+            data: {'fullName': fullName},
+          )
+          .ignore();
+    }
   }
 
   void updateVehicle({

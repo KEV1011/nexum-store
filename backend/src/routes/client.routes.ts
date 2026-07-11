@@ -18,7 +18,10 @@ import {
   cancelClientTrip,
   getClientNameByPhone,
   getClientById,
+  getClientProfile,
+  updateClientProfile,
 } from '../services/client.service';
+import { documentUpload, fileToUrl } from '../lib/upload';
 import { registerClientFcmToken } from '../services/push.service';
 import {
   createRideRequest,
@@ -103,6 +106,57 @@ router.post('/auth/verify-otp', async (req, res) => {
     res.status(401).json({ success: false, error: err instanceof Error ? err.message : 'Verification failed' });
   }
 });
+
+// ─── Perfil ───────────────────────────────────────────────────────────────────
+
+router.get('/profile', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await getClientProfile(req.clientId!) });
+  } catch (err) {
+    res.status(404).json({ success: false, error: err instanceof Error ? err.message : 'Usuario no encontrado' });
+  }
+});
+
+router.put('/profile', clientAuthMiddleware, async (req, res) => {
+  const { name, email } = req.body as { name?: string; email?: string };
+  try {
+    res.json({ success: true, data: await updateClientProfile(req.clientId!, { name, email }) });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo actualizar el perfil' });
+  }
+});
+
+// Sube el avatar del cliente (multipart 'file') y lo asigna al perfil.
+router.post(
+  '/profile/photo',
+  clientAuthMiddleware,
+  (req, res, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'El avatar debe ser una imagen (JPG, PNG o WebP).' });
+      return;
+    }
+    try {
+      const updated = await updateClientProfile(req.clientId!, { avatarUrl: fileToUrl(req.file) });
+      res.status(201).json({ success: true, data: updated });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al guardar la foto de perfil';
+      res.status(500).json({ success: false, error: message });
+    }
+  },
+);
 
 // ─── Businesses ───────────────────────────────────────────────────────────────
 

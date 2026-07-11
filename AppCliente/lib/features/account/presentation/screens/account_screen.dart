@@ -3,14 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
+import 'package:nexum_client/features/account/presentation/providers/'
+    'client_profile_provider.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 
@@ -148,58 +152,160 @@ class AccountScreen extends ConsumerWidget {
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
+class _ProfileHeader extends ConsumerWidget {
   const _ProfileHeader({required this.client});
 
   final ClientEntity? client;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profile = ref.watch(clientProfileProvider);
+    final name = profile?.name ?? client?.name ?? 'Cliente Nexum';
+    final phone = profile?.phone ?? client?.phone ?? '';
+    final avatarUrl = profile?.avatarUrl;
+
     return Row(
       children: [
-        CircleAvatar(
-          radius: 32,
-          backgroundColor: AppColors.primaryContainer,
-          child: Text(
-            _initial,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primaryDim,
-            ),
-          ),
-        ),
-        const SizedBox(width: AppConstants.spacingM),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        Stack(
+          alignment: Alignment.bottomRight,
           children: [
-            Text(
-              client?.name ?? 'Cliente Nexum',
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+            CircleAvatar(
+              radius: 32,
+              backgroundColor: AppColors.primaryContainer,
+              foregroundImage: avatarUrl != null
+                  ? NetworkImage(ApiConfig.resolveUrl(avatarUrl))
+                  : null,
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : 'C',
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryDim,
+                ),
               ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              client?.phone ?? '',
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 14,
-                color: AppColors.textSecondary,
+            GestureDetector(
+              onTap: () => _pickAndUploadPhoto(context, ref),
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: const Icon(
+                  Icons.camera_alt_rounded,
+                  color: Colors.white,
+                  size: 12,
+                ),
               ),
             ),
           ],
+        ),
+        const SizedBox(width: AppConstants.spacingM),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                phone,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          onPressed: () => _editName(context, ref, name),
+          tooltip: 'Editar nombre',
+          icon: const Icon(
+            Icons.edit_rounded,
+            size: 20,
+            color: AppColors.textSecondary,
+          ),
         ),
       ],
     );
   }
 
-  String get _initial {
-    final name = client?.name ?? 'C';
-    return name.isNotEmpty ? name[0].toUpperCase() : 'C';
+  /// Abre la galería, sube la imagen al backend y refleja el avatar nuevo.
+  /// Lee bytes (no rutas) para funcionar igual en Android y en web.
+  Future<void> _pickAndUploadPhoto(BuildContext context, WidgetRef ref) async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (!context.mounted) return;
+    AppSnackbar.showInfo(context, 'Subiendo foto…');
+    final error = await ref
+        .read(clientProfileProvider.notifier)
+        .uploadPhoto(bytes, picked.name);
+    if (!context.mounted) return;
+    if (error == null) {
+      AppSnackbar.showSuccess(context, 'Foto de perfil actualizada.');
+    } else {
+      AppSnackbar.showError(context, error);
+    }
+  }
+
+  void _editName(BuildContext context, WidgetRef ref, String current) {
+    final controller = TextEditingController(text: current);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Tu nombre',
+          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'Nombre y apellido'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final messengerContext = context;
+              Navigator.of(ctx).pop();
+              final error = await ref
+                  .read(clientProfileProvider.notifier)
+                  .updateName(controller.text);
+              if (!messengerContext.mounted) return;
+              if (error == null) {
+                AppSnackbar.showSuccess(messengerContext, 'Nombre actualizado.');
+              } else {
+                AppSnackbar.showError(messengerContext, error);
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

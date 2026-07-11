@@ -31,4 +31,10 @@ abstract final class ApiConfig {
     'WS_BASE_URL',
     defaultValue: kDebugMode ? _devWs : _prodWs,
   );
+
+  /// Resuelve URLs que el backend devuelve relativas (p. ej. `/uploads/...`
+  /// cuando guarda en disco) a absolutas contra [baseUrl]. Las de S3/R2 ya
+  /// vienen absolutas y pasan intactas.
+  static String resolveUrl(String url) =>
+      url.startsWith('http') ? url : '$baseUrl$url';
 }

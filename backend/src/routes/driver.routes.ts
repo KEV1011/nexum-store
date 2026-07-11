@@ -65,6 +65,38 @@ router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// POST /driver/profile/photo — sube el avatar (multipart 'file') y lo asigna
+router.post(
+  '/profile/photo',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId ?? MOCK_DRIVER.id;
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'El avatar debe ser una imagen (JPG, PNG o WebP).' });
+      return;
+    }
+    try {
+      const updated = await updateDriverProfile(driverId, { photoUrl: fileToUrl(req.file) });
+      res.status(201).json({ success: true, data: updated });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al guardar la foto de perfil';
+      res.status(500).json({ success: false, error: message });
+    }
+  },
+);
+
 // GET /driver/documents — list all documents for the authenticated driver
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;

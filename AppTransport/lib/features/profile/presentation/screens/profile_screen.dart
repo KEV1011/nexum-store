@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
@@ -142,6 +144,32 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  // ── Foto de perfil ──────────────────────────────────────────────────────────
+
+  /// Abre la galería, sube la imagen al backend y refleja el avatar nuevo.
+  /// Lee bytes (no rutas) para funcionar igual en Android y en web.
+  Future<void> _pickAndUploadPhoto(BuildContext context, WidgetRef ref) async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (!context.mounted) return;
+    AppSnackbar.showInfo(context, 'Subiendo foto…');
+    final error = await ref
+        .read(editableProfileProvider.notifier)
+        .uploadPhoto(bytes, picked.name);
+    if (!context.mounted) return;
+    if (error == null) {
+      AppSnackbar.showSuccess(context, 'Foto de perfil actualizada.');
+    } else {
+      AppSnackbar.showError(context, error);
+    }
+  }
+
   // ── Avatar card ─────────────────────────────────────────────────────────────
 
   Widget _buildAvatarCard(
@@ -162,6 +190,9 @@ class ProfileScreen extends ConsumerWidget {
                 CircleAvatar(
                   radius: 48,
                   backgroundColor: AppColors.primaryContainer,
+                  foregroundImage: profile.photoUrl != null
+                      ? NetworkImage(ApiConfig.resolveUrl(profile.photoUrl!))
+                      : null,
                   child: Text(
                     profile.initials,
                     style: theme.textTheme.headlineMedium?.copyWith(
@@ -171,10 +202,7 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
                 GestureDetector(
-                  onTap: () => AppSnackbar.showInfo(
-                    context,
-                    'Carga de foto disponible en la próxima versión.',
-                  ),
+                  onTap: () => _pickAndUploadPhoto(context, ref),
                   child: Container(
                     width: 32,
                     height: 32,
