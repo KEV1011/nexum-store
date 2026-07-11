@@ -75,9 +75,6 @@ class _PublishPooledTripScreenState
     return raw.isEmpty ? null : double.tryParse(raw);
   }
 
-  bool get _fareExceedsCap =>
-      _cap != null && _fare != null && _fare! > _cap!.maxFarePerSeat;
-
   Future<void> _pickDateTime() async {
     final now = DateTime.now();
     final date = await showDatePicker(
@@ -110,10 +107,6 @@ class _PublishPooledTripScreenState
     final fare = _fare;
     if (fare == null) {
       _toast('Ingresa la tarifa por puesto');
-      return;
-    }
-    if (_fareExceedsCap) {
-      _toast('La tarifa supera el máximo de gasto compartido');
       return;
     }
     if (_departure.isBefore(DateTime.now())) {
@@ -235,7 +228,6 @@ class _PublishPooledTripScreenState
               prefixText: '\$  ',
               prefixIcon: const Icon(Icons.attach_money_rounded),
               border: const OutlineInputBorder(),
-              errorText: _fareExceedsCap ? 'Supera el máximo legal' : null,
             ),
           ),
           const SizedBox(height: 8),
@@ -298,13 +290,13 @@ class _PublishPooledTripScreenState
     if (_loadingCap) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 4),
-        child: Text('Calculando tope de gasto compartido...',
+        child: Text('Calculando tarifa sugerida...',
             style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
       );
     }
     final cap = _cap;
     if (cap == null) {
-      return const Text('Selecciona una ruta válida para ver el tope.',
+      return const Text('Selecciona una ruta válida.',
           style: TextStyle(fontSize: 12, color: AppColors.textSecondary));
     }
     return Container(
@@ -322,7 +314,7 @@ class _PublishPooledTripScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Máximo legal: ${CurrencyFormatter.format(cap.maxFarePerSeat)} / puesto',
+                  'Sugerido: ${CurrencyFormatter.format(cap.suggestedFarePerSeat)} / puesto',
                   style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
@@ -330,8 +322,8 @@ class _PublishPooledTripScreenState
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Gasto compartido: recuperas costos de combustible y peajes '
-                  'sin lucro. ${cap.distanceKm.toStringAsFixed(0)} km.',
+                  'Ruta de ${cap.distanceKm.toStringAsFixed(0)} km · '
+                  '~${cap.durationMinutes} min. Tú defines tu tarifa.',
                   style: const TextStyle(
                       fontSize: 11.5, color: AppColors.textSecondary),
                 ),
