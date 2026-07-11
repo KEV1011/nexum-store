@@ -11,6 +11,7 @@ import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
@@ -380,6 +381,11 @@ class _TripMapState extends State<_TripMap>
 
   late final AnimationController _pulse;
 
+  // Rumbo del conductor (grados) para orientar el marcador del vehículo, y la
+  // última posición conocida para calcularlo entre actualizaciones de GPS.
+  LatLng? _prevDriver;
+  double _heading = 0;
+
   @override
   void initState() {
     super.initState();
@@ -387,6 +393,19 @@ class _TripMapState extends State<_TripMap>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TripMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final r = widget.request;
+    if (r.driverLat != null && r.driverLng != null) {
+      final cur = LatLng(r.driverLat!, r.driverLng!);
+      if (_prevDriver != null && cur != _prevDriver) {
+        setState(() => _heading = bearingBetween(_prevDriver!, cur));
+      }
+      _prevDriver = cur;
+    }
   }
 
   @override
@@ -475,9 +494,13 @@ class _TripMapState extends State<_TripMap>
                       if (driver != null)
                         Marker(
                           point: driver,
-                          width: 72,
-                          height: 72,
-                          child: _LiveDriverMarker(
+                          width: 66,
+                          height: 66,
+                          child: VehicleMarker(
+                            headingDegrees: _heading,
+                            color: color,
+                            isMoto: request.serviceType ==
+                                TransportServiceType.moto,
                             pulse: _pulse,
                             animate: live && !reduceMotion,
                           ),
@@ -612,64 +635,6 @@ class _MapDot extends StatelessWidget {
   }
 }
 
-/// Driver pin with a continuously expanding halo to signal a live position.
-/// The halo is suppressed when [animate] is false (reduce-motion / not live).
-class _LiveDriverMarker extends StatelessWidget {
-  const _LiveDriverMarker({required this.pulse, required this.animate});
-
-  final Animation<double> pulse;
-  final bool animate;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        if (animate)
-          AnimatedBuilder(
-            animation: pulse,
-            builder: (context, _) {
-              final t = pulse.value;
-              return Container(
-                width: 28 + 44 * t,
-                height: 28 + 44 * t,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary.withValues(alpha: 0.22 * (1 - t)),
-                ),
-              );
-            },
-          ),
-        const _DriverDot(),
-      ],
-    );
-  }
-}
-
-class _DriverDot extends StatelessWidget {
-  const _DriverDot();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.5),
-            blurRadius: 8,
-          ),
-        ],
-      ),
-      child: const Icon(Icons.directions_car_rounded,
-          color: Colors.white, size: 18),
-    );
-  }
-}
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
