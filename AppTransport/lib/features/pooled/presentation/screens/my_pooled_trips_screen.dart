@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
+import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 
@@ -45,6 +46,18 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
     if (ok == true) onYes();
   }
 
+  /// Ejecuta la acción y SIEMPRE da feedback: éxito o el motivo del rechazo
+  /// del backend (antes el error se perdía y el botón parecía roto).
+  Future<void> _run(Future<String?> Function() action, String okMsg) async {
+    final error = await action();
+    if (!mounted) return;
+    if (error == null) {
+      AppSnackbar.showSuccess(context, okMsg);
+    } else {
+      AppSnackbar.showError(context, error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pooledDriverProvider);
@@ -82,17 +95,26 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
                         onDepart: () => _confirm(
                           'Iniciar viaje',
                           '¿Marcar este viaje como en camino? Ya no se podrán reservar puestos.',
-                          () => notifier.depart(trip.id),
+                          () => _run(
+                            () => notifier.depart(trip.id),
+                            'Viaje iniciado. ¡Buen camino!',
+                          ),
                         ),
                         onComplete: () => _confirm(
                           'Finalizar viaje',
                           '¿Confirmas que el viaje terminó?',
-                          () => notifier.complete(trip.id),
+                          () => _run(
+                            () => notifier.complete(trip.id),
+                            'Viaje finalizado.',
+                          ),
                         ),
                         onCancel: () => _confirm(
                           'Cancelar viaje',
                           'Se cancelará el viaje y se notificará a los pasajeros.',
-                          () => notifier.cancel(trip.id),
+                          () => _run(
+                            () => notifier.cancel(trip.id),
+                            'Viaje cancelado.',
+                          ),
                         ),
                       );
                     },

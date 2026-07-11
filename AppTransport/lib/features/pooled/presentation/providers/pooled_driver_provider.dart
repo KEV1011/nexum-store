@@ -125,19 +125,26 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
     }
   }
 
-  Future<void> depart(String tripId) => _action(tripId, 'depart');
-  Future<void> complete(String tripId) => _action(tripId, 'complete');
-  Future<void> cancel(String tripId) => _action(tripId, 'cancel');
+  /// Devuelven `null` si el backend aceptó la acción, o el mensaje de error a
+  /// mostrar. Antes se tragaban el error y "Iniciar" parecía no hacer nada.
+  Future<String?> depart(String tripId) => _action(tripId, 'depart');
+  Future<String?> complete(String tripId) => _action(tripId, 'complete');
+  Future<String?> cancel(String tripId) => _action(tripId, 'cancel');
 
-  Future<void> _action(String tripId, String action) async {
+  Future<String?> _action(String tripId, String action) async {
+    String? error;
     try {
       await _client.post<Map<String, dynamic>>(
         '/driver/intercity/pool/$tripId/$action',
       );
+    } on AppException catch (e) {
+      error = _extractError(e) ?? 'No se pudo completar la acción.';
     } catch (_) {
-      // Even on failure we reload to reflect the true server state.
+      error = 'No se pudo completar la acción. Revisa tu conexión.';
     }
+    // Siempre recarga para reflejar el estado real del servidor.
     await loadMine();
+    return error;
   }
 
   String? _extractError(AppException e) {

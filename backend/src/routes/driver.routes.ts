@@ -448,21 +448,21 @@ router.get('/intercity/pool/mine', async (req: Request, res: Response): Promise<
 // POST /driver/intercity/pool/:id/depart
 router.post('/intercity/pool/:id/depart', async (req: Request, res: Response): Promise<void> => {
   const trip = await departPooledTrip(req.driverId!, req.params['id']!);
-  if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or cannot depart' }); return; }
+  if (!trip) { res.status(400).json({ success: false, error: 'El viaje no existe, no es tuyo o ya no está abierto para iniciar.' }); return; }
   res.json({ success: true, data: trip });
 });
 
 // POST /driver/intercity/pool/:id/complete
 router.post('/intercity/pool/:id/complete', async (req: Request, res: Response): Promise<void> => {
   const trip = await completePooledTrip(req.driverId!, req.params['id']!);
-  if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or not in progress' }); return; }
+  if (!trip) { res.status(400).json({ success: false, error: 'El viaje no existe o aún no está en camino.' }); return; }
   res.json({ success: true, data: trip });
 });
 
 // POST /driver/intercity/pool/:id/cancel
 router.post('/intercity/pool/:id/cancel', async (req: Request, res: Response): Promise<void> => {
   const trip = await cancelPooledTrip(req.driverId!, req.params['id']!);
-  if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
+  if (!trip) { res.status(400).json({ success: false, error: 'El viaje no existe o ya no se puede cancelar.' }); return; }
   res.json({ success: true, data: trip });
 });
 
