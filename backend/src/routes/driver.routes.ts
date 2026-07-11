@@ -263,6 +263,78 @@ router.put('/intercity/availability', async (req: Request, res: Response): Promi
   res.json({ success: true, data: { enabled } });
 });
 
+// ─── Preferencias de servicio ────────────────────────────────────────────────
+// Qué tipos de solicitud recibe el conductor. El matching las respeta al
+// elegir candidatos (viajes/mandados/pedidos); intercity va aparte pero se
+// incluye en la lectura para pintar una sola hoja de preferencias en la app.
+
+// GET /driver/service-prefs
+router.get('/service-prefs', async (req: Request, res: Response): Promise<void> => {
+  const driver = await prisma.driver.findUnique({
+    where: { id: req.driverId! },
+    select: {
+      acceptsTrips: true,
+      acceptsErrands: true,
+      acceptsOrders: true,
+      intercityEnabled: true,
+    },
+  });
+  if (!driver) {
+    res.status(404).json({ success: false, error: 'Conductor no encontrado' });
+    return;
+  }
+  res.json({
+    success: true,
+    data: {
+      trips: driver.acceptsTrips,
+      errands: driver.acceptsErrands,
+      orders: driver.acceptsOrders,
+      intercity: driver.intercityEnabled,
+    },
+  });
+});
+
+// PUT /driver/service-prefs { trips?, errands?, orders?, intercity? }
+router.put('/service-prefs', async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as {
+    trips?: unknown;
+    errands?: unknown;
+    orders?: unknown;
+    intercity?: unknown;
+  };
+  const data: Record<string, boolean> = {};
+  if (typeof b.trips === 'boolean') data['acceptsTrips'] = b.trips;
+  if (typeof b.errands === 'boolean') data['acceptsErrands'] = b.errands;
+  if (typeof b.orders === 'boolean') data['acceptsOrders'] = b.orders;
+  if (typeof b.intercity === 'boolean') data['intercityEnabled'] = b.intercity;
+  if (Object.keys(data).length === 0) {
+    res.status(400).json({
+      success: false,
+      error: 'Envía al menos una preferencia booleana (trips, errands, orders, intercity).',
+    });
+    return;
+  }
+  const updated = await prisma.driver.update({
+    where: { id: req.driverId! },
+    data,
+    select: {
+      acceptsTrips: true,
+      acceptsErrands: true,
+      acceptsOrders: true,
+      intercityEnabled: true,
+    },
+  });
+  res.json({
+    success: true,
+    data: {
+      trips: updated.acceptsTrips,
+      errands: updated.acceptsErrands,
+      orders: updated.acceptsOrders,
+      intercity: updated.intercityEnabled,
+    },
+  });
+});
+
 // ─── Shared pooled rides (Modelo A) ─────────────────────────────────────────────
 
 // GET /driver/intercity/pool/fare-cap?origin=&destination=&seats=

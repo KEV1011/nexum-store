@@ -146,6 +146,11 @@ model Driver {
   isVerified        Boolean      @default(false)
   // Disponibilidad para recibir solicitudes de viajes intermunicipales.
   intercityEnabled  Boolean      @default(false)
+  // Preferencias de servicio: qué tipos de solicitud recibe el conductor.
+  // El matching las respeta al elegir candidatos (default: todo activo).
+  acceptsTrips      Boolean      @default(true)
+  acceptsErrands    Boolean      @default(true)
+  acceptsOrders     Boolean      @default(true)
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
   fcmToken          String?
   rating            Float        @default(5.0)
