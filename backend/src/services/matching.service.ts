@@ -81,15 +81,21 @@ export function registerOnNoDrivers(fn: (tripId: string) => void): void {
 
 // ─── Geo query ────────────────────────────────────────────────────────────────
 
+/** Tipo de solicitud a despachar: decide qué preferencia del conductor aplica. */
+type ServiceKind = 'trip' | 'errand' | 'order';
+
 async function findNearestAvailableDrivers(
   originLat: number,
   originLng: number,
   radiusMeters: number,
   maxResults: number,
   freshnessSeconds: number,
+  serviceKind: ServiceKind,
 ): Promise<NearbyDriver[]> {
   // All parameters come from internal constants or trusted DB data — no user strings.
   // freshnessSeconds * INTERVAL '1 second' uses PostgreSQL's integer×interval operator.
+  // Preferencias de servicio: cada tipo solo se ofrece a conductores que lo
+  // aceptan (accepts*); el patrón (kind != X OR col) evita SQL dinámico.
   const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
     SELECT d."id" AS driver_id,
            ST_Distance(
@@ -100,6 +106,9 @@ async function findNearestAvailableDrivers(
     WHERE d."geo" IS NOT NULL
       AND d."status" = 'ONLINE'
       AND d."isVerified" = true
+      AND (${serviceKind} != 'trip' OR d."acceptsTrips" = true)
+      AND (${serviceKind} != 'errand' OR d."acceptsErrands" = true)
+      AND (${serviceKind} != 'order' OR d."acceptsOrders" = true)
       AND d."lastSeenAt" >= now() - ${freshnessSeconds} * INTERVAL '1 second'
       AND ST_DWithin(
             d."geo",
@@ -177,6 +186,7 @@ export async function startMatchingCycle(
     SEARCH_RADIUS_M,
     MAX_CANDIDATES,
     GEO_FRESHNESS_S,
+    'trip',
   );
   if (candidates.length === 0) {
     console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for trip ${tripId}`);
@@ -346,6 +356,7 @@ export async function startErrandMatchingCycle(
     SEARCH_RADIUS_M,
     MAX_CANDIDATES,
     GEO_FRESHNESS_S,
+    'errand',
   );
   if (candidates.length === 0) {
     console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for errand ${errandId}`);
@@ -458,6 +469,7 @@ export async function startOrderMatchingCycle(orderId: string): Promise<void> {
     SEARCH_RADIUS_M,
     MAX_CANDIDATES,
     GEO_FRESHNESS_S,
+    'order',
   );
   if (candidates.length === 0) {
     console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for order ${orderId}`);

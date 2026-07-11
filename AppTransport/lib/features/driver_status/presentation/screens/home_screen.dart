@@ -23,6 +23,7 @@ import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
+import 'package:nexum_driver/features/driver_status/presentation/providers/service_prefs_provider.dart';
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
@@ -157,6 +158,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(driverProfileProvider.notifier).load();
         // Estado real del modo intermunicipal para el switch del panel.
         ref.read(intercityDriverProvider.notifier).loadAvailability();
+        // Preferencias de servicio (qué solicitudes recibe).
+        ref.read(servicePrefsProvider.notifier).load();
       },
     );
     // Con sesión activa, registrar el token FCM en el backend para recibir
@@ -734,7 +737,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildTopBar(ServiceType serviceType) {
-    final workMode = ref.watch(selectedWorkModeProvider);
+    final earnings = ref.watch(
+      driverStatusProvider.select((s) => s.dailyEarnings),
+    );
     return Padding(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       child: Row(
@@ -746,20 +751,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onTap: () => Scaffold.of(ctx).openDrawer(),
             ),
           ),
-          const SizedBox(width: AppConstants.spacingS),
-          // Online toggle
-          _OnlineToggle(
-            isOnline: _state.isOnline,
-            workMode: workMode,
-            onTap: _toggleOnline,
-          ),
           const Spacer(),
-          // Earnings shortcut
-          _MapActionButton(
-            icon: Icons.monetization_on_outlined,
+          // Píldora de ganancias del día (estilo DiDi): arriba, al centro.
+          _EarningsPill(
+            amount: earnings,
             onTap: () => context.push('/earnings'),
           ),
-          const SizedBox(width: AppConstants.spacingS),
+          const Spacer(),
           _MapActionButton(
             icon: _showHeatmap
                 ? Icons.layers_rounded
@@ -769,11 +767,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(width: AppConstants.spacingS),
           _NotifBell(onTap: () => context.push('/notifications')),
-          const SizedBox(width: AppConstants.spacingS),
-          _MapActionButton(
-            icon: Icons.person_outline_rounded,
-            onTap: () => context.push('/profile'),
-          ),
         ],
       ),
     );
@@ -951,7 +944,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _IntercityPanelCard(
             onOpen: () => context.push('/intercity-requests'),
           ),
-          const SizedBox(height: AppConstants.spacingM),
+          const SizedBox(height: AppConstants.spacingS),
+
+          // Preferencias de servicio: el conductor elige qué solicitudes recibe.
+          InkWell(
+            onTap: _openServicePrefs,
+            borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.tune_rounded,
+                      size: 18, color: _panelSubText),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Preferencias de servicio',
+                      style: TextStyle(
+                        color: _panelText,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    _servicePrefsSummary(),
+                    style:
+                        const TextStyle(color: _panelSubText, fontSize: 11.5),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 18, color: _panelSubText),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingS),
 
           // Status message
           Row(
@@ -970,8 +997,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Flexible(
                 child: Text(
                   _state.isOnline
-                      ? 'En línea · Recibes viajes, envíos, mandados y pedidos'
-                      : 'Desconectado · Conéctate para recibir todos los servicios',
+                      ? 'En línea · Recibes las solicitudes que activaste'
+                      : 'Desconectado · Conéctate para recibir solicitudes',
                   style: TextStyle(
                     color: _state.isOnline
                         ? AppColors.online
@@ -984,7 +1011,161 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ],
           ),
+          const SizedBox(height: AppConstants.spacingM),
+
+          // Botón grande Conectarse/Desconectarse (estilo DiDi).
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: _toggleOnline,
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    _state.isOnline ? const Color(0xFF2E3347) : AppColors.primary,
+                foregroundColor:
+                    _state.isOnline ? _panelText : Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(AppConstants.radiusLarge),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              child: Text(_state.isOnline ? 'Desconectarse' : 'Conectarse'),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  String _servicePrefsSummary() {
+    final prefs = ref.watch(servicePrefsProvider);
+    final intercity =
+        ref.watch(intercityDriverProvider.select((s) => s.enabled));
+    final active = [
+      if (prefs.trips) 'Viajes',
+      if (prefs.errands) 'Envíos',
+      if (prefs.orders) 'Pedidos',
+      if (intercity) 'Intermunicipal',
+    ];
+    if (active.isEmpty) return 'Nada activo';
+    if (active.length == 4) return 'Todo activo';
+    return active.join(' · ');
+  }
+
+  void _openServicePrefs() {
+    HapticFeedback.selectionClick();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _panelBg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppConstants.radiusXLarge),
+        ),
+      ),
+      builder: (ctx) => const _ServicePrefsSheet(),
+    );
+  }
+}
+
+/// Hoja de preferencias de servicio: switches que el backend RESPETA al
+/// despachar (matching filtra candidatos por acceptsTrips/Errands/Orders;
+/// intermunicipal usa su propio flujo intercityEnabled).
+class _ServicePrefsSheet extends ConsumerWidget {
+  const _ServicePrefsSheet();
+
+  static const _text = Color(0xFFE2E8F0);
+  static const _sub = Color(0xFF94A3B8);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prefs = ref.watch(servicePrefsProvider);
+    final intercity =
+        ref.watch(intercityDriverProvider.select((s) => s.enabled));
+
+    Future<void> showIfError(Future<String?> op) async {
+      final error = await op;
+      if (error != null && context.mounted) {
+        AppSnackbar.showError(context, error);
+      }
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Preferencias de servicio',
+              style: TextStyle(
+                color: _text,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Elige qué solicitudes recibes estando en línea. '
+              'Cada una la decides tú al momento.',
+              style: TextStyle(color: _sub, fontSize: 12.5),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              value: prefs.trips,
+              onChanged: (v) =>
+                  showIfError(ref.read(servicePrefsProvider.notifier).set(trips: v)),
+              title: const Text('Viajes',
+                  style: TextStyle(color: _text, fontSize: 14.5)),
+              subtitle: const Text('Pasajeros en tu ciudad',
+                  style: TextStyle(color: _sub, fontSize: 11.5)),
+              secondary: const Icon(Icons.people_alt_rounded,
+                  color: _sub, size: 22),
+              contentPadding: EdgeInsets.zero,
+            ),
+            SwitchListTile(
+              value: prefs.errands,
+              onChanged: (v) => showIfError(
+                  ref.read(servicePrefsProvider.notifier).set(errands: v)),
+              title: const Text('Envíos y mandados',
+                  style: TextStyle(color: _text, fontSize: 14.5)),
+              subtitle: const Text('Paquetes, compras y diligencias',
+                  style: TextStyle(color: _sub, fontSize: 11.5)),
+              secondary: const Icon(Icons.inventory_2_rounded,
+                  color: _sub, size: 22),
+              contentPadding: EdgeInsets.zero,
+            ),
+            SwitchListTile(
+              value: prefs.orders,
+              onChanged: (v) => showIfError(
+                  ref.read(servicePrefsProvider.notifier).set(orders: v)),
+              title: const Text('Pedidos de negocios',
+                  style: TextStyle(color: _text, fontSize: 14.5)),
+              subtitle: const Text('Domicilios de restaurantes y tiendas',
+                  style: TextStyle(color: _sub, fontSize: 11.5)),
+              secondary: const Icon(Icons.lunch_dining_rounded,
+                  color: _sub, size: 22),
+              contentPadding: EdgeInsets.zero,
+            ),
+            SwitchListTile(
+              value: intercity,
+              onChanged: (v) => showIfError(ref
+                  .read(intercityDriverProvider.notifier)
+                  .setAvailability(enabled: v)),
+              title: const Text('Intermunicipal',
+                  style: TextStyle(color: _text, fontSize: 14.5)),
+              subtitle: const Text('Reservas entre ciudades',
+                  style: TextStyle(color: _sub, fontSize: 11.5)),
+              secondary:
+                  const Icon(Icons.route_rounded, color: _sub, size: 22),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1914,129 +2095,58 @@ class _DrawerItem extends StatelessWidget {
 
 // ── Sub-widgets ─────────────────────────────────────────────────────────────
 
-class _OnlineToggle extends StatefulWidget {
-  const _OnlineToggle({
-    required this.isOnline,
-    required this.workMode,
-    required this.onTap,
-  });
+/// Píldora de ganancias del día (estilo DiDi): flotante, arriba al centro.
+/// Toca → pantalla de ganancias reales.
+class _EarningsPill extends StatelessWidget {
+  const _EarningsPill({required this.amount, required this.onTap});
 
-  final bool isOnline;
-  final WorkMode workMode;
+  final double amount;
   final VoidCallback onTap;
 
   @override
-  State<_OnlineToggle> createState() => _OnlineToggleState();
-}
-
-class _OnlineToggleState extends State<_OnlineToggle>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulseCtrl;
-  late final Animation<double> _pulseScale;
-  late final Animation<double> _pulseOpacity;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    );
-    _pulseScale = Tween<double>(begin: 1.0, end: 2.4).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeOut),
-    );
-    _pulseOpacity = Tween<double>(begin: 0.5, end: 0.0).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeOut),
-    );
-    if (widget.isOnline) _pulseCtrl.repeat();
-  }
-
-  @override
-  void didUpdateWidget(_OnlineToggle oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isOnline && !oldWidget.isOnline) {
-      _pulseCtrl.repeat();
-    } else if (!widget.isOnline && oldWidget.isOnline) {
-      _pulseCtrl.stop();
-      _pulseCtrl.reset();
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulseCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final color = widget.isOnline ? AppColors.online : AppColors.offline;
-    return GestureDetector(
-      onTap: widget.onTap,
-      child: Stack(
-        alignment: Alignment.center,
-        clipBehavior: Clip.none,
-        children: [
-          // Pulse ring (only when online)
-          if (widget.isOnline)
-            AnimatedBuilder(
-              animation: _pulseCtrl,
-              builder: (context, _) {
-                return Opacity(
-                  opacity: _pulseOpacity.value,
-                  child: Transform.scale(
-                    scale: _pulseScale.value,
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.online.withValues(alpha: 0.3),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          // Toggle pill
-          AnimatedContainer(
-            duration: AppConstants.shortAnimation,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppConstants.spacingM,
-              vertical: AppConstants.spacingS,
-            ),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.45),
-                  blurRadius: 12,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  widget.isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-                const SizedBox(width: AppConstants.spacingXS),
-                Text(
-                  widget.isOnline ? 'En línea' : 'Desconectado',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
+    return Material(
+      color: const Color(0xEE10131C),
+      borderRadius: BorderRadius.circular(24),
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                CurrencyFormatter.format(amount),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: Colors.white70,
+                size: 18,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
