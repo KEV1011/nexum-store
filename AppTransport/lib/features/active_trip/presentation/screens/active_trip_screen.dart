@@ -24,6 +24,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_p
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
+import 'package:nexum_driver/shared/widgets/vehicle_marker.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
   const ActiveTripScreen({this.tripExtra, super.key});
@@ -47,6 +48,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     MapConstants.pamplonaCenterLat,
     MapConstants.pamplonaCenterLng,
   );
+
+  // Rumbo actual del vehículo (grados) para orientar el marcador.
+  double _heading = 0;
 
   Timer? _movementTimer;
   Timer? _etaTimer;
@@ -147,6 +151,8 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
       final next = _waypoints[_waypointIndex];
       setState(() {
+        // Rumbo hacia el siguiente punto → orienta el marcador del vehículo.
+        if (next != _driverPos) _heading = bearingBetween(_driverPos, next);
         _driverPos = next;
         _waypointIndex++;
       });
@@ -361,13 +367,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     return [
       Marker(
         point: _driverPos,
-        width: 84,
-        height: 84,
-        child: _LiveDriverMarker(
+        width: 66,
+        height: 66,
+        child: VehicleMarker(
+          headingDegrees: _heading,
+          color: serviceType.color,
+          isMoto: serviceType == ServiceType.moto,
           pulse: _pulse,
           animate: !reduceMotion,
-          color: serviceType.color,
-          icon: serviceType.icon,
         ),
       ),
       Marker(
@@ -859,62 +866,5 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       ),
     );
     if (confirmed == true && mounted) _handleCancelled();
-  }
-}
-
-/// Driver pin with a continuously expanding halo to signal a live position.
-/// The halo is suppressed when [animate] is false (reduce-motion).
-class _LiveDriverMarker extends StatelessWidget {
-  const _LiveDriverMarker({
-    required this.pulse,
-    required this.animate,
-    required this.color,
-    required this.icon,
-  });
-
-  final Animation<double> pulse;
-  final bool animate;
-  final Color color;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        if (animate)
-          AnimatedBuilder(
-            animation: pulse,
-            builder: (context, _) {
-              final t = pulse.value;
-              return Container(
-                width: 36 + 48 * t,
-                height: 36 + 48 * t,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: color.withValues(alpha: 0.22 * (1 - t)),
-                ),
-              );
-            },
-          ),
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: color.withValues(alpha: 0.45),
-                blurRadius: 12,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Icon(icon, color: Colors.white, size: 22),
-        ),
-      ],
-    );
   }
 }
