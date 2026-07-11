@@ -55,6 +55,17 @@ app.use(express.json());
 
 const startTime = Date.now();
 
+// Raíz amigable: la gente abre la URL del backend en el navegador y un
+// "Route not found" parece un servicio caído. Esto orienta sin exponer nada.
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    service: 'Nexum API',
+    status: 'ok',
+    salud: '/health',
+    panel: '/admin',
+  });
+});
+
 app.get('/health', async (_req, res) => {
   let db = false;
   try {

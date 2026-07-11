@@ -226,13 +226,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  // ── Work mode ──────────────────────────────────────────────────────────
-
-  void _selectWorkMode(WorkMode mode) {
-    if (_state.isOnline) return;
-    ref.read(selectedWorkModeProvider.notifier).state = mode;
-  }
-
   // ── WebSocket connection ───────────────────────────────────────────────
 
   static const _storage = FlutterSecureStorage(
@@ -609,24 +602,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         selectedServiceType: serviceType,
         isOnline: _state.isOnline,
       ),
-      // El cuerpo se extiende bajo la barra de vidrio (efecto Rappi/Instagram);
-      // el panel inferior compensa solo vía MediaQuery.padding.bottom.
+      // El cuerpo se extiende bajo la barra de vidrio (efecto Rappi/Instagram).
       extendBody: true,
       // Sin barra mientras hay una oferta en pantalla: nada debe estorbar el
-      // aceptar/rechazar.
+      // aceptar/rechazar. El CENTRO de la barra es Conectar/Desconectar
+      // (Ganancias vive en la píldora superior — sin duplicados).
       bottomNavigationBar: _state.pendingRequest == null
           ? _GlassNavBar(
+              isOnline: _state.isOnline,
+              onConnectTap: _toggleOnline,
               items: [
                 _GlassNavItem(
                   icon: Icons.home_rounded,
                   label: 'Inicio',
                   active: true,
                   onTap: () {},
-                ),
-                _GlassNavItem(
-                  icon: Icons.payments_rounded,
-                  label: 'Ganancias',
-                  onTap: () => context.push(AppRoutes.earnings),
                 ),
                 _GlassNavItem(
                   icon: Icons.route_rounded,
@@ -777,8 +767,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const _panelSubText = Color(0xFF94A3B8);
   static const _panelText = Color(0xFFE2E8F0);
 
+  /// Guarda una preferencia de servicio y muestra el error si falla.
+  Future<void> _setPref({bool? trips, bool? errands, bool? orders}) async {
+    HapticFeedback.selectionClick();
+    final error = await ref
+        .read(servicePrefsProvider.notifier)
+        .set(trips: trips, errands: errands, orders: orders);
+    if (error != null && mounted) AppSnackbar.showError(context, error);
+  }
+
   Widget _buildBottomPanel(ServiceType serviceType) {
-    final workMode = ref.watch(selectedWorkModeProvider);
     final driverStatus = ref.watch(driverStatusProvider);
 
     return Container(
@@ -799,7 +797,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         left: AppConstants.spacingL,
         right: AppConstants.spacingL,
         top: AppConstants.spacingM,
-        bottom: MediaQuery.of(context).padding.bottom + AppConstants.spacingM,
+        // +92: la barra de vidrio flota ENCIMA del panel (extendBody) y el
+        // MediaQuery de este context (sobre el Scaffold) no incluye su inset —
+        // sin esta compensación el último contenido queda oculto tras la barra
+        // (así se perdió el botón Conectarse de la Tanda 12).
+        bottom: MediaQuery.of(context).padding.bottom + 92,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -905,14 +907,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
 
-          // Work mode selector (only when offline)
-          if (!_state.isOnline) ...[
-            _WorkModeSelector(
-              selected: workMode,
-              onSelect: _selectWorkMode,
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-          ],
+          // Tus servicios: DOS opciones reales (no 4 chips decorativos).
+          // Pasajeros = viajes; Encargos = pedidos + paquetes + mandados.
+          // El backend RESPETA cada toggle al despachar (service-prefs).
+          Row(
+            children: [
+              Expanded(
+                child: _ServiceToggleCard(
+                  icon: Icons.people_alt_rounded,
+                  label: 'Pasajeros',
+                  sublabel: 'Viajes en tu ciudad',
+                  color: AppColors.primary,
+                  value: ref.watch(
+                    servicePrefsProvider.select((s) => s.trips),
+                  ),
+                  onChanged: (v) => _setPref(trips: v),
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingM),
+              Expanded(
+                child: _ServiceToggleCard(
+                  icon: Icons.inventory_2_rounded,
+                  label: 'Encargos',
+                  sublabel: 'Pedidos, paquetes y mandados',
+                  color: const Color(0xFFF59E0B),
+                  value: ref.watch(
+                    servicePrefsProvider
+                        .select((s) => s.errands && s.orders),
+                  ),
+                  onChanged: (v) => _setPref(errands: v, orders: v),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppConstants.spacingM),
 
           // Stats row
           Row(
@@ -933,7 +961,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _StatCard(
                 label: 'Viajes',
                 value: driverStatus.dailyTrips.toString(),
-                icon: workMode.icon,
+                icon: Icons.route_rounded,
               ),
             ],
           ),
@@ -1011,31 +1039,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: AppConstants.spacingM),
-
-          // Botón grande Conectarse/Desconectarse (estilo DiDi).
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: FilledButton(
-              onPressed: _toggleOnline,
-              style: FilledButton.styleFrom(
-                backgroundColor:
-                    _state.isOnline ? const Color(0xFF2E3347) : AppColors.primary,
-                foregroundColor:
-                    _state.isOnline ? _panelText : Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(AppConstants.radiusLarge),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              child: Text(_state.isOnline ? 'Desconectarse' : 'Conectarse'),
-            ),
-          ),
         ],
       ),
     );
@@ -1046,13 +1049,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final intercity =
         ref.watch(intercityDriverProvider.select((s) => s.enabled));
     final active = [
-      if (prefs.trips) 'Viajes',
-      if (prefs.errands) 'Envíos',
-      if (prefs.orders) 'Pedidos',
+      if (prefs.trips) 'Pasajeros',
+      if (prefs.errands && prefs.orders) 'Encargos',
       if (intercity) 'Intermunicipal',
     ];
     if (active.isEmpty) return 'Nada activo';
-    if (active.length == 4) return 'Todo activo';
+    if (active.length == 3) return 'Todo activo';
     return active.join(' · ');
   }
 
@@ -1119,35 +1121,26 @@ class _ServicePrefsSheet extends ConsumerWidget {
               value: prefs.trips,
               onChanged: (v) =>
                   showIfError(ref.read(servicePrefsProvider.notifier).set(trips: v)),
-              title: const Text('Viajes',
+              title: const Text('Pasajeros',
                   style: TextStyle(color: _text, fontSize: 14.5)),
-              subtitle: const Text('Pasajeros en tu ciudad',
+              subtitle: const Text('Viajes en tu ciudad',
                   style: TextStyle(color: _sub, fontSize: 11.5)),
               secondary: const Icon(Icons.people_alt_rounded,
                   color: _sub, size: 22),
               contentPadding: EdgeInsets.zero,
             ),
+            // Encargos agrupa pedidos + paquetes + mandados: para el conductor
+            // es UNA sola decisión (¿llevo cosas además de personas?).
             SwitchListTile(
-              value: prefs.errands,
-              onChanged: (v) => showIfError(
-                  ref.read(servicePrefsProvider.notifier).set(errands: v)),
-              title: const Text('Envíos y mandados',
+              value: prefs.errands && prefs.orders,
+              onChanged: (v) => showIfError(ref
+                  .read(servicePrefsProvider.notifier)
+                  .set(errands: v, orders: v)),
+              title: const Text('Encargos',
                   style: TextStyle(color: _text, fontSize: 14.5)),
-              subtitle: const Text('Paquetes, compras y diligencias',
+              subtitle: const Text('Pedidos, paquetes y mandados',
                   style: TextStyle(color: _sub, fontSize: 11.5)),
               secondary: const Icon(Icons.inventory_2_rounded,
-                  color: _sub, size: 22),
-              contentPadding: EdgeInsets.zero,
-            ),
-            SwitchListTile(
-              value: prefs.orders,
-              onChanged: (v) => showIfError(
-                  ref.read(servicePrefsProvider.notifier).set(orders: v)),
-              title: const Text('Pedidos de negocios',
-                  style: TextStyle(color: _text, fontSize: 14.5)),
-              subtitle: const Text('Domicilios de restaurantes y tiendas',
-                  style: TextStyle(color: _sub, fontSize: 11.5)),
-              secondary: const Icon(Icons.lunch_dining_rounded,
                   color: _sub, size: 22),
               contentPadding: EdgeInsets.zero,
             ),
@@ -1190,81 +1183,165 @@ class _GlassNavItem {
 }
 
 class _GlassNavBar extends StatelessWidget {
-  const _GlassNavBar({required this.items});
+  const _GlassNavBar({
+    required this.items,
+    required this.isOnline,
+    required this.onConnectTap,
+  });
 
+  /// Ítems laterales (el primero va a la izquierda; el resto a la derecha
+  /// del botón central de Conectar/Desconectar).
   final List<_GlassNavItem> items;
+  final bool isOnline;
+  final VoidCallback onConnectTap;
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-      child: Container(
-        // La sombra vive FUERA del ClipRRect: un clip recorta su propia sombra.
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.30),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(30),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-            child: Container(
-              height: 64,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1D27).withValues(alpha: 0.66),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.16),
+      // El botón central sobresale de la píldora: vive FUERA del ClipRRect
+      // (el clip del blur cortaría cualquier desborde).
+      child: SizedBox(
+        height: 80,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                // Sombra fuera del clip: un clip recorta su propia sombra.
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.30),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                    child: Container(
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1D27).withValues(alpha: 0.66),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.16),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(child: _buildItem(items[0])),
+                          // Hueco del botón central (el círculo flota encima).
+                          const SizedBox(width: 92),
+                          for (final item in items.skip(1))
+                            Expanded(child: _buildItem(item)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              child: Row(
-                children: [
-                  for (final item in items)
-                    Expanded(
-                      child: InkWell(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          item.onTap();
-                        },
-                        borderRadius: BorderRadius.circular(30),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              item.icon,
-                              size: 23,
-                              color: item.active
-                                  ? AppColors.primary
-                                  : const Color(0xFF94A3B8),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              item.label,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: item.active
-                                    ? FontWeight.w800
-                                    : FontWeight.w600,
-                                color: item.active
-                                    ? AppColors.primary
-                                    : const Color(0xFF94A3B8),
-                              ),
+            ),
+            // Botón central Conectar/Desconectar (sobresale de la barra).
+            Positioned(
+              bottom: 20,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.mediumImpact();
+                    onConnectTap();
+                  },
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: isOnline
+                              ? const Color(0xFF2E3347)
+                              : AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.30),
+                            width: 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isOnline
+                                      ? Colors.black
+                                      : AppColors.primary)
+                                  .withValues(alpha: 0.50),
+                              blurRadius: 14,
+                              offset: const Offset(0, 5),
                             ),
                           ],
                         ),
+                        child: Icon(
+                          Icons.power_settings_new_rounded,
+                          color: isOnline
+                              ? const Color(0xFFFCA5A5)
+                              : Colors.white,
+                          size: 26,
+                        ),
                       ),
-                    ),
-                ],
+                      const SizedBox(height: 2),
+                      Text(
+                        isOnline ? 'Desconectar' : 'Conectar',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: isOnline
+                              ? const Color(0xFF94A3B8)
+                              : AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildItem(_GlassNavItem item) {
+    return InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        item.onTap();
+      },
+      borderRadius: BorderRadius.circular(30),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            item.icon,
+            size: 23,
+            color: item.active ? AppColors.primary : const Color(0xFF94A3B8),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            item.label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: item.active ? FontWeight.w800 : FontWeight.w600,
+              color:
+                  item.active ? AppColors.primary : const Color(0xFF94A3B8),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1385,132 +1462,87 @@ class _IntercityPanelCard extends ConsumerWidget {
   }
 }
 
-// ── Work mode selector ────────────────────────────────────────────────────────
+// ── Tarjeta-toggle de servicio (Pasajeros / Encargos) ───────────────────────
+// Dos opciones reales conectadas a service-prefs: el backend respeta cada
+// toggle al despachar. Reemplaza el selector de "enfoque" de 4 chips.
 
-class _WorkModeSelector extends StatelessWidget {
-  const _WorkModeSelector({
-    required this.selected,
-    required this.onSelect,
+class _ServiceToggleCard extends StatelessWidget {
+  const _ServiceToggleCard({
+    required this.icon,
+    required this.label,
+    required this.sublabel,
+    required this.color,
+    required this.value,
+    required this.onChanged,
   });
 
-  final WorkMode selected;
-  final ValueChanged<WorkMode> onSelect;
+  final IconData icon;
+  final String label;
+  final String sublabel;
+  final Color color;
+  final bool value;
+  final ValueChanged<bool> onChanged;
 
-  static const _subText = Color(0xFF94A3B8);
+  static const _text = Color(0xFFE2E8F0);
+  static const _sub = Color(0xFF94A3B8);
+  static const _offBg = Color(0xFF232736);
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Tu enfoque principal',
-          style: TextStyle(
-            color: _subText,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: value ? color.withValues(alpha: 0.16) : _offBg,
+          borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+          border: Border.all(
+            color: value
+                ? color.withValues(alpha: 0.55)
+                : Colors.white.withValues(alpha: 0.06),
           ),
         ),
-        const SizedBox(height: 2),
-        const Text(
-          'En línea recibes de todo — tú decides cada solicitud.',
-          style: TextStyle(color: _subText, fontSize: 10.5),
-        ),
-        const SizedBox(height: AppConstants.spacingS),
-        Row(
-          children: WorkMode.values.map((mode) {
-            final isSelected = mode == selected;
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  right: mode != WorkMode.values.last
-                      ? AppConstants.spacingS
-                      : 0,
-                ),
-                child: _WorkModeCard(
-                  mode: mode,
-                  isSelected: isSelected,
-                  onTap: () => onSelect(mode),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-}
-
-class _WorkModeCard extends StatelessWidget {
-  const _WorkModeCard({
-    required this.mode,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final WorkMode mode;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  static const _cardBg = Color(0xFF252836);
-  static const _borderColor = Color(0xFF2E3347);
-  static const _subText = Color(0xFF94A3B8);
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = isSelected ? mode.color : _cardBg;
-    final iconColor = isSelected ? Colors.white : mode.color;
-    final labelColor =
-        isSelected ? Colors.white : const Color(0xFFE2E8F0);
-    final subColor = isSelected
-        ? Colors.white.withValues(alpha: 0.8)
-        : _subText;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: AppConstants.shortAnimation,
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-          border: isSelected
-              ? null
-              : Border.all(color: _borderColor),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: mode.color.withValues(alpha: 0.38),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            Icon(mode.icon, size: 28, color: iconColor),
-            const SizedBox(height: 6),
-            Text(
-              mode.displayName,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: labelColor,
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: value ? color : _offBg,
+                borderRadius: BorderRadius.circular(10),
+                border: value
+                    ? null
+                    : Border.all(color: Colors.white.withValues(alpha: 0.10)),
               ),
-              textAlign: TextAlign.center,
+              child: Icon(
+                icon,
+                size: 19,
+                color: value ? Colors.white : _sub,
+              ),
             ),
-            const SizedBox(height: 3),
-            Text(
-              mode.subtitle,
-              style: TextStyle(
-                fontSize: 9,
-                color: subColor,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: value ? _text : _sub,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                  Text(
+                    value ? sublabel : 'Desactivado',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _sub, fontSize: 10),
+                  ),
+                ],
               ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -2009,11 +2041,12 @@ class _AppDrawer extends ConsumerWidget {
                 ],
               ),
             ),
-            // App version
+            // Versión + build de CI: permite saber con una mirada qué versión
+            // corre el teléfono (mismo rol que el commit en /health).
             Padding(
               padding: const EdgeInsets.all(AppConstants.spacingM),
               child: Text(
-                'Nexum Driver v${AppConstants.appVersion}',
+                'Nexum Driver v${AppConstants.appVersion} · build $kBuildTag',
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: AppColors.textTertiary),
               ),

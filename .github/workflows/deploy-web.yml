@@ -80,7 +80,8 @@ jobs:
         run: |
           flutter build web --release --no-tree-shake-icons \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
-            --dart-define=WS_BASE_URL=${WS_BASE_URL}
+            --dart-define=WS_BASE_URL=${WS_BASE_URL} \
+            --dart-define=BUILD_TAG=${{ github.run_number }}
 
       # ── Post-build patches ────────────────────────────────────────────────────
 
