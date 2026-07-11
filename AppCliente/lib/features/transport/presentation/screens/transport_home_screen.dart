@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -514,7 +515,7 @@ class _BottomPanel extends StatelessWidget {
 
           // Tabs de servicio
           SizedBox(
-            height: 114,
+            height: 124,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -597,7 +598,7 @@ class _BottomPanel extends StatelessWidget {
 
 // ── Tab de servicio ───────────────────────────────────────────────────────────
 
-class _ServiceTab extends StatelessWidget {
+class _ServiceTab extends StatefulWidget {
   const _ServiceTab({
     required this.service,
     required this.isSelected,
@@ -610,93 +611,162 @@ class _ServiceTab extends StatelessWidget {
   final int count;
   final VoidCallback onTap;
 
+  @override
+  State<_ServiceTab> createState() => _ServiceTabState();
+}
+
+class _ServiceTabState extends State<_ServiceTab> {
   static const _cardBg = AppColors.surfaceVariantDark;
   static const _borderColor = AppColors.outlineDark;
   static const _subText = AppColors.textSecondaryDark;
 
+  bool _pressed = false;
+
   @override
   Widget build(BuildContext context) {
+    final service = widget.service;
+    final isSelected = widget.isSelected;
     final color = _colorOf(service);
-    final bg = isSelected ? color : _cardBg;
     final iconColor = isSelected ? Colors.white : color;
-    final labelColor =
-        isSelected ? Colors.white : AppColors.textOnDark;
+    final labelColor = isSelected ? Colors.white : AppColors.textOnDark;
 
     return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      // Microinteracción: la tarjeta cede al presionar (escala 0.95).
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
-        width: 110,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(18),
-          border: isSelected
-              ? null
-              : Border.all(color: _borderColor),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.38),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(_iconOf(service), size: 32, color: iconColor),
-                  const SizedBox(height: 8),
-                  Text(
-                    service.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: labelColor,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          width: 122,
+          decoration: BoxDecoration(
+            // Seleccionada: gradiente del color del servicio (profundidad).
+            gradient: isSelected
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      color,
+                      Color.lerp(color, Colors.black, 0.28)!,
+                    ],
+                  )
+                : null,
+            color: isSelected ? null : _cardBg,
+            borderRadius: BorderRadius.circular(20),
+            border: isSelected ? null : Border.all(color: _borderColor),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.42),
+                      blurRadius: 14,
+                      offset: const Offset(0, 5),
                     ),
-                  ),
-                  Text(
-                    service.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 9, color: _subText),
-                  ),
-                ],
-              ),
-            ),
-            if (count > 0)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 21,
-                  height: 21,
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Colors.white.withValues(alpha: 0.22)
-                        : color.withValues(alpha: 0.18),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: isSelected ? Colors.white : color,
+                  ]
+                : null,
+          ),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Chip circular del ícono: identidad visual consistente.
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Colors.white.withValues(alpha: 0.18)
+                            : color.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
                       ),
+                      child: Icon(_iconOf(service), size: 22, color: iconColor),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      service.label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: labelColor,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      service.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        color: isSelected
+                            ? Colors.white.withValues(alpha: 0.78)
+                            : _subText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Check de selección (acabado profesional).
+              if (isSelected)
+                const Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    size: 17,
+                    color: Colors.white,
+                  ),
+                ),
+              // Conductores cerca: punto vivo + número (más que un circulito).
+              if (widget.count > 0 && !isSelected)
+                Positioned(
+                  top: 10,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2.5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.liveGreen.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 5,
+                          height: 5,
+                          decoration: const BoxDecoration(
+                            color: AppColors.liveGreenBright,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '${widget.count}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.liveGreenBright,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
