@@ -77,7 +77,13 @@ router.get('/:token/orders', async (req: Request, res: Response): Promise<void> 
       getBusinessService().getDayStats(business.id),
     ]);
 
-    res.status(200).json({ success: true, data: { orders, stats } });
+    // El portal (`/negocio/[token]`) renderiza `business.name` en el header:
+    // sin este campo la página crashea con "Cannot read properties of
+    // undefined (reading 'name')". Se incluye la info mínima del negocio.
+    res.status(200).json({
+      success: true,
+      data: { business: { name: business.name, token }, orders, stats },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not load orders';
     res.status(message.includes('not found') ? 404 : 400).json({

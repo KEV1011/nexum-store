@@ -67,7 +67,7 @@ interface BusinessStats {
 }
 
 interface ApiResponse {
-  business: { name: string; token: string }
+  business?: { name: string; token: string }
   orders: Order[]
   stats: BusinessStats
 }
@@ -417,7 +417,10 @@ export default function PortalDashboard({
 
   if (!data) return null
 
-  const { business, orders, stats } = data
+  const { orders, stats } = data
+  // Defensa: si el backend no incluyera `business`, el header no debe tumbar
+  // toda la página (antes: "Cannot read properties of undefined reading 'name'").
+  const businessName = data.business?.name ?? 'Mi negocio'
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -432,7 +435,7 @@ export default function PortalDashboard({
               <Package className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="font-bold text-slate-900 text-sm leading-tight">{business.name}</p>
+              <p className="font-bold text-slate-900 text-sm leading-tight">{businessName}</p>
               <p className="text-xs text-slate-400">Portal de pedidos</p>
             </div>
           </div>
