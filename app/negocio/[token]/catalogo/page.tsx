@@ -11,6 +11,7 @@ import {
   Package,
   ImageOff,
   AlertCircle,
+  ImagePlus,
 } from 'lucide-react'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -188,6 +189,80 @@ function ProductCard({
   )
 }
 
+// ─── Cover (foto de portada del local) ────────────────────────────────────────
+
+function CoverSection({ token }: { token: string }) {
+  const [cover, setCover] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/business/${token}/info`, { cache: 'no-store' })
+        const json = (await res.json()) as { success: boolean; data?: { imageUrl?: string } }
+        if (alive && json.success) setCover(json.data?.imageUrl ?? null)
+      } catch {
+        // sin conexión: se muestra el placeholder
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [token])
+
+  const upload = async (file: File) => {
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`${BACKEND_URL}/business/${token}/cover`, { method: 'POST', body: fd })
+      const json = (await res.json()) as { success: boolean; data?: { imageUrl?: string } }
+      if (json.success && json.data?.imageUrl) setCover(json.data.imageUrl)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const img = resolveImg(cover ?? undefined)
+
+  return (
+    <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        className="relative w-full h-36 bg-slate-100 group block"
+      >
+        {img ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={img} alt="Portada del local" className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-1">
+            <ImagePlus className="w-7 h-7" />
+            <span className="text-xs font-medium">Agrega la foto de portada de tu local</span>
+          </div>
+        )}
+        <span className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 bg-black/60 text-white text-xs font-semibold rounded-lg px-2.5 py-1.5">
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />}
+          {img ? 'Cambiar portada' : 'Subir portada'}
+        </span>
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) void upload(f)
+          e.target.value = ''
+        }}
+      />
+    </section>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CatalogoPage({ params }: { params: Promise<{ token: string }> }) {
@@ -284,6 +359,9 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+        {/* Portada del local */}
+        <CoverSection token={token} />
+
         {/* Alta */}
         <form onSubmit={createProduct} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-3">
           <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
