@@ -49,6 +49,7 @@ class BusinessesRealDataSource {
       description: j['description'] as String? ?? '',
       price: (j['price'] as num).toDouble(),
       category: j['category'] as String? ?? 'General',
+      imageUrl: j['imageUrl'] as String?,
     );
   }
 }

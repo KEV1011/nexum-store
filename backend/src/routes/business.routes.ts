@@ -1,10 +1,23 @@
 import { Router, Request, Response } from 'express';
-import { getBusinessService } from '../services/business.service';
+import {
+  getBusinessService,
+  getManagedProductsForBusiness,
+  createBusinessProduct,
+  updateBusinessProduct,
+  deleteBusinessProduct,
+} from '../services/business.service';
 import { getNotificationService } from '../services/notification.service';
 import { getClientOrdersForBusiness } from '../services/client.service';
-import { RegisterBusinessDTO, OrderStatusUpdateDTO, CreateDeliveryOrderDTO } from '../types';
+import {
+  RegisterBusinessDTO,
+  OrderStatusUpdateDTO,
+  CreateDeliveryOrderDTO,
+  CreateProductDTO,
+  UpdateProductDTO,
+} from '../types';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { authLimiter } from '../middleware/rate-limit.middleware';
+import { documentUpload, fileToUrl } from '../lib/upload';
 import { PORTAL_BASE_URL } from '../config/constants';
 
 const router = Router();
@@ -192,5 +205,97 @@ router.get('/:token/client-orders', async (req: Request, res: Response): Promise
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });
+
+// ─── Catálogo del negocio (gestión del dueño, autenticada por el token) ───────
+// El token del portal ES la credencial del negocio (mismo modelo que /orders).
+
+// Catálogo COMPLETO (incluye no disponibles) para la vista de gestión.
+router.get('/:token/products', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const products = await getManagedProductsForBusiness(business.id);
+    res.status(200).json({ success: true, data: products });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo cargar el catálogo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.post('/:token/products', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const dto = req.body as CreateProductDTO;
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const product = await createBusinessProduct(business.id, dto);
+    res.status(201).json({ success: true, data: product });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo crear el producto';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.patch('/:token/products/:productId', async (req: Request, res: Response): Promise<void> => {
+  const { token, productId } = req.params as { token: string; productId: string };
+  const dto = req.body as UpdateProductDTO;
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const product = await updateBusinessProduct(business.id, productId, dto);
+    res.status(200).json({ success: true, data: product });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo actualizar el producto';
+    const notFound = message.includes('not found') || message.includes('no encontrado');
+    res.status(notFound ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.delete('/:token/products/:productId', async (req: Request, res: Response): Promise<void> => {
+  const { token, productId } = req.params as { token: string; productId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    await deleteBusinessProduct(business.id, productId);
+    res.status(200).json({ success: true, data: { deleted: true } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo eliminar el producto';
+    const notFound = message.includes('not found') || message.includes('no encontrado');
+    res.status(notFound ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// Sube la foto de un producto (multipart 'file') y devuelve el producto actualizado.
+router.post(
+  '/:token/products/:productId/photo',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const { token, productId } = req.params as { token: string; productId: string };
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'La foto debe ser una imagen (JPG, PNG o WebP).' });
+      return;
+    }
+    try {
+      const business = await getBusinessService().getBusinessByToken(token);
+      const product = await updateBusinessProduct(business.id, productId, {
+        imageUrl: fileToUrl(req.file),
+      });
+      res.status(201).json({ success: true, data: product });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo subir la foto';
+      const notFound = message.includes('not found') || message.includes('no encontrado');
+      res.status(notFound ? 404 : 400).json({ success: false, error: message });
+    }
+  },
+);
 
 export default router;

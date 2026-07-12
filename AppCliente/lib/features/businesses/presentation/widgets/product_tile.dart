@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
@@ -36,6 +37,8 @@ class ProductTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _ProductThumb(imageUrl: product.imageUrl, isDark: isDark),
+          const SizedBox(width: AppConstants.spacingM),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,6 +82,60 @@ class ProductTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Miniatura del producto (foto del negocio o un marcador si no hay foto).
+class _ProductThumb extends StatelessWidget {
+  const _ProductThumb({required this.imageUrl, required this.isDark});
+
+  final String? imageUrl;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    const double size = 64;
+    final placeholderBg = isDark ? AppColors.outlineDark : AppColors.outlineLight;
+
+    Widget placeholder() => Container(
+          width: size,
+          height: size,
+          color: placeholderBg,
+          child: const Icon(
+            Icons.restaurant_menu_rounded,
+            size: 24,
+            color: AppColors.textSecondary,
+          ),
+        );
+
+    final url = imageUrl;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
+      child: (url == null || url.isEmpty)
+          ? placeholder()
+          : Image.network(
+              ApiConfig.resolveUrl(url),
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => placeholder(),
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return Container(
+                  width: size,
+                  height: size,
+                  color: placeholderBg,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
