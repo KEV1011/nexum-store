@@ -446,7 +446,26 @@ export interface ProductDTO {
   description: string;
   price: number;
   category: string;
+  imageUrl?: string;
   isAvailable: boolean;
+}
+
+// El dueño gestiona su catálogo desde el portal (`/negocio/[token]`).
+export interface CreateProductDTO {
+  name: string;
+  price: number;
+  description?: string;
+  category?: string;
+  imageUrl?: string;
+}
+
+export interface UpdateProductDTO {
+  name?: string;
+  price?: number;
+  description?: string;
+  category?: string;
+  imageUrl?: string;
+  isAvailable?: boolean;
 }
 
 export interface BusinessPublicDTO {

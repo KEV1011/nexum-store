@@ -457,6 +457,12 @@ export default function PortalDashboard({
                 {activeDeliveryCount + preparingCount} activo{(activeDeliveryCount + preparingCount) !== 1 ? 's' : ''}
               </div>
             )}
+            <Link href={`/negocio/${token}/catalogo`}
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700
+                         bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1.5 hover:bg-teal-100 transition-colors">
+              <UtensilsCrossed className="w-3.5 h-3.5" />
+              Catálogo
+            </Link>
             <button onClick={() => fetchOrders(true)} disabled={refreshing}
               className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:border-teal-300 hover:text-teal-700 transition-colors disabled:opacity-50">
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />

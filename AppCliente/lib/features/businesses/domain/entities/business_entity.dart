@@ -65,6 +65,7 @@ class ProductEntity {
     required this.description,
     required this.price,
     this.category = 'General',
+    this.imageUrl,
   });
 
   final String id;
@@ -76,4 +77,7 @@ class ProductEntity {
 
   /// Categoría dentro del menú (ej: "Almuerzos", "Bebidas").
   final String category;
+
+  /// Foto del producto subida por el negocio (null = sin foto).
+  final String? imageUrl;
 }

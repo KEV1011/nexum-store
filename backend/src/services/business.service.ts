@@ -7,6 +7,8 @@ import {
   OrderStatusUpdateDTO,
   DeliveryOrderSummaryDTO,
   ProductDTO,
+  CreateProductDTO,
+  UpdateProductDTO,
   BusinessPublicDTO,
   BusinessCategory,
 } from '../types';
@@ -260,25 +262,18 @@ export function getBusinessService() {
 
 // ─── Public helpers used by client.service ────────────────────────────────────
 
-export async function getProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
-  const products = await prisma.product.findMany({
-    where: { businessId, isAvailable: true },
-    orderBy: { createdAt: 'asc' },
-  });
-  return products.map((p) => ({
-    id: p.id,
-    businessId: p.businessId,
-    name: p.name,
-    description: p.description ?? '',
-    price: p.price,
-    category: p.category,
-    isAvailable: p.isAvailable,
-  }));
-}
-
-export async function getProductById(productId: string): Promise<ProductDTO | undefined> {
-  const p = await prisma.product.findUnique({ where: { id: productId } });
-  if (!p) return undefined;
+// Mapper compartido Product (Prisma) → ProductDTO. Centraliza `imageUrl` para
+// que ninguna respuesta olvide la foto del producto.
+function _productToDTO(p: {
+  id: string;
+  businessId: string;
+  name: string;
+  description: string | null;
+  price: number;
+  category: string;
+  imageUrl: string | null;
+  isAvailable: boolean;
+}): ProductDTO {
   return {
     id: p.id,
     businessId: p.businessId,
@@ -286,8 +281,87 @@ export async function getProductById(productId: string): Promise<ProductDTO | un
     description: p.description ?? '',
     price: p.price,
     category: p.category,
+    imageUrl: p.imageUrl ?? undefined,
     isAvailable: p.isAvailable,
   };
+}
+
+export async function getProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
+  const products = await prisma.product.findMany({
+    where: { businessId, isAvailable: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return products.map(_productToDTO);
+}
+
+// Catálogo COMPLETO para gestión (incluye no disponibles). Solo para el portal.
+export async function getManagedProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
+  const products = await prisma.product.findMany({
+    where: { businessId },
+    orderBy: { createdAt: 'asc' },
+  });
+  return products.map(_productToDTO);
+}
+
+export async function getProductById(productId: string): Promise<ProductDTO | undefined> {
+  const p = await prisma.product.findUnique({ where: { id: productId } });
+  if (!p) return undefined;
+  return _productToDTO(p);
+}
+
+// ─── Gestión del catálogo (dueño desde el portal, autenticado por token) ──────
+
+export async function createBusinessProduct(
+  businessId: string,
+  dto: CreateProductDTO,
+): Promise<ProductDTO> {
+  const name = dto.name?.trim();
+  if (!name) throw new Error('El nombre del producto es obligatorio.');
+  if (!(dto.price >= 0)) throw new Error('El precio debe ser un número válido.');
+  const p = await prisma.product.create({
+    data: {
+      businessId,
+      name,
+      price: dto.price,
+      description: dto.description?.trim() || null,
+      category: dto.category?.trim() || 'General',
+      imageUrl: dto.imageUrl ?? null,
+    },
+  });
+  return _productToDTO(p);
+}
+
+export async function updateBusinessProduct(
+  businessId: string,
+  productId: string,
+  dto: UpdateProductDTO,
+): Promise<ProductDTO> {
+  // Asegura que el producto pertenece a ESTE negocio (el token no debe editar
+  // el catálogo de otro).
+  const existing = await prisma.product.findUnique({ where: { id: productId } });
+  if (!existing || existing.businessId !== businessId) {
+    throw new Error('Producto no encontrado.');
+  }
+  const p = await prisma.product.update({
+    where: { id: productId },
+    data: {
+      ...(dto.name !== undefined && { name: dto.name.trim() }),
+      ...(dto.price !== undefined && { price: dto.price }),
+      ...(dto.description !== undefined && { description: dto.description.trim() || null }),
+      ...(dto.category !== undefined && { category: dto.category.trim() || 'General' }),
+      ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
+      ...(dto.isAvailable !== undefined && { isAvailable: dto.isAvailable }),
+    },
+  });
+  return _productToDTO(p);
+}
+
+export async function deleteBusinessProduct(businessId: string, productId: string): Promise<void> {
+  const existing = await prisma.product.findUnique({ where: { id: productId } });
+  if (!existing || existing.businessId !== businessId) {
+    throw new Error('Producto no encontrado.');
+  }
+  await prisma.product.delete({ where: { id: productId } });
 }
 
 export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
@@ -305,15 +379,7 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     etaMinutes: b.etaMinutes,
     deliveryFee: b.deliveryFee,
     isOpen: b.isOpen,
-    products: b.products.map((p) => ({
-      id: p.id,
-      businessId: p.businessId,
-      name: p.name,
-      description: p.description ?? '',
-      price: p.price,
-      category: p.category,
-      isAvailable: p.isAvailable,
-    })),
+    products: b.products.map(_productToDTO),
   }));
 }
 
@@ -332,14 +398,6 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     etaMinutes: b.etaMinutes,
     deliveryFee: b.deliveryFee,
     isOpen: b.isOpen,
-    products: b.products.map((p) => ({
-      id: p.id,
-      businessId: p.businessId,
-      name: p.name,
-      description: p.description ?? '',
-      price: p.price,
-      category: p.category,
-      isAvailable: p.isAvailable,
-    })),
+    products: b.products.map(_productToDTO),
   };
 }
