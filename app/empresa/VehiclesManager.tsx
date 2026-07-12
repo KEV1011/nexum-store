@@ -7,7 +7,7 @@ import type { OperatorApi } from './api'
 interface OperatorVehicle {
   id: string
   driverId: string
-  type: string // PARTICULAR | TAXI | MOTO
+  type: string // PARTICULAR | TAXI | MOTO | TURBO | CAMION | MULA
   brand: string
   model: string
   year: number
@@ -16,6 +16,7 @@ interface OperatorVehicle {
   isActive: boolean
   internalCode: string | null
   operationCardNo: string | null
+  capacityKg: number | null
 }
 
 interface DriverOption {
@@ -28,8 +29,13 @@ const VEHICLE_TYPES: { code: string; label: string }[] = [
   { code: 'TAXI', label: 'Taxi' },
   { code: 'PARTICULAR', label: 'Particular' },
   { code: 'MOTO', label: 'Moto' },
+  { code: 'TURBO', label: 'Turbo (carga)' },
+  { code: 'CAMION', label: 'Camión (carga)' },
+  { code: 'MULA', label: 'Mula (carga)' },
 ]
 const TYPE_LABEL: Record<string, string> = Object.fromEntries(VEHICLE_TYPES.map((t) => [t.code, t.label]))
+// Tipos de carga: para ellos se pide la capacidad en kg.
+const CARGO_TYPES = new Set(['TURBO', 'CAMION', 'MULA'])
 
 const currentYear = new Date().getFullYear()
 
@@ -51,6 +57,7 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
   const [color, setColor] = useState('')
   const [internalCode, setInternalCode] = useState('')
   const [operationCardNo, setOperationCardNo] = useState('')
+  const [capacityKg, setCapacityKg] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -101,9 +108,10 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
           color: color.trim(),
           internalCode: internalCode.trim() || undefined,
           operationCardNo: operationCardNo.trim() || undefined,
+          capacityKg: CARGO_TYPES.has(type) && Number(capacityKg) > 0 ? Number(capacityKg) : undefined,
         }),
       })
-      setBrand(''); setModel(''); setPlate(''); setColor(''); setInternalCode(''); setOperationCardNo('')
+      setBrand(''); setModel(''); setPlate(''); setColor(''); setInternalCode(''); setOperationCardNo(''); setCapacityKg('')
       setShowForm(false)
       await load()
     } catch (e) {
@@ -161,6 +169,11 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
             <Input label="Color" value={color} onChange={setColor} placeholder="Blanco" />
             <Input label="Código interno (opcional)" value={internalCode} onChange={setInternalCode} placeholder="MOVIL-12" />
             <Input label="Tarjeta de operación (opcional)" value={operationCardNo} onChange={setOperationCardNo} placeholder="N.º tarjeta" />
+            {CARGO_TYPES.has(type) && (
+              <div className="col-span-2">
+                <Input label="Capacidad de carga (kg)" value={capacityKg} onChange={setCapacityKg} placeholder="Ej: 8000" numeric />
+              </div>
+            )}
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button
@@ -192,6 +205,7 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
                 </p>
                 <p className="text-xs text-slate-400 truncate">
                   {TYPE_LABEL[v.type] ?? v.type} · {v.color}
+                  {v.capacityKg ? ` · ${v.capacityKg.toLocaleString('es-CO')} kg` : ''}
                   {v.internalCode ? ` · ${v.internalCode}` : ''} · {driverName(v.driverId)}
                 </p>
               </div>

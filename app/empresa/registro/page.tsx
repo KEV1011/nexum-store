@@ -10,7 +10,14 @@ const BACKEND_URL =
     ? 'http://localhost:3000'
     : 'https://nexum-api-trxr.onrender.com')
 
-type OperatorType = 'TAXI' | 'INTERCITY' | 'MIXED'
+type OperatorType = 'TAXI' | 'INTERCITY' | 'MIXED' | 'CARGA'
+
+const OPERATOR_TYPE_LABEL: Record<OperatorType, string> = {
+  TAXI: 'Taxi',
+  INTERCITY: 'Intermunicipal',
+  MIXED: 'Mixto',
+  CARGA: 'Carga',
+}
 
 export default function OperatorRegisterPage() {
   const [legalName, setLegalName] = useState('')
@@ -103,8 +110,8 @@ export default function OperatorRegisterPage() {
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Tipo de empresa</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['TAXI', 'INTERCITY', 'MIXED'] as OperatorType[]).map((t) => (
+            <div className="grid grid-cols-2 gap-2">
+              {(['TAXI', 'INTERCITY', 'MIXED', 'CARGA'] as OperatorType[]).map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -115,7 +122,7 @@ export default function OperatorRegisterPage() {
                       : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'
                   }`}
                 >
-                  {t === 'TAXI' ? 'Taxi' : t === 'INTERCITY' ? 'Intermunicipal' : 'Mixto'}
+                  {OPERATOR_TYPE_LABEL[t]}
                 </button>
               ))}
             </div>
