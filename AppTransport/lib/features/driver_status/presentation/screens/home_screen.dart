@@ -701,12 +701,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
-          // Bottom panel
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _buildBottomPanel(serviceType),
+          // Panel inferior ARRASTRABLE (como la app cliente): colapsado deja
+          // ver el mapa; se sube para ver servicios, stats e intermunicipal.
+          DraggableScrollableSheet(
+            minChildSize: _sheetMin,
+            initialChildSize: _sheetInitial,
+            maxChildSize: _sheetMax,
+            snap: true,
+            snapSizes: const [_sheetMin, _sheetInitial, _sheetMax],
+            builder: (context, scrollController) =>
+                _buildBottomPanel(serviceType, scrollController),
           ),
           // Trip request modal
           if (_state.pendingRequest != null)
@@ -763,6 +767,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const _panelSubText = Color(0xFF94A3B8);
   static const _panelText = Color(0xFFE2E8F0);
 
+  // Tamaños del panel arrastrable (fracción de la pantalla), como la app cliente:
+  // colapsado deja el mapa usable; expandido muestra todo el panel.
+  static const _sheetMin = 0.30;
+  static const _sheetInitial = 0.52;
+  static const _sheetMax = 0.92;
+
   /// Guarda una preferencia de servicio y muestra el error si falla.
   Future<void> _setPref({bool? trips, bool? errands, bool? orders}) async {
     HapticFeedback.selectionClick();
@@ -772,7 +782,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (error != null && mounted) AppSnackbar.showError(context, error);
   }
 
-  Widget _buildBottomPanel(ServiceType serviceType) {
+  Widget _buildBottomPanel(
+    ServiceType serviceType,
+    ScrollController scrollController,
+  ) {
     final driverStatus = ref.watch(driverStatusProvider);
 
     return Container(
@@ -789,26 +802,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ],
       ),
-      padding: EdgeInsets.only(
-        left: AppConstants.spacingL,
-        right: AppConstants.spacingL,
-        top: AppConstants.spacingM,
-        // +92: la barra de vidrio flota ENCIMA del panel (extendBody) y el
-        // MediaQuery de este context (sobre el Scaffold) no incluye su inset —
-        // sin esta compensación el último contenido queda oculto tras la barra
-        // (así se perdió el botón Conectarse de la Tanda 12).
-        bottom: MediaQuery.of(context).padding.bottom + 92,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      // El contenido vive dentro del scrollController del sheet: arrastrar el
+      // asa sube/baja el panel; con contenido de sobra hace scroll interno.
+      child: ListView(
+        controller: scrollController,
+        padding: EdgeInsets.only(
+          left: AppConstants.spacingL,
+          right: AppConstants.spacingL,
+          top: AppConstants.spacingM,
+          // +92: la barra de vidrio flota ENCIMA del panel (extendBody) y el
+          // MediaQuery de este context (sobre el Scaffold) no incluye su inset —
+          // sin esta compensación el último contenido queda oculto tras la barra.
+          bottom: MediaQuery.of(context).padding.bottom + 92,
+        ),
         children: [
-          // Handle
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: _panelHandle,
-              borderRadius: BorderRadius.circular(2),
+          // Asa para arrastrar (centrada)
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _panelHandle,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
           const SizedBox(height: AppConstants.spacingM),
