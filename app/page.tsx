@@ -51,17 +51,48 @@ export default function HomePage() {
             ))}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          {/* Dos aliados = dos portales distintos. Antes solo estaba el de
+              negocios; las empresas de transporte no tenían cómo registrarse. */}
+          <div className="grid sm:grid-cols-2 gap-3 max-w-xl mx-auto">
             <Link
               href="/negocio/registro"
-              className="inline-flex items-center justify-center gap-2 rounded-xl
+              className="group flex flex-col items-center gap-1 rounded-2xl
                          bg-emerald-500 hover:bg-emerald-400 transition-colors
-                         px-6 py-3 font-bold text-slate-950"
+                         px-6 py-4 text-slate-950"
             >
-              Registra tu negocio
-              <ArrowRight className="w-4 h-4" />
+              <span className="inline-flex items-center gap-2 font-bold">
+                <Store className="w-4 h-4" />
+                Registra tu negocio
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+              <span className="text-xs font-medium text-emerald-950/70">
+                Restaurantes, tiendas y farmacias
+              </span>
+            </Link>
+
+            <Link
+              href="/empresa/registro"
+              className="group flex flex-col items-center gap-1 rounded-2xl
+                         border border-slate-700 bg-slate-900 hover:border-emerald-500
+                         transition-colors px-6 py-4 text-slate-50"
+            >
+              <span className="inline-flex items-center gap-2 font-bold">
+                <Car className="w-4 h-4 text-emerald-400" />
+                Empresa de transporte
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+              <span className="text-xs font-medium text-slate-400">
+                Taxi e intermunicipal · gestiona tu flota
+              </span>
             </Link>
           </div>
+
+          <p className="mt-6 text-sm text-slate-500">
+            ¿Ya tienes cuenta?{' '}
+            <Link href="/empresa" className="text-emerald-400 hover:underline">
+              Ingreso de empresas
+            </Link>
+          </p>
         </div>
       </section>
 
