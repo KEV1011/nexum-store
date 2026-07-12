@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
@@ -57,40 +58,7 @@ class BusinessCard extends StatelessWidget {
                 ),
                 child: Stack(
                   children: [
-                    Container(
-                      height: 108,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            business.category.color.withValues(alpha: 0.7),
-                            business.category.color,
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      child: Stack(
-                        children: [
-                          Positioned(
-                            right: -12,
-                            bottom: -12,
-                            child: Icon(
-                              business.category.icon,
-                              size: 90,
-                              color: Colors.white.withValues(alpha: 0.15),
-                            ),
-                          ),
-                          Center(
-                            child: Icon(
-                              business.category.icon,
-                              size: 44,
-                              color: Colors.white.withValues(alpha: 0.7),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    _CoverHeader(business: business),
                     if (!business.isOpen)
                       Container(
                         height: 108,
@@ -295,6 +263,65 @@ class _MetaChip extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Portada de la tarjeta: foto del local si existe; si no (o si falla la carga),
+/// gradiente + ícono de la categoría.
+class _CoverHeader extends StatelessWidget {
+  const _CoverHeader({required this.business});
+
+  final BusinessEntity business;
+
+  @override
+  Widget build(BuildContext context) {
+    final gradient = Container(
+      height: 108,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            business.category.color.withValues(alpha: 0.7),
+            business.category.color,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -12,
+            bottom: -12,
+            child: Icon(
+              business.category.icon,
+              size: 90,
+              color: Colors.white.withValues(alpha: 0.15),
+            ),
+          ),
+          Center(
+            child: Icon(
+              business.category.icon,
+              size: 44,
+              color: Colors.white.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final url = business.imageUrl;
+    if (url == null || url.isEmpty) return gradient;
+
+    return Image.network(
+      ApiConfig.resolveUrl(url),
+      height: 108,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => gradient,
+      loadingBuilder: (context, child, progress) =>
+          progress == null ? child : gradient,
     );
   }
 }

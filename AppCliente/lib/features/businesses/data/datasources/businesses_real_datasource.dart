@@ -28,6 +28,7 @@ class BusinessesRealDataSource {
       deliveryFee: (j['deliveryFee'] as num).toDouble(),
       address: j['address'] as String,
       isOpen: j['isOpen'] as bool? ?? true,
+      imageUrl: j['imageUrl'] as String?,
       products: ((j['products'] as List?) ?? [])
           .cast<Map<String, dynamic>>()
           .map(_mapProduct)

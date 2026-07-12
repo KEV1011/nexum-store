@@ -34,6 +34,7 @@ class BusinessEntity {
     required this.address,
     required this.products,
     this.isOpen = true,
+    this.imageUrl,
   });
 
   final String id;
@@ -55,6 +56,9 @@ class BusinessEntity {
   final List<ProductEntity> products;
 
   final bool isOpen;
+
+  /// Foto de portada del local (null = sin portada, cae al ícono de categoría).
+  final String? imageUrl;
 }
 
 /// Un producto del catálogo de un negocio.

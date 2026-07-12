@@ -307,6 +307,7 @@ export interface Business {
   category: BusinessCategory;
   accessToken: string;     // short unique token for portal URL /negocio/[token]
   whatsapp?: string;       // optional WhatsApp number for notifications
+  imageUrl?: string;       // foto de portada del local (null = sin portada)
   createdAt: Date;
   isActive: boolean;
 }
@@ -477,6 +478,7 @@ export interface BusinessPublicDTO {
   etaMinutes: number;
   deliveryFee: number;
   isOpen: boolean;
+  imageUrl?: string;
   products: ProductDTO[];
 }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
@@ -124,23 +125,66 @@ class _BusinessAppBar extends StatelessWidget {
           horizontal: AppConstants.spacingXL,
           vertical: AppConstants.spacingM,
         ),
-        background: ColoredBox(
-          color: business.category.containerColor,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: AppConstants.spacingL),
-              Icon(
-                business.category.icon,
-                size: 64,
-                color: business.category.color,
+        background: (business.imageUrl != null && business.imageUrl!.isNotEmpty)
+            ? Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Foto de portada del local.
+                  Image.network(
+                    ApiConfig.resolveUrl(business.imageUrl!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        ColoredBox(color: business.category.containerColor),
+                  ),
+                  // Scrim para legibilidad del título del SliverAppBar.
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.center,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Colors.black54],
+                      ),
+                    ),
+                  ),
+                  // Info (rating/eta/envío) en píldora clara para que se lea.
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: AppConstants.spacingXL,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceLight,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: _InfoRow(business: business),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : ColoredBox(
+                color: business.category.containerColor,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: AppConstants.spacingL),
+                    Icon(
+                      business.category.icon,
+                      size: 64,
+                      color: business.category.color,
+                    ),
+                    const SizedBox(height: AppConstants.spacingS),
+                    _InfoRow(business: business),
+                    const SizedBox(height: AppConstants.spacingXL),
+                  ],
+                ),
               ),
-              const SizedBox(height: AppConstants.spacingS),
-              _InfoRow(business: business),
-              const SizedBox(height: AppConstants.spacingXL),
-            ],
-          ),
-        ),
       ),
     );
   }

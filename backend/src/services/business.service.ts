@@ -67,7 +67,7 @@ const DELIVERY_STATUS_FROM_PRISMA: Record<string, string> = {
 function _dbToBusinessInterface(b: {
   id: string; name: string; ownerName: string | null; phone: string | null;
   address: string; category: string; token: string; whatsapp: string | null;
-  createdAt: Date; isOpen: boolean;
+  createdAt: Date; isOpen: boolean; imageUrl: string | null;
 }): Business {
   return {
     id: b.id,
@@ -78,6 +78,7 @@ function _dbToBusinessInterface(b: {
     category: CATEGORY_FROM_PRISMA[b.category] as BusinessCategory ?? 'other',
     accessToken: b.token,
     whatsapp: b.whatsapp ?? undefined,
+    imageUrl: b.imageUrl ?? undefined,
     createdAt: b.createdAt,
     isActive: b.isOpen,
   };
@@ -364,6 +365,15 @@ export async function deleteBusinessProduct(businessId: string, productId: strin
   await prisma.product.delete({ where: { id: productId } });
 }
 
+/** Actualiza la foto de portada del local y devuelve el negocio ya mapeado. */
+export async function updateBusinessCover(businessId: string, imageUrl: string): Promise<Business> {
+  const biz = await prisma.business.update({
+    where: { id: businessId },
+    data: { imageUrl },
+  });
+  return _dbToBusinessInterface(biz);
+}
+
 export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
   const businesses = await prisma.business.findMany({
     where: { isOpen: true },
@@ -379,6 +389,7 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     etaMinutes: b.etaMinutes,
     deliveryFee: b.deliveryFee,
     isOpen: b.isOpen,
+    imageUrl: b.imageUrl ?? undefined,
     products: b.products.map(_productToDTO),
   }));
 }
@@ -398,6 +409,7 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     etaMinutes: b.etaMinutes,
     deliveryFee: b.deliveryFee,
     isOpen: b.isOpen,
+    imageUrl: b.imageUrl ?? undefined,
     products: b.products.map(_productToDTO),
   };
 }

@@ -5,6 +5,7 @@ import {
   createBusinessProduct,
   updateBusinessProduct,
   deleteBusinessProduct,
+  updateBusinessCover,
 } from '../services/business.service';
 import { getNotificationService } from '../services/notification.service';
 import { getClientOrdersForBusiness } from '../services/client.service';
@@ -67,6 +68,7 @@ router.get('/:token/info', async (req: Request, res: Response): Promise<void> =>
         ownerName: business.ownerName,
         category: business.category,
         address: business.address,
+        imageUrl: business.imageUrl,
       },
     });
   } catch (err) {
@@ -95,7 +97,11 @@ router.get('/:token/orders', async (req: Request, res: Response): Promise<void> 
     // undefined (reading 'name')". Se incluye la info mínima del negocio.
     res.status(200).json({
       success: true,
-      data: { business: { name: business.name, token }, orders, stats },
+      data: {
+        business: { name: business.name, token, imageUrl: business.imageUrl },
+        orders,
+        stats,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not load orders';
@@ -294,6 +300,42 @@ router.post(
       const message = err instanceof Error ? err.message : 'No se pudo subir la foto';
       const notFound = message.includes('not found') || message.includes('no encontrado');
       res.status(notFound ? 404 : 400).json({ success: false, error: message });
+    }
+  },
+);
+
+// Sube la foto de portada del local (multipart 'file') y devuelve el negocio.
+router.post(
+  '/:token/cover',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const { token } = req.params as { token: string };
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'La portada debe ser una imagen (JPG, PNG o WebP).' });
+      return;
+    }
+    try {
+      const business = await getBusinessService().getBusinessByToken(token);
+      const updated = await updateBusinessCover(business.id, fileToUrl(req.file));
+      res.status(201).json({
+        success: true,
+        data: { name: updated.name, token, imageUrl: updated.imageUrl },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo subir la portada';
+      res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
     }
   },
 );
