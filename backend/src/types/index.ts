@@ -428,6 +428,15 @@ export interface ClientJwtPayload {
   role: 'client';
 }
 
+export interface ClientProfileDTO {
+  id: string;
+  phone: string;
+  name: string;
+  email?: string;
+  avatarUrl?: string;
+  memberSince: string;
+}
+
 // ─── Products & Public Business ──────────────────────────────────────────────
 
 export interface ProductDTO {

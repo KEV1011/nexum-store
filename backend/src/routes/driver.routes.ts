@@ -65,6 +65,38 @@ router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// POST /driver/profile/photo — sube el avatar (multipart 'file') y lo asigna
+router.post(
+  '/profile/photo',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId ?? MOCK_DRIVER.id;
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'El avatar debe ser una imagen (JPG, PNG o WebP).' });
+      return;
+    }
+    try {
+      const updated = await updateDriverProfile(driverId, { photoUrl: fileToUrl(req.file) });
+      res.status(201).json({ success: true, data: updated });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al guardar la foto de perfil';
+      res.status(500).json({ success: false, error: message });
+    }
+  },
+);
+
 // GET /driver/documents — list all documents for the authenticated driver
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
@@ -416,21 +448,21 @@ router.get('/intercity/pool/mine', async (req: Request, res: Response): Promise<
 // POST /driver/intercity/pool/:id/depart
 router.post('/intercity/pool/:id/depart', async (req: Request, res: Response): Promise<void> => {
   const trip = await departPooledTrip(req.driverId!, req.params['id']!);
-  if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or cannot depart' }); return; }
+  if (!trip) { res.status(400).json({ success: false, error: 'El viaje no existe, no es tuyo o ya no está abierto para iniciar.' }); return; }
   res.json({ success: true, data: trip });
 });
 
 // POST /driver/intercity/pool/:id/complete
 router.post('/intercity/pool/:id/complete', async (req: Request, res: Response): Promise<void> => {
   const trip = await completePooledTrip(req.driverId!, req.params['id']!);
-  if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or not in progress' }); return; }
+  if (!trip) { res.status(400).json({ success: false, error: 'El viaje no existe o aún no está en camino.' }); return; }
   res.json({ success: true, data: trip });
 });
 
 // POST /driver/intercity/pool/:id/cancel
 router.post('/intercity/pool/:id/cancel', async (req: Request, res: Response): Promise<void> => {
   const trip = await cancelPooledTrip(req.driverId!, req.params['id']!);
-  if (!trip) { res.status(400).json({ success: false, error: 'Trip not found or cannot be cancelled' }); return; }
+  if (!trip) { res.status(400).json({ success: false, error: 'El viaje no existe o ya no se puede cancelar.' }); return; }
   res.json({ success: true, data: trip });
 });
 

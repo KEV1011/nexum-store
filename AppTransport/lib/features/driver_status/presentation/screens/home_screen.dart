@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/theme_provider.dart';
+import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
@@ -1710,16 +1711,32 @@ class _AppDrawer extends ConsumerWidget {
                             color: AppColors.primary,
                             shape: BoxShape.circle,
                           ),
-                          child: Center(
-                            child: Text(
-                              _initials(profile?.fullName),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: profile?.photoUrl != null
+                              ? Image.network(
+                                  ApiConfig.resolveUrl(profile!.photoUrl!),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Center(
+                                    child: Text(
+                                      _initials(profile?.fullName),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    _initials(profile?.fullName),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
                         ),
                         Positioned(
                           right: 2,
