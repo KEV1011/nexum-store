@@ -21,18 +21,24 @@ export function normalizeColombianPhone(raw: string): string {
 }
 
 export async function sendOtp(phone: string): Promise<void> {
-  const driver = await prisma.driver.findUnique({ where: { phone } });
-  await requestOtp(phone, driver?.id);
+  // Normaliza SIEMPRE a E.164 (+57…): la afiliación de empresa y el login del
+  // portal ya normalizan, así que el conductor debe casar por el mismo formato
+  // — de lo contrario un teléfono en otro formato entra a una cuenta fantasma
+  // sin afiliación. El OTP se emite/valida sobre el mismo número normalizado.
+  const normalized = normalizeColombianPhone(phone);
+  const driver = await prisma.driver.findUnique({ where: { phone: normalized } });
+  await requestOtp(normalized, driver?.id);
 }
 
 export async function verifyOtp(
   phone: string,
   otp: string,
 ): Promise<{ token: string; driver: DriverDTO; isRegistered: boolean }> {
-  await validateOtp(phone, otp);
+  const normalized = normalizeColombianPhone(phone);
+  await validateOtp(normalized, otp);
 
   const existingDriver = await prisma.driver.findUnique({
-    where: { phone },
+    where: { phone: normalized },
     include: { vehicles: { where: { isActive: true }, take: 1 } },
   });
 
@@ -43,7 +49,7 @@ export async function verifyOtp(
     : {
         id: '',
         name: '',
-        phone,
+        phone: normalized,
         rating: 0,
         totalTrips: 0,
         vehicle: { brand: '', model: '', year: 0, plate: '', color: '' },
@@ -51,8 +57,8 @@ export async function verifyOtp(
       };
 
   const payload: JwtPayload = {
-    driverId: existingDriver?.id ?? phone,
-    phone,
+    driverId: existingDriver?.id ?? normalized,
+    phone: normalized,
   };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   return { token, driver, isRegistered };
@@ -70,14 +76,16 @@ export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: s
     moto: 'MOTO',
   };
   const vehicleType = vehicleTypeMap[dto.vehicleType.toLowerCase()] ?? 'PARTICULAR';
+  // Mismo E.164 que el login y la afiliación (evita cuentas duplicadas).
+  const phone = normalizeColombianPhone(dto.phone);
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const existing = await tx.driver.findUnique({ where: { phone: dto.phone } });
+      const existing = await tx.driver.findUnique({ where: { phone } });
       if (existing) {
         // Update existing driver record
         const updated = await tx.driver.update({
-          where: { phone: dto.phone },
+          where: { phone },
           data: {
             name: dto.fullName,
             documentType: dto.documentType,
@@ -113,7 +121,7 @@ export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: s
       }
       const driver = await tx.driver.create({
         data: {
-          phone: dto.phone,
+          phone,
           name: dto.fullName,
           documentType: dto.documentType,
           documentNumber: dto.documentNumber,
@@ -137,7 +145,7 @@ export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: s
     });
 
     const driverDTO = _driverToDTO(result.driver, result.vehicle);
-    const payload: JwtPayload = { driverId: result.driver.id, phone: dto.phone };
+    const payload: JwtPayload = { driverId: result.driver.id, phone };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     return { token, driver: driverDTO };
   } catch (err) {

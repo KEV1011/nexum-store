@@ -16,6 +16,7 @@ import { startMatchingCycle } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
+import { normalizeColombianPhone } from './auth.service';
 import { calcFare } from '../lib/fare';
 import { recordCompletedTrip } from './earnings.service';
 
@@ -42,18 +43,21 @@ export function registerClientSendToDriver(
 // ─── OTP ──────────────────────────────────────────────────────────────────────
 
 export async function sendClientOtp(phone: string): Promise<void> {
-  await requestOtp(phone);
+  await requestOtp(normalizeColombianPhone(phone));
 }
 
 export async function verifyClientOtp(
   phone: string,
   otp: string,
 ): Promise<{ token: string; client: ClientDTO }> {
-  await validateOtp(phone, otp);
+  // Mismo E.164 en emisión y validación del OTP + búsqueda de usuario, para no
+  // crear cuentas duplicadas si el teléfono llega en formatos distintos.
+  const normalized = normalizeColombianPhone(phone);
+  await validateOtp(normalized, otp);
 
-  let user = await prisma.user.findUnique({ where: { phone } });
+  let user = await prisma.user.findUnique({ where: { phone: normalized } });
   if (!user) {
-    user = await prisma.user.create({ data: { phone, name: 'Usuario Nexum' } });
+    user = await prisma.user.create({ data: { phone: normalized, name: 'Usuario Nexum' } });
   }
 
   const client: ClientDTO = { id: user.id, phone: user.phone, name: user.name ?? 'Usuario Nexum' };
