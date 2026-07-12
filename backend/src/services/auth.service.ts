@@ -70,10 +70,13 @@ export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: s
     throw new Error('Invalid vehicle plate format. Expected Colombian format: ABC-123');
   }
 
-  const vehicleTypeMap: Record<string, 'PARTICULAR' | 'TAXI' | 'MOTO'> = {
+  const vehicleTypeMap: Record<string, 'PARTICULAR' | 'TAXI' | 'MOTO' | 'TURBO' | 'CAMION' | 'MULA'> = {
     particular: 'PARTICULAR',
     taxi: 'TAXI',
     moto: 'MOTO',
+    turbo: 'TURBO',
+    camion: 'CAMION',
+    mula: 'MULA',
   };
   const vehicleType = vehicleTypeMap[dto.vehicleType.toLowerCase()] ?? 'PARTICULAR';
   // Mismo E.164 que el login y la afiliación (evita cuentas duplicadas).

@@ -251,6 +251,7 @@ model Vehicle {
   operatorId      String?
   operationCardNo String?   // tarjeta de operación (taxi/intermunicipal)
   capacity        Int?      // # de pasajeros
+  capacityKg      Int?      // capacidad de carga en kg (turbo/camión/mula)
   internalCode    String?   // "móvil 042" interno de la empresa
   createdAt    DateTime    @default(now())
 
@@ -267,6 +268,10 @@ enum VehicleType {
   PARTICULAR
   TAXI
   MOTO
+  // Vehículos de carga (empresas de transporte de mercancía / acarreos).
+  TURBO   // camión mediano (NPR y similares)
+  CAMION  // camión sencillo
+  MULA    // tractocamión / articulado
 }
 
 // ── Negocios aliados ──────────────────────────────────────────────────────────
@@ -907,6 +912,7 @@ enum OperatorType {
   TAXI
   INTERCITY
   MIXED
+  CARGA // empresa de transporte de carga (mulas, turbos, camiones)
 }
 
 enum OperatorStatus {

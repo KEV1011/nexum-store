@@ -85,7 +85,8 @@ export interface CreateVehicleDTO {
   plate: string;
   color: string;
   operationCardNo?: string;
-  capacity?: number;
+  capacity?: number;      // # de pasajeros
+  capacityKg?: number;    // capacidad de carga en kg (turbo/camión/mula)
   internalCode?: string;
 }
 
@@ -110,6 +111,7 @@ export async function createOperatorVehicle(operatorId: string, dto: CreateVehic
       color: dto.color,
       operationCardNo: dto.operationCardNo ?? null,
       capacity: dto.capacity ?? null,
+      capacityKg: dto.capacityKg ?? null,
       internalCode: dto.internalCode ?? null,
     },
   });

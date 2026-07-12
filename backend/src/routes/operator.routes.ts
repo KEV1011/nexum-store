@@ -37,11 +37,11 @@ import { documentUpload, fileToUrl } from '../lib/upload';
 
 const router = Router();
 
-const OPERATOR_TYPES = new Set<string>(['TAXI', 'INTERCITY', 'MIXED']);
+const OPERATOR_TYPES = new Set<string>(['TAXI', 'INTERCITY', 'MIXED', 'CARGA']);
 const OPERATOR_DOC_TYPES = new Set<string>([
   'HABILITACION', 'RUT', 'CAMARA_COMERCIO', 'INSURANCE', 'OTHER',
 ]);
-const VEHICLE_TYPES = new Set<string>(['PARTICULAR', 'TAXI', 'MOTO']);
+const VEHICLE_TYPES = new Set<string>(['PARTICULAR', 'TAXI', 'MOTO', 'TURBO', 'CAMION', 'MULA']);
 
 // ─── Registro (público) ──────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
   ) {
     res.status(400).json({
       success: false,
-      error: 'legalName, nit, contactPhone y type (TAXI|INTERCITY|MIXED) son requeridos',
+      error: 'legalName, nit, contactPhone y type (TAXI|INTERCITY|MIXED|CARGA) son requeridos',
     });
     return;
   }
@@ -202,6 +202,7 @@ router.post('/vehicles', requireOperatorRole('OWNER', 'DISPATCHER'), async (req:
       color: b['color'],
       operationCardNo: typeof b['operationCardNo'] === 'string' ? b['operationCardNo'] : undefined,
       capacity: typeof b['capacity'] === 'number' ? b['capacity'] : undefined,
+      capacityKg: typeof b['capacityKg'] === 'number' ? b['capacityKg'] : undefined,
       internalCode: typeof b['internalCode'] === 'string' ? b['internalCode'] : undefined,
     });
     res.status(201).json({ success: true, data: vehicle });
