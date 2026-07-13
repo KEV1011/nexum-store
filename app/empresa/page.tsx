@@ -11,6 +11,8 @@ import FleetMap, { type FleetMapPoint } from './FleetMap'
 import RoutesManager from './RoutesManager'
 import SchedulesManager from './SchedulesManager'
 import DriversManager from './DriversManager'
+import FreightManager from './FreightManager'
+import FinancePanel from './FinancePanel'
 import VehiclesManager from './VehiclesManager'
 
 const BACKEND_URL =
@@ -344,6 +346,7 @@ function Dashboard({ token, operator, onLogout }: {
     }))
 
   const isIntercity = operator?.type === 'INTERCITY' || operator?.type === 'MIXED'
+  const isCargo = operator?.type === 'CARGA' || operator?.type === 'MIXED'
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -467,6 +470,10 @@ function Dashboard({ token, operator, onLogout }: {
             </div>
           )}
         </section>
+
+        <FinancePanel api={api} />
+
+        {isCargo && <FreightManager api={api} />}
 
         {isIntercity && <SchedulesManager api={api} />}
         {isIntercity && <RoutesManager api={api} />}

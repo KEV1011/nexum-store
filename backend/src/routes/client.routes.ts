@@ -22,6 +22,13 @@ import {
   updateClientProfile,
 } from '../services/client.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
+import {
+  createFreightRequest,
+  listClientFreights,
+  cancelClientFreight,
+  FreightError,
+  CreateFreightDTO,
+} from '../services/freight.service';
 import { registerClientFcmToken } from '../services/push.service';
 import {
   createRideRequest,
@@ -157,6 +164,31 @@ router.post(
     }
   },
 );
+
+// ─── Fletes de carga (turbo/camión/mula) ──────────────────────────────────────
+
+router.post('/freight/request', clientAuthMiddleware, async (req, res) => {
+  try {
+    const freight = await createFreightRequest(req.clientId!, req.body as CreateFreightDTO);
+    res.status(201).json({ success: true, data: freight });
+  } catch (err) {
+    const status = err instanceof FreightError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo publicar el flete' });
+  }
+});
+
+router.get('/freight', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await listClientFreights(req.clientId!) });
+});
+
+router.post('/freight/:id/cancel', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await cancelClientFreight(req.clientId!, req.params['id']!) });
+  } catch (err) {
+    const status = err instanceof FreightError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo cancelar el flete' });
+  }
+});
 
 // ─── Businesses ───────────────────────────────────────────────────────────────
 

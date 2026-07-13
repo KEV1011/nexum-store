@@ -34,6 +34,14 @@ import {
   uploadOperatorDocument,
 } from '../services/operator.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
+import {
+  listAvailableFreights,
+  listOperatorFreights,
+  acceptFreight,
+  updateFreightStatus,
+  getFleetFinance,
+  FreightError,
+} from '../services/freight.service';
 
 const router = Router();
 
@@ -72,6 +80,8 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       contactEmail: typeof b['contactEmail'] === 'string' ? b['contactEmail'] : undefined,
       city: typeof b['city'] === 'string' ? b['city'] : undefined,
       tradeName: typeof b['tradeName'] === 'string' ? b['tradeName'] : undefined,
+      // PERSONA = dueño natural de vehículos (nombre + cédula en los mismos campos).
+      kind: b['kind'] === 'PERSONA' ? 'PERSONA' : 'EMPRESA',
     });
     res.status(201).json({ success: true, data: { id: operator.id, status: operator.status } });
   } catch (err) {
@@ -312,6 +322,58 @@ router.post(
 // permitidas (licensedOperator).
 
 // GET /operator/pool — salidas publicadas por la empresa.
+// ─── Fletes de carga (tablero + gestión) ──────────────────────────────────────
+
+// Fletes abiertos que la flota puede tomar (según sus tipos de camión).
+router.get('/freight/available', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listAvailableFreights(req.operatorId!) });
+});
+
+// Fletes de MI flota (aceptados, en ruta, completados).
+router.get('/freight', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listOperatorFreights(req.operatorId!) });
+});
+
+// Tomar un flete asignando conductor + vehículo de la flota.
+router.post('/freight/:id/accept', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const { driverId, vehicleId } = req.body as { driverId?: string; vehicleId?: string };
+  if (!driverId || !vehicleId) {
+    res.status(400).json({ success: false, error: 'driverId y vehicleId son requeridos' });
+    return;
+  }
+  try {
+    const freight = await acceptFreight(req.operatorId!, req.params['id']!, driverId, vehicleId);
+    res.json({ success: true, data: freight });
+  } catch (err) {
+    const status = err instanceof FreightError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo tomar el flete' });
+  }
+});
+
+// in_progress | completed | cancelled (cancelar lo devuelve al tablero).
+router.post('/freight/:id/status', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const { status } = req.body as { status?: string };
+  if (status !== 'in_progress' && status !== 'completed' && status !== 'cancelled') {
+    res.status(400).json({ success: false, error: "status debe ser 'in_progress', 'completed' o 'cancelled'" });
+    return;
+  }
+  try {
+    const freight = await updateFreightStatus(req.operatorId!, req.params['id']!, status);
+    res.json({ success: true, data: freight });
+  } catch (err) {
+    const st = err instanceof FreightError ? 400 : 500;
+    res.status(st).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo actualizar el flete' });
+  }
+});
+
+// ─── Panel financiero de la flota (todos los servicios sellados) ──────────────
+
+router.get('/finance/summary', async (req: Request, res: Response): Promise<void> => {
+  const from = typeof req.query['from'] === 'string' ? req.query['from'] : undefined;
+  const to = typeof req.query['to'] === 'string' ? req.query['to'] : undefined;
+  res.json({ success: true, data: await getFleetFinance(req.operatorId!, from, to) });
+});
+
 router.get('/pool', async (req: Request, res: Response): Promise<void> => {
   res.json({ success: true, data: await getOperatorPooledTrips(req.operatorId!) });
 });

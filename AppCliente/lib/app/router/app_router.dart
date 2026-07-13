@@ -30,6 +30,8 @@ import 'package:nexum_client/features/intercity/presentation/screens/'
     'intercity_history_screen.dart';
 import 'package:nexum_client/features/intercity/presentation/screens/'
     'intercity_status_screen.dart';
+import 'package:nexum_client/features/freight/presentation/screens/'
+    'freight_screen.dart';
 import 'package:nexum_client/features/pooled/presentation/screens/'
     'pooled_search_screen.dart';
 import 'package:nexum_client/features/pooled/presentation/screens/'
@@ -78,6 +80,7 @@ abstract final class AppRoutes {
   static const String intercityBooking = '/intercity/booking';
   static const String intercityStatus = '/intercity/status';
   static const String intercityHistory = '/intercity/history';
+  static const String freight = '/freight';
   static const String pooledSearch = '/pooled/search';
   static const String pooledBookings = '/pooled/bookings';
   static const String requestRide = '/ride/request';
@@ -220,6 +223,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const IntercityHistoryScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.freight,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const FreightScreen(),
         ),
       ),
       GoRoute(

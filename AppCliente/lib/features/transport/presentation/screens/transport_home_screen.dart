@@ -544,6 +544,15 @@ class _BottomPanel extends StatelessWidget {
 
           const SizedBox(height: 8),
 
+          // Fletes de carga: acarreos y mercancía con turbos/camiones/mulas
+          // de flotas verificadas (urbano o entre ciudades).
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _FreightEntryCard(),
+          ),
+
+          const SizedBox(height: 8),
+
           // Tarjeta "Pon tu precio" (negociación estilo inDriver)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1344,3 +1353,63 @@ Color _colorOf(TransportServiceType t) => switch (t) {
       TransportServiceType.moto => AppColors.serviceMoto,
       TransportServiceType.envios => AppColors.serviceEnvios,
     };
+
+
+// ── Entrada a fletes de carga ─────────────────────────────────────────────────
+
+class _FreightEntryCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFFF7ED),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: () => context.push(AppRoutes.freight),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFFDBA74)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF59E0B),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.local_shipping_rounded,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Fletes y acarreos',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14.5,
+                        color: Color(0xFF7C2D12),
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Turbos, camiones y mulas para tu carga',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF9A3412)),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF9A3412)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
