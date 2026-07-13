@@ -360,3 +360,15 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     byVehicle,
   };
 }
+
+// ─── Conductor: sus fletes asignados ──────────────────────────────────────────
+
+/** Fletes asignados al conductor (la flota le asigna; él los ve en su app). */
+export async function listDriverFreights(driverId: string): Promise<FreightDTO[]> {
+  const rows = await prisma.freightRequest.findMany({
+    where: { driverId, status: { in: ['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'] } },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+  });
+  return rows.map(_toDTO);
+}

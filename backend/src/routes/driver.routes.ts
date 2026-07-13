@@ -36,6 +36,7 @@ import {
   PayoutError,
 } from '../services/payout.service';
 import { getDriverNotifications } from '../services/driver-notification.service';
+import { listDriverFreights } from '../services/freight.service';
 
 const router = Router();
 
@@ -566,6 +567,12 @@ router.post('/payouts', async (req: Request, res: Response): Promise<void> => {
     const status = err instanceof PayoutError ? 400 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
+});
+
+// GET /driver/freights — fletes de carga asignados por la flota a este conductor
+router.get('/freights', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  res.json({ success: true, data: await listDriverFreights(driverId) });
 });
 
 export default router;

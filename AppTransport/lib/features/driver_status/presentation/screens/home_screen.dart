@@ -1862,6 +1862,15 @@ class _AppDrawer extends ConsumerWidget {
                     },
                   ),
                   _DrawerItem(
+                    icon: Icons.local_shipping_rounded,
+                    label: 'Mis fletes de carga',
+                    iconColor: const Color(0xFFF59E0B),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/freights');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.star_rounded,
                     label: 'Calificaciones',
                     iconColor: AppColors.star,
