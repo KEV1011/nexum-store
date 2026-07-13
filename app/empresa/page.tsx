@@ -143,6 +143,11 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Blindaje anti-autofill de Chrome: el campo nace readOnly (Chrome no lo
+  // toma como objetivo de autocompletado ni lo bloquea) y se vuelve editable
+  // al enfocarlo. Es el fix definitivo del "no deja escribir ningún número".
+  const [phoneFocused, setPhoneFocused] = useState(false)
+  const [otpFocused, setOtpFocused] = useState(false)
 
   const fullPhone = phone.trim().startsWith('+') ? phone.trim() : `+57${phone.replace(/\D/g, '')}`
 
@@ -201,10 +206,14 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !loading) sendOtp() }}
                 placeholder="3001234567"
                 inputMode="tel"
-                autoComplete="tel"
-                name="phone"
+                autoComplete="off"
+                name="nx-acceso"
+                readOnly={!phoneFocused}
+                onFocus={() => setPhoneFocused(true)}
+                onBlur={() => setPhoneFocused(false)}
                 className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
               />
               <button
@@ -224,11 +233,15 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
               <input
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyDown={(e) => { if (e.key === 'Enter' && otp.length === 6 && !loading) verify() }}
                 placeholder="••••••"
                 inputMode="numeric"
-                autoComplete="one-time-code"
-                name="otp"
+                autoComplete="off"
+                name="nx-codigo"
                 autoFocus
+                readOnly={!otpFocused}
+                onFocus={() => setOtpFocused(true)}
+                onBlur={() => setOtpFocused(false)}
                 className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-center text-lg tracking-[0.4em] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
               />
               <button

@@ -36,7 +36,12 @@ import {
   PayoutError,
 } from '../services/payout.service';
 import { getDriverNotifications } from '../services/driver-notification.service';
-import { listDriverFreights } from '../services/freight.service';
+import {
+  listDriverFreights,
+  listDriverAvailableFreights,
+  takeDriverFreight,
+  FreightError,
+} from '../services/freight.service';
 
 const router = Router();
 
@@ -573,6 +578,26 @@ router.post('/payouts', async (req: Request, res: Response): Promise<void> => {
 router.get('/freights', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
   res.json({ success: true, data: await listDriverFreights(driverId) });
+});
+
+// GET /driver/freight/available — fletes abiertos que puede tomar (su flota)
+router.get('/freight/available', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  res.json({ success: true, data: await listDriverAvailableFreights(driverId) });
+});
+
+// POST /driver/freight/:id/take { vehicleId } — el conductor toma el flete
+router.post('/freight/:id/take', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const { vehicleId } = req.body as { vehicleId?: string };
+  if (!vehicleId) { res.status(400).json({ success: false, error: 'vehicleId es requerido' }); return; }
+  try {
+    const freight = await takeDriverFreight(driverId, req.params['id']!, vehicleId);
+    res.json({ success: true, data: freight });
+  } catch (err) {
+    const status = err instanceof FreightError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo tomar el flete' });
+  }
 });
 
 export default router;
