@@ -23,6 +23,9 @@ export default function OperatorRegisterPage() {
   const [legalName, setLegalName] = useState('')
   const [nit, setNit] = useState('')
   const [type, setType] = useState<OperatorType>('TAXI')
+  // EMPRESA = persona jurídica; PERSONA = dueño natural de varios vehículos
+  // (camiones/turbos propios) que administra su flota como una empresa.
+  const [kind, setKind] = useState<'EMPRESA' | 'PERSONA'>('EMPRESA')
   const [contactName, setContactName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
@@ -48,6 +51,7 @@ export default function OperatorRegisterPage() {
           legalName: legalName.trim(),
           nit: nit.trim(),
           type,
+          kind,
           contactName: contactName.trim() || undefined,
           contactPhone: phone,
           contactEmail: contactEmail.trim() || undefined,
@@ -105,8 +109,42 @@ export default function OperatorRegisterPage() {
         </div>
 
         <form onSubmit={submit} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">
-          <Field label="Razón social" value={legalName} onChange={setLegalName} placeholder="Cooperativa de Transporte..." />
-          <Field label="NIT" value={nit} onChange={setNit} placeholder="900123456-7" />
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 mb-1.5">¿Quién registra?</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['EMPRESA', 'PERSONA'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKind(k)}
+                  className={`py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                    kind === k
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'
+                  }`}
+                >
+                  {k === 'EMPRESA' ? 'Empresa' : 'Persona con vehículos'}
+                </button>
+              ))}
+            </div>
+            {kind === 'PERSONA' && (
+              <p className="text-xs text-slate-400 mt-1.5">
+                Para dueños de camiones, turbos o mulas que administran su propia flota sin sociedad constituida.
+              </p>
+            )}
+          </div>
+          <Field
+            label={kind === 'PERSONA' ? 'Nombre completo' : 'Razón social'}
+            value={legalName}
+            onChange={setLegalName}
+            placeholder={kind === 'PERSONA' ? 'Juan Pérez' : 'Cooperativa de Transporte...'}
+          />
+          <Field
+            label={kind === 'PERSONA' ? 'Cédula' : 'NIT'}
+            value={nit}
+            onChange={setNit}
+            placeholder={kind === 'PERSONA' ? '1090XXXXXX' : '900123456-7'}
+          />
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Tipo de empresa</label>

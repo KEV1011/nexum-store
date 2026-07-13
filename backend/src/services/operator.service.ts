@@ -20,6 +20,8 @@ export interface RegisterOperatorDTO {
   contactEmail?: string;
   city?: string;
   tradeName?: string;
+  // EMPRESA (jurídica) | PERSONA (dueño natural de vehículos: nombre + cédula).
+  kind?: 'EMPRESA' | 'PERSONA';
 }
 
 export async function registerOperator(dto: RegisterOperatorDTO) {
@@ -31,6 +33,7 @@ export async function registerOperator(dto: RegisterOperatorDTO) {
       legalName: dto.legalName,
       nit: dto.nit,
       tradeName: dto.tradeName ?? null,
+      kind: dto.kind ?? 'EMPRESA',
       type: dto.type,
       contactName: dto.contactName ?? null,
       contactPhone: phone,

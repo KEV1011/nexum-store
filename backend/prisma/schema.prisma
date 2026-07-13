@@ -816,6 +816,9 @@ model Operator {
   legalName             String
   nit                   String         @unique
   tradeName             String?
+  // EMPRESA = persona jurídica (razón social + NIT); PERSONA = dueño natural
+  // de varios vehículos (nombre completo + cédula en los mismos campos).
+  kind                  OperatorKind   @default(EMPRESA)
   type                  OperatorType
   status                OperatorStatus @default(PENDING)
   isVerified            Boolean        @default(false)
@@ -908,6 +911,11 @@ model FleetAssignment {
   @@map("fleet_assignments")
 }
 
+enum OperatorKind {
+  EMPRESA // persona jurídica
+  PERSONA // dueño natural de vehículos (2-3 camiones/turbos propios)
+}
+
 enum OperatorType {
   TAXI
   INTERCITY
@@ -938,4 +946,47 @@ enum OperatorRole {
 enum EmploymentType {
   OWN
   AFFILIATED
+}
+
+// ── Fletes de carga (cliente ↔ empresa/dueño de camiones) ─────────────────────
+
+enum FreightStatus {
+  REQUESTED   // publicado por el cliente, visible para las flotas de carga
+  ACCEPTED    // una empresa/dueño lo tomó (conductor + vehículo asignados)
+  IN_PROGRESS // carga en ruta
+  COMPLETED   // entregado y liquidado (comisión de plataforma descontada)
+  CANCELLED
+}
+
+model FreightRequest {
+  id               String        @id @default(cuid())
+  clientId         String
+  clientName       String?
+  clientPhone      String?
+  originAddress    String
+  destAddress      String
+  // Ciudades (texto libre): iguales u omitidas = acarreo urbano; distintas =
+  // flete intermunicipal. La fecha futura lo vuelve "programado".
+  originCity       String?
+  destCity         String?
+  cargoDescription String
+  weightKg         Int
+  vehicleType      VehicleType   // TURBO | CAMION | MULA
+  offeredPrice     Float
+  scheduledFor     DateTime?     // null = lo antes posible
+  status           FreightStatus @default(REQUESTED)
+  operatorId       String?
+  driverId         String?
+  vehicleId        String?
+  finalPrice       Float?
+  commission       Float?
+  netEarning       Float?
+  createdAt        DateTime      @default(now())
+  acceptedAt       DateTime?
+  completedAt      DateTime?
+
+  @@index([status])
+  @@index([operatorId])
+  @@index([clientId])
+  @@map("freight_requests")
 }
