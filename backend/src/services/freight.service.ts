@@ -400,3 +400,59 @@ export async function listDriverFreights(driverId: string): Promise<FreightDTO[]
   });
   return rows.map(_toDTO);
 }
+
+// ─── Conductor: tomar fletes disponibles desde su app (owner-operator) ────────
+
+export interface DriverVehicleOption {
+  id: string;
+  plate: string;
+  type: VehicleType;
+  capacityKg: number | null;
+}
+
+/** Fletes abiertos que el conductor puede tomar con su flota + sus camiones. */
+export async function listDriverAvailableFreights(
+  driverId: string,
+): Promise<{ freights: FreightDTO[]; vehicles: DriverVehicleOption[] }> {
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { operatorId: true },
+  });
+  if (!driver?.operatorId) return { freights: [], vehicles: [] };
+
+  // Camiones de carga de SU flota que él conduce (para asignar al tomar).
+  const vehicles = await prisma.vehicle.findMany({
+    where: { driverId, operatorId: driver.operatorId, isActive: true, type: { in: CARGO_TYPES } },
+    select: { id: true, plate: true, type: true, capacityKg: true },
+  });
+  if (vehicles.length === 0) return { freights: [], vehicles: [] };
+
+  const types = [...new Set(vehicles.map((v) => v.type))];
+  const rows = await prisma.freightRequest.findMany({
+    where: { status: 'REQUESTED', vehicleType: { in: types } },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+  return { freights: rows.map(_toDTO), vehicles };
+}
+
+/** El conductor toma un flete asignándose a sí mismo + su camión. */
+export async function takeDriverFreight(
+  driverId: string,
+  freightId: string,
+  vehicleId: string,
+): Promise<FreightDTO> {
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { operatorId: true },
+  });
+  if (!driver?.operatorId) {
+    throw new FreightError('No perteneces a ninguna flota de carga.');
+  }
+  const vehicle = await prisma.vehicle.findFirst({
+    where: { id: vehicleId, driverId },
+    select: { id: true },
+  });
+  if (!vehicle) throw new FreightError('Ese vehículo no está a tu nombre.');
+  return acceptFreight(driver.operatorId, freightId, driverId, vehicleId);
+}
