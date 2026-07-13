@@ -473,7 +473,7 @@ function Dashboard({ token, operator, onLogout }: {
 
         <FinancePanel api={api} />
 
-        {isCargo && <FreightManager api={api} />}
+        {isCargo && <FreightManager api={api} token={token ?? ''} />}
 
         {isIntercity && <SchedulesManager api={api} />}
         {isIntercity && <RoutesManager api={api} />}

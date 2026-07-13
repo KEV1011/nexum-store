@@ -199,6 +199,10 @@ export type WsMessageType =
   | 'ping'
   | 'pong'
   | 'error'
+  | 'operator_auth'
+  | 'operator_auth_ok'
+  | 'operator_auth_error'
+  | 'freight_new'
   | 'business_auth'
   | 'business_auth_ok'
   | 'business_auth_error'
@@ -402,6 +406,10 @@ export interface WhatsAppNotification {
 // ─── Business WebSocket Messages ──────────────────────────────────────────────
 
 export type BusinessWsMessageType =
+  | 'operator_auth'
+  | 'operator_auth_ok'
+  | 'operator_auth_error'
+  | 'freight_new'
   | 'business_auth'
   | 'business_auth_ok'
   | 'business_auth_error'

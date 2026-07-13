@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { verifyToken } from '../services/auth.service';
+import { verifyOperatorToken } from '../middleware/operator-auth.middleware';
+import { registerNotifyFleetsNewFreight } from '../services/freight.service';
 import { getTripService } from '../services/trip.service';
 import {
   verifyClientToken,
@@ -945,6 +947,33 @@ function onMessage(ws: WebSocket, raw: string): void {
       break;
     }
 
+    // ── Portal de flota: auth para avisos de fletes en vivo ──────────────────
+    case 'operator_auth': {
+      const token = msg['token'];
+      if (typeof token !== 'string' || !token) {
+        sendTo(ws, { type: 'operator_auth_error', message: 'token field is required' });
+        return;
+      }
+      const payload = verifyOperatorToken(token);
+      if (!payload) {
+        sendTo(ws, { type: 'operator_auth_error', message: 'Sesión inválida o expirada' });
+        return;
+      }
+      let set = operatorSockets.get(payload.operatorId);
+      if (!set) {
+        set = new Set();
+        operatorSockets.set(payload.operatorId, set);
+      }
+      set.add(ws);
+      ws.on('close', () => {
+        const cur = operatorSockets.get(payload.operatorId);
+        cur?.delete(ws);
+        if (cur && cur.size === 0) operatorSockets.delete(payload.operatorId);
+      });
+      sendTo(ws, { type: 'operator_auth_ok', operatorId: payload.operatorId });
+      break;
+    }
+
     // ── Business ─────────────────────────────────────────────────────────────
     case 'business_auth': {
       const token = msg['token'];
@@ -1126,6 +1155,9 @@ function onClose(ws: WebSocket): void {
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
+// Sockets de portales de flota autenticados (operator_auth) para avisos en vivo.
+const operatorSockets = new Map<string, Set<WebSocket>>();
+
 export function setupWebSocket(wss: WebSocketServer): void {
   // Wire up matching callbacks so the service can reach driver sockets and
   // notify passengers, without importing WebSocket internals directly.
@@ -1133,6 +1165,13 @@ export function setupWebSocket(wss: WebSocketServer): void {
   registerNotifyTripUpdate(notifyClientTripUpdateById);
   registerOnNoDrivers((tripId) => void handleNoDriversFound(tripId));
   registerClientSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+  registerNotifyFleetsNewFreight((operatorIds, freight) => {
+    for (const id of operatorIds) {
+      for (const sock of operatorSockets.get(id) ?? []) {
+        sendTo(sock, { type: 'freight_new', freight });
+      }
+    }
+  });
   registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
 
   // Bus de entrega entre instancias. Con REDIS_URL propaga las entregas por id

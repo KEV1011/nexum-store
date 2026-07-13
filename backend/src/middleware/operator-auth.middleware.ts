@@ -31,6 +31,17 @@ export function signOperatorToken(p: {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: OPERATOR_TOKEN_TTL });
 }
 
+/** Verifica un JWT de operador fuera de Express (p. ej. auth del WS del portal). */
+export function verifyOperatorToken(token: string): OperatorJwtPayload | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as OperatorJwtPayload;
+    if (decoded.scope !== 'operator' || !decoded.operatorId) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
 export function requireOperator(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers['authorization'] ?? '';
   const token = header.replace(/^Bearer\s+/i, '').trim();
