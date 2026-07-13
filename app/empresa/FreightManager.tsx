@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { Truck, Loader2, PackageSearch } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Truck, Loader2, PackageSearch, Wifi } from 'lucide-react'
 import type { OperatorApi } from './api'
 
 // Tablero de fletes de carga: los clientes publican (peso, tipo de camión,
@@ -45,7 +45,23 @@ function when(f: Freight) {
   return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(f.scheduledFor))
 }
 
-export default function FreightManager({ api }: { api: OperatorApi }) {
+// WS del backend para avisos en vivo (mismo fallback de producción que api.ts).
+const WS_URL = (() => {
+  const base =
+    process.env.NEXT_PUBLIC_BACKEND_URL ??
+    (process.env.NODE_ENV === 'development'
+      ? 'http://localhost:3000'
+      : 'https://nexum-api-trxr.onrender.com')
+  try {
+    const u = new URL(base)
+    u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
+    return u.toString()
+  } catch {
+    return 'wss://nexum-api-trxr.onrender.com'
+  }
+})()
+
+export default function FreightManager({ api, token }: { api: OperatorApi; token: string }) {
   const [available, setAvailable] = useState<Freight[]>([])
   const [mine, setMine] = useState<Freight[]>([])
   const [drivers, setDrivers] = useState<DriverOption[]>([])
@@ -53,6 +69,9 @@ export default function FreightManager({ api }: { api: OperatorApi }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [live, setLive] = useState(false)
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Selección de conductor/vehículo por flete disponible.
   const [assign, setAssign] = useState<Record<string, { driverId: string; vehicleId: string }>>({})
 
@@ -80,6 +99,41 @@ export default function FreightManager({ api }: { api: OperatorApi }) {
     const t = setInterval(() => void load(), 15_000)
     return () => clearInterval(t)
   }, [load])
+
+  // Aviso en VIVO: al entrar un flete para los tipos de camión de esta flota,
+  // el backend emite freight_new y el tablero se refresca al instante (el
+  // polling de 15 s queda como respaldo). Reconecta solo cada 5 s.
+  useEffect(() => {
+    if (!token) return
+    let closed = false
+    const connect = () => {
+      if (closed) return
+      try {
+        const ws = new WebSocket(WS_URL)
+        wsRef.current = ws
+        ws.onopen = () => ws.send(JSON.stringify({ type: 'operator_auth', token }))
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data as string) as { type?: string }
+            if (msg.type === 'operator_auth_ok') setLive(true)
+            else if (msg.type === 'freight_new') void load()
+          } catch { /* mensaje ajeno */ }
+        }
+        ws.onclose = () => {
+          setLive(false)
+          wsRef.current = null
+          if (!closed) reconnectRef.current = setTimeout(connect, 5000)
+        }
+        ws.onerror = () => ws.close()
+      } catch { /* reintenta vía onclose */ }
+    }
+    connect()
+    return () => {
+      closed = true
+      if (reconnectRef.current) clearTimeout(reconnectRef.current)
+      wsRef.current?.close()
+    }
+  }, [token, load])
 
   async function accept(f: Freight) {
     const sel = assign[f.id]
@@ -123,6 +177,11 @@ export default function FreightManager({ api }: { api: OperatorApi }) {
         <Truck className="w-4 h-4 text-emerald-600" /> Fletes de carga
         {available.length > 0 && (
           <span className="bg-amber-500 text-white text-xs rounded-full px-2 py-0.5 font-bold">{available.length} disponibles</span>
+        )}
+        {live && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+            <Wifi className="w-3 h-3" /> En vivo
+          </span>
         )}
       </h2>
       <p className="text-xs text-slate-400 mb-3">

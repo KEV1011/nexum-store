@@ -13,6 +13,17 @@ import { recordCompletedTrip } from './earnings.service';
 
 export class FreightError extends Error {}
 
+// Inyectado por ws.handler al arrancar — avisa en tiempo real a los portales
+// de las flotas con camiones del tipo pedido cuando entra un flete nuevo.
+let _notifyFleetsNewFreight:
+  | ((operatorIds: string[], freight: FreightDTO) => void)
+  | null = null;
+export function registerNotifyFleetsNewFreight(
+  fn: (operatorIds: string[], freight: FreightDTO) => void,
+): void {
+  _notifyFleetsNewFreight = fn;
+}
+
 const CARGO_TYPES: VehicleType[] = ['TURBO', 'CAMION', 'MULA'];
 
 export interface CreateFreightDTO {
@@ -102,7 +113,24 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
       scheduledFor,
     },
   });
-  return _toDTO(f);
+  const dto2 = _toDTO(f);
+
+  // Aviso en vivo a las flotas con camiones de este tipo (fire-and-forget:
+  // un fallo de notificación jamás debe romper la publicación del flete).
+  if (_notifyFleetsNewFreight) {
+    void prisma.vehicle
+      .findMany({
+        where: { type: vType, isActive: true, operatorId: { not: null } },
+        select: { operatorId: true },
+        distinct: ['operatorId'],
+      })
+      .then((rows) => {
+        const ids = rows.map((r) => r.operatorId).filter((v): v is string => !!v);
+        if (ids.length > 0) _notifyFleetsNewFreight?.(ids, dto2);
+      })
+      .catch(() => undefined);
+  }
+  return dto2;
 }
 
 export async function listClientFreights(clientId: string): Promise<FreightDTO[]> {
