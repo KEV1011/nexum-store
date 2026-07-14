@@ -1236,12 +1236,55 @@ class _GlassNavBar extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.16),
                 ),
               ),
-              child: Row(
+              child: Stack(
                 children: [
-                  Expanded(child: _buildItem(items[0])),
-                  Expanded(child: _buildConnect()),
-                  for (final item in items.skip(1))
-                    Expanded(child: _buildItem(item)),
+                  // Lupa de vidrio (referencia Rappi/iOS liquid glass) sobre el
+                  // ítem activo. Columnas visuales: [ítem0, Conectar, resto].
+                  Builder(builder: (context) {
+                    final cols = items.length + 1;
+                    final activeIdx = items.indexWhere((i) => i.active);
+                    final visualCol = activeIdx <= 0 ? 0 : activeIdx + 1;
+                    return AnimatedAlign(
+                      duration: const Duration(milliseconds: 420),
+                      curve: Curves.easeOutBack,
+                      alignment: Alignment(
+                        cols <= 1 ? 0 : -1 + (2 * visualCol / (cols - 1)),
+                        0,
+                      ),
+                      child: FractionallySizedBox(
+                        widthFactor: 1 / cols,
+                        child: Center(
+                          child: Container(
+                            width: 54,
+                            height: 54,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.22),
+                                  Colors.white.withValues(alpha: 0.05),
+                                ],
+                              ),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.30),
+                                width: 1.2,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  Row(
+                    children: [
+                      Expanded(child: _buildItem(items[0])),
+                      Expanded(child: _buildConnect()),
+                      for (final item in items.skip(1))
+                        Expanded(child: _buildItem(item)),
+                    ],
+                  ),
                 ],
               ),
             ),
