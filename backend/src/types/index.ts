@@ -640,6 +640,9 @@ export interface ClientErrandDTO {
   createdAt: string;
   acceptedAt?: string;
   deliveredAt?: string;
+  /** Prueba de custodia del mandadero (recogida y entrega). */
+  pickupPhotoUrl?: string;
+  deliveryPhotoUrl?: string;
 }
 
 // Sent to driver when a mandado is dispatched

@@ -40,8 +40,11 @@ interface OrderDetail {
   createdAt: string
   estimatedDelivery?: string
   hasPickupProof: boolean
+  hasDeliveryProof?: boolean
   hasSignature: boolean
   hasFullCustody: boolean
+  pickupPhotoUrl?: string
+  deliveryPhotoUrl?: string
   custodyEvents: CustodyEvent[]
   driverName: string
   driverPhone: string
@@ -59,6 +62,14 @@ const BACKEND_URL =
   (process.env.NODE_ENV === 'development'
     ? 'http://localhost:3000'
     : 'https://nexum-api-trxr.onrender.com')
+
+// Las fotos de prueba llegan como ruta relativa (/uploads/…) en modo disco;
+// con R2 llegan absolutas y pasan intactas.
+function resolveImg(url?: string): string | undefined {
+  if (!url) return undefined
+  if (url.startsWith('http')) return url
+  return `${BACKEND_URL}${url}`
+}
 
 function formatCOP(amount: number): string {
   return new Intl.NumberFormat('es-CO', {
@@ -121,6 +132,7 @@ function CustodyStep({
   hasProof,
   proofLabel,
   noProofLabel,
+  photoUrl,
   extraChip,
   isLast,
   isComplete,
@@ -131,6 +143,7 @@ function CustodyStep({
   hasProof: boolean
   proofLabel: string
   noProofLabel: string
+  photoUrl?: string
   extraChip?: React.ReactNode
   isLast: boolean
   isComplete: boolean
@@ -174,10 +187,29 @@ function CustodyStep({
         {isComplete && (
           <div className="mt-2 flex flex-wrap gap-2 items-center">
             {hasProof ? (
-              <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
-                <Camera className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="text-xs font-medium text-emerald-700">{proofLabel}</span>
-              </div>
+              photoUrl ? (
+                <a
+                  href={resolveImg(photoUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Ver la foto completa"
+                  className="flex items-center gap-2 bg-emerald-50 border border-emerald-200
+                             rounded-lg px-2 py-1.5 hover:border-emerald-400 transition-colors"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={resolveImg(photoUrl)}
+                    alt={proofLabel}
+                    className="w-10 h-10 object-cover rounded"
+                  />
+                  <span className="text-xs font-medium text-emerald-700">{proofLabel} · Ver</span>
+                </a>
+              ) : (
+                <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+                  <Camera className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="text-xs font-medium text-emerald-700">{proofLabel}</span>
+                </div>
+              )
             ) : (
               <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
                 <Camera className="w-3.5 h-3.5 text-amber-500 shrink-0" />
@@ -435,6 +467,7 @@ export default function PedidoDetailPage({
             hasProof={order.hasPickupProof}
             proofLabel="Foto de recogida"
             noProofLabel="Sin foto de recogida"
+            photoUrl={order.pickupPhotoUrl}
             isLast={false}
             isComplete={pickupComplete}
           />
@@ -444,9 +477,10 @@ export default function PedidoDetailPage({
             stepNumber={2}
             label="Entregado al cliente"
             timestamp={deliveryEvent?.timestamp}
-            hasProof={deliveryComplete && order.hasPickupProof}
+            hasProof={deliveryComplete && !!order.deliveryPhotoUrl}
             proofLabel="Foto de entrega"
             noProofLabel="Sin foto de entrega"
+            photoUrl={order.deliveryPhotoUrl}
             extraChip={
               deliveryComplete && order.hasSignature ? (
                 <div className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">

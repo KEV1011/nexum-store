@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/date_formatter.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
@@ -7,8 +8,10 @@ import 'package:nexum_client/features/orders/domain/entities/'
 
 /// Tarjeta de cadena de custodia.
 ///
-/// Muestra prueba de salida del local + prueba de entrega con timestamp,
-/// firma del conductor y foto verificada.
+/// Muestra prueba de salida del local + prueba de entrega. Cuando el
+/// repartidor subió la FOTO real (pickupPhotoPath/deliveryPhotoPath), se
+/// muestra la imagen (tap = pantalla completa); si la prueba fue solo firma
+/// o la foto no carga, queda el recibo estilizado con los datos del pedido.
 class CustodyProofCard extends StatelessWidget {
   const CustodyProofCard({required this.order, super.key});
 
@@ -42,6 +45,7 @@ class CustodyProofCard extends StatelessWidget {
                   type: _ProofType.pickup,
                   driverName: order.driverName,
                   productLines: order.lines.take(2).toList(),
+                  photoUrl: order.pickupPhotoPath,
                   order: order,
                 ),
               ),
@@ -54,6 +58,7 @@ class CustodyProofCard extends StatelessWidget {
                   type: _ProofType.delivery,
                   driverName: order.driverName,
                   hasSignature: order.hasSignature,
+                  photoUrl: order.deliveryPhotoPath,
                   order: order,
                 ),
               ),
@@ -124,6 +129,7 @@ class _ProofSlot extends StatelessWidget {
     this.driverName,
     this.productLines = const [],
     this.hasSignature = false,
+    this.photoUrl,
   });
 
   final String label;
@@ -135,21 +141,39 @@ class _ProofSlot extends StatelessWidget {
   final List<OrderLineEntity> productLines;
   final bool hasSignature;
 
+  /// Foto REAL subida por el repartidor; null = prueba solo por firma/estado.
+  final String? photoUrl;
+
   @override
   Widget build(BuildContext context) {
+    final url = photoUrl;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AspectRatio(
           aspectRatio: 4 / 3,
           child: captured
-              ? _CapturedPhoto(
-                  type: type,
-                  timestamp: timestamp,
-                  driverName: driverName,
-                  productLines: productLines,
-                  hasSignature: hasSignature,
-                )
+              ? (url != null
+                  ? _RealPhoto(
+                      url: url,
+                      type: type,
+                      timestamp: timestamp,
+                      hasSignature: hasSignature,
+                      fallback: _CapturedPhoto(
+                        type: type,
+                        timestamp: timestamp,
+                        driverName: driverName,
+                        productLines: productLines,
+                        hasSignature: hasSignature,
+                      ),
+                    )
+                  : _CapturedPhoto(
+                      type: type,
+                      timestamp: timestamp,
+                      driverName: driverName,
+                      productLines: productLines,
+                      hasSignature: hasSignature,
+                    ))
               : _PendingSlot(type: type),
         ),
         const SizedBox(height: 6),
@@ -188,10 +212,159 @@ class _ProofSlot extends StatelessWidget {
   }
 }
 
+/// Foto REAL de custodia subida por el repartidor. Tap = pantalla completa
+/// con zoom. Si la imagen no carga (sin red, archivo purgado del disco
+/// efímero), cae al recibo estilizado [fallback].
+class _RealPhoto extends StatelessWidget {
+  const _RealPhoto({
+    required this.url,
+    required this.type,
+    required this.fallback,
+    this.timestamp,
+    this.hasSignature = false,
+  });
+
+  final String url;
+  final _ProofType type;
+  final Widget fallback;
+  final DateTime? timestamp;
+  final bool hasSignature;
+
+  void _openFullScreen(BuildContext context) {
+    final resolved = ApiConfig.resolveUrl(url);
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => GestureDetector(
+        onTap: () => Navigator.of(ctx).pop(),
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                maxScale: 4,
+                child: Image.network(resolved, fit: BoxFit.contain),
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                icon: const Icon(Icons.close_rounded,
+                    color: Colors.white, size: 28),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = ApiConfig.resolveUrl(url);
+    return GestureDetector(
+      onTap: () => _openFullScreen(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              resolved,
+              fit: BoxFit.cover,
+              loadingBuilder: (ctx, child, progress) => progress == null
+                  ? child
+                  : const ColoredBox(
+                      color: AppColors.surfaceVariantLight,
+                      child: Center(
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+              errorBuilder: (ctx, _, __) => fallback,
+            ),
+            // Scrim inferior con hora y firma — legible sobre cualquier foto.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(6, 14, 6, 5),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.55),
+                    ],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    if (timestamp != null)
+                      Text(
+                        DateFormatter.formatTime(timestamp!),
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    const Spacer(),
+                    if (type == _ProofType.delivery && hasSignature)
+                      const Row(
+                        children: [
+                          Icon(Icons.draw_rounded,
+                              color: Colors.white, size: 11),
+                          SizedBox(width: 3),
+                          Text(
+                            'Firmado',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 9,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            // Badge verificado (misma señal que el recibo estilizado).
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_rounded,
+                  size: 10,
+                  color: AppColors.primaryDim,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Widget que renderiza una "foto" de custodia con los datos reales del pedido.
 ///
-/// En producción sería un [Image.network] con la foto del conductor.
-/// En demo, muestra un recibo estilizado con los datos del pedido.
+/// Se usa cuando la prueba fue solo firma (sin foto) o como fallback si la
+/// imagen real no carga: un recibo estilizado con los datos del pedido.
 class _CapturedPhoto extends StatelessWidget {
   const _CapturedPhoto({
     required this.type,
