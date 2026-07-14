@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import http from 'http';
 import path from 'path';
 import { WebSocketServer } from 'ws';
@@ -47,6 +48,10 @@ app.use(
   }),
 );
 
+// Headers de seguridad (X-Content-Type-Options, X-Frame-Options, HSTS, etc.).
+// CSP apagado: el panel /admin es HTML embebido con scripts inline y los
+// portales sirven imágenes de /uploads desde otros orígenes.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 

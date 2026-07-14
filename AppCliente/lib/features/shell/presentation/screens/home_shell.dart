@@ -138,10 +138,57 @@ class _GlassNavBar extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.55),
                 ),
               ),
-              child: Row(
+              child: Stack(
                 children: [
-                  for (var i = 0; i < items.length; i++)
-                    Expanded(child: _buildItem(context, i)),
+                  // Lupa de vidrio (referencia Rappi/iOS liquid glass): burbuja
+                  // translúcida que se DESLIZA hasta el ítem activo.
+                  AnimatedAlign(
+                    duration: const Duration(milliseconds: 420),
+                    curve: Curves.easeOutBack,
+                    alignment: Alignment(
+                      items.length <= 1
+                          ? 0
+                          : -1 + (2 * index / (items.length - 1)),
+                      0,
+                    ),
+                    child: FractionallySizedBox(
+                      widthFactor: 1 / items.length,
+                      child: Center(
+                        child: Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.65),
+                                Colors.white.withValues(alpha: 0.18),
+                              ],
+                            ),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              width: 1.2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      for (var i = 0; i < items.length; i++)
+                        Expanded(child: _buildItem(context, i)),
+                    ],
+                  ),
                 ],
               ),
             ),
