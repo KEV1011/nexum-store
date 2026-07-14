@@ -57,6 +57,8 @@ interface ClientOrder {
   createdAt: string
   pickedUpAt?: string
   deliveredAt?: string
+  pickupPhotoUrl?: string
+  deliveryPhotoUrl?: string
 }
 
 interface BusinessStats {
@@ -91,6 +93,14 @@ const WS_URL = (() => {
     return 'wss://nexum-api-trxr.onrender.com'
   }
 })()
+
+// Las fotos de prueba llegan como ruta relativa (/uploads/…) en modo disco;
+// con R2 llegan absolutas y pasan intactas.
+function resolveImg(url?: string): string | undefined {
+  if (!url) return undefined
+  if (url.startsWith('http')) return url
+  return `${BACKEND_URL}${url}`
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -153,6 +163,45 @@ function ClientOrderCard({ order }: { order: ClientOrder }) {
           </div>
         ))}
       </div>
+
+      {(order.pickupPhotoUrl || order.deliveryPhotoUrl) && (
+        <div className="flex gap-2 mb-3">
+          {order.pickupPhotoUrl && (
+            <a
+              href={resolveImg(order.pickupPhotoUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 min-w-0"
+              title="Ver prueba de recogida"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={resolveImg(order.pickupPhotoUrl)}
+                alt="Prueba de recogida"
+                className="h-16 w-full object-cover rounded-lg border border-slate-200"
+              />
+              <p className="text-[10px] text-slate-400 mt-0.5 text-center">Recogida ✓</p>
+            </a>
+          )}
+          {order.deliveryPhotoUrl && (
+            <a
+              href={resolveImg(order.deliveryPhotoUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 min-w-0"
+              title="Ver prueba de entrega"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={resolveImg(order.deliveryPhotoUrl)}
+                alt="Prueba de entrega"
+                className="h-16 w-full object-cover rounded-lg border border-slate-200"
+              />
+              <p className="text-[10px] text-slate-400 mt-0.5 text-center">Entrega ✓</p>
+            </a>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
         <div className="flex items-center gap-2 text-xs text-slate-500">

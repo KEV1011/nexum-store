@@ -46,6 +46,7 @@ type DbErrand = {
   status: string; driverName: string | null; driverPhone: string | null;
   createdAt: Date; acceptedAt: Date | null; deliveredAt: Date | null;
   userId: string;
+  proofPhotoUrl: string | null; deliveryPhotoUrl: string | null;
 };
 
 function _toDTO(e: DbErrand): ClientErrandDTO {
@@ -69,6 +70,9 @@ function _toDTO(e: DbErrand): ClientErrandDTO {
     createdAt: e.createdAt.toISOString(),
     acceptedAt: e.acceptedAt?.toISOString(),
     deliveredAt: e.deliveredAt?.toISOString(),
+    // Prueba de custodia subida por el mandadero (recogida y entrega).
+    pickupPhotoUrl: e.proofPhotoUrl ?? undefined,
+    deliveryPhotoUrl: e.deliveryPhotoUrl ?? undefined,
   };
 }
 
