@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 
@@ -179,7 +180,9 @@ class _IntercityBookingScreenState
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
+          // safeBack: llegar aquí con context.go deja la pila vacía y un
+          // pop() a secas cerraría la app.
+          onPressed: () => safeBack(context),
         ),
         actions: [
           IconButton(

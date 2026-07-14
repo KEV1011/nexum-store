@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/core/widgets/loading_overlay.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
@@ -204,7 +205,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton(
-                      onPressed: () => context.pop(),
+                      onPressed: () => safeBack(context, fallback: AppRoutes.login),
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
                         minimumSize: Size.zero,
