@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
@@ -14,51 +15,35 @@ import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/driver_status/domain/entities/driver_status_entity.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/profile/presentation/providers/editable_profile_provider.dart';
+import 'package:nexum_driver/features/profile_verification/domain/entities/driver_profile_entity.dart';
+import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 
-// ── Document model ────────────────────────────────────────────────────────────
+// ── Documentos (reales, de /driver/profile vía driverProfileProvider) ─────────
 
-enum _DocStatus { valid, expiringSoon, expired }
-
-class _Document {
-  const _Document({
-    required this.label,
-    required this.status,
-    required this.expiryDate,
-    required this.icon,
-  });
-
-  final String label;
-  final _DocStatus status;
-  final String expiryDate;
-  final IconData icon;
+IconData _docIcon(String type) {
+  switch (type) {
+    case 'CEDULA':
+      return Icons.badge_rounded;
+    case 'LICENSE':
+      return Icons.credit_card_rounded;
+    case 'SOAT':
+      return Icons.security_rounded;
+    case 'PROPERTY_CARD':
+      return Icons.directions_car_filled_rounded;
+    default:
+      return Icons.description_rounded;
+  }
 }
 
-const _documents = [
-  _Document(
-    label: 'Licencia de conducción',
-    status: _DocStatus.valid,
-    expiryDate: 'Vence: 14 mar 2027',
-    icon: Icons.badge_rounded,
-  ),
-  _Document(
-    label: 'SOAT vigente',
-    status: _DocStatus.expiringSoon,
-    expiryDate: 'Vence: 28 jun 2025',
-    icon: Icons.security_rounded,
-  ),
-  _Document(
-    label: 'Revisión técnico-mecánica',
-    status: _DocStatus.valid,
-    expiryDate: 'Vence: 09 nov 2025',
-    icon: Icons.build_circle_rounded,
-  ),
-  _Document(
-    label: 'Tarjeta de operación',
-    status: _DocStatus.expired,
-    expiryDate: 'Venció: 01 ene 2025',
-    icon: Icons.credit_card_rounded,
-  ),
-];
+/// 'Vence: 14 mar 2027' (o 'Venció: …') a partir del ISO `expiresAt`.
+String? _expiryLabel(DriverDocument doc) {
+  final raw = doc.expiresAt;
+  if (raw == null || raw.isEmpty) return null;
+  final date = DateTime.tryParse(raw);
+  if (date == null) return null;
+  final formatted = DateFormat('d MMM y', 'es_CO').format(date);
+  return date.isBefore(DateTime.now()) ? 'Venció: $formatted' : 'Vence: $formatted';
+}
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +60,11 @@ class ProfileScreen extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final driverStatus = ref.watch(driverStatusProvider);
     final profile = ref.watch(editableProfileProvider);
+    final docState = ref.watch(driverProfileProvider);
+    // Carga perezosa por si se entra al perfil sin haber pasado por el home.
+    if (docState.profile == null && !docState.isLoading && docState.error == null) {
+      Future.microtask(() => ref.read(driverProfileProvider.notifier).load());
+    }
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
@@ -128,7 +118,7 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Documents ──────────────────────────────────────────────────
-            _buildDocumentsCard(theme),
+            _buildDocumentsCard(context, theme, docState),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Bank account ───────────────────────────────────────────────
@@ -621,11 +611,22 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Documents card ───────────────────────────────────────────────────────────
 
-  Widget _buildDocumentsCard(ThemeData theme) {
-    final expiredCount =
-        _documents.where((d) => d.status == _DocStatus.expired).length;
-    final soonCount =
-        _documents.where((d) => d.status == _DocStatus.expiringSoon).length;
+  Widget _buildDocumentsCard(
+    BuildContext context,
+    ThemeData theme,
+    DriverProfileState docState,
+  ) {
+    final docs = docState.profile?.documents ?? const <DriverDocument>[];
+    final rejectedCount =
+        docs.where((d) => d.status == DocumentStatus.rejected).length;
+    final pendingCount =
+        docs.where((d) => d.status == DocumentStatus.pending).length;
+    final missingCount =
+        docs.where((d) => d.status == DocumentStatus.missing).length;
+    final allApproved = docs.isNotEmpty &&
+        rejectedCount == 0 &&
+        pendingCount == 0 &&
+        missingCount == 0;
 
     return Card(
       child: Padding(
@@ -641,20 +642,56 @@ class ProfileScreen extends ConsumerWidget {
                   iconColor: AppColors.primary,
                 ),
                 const Spacer(),
-                if (expiredCount > 0)
+                if (rejectedCount > 0)
                   _AlertChip(
-                    label: '$expiredCount vencido',
+                    label: rejectedCount == 1
+                        ? '1 rechazado'
+                        : '$rejectedCount rechazados',
                     color: AppColors.error,
                   )
-                else if (soonCount > 0)
+                else if (missingCount > 0)
                   _AlertChip(
-                    label: '$soonCount por vencer',
+                    label: missingCount == 1
+                        ? '1 pendiente'
+                        : '$missingCount pendientes',
                     color: AppColors.warning,
-                  ),
+                  )
+                else if (pendingCount > 0)
+                  _AlertChip(label: 'En revisión', color: AppColors.info)
+                else if (allApproved)
+                  _AlertChip(label: 'Verificados', color: AppColors.success),
               ],
             ),
             const SizedBox(height: AppConstants.spacingM),
-            ..._documents.map((doc) => _DocumentRow(doc: doc)),
+            if (docState.isLoading && docs.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              )
+            else if (docs.isEmpty)
+              Text(
+                'Aún no has subido tus documentos.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              )
+            else
+              ...docs.map((doc) => _DocumentRow(doc: doc)),
+            const SizedBox(height: AppConstants.spacingXS),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => context.push('/verification'),
+                icon: const Icon(Icons.upload_file_rounded, size: 16),
+                label: const Text('Gestionar documentos'),
+              ),
+            ),
           ],
         ),
       ),
@@ -902,37 +939,43 @@ class _InfoRow extends StatelessWidget {
 
 class _DocumentRow extends StatelessWidget {
   const _DocumentRow({required this.doc});
-  final _Document doc;
+  final DriverDocument doc;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final (color, statusText) = switch (doc.status) {
-      _DocStatus.valid => (AppColors.success, 'Vigente'),
-      _DocStatus.expiringSoon => (AppColors.warning, 'Por vencer'),
-      _DocStatus.expired => (AppColors.error, 'Vencido'),
-    };
+    final color = doc.status.color;
+    final expiry = _expiryLabel(doc);
+    final expired = expiry != null && expiry.startsWith('Venció');
+    // Con rechazo se muestra el motivo del admin; si no, el vencimiento.
+    final rejection = doc.rejectionReason;
+    final detail = doc.status == DocumentStatus.rejected &&
+            rejection != null &&
+            rejection.isNotEmpty
+        ? rejection
+        : expiry;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Icon(doc.icon, size: 18, color: color),
+          Icon(_docIcon(doc.type), size: 18, color: color),
           const SizedBox(width: AppConstants.spacingS),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(doc.label, style: theme.textTheme.bodyMedium),
-                Text(
-                  doc.expiryDate,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: doc.status == _DocStatus.expired
-                        ? AppColors.error
-                        : AppColors.textSecondary,
-                    fontSize: 11,
+                if (detail != null && detail.isNotEmpty)
+                  Text(
+                    detail,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: expired || doc.status == DocumentStatus.rejected
+                          ? AppColors.error
+                          : AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -943,7 +986,7 @@ class _DocumentRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
             ),
             child: Text(
-              statusText,
+              doc.status.label,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: color,
                 fontWeight: FontWeight.w700,

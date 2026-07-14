@@ -600,4 +600,77 @@ router.post('/freight/:id/take', async (req: Request, res: Response): Promise<vo
   }
 });
 
+// ─── Prueba de recogida/entrega ────────────────────────────────────────────────
+
+// POST /driver/proof/:kind/:id — sube la foto de prueba (multipart 'file' +
+// campo 'phase' pickup|delivery) de un viaje, pedido o mandado del conductor.
+// La prueba queda visible para el cliente y el negocio (pickupPhotoUrl /
+// deliveryPhotoUrl; en mandados la recogida es proofPhotoUrl).
+router.post(
+  '/proof/:kind/:id',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId;
+    if (!driverId) {
+      res.status(401).json({ success: false, error: 'Not authenticated' });
+      return;
+    }
+    const kind = req.params['kind'];
+    const id = req.params['id']!;
+    const phase = (req.body as { phase?: string }).phase === 'pickup' ? 'pickup' : 'delivery';
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'La prueba debe ser una imagen (JPG, PNG o WebP).' });
+      return;
+    }
+    const url = fileToUrl(req.file);
+    try {
+      // updateMany con driverId en el where = verificación de pertenencia
+      // y escritura en una sola operación.
+      let count = 0;
+      if (kind === 'trip') {
+        const r = await prisma.trip.updateMany({
+          where: { id, driverId },
+          data: phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
+        });
+        count = r.count;
+      } else if (kind === 'order') {
+        const r = await prisma.order.updateMany({
+          where: { id, driverId },
+          data: phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
+        });
+        count = r.count;
+      } else if (kind === 'errand') {
+        const r = await prisma.errand.updateMany({
+          where: { id, driverId },
+          data: phase === 'pickup' ? { proofPhotoUrl: url } : { deliveryPhotoUrl: url },
+        });
+        count = r.count;
+      } else {
+        res.status(400).json({ success: false, error: 'kind debe ser trip, order o errand.' });
+        return;
+      }
+      if (count === 0) {
+        res.status(404).json({ success: false, error: 'El servicio no existe o no está asignado a ti.' });
+        return;
+      }
+      res.status(201).json({ success: true, data: { url, phase } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al guardar la prueba';
+      res.status(500).json({ success: false, error: message });
+    }
+  },
+);
+
 export default router;

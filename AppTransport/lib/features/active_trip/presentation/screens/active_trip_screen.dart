@@ -24,6 +24,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_p
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
+import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_marker.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
@@ -748,6 +749,22 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         } else {
           DriverWsService().sendTripStatus(tripBeforeStart.request.id, 'in_progress');
         }
+        // La foto de recogida sube al backend en segundo plano (best-effort).
+        final pickupPhoto = proof.photoPath;
+        if (pickupPhoto != null) {
+          unawaited(uploadProofPhoto(
+            kind: tripBeforeStart.request.isOrder
+                ? 'order'
+                : workMode.isErrand
+                    ? 'errand'
+                    : 'trip',
+            id: tripBeforeStart.request.isOrder
+                ? tripBeforeStart.request.orderId!
+                : tripBeforeStart.request.id,
+            phase: 'pickup',
+            photoPath: pickupPhoto,
+          ));
+        }
       }
       if (mounted) {
         final msg = workMode == WorkMode.paquete
@@ -797,6 +814,22 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           workMode: workMode,
         );
         if (!mounted) return;
+        // La prueba de entrega sube al backend en segundo plano (best-effort).
+        final deliveryPhoto = proof?.photoPath;
+        if (tripBeforeFinish != null && deliveryPhoto != null) {
+          unawaited(uploadProofPhoto(
+            kind: tripBeforeFinish.request.isOrder
+                ? 'order'
+                : workMode.isErrand
+                    ? 'errand'
+                    : 'trip',
+            id: tripBeforeFinish.request.isOrder
+                ? tripBeforeFinish.request.orderId!
+                : tripBeforeFinish.request.id,
+            phase: 'delivery',
+            photoPath: deliveryPhoto,
+          ));
+        }
         context.go(
           '/trip-summary',
           extra: tripModel.copyWith(
