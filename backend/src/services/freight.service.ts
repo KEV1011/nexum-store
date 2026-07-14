@@ -268,6 +268,29 @@ export async function updateFreightStatus(
 ): Promise<FreightDTO> {
   const f = await prisma.freightRequest.findUnique({ where: { id: freightId } });
   if (!f || f.operatorId !== operatorId) throw new FreightError('El flete no existe o no es de tu flota.');
+  return _applyFreightStatus(f, status);
+}
+
+/**
+ * El conductor ASIGNADO inicia o completa su flete desde la app (mismas
+ * transiciones, liquidación y avisos que el portal de la flota). Soltar el
+ * flete (cancelled) queda solo en el portal.
+ */
+export async function updateDriverFreightStatus(
+  driverId: string,
+  freightId: string,
+  status: 'in_progress' | 'completed',
+): Promise<FreightDTO> {
+  const f = await prisma.freightRequest.findUnique({ where: { id: freightId } });
+  if (!f || f.driverId !== driverId) throw new FreightError('El flete no existe o no está asignado a ti.');
+  return _applyFreightStatus(f, status);
+}
+
+async function _applyFreightStatus(
+  f: NonNullable<Awaited<ReturnType<typeof prisma.freightRequest.findUnique>>>,
+  status: 'in_progress' | 'completed' | 'cancelled',
+): Promise<FreightDTO> {
+  const freightId = f.id;
 
   if (status === 'in_progress') {
     if (f.status !== 'ACCEPTED') throw new FreightError('Solo un flete aceptado puede iniciar ruta.');
