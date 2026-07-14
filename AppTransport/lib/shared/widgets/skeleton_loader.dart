@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 
 // ── Core shimmer ─────────────────────────────────────────────────────────────
@@ -124,14 +125,14 @@ class SkeletonTripTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.surfaceDark
-            : AppColors.surfaceLight,
+            : context.surfaceColor,
         borderRadius: BorderRadius.circular(
           AppConstants.radiusMedium,
         ),
         border: Border.all(
           color: isDark
               ? AppColors.outlineDark
-              : AppColors.outlineLight,
+              : context.outlineColor,
         ),
       ),
       child: const Column(
@@ -191,14 +192,14 @@ class SkeletonCommentCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark
             ? AppColors.surfaceDark
-            : AppColors.surfaceLight,
+            : context.surfaceColor,
         borderRadius: BorderRadius.circular(
           AppConstants.radiusMedium,
         ),
         border: Border.all(
           color: isDark
               ? AppColors.outlineDark
-              : AppColors.outlineLight,
+              : context.outlineColor,
         ),
       ),
       child: const Column(
@@ -239,9 +240,9 @@ class SkeletonStatRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor =
-        isDark ? AppColors.surfaceDark : AppColors.surfaceLight;
+        isDark ? AppColors.surfaceDark : context.surfaceColor;
     final borderColor =
-        isDark ? AppColors.outlineDark : AppColors.outlineLight;
+        isDark ? AppColors.outlineDark : context.outlineColor;
 
     return Row(
       children: List.generate(3, (i) {

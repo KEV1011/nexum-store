@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/features/profile_verification/domain/entities/driver_profile_entity.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 
@@ -31,11 +32,11 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
     final profile = state.profile;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         title: const Text('Verificación de cuenta'),
-        backgroundColor: AppColors.surfaceLight,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: context.surfaceColor,
+        foregroundColor: context.textPrimaryColor,
         elevation: 0,
       ),
       body: state.isLoading && profile == null
@@ -55,10 +56,10 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
+                      Text(
                         'Sube cada documento legible y vigente. Solo podrás recibir '
                         'viajes cuando todos estén aprobados.',
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                        style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
                       ),
                       const SizedBox(height: 12),
                       if (_uploading)
@@ -201,9 +202,9 @@ class _DocumentCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.cardLight,
+        color: context.cardColor2,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
       ),
       child: Row(
         children: [

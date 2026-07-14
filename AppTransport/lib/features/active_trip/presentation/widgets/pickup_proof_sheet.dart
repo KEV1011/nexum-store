@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/core/widgets/picked_image.dart';
@@ -169,7 +170,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.outlineLight,
+              color: context.outlineColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -215,7 +216,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                         widget.businessName,
                         style:
                             theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -295,7 +296,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                   Text(
                     photoHint,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                   const SizedBox(height: AppConstants.spacingM),
@@ -321,7 +322,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                     Text(
                       'Ingresa cuánto gastaste para que el cliente lo vea.',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                     ),
                     const SizedBox(height: AppConstants.spacingM),
@@ -420,10 +421,10 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                       mainAxisAlignment:
                           MainAxisAlignment.center,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.info_outline_rounded,
                           size: 13,
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                         ),
                         const SizedBox(width: 4),
                         Text(
@@ -431,7 +432,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                           style:
                               theme.textTheme.bodySmall
                                   ?.copyWith(
-                            color: AppColors.textSecondary,
+                            color: context.textSecondaryColor,
                           ),
                         ),
                       ],
@@ -657,8 +658,8 @@ class _PhotoCapture extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     'Incluye todos los artículos del pedido',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: context.textSecondaryColor,
                       fontSize: 12,
                     ),
                   ),

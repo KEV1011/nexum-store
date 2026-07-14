@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 
 class SupportScreen extends StatefulWidget {
@@ -112,12 +113,12 @@ class _FaqTabState extends State<_FaqTab> {
               padding: const EdgeInsets.only(top: AppConstants.spacingXL),
               child: Column(
                 children: [
-                  const Icon(Icons.search_off_rounded,
-                      size: 48, color: AppColors.textTertiary),
+                  Icon(Icons.search_off_rounded,
+                      size: 48, color: context.textTertiaryColor),
                   const SizedBox(height: AppConstants.spacingM),
                   Text(
                     'Sin resultados para "$_query"',
-                    style: const TextStyle(color: AppColors.textSecondary),
+                    style: TextStyle(color: context.textSecondaryColor),
                   ),
                 ],
               ),
@@ -156,12 +157,12 @@ class _FaqItem extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
           color: isExpanded
               ? AppColors.primary
-              : (isDark ? AppColors.outlineDark : AppColors.outlineLight),
+              : (isDark ? AppColors.outlineDark : context.outlineColor),
         ),
       ),
       child: ClipRRect(
@@ -179,8 +180,8 @@ class _FaqItem extends StatelessWidget {
               trailing: AnimatedRotation(
                 turns: isExpanded ? 0.5 : 0,
                 duration: AppConstants.shortAnimation,
-                child: const Icon(Icons.expand_more_rounded,
-                    color: AppColors.textSecondary),
+                child: Icon(Icons.expand_more_rounded,
+                    color: context.textSecondaryColor),
               ),
               onTap: onTap,
             ),
@@ -195,7 +196,7 @@ class _FaqItem extends StatelessWidget {
                 child: Text(
                   faq.answer,
                   style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary, height: 1.5),
+                      color: context.textSecondaryColor, height: 1.5),
                 ),
               ),
           ],
@@ -388,7 +389,7 @@ class _TypingIndicator extends StatelessWidget {
         decoration: BoxDecoration(
           color: isDark
               ? AppColors.surfaceVariantDark
-              : AppColors.surfaceVariantLight,
+              : context.surfaceVariantColor,
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(AppConstants.radiusLarge),
             topRight: Radius.circular(AppConstants.radiusLarge),
@@ -452,8 +453,8 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
         child: Container(
           width: 8,
           height: 8,
-          decoration: const BoxDecoration(
-            color: AppColors.textTertiary,
+          decoration: BoxDecoration(
+            color: context.textTertiaryColor,
             shape: BoxShape.circle,
           ),
         ),
@@ -485,7 +486,7 @@ class _ChatBubble extends StatelessWidget {
           color: isAgent
               ? (theme.brightness == Brightness.dark
                   ? AppColors.surfaceVariantDark
-                  : AppColors.surfaceVariantLight)
+                  : context.surfaceVariantColor)
               : AppColors.primary,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(AppConstants.radiusLarge),
@@ -511,7 +512,7 @@ class _ChatBubble extends StatelessWidget {
               message.time,
               style: TextStyle(
                 fontSize: 10,
-                color: isAgent ? AppColors.textTertiary : Colors.white70,
+                color: isAgent ? context.textTertiaryColor : Colors.white70,
               ),
             ),
           ],
@@ -539,11 +540,11 @@ class _ChatInput extends StatelessWidget {
             MediaQuery.of(context).padding.bottom + AppConstants.spacingS,
       ),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
         border: Border(
           top: BorderSide(
               color:
-                  isDark ? AppColors.outlineDark : AppColors.outlineLight),
+                  isDark ? AppColors.outlineDark : context.outlineColor),
         ),
       ),
       child: Row(
@@ -591,10 +592,10 @@ class _TicketsTab extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.confirmation_number_outlined,
               size: 48,
-              color: AppColors.textTertiary,
+              color: context.textTertiaryColor,
             ),
             const SizedBox(height: AppConstants.spacingM),
             Text(
@@ -607,7 +608,7 @@ class _TicketsTab extends StatelessWidget {
               'Si tienes un problema con un viaje, un pago o tus documentos, '
               'escríbenos por el chat y le haremos seguimiento.',
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: AppColors.textSecondary),
+                  ?.copyWith(color: context.textSecondaryColor),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AppConstants.spacingL),

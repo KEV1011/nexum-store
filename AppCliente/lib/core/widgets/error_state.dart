@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 
 /// Estado de error reutilizable: dice qué pasó y cómo resolverlo, con una
@@ -42,7 +43,7 @@ class ErrorState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: AppColors.textTertiary),
+            Icon(icon, size: 64, color: context.textTertiaryColor),
             const SizedBox(height: AppConstants.spacingM),
             Text(
               title ?? 'No pudimos cargar esto',
@@ -55,7 +56,7 @@ class ErrorState extends StatelessWidget {
             Text(
               message ?? 'Revisa tu conexión e intenta de nuevo.',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
               textAlign: TextAlign.center,
             ),

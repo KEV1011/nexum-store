@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
@@ -77,7 +78,7 @@ class TripInProgressCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: value,
-                    backgroundColor: AppColors.outlineLight,
+                    backgroundColor: context.outlineColor,
                     valueColor: const AlwaysStoppedAnimation<Color>(
                         AppColors.primary),
                     minHeight: 5,
@@ -86,9 +87,9 @@ class TripInProgressCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '${(value * 100).round()}% del trayecto recorrido',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                 ),
               ],
@@ -149,7 +150,7 @@ class TripInProgressCard extends StatelessWidget {
                     Text(
                       'Destino',
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -158,7 +159,7 @@ class TripInProgressCard extends StatelessWidget {
                       trip.request.destination.address,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: context.textPrimaryColor,
                       ),
                     ),
                   ],
@@ -182,7 +183,7 @@ class TripInProgressCard extends StatelessWidget {
                   Text(
                     'Tarifa acumulada',
                     style: theme.textTheme.labelSmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                   const SizedBox(height: 2),

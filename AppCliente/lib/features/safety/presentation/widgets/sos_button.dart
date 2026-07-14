@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/providers/safety_provider.dart';
@@ -113,8 +114,8 @@ class SosButton extends ConsumerWidget {
                       ? 'Tu ubicación fue compartida con tu contacto de confianza.'
                       : 'Evento registrado. Configura un contacto de confianza '
                           'para avisarle automáticamente.',
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.textSecondary),
+              style: TextStyle(
+                  fontSize: 13, color: context.textSecondaryColor),
             ),
             const SizedBox(height: 20),
             FilledButton.icon(

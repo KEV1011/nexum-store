@@ -1923,6 +1923,15 @@ class _AppDrawer extends ConsumerWidget {
                     },
                   ),
                   _DrawerItem(
+                    icon: Icons.workspace_premium_rounded,
+                    label: 'Nexum Pro',
+                    iconColor: const Color(0xFF0EA5E9),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/pro');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.bolt_rounded,
                     label: 'Solicitudes en vivo',
                     iconColor: const Color(0xFF00C853),

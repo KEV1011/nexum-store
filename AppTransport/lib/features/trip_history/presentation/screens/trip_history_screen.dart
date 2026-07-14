@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
@@ -181,7 +182,7 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
                 labelStyle: TextStyle(
                   color: _dateFilterIndex == i
                       ? AppColors.primary
-                      : AppColors.textSecondary,
+                      : context.textSecondaryColor,
                   fontWeight: _dateFilterIndex == i
                       ? FontWeight.w600
                       : FontWeight.w400,
@@ -211,13 +212,13 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
                     selected: _serviceTypeFilter == null,
                     onSelected: (_) =>
                         setState(() => _serviceTypeFilter = null),
-                    selectedColor: AppColors.surfaceVariantLight,
+                    selectedColor: context.surfaceVariantColor,
                     showCheckmark: false,
                     labelStyle: TextStyle(
                       fontSize: 12,
                       color: _serviceTypeFilter == null
-                          ? AppColors.textPrimary
-                          : AppColors.textSecondary,
+                          ? context.textPrimaryColor
+                          : context.textSecondaryColor,
                     ),
                   ),
                 ),
@@ -231,7 +232,7 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
                           size: 14,
                           color: isSelected
                               ? type.color
-                              : AppColors.textSecondary),
+                              : context.textSecondaryColor),
                       label: Text(type.displayName),
                       selected: isSelected,
                       onSelected: (_) =>
@@ -242,7 +243,7 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
                         fontSize: 12,
                         color: isSelected
                             ? type.color
-                            : AppColors.textSecondary,
+                            : context.textSecondaryColor,
                         fontWeight: isSelected
                             ? FontWeight.w600
                             : FontWeight.w400,
@@ -271,12 +272,12 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.route_rounded,
-                            size: 48, color: AppColors.outlineLight),
+                            size: 48, color: context.outlineColor),
                         const SizedBox(height: AppConstants.spacingM),
                         Text(
                           'Sin viajes en este período',
                           style: theme.textTheme.bodyMedium
-                              ?.copyWith(color: AppColors.textSecondary),
+                              ?.copyWith(color: context.textSecondaryColor),
                         ),
                       ],
                     ),
@@ -398,12 +399,12 @@ class _TripHistoryTileState extends State<_TripHistoryTile> {
         duration: AppConstants.shortAnimation,
         padding: const EdgeInsets.all(AppConstants.spacingM),
         decoration: BoxDecoration(
-          color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+          color: isDark ? AppColors.surfaceDark : context.surfaceColor,
           borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
           border: Border.all(
             color: _expanded
                 ? trip.serviceType.color.withValues(alpha: 0.4)
-                : (isDark ? AppColors.outlineDark : AppColors.outlineLight),
+                : (isDark ? AppColors.outlineDark : context.outlineColor),
             width: _expanded ? 1.5 : 1,
           ),
         ),
@@ -441,7 +442,7 @@ class _TripHistoryTileState extends State<_TripHistoryTile> {
                           Text(
                             trip.id,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: AppColors.textTertiary,
+                              color: context.textTertiaryColor,
                               fontSize: 10,
                             ),
                           ),
@@ -450,7 +451,7 @@ class _TripHistoryTileState extends State<_TripHistoryTile> {
                       Text(
                         trip.dateTime,
                         style: theme.textTheme.bodySmall
-                            ?.copyWith(color: AppColors.textSecondary),
+                            ?.copyWith(color: context.textSecondaryColor),
                       ),
                     ],
                   ),
@@ -511,7 +512,7 @@ class _TripHistoryTileState extends State<_TripHistoryTile> {
                       ? Icons.expand_less_rounded
                       : Icons.expand_more_rounded,
                   size: 16,
-                  color: AppColors.textTertiary,
+                  color: context.textTertiaryColor,
                 ),
               ],
             ),
@@ -559,7 +560,7 @@ class _RouteRow extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            style: TextStyle(fontSize: 11, color: context.textSecondaryColor),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -578,12 +579,12 @@ class _TripChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 11, color: AppColors.textTertiary),
+        Icon(icon, size: 11, color: context.textTertiaryColor),
         const SizedBox(width: 2),
         Text(
           label,
-          style: const TextStyle(
-              fontSize: 11, color: AppColors.textSecondary),
+          style: TextStyle(
+              fontSize: 11, color: context.textSecondaryColor),
         ),
       ],
     );
@@ -607,22 +608,22 @@ class _DetailItem extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: AppColors.textSecondary),
+        Icon(icon, size: 14, color: context.textSecondaryColor),
         const SizedBox(width: 4),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               label,
-              style: const TextStyle(
-                  fontSize: 10, color: AppColors.textSecondary),
+              style: TextStyle(
+                  fontSize: 10, color: context.textSecondaryColor),
             ),
             Text(
               value,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: valueColor ?? AppColors.textPrimary,
+                color: valueColor ?? context.textPrimaryColor,
               ),
             ),
           ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 
 /// Categoría del mandado solicitado por el cliente.
 enum ErrandCategory {
@@ -38,7 +39,7 @@ enum ErrandCategory {
         ErrandCategory.payments => const Color(0xFFD97706),
         ErrandCategory.food => const Color(0xFFE11D48),
         ErrandCategory.shopping => const Color(0xFF2563EB),
-        ErrandCategory.other => AppColors.textSecondary,
+        ErrandCategory.other => context.textSecondaryColor,
       };
 
   bool get usuallyBuys => switch (this) {

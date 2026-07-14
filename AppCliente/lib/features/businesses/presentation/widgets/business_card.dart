@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -27,7 +28,7 @@ class BusinessCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Material(
-      color: isDark ? AppColors.cardDark : AppColors.surfaceLight,
+      color: isDark ? AppColors.cardDark : context.surfaceColor,
       borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
       child: InkWell(
         onTap: onTap,
@@ -36,7 +37,7 @@ class BusinessCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
             border: Border.all(
-              color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+              color: isDark ? AppColors.outlineDark : context.outlineColor,
             ),
             boxShadow: isDark
                 ? null
@@ -227,7 +228,7 @@ class _FavoriteButton extends ConsumerWidget {
         ),
         child: Icon(
           isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-          color: isFav ? AppColors.error : AppColors.textTertiary,
+          color: isFav ? AppColors.error : context.textTertiaryColor,
           size: 17,
         ),
       ),
@@ -248,7 +249,7 @@ class _MetaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = highlight ? AppColors.success : AppColors.textSecondary;
+    final color = highlight ? AppColors.success : context.textSecondaryColor;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

@@ -36,6 +36,7 @@ import {
   PayoutError,
 } from '../services/payout.service';
 import { getDriverNotifications } from '../services/driver-notification.service';
+import { getDriverProStatus } from '../services/pro.service';
 import {
   listDriverFreights,
   updateDriverFreightStatus,
@@ -523,6 +524,19 @@ router.get('/notifications', async (req: Request, res: Response): Promise<void> 
   if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
   try {
     res.json({ success: true, data: await getDriverNotifications(driverId) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ── Nexum Pro: nivel del conductor con datos reales ──────────────────────────
+
+// GET /driver/pro-status — nivel, progreso al siguiente y escalera completa.
+router.get('/pro-status', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getDriverProStatus(driverId) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }

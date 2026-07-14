@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 
 /// Estado vacío reutilizable: icono, título, mensaje y una acción opcional que
@@ -46,7 +47,7 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: AppColors.textTertiary),
+            Icon(icon, size: 64, color: context.textTertiaryColor),
             const SizedBox(height: AppConstants.spacingM),
             Text(
               title,
@@ -60,7 +61,7 @@ class EmptyState extends StatelessWidget {
               Text(
                 message!,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
                 textAlign: TextAlign.center,
               ),

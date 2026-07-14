@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/domain/entities/ride_entities.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
@@ -18,11 +19,11 @@ class RideBidsScreen extends ConsumerWidget {
     final ride = state.ride;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         title: Text(ride?.status.label ?? 'Tu viaje'),
-        backgroundColor: AppColors.surfaceLight,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: context.surfaceColor,
+        foregroundColor: context.textPrimaryColor,
         elevation: 0,
       ),
       body: ride == null
@@ -81,13 +82,13 @@ class _OpenBidsView extends StatelessWidget {
         ),
         Expanded(
           child: ride.bids.isEmpty
-              ? const Center(
+              ? Center(
                   child: Padding(
                     padding: EdgeInsets.all(32),
                     child: Text(
                       'Aún no hay ofertas. Espera unos segundos…',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: context.textSecondaryColor),
                     ),
                   ),
                 )
@@ -135,7 +136,7 @@ class _BidCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardLight,
+        color: context.cardColor2,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),
@@ -171,12 +172,12 @@ class _BidCard extends StatelessWidget {
                             size: 15, color: Color(0xFFFFB300)),
                         const SizedBox(width: 2),
                         Text(bid.driverRating.toStringAsFixed(2),
-                            style: const TextStyle(
-                                fontSize: 12.5, color: AppColors.textSecondary)),
+                            style: TextStyle(
+                                fontSize: 12.5, color: context.textSecondaryColor)),
                         const SizedBox(width: 8),
                         Text('${bid.driverTotalTrips} viajes',
-                            style: const TextStyle(
-                                fontSize: 12.5, color: AppColors.textSecondary)),
+                            style: TextStyle(
+                                fontSize: 12.5, color: context.textSecondaryColor)),
                       ],
                     ),
                   ],
@@ -189,8 +190,8 @@ class _BidCard extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 18, fontWeight: FontWeight.w800)),
                   Text('${bid.etaMinutes} min',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary)),
+                      style: TextStyle(
+                          fontSize: 12, color: context.textSecondaryColor)),
                 ],
               ),
             ],
@@ -199,8 +200,8 @@ class _BidCard extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: Text(bid.vehicleDescription,
-                style: const TextStyle(
-                    fontSize: 12.5, color: AppColors.textSecondary)),
+                style: TextStyle(
+                    fontSize: 12.5, color: context.textSecondaryColor)),
           ),
           if (isCounter) ...[
             const SizedBox(height: 6),
@@ -264,7 +265,7 @@ class _MatchedView extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: AppColors.cardLight,
+              color: context.cardColor2,
               borderRadius: BorderRadius.circular(16),
               boxShadow: const [
                 BoxShadow(
@@ -297,8 +298,8 @@ class _MatchedView extends StatelessWidget {
                               style: const TextStyle(
                                   fontSize: 17, fontWeight: FontWeight.w800)),
                           Text(bid.vehicleDescription,
-                              style: const TextStyle(
-                                  fontSize: 13, color: AppColors.textSecondary)),
+                              style: TextStyle(
+                                  fontSize: 13, color: context.textSecondaryColor)),
                           const SizedBox(height: 2),
                           Row(
                             children: [
@@ -371,9 +372,9 @@ class _MatchedView extends StatelessWidget {
   Widget _routeCard() => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.cardLight,
+          color: context.cardColor2,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.outlineLight),
+          border: Border.all(color: context.outlineColor),
         ),
         child: Column(
           children: [
@@ -383,11 +384,11 @@ class _MatchedView extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(child: Text(ride.originAddress)),
             ]),
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(left: 7),
               child: SizedBox(
                 height: 18,
-                child: VerticalDivider(width: 1, color: AppColors.outlineLight),
+                child: VerticalDivider(width: 1, color: context.outlineColor),
               ),
             ),
             Row(children: [

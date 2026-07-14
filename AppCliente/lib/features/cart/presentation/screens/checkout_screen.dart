@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -360,10 +361,10 @@ class _AddressTile extends ConsumerWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Padding(
@@ -390,10 +391,10 @@ class _AddressTile extends ConsumerWidget {
                   ),
                   Text(
                     address.fullAddress,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 13,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                 ],
@@ -460,14 +461,14 @@ class _PaymentOption extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected
                 ? AppColors.primaryContainer
-                : (isDark ? AppColors.cardDark : AppColors.cardLight),
+                : (isDark ? AppColors.cardDark : context.cardColor2),
             borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
             border: Border.all(
               color: selected
                   ? AppColors.primary
                   : (isDark
                       ? AppColors.outlineDark
-                      : AppColors.outlineLight),
+                      : context.outlineColor),
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -478,7 +479,7 @@ class _PaymentOption extends StatelessWidget {
                 size: 20,
                 color: selected
                     ? AppColors.primaryDim
-                    : AppColors.textSecondary,
+                    : context.textSecondaryColor,
               ),
               const SizedBox(width: AppConstants.spacingM),
               Text(

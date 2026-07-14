@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/core/widgets/picked_image.dart';
@@ -126,7 +127,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.outlineLight,
+              color: context.outlineColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -170,7 +171,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                       Text(
                         'Destinatario: ${widget.recipientName}',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                         ),
                       ),
                     ],
@@ -227,16 +228,16 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.refresh_rounded,
                                   size: 14,
-                                  color: AppColors.textSecondary,
+                                  color: context.textSecondaryColor,
                                 ),
                                 const SizedBox(width: 4),
-                                const Text(
+                                Text(
                                   'Borrar',
                                   style: TextStyle(
-                                    color: AppColors.textSecondary,
+                                    color: context.textSecondaryColor,
                                     fontSize: 13,
                                   ),
                                 ),
@@ -250,7 +251,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                   Text(
                     'El destinatario firma directamente en pantalla.',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                   const SizedBox(height: AppConstants.spacingM),
@@ -305,7 +306,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                       'Captura una foto o la firma para continuar.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                     ),
                   ],
@@ -480,10 +481,10 @@ class _PhotoCapture extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Asegúrate de que sea visible',
                     style: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                       fontSize: 12,
                     ),
                   ),
@@ -574,7 +575,7 @@ class _StrokePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = AppColors.textPrimary
+      ..color = context.textPrimaryColor
       ..strokeWidth = 2.8
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round

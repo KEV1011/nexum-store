@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
@@ -137,7 +138,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
               Text(
                 DateFormatter.formatDateTime(trip.finishedAt),
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -157,7 +158,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                       Text(
                         'Tus ganancias',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                         ),
                       ),
                       const SizedBox(height: AppConstants.spacingS),
@@ -342,7 +343,7 @@ class _SettlementBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = confirmed ? AppColors.success : AppColors.textSecondary;
+    final color = confirmed ? AppColors.success : context.textSecondaryColor;
     return Center(
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
@@ -395,15 +396,15 @@ class _FareRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: context.textSecondaryColor,
               fontSize: 13,
             ),
           ),
           Text(
             value,
             style: TextStyle(
-              color: valueColor ?? AppColors.textPrimary,
+              color: valueColor ?? context.textPrimaryColor,
               fontWeight: FontWeight.w600,
               fontSize: 13,
             ),
@@ -440,9 +441,9 @@ class _SessionStat extends StatelessWidget {
         ),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
-            color: AppColors.textSecondary,
+            color: context.textSecondaryColor,
           ),
         ),
       ],
@@ -468,12 +469,12 @@ class _DetailRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: color ?? AppColors.textSecondary),
+          Icon(icon, size: 16, color: color ?? context.textSecondaryColor),
           const SizedBox(width: AppConstants.spacingS),
           Text(
             '$label: ',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: context.textSecondaryColor,
               fontSize: 13,
             ),
           ),
@@ -710,7 +711,7 @@ class _CustodyStep extends StatelessWidget {
               Text(
                 subtitle,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -722,13 +723,13 @@ class _CustodyStep extends StatelessWidget {
                     Icon(
                       Icons.receipt_long_rounded,
                       size: 12,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       orderRef!,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -853,10 +854,10 @@ class _MissingProofChip extends StatelessWidget {
       height: 64,
       width: 64,
       decoration: BoxDecoration(
-        color: AppColors.textSecondary.withValues(alpha: 0.06),
+        color: context.textSecondaryColor.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: AppColors.textSecondary.withValues(alpha: 0.2),
+          color: context.textSecondaryColor.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -865,13 +866,13 @@ class _MissingProofChip extends StatelessWidget {
           Icon(
             Icons.image_not_supported_outlined,
             size: 18,
-            color: AppColors.textSecondary,
+            color: context.textSecondaryColor,
           ),
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: context.textSecondaryColor,
               fontSize: 9,
               fontWeight: FontWeight.w600,
             ),

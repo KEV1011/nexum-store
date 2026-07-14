@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nexum_driver/core/errors/failures.dart';
-import 'package:nexum_driver/features/auth/data/datasources/auth_mock_datasource.dart';
+import '../../../../support/auth_mock_datasource.dart';
 import 'package:nexum_driver/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/send_otp_usecase.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';

@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
@@ -68,7 +69,7 @@ class ProfileScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+      backgroundColor: isDark ? AppColors.backgroundDark : context.backgroundColor,
       appBar: AppBar(
         title: const Text('Mi perfil'),
         leading: IconButton(
@@ -218,7 +219,7 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 Flexible(
                   child: Text(
-                    profile.fullName,
+                    profile.displayName,
                     style: theme.textTheme.titleLarge
                         ?.copyWith(fontWeight: FontWeight.w700),
                     textAlign: TextAlign.center,
@@ -235,14 +236,14 @@ class ProfileScreen extends ConsumerWidget {
             Text(
               profile.phone,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
             const SizedBox(height: 2),
             Text(
               profile.email,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
             const SizedBox(height: AppConstants.spacingXS),
@@ -250,7 +251,7 @@ class ProfileScreen extends ConsumerWidget {
               // Base de operación de la plataforma (no es dato personal).
               'Colombia',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textTertiary,
+                color: context.textTertiaryColor,
               ),
             ),
             const SizedBox(height: AppConstants.spacingM),
@@ -339,7 +340,7 @@ class ProfileScreen extends ConsumerWidget {
                       Text(
                         'Conduces para',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                           fontSize: 11,
                         ),
                       ),
@@ -352,7 +353,7 @@ class ProfileScreen extends ConsumerWidget {
                       Text(
                         '${aff.typeLabel} · $employmentLabel',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                         ),
                       ),
                     ],
@@ -446,7 +447,7 @@ class ProfileScreen extends ConsumerWidget {
                     Text(
                       '${profile.totalTrips} viajes completados',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                     ),
                   ],
@@ -516,7 +517,7 @@ class ProfileScreen extends ConsumerWidget {
               label: 'Viajes totales',
               value: profile.totalTrips.toString(),
               icon: Icons.route_rounded,
-              color: AppColors.textSecondary,
+              color: context.textSecondaryColor,
               sublabel: 'histórico',
             ),
             const Divider(height: AppConstants.spacingM),
@@ -555,7 +556,11 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: AppConstants.spacingM),
             _InfoRow(label: 'Marca', value: profile.vehicleBrand),
             _InfoRow(label: 'Modelo', value: profile.vehicleModel),
-            _InfoRow(label: 'Año', value: profile.vehicleYear.toString()),
+            _InfoRow(
+                label: 'Año',
+                value: profile.vehicleYear > 0
+                    ? profile.vehicleYear.toString()
+                    : '—'),
             _InfoRow(
               label: 'Placa',
               value: profile.vehiclePlate,
@@ -679,7 +684,7 @@ class ProfileScreen extends ConsumerWidget {
               Text(
                 'Aún no has subido tus documentos.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
               )
             else
@@ -721,7 +726,7 @@ class ProfileScreen extends ConsumerWidget {
             Text(
               'Los pagos se depositan cada lunes antes de las 10 a.m.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -757,8 +762,8 @@ class ProfileScreen extends ConsumerWidget {
             const Divider(height: 1),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.settings_outlined,
-                  color: AppColors.textSecondary),
+              leading: Icon(Icons.settings_outlined,
+                  color: context.textSecondaryColor),
               title: const Text('Configuración'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => context.push('/settings'),
@@ -766,13 +771,13 @@ class ProfileScreen extends ConsumerWidget {
             const Divider(height: 1),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.info_outline_rounded,
-                  color: AppColors.textSecondary),
+              leading: Icon(Icons.info_outline_rounded,
+                  color: context.textSecondaryColor),
               title: const Text('Versión de la app'),
               trailing: Text(
                 AppConstants.appVersion,
                 style: theme.textTheme.bodySmall
-                    ?.copyWith(color: AppColors.textSecondary),
+                    ?.copyWith(color: context.textSecondaryColor),
               ),
             ),
             const Divider(height: 1),
@@ -881,7 +886,7 @@ class _StatRow extends StatelessWidget {
               Text(
                 sublabel,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                   fontSize: 10,
                 ),
               ),
@@ -892,7 +897,7 @@ class _StatRow extends StatelessWidget {
           value,
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,
-            color: color == AppColors.textSecondary ? AppColors.textPrimary : color,
+            color: color == context.textSecondaryColor ? context.textPrimaryColor : color,
           ),
         ),
       ],
@@ -923,7 +928,7 @@ class _InfoRow extends StatelessWidget {
           Text(
             label,
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: AppColors.textSecondary),
+                ?.copyWith(color: context.textSecondaryColor),
           ),
           Text(
             value,
@@ -973,7 +978,7 @@ class _DocumentRow extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: expired || doc.status == DocumentStatus.rejected
                           ? AppColors.error
-                          : AppColors.textSecondary,
+                          : context.textSecondaryColor,
                       fontSize: 11,
                     ),
                   ),
@@ -1294,8 +1299,8 @@ class _SheetScaffold extends StatelessWidget {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surfaceLight,
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppConstants.radiusXLarge),
         ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/widgets/empty_state.dart';
 import 'package:nexum_client/core/widgets/error_state.dart';
@@ -44,7 +45,7 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
     final address = ref.watch(defaultAddressProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       body: SafeArea(
         child: RefreshIndicator(
           color: AppColors.primary,
@@ -215,11 +216,11 @@ class _LocationHeader extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Entregar en',
                     style: TextStyle(
                       fontSize: 11,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -229,10 +230,10 @@ class _LocationHeader extends StatelessWidget {
                       Flexible(
                         child: Text(
                           address,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
+                            color: context.textPrimaryColor,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -254,12 +255,12 @@ class _LocationHeader extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: AppColors.surfaceVariantLight,
+                color: context.surfaceVariantColor,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.notifications_outlined,
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
                 size: 20,
               ),
             ),
@@ -298,8 +299,8 @@ class _ProminentSearchBar extends StatelessWidget {
           style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
             hintText: 'Restaurantes, tiendas, domicilios...',
-            hintStyle: const TextStyle(
-              color: AppColors.textTertiary,
+            hintStyle: TextStyle(
+              color: context.textTertiaryColor,
               fontSize: 14,
             ),
             prefixIcon: const Icon(
@@ -358,11 +359,11 @@ class _PromoTeaser extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                const Text(
+                Text(
                   'Domicilios desde \$0 · Solo este mes',
                   style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                 ),
               ],
@@ -541,10 +542,10 @@ class _SectionHeader extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: context.textPrimaryColor,
                 letterSpacing: -0.2,
               ),
             ),
@@ -666,7 +667,7 @@ class _CategoryIcon extends StatelessWidget {
               fontSize: 11,
               fontWeight:
                   selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? color : AppColors.textSecondary,
+              color: selected ? color : context.textSecondaryColor,
             ),
           ),
         ],

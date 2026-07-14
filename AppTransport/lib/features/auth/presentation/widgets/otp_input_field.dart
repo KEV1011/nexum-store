@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 
 /// Widget reutilizable de una caja de dígito OTP.
@@ -121,7 +122,7 @@ class _OtpInputFieldState extends State<OtpInputField> {
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+              color: isDark ? AppColors.textOnDark : context.textPrimaryColor,
               height: 1.2,
             ),
             decoration: InputDecoration(
@@ -131,7 +132,7 @@ class _OtpInputFieldState extends State<OtpInputField> {
               filled: true,
               fillColor: widget.hasError
                   ? AppColors.error.withOpacity(0.06)
-                  : (isDark ? AppColors.cardDark : AppColors.surfaceLight),
+                  : (isDark ? AppColors.cardDark : context.surfaceColor),
               enabledBorder: OutlineInputBorder(
                 borderRadius:
                     BorderRadius.circular(AppConstants.radiusMedium),

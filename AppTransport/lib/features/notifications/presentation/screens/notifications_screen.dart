@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 
@@ -127,7 +128,7 @@ class _GroupHeader extends StatelessWidget {
       child: Text(
         label.toUpperCase(),
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
+              color: context.textSecondaryColor,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.8,
             ),
@@ -178,7 +179,7 @@ class _NotifTile extends StatelessWidget {
             border: Border(
               bottom: BorderSide(
                 color:
-                    isDark ? AppColors.outlineDark : AppColors.outlineLight,
+                    isDark ? AppColors.outlineDark : context.outlineColor,
                 width: 0.5,
               ),
             ),
@@ -220,7 +221,7 @@ class _NotifTile extends StatelessWidget {
                         Text(
                           _formatTime(notification.timestamp),
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: AppColors.textTertiary,
+                            color: context.textTertiaryColor,
                             fontSize: 11,
                           ),
                         ),
@@ -230,7 +231,7 @@ class _NotifTile extends StatelessWidget {
                     Text(
                       notification.body,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                         height: 1.4,
                       ),
                     ),
@@ -316,13 +317,13 @@ class _EmptyState extends StatelessWidget {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: AppColors.surfaceVariantLight,
+              color: context.surfaceVariantColor,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               Icons.notifications_off_outlined,
               size: 40,
-              color: AppColors.textTertiary,
+              color: context.textTertiaryColor,
             ),
           ),
           const SizedBox(height: AppConstants.spacingM),
@@ -332,10 +333,10 @@ class _EmptyState extends StatelessWidget {
                 ?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: AppConstants.spacingS),
-          const Text(
+          Text(
             'Aquí aparecerán tus alertas de\nviajes, pagos y documentos.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: context.textSecondaryColor),
           ),
         ],
       ),

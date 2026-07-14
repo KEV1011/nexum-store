@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
@@ -204,15 +205,15 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
 
     return Scaffold(
       backgroundColor:
-          isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+          isDark ? AppColors.backgroundDark : context.backgroundColor,
       appBar: AppBar(
         title: const Text('Verificar código'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor:
-            isDark ? AppColors.textOnDark : AppColors.textPrimary,
+            isDark ? AppColors.textOnDark : context.textPrimaryColor,
         leading: BackButton(
-          color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+          color: isDark ? AppColors.textOnDark : context.textPrimaryColor,
           onPressed: () => safeBack(context, fallback: '/login'),
         ),
       ),
@@ -253,7 +254,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     color:
-                        isDark ? AppColors.textOnDark : AppColors.textPrimary,
+                        isDark ? AppColors.textOnDark : context.textPrimaryColor,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -265,7 +266,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                   textAlign: TextAlign.center,
                   text: TextSpan(
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                     children: [
                       const TextSpan(
@@ -401,14 +402,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                     Text(
                       '¿No recibiste el código? ',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                     ),
                     if (_resendSeconds > 0)
                       Text(
                         'Reenviar en ${_resendSeconds}s',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                           fontWeight: FontWeight.w600,
                         ),
                       )
@@ -419,7 +420,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                           'Reenviar código',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: isLoading
-                                ? AppColors.textSecondary
+                                ? context.textSecondaryColor
                                 : AppColors.primary,
                             fontWeight: FontWeight.w700,
                             decoration: TextDecoration.underline,

@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
@@ -215,10 +216,10 @@ class _OrderTipSectionState extends ConsumerState<_OrderTipSection> {
     return Container(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Column(
@@ -234,9 +235,9 @@ class _OrderTipSectionState extends ConsumerState<_OrderTipSection> {
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'El 100% va para tu repartidor.',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
           ),
           const SizedBox(height: AppConstants.spacingM),
           if (_loading)
@@ -315,10 +316,10 @@ class _RatingCard extends StatelessWidget {
               const SizedBox(height: AppConstants.spacingS),
               Text(
                 order.ratingComment!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
               ),
             ],
@@ -330,7 +331,7 @@ class _RatingCard extends StatelessWidget {
     return _Card(
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -348,7 +349,7 @@ class _RatingCard extends StatelessWidget {
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 13,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                 ),
               ],
@@ -467,12 +468,12 @@ class _DriverCard extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const Text(
+                Text(
                   'Tu repartidor',
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 13,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                 ),
               ],
@@ -607,7 +608,7 @@ class _SummaryRow extends StatelessWidget {
       fontFamily: 'Inter',
       fontSize: emphasize ? 16 : 14,
       fontWeight: emphasize ? FontWeight.w700 : FontWeight.w500,
-      color: emphasize ? null : AppColors.textSecondary,
+      color: emphasize ? null : context.textSecondaryColor,
     );
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -860,10 +861,10 @@ class _Card extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: child,

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 
 class _PromoData {
@@ -111,7 +112,7 @@ class _PromoBannerState extends State<PromoBanner> {
               decoration: BoxDecoration(
                 color: i == _page
                     ? _promos[i].gradient.first
-                    : AppColors.outlineLight,
+                    : context.outlineColor,
                 borderRadius: BorderRadius.circular(3),
               ),
             );

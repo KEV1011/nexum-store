@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
@@ -29,7 +30,7 @@ class ErrandStatusScreen extends ConsumerWidget {
       canPop: false,
       onPopInvokedWithResult: (_, __) => _handleBack(context, ref, errand),
       child: Scaffold(
-        backgroundColor: AppColors.backgroundLight,
+        backgroundColor: context.backgroundColor,
         appBar: AppBar(
           title: const Text(
             'Mi envío',
@@ -208,8 +209,8 @@ class _StatusHeader extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   status.description,
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
+                  style: TextStyle(
+                    color: context.textSecondaryColor,
                     fontSize: 12,
                   ),
                 ),
@@ -243,9 +244,9 @@ class _ProgressTimeline extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+        color: context.surfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
       ),
       child: Row(
         children: List.generate(_steps.length * 2 - 1, (i) {
@@ -256,7 +257,7 @@ class _ProgressTimeline extends StatelessWidget {
             return Expanded(
               child: Container(
                 height: 2,
-                color: done ? AppColors.primary : AppColors.outlineLight,
+                color: done ? AppColors.primary : context.outlineColor,
               ),
             );
           }
@@ -266,7 +267,7 @@ class _ProgressTimeline extends StatelessWidget {
           final active = idx == currentStep;
           final color = (done || active)
               ? AppColors.primary
-              : AppColors.textTertiary;
+              : context.textTertiaryColor;
 
           return Column(
             mainAxisSize: MainAxisSize.min,
@@ -279,12 +280,12 @@ class _ProgressTimeline extends StatelessWidget {
                       ? AppColors.primary
                       : done
                           ? AppColors.primary.withValues(alpha: 0.15)
-                          : AppColors.surfaceVariantLight,
+                          : context.surfaceVariantColor,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: (done || active)
                         ? AppColors.primary
-                        : AppColors.outlineLight,
+                        : context.outlineColor,
                     width: 1.5,
                   ),
                 ),
@@ -304,8 +305,8 @@ class _ProgressTimeline extends StatelessWidget {
                     fontSize: 9.5,
                     fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                     color: (done || active)
-                        ? AppColors.textPrimary
-                        : AppColors.textTertiary,
+                        ? context.textPrimaryColor
+                        : context.textTertiaryColor,
                   ),
                 ),
               ),
@@ -328,9 +329,9 @@ class _MessengerCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+        color: context.surfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
       ),
       child: Row(
         children: [
@@ -351,10 +352,10 @@ class _MessengerCard extends StatelessWidget {
               children: [
                 Text(
                   errand.messengerName ?? 'Mensajero',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 15,
-                    color: AppColors.textPrimary,
+                    color: context.textPrimaryColor,
                   ),
                 ),
                 Row(
@@ -364,16 +365,16 @@ class _MessengerCard extends StatelessWidget {
                     const SizedBox(width: 3),
                     Text(
                       errand.messengerRating?.toStringAsFixed(1) ?? '—',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                     ),
-                    const Text(
+                    Text(
                       '  ·  Tu mensajero Nexum',
                       style: TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
+                          fontSize: 12, color: context.textSecondaryColor),
                     ),
                   ],
                 ),
@@ -411,9 +412,9 @@ class _ErrandDetailCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+        color: context.surfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -442,10 +443,10 @@ class _ErrandDetailCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             errand.description,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               height: 1.4,
-              color: AppColors.textPrimary,
+              color: context.textPrimaryColor,
             ),
           ),
           const SizedBox(height: 14),
@@ -470,7 +471,7 @@ class _ErrandDetailCard extends StatelessWidget {
               icon: Icons.sticky_note_2_rounded,
               label: 'Notas',
               value: errand.notes!,
-              iconColor: AppColors.textTertiary,
+              iconColor: context.textTertiaryColor,
             ),
           ],
         ],
@@ -503,17 +504,17 @@ class _DetailRow extends StatelessWidget {
           width: 64,
           child: Text(
             label,
-            style: const TextStyle(
-                fontSize: 12, color: AppColors.textSecondary),
+            style: TextStyle(
+                fontSize: 12, color: context.textSecondaryColor),
           ),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
+              color: context.textPrimaryColor,
             ),
           ),
         ),
@@ -535,9 +536,9 @@ class _CostCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+        color: context.surfaceColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
       ),
       child: Column(
         children: [
@@ -594,7 +595,7 @@ class _CostCard extends StatelessWidget {
             fontSize: isBold ? 15 : 13,
             fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
             color:
-                isBold ? AppColors.textPrimary : AppColors.textSecondary,
+                isBold ? context.textPrimaryColor : context.textSecondaryColor,
           ),
         ),
         Text(
@@ -608,7 +609,7 @@ class _CostCard extends StatelessWidget {
                     ? AppColors.primary
                     : highlight
                         ? AppColors.secondary
-                        : AppColors.textPrimary,
+                        : context.textPrimaryColor,
           ),
         ),
       ],

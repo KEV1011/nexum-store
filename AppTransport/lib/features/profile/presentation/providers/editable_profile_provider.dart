@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:nexum_driver/core/mock_data/driver_mock.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 
 /// Afiliación del conductor a una empresa/operador (taxi o intermunicipal).
@@ -53,10 +52,10 @@ class DriverAffiliation {
 
 /// Perfil del conductor mostrado y editable en la pantalla de perfil.
 ///
-/// Se siembra con [DriverMock] para que la pantalla pinte de inmediato y, al
-/// construirse el notifier, se reemplaza con el perfil REAL del backend
-/// (`GET /driver/profile`). La edición de identidad/vehículo permanece local
-/// (MVP): el backend aún no persiste ese formulario.
+/// Nace VACÍO (estado honesto, sin datos inventados) y, al construirse el
+/// notifier, se llena con el perfil REAL del backend (`GET /driver/profile`).
+/// La edición de identidad/vehículo permanece local (MVP): el backend aún no
+/// persiste ese formulario completo.
 class EditableProfile {
   const EditableProfile({
     required this.firstName,
@@ -80,24 +79,24 @@ class EditableProfile {
     this.photoUrl,
   });
 
-  factory EditableProfile.fromMock() => const EditableProfile(
-        firstName: DriverMock.firstName,
-        lastName: DriverMock.lastName,
-        phone: DriverMock.phone,
-        email: DriverMock.email,
-        vehicleBrand: DriverMock.vehicleBrand,
-        vehicleModel: DriverMock.vehicleModel,
-        vehicleYear: DriverMock.vehicleYear,
-        vehiclePlate: DriverMock.vehiclePlate,
-        vehicleColor: DriverMock.vehicleColor,
-        vehicleType: DriverMock.vehicleType,
-        rating: DriverMock.rating,
-        totalTrips: DriverMock.totalTrips,
-        isVerified: DriverMock.isVerified,
-        documentNumber: DriverMock.documentNumber,
-        bankName: DriverMock.bankName,
-        bankAccountType: DriverMock.bankAccountType,
-        bankAccountNumber: DriverMock.bankAccountNumber,
+  factory EditableProfile.empty() => const EditableProfile(
+        firstName: '',
+        lastName: '',
+        phone: '',
+        email: '',
+        vehicleBrand: '',
+        vehicleModel: '',
+        vehicleYear: 0,
+        vehiclePlate: '',
+        vehicleColor: '',
+        vehicleType: '',
+        rating: 0,
+        totalTrips: 0,
+        isVerified: false,
+        documentNumber: '',
+        bankName: '',
+        bankAccountType: '',
+        bankAccountNumber: '',
       );
 
   final String firstName;
@@ -122,7 +121,10 @@ class EditableProfile {
   /// URL del avatar subido al backend (null = sin foto, se muestran iniciales).
   final String? photoUrl;
 
-  String get fullName => '$firstName $lastName';
+  String get fullName => '$firstName $lastName'.trim();
+
+  /// Nombre para encabezados: nunca vacío aunque el perfil aún no cargue.
+  String get displayName => fullName.isEmpty ? 'Conductor' : fullName;
 
   String get initials {
     final parts = fullName.trim().split(RegExp(r'\s+'));
@@ -180,14 +182,14 @@ class EditableProfile {
 }
 
 class EditableProfileNotifier extends StateNotifier<EditableProfile> {
-  EditableProfileNotifier(this._client) : super(EditableProfile.fromMock()) {
+  EditableProfileNotifier(this._client) : super(EditableProfile.empty()) {
     _load();
   }
 
   final DioClient _client;
 
-  /// Carga el perfil REAL del backend y reemplaza el seed mock. Si falla (sin
-  /// conexión), se conserva el seed para que la pantalla no quede vacía.
+  /// Carga el perfil REAL del backend. Si falla (sin conexión), la pantalla
+  /// muestra el estado vacío honesto — nunca datos inventados.
   Future<void> _load() async {
     try {
       final res = await _client.get<Map<String, dynamic>>('/driver/profile');

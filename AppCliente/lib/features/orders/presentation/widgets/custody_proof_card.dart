@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/date_formatter.dart';
@@ -24,10 +25,10 @@ class CustodyProofCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Column(
@@ -183,7 +184,7 @@ class _ProofSlot extends StatelessWidget {
             fontFamily: 'Inter',
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: captured ? null : AppColors.textTertiary,
+            color: captured ? null : context.textTertiaryColor,
           ),
         ),
         Row(
@@ -193,7 +194,7 @@ class _ProofSlot extends StatelessWidget {
                   ? Icons.check_circle_rounded
                   : Icons.hourglass_empty_rounded,
               size: 12,
-              color: captured ? AppColors.primary : AppColors.textTertiary,
+              color: captured ? AppColors.primary : context.textTertiaryColor,
             ),
             const SizedBox(width: 3),
             Text(
@@ -202,7 +203,7 @@ class _ProofSlot extends StatelessWidget {
                 fontFamily: 'Inter',
                 fontSize: 11,
                 color:
-                    captured ? AppColors.primary : AppColors.textTertiary,
+                    captured ? AppColors.primary : context.textTertiaryColor,
               ),
             ),
           ],
@@ -275,8 +276,8 @@ class _RealPhoto extends StatelessWidget {
               fit: BoxFit.cover,
               loadingBuilder: (ctx, child, progress) => progress == null
                   ? child
-                  : const ColoredBox(
-                      color: AppColors.surfaceVariantLight,
+                  : ColoredBox(
+                      color: context.surfaceVariantColor,
                       child: Center(
                         child: SizedBox(
                           width: 18,
@@ -531,7 +532,7 @@ class _PendingSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surfaceVariantLight,
+        color: context.surfaceVariantColor,
         borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
       ),
       child: Center(
@@ -540,7 +541,7 @@ class _PendingSlot extends StatelessWidget {
               ? Icons.camera_alt_outlined
               : Icons.delivery_dining_outlined,
           size: 28,
-          color: AppColors.textTertiary,
+          color: context.textTertiaryColor,
         ),
       ),
     );

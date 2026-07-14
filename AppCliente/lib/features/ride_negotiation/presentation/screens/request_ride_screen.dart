@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/screens/ride_bids_screen.dart';
@@ -94,11 +95,11 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
     final state = ref.watch(rideNegotiationProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         title: const Text('Pon tu precio'),
-        backgroundColor: AppColors.surfaceLight,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: context.surfaceColor,
+        foregroundColor: context.textPrimaryColor,
         elevation: 0,
       ),
       body: ListView(
@@ -114,7 +115,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
                   style: TextStyle(fontWeight: FontWeight.w600)),
               const Spacer(),
               Text('${_distanceKm.toStringAsFixed(0)} km · $_eta min',
-                  style: const TextStyle(color: AppColors.textSecondary)),
+                  style: TextStyle(color: context.textSecondaryColor)),
             ],
           ),
           Slider(
@@ -180,7 +181,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
           ),
           const SizedBox(height: 12),
           _field(_notes, 'Notas para el conductor (opcional)',
-              Icons.notes_rounded, AppColors.textSecondary,
+              Icons.notes_rounded, context.textSecondaryColor,
               maxLines: 2),
           const SizedBox(height: 24),
           SizedBox(
@@ -205,11 +206,11 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const Center(
+          Center(
             child: Text(
               'Los conductores cercanos verán tu oferta y podrán aceptarla\no proponerte otro precio.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+              style: TextStyle(fontSize: 12, color: context.textTertiaryColor),
             ),
           ),
         ],
@@ -252,14 +253,14 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
           labelText: label,
           prefixIcon: Icon(icon, color: iconColor, size: 20),
           filled: true,
-          fillColor: AppColors.surfaceLight,
+          fillColor: context.surfaceColor,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.outlineLight),
+            borderSide: BorderSide(color: context.outlineColor),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.outlineLight),
+            borderSide: BorderSide(color: context.outlineColor),
           ),
         ),
       );

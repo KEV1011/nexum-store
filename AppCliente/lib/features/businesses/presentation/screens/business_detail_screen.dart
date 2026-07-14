@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -159,7 +160,7 @@ class _BusinessAppBar extends StatelessWidget {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.surfaceLight,
+                          color: context.surfaceColor,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: _InfoRow(business: business),
@@ -204,11 +205,11 @@ class _InfoRow extends StatelessWidget {
         const SizedBox(width: 2),
         Text(
           business.rating.toStringAsFixed(1),
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Inter',
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+            color: context.textPrimaryColor,
           ),
         ),
         _dot(),
@@ -229,12 +230,12 @@ class _InfoRow extends StatelessWidget {
     fontFamily: 'Inter',
     fontSize: 13,
     fontWeight: FontWeight.w600,
-    color: AppColors.textPrimary,
+    color: context.textPrimaryColor,
   );
 
-  Widget _dot() => const Padding(
+  Widget _dot() => Padding(
         padding: EdgeInsets.symmetric(horizontal: 6),
-        child: Text('•', style: TextStyle(color: AppColors.textSecondary)),
+        child: Text('•', style: TextStyle(color: context.textSecondaryColor)),
       );
 }
 
