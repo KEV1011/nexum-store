@@ -565,10 +565,15 @@ export async function getClientTripHistory(clientId: string, limit = 50): Promis
   });
 }
 
-export async function getClientTripRaw(tripId: string): Promise<{ clientId: string } | undefined> {
-  const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { passengerId: true } });
+export async function getClientTripRaw(
+  tripId: string,
+): Promise<{ clientId: string; driverId: string | null } | undefined> {
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    select: { passengerId: true, driverId: true },
+  });
   if (!trip?.passengerId) return undefined;
-  return { clientId: trip.passengerId };
+  return { clientId: trip.passengerId, driverId: trip.driverId };
 }
 
 /**

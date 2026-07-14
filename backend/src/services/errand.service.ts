@@ -6,10 +6,20 @@ import {
   ErrandRequestDTO,
 } from '../types';
 import { DriverStatus } from '@prisma/client';
-import { ERRAND_SERVICE_FEE } from '../config/constants';
+import { ERRAND_SERVICE_FEE, COMMISSION_RATE } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
-import { sendPushToClient } from './push.service';
+import { sendPushToClient, sendPushToDriver } from './push.service';
+import { recordCompletedTrip } from './earnings.service';
+
+// Inyectado por ws.handler al arrancar (mismo patrón que los demás servicios):
+// avisa al mandadero asignado cuando el cliente cancela su mandado.
+let _errandSendToDriver: ((driverId: string, msg: Record<string, unknown>) => void) | null = null;
+export function registerErrandSendToDriver(
+  fn: (driverId: string, msg: Record<string, unknown>) => void,
+): void {
+  _errandSendToDriver = fn;
+}
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type ErrandCallback = (errandId: string, errand: ClientErrandDTO) => void;
@@ -164,6 +174,9 @@ export async function updateErrandStatus(
 ): Promise<ClientErrandDTO | null> {
   const existing = await prisma.errand.findUnique({ where: { id: errandId } });
   if (!existing) return null;
+  // Un mandado cerrado (entregado o cancelado) no admite más transiciones:
+  // evita revivir un cancelado y que un doble "delivered" liquide dos veces.
+  if (existing.status === 'DELIVERED' || existing.status === 'CANCELLED') return null;
 
   const updated = await prisma.errand.update({
     where: { id: errandId },
@@ -177,6 +190,22 @@ export async function updateErrandStatus(
   _notify(errandId, dto);
 
   if (status === 'delivered') {
+    // Liquidación real del mandado: el serviceFee (menos comisión) alimenta la
+    // billetera del mandadero, igual que viajes/pedidos/fletes.
+    if (existing.driverId) {
+      const commission = Math.round(existing.serviceFee * COMMISSION_RATE);
+      recordCompletedTrip(
+        {
+          tripId: errandId,
+          origin: existing.pickupAddress,
+          destination: existing.dropoffAddress,
+          grossFare: existing.serviceFee,
+          netEarning: existing.serviceFee - commission,
+          completedAt: new Date().toISOString(),
+        },
+        existing.driverId,
+      );
+    }
     void sendPushToClient(existing.userId, {
       title: 'Mandado entregado',
       body: 'Tu mandado fue entregado. ¡Gracias por usar Nexum!',
@@ -189,10 +218,32 @@ export async function updateErrandStatus(
 export async function cancelClientErrand(clientId: string, errandId: string): Promise<boolean> {
   const errand = await prisma.errand.findUnique({ where: { id: errandId } });
   if (!errand || errand.userId !== clientId) return false;
-  if (!['SEARCHING', 'ACCEPTED'].includes(errand.status)) return false;
 
-  const updated = await prisma.errand.update({ where: { id: errandId }, data: { status: 'CANCELLED' } });
+  // Guard atómico de estado: si el mandadero avanzó (SHOPPING/ON_THE_WAY) o el
+  // mandado ya cerró entre la lectura y el update, la cancelación no aplica.
+  const res = await prisma.errand.updateMany({
+    where: { id: errandId, userId: clientId, status: { in: ['SEARCHING', 'ACCEPTED'] } },
+    data: { status: 'CANCELLED' },
+  });
+  if (res.count === 0) return false;
+
+  const updated = await prisma.errand.findUniqueOrThrow({ where: { id: errandId } });
   _notify(errandId, _toDTO(updated));
+
+  // Si ya había mandadero asignado: se le avisa (WS + push, la app ya escucha
+  // `errand_cancelled`) y se libera — estaba ON_TRIP desde que aceptó y sin
+  // esto quedaba colgado sin recibir nuevos servicios.
+  if (errand.status === 'ACCEPTED' && errand.driverId) {
+    _errandSendToDriver?.(errand.driverId, { type: 'errand_cancelled', errandId });
+    void sendPushToDriver(errand.driverId, {
+      title: 'Mandado cancelado',
+      body: 'El cliente canceló el mandado que tenías asignado.',
+      data: { type: 'errand_cancelled', errandId },
+    });
+    await prisma.driver
+      .update({ where: { id: errand.driverId }, data: { status: DriverStatus.ONLINE } })
+      .catch(() => { /* noop */ });
+  }
   return true;
 }
 
@@ -213,10 +264,15 @@ export async function getClientErrandById(clientId: string, errandId: string): P
   return _toDTO(errand);
 }
 
-export async function getClientErrandRaw(errandId: string): Promise<{ clientId: string } | undefined> {
-  const errand = await prisma.errand.findUnique({ where: { id: errandId }, select: { userId: true } });
+export async function getClientErrandRaw(
+  errandId: string,
+): Promise<{ clientId: string; driverId: string | null } | undefined> {
+  const errand = await prisma.errand.findUnique({
+    where: { id: errandId },
+    select: { userId: true, driverId: true },
+  });
   if (!errand) return undefined;
-  return { clientId: errand.userId };
+  return { clientId: errand.userId, driverId: errand.driverId };
 }
 
 export function subscribeClientErrand(errandId: string, cb: ErrandCallback): () => void {
