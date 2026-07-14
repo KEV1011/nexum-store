@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 
@@ -7,6 +8,9 @@ import 'package:nexum_driver/core/network/dio_client.dart';
 /// - Disponibles: GET /driver/freight/available → { freights, vehicles }.
 ///   Toma con POST /driver/freight/:id/take { vehicleId } (elige camión).
 /// - Asignados: GET /driver/freights (ACCEPTED/IN_PROGRESS/COMPLETED).
+///   El ciclo se maneja desde aquí: Iniciar viaje (in_progress) y Completar
+///   entrega (completed, liquida el neto) vía POST /driver/freight/:id/status —
+///   aplica igual si él tomó el flete o si la flota se lo asignó del portal.
 class DriverFreightsScreen extends StatefulWidget {
   const DriverFreightsScreen({super.key});
 
@@ -107,6 +111,64 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
     } finally {
       if (mounted) setState(() => _busyId = null);
     }
+  }
+
+  /// Inicia la ruta o confirma la entrega del flete asignado.
+  Future<void> _updateStatus(Map<String, dynamic> f, String status) async {
+    final id = f['id'] as String;
+    setState(() => _busyId = id);
+    try {
+      final res = await DioClient().post<Map<String, dynamic>>(
+        '/driver/freight/$id/status',
+        data: {'status': status},
+      );
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      if (status == 'completed') {
+        final net = (data?['netEarning'] as num?)?.toDouble();
+        _snack(
+          net != null
+              ? 'Flete completado. Tu neto: \$${net.toStringAsFixed(0)}'
+              : 'Flete completado.',
+          error: false,
+        );
+      } else {
+        _snack('Viaje iniciado. ¡Buen camino!', error: false);
+      }
+      await _load();
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      final msg = body is Map<String, dynamic> ? body['error'] as String? : null;
+      _snack(msg ?? 'No se pudo actualizar el flete.');
+    } catch (_) {
+      _snack('No se pudo actualizar el flete.');
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
+  /// La entrega liquida dinero: se confirma antes de enviarla.
+  Future<void> _confirmComplete(Map<String, dynamic> f) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Completar el flete?'),
+        content: const Text(
+          'Confirma que la carga fue entregada en su destino. '
+          'Al completar se liquida tu ganancia.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Aún no'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sí, entregada'),
+          ),
+        ],
+      ),
+    );
+    if (ok ?? false) await _updateStatus(f, 'completed');
   }
 
   void _snack(String msg, {bool error = true}) {
@@ -223,6 +285,7 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
     final price = (f['offeredPrice'] as num?)?.toDouble() ?? 0;
     final net = (f['netEarning'] as num?)?.toDouble();
     final phone = f['clientPhone'] as String?;
+    final busy = _busyId == f['id'];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -281,6 +344,40 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: Colors.green.shade700)),
+          ],
+          // El conductor maneja el ciclo desde la app: iniciar y completar.
+          if (status == 'ACCEPTED' || status == 'IN_PROGRESS') ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: busy
+                    ? null
+                    : () => status == 'ACCEPTED'
+                        ? _updateStatus(f, 'in_progress')
+                        : _confirmComplete(f),
+                icon: busy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(
+                        status == 'ACCEPTED'
+                            ? Icons.play_arrow_rounded
+                            : Icons.flag_rounded,
+                        size: 18),
+                label: Text(busy
+                    ? 'Enviando…'
+                    : status == 'ACCEPTED'
+                        ? 'Iniciar viaje'
+                        : 'Completar entrega'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: status == 'ACCEPTED'
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF059669),
+                ),
+              ),
+            ),
           ],
         ],
       ),
