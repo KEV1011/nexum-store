@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { getDriverProfile } from './driver-profile.service';
-import { sendPushToDriver } from './push.service';
+import { sendPushToDriver, sendPushToClient } from './push.service';
 import {
   routeRequiresLicensedOperator,
   getIntercityRoute,
@@ -383,6 +383,15 @@ export async function driverAcceptIntercity(
 
   const dto = _toDTO(updated as DbBooking);
   _notify(bookingId, dto);
+
+  // Push FCM en paralelo al WS: el pasajero se entera aunque tenga la app cerrada.
+  void sendPushToClient(updated.userId, {
+    title: hasCounter ? 'Contraoferta de un conductor' : 'Viaje intermunicipal confirmado',
+    body: hasCounter
+      ? `${driverName} ofrece llevarte por $${Math.round(counterFare!)}. Entra a confirmar o rechazar.`
+      : `${driverName} te llevará. Revisa los detalles en la app.`,
+    data: { type: 'intercity_update', bookingId },
+  });
   console.log(`[Intercity] Driver ${driverId} accepted booking ${bookingId}`);
   return dto;
 }
