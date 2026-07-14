@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
-  Building2, Car, Users, Radio, RefreshCw, LogOut, MapPin, ShieldCheck, ShieldAlert, Loader2,
-  Route, Wallet, Download,
+  Building2, Car, RefreshCw, LogOut, MapPin, ShieldCheck, ShieldAlert, Loader2,
+  Route, Wallet, Download, LayoutDashboard, UserCog, TrendingUp, Truck, Bus,
 } from 'lucide-react'
 import { createOperatorApi } from './api'
 import FleetMap, { type FleetMapPoint } from './FleetMap'
@@ -283,6 +283,8 @@ function Dashboard({ token, operator, onLogout }: {
   const [error, setError] = useState<string | null>(null)
   // Se incrementa al afiliar un conductor para que Vehículos recargue su selector.
   const [teamVersion, setTeamVersion] = useState(0)
+  // Sección activa de la torre de control (sidebar / chips móviles).
+  const [section, setSection] = useState('torre')
   const expired = useRef(false)
 
   const api = useMemo(
@@ -361,152 +363,255 @@ function Dashboard({ token, operator, onLogout }: {
   const isIntercity = operator?.type === 'INTERCITY' || operator?.type === 'MIXED'
   const isCargo = operator?.type === 'CARGA' || operator?.type === 'MIXED'
 
+  // Torre de control: estados de la flota en vivo (mismo feed de /operator/fleet).
+  const available = fleet.filter((f) => f.online && f.status === 'ONLINE').length
+  const onTrip = fleet.filter((f) => f.status === 'ON_TRIP').length
+
+  const nav = [
+    { key: 'torre', label: 'Torre de control', icon: LayoutDashboard, show: true },
+    { key: 'equipo', label: 'Equipo y vehículos', icon: UserCog, show: true },
+    { key: 'viajes', label: 'Viajes y liquidación', icon: Route, show: true },
+    { key: 'finanzas', label: 'Finanzas', icon: TrendingUp, show: true },
+    { key: 'carga', label: 'Fletes de carga', icon: Truck, show: isCargo },
+    { key: 'intermunicipal', label: 'Intermunicipal', icon: Bus, show: isIntercity },
+  ].filter((n) => n.show)
+
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
-              <Building2 className="w-5 h-5 text-white" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-bold text-slate-900 text-sm truncate">{operator?.legalName ?? 'Mi empresa'}</p>
-              <div className="flex items-center gap-1.5">
-                {operator?.isVerified ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
-                    <ShieldCheck className="w-3 h-3" /> Verificada
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-600">
-                    <ShieldAlert className="w-3 h-3" /> Pendiente de verificación
-                  </span>
-                )}
-              </div>
-            </div>
+    <div className="min-h-screen bg-slate-100 md:flex">
+      {/* ── Sidebar (escritorio) — torre de control estilo centro de operaciones ── */}
+      <aside className="hidden md:flex md:flex-col w-60 shrink-0 bg-slate-950 text-slate-300 sticky top-0 h-screen">
+        <div className="px-4 py-5 flex items-center gap-3 border-b border-slate-800">
+          <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
+            <Building2 className="w-5 h-5 text-white" />
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => load(true)} disabled={refreshing}
-              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-700 transition-colors disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
-            <button onClick={onLogout} className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-600 transition-colors">
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          <Stat icon={Car} label="Vehículos" value={counts.vehicles} color="bg-blue-50 text-blue-600" />
-          <Stat icon={Users} label="Conductores" value={counts.drivers} color="bg-violet-50 text-violet-600" />
-          <Stat icon={Radio} label="En línea" value={online} color="bg-emerald-50 text-emerald-600" />
-        </div>
-
-        {/* Fleet */}
-        <section>
-          <h2 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-emerald-600" /> Flota en vivo
-            <span className="text-slate-400 font-normal">({fleet.length})</span>
-          </h2>
-
-          {mapPoints.length > 0 && <FleetMap points={mapPoints} />}
-
-          {loading ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-400 text-sm">Cargando flota…</div>
-          ) : error ? (
-            <div className="bg-white border border-red-100 rounded-xl p-6 text-center">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          ) : fleet.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
-              <Car className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-              <p className="font-medium text-slate-600">Aún no tienes conductores afiliados</p>
-              <p className="text-slate-400 text-sm mt-1">Afilia conductores e ingresa tu flota para verla aquí en tiempo real.</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {fleet.map((f) => <FleetRow key={f.driverId} f={f} />)}
-            </div>
-          )}
-        </section>
-
-        {/* Onboarding: conductores y vehículos */}
-        <DriversManager api={api} onChanged={() => { setTeamVersion((v) => v + 1); void load() }} />
-        <VehiclesManager api={api} refreshKey={teamVersion} />
-
-        {/* Viajes de la flota */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-              <Route className="w-4 h-4 text-emerald-600" /> Viajes de la flota
-              <span className="text-slate-400 font-normal">({tripsSummary.total})</span>
-            </h2>
-            {tripsSummary.total > 0 && (
-              <button
-                onClick={downloadCsv}
-                disabled={downloading}
-                className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 transition-colors disabled:opacity-60"
-              >
-                {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                Exportar CSV
-              </button>
+          <div className="min-w-0">
+            <p className="font-bold text-white text-sm truncate">{operator?.legalName ?? 'Mi empresa'}</p>
+            {operator?.isVerified ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+                <ShieldCheck className="w-3 h-3" /> Verificada
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400">
+                <ShieldAlert className="w-3 h-3" /> En verificación
+              </span>
             )}
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-              <div className="inline-flex p-2 rounded-lg bg-emerald-50 text-emerald-600 mb-2"><Route className="w-4 h-4" /></div>
-              <p className="text-2xl font-bold text-slate-900">{tripsSummary.completed}</p>
-              <p className="text-xs text-slate-500 mt-0.5">Viajes completados</p>
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {nav.map((n) => (
+            <button
+              key={n.key}
+              onClick={() => setSection(n.key)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                section === n.key
+                  ? 'bg-emerald-600/15 text-emerald-400 border border-emerald-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
+              }`}
+            >
+              <n.icon className="w-4 h-4 shrink-0" />
+              <span className="truncate">{n.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="px-3 py-4 border-t border-slate-800 flex items-center gap-2">
+          <button onClick={() => load(true)} disabled={refreshing}
+            title="Actualizar datos"
+            className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-slate-700 text-slate-300 text-xs font-semibold hover:border-emerald-500 hover:text-emerald-400 transition-colors disabled:opacity-50">
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /> Actualizar
+          </button>
+          <button onClick={onLogout} title="Cerrar sesión"
+            className="p-2 rounded-lg border border-slate-700 text-slate-400 hover:border-red-400 hover:text-red-400 transition-colors">
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex-1 min-w-0">
+        {/* ── Header móvil + navegación por chips ── */}
+        <header className="md:hidden bg-slate-950 text-white sticky top-0 z-10">
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center shrink-0">
+                <Building2 className="w-4 h-4 text-white" />
+              </div>
+              <p className="font-bold text-sm truncate">{operator?.legalName ?? 'Mi empresa'}</p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-              <div className="inline-flex p-2 rounded-lg bg-blue-50 text-blue-600 mb-2"><Wallet className="w-4 h-4" /></div>
-              <p className="text-2xl font-bold text-slate-900">{formatCOP(tripsSummary.grossFare)}</p>
-              <p className="text-xs text-slate-500 mt-0.5">Facturación (completados)</p>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => load(true)} disabled={refreshing} className="p-2 rounded-lg text-slate-300 hover:text-white">
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+              <button onClick={onLogout} className="p-2 rounded-lg text-slate-300 hover:text-red-400">
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </div>
+          <nav className="px-3 pb-2.5 flex gap-1.5 overflow-x-auto">
+            {nav.map((n) => (
+              <button key={n.key} onClick={() => setSection(n.key)}
+                className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                  section === n.key ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'
+                }`}>
+                <n.icon className="w-3.5 h-3.5" /> {n.label}
+              </button>
+            ))}
+          </nav>
+        </header>
 
-          {loading ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-400 text-sm">Cargando viajes…</div>
-          ) : trips.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
-              <Route className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-              <p className="font-medium text-slate-600">Aún no hay viajes registrados</p>
-              <p className="text-slate-400 text-sm mt-1">Cuando tus conductores afiliados completen carreras, aparecerán aquí para tu liquidación.</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {trips.map((t) => <TripRow key={t.id} t={t} />)}
-            </div>
+        <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+          {/* ══ TORRE DE CONTROL ══ */}
+          {section === 'torre' && (
+            <>
+              <div className="flex items-center justify-between">
+                <h1 className="font-bold text-slate-900 text-lg">Torre de control</h1>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> EN VIVO · 10 s
+                </span>
+              </div>
+
+              {/* KPIs de operación en tiempo real */}
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-2.5">
+                <Kpi label="En línea" value={online} tone="emerald" />
+                <Kpi label="Disponibles" value={available} tone="emerald" />
+                <Kpi label="En viaje" value={onTrip} tone="blue" />
+                <Kpi label="Conductores" value={counts.drivers} tone="slate" />
+                <Kpi label="Vehículos" value={counts.vehicles} tone="slate" />
+                <Kpi label="Completados" value={tripsSummary.completed} tone="slate" />
+              </div>
+
+              <section>
+                <h2 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-emerald-600" /> Mapa de la flota
+                  <span className="text-slate-400 font-normal">({fleet.length})</span>
+                </h2>
+
+                {mapPoints.length > 0 && <FleetMap points={mapPoints} />}
+
+                {loading ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-400 text-sm">Cargando flota…</div>
+                ) : error ? (
+                  <div className="bg-white border border-red-100 rounded-xl p-6 text-center">
+                    <p className="text-sm text-red-600">{error}</p>
+                  </div>
+                ) : fleet.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
+                    <Car className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <p className="font-medium text-slate-600">Aún no tienes conductores afiliados</p>
+                    <p className="text-slate-400 text-sm mt-1">Afilia conductores en «Equipo y vehículos» para verlos aquí en tiempo real.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 mt-3">
+                    {fleet.map((f) => <FleetRow key={f.driverId} f={f} />)}
+                  </div>
+                )}
+              </section>
+            </>
           )}
-        </section>
 
-        <FinancePanel api={api} />
+          {/* ══ EQUIPO Y VEHÍCULOS ══ */}
+          {section === 'equipo' && (
+            <>
+              <h1 className="font-bold text-slate-900 text-lg">Equipo y vehículos</h1>
+              <DriversManager api={api} onChanged={() => { setTeamVersion((v) => v + 1); void load() }} />
+              <VehiclesManager api={api} refreshKey={teamVersion} />
+            </>
+          )}
 
-        {isCargo && <FreightManager api={api} token={token ?? ''} />}
+          {/* ══ VIAJES Y LIQUIDACIÓN ══ */}
+          {section === 'viajes' && (
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h1 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                  Viajes y liquidación
+                  <span className="text-slate-400 font-normal text-sm">({tripsSummary.total})</span>
+                </h1>
+                {tripsSummary.total > 0 && (
+                  <button
+                    onClick={downloadCsv}
+                    disabled={downloading}
+                    className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 transition-colors disabled:opacity-60"
+                  >
+                    {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    Exportar CSV
+                  </button>
+                )}
+              </div>
 
-        {isIntercity && <SchedulesManager api={api} />}
-        {isIntercity && <RoutesManager api={api} />}
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                  <div className="inline-flex p-2 rounded-lg bg-emerald-50 text-emerald-600 mb-2"><Route className="w-4 h-4" /></div>
+                  <p className="text-2xl font-bold text-slate-900">{tripsSummary.completed}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Viajes completados</p>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                  <div className="inline-flex p-2 rounded-lg bg-blue-50 text-blue-600 mb-2"><Wallet className="w-4 h-4" /></div>
+                  <p className="text-2xl font-bold text-slate-900">{formatCOP(tripsSummary.grossFare)}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Facturación (completados)</p>
+                </div>
+              </div>
 
-        <footer className="text-center py-2">
-          <p className="text-xs text-slate-400">Los datos se actualizan automáticamente cada 10 s.</p>
-        </footer>
+              {loading ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-400 text-sm">Cargando viajes…</div>
+              ) : trips.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
+                  <Route className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <p className="font-medium text-slate-600">Aún no hay viajes registrados</p>
+                  <p className="text-slate-400 text-sm mt-1">Cuando tus conductores afiliados completen carreras, aparecerán aquí para tu liquidación.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {trips.map((t) => <TripRow key={t.id} t={t} />)}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ══ FINANZAS ══ */}
+          {section === 'finanzas' && (
+            <>
+              <h1 className="font-bold text-slate-900 text-lg">Finanzas</h1>
+              <FinancePanel api={api} />
+            </>
+          )}
+
+          {/* ══ CARGA ══ */}
+          {section === 'carga' && isCargo && (
+            <>
+              <h1 className="font-bold text-slate-900 text-lg">Fletes de carga</h1>
+              <FreightManager api={api} token={token ?? ''} />
+            </>
+          )}
+
+          {/* ══ INTERMUNICIPAL ══ */}
+          {section === 'intermunicipal' && isIntercity && (
+            <>
+              <h1 className="font-bold text-slate-900 text-lg">Intermunicipal</h1>
+              <SchedulesManager api={api} />
+              <RoutesManager api={api} />
+            </>
+          )}
+
+          <footer className="text-center py-2">
+            <p className="text-xs text-slate-400">Los datos se actualizan automáticamente cada 10 s.</p>
+          </footer>
+        </div>
       </div>
     </div>
   )
 }
 
-function Stat({ icon: Icon, label, value, color }: {
-  icon: React.ElementType; label: string; value: number; color: string
-}) {
+/** KPI de la torre de control: número grande + etiqueta, tono por estado. */
+function Kpi({ label, value, tone }: { label: string; value: number; tone: 'emerald' | 'blue' | 'slate' }) {
+  const tones = {
+    emerald: 'text-emerald-600',
+    blue: 'text-blue-600',
+    slate: 'text-slate-900',
+  } as const
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-      <div className={`inline-flex p-2 rounded-lg ${color} mb-2`}><Icon className="w-4 h-4" /></div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-3 py-2.5">
+      <p className={`text-xl font-bold tabular-nums ${tones[tone]}`}>{value}</p>
+      <p className="text-[11px] text-slate-500 mt-0.5 truncate">{label}</p>
     </div>
   )
 }
