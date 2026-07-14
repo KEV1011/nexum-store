@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/auth/presentation/widgets/otp_input_field.dart';
@@ -212,7 +213,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
             isDark ? AppColors.textOnDark : AppColors.textPrimary,
         leading: BackButton(
           color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
-          onPressed: () => context.pop(),
+          onPressed: () => safeBack(context, fallback: '/login'),
         ),
       ),
       body: SafeArea(

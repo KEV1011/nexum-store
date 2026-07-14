@@ -8,6 +8,7 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/utils/fare_calculator.dart';
+import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/features/earnings/presentation/providers/'
     'earnings_breakdown_provider.dart';
 import 'package:nexum_driver/shared/widgets/skeleton_loader.dart';
@@ -175,7 +176,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
         title: const Text('Mis ganancias'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => safeBack(context),
         ),
         actions: [
           IconButton(

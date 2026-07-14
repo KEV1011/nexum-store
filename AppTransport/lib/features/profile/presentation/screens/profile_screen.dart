@@ -11,6 +11,7 @@ import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
+import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/driver_status/domain/entities/driver_status_entity.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
@@ -72,7 +73,7 @@ class ProfileScreen extends ConsumerWidget {
         title: const Text('Mi perfil'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => context.pop(),
+          onPressed: () => safeBack(context),
         ),
         actions: [
           IconButton(
