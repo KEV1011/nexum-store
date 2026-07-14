@@ -512,7 +512,8 @@ if (TOKEN) { boot(); }
 fetch('/health').then((r) => r.json()).then((h) => {
   document.getElementById('diag').textContent =
     'build ' + (h.commit || '?') + ' · OTP usuarios: ' + (h.otp || '?') +
-    ' · OTP admin: ' + (h.otpAdmin || '?') + ' · BD: ' + (h.db ? 'ok' : 'sin conexión');
+    ' · OTP admin: ' + (h.otpAdmin || '?') + ' · BD: ' + (h.db ? 'ok' : 'sin conexión') +
+    ' · fotos: ' + (h.uploads || '?') + ' · push: ' + (h.push || '?');
 }).catch(() => {});
 
 function api(path, opts = {}) {

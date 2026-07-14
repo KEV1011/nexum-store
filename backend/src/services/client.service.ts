@@ -19,6 +19,7 @@ import { requestOtp, validateOtp } from './otp.service';
 import { normalizeColombianPhone } from './auth.service';
 import { calcFare } from '../lib/fare';
 import { recordCompletedTrip } from './earnings.service';
+import { sendPushToClient } from './push.service';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -274,6 +275,15 @@ export async function acceptClientOrder(
     .update({ where: { id: driverId }, data: { status: 'ON_TRIP' } })
     .catch(() => { /* noop */ });
 
+  // Push FCM en paralelo al WS: el cliente se entera aunque tenga la app cerrada.
+  if (updated.userId) {
+    void sendPushToClient(updated.userId, {
+      title: 'Repartidor asignado',
+      body: `${driverName} recogerá tu pedido en ${updated.business?.name ?? 'el negocio'}.`,
+      data: { type: 'order_accepted', orderId },
+    });
+  }
+
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
   for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
   return summary;
@@ -356,6 +366,20 @@ export async function updateOrderStatusByDriver(
     await prisma.driver
       .update({ where: { id: driverId }, data: { status: 'ONLINE' } })
       .catch(() => { /* noop */ });
+  }
+
+  if (updated.userId && status === 'in_transit') {
+    void sendPushToClient(updated.userId, {
+      title: 'Tu pedido va en camino',
+      body: `${updated.business?.name ?? 'El negocio'} despachó tu pedido.`,
+      data: { type: 'order_in_transit', orderId },
+    });
+  } else if (updated.userId && status === 'delivered') {
+    void sendPushToClient(updated.userId, {
+      title: 'Pedido entregado',
+      body: 'Tu pedido fue entregado. ¡Gracias por comprar con Nexum!',
+      data: { type: 'order_delivered', orderId },
+    });
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);

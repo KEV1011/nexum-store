@@ -9,6 +9,7 @@ import { DriverStatus } from '@prisma/client';
 import { ERRAND_SERVICE_FEE } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
+import { sendPushToClient } from './push.service';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type ErrandCallback = (errandId: string, errand: ClientErrandDTO) => void;
@@ -142,6 +143,13 @@ export async function acceptClientErrand(
 
   const dto = _toDTO(updated);
   _notify(errandId, dto);
+
+  // Push FCM en paralelo al WS: el cliente se entera aunque tenga la app cerrada.
+  void sendPushToClient(existing.userId, {
+    title: 'Mandadero asignado',
+    body: `${driverName} se encargará de tu mandado.`,
+    data: { type: 'errand_accepted', errandId },
+  });
   return dto;
 }
 
@@ -163,6 +171,14 @@ export async function updateErrandStatus(
   });
   const dto = _toDTO(updated);
   _notify(errandId, dto);
+
+  if (status === 'delivered') {
+    void sendPushToClient(existing.userId, {
+      title: 'Mandado entregado',
+      body: 'Tu mandado fue entregado. ¡Gracias por usar Nexum!',
+      data: { type: 'errand_delivered', errandId },
+    });
+  }
   return dto;
 }
 

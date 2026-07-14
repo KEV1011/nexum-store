@@ -10,6 +10,7 @@ import { FreightStatus, VehicleType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { COMMISSION_RATE } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
+import { sendPushToDriver, sendPushToClient } from './push.service';
 
 export class FreightError extends Error {}
 
@@ -130,6 +131,26 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
       })
       .catch(() => undefined);
   }
+
+  // Push FCM a los conductores con camión activo de este tipo: pueden tomar el
+  // flete desde su app aunque esté cerrada (complementa el WS del portal).
+  void prisma.vehicle
+    .findMany({
+      where: { type: vType, isActive: true, operatorId: { not: null } },
+      select: { driverId: true },
+      distinct: ['driverId'],
+    })
+    .then((rows) => {
+      for (const r of rows) {
+        void sendPushToDriver(r.driverId, {
+          title: 'Nuevo flete disponible',
+          body: `${f.originAddress} → ${f.destAddress} · ${f.weightKg} kg · $${Math.round(f.offeredPrice)}`,
+          data: { type: 'freight_new', freightId: f.id },
+        });
+      }
+    })
+    .catch(() => undefined);
+
   return dto2;
 }
 
@@ -149,6 +170,15 @@ export async function cancelClientFreight(clientId: string, id: string): Promise
     throw new FreightError('El flete ya está en ruta y no se puede cancelar.');
   }
   const upd = await prisma.freightRequest.update({ where: { id }, data: { status: 'CANCELLED' } });
+
+  // Si ya estaba asignado, el conductor debe enterarse aunque tenga la app cerrada.
+  if (f.status === 'ACCEPTED' && f.driverId) {
+    void sendPushToDriver(f.driverId, {
+      title: 'Flete cancelado',
+      body: 'El cliente canceló el flete que tenías asignado.',
+      data: { type: 'freight_cancelled', freightId: id },
+    });
+  }
   return _toDTO(upd);
 }
 
@@ -184,6 +214,8 @@ export async function acceptFreight(
   freightId: string,
   driverId: string,
   vehicleId: string,
+  // false cuando el propio conductor toma el flete (no hay que avisarle a él).
+  notifyDriver = true,
 ): Promise<FreightDTO> {
   const [driver, vehicle] = await Promise.all([
     prisma.driver.findFirst({ where: { id: driverId, operatorId }, select: { id: true } }),
@@ -212,6 +244,20 @@ export async function acceptFreight(
   });
   if (taken.count === 0) throw new FreightError('Otro transportador ya tomó este flete.');
   const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
+
+  // Push FCM: al conductor asignado (cuando lo asigna la flota) y al cliente.
+  if (notifyDriver) {
+    void sendPushToDriver(driverId, {
+      title: 'Te asignaron un flete',
+      body: `${upd.originAddress} → ${upd.destAddress} · ${upd.weightKg} kg`,
+      data: { type: 'freight_assigned', freightId },
+    });
+  }
+  void sendPushToClient(upd.clientId, {
+    title: 'Tu flete fue tomado',
+    body: 'Un transportador aceptó tu carga. Míralo en "Mis fletes".',
+    data: { type: 'freight_accepted', freightId },
+  });
   return _toDTO(upd);
 }
 
@@ -229,6 +275,11 @@ export async function updateFreightStatus(
       where: { id: freightId },
       data: { status: 'IN_PROGRESS' },
     });
+    void sendPushToClient(f.clientId, {
+      title: 'Tu carga va en camino',
+      body: `${f.originAddress} → ${f.destAddress}`,
+      data: { type: 'freight_in_progress', freightId },
+    });
     return _toDTO(upd);
   }
 
@@ -238,6 +289,11 @@ export async function updateFreightStatus(
       where: { id: freightId },
       // Vuelve al tablero para que otra flota pueda tomarlo.
       data: { status: 'REQUESTED', operatorId: null, driverId: null, vehicleId: null, acceptedAt: null },
+    });
+    void sendPushToClient(f.clientId, {
+      title: 'Tu flete volvió a publicarse',
+      body: 'El transportador no pudo continuar. Otras flotas ya pueden tomarlo.',
+      data: { type: 'freight_reopened', freightId },
     });
     return _toDTO(upd);
   }
@@ -266,6 +322,11 @@ export async function updateFreightStatus(
       f.driverId,
     );
   }
+  void sendPushToClient(f.clientId, {
+    title: 'Flete entregado',
+    body: `Tu carga llegó a destino. Total: $${Math.round(finalPrice)}.`,
+    data: { type: 'freight_completed', freightId },
+  });
   return _toDTO(upd);
 }
 
@@ -454,5 +515,5 @@ export async function takeDriverFreight(
     select: { id: true },
   });
   if (!vehicle) throw new FreightError('Ese vehículo no está a tu nombre.');
-  return acceptFreight(driver.operatorId, freightId, driverId, vehicleId);
+  return acceptFreight(driver.operatorId, freightId, driverId, vehicleId, false);
 }

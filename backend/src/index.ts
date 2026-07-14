@@ -85,6 +85,10 @@ app.get('/health', async (_req, res) => {
     commit: (process.env['RENDER_GIT_COMMIT'] ?? '').slice(0, 7) || 'desconocido',
     otp: modes.users,
     otpAdmin: modes.admin,
+    // Diagnóstico de infraestructura: una mirada dice si las fotos sobreviven
+    // al redeploy y si los push llegan con la app cerrada.
+    uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',
+    push: process.env['FIREBASE_SERVICE_ACCOUNT'] ? 'firebase' : 'apagado',
   });
 });
 
