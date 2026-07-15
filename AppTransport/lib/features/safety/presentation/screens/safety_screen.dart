@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/safety/data/safety_api.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
@@ -194,7 +195,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
                       ? 'Tu ubicación fue compartida con tu contacto de confianza.'
                       : 'Evento registrado. Configura un contacto de confianza '
                           'para avisarle automáticamente.',
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(
@@ -259,7 +260,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
                 Text(
                   'Envía tus coordenadas actuales a un contacto',
                   style: theme.textTheme.bodySmall
-                      ?.copyWith(color: AppColors.textSecondary),
+                      ?.copyWith(color: context.textSecondaryColor),
                 ),
               ],
             ),
@@ -353,10 +354,10 @@ class _SafetyScreenState extends State<SafetyScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-            color: isDark ? AppColors.outlineDark : AppColors.outlineLight),
+            color: isDark ? AppColors.outlineDark : context.outlineColor),
       ),
       child: Column(
         children: [
@@ -379,13 +380,13 @@ class _SafetyScreenState extends State<SafetyScreen> {
             subtitle: Text(
               '$done / ${_checklist.length} completados',
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: AppColors.textSecondary),
+                  ?.copyWith(color: context.textSecondaryColor),
             ),
             trailing: AnimatedRotation(
               turns: _checklistExpanded ? 0.5 : 0,
               duration: AppConstants.shortAnimation,
-              child: const Icon(Icons.expand_more_rounded,
-                  color: AppColors.textSecondary),
+              child: Icon(Icons.expand_more_rounded,
+                  color: context.textSecondaryColor),
             ),
             onTap: () =>
                 setState(() => _checklistExpanded = !_checklistExpanded),
@@ -608,10 +609,10 @@ class _ContactTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-            color: isDark ? AppColors.outlineDark : AppColors.outlineLight),
+            color: isDark ? AppColors.outlineDark : context.outlineColor),
       ),
       child: Row(
         children: [
@@ -636,7 +637,7 @@ class _ContactTile extends StatelessWidget {
                 Text(
                   '${contact.relation} · ${contact.phone}',
                   style: theme.textTheme.bodySmall
-                      ?.copyWith(color: AppColors.textSecondary),
+                      ?.copyWith(color: context.textSecondaryColor),
                 ),
               ],
             ),
@@ -692,7 +693,7 @@ class _SafetyTip extends StatelessWidget {
                 Text(
                   body,
                   style: theme.textTheme.bodySmall
-                      ?.copyWith(color: AppColors.textSecondary),
+                      ?.copyWith(color: context.textSecondaryColor),
                 ),
               ],
             ),

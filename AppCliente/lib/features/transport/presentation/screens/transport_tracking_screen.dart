@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
@@ -253,7 +254,7 @@ class _DriverCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
         boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
       ),
       child: Row(
@@ -284,9 +285,9 @@ class _DriverCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     request.driverVehicle!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                 ],
@@ -331,23 +332,23 @@ class _DriverCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Por tu seguridad y la del conductor, el número real se mantiene '
               'privado. Comunícate por el chat in-app del viaje.',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
             ),
             if (request.maskedPhone != null) ...[
               const SizedBox(height: 16),
               Row(
                 children: [
-                  const Icon(Icons.phone_outlined,
-                      size: 18, color: AppColors.textTertiary),
+                  Icon(Icons.phone_outlined,
+                      size: 18, color: context.textTertiaryColor),
                   const SizedBox(width: 8),
                   Text(
                     'Referencia: ${request.maskedPhone}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
-                      color: AppColors.textTertiary,
+                      color: context.textTertiaryColor,
                     ),
                   ),
                 ],
@@ -661,7 +662,7 @@ class _StatusTimeline extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
         boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
       ),
       child: Column(
@@ -701,7 +702,7 @@ class _TimelineStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dotColor = done || active ? color : AppColors.outlineLight;
+    final dotColor = done || active ? color : context.outlineColor;
     final labelStyle = active
         ? TextStyle(
             color: color,
@@ -709,7 +710,7 @@ class _TimelineStep extends StatelessWidget {
             fontSize: 13,
           )
         : TextStyle(
-            color: done ? AppColors.textPrimary : AppColors.textTertiary,
+            color: done ? context.textPrimaryColor : context.textTertiaryColor,
             fontSize: 13,
           );
 
@@ -736,7 +737,7 @@ class _TimelineStep extends StatelessWidget {
               Container(
                 width: 2,
                 height: 20,
-                color: done ? color.withValues(alpha: 0.4) : AppColors.outlineLight,
+                color: done ? color.withValues(alpha: 0.4) : context.outlineColor,
               ),
           ],
         ),
@@ -765,7 +766,7 @@ class _TripDetails extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
         boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
       ),
       child: Column(
@@ -776,11 +777,11 @@ class _TripDetails extends StatelessWidget {
             label: 'Origen',
             address: request.originAddress,
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.only(left: 12),
             child: SizedBox(
               height: 16,
-              child: VerticalDivider(color: AppColors.outlineLight),
+              child: VerticalDivider(color: context.outlineColor),
             ),
           ),
           _RouteRow(
@@ -870,9 +871,9 @@ class _RouteRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: AppColors.textTertiary,
+                  color: context.textTertiaryColor,
                 ),
               ),
               Text(
@@ -906,13 +907,13 @@ class _DetailRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppColors.textTertiary),
+          Icon(icon, size: 18, color: context.textTertiaryColor),
           const SizedBox(width: 10),
           Text(
             '$label: ',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: AppColors.textSecondary,
+              color: context.textSecondaryColor,
             ),
           ),
           Expanded(
@@ -935,33 +936,33 @@ class _StatChip extends StatelessWidget {
     required this.icon,
     required this.value,
     required this.label,
-    this.valueColor = AppColors.textPrimary,
+    this.valueColor,
   });
 
   final IconData icon;
   final String value;
   final String label;
-  final Color valueColor;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 18, color: AppColors.textTertiary),
+        Icon(icon, size: 18, color: context.textTertiaryColor),
         const SizedBox(height: 4),
         Text(
           value,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: valueColor,
+            color: valueColor ?? context.textPrimaryColor,
           ),
           textAlign: TextAlign.center,
         ),
         Text(
           label,
-          style: const TextStyle(
-              fontSize: 10, color: AppColors.textTertiary),
+          style: TextStyle(
+              fontSize: 10, color: context.textTertiaryColor),
           textAlign: TextAlign.center,
         ),
       ],
@@ -1087,8 +1088,8 @@ class _RatingSectionState extends ConsumerState<_RatingSection> {
             const SizedBox(height: 8),
             Text(
               _ratingLabel(_selected),
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: context.textSecondaryColor,
                 fontSize: 13,
               ),
             ),
@@ -1178,7 +1179,7 @@ class _TipSectionState extends ConsumerState<_TipSection> {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
         boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
       ),
       child: Column(
@@ -1194,9 +1195,9 @@ class _TipSectionState extends ConsumerState<_TipSection> {
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'El 100% va para tu conductor.',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
           ),
           const SizedBox(height: 12),
           if (_loading)
@@ -1268,7 +1269,7 @@ class _RatingDisplay extends StatelessWidget {
           Text(
             'Tu calificación',
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: context.textSecondaryColor,
               fontSize: 13,
             ),
           ),

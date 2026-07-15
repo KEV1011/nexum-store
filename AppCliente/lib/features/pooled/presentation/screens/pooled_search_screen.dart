@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart'
     show IntercityCity;
@@ -66,7 +67,7 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
     final state = ref.watch(pooledProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         backgroundColor: _kPooledColor,
         foregroundColor: Colors.white,
@@ -159,8 +160,8 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
         value: value,
         isExpanded: true,
         icon: const Icon(Icons.arrow_drop_down, color: _kPooledColor),
-        style: const TextStyle(
-          color: AppColors.textPrimary,
+        style: TextStyle(
+          color: context.textPrimaryColor,
           fontWeight: FontWeight.w600,
           fontSize: 15,
         ),
@@ -204,7 +205,7 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
         Icon(
           error != null ? Icons.cloud_off_rounded : Icons.search_off_rounded,
           size: 64,
-          color: AppColors.textSecondary,
+          color: context.textSecondaryColor,
         ),
         const SizedBox(height: 16),
         Center(
@@ -215,7 +216,7 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
                   'No hay viajes publicados para esta ruta.\n'
                       'Prueba otra fecha o ciudad.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.textSecondary, height: 1.4),
+              style: TextStyle(color: context.textSecondaryColor, height: 1.4),
             ),
           ),
         ),
@@ -257,7 +258,7 @@ class _TripCard extends StatelessWidget {
     final dateLabel = '${t.day}/${t.month}';
 
     return Material(
-      color: AppColors.cardLight,
+      color: context.cardColor2,
       borderRadius: BorderRadius.circular(16),
       elevation: 1,
       child: InkWell(
@@ -273,8 +274,8 @@ class _TripCard extends StatelessWidget {
                   const Icon(Icons.schedule_rounded, size: 16, color: _kPooledColor),
                   const SizedBox(width: 6),
                   Text('$timeLabel · $dateLabel',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700, color: context.textPrimaryColor)),
                   const Spacer(),
                   Text(
                     CurrencyFormatter.format(trip.farePerSeat),
@@ -288,14 +289,14 @@ class _TripCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text('${trip.origin.displayName} → ${trip.destination.displayName}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary)),
+                      color: context.textPrimaryColor)),
               const SizedBox(height: 2),
               Text('por puesto · ${trip.durationLabel}',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.textSecondary)),
+                  style: TextStyle(
+                      fontSize: 12, color: context.textSecondaryColor)),
               const Divider(height: 20),
               // Salida oficial de empresa: sello de confianza (vs particular).
               if (trip.operatorName != null) ...[
@@ -322,15 +323,15 @@ class _TripCard extends StatelessWidget {
               ],
               Row(
                 children: [
-                  const Icon(Icons.person_rounded, size: 16, color: AppColors.textSecondary),
+                  Icon(Icons.person_rounded, size: 16, color: context.textSecondaryColor),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       '${trip.driverName} · ${trip.vehicleDescription}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 12.5, color: AppColors.textSecondary),
+                      style: TextStyle(
+                          fontSize: 12.5, color: context.textSecondaryColor),
                     ),
                   ),
                 ],
@@ -464,7 +465,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.outlineLight,
+                  color: context.outlineColor,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -474,7 +475,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             Text('${trip.driverName} · ${trip.vehicleDescription}',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                style: TextStyle(color: context.textSecondaryColor, fontSize: 13)),
             const SizedBox(height: 20),
 
             const Text('¿Cuántos puestos?',
@@ -544,10 +545,10 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'El pago es un gasto compartido del viaje. Acuerda el medio de '
               'pago directamente con el conductor.',
-              style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 11.5, color: context.textSecondaryColor),
             ),
             const SizedBox(height: 16),
 
@@ -583,7 +584,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
 
   Widget _stepBtn(IconData icon, bool enabled, VoidCallback onTap) {
     return Material(
-      color: enabled ? _kPooledColor.withValues(alpha: 0.1) : AppColors.surfaceVariantLight,
+      color: enabled ? _kPooledColor.withValues(alpha: 0.1) : context.surfaceVariantColor,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -591,7 +592,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Icon(icon,
-              color: enabled ? _kPooledColor : AppColors.textSecondary),
+              color: enabled ? _kPooledColor : context.textSecondaryColor),
         ),
       ),
     );

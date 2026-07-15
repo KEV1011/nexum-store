@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
+import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
@@ -85,10 +87,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             icon: Icons.dark_mode_rounded,
             iconColor: const Color(0xFF6366F1),
             title: 'Modo oscuro',
-            // Deshabilitado hasta completar el pase de contraste del tema
-            // dark (había textos ilegibles).
-            subtitle: 'Próximamente',
-            trailing: const Switch(value: false, onChanged: null),
+            subtitle: 'Tema oscuro en toda la app',
+            trailing: Switch(
+              value: ref.watch(themeProvider) == ThemeMode.dark,
+              onChanged: (v) =>
+                  ref.read(themeProvider.notifier).setDark(dark: v),
+            ),
           ),
           const Divider(),
           _SectionHeader(title: 'Navegación'),
@@ -97,8 +101,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             iconColor: AppColors.primary,
             title: 'Aplicación de mapas',
             subtitle: _mapAppLabel(_selectedMapApp),
-            trailing: const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textSecondary),
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
             onTap: _showMapPickerSheet,
           ),
           const Divider(),
@@ -108,17 +112,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             iconColor: AppColors.error,
             title: 'Cambiar PIN de seguridad',
             subtitle: 'Actualiza tu PIN de acceso',
-            trailing: const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textSecondary),
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
             onTap: _showChangePinSheet,
           ),
           _SettingsTile(
             icon: Icons.privacy_tip_outlined,
-            iconColor: AppColors.textSecondary,
+            iconColor: context.textSecondaryColor,
             title: 'Privacidad de datos',
             subtitle: 'Gestiona tus datos personales',
-            trailing: const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textSecondary),
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
             onTap: () => _showComingSoon('Privacidad de datos'),
           ),
           const Divider(),
@@ -139,8 +143,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: 'Limpiar caché',
             subtitle:
                 '${_cacheMb.toStringAsFixed(1)} MB almacenados',
-            trailing: const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textSecondary),
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
             onTap: _clearCache,
           ),
           const Divider(),
@@ -154,18 +158,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           _SettingsTile(
             icon: Icons.description_outlined,
-            iconColor: AppColors.textSecondary,
+            iconColor: context.textSecondaryColor,
             title: 'Términos de servicio',
-            trailing: const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textSecondary),
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
             onTap: () => _showComingSoon('Términos de servicio'),
           ),
           _SettingsTile(
             icon: Icons.shield_outlined,
-            iconColor: AppColors.textSecondary,
+            iconColor: context.textSecondaryColor,
             title: 'Política de privacidad',
-            trailing: const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textSecondary),
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
             onTap: () => _showComingSoon('Política de privacidad'),
           ),
           _SettingsTile(
@@ -173,8 +177,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             iconColor: AppColors.star,
             title: 'Calificar la app',
             subtitle: 'Comparte tu opinión en la tienda',
-            trailing: const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textSecondary),
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
             onTap: () => _showComingSoon('Calificar la app'),
           ),
           const Divider(),
@@ -219,10 +223,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         margin: const EdgeInsets.all(AppConstants.spacingM),
         padding: const EdgeInsets.all(AppConstants.spacingM),
         decoration: BoxDecoration(
-          color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+          color: isDark ? AppColors.surfaceDark : context.surfaceColor,
           borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
           border: Border.all(
-            color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+            color: isDark ? AppColors.outlineDark : context.outlineColor,
           ),
         ),
         child: Row(
@@ -253,7 +257,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   Text(
                     profile?.phone ?? 'Completa tu registro',
                     style: theme.textTheme.bodySmall
-                        ?.copyWith(color: AppColors.textSecondary),
+                        ?.copyWith(color: context.textSecondaryColor),
                   ),
                   if (profile != null) ...[
                     const SizedBox(height: 4),
@@ -265,7 +269,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         Text(
                           profile.rating.toStringAsFixed(2),
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: AppColors.textSecondary,
+                            color: context.textSecondaryColor,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -275,8 +279,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textSecondary),
+            Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
           ],
         ),
       ),
@@ -577,7 +581,7 @@ class _ChangePinSheetState extends State<_ChangePinSheet> {
             Text(
               'PIN actual de prueba: 1234',
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: AppColors.textTertiary),
+                  ?.copyWith(color: context.textTertiaryColor),
             ),
             const SizedBox(height: AppConstants.spacingL),
             SizedBox(
@@ -612,7 +616,7 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title.toUpperCase(),
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
+              color: context.textSecondaryColor,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.8,
             ),
@@ -656,7 +660,7 @@ class _SettingsTile extends StatelessWidget {
           ? Text(
               subtitle!,
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: AppColors.textSecondary),
+                  ?.copyWith(color: context.textSecondaryColor),
             )
           : null,
       trailing: trailing,

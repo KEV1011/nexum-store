@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
@@ -141,7 +142,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
       isLoading: isLoading,
       child: Scaffold(
         backgroundColor:
-            isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+            isDark ? AppColors.backgroundDark : context.backgroundColor,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -187,15 +188,15 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                     TextSpan(
                       text: 'Ingresa el código de 6 dígitos que enviamos al ',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                         height: 1.45,
                       ),
                       children: [
                         TextSpan(
                           text: widget.phone,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                            color: context.textPrimaryColor,
                           ),
                         ),
                       ],
@@ -263,7 +264,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                         ? Text(
                             'Reenviar código en $_resendSeconds s',
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textSecondary,
+                              color: context.textSecondaryColor,
                             ),
                           )
                         : TextButton.icon(

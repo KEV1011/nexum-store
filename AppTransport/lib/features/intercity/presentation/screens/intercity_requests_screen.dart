@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
@@ -123,7 +124,7 @@ class _IntercityRequestsScreenState
     });
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         backgroundColor: _kIntercityColor,
         foregroundColor: Colors.white,
@@ -187,7 +188,7 @@ class _IntercityRequestsScreenState
                         ? Icons.notifications_active_outlined
                         : Icons.notifications_off_outlined,
                     size: 44,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -197,7 +198,7 @@ class _IntercityRequestsScreenState
                         : 'Activa tu disponibilidad para recibir '
                             'solicitudes intermunicipales.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppColors.textSecondary),
+                    style: TextStyle(color: context.textSecondaryColor),
                   ),
                 ],
               ),
@@ -308,12 +309,12 @@ class _ActiveTripCard extends StatelessWidget {
               IntercityTripPhase.pending => const LinearProgressIndicator(
                   minHeight: 4,
                 ),
-              IntercityTripPhase.waitingClient => const Text(
+              IntercityTripPhase.waitingClient => Text(
                   'Tu contraoferta fue enviada. Te avisaremos cuando el '
                   'pasajero decida.',
                   style: TextStyle(
                     fontSize: 12.5,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                 ),
               IntercityTripPhase.confirmed => SizedBox(
@@ -475,14 +476,14 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15, color: AppColors.textSecondary),
+          Icon(icon, size: 15, color: context.textSecondaryColor),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12.5,
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
           ),

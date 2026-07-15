@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
@@ -45,7 +46,7 @@ class _TimelineStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = isDone || isCurrent;
-    final color = active ? AppColors.primary : AppColors.outlineLight;
+    final color = active ? AppColors.primary : context.outlineColor;
 
     return IntrinsicHeight(
       child: Row(
@@ -71,7 +72,7 @@ class _TimelineStep extends StatelessWidget {
                 Expanded(
                   child: Container(
                     width: 2,
-                    color: isDone ? AppColors.primary : AppColors.outlineLight,
+                    color: isDone ? AppColors.primary : context.outlineColor,
                   ),
                 ),
             ],
@@ -88,7 +89,7 @@ class _TimelineStep extends StatelessWidget {
                 fontFamily: 'Inter',
                 fontSize: 14,
                 fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                color: active ? null : AppColors.textTertiary,
+                color: active ? null : context.textTertiaryColor,
               ),
             ),
           ),

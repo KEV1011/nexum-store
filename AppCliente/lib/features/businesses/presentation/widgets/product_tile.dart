@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -28,10 +29,10 @@ class ProductTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Row(
@@ -54,10 +55,10 @@ class ProductTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   product.description,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 13,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                     height: 1.3,
                   ),
                 ),
@@ -96,16 +97,16 @@ class _ProductThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const double size = 64;
-    final placeholderBg = isDark ? AppColors.outlineDark : AppColors.outlineLight;
+    final placeholderBg = isDark ? AppColors.outlineDark : context.outlineColor;
 
     Widget placeholder() => Container(
           width: size,
           height: size,
           color: placeholderBg,
-          child: const Icon(
+          child: Icon(
             Icons.restaurant_menu_rounded,
             size: 24,
-            color: AppColors.textSecondary,
+            color: context.textSecondaryColor,
           ),
         );
 

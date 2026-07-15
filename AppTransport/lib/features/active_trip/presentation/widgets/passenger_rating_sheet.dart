@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 
 /// Hoja modal para calificar al pasajero al finalizar un viaje.
@@ -130,8 +131,8 @@ class _PassengerRatingSheetState extends State<PassengerRatingSheet>
           padding: EdgeInsets.only(bottom: bottomInset),
           child: Container(
             width: double.infinity,
-            decoration: const BoxDecoration(
-              color: AppColors.surfaceLight,
+            decoration: BoxDecoration(
+              color: context.surfaceColor,
               borderRadius: BorderRadius.vertical(
                 top: Radius.circular(AppConstants.radiusXLarge),
               ),
@@ -208,7 +209,7 @@ class _PassengerRatingSheetState extends State<PassengerRatingSheet>
           Text(
             '¿Cómo fue tu experiencia con este pasajero?',
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: AppColors.textSecondary),
+                ?.copyWith(color: context.textSecondaryColor),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppConstants.spacingM),
@@ -258,7 +259,7 @@ class _PassengerRatingSheetState extends State<PassengerRatingSheet>
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: _rating == 0
-                    ? AppColors.textSecondary
+                    ? context.textSecondaryColor
                     : _rating >= 4
                         ? AppColors.success
                         : AppColors.warning,
@@ -397,7 +398,7 @@ class _PassengerRatingSheetState extends State<PassengerRatingSheet>
             Text(
               _selectedTags.join(' · '),
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: AppColors.textSecondary),
+                  ?.copyWith(color: context.textSecondaryColor),
               textAlign: TextAlign.center,
             ),
           ],
@@ -433,7 +434,7 @@ class _TagChip extends StatelessWidget {
           color: selected ? accent.withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(AppConstants.radiusCircular),
           border: Border.all(
-            color: selected ? accent : AppColors.outlineLight,
+            color: selected ? accent : context.outlineColor,
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -449,7 +450,7 @@ class _TagChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? accent : AppColors.textSecondary,
+                color: selected ? accent : context.textSecondaryColor,
               ),
             ),
           ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 
 /// Pantalla de error reutilizable con icono, mensaje y botón de reintento.
@@ -45,7 +46,7 @@ class ErrorScreen extends StatelessWidget {
             Text(
               effectiveTitle,
               style: theme.textTheme.titleLarge?.copyWith(
-                color: AppColors.textPrimary,
+                color: context.textPrimaryColor,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
@@ -54,7 +55,7 @@ class ErrorScreen extends StatelessWidget {
             Text(
               message,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
               textAlign: TextAlign.center,
             ),

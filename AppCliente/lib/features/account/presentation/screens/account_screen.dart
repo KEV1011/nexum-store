@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/app/theme/theme_provider.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/network/api_client.dart';
@@ -221,10 +223,10 @@ class _ProfileHeader extends ConsumerWidget {
               const SizedBox(height: 2),
               Text(
                 phone,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
               ),
             ],
@@ -233,10 +235,10 @@ class _ProfileHeader extends ConsumerWidget {
         IconButton(
           onPressed: () => _editName(context, ref, name),
           tooltip: 'Editar nombre',
-          icon: const Icon(
+          icon: Icon(
             Icons.edit_rounded,
             size: 20,
-            color: AppColors.textSecondary,
+            color: context.textSecondaryColor,
           ),
         ),
       ],
@@ -320,10 +322,10 @@ class _SettingsGroup extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Column(children: children),
@@ -361,15 +363,15 @@ class _SettingTile extends StatelessWidget {
           ? null
           : Text(
               subtitle!,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 13,
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.chevron_right_rounded,
-        color: AppColors.textTertiary,
+        color: context.textTertiaryColor,
       ),
     );
   }
@@ -504,10 +506,10 @@ class _PromosSheetState extends ConsumerState<_PromosSheet> {
             Text(
               'Comparte tu código: cuando un amigo lo canjee, ambos reciben '
               'un cupón de ${CurrencyFormatter.format(reward)}.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 13,
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
             const SizedBox(height: AppConstants.spacingM),
@@ -589,12 +591,12 @@ class _PromosSheetState extends ConsumerState<_PromosSheet> {
             ),
             const SizedBox(height: AppConstants.spacingS),
             if (coupons.isEmpty)
-              const Text(
+              Text(
                 'Aún no tienes cupones. Invita a un amigo para ganar el primero.',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
               )
             else
@@ -635,16 +637,14 @@ class _PromosSheetState extends ConsumerState<_PromosSheet> {
   }
 }
 
-class _DarkModeTile extends StatelessWidget {
+class _DarkModeTile extends ConsumerWidget {
   const _DarkModeTile();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return SwitchListTile(
-      // Deshabilitado hasta completar el pase de contraste del tema dark
-      // (había textos ilegibles).
-      value: false,
-      onChanged: null,
+      value: ref.watch(themeProvider) == ThemeMode.dark,
+      onChanged: (v) => ref.read(themeProvider.notifier).setDark(dark: v),
       secondary: const Icon(
         Icons.dark_mode_rounded,
         color: AppColors.primary,
@@ -657,7 +657,7 @@ class _DarkModeTile extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
-      subtitle: const Text('Próximamente'),
+      subtitle: const Text('Tema oscuro en toda la app'),
     );
   }
 }

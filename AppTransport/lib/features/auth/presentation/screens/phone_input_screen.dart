@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/core/widgets/loading_overlay.dart';
@@ -98,13 +99,13 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
       isLoading: isLoading,
       child: Scaffold(
         backgroundColor:
-            isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+            isDark ? AppColors.backgroundDark : context.backgroundColor,
         appBar: AppBar(
           title: const Text('Iniciar sesión'),
           backgroundColor: Colors.transparent,
           elevation: 0,
           foregroundColor:
-              isDark ? AppColors.textOnDark : AppColors.textPrimary,
+              isDark ? AppColors.textOnDark : context.textPrimaryColor,
         ),
         body: SafeArea(
           child: GestureDetector(
@@ -134,7 +135,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                         fontWeight: FontWeight.bold,
                         color: isDark
                             ? AppColors.textOnDark
-                            : AppColors.textPrimary,
+                            : context.textPrimaryColor,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -145,7 +146,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                     Text(
                       'Te enviaremos un código de verificación',
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -167,7 +168,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                       Text(
                         'Demo: usa ${AppConstants.mockDriverPhone}',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                         ),
                       ),
                     ],
@@ -186,7 +187,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                     Text(
                       'Al continuar aceptas los Términos y Condiciones y la\nPolítica de Privacidad de Nexum.',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -306,7 +307,7 @@ class _PhoneTextField extends StatelessWidget {
         fontSize: 18,
         fontWeight: FontWeight.w600,
         letterSpacing: 1.5,
-        color: isDark ? AppColors.textOnDark : AppColors.textPrimary,
+        color: isDark ? AppColors.textOnDark : context.textPrimaryColor,
       ),
       decoration: InputDecoration(
         prefixIcon: Padding(
@@ -326,7 +327,7 @@ class _PhoneTextField extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: isDark
                       ? AppColors.textOnDark
-                      : AppColors.textPrimary,
+                      : context.textPrimaryColor,
                 ),
               ),
               const SizedBox(width: AppConstants.spacingS),
@@ -339,12 +340,12 @@ class _PhoneTextField extends StatelessWidget {
           ),
         ),
         hintText: '3XX XXX XXXX',
-        hintStyle: const TextStyle(
-          color: AppColors.textSecondary,
+        hintStyle: TextStyle(
+          color: context.textSecondaryColor,
           letterSpacing: 1.0,
         ),
         filled: true,
-        fillColor: isDark ? AppColors.cardDark : AppColors.surfaceLight,
+        fillColor: isDark ? AppColors.cardDark : context.surfaceColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
           borderSide: BorderSide.none,

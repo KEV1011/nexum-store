@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
@@ -79,7 +80,7 @@ class GoingToPassengerCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: value,
-                    backgroundColor: AppColors.outlineLight,
+                    backgroundColor: context.outlineColor,
                     valueColor: AlwaysStoppedAnimation<Color>(
                       isEnvios
                           ? AppColors.serviceEnvios
@@ -92,9 +93,9 @@ class GoingToPassengerCard extends ConsumerWidget {
                 Text(
                   '${(value * 100).round()}% hacia '
                   '${isEnvios ? 'el local' : 'el pasajero'}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                 ),
               ],
@@ -150,7 +151,7 @@ class GoingToPassengerCard extends ConsumerWidget {
                           ? 'Dirección del local'
                           : 'Punto de recogida',
                       style: theme.textTheme.labelSmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -159,7 +160,7 @@ class GoingToPassengerCard extends ConsumerWidget {
                       trip.request.origin.address,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: context.textPrimaryColor,
                       ),
                     ),
                     if (trip.request.origin.reference != null) ...[
@@ -167,7 +168,7 @@ class GoingToPassengerCard extends ConsumerWidget {
                       Text(
                         trip.request.origin.reference!,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: context.textSecondaryColor,
                         ),
                       ),
                     ],
@@ -311,7 +312,7 @@ class _PassengerInfo extends StatelessWidget {
                 passenger.name as String,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: context.textPrimaryColor,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -329,7 +330,7 @@ class _PassengerInfo extends StatelessWidget {
                     (passenger.rating as double)
                         .toStringAsFixed(1),
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -394,7 +395,7 @@ class _EnviosPickupInfo extends StatelessWidget {
                 trip.request.passenger.name,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: context.textPrimaryColor,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -402,10 +403,10 @@ class _EnviosPickupInfo extends StatelessWidget {
               const SizedBox(height: 2),
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.inventory_2_outlined,
                     size: 13,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                   const SizedBox(width: 4),
                   Text(

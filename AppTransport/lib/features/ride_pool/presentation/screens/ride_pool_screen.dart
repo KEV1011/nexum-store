@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/ride_pool/domain/entities/ride_entities.dart';
 import 'package:nexum_driver/features/ride_pool/presentation/providers/ride_pool_provider.dart';
@@ -30,11 +31,11 @@ class _RidePoolScreenState extends ConsumerState<RidePoolScreen> {
     final notifier = ref.read(ridePoolProvider.notifier);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         title: const Text('Solicitudes en vivo'),
-        backgroundColor: AppColors.surfaceLight,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: context.surfaceColor,
+        foregroundColor: context.textPrimaryColor,
         elevation: 0,
       ),
       body: state.activeRide != null
@@ -95,13 +96,13 @@ class _RidePoolScreenState extends ConsumerState<RidePoolScreen> {
       );
 
   Widget _empty() => ListView(
-        children: const [
+        children: [
           SizedBox(height: 80),
-          Icon(Icons.inbox_rounded, size: 60, color: AppColors.textTertiary),
+          Icon(Icons.inbox_rounded, size: 60, color: context.textTertiaryColor),
           SizedBox(height: 12),
           Center(
             child: Text('No hay solicitudes por ahora.',
-                style: TextStyle(color: AppColors.textSecondary)),
+                style: TextStyle(color: context.textSecondaryColor)),
           ),
         ],
       );
@@ -125,7 +126,7 @@ class _RequestCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardLight,
+        color: context.cardColor2,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),
@@ -138,7 +139,7 @@ class _RequestCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 18,
-                backgroundColor: AppColors.surfaceVariantLight,
+                backgroundColor: context.surfaceVariantColor,
                 child: Text(
                   ride.clientName.isNotEmpty ? ride.clientName[0].toUpperCase() : '?',
                   style: const TextStyle(fontWeight: FontWeight.w700),
@@ -152,16 +153,16 @@ class _RequestCard extends StatelessWidget {
                     Text(ride.clientName,
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                     Text('${ride.distanceKm.toStringAsFixed(1)} km · ${ride.etaMinutes} min',
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                        style: TextStyle(
+                            fontSize: 12, color: context.textSecondaryColor)),
                   ],
                 ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const Text('Ofrece',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  Text('Ofrece',
+                      style: TextStyle(fontSize: 11, color: context.textSecondaryColor)),
                   Text(CurrencyFormatter.format(ride.offeredFare),
                       style: const TextStyle(
                           fontWeight: FontWeight.w800,
@@ -178,10 +179,10 @@ class _RequestCard extends StatelessWidget {
           if (ride.notes != null && ride.notes!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text('“${ride.notes}”',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12.5,
                     fontStyle: FontStyle.italic,
-                    color: AppColors.textSecondary)),
+                    color: context.textSecondaryColor)),
           ],
           const SizedBox(height: 14),
           if (myBid != null)
@@ -258,7 +259,7 @@ class _RequestCard extends StatelessWidget {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surfaceLight,
+      backgroundColor: context.surfaceColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -273,7 +274,7 @@ class _RequestCard extends StatelessWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             Text('El pasajero ofreció ${CurrencyFormatter.format(ride.offeredFare)}.',
-                style: const TextStyle(color: AppColors.textSecondary)),
+                style: TextStyle(color: context.textSecondaryColor)),
             const SizedBox(height: 16),
             TextField(
               controller: ctrl,
@@ -331,7 +332,7 @@ class _ActiveRideView extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: AppColors.cardLight,
+            color: context.cardColor2,
             borderRadius: BorderRadius.circular(16),
             boxShadow: const [
               BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),

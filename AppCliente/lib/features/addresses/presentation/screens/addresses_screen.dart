@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
@@ -51,12 +52,12 @@ class _AddressTile extends ConsumerWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
           color: address.isDefault
               ? AppColors.primary
-              : (isDark ? AppColors.outlineDark : AppColors.outlineLight),
+              : (isDark ? AppColors.outlineDark : context.outlineColor),
           width: address.isDefault ? 1.5 : 1,
         ),
       ),
@@ -70,7 +71,7 @@ class _AddressTile extends ConsumerWidget {
                     ? AppColors.primaryContainer
                     : (isDark
                         ? AppColors.surfaceVariantDark
-                        : AppColors.surfaceVariantLight),
+                        : context.surfaceVariantColor),
                 borderRadius:
                     BorderRadius.circular(AppConstants.radiusMedium),
               ),
@@ -129,10 +130,10 @@ class _AddressTile extends ConsumerWidget {
                   const SizedBox(height: 2),
                   Text(
                     address.fullAddress,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 13,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                 ],
@@ -146,7 +147,7 @@ class _AddressTile extends ConsumerWidget {
                     icon: const Icon(Icons.star_border_rounded),
                     tooltip: 'Predeterminar',
                     onPressed: () => notifier.setDefault(address.id),
-                    color: AppColors.textTertiary,
+                    color: context.textTertiaryColor,
                     iconSize: 22,
                   ),
                 IconButton(
@@ -250,14 +251,14 @@ class _EmptyAddresses extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.location_off_rounded,
             size: 64,
-            color: AppColors.textTertiary,
+            color: context.textTertiaryColor,
           ),
           SizedBox(height: AppConstants.spacingM),
           Text(
@@ -271,7 +272,7 @@ class _EmptyAddresses extends StatelessWidget {
           SizedBox(height: AppConstants.spacingXS),
           Text(
             'Agrega tu primera dirección de entrega',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: context.textSecondaryColor),
           ),
         ],
       ),

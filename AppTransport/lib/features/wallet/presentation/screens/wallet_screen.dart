@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
@@ -61,12 +62,12 @@ class WalletScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppConstants.spacingS),
                 if (state.payouts.isEmpty)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.symmetric(vertical: 28),
                     child: Center(
                       child: Text(
                         'Aún no has solicitado retiros.',
-                        style: TextStyle(color: AppColors.textTertiary),
+                        style: TextStyle(color: context.textTertiaryColor),
                       ),
                     ),
                   )
@@ -215,10 +216,10 @@ class _StatCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(AppConstants.spacingM),
         decoration: BoxDecoration(
-          color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+          color: isDark ? AppColors.surfaceDark : context.surfaceColor,
           borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
           border: Border.all(
-            color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+            color: isDark ? AppColors.outlineDark : context.outlineColor,
           ),
         ),
         child: Column(
@@ -233,9 +234,9 @@ class _StatCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: AppColors.textTertiary,
+                color: context.textTertiaryColor,
               ),
             ),
           ],
@@ -257,10 +258,10 @@ class _BankCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Row(
@@ -272,9 +273,9 @@ class _BankCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Cuenta de retiro',
-                  style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                  style: TextStyle(fontSize: 11, color: context.textTertiaryColor),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -308,7 +309,7 @@ class _PayoutTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = _statusColors[payout.status] ?? AppColors.textTertiary;
+    final color = _statusColors[payout.status] ?? context.textTertiaryColor;
     final d = payout.requestedAt;
     final dateStr = '${d.day.toString().padLeft(2, '0')}/'
         '${d.month.toString().padLeft(2, '0')}/${d.year} · '
@@ -318,10 +319,10 @@ class _PayoutTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Row(
@@ -350,18 +351,18 @@ class _PayoutTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   dateStr,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
-                    color: AppColors.textTertiary,
+                    color: context.textTertiaryColor,
                   ),
                 ),
                 if (payout.reference != null && payout.reference!.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(
                     'Ref: ${payout.reference}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                 ],
@@ -403,8 +404,8 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_rounded,
-                size: 44, color: AppColors.textTertiary),
+            Icon(Icons.cloud_off_rounded,
+                size: 44, color: context.textTertiaryColor),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),
@@ -502,9 +503,9 @@ class _WithdrawSheetState extends ConsumerState<_WithdrawSheet> {
             const SizedBox(height: 4),
             Text(
               'Disponible: ${CurrencyFormatter.format(widget.balance.available)}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
             const SizedBox(height: AppConstants.spacingM),
@@ -518,9 +519,9 @@ class _WithdrawSheetState extends ConsumerState<_WithdrawSheet> {
               ),
             ),
             const SizedBox(height: AppConstants.spacingM),
-            const Text(
+            Text(
               'Método',
-              style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+              style: TextStyle(fontSize: 12, color: context.textTertiaryColor),
             ),
             const SizedBox(height: 6),
             Wrap(

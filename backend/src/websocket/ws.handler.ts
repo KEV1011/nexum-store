@@ -28,6 +28,7 @@ import {
   updateErrandStatus,
   subscribeClientErrand,
   getClientErrandSnapshot,
+  registerErrandSendToDriver,
 } from '../services/errand.service';
 import {
   subscribeIntercityBooking,
@@ -89,7 +90,9 @@ import { initBus, publishDelivery, BusTarget } from '../lib/bus';
 let driverSocket: WebSocket | null = null;
 let driverWorkMode: WorkMode = 'pasajero';
 let driverActiveTripId: string | null = null;
-let driverActiveErrandId: string | null = null;
+// Mandado activo POR conductor (antes era un singleton global: con dos
+// mandaderos simultáneos, el segundo recibía "Already handling an errand").
+const driverActiveErrandIdMap = new Map<string, string>(); // driverId → errandId
 
 const clientSockets = new Map<string, WebSocket>();
 const clientSubscriptions = new Map<WebSocket, Array<() => void>>();
@@ -232,7 +235,8 @@ async function handleAcceptErrand(ws: WebSocket, errandId: string): Promise<void
     sendTo(ws, { type: 'error', message: 'Driver not authenticated' });
     return;
   }
-  if (driverActiveErrandId && driverActiveErrandId !== errandId) {
+  const activeErrand = driverActiveErrandIdMap.get(driverId);
+  if (activeErrand && activeErrand !== errandId) {
     sendTo(ws, { type: 'error', message: 'Already handling an errand' });
     return;
   }
@@ -260,7 +264,7 @@ async function handleAcceptErrand(ws: WebSocket, errandId: string): Promise<void
     return;
   }
 
-  driverActiveErrandId = errandId;
+  driverActiveErrandIdMap.set(driverId, errandId);
   sendTo(ws, { type: 'errand_update', errandId, errand: updated });
   // El cliente suscrito recibe la actualización vía _notify; este envío directo
   // es un respaldo por si la suscripción aún no estaba activa.
@@ -297,6 +301,13 @@ async function handleErrandStatus(
     return;
   }
 
+  // Solo el mandadero ASIGNADO puede reportar el estado (y liquidar) el mandado.
+  const senderId = driverIdByWs.get(ws);
+  if (clientErrand.driverId && clientErrand.driverId !== senderId) {
+    sendTo(ws, { type: 'error', message: 'Ese mandado no está asignado a ti' });
+    return;
+  }
+
   const updated = await updateErrandStatus(
     errandId,
     status as ErrandStatus,
@@ -308,9 +319,9 @@ async function handleErrandStatus(
     if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
 
     if (terminal) {
-      driverActiveErrandId = null;
+      if (senderId) driverActiveErrandIdMap.delete(senderId);
       // Libera al conductor (estaba ON_TRIP) para recibir nuevos servicios.
-      void getTripService().setDriverStatus('online', driverIdByWs.get(ws));
+      void getTripService().setDriverStatus('online', senderId);
     }
   }
 }
@@ -687,14 +698,23 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (typeof tripId !== 'string' || typeof status !== 'string') {
         sendTo(ws, { type: 'error', message: 'tripId and status required' }); return;
       }
+      const senderDriverId = driverIdByWs.get(ws);
       void (async () => {
+        const raw = await getClientTripRaw(tripId);
+        if (!raw) {
+          sendTo(ws, { type: 'error', message: `Trip ${tripId} not found` });
+          return;
+        }
+        // Solo el conductor ASIGNADO puede cambiar el estado del viaje (antes
+        // cualquier conductor autenticado podía completar/cancelar viajes ajenos).
+        if (raw.driverId && raw.driverId !== senderDriverId) {
+          sendTo(ws, { type: 'error', message: 'Ese viaje no está asignado a ti' });
+          return;
+        }
         const updated = await updateClientTripStatus(tripId, status as import('../types').ClientTripStatus);
         if (updated) {
-          const raw = await getClientTripRaw(tripId);
-          if (raw) {
-            const clientWs = clientSockets.get(raw.clientId);
-            if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });
-          }
+          const clientWs = clientSockets.get(raw.clientId);
+          if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });
           // Al completar, el ack lleva la liquidación real del backend para que
           // la app del conductor muestre tarifa/neto/comisión verdaderos.
           const settlement = status === 'completed' ? await getTripSettlement(tripId) : null;
@@ -1105,7 +1125,10 @@ function onClose(ws: WebSocket): void {
   if (driverId && driverConnections.get(driverId)?.ws === ws) {
     driverConnections.delete(driverId);
   }
-  if (driverId) driverActiveTripIdMap.delete(driverId);
+  if (driverId) {
+    driverActiveTripIdMap.delete(driverId);
+    driverActiveErrandIdMap.delete(driverId);
+  }
   driverIdByWs.delete(ws);
   clientIdByWs.delete(ws);
 
@@ -1117,7 +1140,6 @@ function onClose(ws: WebSocket): void {
   if (ws === driverSocket) {
     driverSocket = null;
     driverActiveTripId = null;
-    driverActiveErrandId = null;
     driverWorkMode = 'pasajero';
     console.log('[WS] Driver disconnected');
     return;
@@ -1165,6 +1187,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
   registerNotifyTripUpdate(notifyClientTripUpdateById);
   registerOnNoDrivers((tripId) => void handleNoDriversFound(tripId));
   registerClientSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+  registerErrandSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   registerNotifyFleetsNewFreight((operatorIds, freight) => {
     for (const id of operatorIds) {
       for (const sock of operatorSockets.get(id) ?? []) {

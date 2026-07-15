@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/features/ride_negotiation/domain/entities/ride_entities.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
@@ -95,10 +96,10 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.surfaceLight,
-        foregroundColor: AppColors.textPrimary,
+        backgroundColor: context.surfaceColor,
+        foregroundColor: context.textPrimaryColor,
         elevation: 0,
         title: Text(widget.peerName),
       ),
@@ -106,10 +107,10 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
         children: [
           Expanded(
             child: _messages.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       'Escribe para coordinar con tu conductor.',
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: context.textSecondaryColor),
                     ),
                   )
                 : ListView.builder(
@@ -129,9 +130,9 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          decoration: const BoxDecoration(
-            color: AppColors.surfaceLight,
-            border: Border(top: BorderSide(color: AppColors.outlineLight)),
+          decoration: BoxDecoration(
+            color: context.surfaceColor,
+            border: Border(top: BorderSide(color: context.outlineColor)),
           ),
           child: Row(
             children: [
@@ -143,7 +144,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
                   decoration: InputDecoration(
                     hintText: 'Mensaje…',
                     filled: true,
-                    fillColor: AppColors.surfaceVariantLight,
+                    fillColor: context.surfaceVariantColor,
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 10),
                     border: OutlineInputBorder(
@@ -188,14 +189,14 @@ class _Bubble extends StatelessWidget {
           maxWidth: MediaQuery.of(context).size.width * 0.74,
         ),
         decoration: BoxDecoration(
-          color: mine ? AppColors.primary : AppColors.surfaceLight,
+          color: mine ? AppColors.primary : context.surfaceColor,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
             bottomLeft: Radius.circular(mine ? 16 : 4),
             bottomRight: Radius.circular(mine ? 4 : 16),
           ),
-          border: mine ? null : Border.all(color: AppColors.outlineLight),
+          border: mine ? null : Border.all(color: context.outlineColor),
         ),
         child: Column(
           crossAxisAlignment:
@@ -204,7 +205,7 @@ class _Bubble extends StatelessWidget {
             Text(
               msg.text,
               style: TextStyle(
-                color: mine ? Colors.white : AppColors.textPrimary,
+                color: mine ? Colors.white : context.textPrimaryColor,
                 fontSize: 14.5,
               ),
             ),
@@ -212,7 +213,7 @@ class _Bubble extends StatelessWidget {
             Text(
               time,
               style: TextStyle(
-                color: mine ? Colors.white70 : AppColors.textTertiary,
+                color: mine ? Colors.white70 : context.textTertiaryColor,
                 fontSize: 10.5,
               ),
             ),

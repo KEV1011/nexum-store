@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
@@ -133,10 +134,10 @@ class _CartLine extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Row(
@@ -156,10 +157,10 @@ class _CartLine extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   CurrencyFormatter.format(item.product.price),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 13,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                 ),
               ],
@@ -173,7 +174,7 @@ class _CartLine extends StatelessWidget {
                   item.quantity == 1
                       ? Icons.delete_outline_rounded
                       : Icons.remove_circle_outline_rounded,
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
               ),
               Text(
@@ -237,10 +238,10 @@ class _EmptyCart extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(
+          Icon(
             Icons.shopping_cart_outlined,
             size: 64,
-            color: AppColors.textTertiary,
+            color: context.textTertiaryColor,
           ),
           const SizedBox(height: AppConstants.spacingM),
           const Text(
@@ -252,9 +253,9 @@ class _EmptyCart extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppConstants.spacingXS),
-          const Text(
+          Text(
             'Agrega productos desde un negocio',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: TextStyle(color: context.textSecondaryColor),
           ),
           const SizedBox(height: AppConstants.spacingL),
           OutlinedButton(

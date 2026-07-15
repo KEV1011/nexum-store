@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
@@ -49,7 +50,7 @@ class TripHistoryTile extends StatelessWidget {
         subtitle: Text(
           DateFormatter.formatTime(trip.startedAt),
           style: theme.textTheme.bodySmall?.copyWith(
-            color: AppColors.textSecondary,
+            color: context.textSecondaryColor,
           ),
         ),
         trailing: Column(
@@ -150,13 +151,13 @@ class _DetailRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.textSecondary),
+          Icon(icon, size: 16, color: context.textSecondaryColor),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               label,
               style: TextStyle(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
                 fontSize: 13,
               ),
             ),
@@ -164,7 +165,7 @@ class _DetailRow extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: valueColor ?? AppColors.textPrimary,
+              color: valueColor ?? context.textPrimaryColor,
               fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
               fontSize: 13,
             ),

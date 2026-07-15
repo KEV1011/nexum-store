@@ -166,10 +166,16 @@ export async function listClientFreights(clientId: string): Promise<FreightDTO[]
 export async function cancelClientFreight(clientId: string, id: string): Promise<FreightDTO> {
   const f = await prisma.freightRequest.findUnique({ where: { id } });
   if (!f || f.clientId !== clientId) throw new FreightError('El flete no existe.');
-  if (f.status === 'IN_PROGRESS' || f.status === 'COMPLETED') {
+  // Guard atómico de estado: si el transportador arrancó (IN_PROGRESS) entre
+  // la lectura y el update, la cancelación ya no aplica.
+  const res = await prisma.freightRequest.updateMany({
+    where: { id, clientId, status: { in: ['REQUESTED', 'ACCEPTED'] } },
+    data: { status: 'CANCELLED' },
+  });
+  if (res.count === 0) {
     throw new FreightError('El flete ya está en ruta y no se puede cancelar.');
   }
-  const upd = await prisma.freightRequest.update({ where: { id }, data: { status: 'CANCELLED' } });
+  const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id } });
 
   // Si ya estaba asignado, el conductor debe enterarse aunque tenga la app cerrada.
   if (f.status === 'ACCEPTED' && f.driverId) {
@@ -292,12 +298,16 @@ async function _applyFreightStatus(
 ): Promise<FreightDTO> {
   const freightId = f.id;
 
+  // Todas las transiciones usan updateMany con guard de status: dos llamadas
+  // concurrentes (portal + app del conductor) no pueden aplicar la misma
+  // transición dos veces — clave en 'completed', que liquida ganancias.
   if (status === 'in_progress') {
-    if (f.status !== 'ACCEPTED') throw new FreightError('Solo un flete aceptado puede iniciar ruta.');
-    const upd = await prisma.freightRequest.update({
-      where: { id: freightId },
+    const res = await prisma.freightRequest.updateMany({
+      where: { id: freightId, status: 'ACCEPTED' },
       data: { status: 'IN_PROGRESS' },
     });
+    if (res.count === 0) throw new FreightError('Solo un flete aceptado puede iniciar ruta.');
+    const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
     void sendPushToClient(f.clientId, {
       title: 'Tu carga va en camino',
       body: `${f.originAddress} → ${f.destAddress}`,
@@ -307,12 +317,15 @@ async function _applyFreightStatus(
   }
 
   if (status === 'cancelled') {
-    if (f.status === 'COMPLETED') throw new FreightError('El flete ya fue completado.');
-    const upd = await prisma.freightRequest.update({
-      where: { id: freightId },
+    // Solo un flete asignado o en ruta puede soltarse; un flete COMPLETED o
+    // CANCELLED por el cliente NO debe volver al tablero.
+    const res = await prisma.freightRequest.updateMany({
+      where: { id: freightId, status: { in: ['ACCEPTED', 'IN_PROGRESS'] } },
       // Vuelve al tablero para que otra flota pueda tomarlo.
       data: { status: 'REQUESTED', operatorId: null, driverId: null, vehicleId: null, acceptedAt: null },
     });
+    if (res.count === 0) throw new FreightError('El flete ya fue completado o cancelado.');
+    const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
     void sendPushToClient(f.clientId, {
       title: 'Tu flete volvió a publicarse',
       body: 'El transportador no pudo continuar. Otras flotas ya pueden tomarlo.',
@@ -322,16 +335,15 @@ async function _applyFreightStatus(
   }
 
   // completed → liquidación con comisión de plataforma
-  if (f.status !== 'IN_PROGRESS' && f.status !== 'ACCEPTED') {
-    throw new FreightError('El flete no está en ruta.');
-  }
   const finalPrice = f.offeredPrice;
   const commission = Math.round(finalPrice * COMMISSION_RATE);
   const netEarning = finalPrice - commission;
-  const upd = await prisma.freightRequest.update({
-    where: { id: freightId },
+  const res = await prisma.freightRequest.updateMany({
+    where: { id: freightId, status: { in: ['IN_PROGRESS', 'ACCEPTED'] } },
     data: { status: 'COMPLETED', finalPrice, commission, netEarning, completedAt: new Date() },
   });
+  if (res.count === 0) throw new FreightError('El flete no está en ruta.');
+  const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
   if (f.driverId) {
     recordCompletedTrip(
       {

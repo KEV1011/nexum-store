@@ -18,6 +18,19 @@
 /* ── Base Reset ────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Form controls ─────────────────────────────────
+   El body es tema oscuro (color: casi blanco) para la landing, pero los
+   portales /empresa y /negocio son tarjetas blancas. Sin esto, cada <input>
+   HEREDA el texto casi-blanco del body → texto invisible sobre input blanco
+   ("no se ve lo que uno escribe"). Se fija texto oscuro + color-scheme claro
+   para que ningún navegador en modo oscuro invierta los controles. */
+input, textarea, select {
+  color: #0f172a;          /* slate-900 */
+  color-scheme: light;
+  caret-color: #059669;    /* emerald-600 — cursor visible al escribir */
+}
+input::placeholder, textarea::placeholder { color: #94a3b8; } /* slate-400 */
+
 html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 body {

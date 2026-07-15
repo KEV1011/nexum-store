@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
 
@@ -45,7 +46,7 @@ class WaitingPassengerCard extends StatelessWidget {
             'Esperando a ${passenger.firstName}',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
+              color: context.textPrimaryColor,
             ),
             textAlign: TextAlign.center,
           ),
@@ -82,7 +83,7 @@ class WaitingPassengerCard extends StatelessWidget {
                 Text(
                   'tiempo de espera',
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -93,16 +94,16 @@ class WaitingPassengerCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.notifications_active_outlined,
                 size: 16,
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
               const SizedBox(width: AppConstants.spacingXS),
               Text(
                 'El pasajero fue notificado de tu llegada',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
               ),
             ],
@@ -190,13 +191,13 @@ class WaitingPassengerCard extends StatelessWidget {
                       headerTitle,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                        color: context.textPrimaryColor,
                       ),
                     ),
                     Text(
                       trip.request.passenger.name,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -336,8 +337,8 @@ class _StepRow extends StatelessWidget {
     final color = done
         ? accent
         : dimmed
-            ? AppColors.textTertiary
-            : AppColors.textPrimary;
+            ? context.textTertiaryColor
+            : context.textPrimaryColor;
     return Row(
       children: [
         Container(

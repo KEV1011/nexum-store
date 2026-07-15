@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/register_driver_usecase.dart';
@@ -251,7 +252,7 @@ class _StepIndicator extends StatelessWidget {
                               : FontWeight.w400,
                           color: isActive
                               ? AppColors.primary
-                              : AppColors.textSecondary,
+                              : context.textSecondaryColor,
                         ),
                       ),
                     ],
@@ -570,7 +571,7 @@ class _Step3Bank extends StatelessWidget {
               'Tu información bancaria está segura y cifrada.',
               style: TextStyle(
                 fontSize: 12,
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
             ),
             const SizedBox(height: 32),
@@ -606,7 +607,7 @@ class _VehicleTypeSelector extends StatelessWidget {
         Text(
           'Tipo de vehículo',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
               ),
         ),
         const SizedBox(height: 8),
@@ -665,7 +666,7 @@ class _TypeOption extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                color: isSelected ? AppColors.primary : context.textSecondaryColor,
                 size: 28,
               ),
               const SizedBox(height: 4),
@@ -675,7 +676,7 @@ class _TypeOption extends StatelessWidget {
                   fontSize: 13,
                   fontWeight:
                       isSelected ? FontWeight.w600 : FontWeight.w400,
-                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                  color: isSelected ? AppColors.primary : context.textSecondaryColor,
                 ),
               ),
             ],
@@ -727,7 +728,7 @@ class _SectionTitle extends StatelessWidget {
               Text(
                 subtitle,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
               ),
             ],

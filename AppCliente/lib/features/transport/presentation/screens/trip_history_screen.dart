@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/date_formatter.dart';
 import 'package:nexum_client/core/widgets/empty_state.dart';
@@ -58,14 +59,14 @@ class _TripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cancelled = trip.isCancelled;
-    final color = cancelled ? AppColors.textTertiary : _serviceColor(trip.serviceType);
+    final color = cancelled ? context.textTertiaryColor : _serviceColor(trip.serviceType);
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,9 +96,9 @@ class _TripCard extends StatelessWidget {
                     ),
                     Text(
                       DateFormatter.formatRelativeDate(trip.createdAt),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textTertiary,
+                        color: context.textTertiaryColor,
                       ),
                     ),
                   ],
@@ -111,7 +112,7 @@ class _TripCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
-                      color: cancelled ? AppColors.textTertiary : null,
+                      color: cancelled ? context.textTertiaryColor : null,
                       decoration: cancelled ? TextDecoration.lineThrough : null,
                     ),
                   ),
@@ -136,8 +137,8 @@ class _TripCard extends StatelessWidget {
             const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.person_outline_rounded,
-                    size: 16, color: AppColors.textSecondary),
+                Icon(Icons.person_outline_rounded,
+                    size: 16, color: context.textSecondaryColor),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -146,9 +147,9 @@ class _TripCard extends StatelessWidget {
                         : trip.driverName!,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                 ),

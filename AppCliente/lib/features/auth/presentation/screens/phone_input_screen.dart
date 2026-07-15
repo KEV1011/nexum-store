@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/core/widgets/loading_overlay.dart';
@@ -86,14 +87,14 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
     final isLoading = ref.watch(authProvider) is AuthLoading;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final surface = isDark ? AppColors.cardDark : AppColors.surfaceLight;
-    final outline = isDark ? AppColors.outlineDark : AppColors.outlineLight;
+    final surface = isDark ? AppColors.cardDark : context.surfaceColor;
+    final outline = isDark ? AppColors.outlineDark : context.outlineColor;
 
     return LoadingOverlay(
       isLoading: isLoading,
       child: Scaffold(
         backgroundColor:
-            isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+            isDark ? AppColors.backgroundDark : context.backgroundColor,
         body: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           behavior: HitTestBehavior.opaque,
@@ -129,7 +130,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                           'Te enviaremos un código por SMS para verificar '
                           'tu cuenta.',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textSecondary,
+                            color: context.textSecondaryColor,
                             height: 1.45,
                           ),
                         ),
@@ -139,7 +140,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                         Text(
                           'NÚMERO DE CELULAR',
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: AppColors.textTertiary,
+                            color: context.textTertiaryColor,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.8,
                           ),
@@ -248,7 +249,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                           'Política de privacidad.',
                           textAlign: TextAlign.center,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: AppColors.textTertiary,
+                            color: context.textTertiaryColor,
                             height: 1.4,
                           ),
                         ),

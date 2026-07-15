@@ -143,11 +143,6 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Blindaje anti-autofill de Chrome: el campo nace readOnly (Chrome no lo
-  // toma como objetivo de autocompletado ni lo bloquea) y se vuelve editable
-  // al enfocarlo. Es el fix definitivo del "no deja escribir ningún número".
-  const [phoneFocused, setPhoneFocused] = useState(false)
-  const [otpFocused, setOtpFocused] = useState(false)
 
   const fullPhone = phone.trim().startsWith('+') ? phone.trim() : `+57${phone.replace(/\D/g, '')}`
 
@@ -208,13 +203,12 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
                 onChange={(e) => setPhone(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !loading) sendOtp() }}
                 placeholder="3001234567"
+                type="tel"
                 inputMode="tel"
                 autoComplete="off"
+                autoCorrect="off"
                 name="nx-acceso"
-                readOnly={!phoneFocused}
-                onFocus={() => setPhoneFocused(true)}
-                onBlur={() => setPhoneFocused(false)}
-                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
               />
               <button
                 onClick={sendOtp}
@@ -227,22 +221,21 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
           ) : (
             <>
               <label className="block text-xs font-semibold text-slate-500 mb-1.5">Código (6 dígitos)</label>
-              {/* autoComplete=one-time-code: sin él, Chrome autollenaba el campo con
-                  valores recordados (p. ej. un número guardado) y, con maxLength 6,
-                  el usuario no podía escribir el código real. */}
+              {/* autoComplete=one-time-code: es el valor semántico correcto para
+                  un OTP — ayuda a que el teclado del móvil ofrezca el código del
+                  SMS y evita que el navegador rellene con otros valores. */}
               <input
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 onKeyDown={(e) => { if (e.key === 'Enter' && otp.length === 6 && !loading) verify() }}
                 placeholder="••••••"
+                type="text"
                 inputMode="numeric"
-                autoComplete="off"
+                maxLength={6}
+                autoComplete="one-time-code"
                 name="nx-codigo"
                 autoFocus
-                readOnly={!otpFocused}
-                onFocus={() => setOtpFocused(true)}
-                onBlur={() => setOtpFocused(false)}
-                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-center text-lg tracking-[0.4em] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-center text-lg text-slate-900 tracking-[0.4em] placeholder:text-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
               />
               <button
                 onClick={verify}

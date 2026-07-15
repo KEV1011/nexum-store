@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
@@ -101,7 +102,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
     final accent = _category.color;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         title: const Text(
           'Envío: compra o diligencia',
@@ -124,13 +125,13 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
               children: [
                 Icon(Icons.bolt_rounded, color: accent, size: 22),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Dinos qué necesitas y un mensajero lo hace por ti. '
                     'Farmacia, mercado, pagos, recoger algo... lo que sea.',
                     style: TextStyle(
                       fontSize: 12.5,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                       height: 1.3,
                     ),
                   ),
@@ -158,12 +159,12 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 9),
                   decoration: BoxDecoration(
-                    color: selected ? c.color : AppColors.surfaceLight,
+                    color: selected ? c.color : context.surfaceColor,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: selected
                           ? c.color
-                          : AppColors.outlineLight,
+                          : context.outlineColor,
                     ),
                     boxShadow: selected
                         ? [
@@ -191,7 +192,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
                           fontWeight: FontWeight.w600,
                           color: selected
                               ? Colors.white
-                              : AppColors.textPrimary,
+                              : context.textPrimaryColor,
                         ),
                       ),
                     ],
@@ -207,9 +208,9 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           const SizedBox(height: 8),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surfaceLight,
+              color: context.surfaceColor,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.outlineLight),
+              border: Border.all(color: context.outlineColor),
             ),
             child: TextField(
               controller: _descCtrl,
@@ -219,15 +220,15 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
               style: const TextStyle(fontSize: 14, height: 1.4),
               decoration: InputDecoration(
                 hintText: _category.hint,
-                hintStyle: const TextStyle(
-                  color: AppColors.textTertiary,
+                hintStyle: TextStyle(
+                  color: context.textTertiaryColor,
                   fontSize: 13,
                   height: 1.4,
                 ),
                 contentPadding: const EdgeInsets.all(14),
                 border: InputBorder.none,
-                counterStyle: const TextStyle(
-                    fontSize: 10, color: AppColors.textTertiary),
+                counterStyle: TextStyle(
+                    fontSize: 10, color: context.textTertiaryColor),
               ),
             ),
           ),
@@ -255,36 +256,36 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           if (_category.usuallyBuys) ...[
             _Label('Presupuesto para compras'),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Cuánto autorizas gastar. Te devolvemos lo que sobre y '
               'verás el costo real al final.',
-              style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+              style: TextStyle(fontSize: 11.5, color: context.textSecondaryColor),
             ),
             const SizedBox(height: 10),
             Container(
               decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
+                color: context.surfaceColor,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.outlineLight),
+                border: Border.all(color: context.outlineColor),
               ),
               child: TextField(
                 controller: _budgetCtrl,
                 keyboardType: TextInputType.number,
                 onChanged: (_) => setState(() {}),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
+                  color: context.textPrimaryColor,
                 ),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   prefixText: '\$ ',
                   prefixStyle: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                   hintText: '0',
-                  hintStyle: TextStyle(color: AppColors.textTertiary),
+                  hintStyle: TextStyle(color: context.textTertiaryColor),
                   contentPadding:
                       EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                   border: InputBorder.none,
@@ -299,7 +300,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
             controller: _notesCtrl,
             hint: 'Notas extra para el mensajero (opcional)',
             icon: Icons.sticky_note_2_rounded,
-            iconColor: AppColors.textTertiary,
+            iconColor: context.textTertiaryColor,
             maxLines: 2,
           ),
           const SizedBox(height: 18),
@@ -308,9 +309,9 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppColors.surfaceLight,
+              color: context.surfaceColor,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.outlineLight),
+              border: Border.all(color: context.outlineColor),
             ),
             child: Column(
               children: [
@@ -347,7 +348,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           MediaQuery.of(context).padding.bottom + 12,
         ),
         decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
+          color: context.surfaceColor,
           boxShadow: const [
             BoxShadow(
               color: AppColors.shadow,
@@ -407,10 +408,10 @@ class _Label extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w700,
-        color: AppColors.textPrimary,
+        color: context.textPrimaryColor,
       ),
     );
   }
@@ -435,9 +436,9 @@ class _AddressField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+        color: context.surfaceColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
       ),
       child: TextField(
         controller: controller,
@@ -446,8 +447,8 @@ class _AddressField extends StatelessWidget {
         style: const TextStyle(fontSize: 14),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(
-            color: AppColors.textTertiary,
+          hintStyle: TextStyle(
+            color: context.textTertiaryColor,
             fontSize: 13,
           ),
           prefixIcon: Icon(icon, size: 20, color: iconColor),
@@ -482,7 +483,7 @@ class _CostRow extends StatelessWidget {
             fontSize: isBold ? 15 : 13,
             fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
             color:
-                isBold ? AppColors.textPrimary : AppColors.textSecondary,
+                isBold ? context.textPrimaryColor : context.textSecondaryColor,
           ),
         ),
         Text(
@@ -490,7 +491,7 @@ class _CostRow extends StatelessWidget {
           style: TextStyle(
             fontSize: isBold ? 17 : 13,
             fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
-            color: isBold ? AppColors.primary : AppColors.textPrimary,
+            color: isBold ? AppColors.primary : context.textPrimaryColor,
           ),
         ),
       ],

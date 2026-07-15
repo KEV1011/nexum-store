@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
@@ -69,7 +70,7 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(pooledProvider);
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         backgroundColor: _kPooledColor,
         foregroundColor: Colors.white,
@@ -98,14 +99,14 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
   }
 
   Widget _empty() => ListView(
-        children: const [
+        children: [
           SizedBox(height: 100),
           Icon(Icons.confirmation_number_outlined,
-              size: 64, color: AppColors.textSecondary),
+              size: 64, color: context.textSecondaryColor),
           SizedBox(height: 16),
           Center(
             child: Text('Aún no tienes reservas de viajes compartidos.',
-                style: TextStyle(color: AppColors.textSecondary)),
+                style: TextStyle(color: context.textSecondaryColor)),
           ),
         ],
       );
@@ -135,7 +136,7 @@ class _BookingCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardLight,
+        color: context.cardColor2,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),
@@ -168,14 +169,14 @@ class _BookingCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          _row(Icons.schedule_rounded,
+          _row(context, Icons.schedule_rounded,
               '$timeLabel · ${t.day}/${t.month}/${t.year}'),
-          _row(Icons.event_seat_rounded,
+          _row(context, Icons.event_seat_rounded,
               '$seats puesto(s) · ${CurrencyFormatter.format(trip.farePerSeat * seats)}'),
-          _row(Icons.directions_car_rounded,
+          _row(context, Icons.directions_car_rounded,
               '${trip.driverName} · ${trip.vehicleDescription}'),
           if (booking?.pickupAddress != null && booking!.pickupAddress!.isNotEmpty)
-            _row(Icons.my_location_rounded, booking.pickupAddress!),
+            _row(context, Icons.my_location_rounded, booking.pickupAddress!),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -211,16 +212,16 @@ class _BookingCard extends StatelessWidget {
     );
   }
 
-  Widget _row(IconData icon, String text) => Padding(
+  Widget _row(BuildContext context, IconData icon, String text) => Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Row(
           children: [
-            Icon(icon, size: 15, color: AppColors.textSecondary),
+            Icon(icon, size: 15, color: context.textSecondaryColor),
             const SizedBox(width: 8),
             Expanded(
               child: Text(text,
-                  style: const TextStyle(
-                      fontSize: 13, color: AppColors.textSecondary)),
+                  style: TextStyle(
+                      fontSize: 13, color: context.textSecondaryColor)),
             ),
           ],
         ),

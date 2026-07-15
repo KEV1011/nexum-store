@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
@@ -59,7 +60,7 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.surfaceLight,
+        color: isDark ? AppColors.cardDark : context.surfaceColor,
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(AppConstants.radiusXLarge),
         ),
@@ -147,7 +148,7 @@ class _FormView extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+              color: isDark ? AppColors.outlineDark : context.outlineColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -165,10 +166,10 @@ class _FormView extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           order.businessName,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Inter',
             fontSize: 14,
-            color: AppColors.textSecondary,
+            color: context.textSecondaryColor,
           ),
           textAlign: TextAlign.center,
         ),
@@ -184,7 +185,7 @@ class _FormView extends StatelessWidget {
                 child: Icon(
                   filled ? Icons.star_rounded : Icons.star_outline_rounded,
                   size: 44,
-                  color: filled ? AppColors.star : AppColors.textTertiary,
+                  color: filled ? AppColors.star : context.textTertiaryColor,
                 ),
               ),
             );
@@ -198,20 +199,20 @@ class _FormView extends StatelessWidget {
           style: const TextStyle(fontFamily: 'Inter', fontSize: 14),
           decoration: InputDecoration(
             hintText: 'Cuéntanos más (opcional)…',
-            hintStyle: const TextStyle(
+            hintStyle: TextStyle(
               fontFamily: 'Inter',
               fontSize: 14,
-              color: AppColors.textTertiary,
+              color: context.textTertiaryColor,
             ),
             filled: true,
             fillColor:
-                isDark ? AppColors.surfaceVariantDark : AppColors.surfaceLight,
+                isDark ? AppColors.surfaceVariantDark : context.surfaceColor,
             border: OutlineInputBorder(
               borderRadius:
                   BorderRadius.circular(AppConstants.radiusMedium),
               borderSide: BorderSide(
                 color:
-                    isDark ? AppColors.outlineDark : AppColors.outlineLight,
+                    isDark ? AppColors.outlineDark : context.outlineColor,
               ),
             ),
             enabledBorder: OutlineInputBorder(
@@ -219,7 +220,7 @@ class _FormView extends StatelessWidget {
                   BorderRadius.circular(AppConstants.radiusMedium),
               borderSide: BorderSide(
                 color:
-                    isDark ? AppColors.outlineDark : AppColors.outlineLight,
+                    isDark ? AppColors.outlineDark : context.outlineColor,
               ),
             ),
           ),
@@ -240,7 +241,7 @@ class _FormView extends StatelessWidget {
               fontFamily: 'Inter',
               color: isDark
                   ? AppColors.textSecondaryDark
-                  : AppColors.textSecondary,
+                  : context.textSecondaryColor,
             ),
           ),
         ),
@@ -265,7 +266,7 @@ class RatingDisplay extends StatelessWidget {
         return Icon(
           i < rating ? Icons.star_rounded : Icons.star_outline_rounded,
           size: size,
-          color: i < rating ? AppColors.star : AppColors.textTertiary,
+          color: i < rating ? AppColors.star : context.textTertiaryColor,
         );
       }),
     );

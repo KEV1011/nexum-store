@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
@@ -545,10 +546,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                       Flexible(
                         child: Text(
                           _statusLabel(trip),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
-                            color: AppColors.textPrimary,
+                            color: context.textPrimaryColor,
                           ),
                           textAlign: TextAlign.center,
                           overflow: TextOverflow.ellipsis,

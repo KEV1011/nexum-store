@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
@@ -148,7 +149,7 @@ class _PublishPooledTripScreenState
         '${d.day}/${d.month}/${d.year} · ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         backgroundColor: _kPooledColor,
         foregroundColor: Colors.white,
@@ -288,16 +289,16 @@ class _PublishPooledTripScreenState
 
   Widget _fareCapBanner() {
     if (_loadingCap) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(vertical: 4),
         child: Text('Calculando tarifa sugerida...',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            style: TextStyle(fontSize: 12, color: context.textSecondaryColor)),
       );
     }
     final cap = _cap;
     if (cap == null) {
-      return const Text('Selecciona una ruta válida.',
-          style: TextStyle(fontSize: 12, color: AppColors.textSecondary));
+      return Text('Selecciona una ruta válida.',
+          style: TextStyle(fontSize: 12, color: context.textSecondaryColor));
     }
     return Container(
       padding: const EdgeInsets.all(12),
@@ -324,8 +325,8 @@ class _PublishPooledTripScreenState
                 Text(
                   'Ruta de ${cap.distanceKm.toStringAsFixed(0)} km · '
                   '~${cap.durationMinutes} min. Tú defines tu tarifa.',
-                  style: const TextStyle(
-                      fontSize: 11.5, color: AppColors.textSecondary),
+                  style: TextStyle(
+                      fontSize: 11.5, color: context.textSecondaryColor),
                 ),
               ],
             ),
@@ -339,9 +340,9 @@ class _PublishPooledTripScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLight,
+        color: context.surfaceColor,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.outlineLight),
+        border: Border.all(color: context.outlineColor),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<PooledCity>(
@@ -370,9 +371,9 @@ class _PublishPooledTripScreenState
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         decoration: BoxDecoration(
-          color: AppColors.surfaceLight,
+          color: context.surfaceColor,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.outlineLight),
+          border: Border.all(color: context.outlineColor),
         ),
         child: Row(
           children: [
@@ -380,7 +381,7 @@ class _PublishPooledTripScreenState
             const SizedBox(width: 12),
             Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
             const Spacer(),
-            const Icon(Icons.edit_rounded, size: 16, color: AppColors.textSecondary),
+            Icon(Icons.edit_rounded, size: 16, color: context.textSecondaryColor),
           ],
         ),
       ),
@@ -391,7 +392,7 @@ class _PublishPooledTripScreenState
     return Material(
       color: enabled
           ? _kPooledColor.withValues(alpha: 0.1)
-          : AppColors.surfaceVariantLight,
+          : context.surfaceVariantColor,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -399,7 +400,7 @@ class _PublishPooledTripScreenState
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Icon(icon,
-              color: enabled ? _kPooledColor : AppColors.textSecondary),
+              color: enabled ? _kPooledColor : context.textSecondaryColor),
         ),
       ),
     );
@@ -408,7 +409,7 @@ class _PublishPooledTripScreenState
   Widget _label(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 8, top: 4),
         child: Text(text,
-            style: const TextStyle(
-                fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            style: TextStyle(
+                fontWeight: FontWeight.w700, color: context.textPrimaryColor)),
       );
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/trip_history/presentation/providers/trip_history_provider.dart';
@@ -115,7 +116,7 @@ class _RatingsScreenState extends ConsumerState<RatingsScreen> {
                 labelStyle: TextStyle(
                   color: _periodIndex == i
                       ? AppColors.star
-                      : AppColors.textSecondary,
+                      : context.textSecondaryColor,
                   fontWeight: _periodIndex == i
                       ? FontWeight.w700
                       : FontWeight.w400,
@@ -148,7 +149,7 @@ class _RatingsScreenState extends ConsumerState<RatingsScreen> {
                         ? '$tripCount viajes completados'
                         : '$tripCount viajes en el período',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                 ],
@@ -194,7 +195,7 @@ class _RatingsScreenState extends ConsumerState<RatingsScreen> {
                   Icon(
                     Icons.forum_outlined,
                     size: 40,
-                    color: AppColors.textTertiary,
+                    color: context.textTertiaryColor,
                   ),
                   const SizedBox(height: AppConstants.spacingS),
                   Text(
@@ -208,7 +209,7 @@ class _RatingsScreenState extends ConsumerState<RatingsScreen> {
                     'Cuando tus pasajeros dejen comentarios al '
                     'calificarte, aparecerán aquí.',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -300,7 +301,7 @@ class _DistRow extends StatelessWidget {
               '$count',
               textAlign: TextAlign.end,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
                 fontWeight: FontWeight.w600,
               ),
             ),

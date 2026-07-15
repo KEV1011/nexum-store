@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 
@@ -57,7 +58,7 @@ class PromotionsScreen extends StatelessWidget {
           Text(
             'Dirígete a estas zonas para aumentar tus ganancias ahora mismo.',
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: AppColors.textSecondary),
+                ?.copyWith(color: context.textSecondaryColor),
           ),
           const SizedBox(height: AppConstants.spacingM),
           ..._hotZones.map((z) => _HotZoneTile(zone: z)),
@@ -128,7 +129,7 @@ class _ActiveBonusCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                     ),
                   ],
@@ -147,7 +148,7 @@ class _ActiveBonusCard extends StatelessWidget {
                   Text(
                     'Premio',
                     style: theme.textTheme.bodySmall
-                        ?.copyWith(color: AppColors.textSecondary),
+                        ?.copyWith(color: context.textSecondaryColor),
                   ),
                 ],
               ),
@@ -170,7 +171,7 @@ class _ActiveBonusCard extends StatelessWidget {
               Text(
                 progressLabel,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                   fontSize: 11,
                 ),
               ),
@@ -204,10 +205,10 @@ class _PromotionCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Row(
@@ -233,7 +234,7 @@ class _PromotionCard extends StatelessWidget {
                 Text(
                   promo.description,
                   style: theme.textTheme.bodySmall
-                      ?.copyWith(color: AppColors.textSecondary),
+                      ?.copyWith(color: context.textSecondaryColor),
                 ),
               ],
             ),
@@ -290,7 +291,7 @@ class _HotZoneTile extends StatelessWidget {
       subtitle: Text(
         zone.distance,
         style: theme.textTheme.bodySmall
-            ?.copyWith(color: AppColors.textSecondary),
+            ?.copyWith(color: context.textSecondaryColor),
       ),
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

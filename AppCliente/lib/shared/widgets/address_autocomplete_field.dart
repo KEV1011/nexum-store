@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
 
 /// Campo de dirección con autocompletado de Google Places (vía backend).
@@ -123,7 +124,7 @@ class _AddressAutocompleteFieldState
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.outlineLight),
+              border: Border.all(color: context.outlineColor),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.06),
@@ -137,10 +138,10 @@ class _AddressAutocompleteFieldState
                 for (final s in _suggestions.take(4))
                   ListTile(
                     dense: true,
-                    leading: const Icon(
+                    leading: Icon(
                       Icons.place_outlined,
                       size: 20,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                     title: Text(
                       s.mainText,

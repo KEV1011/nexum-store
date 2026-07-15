@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
@@ -64,7 +65,7 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
     final notifier = ref.read(pooledDriverProvider.notifier);
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundLight,
+      backgroundColor: context.backgroundColor,
       appBar: AppBar(
         backgroundColor: _kPooledColor,
         foregroundColor: Colors.white,
@@ -126,12 +127,12 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
   Widget _empty() => ListView(
         children: [
           const SizedBox(height: 100),
-          const Icon(Icons.groups_rounded,
-              size: 64, color: AppColors.textSecondary),
+          Icon(Icons.groups_rounded,
+              size: 64, color: context.textSecondaryColor),
           const SizedBox(height: 16),
-          const Center(
+          Center(
             child: Text('Aún no has publicado viajes compartidos.',
-                style: TextStyle(color: AppColors.textSecondary)),
+                style: TextStyle(color: context.textSecondaryColor)),
           ),
           const SizedBox(height: 16),
           Center(
@@ -168,7 +169,7 @@ class _PooledTripCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardLight,
+        color: context.cardColor2,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),
@@ -203,12 +204,12 @@ class _PooledTripCard extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.schedule_rounded,
-                  size: 15, color: AppColors.textSecondary),
+              Icon(Icons.schedule_rounded,
+                  size: 15, color: context.textSecondaryColor),
               const SizedBox(width: 6),
               Text(dtLabel,
-                  style: const TextStyle(
-                      fontSize: 13, color: AppColors.textSecondary)),
+                  style: TextStyle(
+                      fontSize: 13, color: context.textSecondaryColor)),
               const Spacer(),
               Text('${CurrencyFormatter.format(trip.farePerSeat)} / puesto',
                   style: const TextStyle(
@@ -234,7 +235,7 @@ class _PooledTripCard extends StatelessWidget {
             child: LinearProgressIndicator(
               value: trip.totalSeats == 0 ? 0 : trip.bookedSeats / trip.totalSeats,
               minHeight: 7,
-              backgroundColor: AppColors.surfaceVariantLight,
+              backgroundColor: context.surfaceVariantColor,
               valueColor: const AlwaysStoppedAnimation(_kPooledColor),
             ),
           ),
@@ -245,8 +246,8 @@ class _PooledTripCard extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
                     children: [
-                      const Icon(Icons.person_rounded,
-                          size: 15, color: AppColors.textSecondary),
+                      Icon(Icons.person_rounded,
+                          size: 15, color: context.textSecondaryColor),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
@@ -254,8 +255,8 @@ class _PooledTripCard extends StatelessWidget {
                           '${b.pickupAddress != null && b.pickupAddress!.isNotEmpty ? " · ${b.pickupAddress}" : ""}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 12.5, color: AppColors.textSecondary),
+                          style: TextStyle(
+                              fontSize: 12.5, color: context.textSecondaryColor),
                         ),
                       ),
                     ],

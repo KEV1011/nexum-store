@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
@@ -454,7 +455,7 @@ class _Chip extends StatelessWidget {
           borderRadius:
               BorderRadius.circular(AppConstants.radiusCircular),
           border: Border.all(
-            color: active ? AppColors.primary : AppColors.outlineLight,
+            color: active ? AppColors.primary : context.outlineColor,
           ),
         ),
         child: Text(
@@ -462,7 +463,7 @@ class _Chip extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: active ? Colors.white : AppColors.textSecondary,
+            color: active ? Colors.white : context.textSecondaryColor,
           ),
         ),
       ),
@@ -506,7 +507,7 @@ class _HeroCard extends StatelessWidget {
                       ? 'Hoy, ${DateFormatter.formatDate(date)}'
                       : monthLabel,
                   style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: AppColors.textSecondary),
+                      ?.copyWith(color: context.textSecondaryColor),
                 ),
                 if (hasLive) ...[
                   const SizedBox(width: 8),
@@ -548,7 +549,7 @@ class _HeroCard extends StatelessWidget {
             Text(
               'ganancias netas',
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: AppColors.textSecondary),
+                  ?.copyWith(color: context.textSecondaryColor),
             ),
             const SizedBox(height: AppConstants.spacingM),
             Row(
@@ -609,10 +610,10 @@ class _CommissionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.pie_chart_outline_rounded,
                   size: 18,
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
                 const SizedBox(width: AppConstants.spacingS),
                 Text(
@@ -703,7 +704,7 @@ class _CommissionLegend extends StatelessWidget {
           Text(
             label,
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: AppColors.textSecondary),
+                ?.copyWith(color: context.textSecondaryColor),
           ),
           Text(
             value,
@@ -752,7 +753,7 @@ class _GoalCard extends StatelessWidget {
                 Icon(
                   reached ? Icons.emoji_events_rounded : Icons.flag_outlined,
                   size: 18,
-                  color: reached ? AppColors.star : AppColors.textSecondary,
+                  color: reached ? AppColors.star : context.textSecondaryColor,
                 ),
                 const SizedBox(width: AppConstants.spacingS),
                 Text(
@@ -781,7 +782,7 @@ class _GoalCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: v,
-                  backgroundColor: AppColors.outlineLight,
+                  backgroundColor: context.outlineColor,
                   valueColor: AlwaysStoppedAnimation<Color>(
                     reached ? AppColors.star : AppColors.primary,
                   ),
@@ -805,7 +806,7 @@ class _GoalCard extends StatelessWidget {
                       : 'Faltan ${CurrencyFormatter.format(remaining)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color:
-                        reached ? AppColors.success : AppColors.textSecondary,
+                        reached ? AppColors.success : context.textSecondaryColor,
                     fontWeight:
                         reached ? FontWeight.w700 : FontWeight.normal,
                   ),
@@ -944,7 +945,7 @@ class _AnimatedBarChart extends StatelessWidget {
                                   ? AppColors.secondary
                                   : isHighlight
                                       ? AppColors.primary
-                                      : AppColors.textSecondary,
+                                      : context.textSecondaryColor,
                             ),
                             textAlign: TextAlign.center,
                             overflow: TextOverflow.ellipsis,
@@ -1046,7 +1047,7 @@ class _PanelStat extends StatelessWidget {
         ),
         Text(
           label,
-          style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 9, color: context.textSecondaryColor),
         ),
       ],
     );
@@ -1138,7 +1139,7 @@ class _DayRow extends StatelessWidget {
           '${earning.totalTrips} viajes · '
           'Comisión ${CurrencyFormatter.format(earning.commission)}',
           style: theme.textTheme.bodySmall
-              ?.copyWith(color: AppColors.textSecondary),
+              ?.copyWith(color: context.textSecondaryColor),
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1154,7 +1155,7 @@ class _DayRow extends StatelessWidget {
             Text(
               'neto',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
                 fontSize: 10,
               ),
             ),
@@ -1199,7 +1200,7 @@ class _WeekRow extends StatelessWidget {
           '${earning.totalTrips} viajes · '
           '${_compactCop(earning.grossEarnings)} bruto',
           style: theme.textTheme.bodySmall
-              ?.copyWith(color: AppColors.textSecondary),
+              ?.copyWith(color: context.textSecondaryColor),
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1215,7 +1216,7 @@ class _WeekRow extends StatelessWidget {
             Text(
               'neto',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.textSecondaryColor,
                 fontSize: 10,
               ),
             ),
@@ -1245,7 +1246,7 @@ class _MiniStat extends StatelessWidget {
     final theme = Theme.of(context);
     return Column(
       children: [
-        Icon(icon, size: 18, color: AppColors.textSecondary),
+        Icon(icon, size: 18, color: context.textSecondaryColor),
         const SizedBox(height: 4),
         Text(
           value,
@@ -1257,7 +1258,7 @@ class _MiniStat extends StatelessWidget {
         Text(
           label,
           style: theme.textTheme.bodySmall?.copyWith(
-            color: AppColors.textSecondary,
+            color: context.textSecondaryColor,
             fontSize: 10,
           ),
         ),
@@ -1294,7 +1295,7 @@ class _SummaryTile extends StatelessWidget {
         Text(
           label,
           style: theme.textTheme.bodySmall
-              ?.copyWith(color: AppColors.textSecondary),
+              ?.copyWith(color: context.textSecondaryColor),
           textAlign: TextAlign.center,
         ),
       ],

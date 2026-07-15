@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 
@@ -23,10 +24,10 @@ class CartSummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppConstants.spacingM),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : AppColors.cardLight,
+        color: isDark ? AppColors.cardDark : context.cardColor2,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
         border: Border.all(
-          color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+          color: isDark ? AppColors.outlineDark : context.outlineColor,
         ),
       ),
       child: Column(
@@ -62,7 +63,7 @@ class _Row extends StatelessWidget {
       fontFamily: 'Inter',
       fontSize: emphasize ? 16 : 14,
       fontWeight: emphasize ? FontWeight.w700 : FontWeight.w500,
-      color: emphasize ? null : AppColors.textSecondary,
+      color: emphasize ? null : context.textSecondaryColor,
     );
 
     return Row(

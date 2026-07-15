@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/date_formatter.dart';
@@ -104,7 +105,7 @@ class _OrderCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Material(
-      color: isDark ? AppColors.cardDark : AppColors.cardLight,
+      color: isDark ? AppColors.cardDark : context.cardColor2,
       borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
       child: InkWell(
         onTap: () => context.push(AppRoutes.orderPath(order.id)),
@@ -114,7 +115,7 @@ class _OrderCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
             border: Border.all(
-              color: isDark ? AppColors.outlineDark : AppColors.outlineLight,
+              color: isDark ? AppColors.outlineDark : context.outlineColor,
             ),
           ),
           child: Column(
@@ -141,27 +142,27 @@ class _OrderCard extends StatelessWidget {
               Text(
                 '${order.orderRef}  •  '
                 '${DateFormatter.formatRelativeDate(order.createdAt)}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
-                  color: AppColors.textSecondary,
+                  color: context.textSecondaryColor,
                 ),
               ),
               const SizedBox(height: AppConstants.spacingS),
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.shopping_bag_outlined,
                     size: 15,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                   const SizedBox(width: 4),
                   Text(
                     '${order.lines.length} producto(s)',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 13,
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                     ),
                   ),
                   const Spacer(),
@@ -226,8 +227,8 @@ class _StatusBadge extends StatelessWidget {
         ),
       _ when order.isDelivered => (
           'Entregado',
-          AppColors.surfaceVariantLight,
-          AppColors.textSecondary,
+          context.surfaceVariantColor,
+          context.textSecondaryColor,
         ),
       _ => ('En curso', AppColors.primaryContainer, AppColors.primaryDim),
     };

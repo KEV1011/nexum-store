@@ -22,6 +22,7 @@ import 'package:nexum_driver/features/profile_verification/presentation/screens/
 import 'package:nexum_driver/features/ride_pool/presentation/screens/ride_pool_screen.dart';
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nexum_driver/features/promotions/presentation/screens/promotions_screen.dart';
+import 'package:nexum_driver/features/pro/presentation/screens/pro_status_screen.dart';
 import 'package:nexum_driver/features/ratings/presentation/screens/ratings_screen.dart';
 import 'package:nexum_driver/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nexum_driver/features/safety/presentation/screens/safety_screen.dart';
@@ -48,6 +49,7 @@ abstract final class AppRoutes {
   static const String wallet = '/wallet';
   static const String tripHistory = '/trip-history';
   static const String ratings = '/ratings';
+  static const String nexumPro = '/pro';
   static const String safety = '/safety';
   static const String trustedContact = '/safety/trusted-contact';
   static const String settings = '/settings';
@@ -202,6 +204,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const RatingsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.nexumPro,
+        pageBuilder: (context, state) => AppTransitions.slideUp(
+          pageKey: state.pageKey,
+          child: const ProStatusScreen(),
         ),
       ),
       GoRoute(

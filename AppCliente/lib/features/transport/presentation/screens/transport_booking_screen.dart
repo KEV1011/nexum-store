@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
@@ -120,7 +121,7 @@ class _TransportBookingScreenState
                 children: [
                   const SizedBox(width: 16),
                   Icon(Icons.more_vert_rounded,
-                      color: AppColors.textTertiary, size: 20),
+                      color: context.textTertiaryColor, size: 20),
                 ],
               ),
             ),
@@ -399,9 +400,9 @@ class _ServiceHeader extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   serviceType.description,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: AppColors.textSecondary,
+                    color: context.textSecondaryColor,
                   ),
                 ),
               ],
@@ -422,10 +423,10 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w700,
-        color: AppColors.textSecondary,
+        color: context.textSecondaryColor,
       ),
     );
   }
@@ -449,23 +450,23 @@ class _FareEstimateCard extends ConsumerWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surfaceVariantLight,
+            color: context.surfaceVariantColor,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             children: [
-              const Icon(Icons.receipt_outlined,
-                  color: AppColors.textSecondary, size: 20),
+              Icon(Icons.receipt_outlined,
+                  color: context.textSecondaryColor, size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Precio estimado',
                       style: TextStyle(
                         fontSize: 12,
-                        color: AppColors.textSecondary,
+                        color: context.textSecondaryColor,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -481,11 +482,11 @@ class _FareEstimateCard extends ConsumerWidget {
                   ],
                 ),
               ),
-              const Text(
+              Text(
                 '2–7 km',
                 style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.textTertiary,
+                  color: context.textTertiaryColor,
                 ),
               ),
             ],
@@ -695,7 +696,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
             height: 4,
             margin: const EdgeInsets.only(bottom: 20),
             decoration: BoxDecoration(
-              color: AppColors.outlineLight,
+              color: context.outlineColor,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -706,7 +707,7 @@ class _PaymentSheetState extends State<_PaymentSheet> {
           const SizedBox(height: 6),
           Text(
             'Tarifa estimada',
-            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
           ),
           const SizedBox(height: 4),
           Text(
