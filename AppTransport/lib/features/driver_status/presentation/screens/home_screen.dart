@@ -2271,7 +2271,9 @@ class _MapActionButton extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(AppConstants.spacingS + 2),
-          child: Icon(icon, size: 22, color: AppColors.textPrimary),
+          // El círculo usa Theme.of(context).cardColor (adapta a oscuro); el
+          // ícono debe adaptarse igual o queda oscuro sobre oscuro (invisible).
+          child: Icon(icon, size: 22, color: context.textPrimaryColor),
         ),
       ),
     );
