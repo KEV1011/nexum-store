@@ -8,11 +8,29 @@
 
 import { FreightStatus, VehicleType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { COMMISSION_RATE } from '../config/constants';
+import { COMMISSION_RATE, INTERCITY_CITY_COORDS } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
 
 export class FreightError extends Error {}
+
+// Centroide de Pamplona: fallback cuando no se reconoce la ciudad (acarreo
+// urbano o texto libre). Da un punto de mapa válido siempre.
+const _PAMPLONA = INTERCITY_CITY_COORDS.pamplona;
+
+/**
+ * Resuelve coordenadas aproximadas de una ciudad de flete (texto libre) al
+ * centroide conocido; si no se reconoce, devuelve el centro de Pamplona. Así
+ * el mapa del flete siempre tiene una trayectoria que dibujar, sin depender de
+ * un geocodificador externo.
+ */
+function _cityCoords(city: string | null | undefined): { lat: number; lng: number } {
+  if (!city) return _PAMPLONA;
+  const key = city.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // quita tildes
+  const coords = (INTERCITY_CITY_COORDS as Record<string, { lat: number; lng: number }>)[key];
+  return coords ?? _PAMPLONA;
+}
 
 // Inyectado por ws.handler al arrancar — avisa en tiempo real a los portales
 // de las flotas con camiones del tipo pedido cuando entra un flete nuevo.
@@ -47,6 +65,8 @@ function _toDTO(f: {
   driverId: string | null; vehicleId: string | null; finalPrice: number | null;
   commission: number | null; netEarning: number | null; createdAt: Date;
   acceptedAt: Date | null; completedAt: Date | null;
+  originLat?: number | null; originLng?: number | null;
+  destLat?: number | null; destLng?: number | null;
 }) {
   return {
     id: f.id,
@@ -56,6 +76,10 @@ function _toDTO(f: {
     destAddress: f.destAddress,
     originCity: f.originCity ?? undefined,
     destCity: f.destCity ?? undefined,
+    originLat: f.originLat ?? undefined,
+    originLng: f.originLng ?? undefined,
+    destLat: f.destLat ?? undefined,
+    destLng: f.destLng ?? undefined,
     cargoDescription: f.cargoDescription,
     weightKg: f.weightKg,
     vehicleType: f.vehicleType,
@@ -98,6 +122,10 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
 
   const user = await prisma.user.findUnique({ where: { id: clientId }, select: { name: true, phone: true } });
 
+  // Trayectoria para el mapa: centroide de cada ciudad (fallback Pamplona).
+  const oc = _cityCoords(dto.originCity);
+  const dc = _cityCoords(dto.destCity);
+
   const f = await prisma.freightRequest.create({
     data: {
       clientId,
@@ -112,6 +140,10 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
       vehicleType: vType,
       offeredPrice: dto.offeredPrice,
       scheduledFor,
+      originLat: oc.lat,
+      originLng: oc.lng,
+      destLat: dc.lat,
+      destLng: dc.lng,
     },
   });
   const dto2 = _toDTO(f);

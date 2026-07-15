@@ -981,6 +981,13 @@ model FreightRequest {
   finalPrice       Float?
   commission       Float?
   netEarning       Float?
+  // Coordenadas de la trayectoria (para dibujar el mapa del flete). Se
+  // resuelven al crear el flete desde el centroide de la ciudad (fallback
+  // Pamplona); permiten mostrar origen→destino en la app del conductor.
+  originLat        Float?
+  originLng        Float?
+  destLat          Float?
+  destLng          Float?
   createdAt        DateTime      @default(now())
   acceptedAt       DateTime?
   completedAt      DateTime?

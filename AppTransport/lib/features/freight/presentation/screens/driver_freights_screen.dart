@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 
 /// Fletes de carga del conductor: los que puede TOMAR (abiertos, para su flota
 /// y sus camiones) y los que ya tiene ASIGNADOS.
@@ -327,6 +328,15 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
           Text('${f['originAddress']} → ${f['destAddress']}',
               style: const TextStyle(
                   fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.3)),
+          // Mapa del trayecto en los estados activos (aceptado / en ruta): al
+          // iniciar el viaje el conductor ve origen → destino en el mapa.
+          if (status == 'ACCEPTED' || status == 'IN_PROGRESS') ...[
+            const SizedBox(height: 8),
+            Builder(builder: (_) {
+              final map = FreightRouteMap.fromFreight(f);
+              return map ?? const SizedBox.shrink();
+            }),
+          ],
           const SizedBox(height: 4),
           Text(
             '${f['cargoDescription']} · ${f['weightKg']} kg · ${f['vehicleType']}',
