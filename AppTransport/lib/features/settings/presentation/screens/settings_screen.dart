@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
+import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
@@ -86,10 +87,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             icon: Icons.dark_mode_rounded,
             iconColor: const Color(0xFF6366F1),
             title: 'Modo oscuro',
-            // Deshabilitado hasta el pase de contraste con QA en dispositivo
-            // (ver theme_provider.dart).
-            subtitle: 'Próximamente',
-            trailing: const Switch(value: false, onChanged: null),
+            subtitle: 'Tema oscuro en toda la app',
+            trailing: Switch(
+              value: ref.watch(themeProvider) == ThemeMode.dark,
+              onChanged: (v) =>
+                  ref.read(themeProvider.notifier).setDark(dark: v),
+            ),
           ),
           const Divider(),
           _SectionHeader(title: 'Navegación'),

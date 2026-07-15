@@ -344,8 +344,8 @@ class _RealPhoto extends StatelessWidget {
               right: 6,
               child: Container(
                 padding: const EdgeInsets.all(3),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: context.surfaceColor,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -505,8 +505,8 @@ class _CapturedPhoto extends StatelessWidget {
               right: 6,
               child: Container(
                 padding: const EdgeInsets.all(3),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: context.surfaceColor,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(

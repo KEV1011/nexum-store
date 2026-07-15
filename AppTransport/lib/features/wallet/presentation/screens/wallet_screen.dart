@@ -152,7 +152,7 @@ class _BalanceCard extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: onWithdraw,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
+                backgroundColor: context.surfaceColor,
                 foregroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 13),
               ),

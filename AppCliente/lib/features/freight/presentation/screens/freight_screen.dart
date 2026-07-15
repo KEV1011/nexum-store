@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/features/freight/presentation/widgets/freight_route_map.dart';
 
 /// Fletes y acarreos con camiones (turbo / camión / mula).
 ///
@@ -373,6 +374,15 @@ class _FreightTile extends StatelessWidget {
               ),
             ],
           ),
+          // Mapa del trayecto una vez tomado el flete (aceptado / en ruta): el
+          // cliente ve por dónde va su carga.
+          if (status == 'ACCEPTED' || status == 'IN_PROGRESS') ...[
+            const SizedBox(height: 8),
+            Builder(builder: (_) {
+              final map = FreightRouteMap.fromFreight(freight, height: 130);
+              return map ?? const SizedBox.shrink();
+            }),
+          ],
           const SizedBox(height: 4),
           Row(
             children: [
