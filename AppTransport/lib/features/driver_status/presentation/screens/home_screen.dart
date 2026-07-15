@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
@@ -2165,7 +2166,7 @@ class _DrawerItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final labelColor =
-        isAccent ? iconColor : AppColors.textPrimary;
+        isAccent ? iconColor : context.textPrimaryColor;
     return ListTile(
       leading: Container(
         width: 38,
