@@ -354,7 +354,7 @@ class _MatchedView extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 16),
-        _routeCard(),
+        _routeCard(context),
         const SizedBox(height: 16),
         if (ride.status != RideStatus.inProgress &&
             ride.status != RideStatus.completed)
@@ -369,7 +369,7 @@ class _MatchedView extends StatelessWidget {
     );
   }
 
-  Widget _routeCard() => Container(
+  Widget _routeCard(BuildContext context) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: context.cardColor2,

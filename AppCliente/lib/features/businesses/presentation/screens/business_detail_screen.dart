@@ -212,29 +212,29 @@ class _InfoRow extends StatelessWidget {
             color: context.textPrimaryColor,
           ),
         ),
-        _dot(),
+        _dot(context),
         Text(
           '${business.etaMinutes} min',
-          style: _metaStyle,
+          style: _metaStyle(context),
         ),
-        _dot(),
+        _dot(context),
         Text(
           'Envío ${CurrencyFormatter.format(business.deliveryFee)}',
-          style: _metaStyle,
+          style: _metaStyle(context),
         ),
       ],
     );
   }
 
-  static const _metaStyle = TextStyle(
-    fontFamily: 'Inter',
-    fontSize: 13,
-    fontWeight: FontWeight.w600,
-    color: context.textPrimaryColor,
-  );
+  TextStyle _metaStyle(BuildContext context) => TextStyle(
+        fontFamily: 'Inter',
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: context.textPrimaryColor,
+      );
 
-  Widget _dot() => Padding(
-        padding: EdgeInsets.symmetric(horizontal: 6),
+  Widget _dot(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
         child: Text('•', style: TextStyle(color: context.textSecondaryColor)),
       );
 }

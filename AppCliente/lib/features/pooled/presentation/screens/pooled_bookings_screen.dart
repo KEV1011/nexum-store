@@ -169,14 +169,14 @@ class _BookingCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          _row(Icons.schedule_rounded,
+          _row(context, Icons.schedule_rounded,
               '$timeLabel · ${t.day}/${t.month}/${t.year}'),
-          _row(Icons.event_seat_rounded,
+          _row(context, Icons.event_seat_rounded,
               '$seats puesto(s) · ${CurrencyFormatter.format(trip.farePerSeat * seats)}'),
-          _row(Icons.directions_car_rounded,
+          _row(context, Icons.directions_car_rounded,
               '${trip.driverName} · ${trip.vehicleDescription}'),
           if (booking?.pickupAddress != null && booking!.pickupAddress!.isNotEmpty)
-            _row(Icons.my_location_rounded, booking.pickupAddress!),
+            _row(context, Icons.my_location_rounded, booking.pickupAddress!),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -212,7 +212,7 @@ class _BookingCard extends StatelessWidget {
     );
   }
 
-  Widget _row(IconData icon, String text) => Padding(
+  Widget _row(BuildContext context, IconData icon, String text) => Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Row(
           children: [

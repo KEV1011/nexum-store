@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
-import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/earnings/domain/entities/daily_earnings_entity.dart';
 
@@ -62,7 +61,7 @@ class _BarChartPainter extends CustomPainter {
     final barWidth = (size.width - (_barSpacing * (totalItems + 1))) / totalItems;
 
     final textStyle = TextStyle(
-      color: isDark ? Colors.white60 : context.textSecondaryColor,
+      color: isDark ? Colors.white60 : AppColors.textSecondary,
       fontSize: 10,
     );
 

@@ -936,13 +936,13 @@ class _StatChip extends StatelessWidget {
     required this.icon,
     required this.value,
     required this.label,
-    this.valueColor = context.textPrimaryColor,
+    this.valueColor,
   });
 
   final IconData icon;
   final String value;
   final String label;
-  final Color valueColor;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -955,7 +955,7 @@ class _StatChip extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: valueColor,
+            color: valueColor ?? context.textPrimaryColor,
           ),
           textAlign: TextAlign.center,
         ),

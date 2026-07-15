@@ -542,11 +542,12 @@ class _CostCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _row('Servicio del mensajero',
+          _row(context, 'Servicio del mensajero',
               CurrencyFormatter.format(errand.serviceFee)),
           if (errand.hasBudget) ...[
             const SizedBox(height: 8),
             _row(
+              context,
               hasActual ? 'Compras (costo real)' : 'Compras (presupuesto)',
               CurrencyFormatter.format(
                 errand.actualPurchaseCost ?? errand.purchaseBudget!,
@@ -557,6 +558,7 @@ class _CostCard extends StatelessWidget {
                 errand.actualPurchaseCost! < errand.purchaseBudget!) ...[
               const SizedBox(height: 8),
               _row(
+                context,
                 'Te devolvemos',
                 CurrencyFormatter.format(
                   errand.purchaseBudget! - errand.actualPurchaseCost!,
@@ -570,6 +572,7 @@ class _CostCard extends StatelessWidget {
             child: Divider(height: 1),
           ),
           _row(
+            context,
             hasActual ? 'Total a pagar' : 'Total estimado',
             CurrencyFormatter.format(errand.actualTotal),
             isBold: true,
@@ -580,6 +583,7 @@ class _CostCard extends StatelessWidget {
   }
 
   Widget _row(
+    BuildContext context,
     String label,
     String value, {
     bool isBold = false,

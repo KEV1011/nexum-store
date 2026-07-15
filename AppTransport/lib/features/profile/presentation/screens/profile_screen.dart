@@ -236,14 +236,14 @@ class ProfileScreen extends ConsumerWidget {
             Text(
               profile.phone,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: context.textSecondaryColor,
+                color: theme.textSecondaryColor,
               ),
             ),
             const SizedBox(height: 2),
             Text(
               profile.email,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: context.textSecondaryColor,
+                color: theme.textSecondaryColor,
               ),
             ),
             const SizedBox(height: AppConstants.spacingXS),
@@ -340,7 +340,7 @@ class ProfileScreen extends ConsumerWidget {
                       Text(
                         'Conduces para',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: context.textSecondaryColor,
+                          color: theme.textSecondaryColor,
                           fontSize: 11,
                         ),
                       ),
@@ -353,7 +353,7 @@ class ProfileScreen extends ConsumerWidget {
                       Text(
                         '${aff.typeLabel} · $employmentLabel',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: context.textSecondaryColor,
+                          color: theme.textSecondaryColor,
                         ),
                       ),
                     ],
@@ -447,7 +447,7 @@ class ProfileScreen extends ConsumerWidget {
                     Text(
                       '${profile.totalTrips} viajes completados',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: context.textSecondaryColor,
+                        color: theme.textSecondaryColor,
                       ),
                     ),
                   ],
@@ -517,7 +517,7 @@ class ProfileScreen extends ConsumerWidget {
               label: 'Viajes totales',
               value: profile.totalTrips.toString(),
               icon: Icons.route_rounded,
-              color: context.textSecondaryColor,
+              color: theme.textSecondaryColor,
               sublabel: 'histórico',
             ),
             const Divider(height: AppConstants.spacingM),
@@ -684,7 +684,7 @@ class ProfileScreen extends ConsumerWidget {
               Text(
                 'Aún no has subido tus documentos.',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: context.textSecondaryColor,
+                  color: theme.textSecondaryColor,
                 ),
               )
             else
@@ -726,7 +726,7 @@ class ProfileScreen extends ConsumerWidget {
             Text(
               'Los pagos se depositan cada lunes antes de las 10 a.m.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: context.textSecondaryColor,
+                color: theme.textSecondaryColor,
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -763,7 +763,7 @@ class ProfileScreen extends ConsumerWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.settings_outlined,
-                  color: context.textSecondaryColor),
+                  color: theme.textSecondaryColor),
               title: const Text('Configuración'),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => context.push('/settings'),
@@ -772,12 +772,12 @@ class ProfileScreen extends ConsumerWidget {
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.info_outline_rounded,
-                  color: context.textSecondaryColor),
+                  color: theme.textSecondaryColor),
               title: const Text('Versión de la app'),
               trailing: Text(
                 AppConstants.appVersion,
                 style: theme.textTheme.bodySmall
-                    ?.copyWith(color: context.textSecondaryColor),
+                    ?.copyWith(color: theme.textSecondaryColor),
               ),
             ),
             const Divider(height: 1),
@@ -886,7 +886,7 @@ class _StatRow extends StatelessWidget {
               Text(
                 sublabel,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: context.textSecondaryColor,
+                  color: theme.textSecondaryColor,
                   fontSize: 10,
                 ),
               ),
@@ -897,7 +897,7 @@ class _StatRow extends StatelessWidget {
           value,
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,
-            color: color == context.textSecondaryColor ? context.textPrimaryColor : color,
+            color: color == theme.textSecondaryColor ? context.textPrimaryColor : color,
           ),
         ),
       ],
@@ -928,7 +928,7 @@ class _InfoRow extends StatelessWidget {
           Text(
             label,
             style: theme.textTheme.bodySmall
-                ?.copyWith(color: context.textSecondaryColor),
+                ?.copyWith(color: theme.textSecondaryColor),
           ),
           Text(
             value,
@@ -978,7 +978,7 @@ class _DocumentRow extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: expired || doc.status == DocumentStatus.rejected
                           ? AppColors.error
-                          : context.textSecondaryColor,
+                          : theme.textSecondaryColor,
                       fontSize: 11,
                     ),
                   ),

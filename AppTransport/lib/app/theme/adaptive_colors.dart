@@ -37,3 +37,21 @@ extension AdaptiveColors on BuildContext {
   Color get appDividerColor =>
       isDarkTheme ? AppColors.dividerDark : AppColors.divider;
 }
+
+/// Misma resolución adaptativa pero desde un [ThemeData] — para helpers que
+/// reciben `theme` y no tienen `BuildContext` en scope.
+extension AdaptiveThemeColors on ThemeData {
+  bool get isDarkTheme => brightness == Brightness.dark;
+
+  Color get textPrimaryColor =>
+      isDarkTheme ? AppColors.textOnDark : AppColors.textPrimary;
+
+  Color get textSecondaryColor =>
+      isDarkTheme ? AppColors.textSecondaryDark : AppColors.textSecondary;
+
+  Color get surfaceColor2 =>
+      isDarkTheme ? AppColors.surfaceDark : AppColors.surfaceLight;
+
+  Color get outlineColor2 =>
+      isDarkTheme ? AppColors.outlineDark : AppColors.outlineLight;
+}
