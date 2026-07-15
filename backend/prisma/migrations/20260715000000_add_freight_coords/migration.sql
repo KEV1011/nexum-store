@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "freight_requests" ADD COLUMN     "destLat" DOUBLE PRECISION,
+ADD COLUMN     "destLng" DOUBLE PRECISION,
+ADD COLUMN     "originLat" DOUBLE PRECISION,
+ADD COLUMN     "originLng" DOUBLE PRECISION;
+

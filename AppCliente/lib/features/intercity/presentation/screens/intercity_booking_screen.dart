@@ -514,17 +514,46 @@ class _IntercityBookingScreenState
               ],
             ),
           ),
+
+          // ── CTA principal DENTRO del formulario ────────────────────────
+          // Se agrega en el cuerpo desplazable (además de la barra inferior)
+          // para que el botón de solicitar SIEMPRE sea visible al recorrer el
+          // formulario — ninguna barra inferior, teclado o inset del sistema
+          // puede ocultarlo en pantallas pequeñas.
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton.icon(
+              onPressed: _isSubmitting ? null : _submit,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kInterColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: _isSubmitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.search_rounded),
+              label: Text(
+                _isSubmitting ? 'Enviando…' : 'Solicitar viaje intermunicipal',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
         ],
-      ),
-      bottomNavigationBar: _BottomBar(
-        route: route,
-        seats: _seats,
-        offeredFare: double.tryParse(
-              _fareCtrl.text.replaceAll(RegExp(r'[^\d]'), ''),
-            ) ??
-            0,
-        isSubmitting: _isSubmitting,
-        onSubmit: _submit,
       ),
     );
   }
@@ -742,91 +771,6 @@ class _DarkTextField extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: _kInterColor, width: 1.5),
         ),
-      ),
-    );
-  }
-}
-
-class _BottomBar extends StatelessWidget {
-  const _BottomBar({
-    required this.route,
-    required this.seats,
-    required this.offeredFare,
-    required this.isSubmitting,
-    required this.onSubmit,
-  });
-
-  final IntercityRoute? route;
-  final IntercitySeats seats;
-  final double offeredFare;
-  final bool isSubmitting;
-  final VoidCallback onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.of(context).padding.bottom;
-    return Container(
-      padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad + 12),
-      decoration: const BoxDecoration(
-        color: AppColors.intercitySurface,
-        border: Border(top: BorderSide(color: AppColors.intercityOutline)),
-      ),
-      child: Row(
-        children: [
-          if (route != null) ...[
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${route!.distanceKm.toInt()} km · ${route!.durationLabel}',
-                  style: const TextStyle(
-                      color: AppColors.intercityTextMuted, fontSize: 11),
-                ),
-                Text(
-                  seats.label,
-                  style: const TextStyle(
-                    color: AppColors.intercityTextSoft,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-          ] else
-            const Spacer(),
-          SizedBox(
-            height: 48,
-            child: ElevatedButton(
-              onPressed: isSubmitting ? null : onSubmit,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _kInterColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: isSubmitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text(
-                      'Buscar conductor',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
-                    ),
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -71,6 +71,16 @@ class IntercityStatusScreen extends ConsumerWidget {
             _StatusHeader(request: request),
             const SizedBox(height: 16),
 
+            // ── Alternativa mientras busca: salidas programadas (Cupos) ─────
+            // El emparejamiento on-demand depende de que haya un conductor
+            // intermunicipal en línea cerca del origen. Si tarda, el pasajero
+            // NO queda atrapado: puede reservar un cupo en una salida ya
+            // publicada por una empresa (no requiere conductor on-demand).
+            if (request.status == IntercityStatus.searching) ...[
+              const _SearchingHelpCard(),
+              const SizedBox(height: 12),
+            ],
+
             // ── Route summary ──────────────────────────────────────────────
             _RouteSummaryCard(request: request),
             const SizedBox(height: 12),
@@ -143,6 +153,77 @@ class IntercityStatusScreen extends ConsumerWidget {
       ref.read(intercityProvider.notifier).cancelRequest();
       context.go('/home');
     }
+  }
+}
+
+// ── Ayuda durante la búsqueda: salidas programadas ────────────────────────────
+
+class _SearchingHelpCard extends StatelessWidget {
+  const _SearchingHelpCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.event_seat_rounded,
+                  color: _kInterColor, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  '¿Prefieres no esperar?',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Estamos avisando a los conductores de la zona. Mientras tanto, '
+            'puedes reservar un cupo en una salida ya programada por una '
+            'empresa de transporte.',
+            style: TextStyle(
+              color: AppColors.intercityTextDim,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => context.push('/pooled/search'),
+              icon: const Icon(Icons.directions_bus_rounded, size: 18),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              label: const Text(
+                'Ver salidas programadas',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
