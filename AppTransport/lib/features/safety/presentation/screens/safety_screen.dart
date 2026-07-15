@@ -105,7 +105,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
               icon: const Icon(Icons.warning_amber_rounded),
               label: const Text('ACTIVAR SOS'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
+                backgroundColor: context.surfaceColor,
                 foregroundColor: AppColors.error,
                 textStyle: const TextStyle(
                   fontWeight: FontWeight.w800,

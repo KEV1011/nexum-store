@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 
 /// Pantalla de carga inicial con animación de entrada.
 class SplashScreen extends StatefulWidget {
@@ -70,7 +71,7 @@ class _SplashScreenState extends State<SplashScreen>
                     width: 100,
                     height: 100,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: context.surfaceColor,
                       borderRadius: BorderRadius.circular(28),
                       boxShadow: [
                         BoxShadow(
@@ -185,7 +186,7 @@ class _PulseDotsState extends State<_PulseDots>
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: context.surfaceColor,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),

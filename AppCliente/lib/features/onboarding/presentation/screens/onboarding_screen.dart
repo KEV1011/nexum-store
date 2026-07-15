@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -139,7 +140,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         child: ElevatedButton(
                           onPressed: isLast ? _complete : _next,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
+                            backgroundColor: context.surfaceColor,
                             foregroundColor: page.gradient.first,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 28,

@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/app/theme/theme_provider.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/network/api_client.dart';
@@ -641,16 +642,14 @@ class _DarkModeTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Deshabilitado hasta completar el pase de contraste del tema oscuro con
-    // QA en dispositivo (ver theme_provider.dart).
-    return const SwitchListTile(
-      value: false,
-      onChanged: null,
-      secondary: Icon(
+    return SwitchListTile(
+      value: ref.watch(themeProvider) == ThemeMode.dark,
+      onChanged: (v) => ref.read(themeProvider.notifier).setDark(dark: v),
+      secondary: const Icon(
         Icons.dark_mode_rounded,
         color: AppColors.primary,
       ),
-      title: Text(
+      title: const Text(
         'Modo oscuro',
         style: TextStyle(
           fontFamily: 'Inter',
@@ -658,7 +657,7 @@ class _DarkModeTile extends ConsumerWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
-      subtitle: Text('Próximamente'),
+      subtitle: const Text('Tema oscuro en toda la app'),
     );
   }
 }

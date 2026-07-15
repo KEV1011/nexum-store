@@ -27,7 +27,7 @@ class StatusIndicatorBar extends StatelessWidget {
       height: 72,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.surfaceColor,
         boxShadow: [
           BoxShadow(
             color: AppColors.shadow,

@@ -146,10 +146,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final isLoading = ref.watch(authProvider) is AuthLoading;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: context.surfaceColor,
       appBar: AppBar(
         title: const Text('Registro de conductor'),
-        backgroundColor: Colors.white,
+        backgroundColor: context.surfaceColor,
         leading: _currentStep > 0
             ? IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new_rounded),

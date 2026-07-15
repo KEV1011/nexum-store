@@ -133,8 +133,8 @@ class _PulsingDotState extends State<_PulsingDot>
         child: Container(
           width: 8,
           height: 8,
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: context.surfaceColor,
             shape: BoxShape.circle,
           ),
         ),

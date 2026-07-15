@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 
 /// Pantalla de bienvenida mientras se inicializa la app.
@@ -18,7 +19,7 @@ class SplashScreen extends StatelessWidget {
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: context.surfaceColor,
                 borderRadius:
                     BorderRadius.circular(AppConstants.radiusXLarge),
                 boxShadow: const [

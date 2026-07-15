@@ -177,7 +177,7 @@ class _StatusBanner extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 7,
-              backgroundColor: Colors.white24,
+              backgroundColor: context.surfaceColor24,
               valueColor: const AlwaysStoppedAnimation(Colors.white),
             ),
           ),

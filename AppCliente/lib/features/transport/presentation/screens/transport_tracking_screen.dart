@@ -548,7 +548,7 @@ class _MapLiveOverlay extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.surfaceColor,
               borderRadius: BorderRadius.circular(30),
               boxShadow: const [
                 BoxShadow(color: AppColors.shadow, blurRadius: 10),

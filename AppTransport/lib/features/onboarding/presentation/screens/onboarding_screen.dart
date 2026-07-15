@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 
@@ -247,7 +248,7 @@ class _BottomControls extends StatelessWidget {
             child: ElevatedButton(
               onPressed: onNext,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
+                backgroundColor: context.surfaceColor,
                 foregroundColor: AppColors.primaryDim,
                 minimumSize: Size(isLast ? 200 : 56, 52),
                 shape: RoundedRectangleBorder(
@@ -337,7 +338,7 @@ class _SlideWelcomeState extends State<_SlideWelcome>
                   width: 120,
                   height: 120,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: context.surfaceColor,
                     borderRadius: BorderRadius.circular(32),
                     boxShadow: [
                       BoxShadow(
@@ -765,7 +766,7 @@ class _SlideSafetyState extends State<_SlideSafety>
                     width: 100,
                     height: 100,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: context.surfaceColor,
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(

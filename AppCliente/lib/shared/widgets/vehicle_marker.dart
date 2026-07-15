@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 
 /// Rumbo (grados, 0 = norte) entre dos puntos. Útil para orientar el marcador
 /// del vehículo hacia la dirección de viaje.
@@ -76,7 +77,7 @@ class VehicleMarker extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: context.surfaceColor,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(

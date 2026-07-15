@@ -31,7 +31,7 @@ class TripInProgressCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.surfaceColor,
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(AppConstants.radiusXLarge),
         ),

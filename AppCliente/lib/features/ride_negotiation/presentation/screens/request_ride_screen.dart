@@ -231,8 +231,8 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
         borderRadius: BorderRadius.circular(24),
         child: Container(
           padding: const EdgeInsets.all(8),
-          decoration: const BoxDecoration(
-            color: Colors.white,
+          decoration: BoxDecoration(
+            color: context.surfaceColor,
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: AppColors.primaryDim),
