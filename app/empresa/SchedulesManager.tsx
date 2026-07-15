@@ -25,6 +25,15 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   cancelled: { label: 'Cancelada', cls: 'bg-red-100 text-red-600' },
 }
 
+interface SeatBookingRow {
+  id: string
+  passengerName: string
+  maskedPhone?: string
+  seatsBooked: number
+  pickupAddress?: string
+  notes?: string
+}
+
 interface PooledTripRow {
   id: string
   tripRef: string
@@ -37,6 +46,7 @@ interface PooledTripRow {
   availableSeats: number
   farePerSeat: number
   status: string
+  bookings?: SeatBookingRow[]
 }
 
 interface OperatorDriverRow {
@@ -68,6 +78,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [driverId, setDriverId] = useState('')
   const [origin, setOrigin] = useState('pamplona')
   const [dest, setDest] = useState('cucuta')
@@ -215,27 +226,67 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           {[...active, ...past].map((t) => {
             const st = STATUS_LABEL[t.status] ?? STATUS_LABEL.open
             const cancellable = t.status === 'open' || t.status === 'full'
+            const bookings = t.bookings ?? []
+            const soldSeats = t.totalSeats - t.availableSeats
+            const expanded = expandedId === t.id
             return (
-              <li key={t.id} className="flex items-center gap-3 border border-slate-100 rounded-xl px-3 py-2.5">
-                <Bus className="w-4 h-4 text-slate-400 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-800 truncate">
-                    {CITY_LABEL[t.origin] ?? t.origin} → {CITY_LABEL[t.destination] ?? t.destination}
-                    <span className="text-slate-400 font-normal"> · {formatWhen(t.departureTime)}</span>
-                  </p>
-                  <p className="text-[11px] text-slate-400 truncate">
-                    {t.driverName} · {t.vehicleDescription} · {formatCOP(t.farePerSeat)}/puesto · ref {t.tripRef}
-                  </p>
+              <li key={t.id} className="border border-slate-100 rounded-xl px-3 py-2.5">
+                <div className="flex items-center gap-3">
+                  <Bus className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800 truncate">
+                      {CITY_LABEL[t.origin] ?? t.origin} → {CITY_LABEL[t.destination] ?? t.destination}
+                      <span className="text-slate-400 font-normal"> · {formatWhen(t.departureTime)}</span>
+                    </p>
+                    <p className="text-[11px] text-slate-400 truncate">
+                      {t.driverName} · {t.vehicleDescription} · {formatCOP(t.farePerSeat)}/puesto · ref {t.tripRef}
+                    </p>
+                  </div>
+                  {/* Ocupación desde la óptica del operador: puestos VENDIDOS de
+                      los totales (antes mostraba disponibles, que confundía —
+                      "4/4" parecía lleno cuando estaba vacío). */}
+                  <span
+                    title={`${soldSeats} vendidos · ${t.availableSeats} libres`}
+                    className={`inline-flex items-center gap-1 text-[11px] font-semibold shrink-0 ${
+                      t.availableSeats === 0 ? 'text-amber-600' : 'text-emerald-600'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    {soldSeats}/{t.totalSeats} vendidos
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${st.cls}`}>{st.label}</span>
+                  {cancellable && (
+                    <button onClick={() => cancel(t.id)} title="Cancelar salida"
+                      className="text-red-400 hover:text-red-600 transition-colors shrink-0">
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-                <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 shrink-0">
-                  <Users className="w-3.5 h-3.5" />{t.availableSeats}/{t.totalSeats}
-                </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${st.cls}`}>{st.label}</span>
-                {cancellable && (
-                  <button onClick={() => cancel(t.id)} title="Cancelar salida"
-                    className="text-red-400 hover:text-red-600 transition-colors shrink-0">
-                    <XCircle className="w-4 h-4" />
-                  </button>
+
+                {/* Manifiesto de pasajeros: quién reservó, cuántos puestos y
+                    dónde recogerlos — el trámite que necesita el operador. */}
+                {bookings.length > 0 && (
+                  <div className="mt-2 pl-7">
+                    <button
+                      onClick={() => setExpandedId(expanded ? null : t.id)}
+                      className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700"
+                    >
+                      {expanded ? 'Ocultar pasajeros' : `Ver pasajeros (${bookings.length})`}
+                    </button>
+                    {expanded && (
+                      <ul className="mt-1.5 space-y-1.5">
+                        {bookings.map((b) => (
+                          <li key={b.id} className="text-[11px] text-slate-600 border-l-2 border-emerald-200 pl-2">
+                            <span className="font-semibold text-slate-800">{b.passengerName}</span>
+                            {' · '}{b.seatsBooked} {b.seatsBooked === 1 ? 'puesto' : 'puestos'}
+                            {b.maskedPhone ? ` · ${b.maskedPhone}` : ''}
+                            {b.pickupAddress ? <span className="block text-slate-400">Recoge en: {b.pickupAddress}</span> : null}
+                            {b.notes ? <span className="block text-slate-400">Nota: {b.notes}</span> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 )}
               </li>
             )
