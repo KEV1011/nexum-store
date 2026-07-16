@@ -74,6 +74,8 @@ class DriverWsService {
   final _rideRequestCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _rideUpdateCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _chatCtrl = StreamController<Map<String, dynamic>>.broadcast();
+  // Chat persistente del viaje normal: emite {tripId?, message?, history?}.
+  final _tripChatCtrl = StreamController<Map<String, dynamic>>.broadcast();
   // Liquidaciones confirmadas por el backend, bufferizadas por tripId porque
   // el ack suele llegar antes de que la pantalla de resumen se suscriba.
   final _settlementCtrl = StreamController<TripSettlement>.broadcast();
@@ -109,6 +111,9 @@ class DriverWsService {
 
   /// Emits the raw `message` JSON for every `chat_message`.
   Stream<Map<String, dynamic>> get chatMessages => _chatCtrl.stream;
+
+  /// Chat del viaje normal: emite {tripId, message?} en vivo o {tripId, history?}.
+  Stream<Map<String, dynamic>> get tripChatEvents => _tripChatCtrl.stream;
 
   /// Liquidaciones reales del backend (`trip_status_ack` con `settlement`).
   Stream<TripSettlement> get settlements => _settlementCtrl.stream;
@@ -367,6 +372,17 @@ class DriverWsService {
   void sendChat(String rideId, String text) =>
       _send({'type': 'chat_send', 'rideId': rideId, 'text': text});
 
+  // ── Chat del viaje normal (persistente) ─────────────────────────────────────
+
+  void subscribeTripChat(String tripId) => _recordSub(
+      'tripchat:$tripId', {'type': 'subscribe_trip_chat', 'tripId': tripId});
+
+  void unsubscribeTripChat(String tripId) => _dropSub(
+      'tripchat:$tripId', {'type': 'unsubscribe_trip_chat', 'tripId': tripId});
+
+  void sendTripChat(String tripId, String text) =>
+      _send({'type': 'trip_chat_send', 'tripId': tripId, 'text': text});
+
   // Registra/borra una suscripción y la envía. El registro permite reenviarla
   // automáticamente tras una reconexión.
   void _recordSub(String key, Map<String, dynamic> msg) {
@@ -459,6 +475,21 @@ class DriverWsService {
         case 'chat_message':
           final m = msg['message'];
           if (m is Map<String, dynamic>) _chatCtrl.add(m);
+
+        case 'trip_chat_message':
+          final tm = msg['message'];
+          if (tm is Map<String, dynamic>) {
+            _tripChatCtrl.add({'tripId': tm['tripId'], 'message': tm});
+          }
+
+        case 'trip_chat_history':
+          final list = msg['messages'];
+          if (list is List) {
+            _tripChatCtrl.add({
+              'tripId': msg['tripId'],
+              'history': list.whereType<Map<String, dynamic>>().toList(),
+            });
+          }
 
         default:
           break;

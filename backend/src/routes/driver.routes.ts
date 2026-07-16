@@ -38,12 +38,28 @@ import {
 import { getDriverNotifications } from '../services/driver-notification.service';
 import { getDriverProStatus } from '../services/pro.service';
 import {
+  getDriverKyc,
+  setDriverSelfie,
+  submitDriverKyc,
+  isDriverCleared,
+  kycEnforced,
+  KycError,
+} from '../services/kyc.service';
+import {
   listDriverFreights,
   updateDriverFreightStatus,
   listDriverAvailableFreights,
   takeDriverFreight,
   FreightError,
 } from '../services/freight.service';
+import { getTripChat, TripChatError } from '../services/trip-chat.service';
+import {
+  createTicket,
+  listTicketsFor,
+  getTicketDetail,
+  addRequesterMessage,
+  SupportError,
+} from '../services/support.service';
 
 const router = Router();
 
@@ -104,6 +120,56 @@ router.post(
     }
   },
 );
+
+// ── KYC / verificación de identidad ──────────────────────────────────────────
+
+// GET /driver/kyc — estado de la verificación de identidad del conductor.
+router.get('/kyc', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getDriverKyc(driverId) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /driver/kyc/selfie — sube la selfie de liveness (multipart 'file').
+router.post(
+  '/kyc/selfie',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId;
+    if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' }); return; }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'La selfie debe ser una imagen.' }); return;
+    }
+    try {
+      await setDriverSelfie(driverId, fileToUrl(req.file));
+      res.status(201).json({ success: true, data: await getDriverKyc(driverId) });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
+
+// POST /driver/kyc/submit — envía la verificación de identidad.
+router.post('/kyc/submit', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await submitDriverKyc(driverId) });
+  } catch (err) {
+    const status = err instanceof KycError ? 422 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
 
 // GET /driver/documents — list all documents for the authenticated driver
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {
@@ -234,6 +300,20 @@ router.put('/status', async (req: Request, res: Response): Promise<void> => {
 
   if (!status || (status !== 'online' && status !== 'offline')) {
     res.status(400).json({ success: false, error: 'status must be "online" or "offline"' });
+    return;
+  }
+
+  // Gating de habilitación: para ponerse EN LÍNEA el conductor debe estar
+  // "cleared" (documentos aprobados y, si KYC_ENFORCE=true, identidad VERIFIED).
+  // Sin estar online el matching no lo ofrece, así que gatear aquí basta.
+  if (status === 'online' && req.driverId && !(await isDriverCleared(req.driverId))) {
+    res.status(403).json({
+      success: false,
+      error: kycEnforced()
+        ? 'Debes completar la verificación de identidad y documentos antes de conectarte.'
+        : 'Debes tener tus documentos aprobados antes de conectarte.',
+      code: 'driver_not_cleared',
+    });
     return;
   }
 
@@ -706,5 +786,72 @@ router.post(
     }
   },
 );
+
+// ─── Chat del viaje (conductor ↔ pasajero) ─────────────────────────────────────
+
+// GET /driver/trips/:id/chat — historial del chat del viaje.
+router.get('/trips/:id/chat', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getTripChat(req.params['id']!, driverId) });
+  } catch (err) {
+    const status = err instanceof TripChatError ? 403 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Soporte con tickets ────────────────────────────────────────────────────────
+
+router.get('/support/tickets', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await listTicketsFor('driver', driverId) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post('/support/tickets', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  const { subject, body, category } = req.body as { subject?: string; body?: string; category?: string };
+  if (!subject || !body) { res.status(400).json({ success: false, error: 'subject y body son requeridos' }); return; }
+  try {
+    const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { name: true } });
+    const ticket = await createTicket('driver', driverId, {
+      subject, body, category, requesterName: driver?.name ?? null,
+    });
+    res.status(201).json({ success: true, data: ticket });
+  } catch (err) {
+    const status = err instanceof SupportError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.get('/support/tickets/:id', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getTicketDetail(req.params['id']!, 'driver', driverId) });
+  } catch (err) {
+    const status = err instanceof SupportError ? 404 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post('/support/tickets/:id/messages', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  const { body } = req.body as { body?: string };
+  if (!body) { res.status(400).json({ success: false, error: 'body es requerido' }); return; }
+  try {
+    res.json({ success: true, data: await addRequesterMessage(req.params['id']!, 'driver', driverId, body) });
+  } catch (err) {
+    const status = err instanceof SupportError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
 
 export default router;

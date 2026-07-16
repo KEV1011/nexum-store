@@ -124,6 +124,10 @@ export interface AdminDriverRow {
   vehicle: string | null;
   lastSeenAt: string | null;
   createdAt: string;
+  kycStatus: string;
+  hasSelfie: boolean;
+  selfieUrl: string | null;
+  fraudFlags: number;
 }
 
 export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
@@ -146,6 +150,10 @@ export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
       vehicle: v ? `${v.brand} ${v.model} · ${v.plate}` : null,
       lastSeenAt: d.lastSeenAt?.toISOString() ?? null,
       createdAt: d.createdAt.toISOString(),
+      kycStatus: d.kycStatus,
+      hasSelfie: !!d.selfieUrl,
+      selfieUrl: d.selfieUrl,
+      fraudFlags: d.fraudFlags,
     };
   });
 }

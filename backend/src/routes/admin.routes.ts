@@ -28,6 +28,15 @@ import {
   diagnoseMatching,
 } from '../services/admin.service';
 import { OperatorStatus } from '@prisma/client';
+import { setDriverKycStatus, KycError } from '../services/kyc.service';
+import {
+  listAllTickets,
+  getTicketForAdmin,
+  adminReply,
+  setTicketStatus,
+  SupportError,
+} from '../services/support.service';
+import { SupportStatus } from '@prisma/client';
 import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
 import { listPayoutsForAdmin, adminUpdatePayout } from '../services/payout.service';
 
@@ -91,7 +100,7 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos', '/payouts', '/operators', '/routes', '/matching'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos', '/payouts', '/operators', '/routes', '/matching', '/support'], requireAdmin);
 
 // GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
 // por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.
@@ -142,6 +151,82 @@ router.post('/drivers/:id/unverify', async (req: Request, res: Response): Promis
   const ok = await setDriverVerified(req.params['id']!, false);
   if (!ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
   res.json({ success: true });
+});
+
+// POST /admin/drivers/:id/kyc { status: 'VERIFIED'|'REJECTED'|'IN_REVIEW', reference? }
+// Decisión manual de identidad del conductor (revisión de selfie + documento).
+const KYC_DECISIONS = new Set(['VERIFIED', 'REJECTED', 'IN_REVIEW']);
+router.post('/drivers/:id/kyc', async (req: Request, res: Response): Promise<void> => {
+  const { status, reference } = req.body as { status?: string; reference?: string };
+  if (!status || !KYC_DECISIONS.has(status)) {
+    res.status(400).json({ success: false, error: 'status debe ser VERIFIED, REJECTED o IN_REVIEW' });
+    return;
+  }
+  try {
+    const data = await setDriverKycStatus(
+      req.params['id']!,
+      status as 'VERIFIED' | 'REJECTED' | 'IN_REVIEW',
+      reference,
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err instanceof KycError) {
+      res.status(404).json({ success: false, error: err.message });
+      return;
+    }
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Soporte con tickets ────────────────────────────────────────────────────────
+
+const SUPPORT_STATUSES = new Set<string>(['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']);
+
+// GET /admin/support?status=OPEN — lista de tickets.
+router.get('/support', async (req: Request, res: Response): Promise<void> => {
+  const status = typeof req.query['status'] === 'string' ? req.query['status'] : undefined;
+  try {
+    const filter = status && SUPPORT_STATUSES.has(status) ? (status as SupportStatus) : undefined;
+    res.json({ success: true, data: await listAllTickets(filter) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/support/:id — detalle con mensajes.
+router.get('/support/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await getTicketForAdmin(req.params['id']!) });
+  } catch (err) {
+    const status = err instanceof SupportError ? 404 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /admin/support/:id/reply { body } — responde el ticket.
+router.post('/support/:id/reply', async (req: Request, res: Response): Promise<void> => {
+  const { body } = req.body as { body?: string };
+  if (!body) { res.status(400).json({ success: false, error: 'body es requerido' }); return; }
+  try {
+    res.json({ success: true, data: await adminReply(req.params['id']!, body) });
+  } catch (err) {
+    const status = err instanceof SupportError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /admin/support/:id/status { status } — cambia el estado.
+router.post('/support/:id/status', async (req: Request, res: Response): Promise<void> => {
+  const { status } = req.body as { status?: string };
+  if (!status || !SUPPORT_STATUSES.has(status)) {
+    res.status(400).json({ success: false, error: 'status inválido' }); return;
+  }
+  try {
+    res.json({ success: true, data: await setTicketStatus(req.params['id']!, status as SupportStatus) });
+  } catch (err) {
+    const st = err instanceof SupportError ? 404 : 500;
+    res.status(st).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
 });
 
 // ─── Empresas de transporte (operadores) ──────────────────────────────────────
@@ -413,6 +498,7 @@ const PANEL_HTML = `<!DOCTYPE html>
       <button data-tab="sos" onclick="show('sos')">SOS</button>
       <button data-tab="promos" onclick="show('promos')">Promos</button>
       <button data-tab="payouts" onclick="show('payouts')">Retiros</button>
+      <button data-tab="support" onclick="show('support')">Soporte</button>
     </nav>
 
     <section id="tab-metrics"><div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div></section>
@@ -441,8 +527,8 @@ const PANEL_HTML = `<!DOCTYPE html>
         <table><thead><tr><th>Conductor</th><th>Estado</th><th>Verif.</th><th>GPS hace</th><th>Distancia</th><th>Radio 5 km</th><th>GPS fresco</th><th>¿Recibiría oferta?</th></tr></thead>
         <tbody id="diag-body"></tbody></table>
       </div>
-      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
-      <tbody id="drivers-body"><tr><td colspan="10" class="empty">Cargando…</td></tr></tbody></table>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
+      <tbody id="drivers-body"><tr><td colspan="12" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-operators" style="display:none">
@@ -497,6 +583,21 @@ const PANEL_HTML = `<!DOCTYPE html>
       </div>
       <table><thead><tr><th>Conductor</th><th>Teléfono</th><th>Monto</th><th>Destino</th><th>Estado</th><th>Solicitado</th><th>Acciones</th></tr></thead>
       <tbody id="payouts-body"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+
+    <section id="tab-support" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <select id="support-filter" style="width:auto" onchange="loadSupport()">
+          <option value="OPEN">Abiertos</option>
+          <option value="IN_PROGRESS">En proceso</option>
+          <option value="RESOLVED">Resueltos</option>
+          <option value="CLOSED">Cerrados</option>
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <table><thead><tr><th>De</th><th>Asunto</th><th>Categoría</th><th>Estado</th><th>Último mensaje</th><th>Actualizado</th><th>Acciones</th></tr></thead>
+      <tbody id="support-body"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody></table>
+      <div id="support-detail" style="display:none;margin-top:16px;background:#fff;padding:16px;border-radius:10px;box-shadow:0 1px 6px rgba(0,0,0,.08)"></div>
     </section>
   </div>
 </div>
@@ -570,7 +671,7 @@ function show(tab) {
   for (const s of document.querySelectorAll('section[id^="tab-"]')) s.style.display = 'none';
   document.getElementById('tab-' + tab).style.display = 'block';
   for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
-  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, operators: loadOperators, sos: loadSos, promos: loadPromos, payouts: loadPayouts })[tab]();
+  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, operators: loadOperators, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab]();
 }
 
 const money = (v) => '$' + Number(v || 0).toLocaleString('es-CO');
@@ -616,19 +717,35 @@ function reviewDoc(id, approve) {
     .catch((e) => showMsg(e.message, true));
 }
 
+var KYC_LABEL = { PENDING: 'Pendiente', IN_REVIEW: 'En revisión', VERIFIED: 'Verificado', REJECTED: 'Rechazado' };
 function loadDrivers() {
   api('/admin/drivers').then((rows) => {
     const tb = document.getElementById('drivers-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">Sin conductores.</td></tr>'; return; }
-    tb.innerHTML = rows.map((d) => '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="12" class="empty">Sin conductores.</td></tr>'; return; }
+    tb.innerHTML = rows.map((d) => {
+      var kycCell = '<span style="font-size:.72rem">' + (KYC_LABEL[d.kycStatus] || d.kycStatus) + '</span>';
+      if (d.hasSelfie && d.selfieUrl) kycCell += ' <a href="' + esc(d.selfieUrl) + '" target="_blank" style="color:#059669">selfie</a>';
+      var kycBtns = '';
+      if (d.kycStatus !== 'VERIFIED') kycBtns += '<button class="btn-sm btn-approve" onclick="setDriverKyc(\\'' + d.id + '\\', \\'VERIFIED\\')">KYC ✓</button> ';
+      if (d.kycStatus !== 'REJECTED') kycBtns += '<button class="btn-sm btn-reject" onclick="setDriverKyc(\\'' + d.id + '\\', \\'REJECTED\\')">KYC ✕</button>';
+      var fraud = d.fraudFlags > 0 ? '<span class="badge badge-reject">⚠ ' + d.fraudFlags + '</span>' : '—';
+      return '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
       '</td><td><span class="badge badge-' + d.status + '">' + d.status + '</span></td><td>' + (d.isVerified ? '✅' : '—') +
       '</td><td>' + (d.intercityEnabled ? '🛣️' : '—') +
+      '</td><td>' + kycCell + '</td><td>' + fraud +
       '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
       (d.isVerified
         ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
-      '</td></tr>').join('');
+      ' ' + kycBtns +
+      '</td></tr>';
+    }).join('');
   }).catch((e) => showMsg(e.message, true));
+}
+function setDriverKyc(id, status) {
+  api('/admin/drivers/' + id + '/kyc', { method: 'POST', body: JSON.stringify({ status: status }) })
+    .then(() => { showMsg('KYC actualizado.', false); loadDrivers(); })
+    .catch((e) => showMsg(e.message, true));
 }
 
 // Radiografía del despacho: evalúa los 4 filtros del matching por conductor.
@@ -786,6 +903,60 @@ function payPayout(id) {
   const reference = prompt('Referencia de la transferencia (opcional):') || '';
   api('/admin/payouts/' + id, { method: 'POST', body: JSON.stringify({ status: 'PAID', reference }) })
     .then(() => { showMsg('Retiro pagado.', false); loadPayouts(); })
+    .catch((e) => showMsg(e.message, true));
+}
+
+var SUP_STATUS = { OPEN: 'Abierto', IN_PROGRESS: 'En proceso', RESOLVED: 'Resuelto', CLOSED: 'Cerrado' };
+function loadSupport() {
+  document.getElementById('support-detail').style.display = 'none';
+  var f = document.getElementById('support-filter').value;
+  api('/admin/support' + (f ? '?status=' + f : '')).then((rows) => {
+    const tb = document.getElementById('support-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">Sin tickets.</td></tr>'; return; }
+    tb.innerHTML = rows.map((t) => {
+      var who = (t.requesterKind === 'driver' ? '🚗 ' : '🧑 ') + esc(t.requesterName || t.requesterId.slice(0, 8));
+      var last = t.lastMessage ? esc(t.lastMessage.slice(0, 60)) : '—';
+      return '<tr><td>' + who + '</td><td><strong>' + esc(t.subject) + '</strong></td><td>' + esc(t.category) +
+        '</td><td>' + (SUP_STATUS[t.status] || t.status) + '</td><td style="color:#64748b;font-size:.78rem">' + last +
+        '</td><td>' + when(t.updatedAt) + '</td><td><button class="btn-sm btn-approve" onclick="openTicket(\\'' + t.id + '\\')">Ver</button></td></tr>';
+    }).join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+function openTicket(id) {
+  api('/admin/support/' + id).then((t) => {
+    var box = document.getElementById('support-detail');
+    box.style.display = 'block';
+    var msgs = (t.messages || []).map((m) => {
+      var mine = m.authorKind === 'admin';
+      var label = m.authorKind === 'admin' ? 'Soporte' : (m.authorKind === 'driver' ? 'Conductor' : 'Cliente');
+      return '<div style="margin:6px 0;padding:8px 12px;border-radius:10px;max-width:80%;' +
+        (mine ? 'margin-left:auto;background:#d1fae5' : 'background:#f1f5f9') + '">' +
+        '<div style="font-size:.68rem;color:#64748b;margin-bottom:2px">' + label + ' · ' + when(m.sentAt) + '</div>' +
+        esc(m.body) + '</div>';
+    }).join('');
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
+      '<h3 style="margin:0">' + esc(t.subject) + ' <span style="font-size:.75rem;color:#64748b">(' + (SUP_STATUS[t.status] || t.status) + ')</span></h3>' +
+      '<div>' +
+      '<button class="btn-sm btn-approve" onclick="setTicketStatus(\\'' + t.id + '\\', \\'RESOLVED\\')">Resolver</button>' +
+      '<button class="btn-sm" style="background:#e2e8f0" onclick="setTicketStatus(\\'' + t.id + '\\', \\'CLOSED\\')">Cerrar</button>' +
+      '</div></div>' +
+      '<div style="max-height:340px;overflow-y:auto;padding:6px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">' + msgs + '</div>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<input id="ticket-reply" placeholder="Escribe tu respuesta…" style="flex:1;margin:0" />' +
+      '<button style="width:auto" onclick="replyTicket(\\'' + t.id + '\\')">Responder</button></div>';
+  }).catch((e) => showMsg(e.message, true));
+}
+function replyTicket(id) {
+  var el = document.getElementById('ticket-reply');
+  var body = (el.value || '').trim();
+  if (!body) return;
+  api('/admin/support/' + id + '/reply', { method: 'POST', body: JSON.stringify({ body }) })
+    .then(() => { showMsg('Respuesta enviada.', false); openTicket(id); loadSupport(); })
+    .catch((e) => showMsg(e.message, true));
+}
+function setTicketStatus(id, status) {
+  api('/admin/support/' + id + '/status', { method: 'POST', body: JSON.stringify({ status }) })
+    .then(() => { showMsg('Estado actualizado.', false); openTicket(id); loadSupport(); })
     .catch((e) => showMsg(e.message, true));
 }
 

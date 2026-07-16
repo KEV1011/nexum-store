@@ -144,6 +144,17 @@ model Driver {
   licenseNumber     String?      @unique
   status            DriverStatus @default(OFFLINE)
   isVerified        Boolean      @default(false)
+  // ── KYC / verificación de identidad ──────────────────────────────────────
+  // isVerified = documentos aprobados; kycStatus = identidad validada (cédula/
+  // licencia contra registros + selfie/liveness). Un conductor está "habilitado
+  // para conducir" solo si AMBOS pasan (gating activable con KYC_ENFORCE).
+  kycStatus         KycStatus    @default(PENDING)
+  kycProvider       String?      // 'manual' | 'truora' | ... (quién validó)
+  kycReference      String?      // id de la verificación del proveedor
+  kycCheckedAt      DateTime?
+  selfieUrl         String?      // foto selfie para comparación/liveness
+  // Antifraude: contador de eventos GPS sospechosos (saltos/velocidad imposible).
+  fraudFlags        Int          @default(0)
   // Disponibilidad para recibir solicitudes de viajes intermunicipales.
   intercityEnabled  Boolean      @default(false)
   // Preferencias de servicio: qué tipos de solicitud recibe el conductor.
@@ -235,6 +246,13 @@ enum DocumentStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum KycStatus {
+  PENDING      // aún no envía verificación de identidad
+  IN_REVIEW    // enviada; en revisión (proveedor o admin manual)
+  VERIFIED     // identidad confirmada
+  REJECTED     // no pasó la verificación
 }
 
 model Vehicle {
@@ -996,4 +1014,58 @@ model FreightRequest {
   @@index([operatorId])
   @@index([clientId])
   @@map("freight_requests")
+}
+
+// ─── Chat de viaje (pasajero ↔ conductor) ──────────────────────────────────────
+// Mensajería persistente atada a un Trip. senderRole: 'client' | 'driver'.
+model TripMessage {
+  id        String   @id @default(cuid())
+  tripId    String
+  senderRole String  // 'client' | 'driver'
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([tripId])
+  @@map("trip_messages")
+}
+
+// ─── Soporte con tickets ────────────────────────────────────────────────────────
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id            String          @id @default(cuid())
+  // Quién abre el ticket: 'client' | 'driver'.
+  requesterKind String
+  requesterId   String
+  requesterName String?
+  subject       String
+  category      String          @default("general")
+  status        SupportStatus   @default(OPEN)
+  messages      SupportMessage[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([requesterKind, requesterId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id         String        @id @default(cuid())
+  ticketId   String
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  // Autor: 'client' | 'driver' | 'admin'.
+  authorKind String
+  authorId   String?
+  body       String
+  createdAt  DateTime      @default(now())
+
+  @@index([ticketId])
+  @@map("support_messages")
 }

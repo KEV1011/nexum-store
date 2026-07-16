@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/core/widgets/app_snackbar.dart';
+import 'package:nexum_driver/features/support/data/support_api.dart';
+import 'package:nexum_driver/features/support/presentation/screens/support_ticket_detail_screen.dart';
+import 'package:nexum_driver/features/support/presentation/widgets/support_common.dart';
 
 class SupportScreen extends StatefulWidget {
   const SupportScreen({super.key});
@@ -17,7 +21,7 @@ class _SupportScreenState extends State<SupportScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -35,17 +39,15 @@ class _SupportScreenState extends State<SupportScreen>
           controller: _tabController,
           tabs: const [
             Tab(text: 'FAQ'),
-            Tab(text: 'Chat'),
             Tab(text: 'Mis tickets'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          const _FaqTab(),
-          const _ChatTab(),
-          _TicketsTab(onGoToChat: () => _tabController.animateTo(1)),
+        children: const [
+          _FaqTab(),
+          _TicketsTab(),
         ],
       ),
     );
@@ -206,419 +208,274 @@ class _FaqItem extends StatelessWidget {
   }
 }
 
-// ── Chat tab ───────────────────────────────────────────────────────────────────
+// ── Tickets tab (real, backend) ────────────────────────────────────────────────
 
-class _ChatTab extends StatefulWidget {
-  const _ChatTab();
+class _TicketsTab extends StatefulWidget {
+  const _TicketsTab();
 
   @override
-  State<_ChatTab> createState() => _ChatTabState();
+  State<_TicketsTab> createState() => _TicketsTabState();
 }
 
-class _ChatTabState extends State<_ChatTab> {
-  final _controller = TextEditingController();
-  final _scrollController = ScrollController();
-  bool _isTyping = false;
-
-  final _messages = <_ChatMessage>[
-    const _ChatMessage(
-      text:
-          'Hola, soy el asistente virtual de Nexum. ¿En qué puedo ayudarte hoy?',
-      isAgent: true,
-      time: '09:00',
-    ),
-  ];
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _sendMessage() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    setState(() {
-      _messages.add(
-          _ChatMessage(text: text, isAgent: false, time: _formatNow()));
-      _controller.clear();
-      _isTyping = true;
-    });
-    _scrollToBottom();
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (!mounted) return;
-      setState(() {
-        _isTyping = false;
-        _messages.add(_ChatMessage(
-          text: _autoReply(text),
-          isAgent: true,
-          time: _formatNow(),
-        ));
-      });
-      _scrollToBottom();
-    });
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: AppConstants.shortAnimation,
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  String _autoReply(String text) {
-    final lower = text.toLowerCase();
-    if (lower.contains('pago') ||
-        lower.contains('cobro') ||
-        lower.contains('ganancia')) {
-      return 'Los pagos se acreditan en tu billetera Nexum al finalizar cada viaje. Puedes solicitar retiros a tu cuenta bancaria en cualquier momento desde la sección Billetera.';
-    }
-    if (lower.contains('cancel')) {
-      return 'Una tasa de cancelación mayor al 5% puede afectar tu puntuación y acceso a incentivos. Te recomendamos cancelar antes de dirigirte al punto de recogida si es necesario.';
-    }
-    if (lower.contains('calificaci') ||
-        lower.contains('estrell') ||
-        lower.contains('rating') ||
-        lower.contains('punt')) {
-      return 'Para mejorar tu calificación mantén el vehículo limpio, sé puntual y ofrece un trato amable. Las 5 estrellas te dan acceso a viajes premium y bonos adicionales.';
-    }
-    if (lower.contains('document') ||
-        lower.contains('soat') ||
-        lower.contains('licencia')) {
-      return 'Debes tener vigentes: licencia de conducción, SOAT, revisión técnico-mecánica y tarjeta de operación. Puedes revisar su estado en tu perfil de conductor.';
-    }
-    if (lower.contains('banco') ||
-        lower.contains('cuenta') ||
-        lower.contains('retiro') ||
-        lower.contains('nequi') ||
-        lower.contains('daviplata')) {
-      return 'Puedes gestionar tu cuenta bancaria en Billetera → Cuenta bancaria. Aceptamos Bancolombia, Nequi, Daviplata, BBVA y más entidades.';
-    }
-    if (lower.contains('servicio') ||
-        lower.contains('moto') ||
-        lower.contains('taxi') ||
-        lower.contains('particular')) {
-      return 'Puedes cambiar tu tipo de servicio desde la pantalla principal. Asegúrate de que tu vehículo cumpla los requisitos del tipo seleccionado.';
-    }
-    if (lower.contains('bono') ||
-        lower.contains('incentivo') ||
-        lower.contains('meta')) {
-      return 'Los bonos se acreditan automáticamente al cumplir las metas semanales de viajes o calificación. Revisa las promociones activas en la sección Ganancias.';
-    }
-    if (lower.contains('bloqu') || lower.contains('suspend')) {
-      return 'Los bloqueos de cuenta pueden deberse a cancelaciones frecuentes, reportes de pasajeros o documentos vencidos. Abre un ticket de soporte para revisar tu caso.';
-    }
-    if (lower.contains('hola') ||
-        lower.contains('buenas') ||
-        lower.contains('buenos') ||
-        lower.contains('salud')) {
-      return '¡Hola! ¿En qué puedo ayudarte hoy? Puedo orientarte sobre pagos, documentos, calificaciones, tipos de servicio y más.';
-    }
-    if (lower.contains('gracias') || lower.contains('ok') || lower.contains('listo')) {
-      return '¡Con gusto! Si tienes otra pregunta no dudes en escribirme. ¡Buen turno!';
-    }
-    return 'Gracias por tu mensaje. Un agente de soporte te responderá pronto. Tiempo estimado de respuesta: 5 minutos.';
-  }
-
-  String _formatNow() {
-    final now = DateTime.now();
-    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppConstants.spacingM,
-            vertical: AppConstants.spacingXS,
-          ),
-          color: AppColors.successContainer,
-          child: const Row(
-            children: [
-              Icon(Icons.circle, size: 8, color: AppColors.success),
-              SizedBox(width: AppConstants.spacingS),
-              Text(
-                'Soporte disponible · Tiempo de respuesta: ~5 min',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.primaryDim,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: ListView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(AppConstants.spacingM),
-            itemCount: _messages.length + (_isTyping ? 1 : 0),
-            itemBuilder: (context, i) {
-              if (_isTyping && i == _messages.length) {
-                return const _TypingIndicator();
-              }
-              return _ChatBubble(message: _messages[i]);
-            },
-          ),
-        ),
-        _ChatInput(controller: _controller, onSend: _sendMessage),
-      ],
-    );
-  }
-}
-
-class _TypingIndicator extends StatelessWidget {
-  const _TypingIndicator();
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isDark
-              ? AppColors.surfaceVariantDark
-              : context.surfaceVariantColor,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(AppConstants.radiusLarge),
-            topRight: Radius.circular(AppConstants.radiusLarge),
-            bottomRight: Radius.circular(AppConstants.radiusLarge),
-          ),
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _Dot(delay: 0),
-            SizedBox(width: 4),
-            _Dot(delay: 150),
-            SizedBox(width: 4),
-            _Dot(delay: 300),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Dot extends StatefulWidget {
-  const _Dot({required this.delay});
-  final int delay;
-
-  @override
-  State<_Dot> createState() => _DotState();
-}
-
-class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
-  late final AnimationController _ac;
-  late final Animation<double> _anim;
+class _TicketsTabState extends State<_TicketsTab> {
+  final _api = SupportApi();
+  bool _loading = true;
+  String? _error;
+  List<SupportTicket> _tickets = [];
 
   @override
   void initState() {
     super.initState();
-    _ac = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    _anim = Tween<double>(begin: 0, end: -6).animate(
-      CurvedAnimation(parent: _ac, curve: Curves.easeInOut),
-    );
-    Future.delayed(Duration(milliseconds: widget.delay), () {
-      if (mounted) _ac.repeat(reverse: true);
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
     });
+    try {
+      final list = await _api.list();
+      if (!mounted) return;
+      setState(() {
+        _tickets = list;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'No se pudo cargar tus tickets.';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _openDetail(SupportTicket t) async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => SupportTicketDetailScreen(ticketId: t.id),
+    ));
+    _load();
+  }
+
+  Future<void> _newTicket() async {
+    final created = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _NewTicketSheet(api: _api),
+    );
+    if (created == true) _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _newTicket,
+        backgroundColor: AppColors.primary,
+        icon: const Icon(Icons.add_comment_rounded, color: Colors.white),
+        label: const Text('Nuevo ticket', style: TextStyle(color: Colors.white)),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : _error != null
+              ? Center(child: Text(_error!, style: TextStyle(color: context.textSecondaryColor)))
+              : _tickets.isEmpty
+                  ? _empty(context)
+                  : RefreshIndicator(
+                      color: AppColors.primary,
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                        itemCount: _tickets.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, i) =>
+                            _TicketTile(ticket: _tickets[i], onTap: () => _openDetail(_tickets[i])),
+                      ),
+                    ),
+    );
+  }
+
+  Widget _empty(BuildContext context) => ListView(
+        children: [
+          const SizedBox(height: 100),
+          Icon(Icons.confirmation_number_outlined, size: 48, color: context.textTertiaryColor),
+          const SizedBox(height: 12),
+          Center(
+            child: Text('No tienes tickets abiertos',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(height: 6),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                'Si tienes un problema con un viaje, un pago o tus documentos, '
+                'abre un ticket y le haremos seguimiento.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+              ),
+            ),
+          ),
+        ],
+      );
+}
+
+class _TicketTile extends StatelessWidget {
+  const _TicketTile({required this.ticket, required this.onTap});
+
+  final SupportTicket ticket;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: context.cardColor2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: context.outlineColor),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(ticket.subject,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                  if (ticket.lastMessage != null) ...[
+                    const SizedBox(height: 3),
+                    Text(ticket.lastMessage!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.5, color: context.textSecondaryColor)),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            SupportStatusChip(status: ticket.status),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NewTicketSheet extends StatefulWidget {
+  const _NewTicketSheet({required this.api});
+  final SupportApi api;
+
+  @override
+  State<_NewTicketSheet> createState() => _NewTicketSheetState();
+}
+
+class _NewTicketSheetState extends State<_NewTicketSheet> {
+  final _subject = TextEditingController();
+  final _body = TextEditingController();
+  String _category = 'general';
+  bool _sending = false;
+
+  static const _categories = {
+    'general': 'General',
+    'pago': 'Pagos',
+    'viaje': 'Viajes',
+    'cuenta': 'Cuenta',
+    'seguridad': 'Seguridad',
+    'otro': 'Otro',
+  };
+
+  Future<void> _submit() async {
+    final subject = _subject.text.trim();
+    final body = _body.text.trim();
+    if (subject.isEmpty || body.isEmpty) {
+      AppSnackbar.showError(context, 'Completa el asunto y la descripción.');
+      return;
+    }
+    setState(() => _sending = true);
+    try {
+      await widget.api.create(subject: subject, body: body, category: _category);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      AppSnackbar.showError(context, 'No se pudo crear el ticket.');
+    }
   }
 
   @override
   void dispose() {
-    _ac.dispose();
+    _subject.dispose();
+    _body.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (context, _) => Transform.translate(
-        offset: Offset(0, _anim.value),
-        child: Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: context.textTertiaryColor,
-            shape: BoxShape.circle,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.message});
-  final _ChatMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isAgent = message.isAgent;
-
-    return Align(
-      alignment: isAgent ? Alignment.centerLeft : Alignment.centerRight,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
-        constraints:
-            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppConstants.spacingM,
-          vertical: AppConstants.spacingS,
-        ),
-        decoration: BoxDecoration(
-          color: isAgent
-              ? (theme.brightness == Brightness.dark
-                  ? AppColors.surfaceVariantDark
-                  : context.surfaceVariantColor)
-              : AppColors.primary,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(AppConstants.radiusLarge),
-            topRight: const Radius.circular(AppConstants.radiusLarge),
-            bottomLeft: Radius.circular(
-                isAgent ? 0 : AppConstants.radiusLarge),
-            bottomRight: Radius.circular(
-                isAgent ? AppConstants.radiusLarge : 0),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isAgent ? CrossAxisAlignment.start : CrossAxisAlignment.end,
-          children: [
-            Text(
-              message.text,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: isAgent ? null : Colors.white,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              message.time,
-              style: TextStyle(
-                fontSize: 10,
-                color: isAgent ? context.textTertiaryColor : Colors.white70,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChatInput extends StatelessWidget {
-  const _ChatInput({required this.controller, required this.onSend});
-  final TextEditingController controller;
-  final VoidCallback onSend;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
+    return Padding(
       padding: EdgeInsets.only(
-        left: AppConstants.spacingM,
-        right: AppConstants.spacingS,
-        top: AppConstants.spacingS,
-        bottom:
-            MediaQuery.of(context).padding.bottom + AppConstants.spacingS,
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
-        border: Border(
-          top: BorderSide(
-              color:
-                  isDark ? AppColors.outlineDark : context.outlineColor),
-        ),
-      ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                hintText: 'Escribe un mensaje...',
-                border: InputBorder.none,
-                filled: false,
-                contentPadding: EdgeInsets.symmetric(
-                    horizontal: AppConstants.spacingS),
-              ),
-              maxLines: null,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => onSend(),
-            ),
+          const Text('Nuevo ticket de soporte',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            children: _categories.entries
+                .map((e) => ChoiceChip(
+                      label: Text(e.value),
+                      selected: _category == e.key,
+                      onSelected: (_) => setState(() => _category = e.key),
+                    ))
+                .toList(),
           ),
-          IconButton(
-            onPressed: onSend,
-            icon: const Icon(Icons.send_rounded),
-            color: AppColors.primary,
+          const SizedBox(height: 12),
+          TextField(
+            controller: _subject,
+            decoration: const InputDecoration(labelText: 'Asunto'),
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _body,
+            decoration: const InputDecoration(labelText: 'Describe tu problema'),
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: _sending ? null : _submit,
+              child: _sending
+                  ? const SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Enviar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Tickets tab ────────────────────────────────────────────────────────────────
-
-class _TicketsTab extends StatelessWidget {
-  const _TicketsTab({required this.onGoToChat});
-  final VoidCallback onGoToChat;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // Los tickets con seguimiento aún no existen en el backend: estado vacío
-    // honesto que dirige al chat de soporte (sin tickets de demostración).
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppConstants.spacingXL),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.confirmation_number_outlined,
-              size: 48,
-              color: context.textTertiaryColor,
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            Text(
-              'No tienes tickets abiertos',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: AppConstants.spacingXS),
-            Text(
-              'Si tienes un problema con un viaje, un pago o tus documentos, '
-              'escríbenos por el chat y le haremos seguimiento.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: context.textSecondaryColor),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppConstants.spacingL),
-            FilledButton.icon(
-              onPressed: onGoToChat,
-              icon: const Icon(Icons.support_agent_rounded, size: 18),
-              label: const Text('Ir al chat de soporte'),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -634,19 +491,6 @@ class _Faq {
   final String question;
   final String answer;
 }
-
-class _ChatMessage {
-  const _ChatMessage({
-    required this.text,
-    required this.isAgent,
-    required this.time,
-  });
-  final String text;
-  final bool isAgent;
-  final String time;
-}
-
-// ── Static data ────────────────────────────────────────────────────────────────
 
 const _faqs = [
   _Faq(
@@ -698,3 +542,4 @@ const _faqs = [
         'Las causas más comunes son: tasa de cancelación alta (>5%), reportes de pasajeros, documentos vencidos o comportamiento contrario a las políticas de Nexum. Contacta soporte para apelar una suspensión.',
   ),
 ];
+

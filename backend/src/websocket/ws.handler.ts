@@ -83,6 +83,12 @@ import {
   RideNegotiationStatus,
   ChatRole,
 } from '../types';
+import {
+  postTripChat,
+  subscribeTripChat,
+  getTripChat,
+  TripChatError,
+} from '../services/trip-chat.service';
 import { initBus, publishDelivery, BusTarget } from '../lib/bus';
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -124,6 +130,8 @@ const ridePoolUnsub = new Map<WebSocket, () => void>();
 // Ride-specific subscriptions per socket (client + matched driver).
 const rideSubs = new Map<WebSocket, Map<string, () => void>>();
 const chatSubs = new Map<WebSocket, Map<string, () => void>>();
+// Chat persistente del viaje normal (pasajero ↔ conductor), keyed por tripId.
+const tripChatSubs = new Map<WebSocket, Map<string, () => void>>();
 // Identify a client socket by its clientId for direct relays.
 const clientIdByWs = new Map<WebSocket, string>();
 
@@ -637,6 +645,50 @@ function handleChatSend(ws: WebSocket, rideId: string, text: string): void {
   }
 }
 
+// ─── Chat del viaje normal (persistente, pasajero ↔ conductor) ─────────────────
+
+async function handleSubscribeTripChat(ws: WebSocket, tripId: string): Promise<void> {
+  const clientId = clientIdByWs.get(ws);
+  const driverId = driverIdByWs.get(ws);
+  const requesterId = clientId ?? driverId;
+  if (!requesterId) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+  // Autoriza y envía el historial de una vez; luego escucha en vivo.
+  try {
+    const history = await getTripChat(tripId, requesterId);
+    sendTo(ws, { type: 'trip_chat_history', tripId, messages: history });
+  } catch (err) {
+    sendTo(ws, {
+      type: 'error',
+      message: err instanceof TripChatError ? err.message : 'No se pudo abrir el chat',
+    });
+    return;
+  }
+  const unsub = subscribeTripChat(tripId, (msg) => {
+    sendTo(ws, { type: 'trip_chat_message', message: msg });
+  });
+  const map = tripChatSubs.get(ws) ?? new Map<string, () => void>();
+  map.get(tripId)?.();
+  map.set(tripId, unsub);
+  tripChatSubs.set(ws, map);
+}
+
+async function handleTripChatSend(ws: WebSocket, tripId: string, text: string): Promise<void> {
+  const clientId = clientIdByWs.get(ws);
+  const driverId = driverIdByWs.get(ws);
+  const role: ChatRole | null = clientId ? 'client' : driverId ? 'driver' : null;
+  const fromId = clientId ?? driverId;
+  if (!role || !fromId) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
+  try {
+    await postTripChat(tripId, role, fromId, text);
+    // subscribeTripChat reparte a ambas partes.
+  } catch (err) {
+    sendTo(ws, {
+      type: 'error',
+      message: err instanceof TripChatError ? err.message : 'No se pudo enviar el mensaje',
+    });
+  }
+}
+
 // ─── Message dispatcher ───────────────────────────────────────────────────────
 
 function onMessage(ws: WebSocket, raw: string): void {
@@ -1096,6 +1148,30 @@ function onMessage(ws: WebSocket, raw: string): void {
       break;
     }
 
+    // ── Chat del viaje normal (persistente) ──────────────────────────────────
+    case 'subscribe_trip_chat': {
+      const tripId = msg['tripId'];
+      if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
+      void handleSubscribeTripChat(ws, tripId);
+      break;
+    }
+    case 'unsubscribe_trip_chat': {
+      const tripId = msg['tripId'];
+      if (typeof tripId !== 'string') break;
+      const map = tripChatSubs.get(ws);
+      if (map) { map.get(tripId)?.(); map.delete(tripId); }
+      break;
+    }
+    case 'trip_chat_send': {
+      const tripId = msg['tripId'];
+      const text = msg['text'];
+      if (typeof tripId !== 'string' || typeof text !== 'string') {
+        sendTo(ws, { type: 'error', message: 'tripId and text required' }); return;
+      }
+      void handleTripChatSend(ws, tripId, text);
+      break;
+    }
+
     case 'ping':
       sendTo(ws, { type: 'pong' });
       break;
@@ -1117,6 +1193,8 @@ function onClose(ws: WebSocket): void {
   if (rideMap) { for (const fn of rideMap.values()) fn(); rideSubs.delete(ws); }
   const chatMap = chatSubs.get(ws);
   if (chatMap) { for (const fn of chatMap.values()) fn(); chatSubs.delete(ws); }
+  const tripChatMap = tripChatSubs.get(ws);
+  if (tripChatMap) { for (const fn of tripChatMap.values()) fn(); tripChatSubs.delete(ws); }
 
   // Leave the live ride pool.
   ridePoolUnsub.get(ws)?.();

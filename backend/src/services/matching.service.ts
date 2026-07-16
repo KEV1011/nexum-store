@@ -4,6 +4,7 @@ import { TripRequestDTO } from '../types';
 import { sendPushToDriver, sendPushToClient } from '../services/push.service';
 import { getErrandOfferInfo } from './errand.service';
 import { getOrderOfferInfo } from './order-offer.service';
+import { evaluateGeoJump } from './fraud.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -29,6 +30,14 @@ import { getOrderOfferInfo } from './order-offer.service';
  * Safe to call on every location_update, whether or not the driver is on a trip.
  */
 export async function updateDriverGeo(driverId: string, lat: number, lng: number): Promise<void> {
+  // Antifraude: lee la posición previa y evalúa el salto (velocidad imposible)
+  // antes de sobrescribirla — marca GPS falso sin bloquear jamás el fix.
+  const prev = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { lastLat: true, lastLng: true, lastSeenAt: true },
+  });
+  if (prev) evaluateGeoJump(driverId, prev, lat, lng);
+
   await prisma.$executeRaw`
     UPDATE "drivers"
     SET "geo" = ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,

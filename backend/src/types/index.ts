@@ -265,7 +265,13 @@ export type WsMessageType =
   | 'chat_send'
   | 'chat_message'
   | 'subscribe_chat'
-  | 'unsubscribe_chat';
+  | 'unsubscribe_chat'
+  // Chat del viaje normal (persistente)
+  | 'subscribe_trip_chat'
+  | 'unsubscribe_trip_chat'
+  | 'trip_chat_send'
+  | 'trip_chat_message'
+  | 'trip_chat_history';
 
 export interface WsMessage {
   type: WsMessageType;

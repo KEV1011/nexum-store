@@ -17,8 +17,7 @@ import 'package:nexum_client/features/cart/presentation/widgets/'
     'cart_summary.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
-import 'package:nexum_client/features/payments/data/payment_api.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:nexum_client/features/payments/presentation/payment_checkout.dart';
 
 /// Métodos de pago disponibles. Efectivo se paga al recibir; tarjeta y Nequi se
 /// cobran en línea con Wompi (checkout abierto en el navegador).
@@ -166,42 +165,30 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     context.go(AppRoutes.orderPath(orderId));
   }
 
-  /// Inicia el pago Wompi y abre el checkout en el navegador. Si algo falla, el
-  /// pedido sigue su curso (el cliente puede pagar contra entrega) y se avisa.
+  /// Inicia el pago en línea y cierra el ciclo dentro de la app (Wompi + sondeo
+  /// de estado). Si algo falla, el pedido sigue su curso (pago contra entrega).
   Future<void> _startOnlinePayment({
     required String orderId,
     required double amount,
     String? businessName,
   }) async {
-    try {
-      final payment = await ref.read(paymentApiProvider).init(
-            amount: amount,
-            description: 'Pedido en ${businessName ?? 'Nexum'}',
-            orderId: orderId,
-          );
-      final opened = await launchUrl(
-        Uri.parse(payment.paymentUrl),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!mounted) return;
-      AppSnackbar.showInfo(
-        context,
-        opened
-            ? 'Completa el pago con ${_payment.label} en la ventana de Wompi. '
-                'Tu pedido ya está en curso.'
-            : 'No se pudo abrir el pago. Podrás pagar al recibir.',
-      );
-    } on DioException catch (e) {
-      if (!mounted) return;
-      final msg = (e.response?.data as Map?)?['error'] as String? ??
-          'No se pudo iniciar el pago. Podrás pagar al recibir.';
-      AppSnackbar.showError(context, msg);
-    } catch (_) {
-      if (!mounted) return;
-      AppSnackbar.showError(
-        context,
-        'No se pudo abrir el pago. Podrás pagar al recibir.',
-      );
+    final outcome = await showPaymentCheckout(
+      context,
+      ref,
+      amount: amount,
+      description: 'Pedido en ${businessName ?? 'Nexum'}',
+      orderId: orderId,
+    );
+    if (!mounted) return;
+    switch (outcome) {
+      case PaymentOutcome.approved:
+        AppSnackbar.showSuccess(context, '¡Pago aprobado! Tu pedido está en curso.');
+      case PaymentOutcome.rejected:
+      case PaymentOutcome.failed:
+        AppSnackbar.showInfo(context, 'No se completó el pago. Podrás pagar al recibir.');
+      case PaymentOutcome.pending:
+      case PaymentOutcome.cancelled:
+        AppSnackbar.showInfo(context, 'Tu pedido está en curso. Puedes pagar al recibir.');
     }
   }
 

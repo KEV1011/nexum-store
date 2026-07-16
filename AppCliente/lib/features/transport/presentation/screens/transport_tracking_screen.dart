@@ -12,6 +12,7 @@ import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -294,6 +295,23 @@ class _DriverCard extends StatelessWidget {
               ],
             ),
           ),
+          IconButton(
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            tooltip: 'Chat con el conductor',
+            icon: const Icon(Icons.chat_bubble_outline_rounded),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => TripChatScreen(
+                  tripId: request.id,
+                  peerName: request.driverName ?? 'Conductor',
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           IconButton(
             style: IconButton.styleFrom(
               backgroundColor: AppColors.primaryContainer,

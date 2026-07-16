@@ -6,15 +6,14 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
-import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/addresses_provider.dart';
+import 'package:nexum_client/features/payments/presentation/payment_checkout.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Pantalla de reserva de servicio de transporte o envío.
 class TransportBookingScreen extends ConsumerStatefulWidget {
@@ -336,21 +335,30 @@ class _TransportBookingScreenState
     final trip = ref.read(transportByIdProvider(id));
     final fare = trip?.estimatedFare ?? widget.serviceType.estimateFare(4);
 
-    await showModalBottomSheet<bool>(
+    final choice = await showModalBottomSheet<_PayChoice>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _PaymentSheet(
-        tripId: id,
-        fare: fare,
-        serviceType: widget.serviceType,
-        ref: ref,
-      ),
+      builder: (_) => _PaymentSheet(fare: fare, serviceType: widget.serviceType),
     );
 
     if (!mounted) return;
+
+    // Pago en línea: se cierra el ciclo dentro de la app (Wompi + sondeo de
+    // estado). Efectivo: el pasajero paga al conductor al final del viaje.
+    if (choice == _PayChoice.online) {
+      await showPaymentCheckout(
+        context,
+        ref,
+        amount: fare,
+        description: 'Pago viaje ${widget.serviceType.label}',
+        tripId: id,
+      );
+      if (!mounted) return;
+    }
+
     context.go(AppRoutes.transportTrackingPath(id));
   }
 }
@@ -617,69 +625,20 @@ class _AddressPicker extends StatelessWidget {
 
 // ── Payment sheet ─────────────────────────────────────────────────────────────
 
-class _PaymentSheet extends StatefulWidget {
-  const _PaymentSheet({
-    required this.tripId,
-    required this.fare,
-    required this.serviceType,
-    required this.ref,
-  });
+/// Método de pago elegido por el pasajero para el viaje.
+enum _PayChoice { online, cash }
 
-  final String tripId;
+/// Selector de método de pago del viaje. El pago en línea (Wompi + sondeo) lo
+/// corre el llamador con `showPaymentCheckout`; en efectivo se paga al conductor.
+class _PaymentSheet extends StatelessWidget {
+  const _PaymentSheet({required this.fare, required this.serviceType});
+
   final double fare;
   final TransportServiceType serviceType;
-  final WidgetRef ref;
-
-  @override
-  State<_PaymentSheet> createState() => _PaymentSheetState();
-}
-
-class _PaymentSheetState extends State<_PaymentSheet> {
-  bool _loading = false;
-  String? _error;
-
-  Future<void> _payWithWompi() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      final dio = widget.ref.read(apiClientProvider);
-      final res = await dio.post<Map<String, dynamic>>(
-        '/client/payments/init',
-        data: {
-          'tripId': widget.tripId,
-          'amount': widget.fare.round(),
-          'description': 'Pago viaje ${widget.serviceType.label}',
-        },
-      );
-      final responseData = res.data ?? {};
-      final innerData = responseData['data'] as Map<String, dynamic>?;
-      final paymentUrl = innerData?['paymentUrl'] as String? ??
-          responseData['paymentUrl'] as String?;
-
-      if (paymentUrl == null || paymentUrl.isEmpty) {
-        throw Exception('No se recibió URL de pago');
-      }
-
-      final uri = Uri.parse(paymentUrl);
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        throw Exception('No se pudo abrir el enlace de pago');
-      }
-
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      setState(() {
-        _loading = false;
-        _error = 'No se pudo iniciar el pago. Intenta de nuevo.';
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    final color = _colorOf(widget.serviceType);
+    final color = _colorOf(serviceType);
 
     return Padding(
       padding: EdgeInsets.only(
@@ -711,21 +670,13 @@ class _PaymentSheetState extends State<_PaymentSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            CurrencyFormatter.format(widget.fare),
+            CurrencyFormatter.format(fare),
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w900,
               color: color,
             ),
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              _error!,
-              style: const TextStyle(color: AppColors.error, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
-          ],
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -737,19 +688,10 @@ class _PaymentSheetState extends State<_PaymentSheet> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: _loading ? null : _payWithWompi,
-              icon: _loading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.credit_card_rounded),
+              onPressed: () => Navigator.of(context).pop(_PayChoice.online),
+              icon: const Icon(Icons.credit_card_rounded),
               label: const Text(
-                'Pagar con Wompi',
+                'Pagar en línea (tarjeta, Nequi, PSE)',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
               ),
             ),
@@ -764,12 +706,10 @@ class _PaymentSheetState extends State<_PaymentSheet> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: _loading
-                  ? null
-                  : () => Navigator.of(context).pop(false),
+              onPressed: () => Navigator.of(context).pop(_PayChoice.cash),
               icon: const Icon(Icons.payments_outlined),
               label: const Text(
-                'Pagar en efectivo',
+                'Pagar en efectivo al conductor',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
             ),

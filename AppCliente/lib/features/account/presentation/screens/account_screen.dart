@@ -18,6 +18,7 @@ import 'package:nexum_client/features/addresses/presentation/providers/'
 import 'package:nexum_client/features/account/presentation/providers/'
     'client_profile_provider.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
+import 'package:nexum_client/features/support/presentation/screens/support_tickets_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 
 /// Pestaña "Cuenta": perfil del cliente y preferencias.
@@ -78,9 +79,10 @@ class AccountScreen extends ConsumerWidget {
               _SettingTile(
                 icon: Icons.help_outline_rounded,
                 title: 'Ayuda y soporte',
-                onTap: () => AppSnackbar.showInfo(
-                  context,
-                  'Centro de ayuda próximamente',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const SupportTicketsScreen(basePath: '/client'),
+                  ),
                 ),
               ),
               _SettingTile(
