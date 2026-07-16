@@ -54,13 +54,34 @@ class PaymentApi {
 
   /// Estado actual del pago. El backend reconcilia contra Wompi si sigue
   /// pendiente, por si el webhook se perdió. Valores: `pending` | `approved`
-  /// | `declined` | `voided` | `error`.
+  /// | `rejected` | `voided`.
   Future<String> status(String referenceCode) async {
     final res = await _dio.get<Map<String, dynamic>>(
       '/client/payments/$referenceCode',
     );
     final data = res.data?['data'] as Map<String, dynamic>?;
     return (data?['status'] as String?) ?? 'pending';
+  }
+
+  /// Sondea el estado hasta que deje de estar `pending` o se agote el tiempo.
+  /// Devuelve el último estado conocido (puede ser `pending` si expira).
+  Future<String> pollUntilResolved(
+    String referenceCode, {
+    Duration interval = const Duration(seconds: 3),
+    Duration timeout = const Duration(minutes: 4),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    var last = 'pending';
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(interval);
+      try {
+        last = await status(referenceCode);
+      } catch (_) {
+        // red intermitente: seguir sondeando hasta el timeout.
+      }
+      if (last != 'pending') return last;
+    }
+    return last;
   }
 }
 
