@@ -60,6 +60,8 @@ export interface Passenger {
   id: string;
   name: string;
   rating: number;
+  /** Identidad del pasajero verificada (KYC) — el conductor decide con confianza. */
+  verified?: boolean;
 }
 
 // ─── Trip ─────────────────────────────────────────────────────────────────────

@@ -27,6 +27,14 @@ model User {
   updatedAt   DateTime  @updatedAt
   isActive    Boolean   @default(true)
 
+  // Verificación de identidad del pasajero (anti-fraude/anti-robo). Mismo modelo
+  // env-gated que el KYC del conductor. El conductor ve "cliente verificado".
+  kycStatus         KycStatus @default(PENDING)
+  kycProvider       String?
+  kycReference      String?
+  kycCheckedAt      DateTime?
+  selfieUrl         String?
+
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
   fcmToken    String?
 
@@ -1023,7 +1031,8 @@ model TripMessage {
   tripId    String
   senderRole String  // 'client' | 'driver'
   senderId  String
-  body      String
+  body      String   @default("")
+  imageUrl  String?  // mensaje con foto (compartir ubicación/estado). null = texto
   createdAt DateTime @default(now())
 
   @@index([tripId])

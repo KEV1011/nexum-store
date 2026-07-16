@@ -17,6 +17,7 @@ export interface TripChatMessageDTO {
   senderRole: TripChatRole;
   senderId: string;
   body: string;
+  imageUrl: string | null;
   sentAt: string;
 }
 
@@ -24,7 +25,7 @@ type ChatCb = (msg: TripChatMessageDTO) => void;
 const _listeners = new Map<string, Set<ChatCb>>();
 
 function _toDTO(m: {
-  id: string; tripId: string; senderRole: string; senderId: string; body: string; createdAt: Date;
+  id: string; tripId: string; senderRole: string; senderId: string; body: string; imageUrl: string | null; createdAt: Date;
 }): TripChatMessageDTO {
   return {
     id: m.id,
@@ -32,6 +33,7 @@ function _toDTO(m: {
     senderRole: m.senderRole === 'driver' ? 'driver' : 'client',
     senderId: m.senderId,
     body: m.body,
+    imageUrl: m.imageUrl,
     sentAt: m.createdAt.toISOString(),
   };
 }
@@ -79,6 +81,28 @@ export async function postTripChat(
 
   const row = await prisma.tripMessage.create({
     data: { tripId, senderRole: role, senderId, body: body.slice(0, 1000) },
+  });
+  const dto = _toDTO(row);
+  for (const cb of _listeners.get(tripId) ?? []) cb(dto);
+  return dto;
+}
+
+/**
+ * Publica un mensaje con FOTO en el chat del viaje (compartir ubicación/estado).
+ * `imageUrl` ya subida (fileToUrl). Mismo control de participante + fan-out.
+ */
+export async function postTripChatPhoto(
+  tripId: string,
+  role: TripChatRole,
+  senderId: string,
+  imageUrl: string,
+): Promise<TripChatMessageDTO> {
+  const actualRole = await _assertParticipant(tripId, senderId);
+  if (actualRole !== role) throw new TripChatError('No autorizado.');
+  if (!imageUrl) throw new TripChatError('No se recibió la imagen.');
+
+  const row = await prisma.tripMessage.create({
+    data: { tripId, senderRole: role, senderId, body: '', imageUrl },
   });
   const dto = _toDTO(row);
   for (const cb of _listeners.get(tripId) ?? []) cb(dto);

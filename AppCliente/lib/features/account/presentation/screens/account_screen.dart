@@ -19,6 +19,7 @@ import 'package:nexum_client/features/account/presentation/providers/'
     'client_profile_provider.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
 import 'package:nexum_client/features/support/presentation/screens/support_tickets_screen.dart';
+import 'package:nexum_client/features/account/presentation/screens/client_verification_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 
 /// Pestaña "Cuenta": perfil del cliente y preferencias.
@@ -56,6 +57,16 @@ class AccountScreen extends ConsumerWidget {
                 onTap: () => AppSnackbar.showInfo(
                   context,
                   'Métodos de pago próximamente',
+                ),
+              ),
+              _SettingTile(
+                icon: Icons.verified_user_outlined,
+                title: 'Verificar mi identidad',
+                subtitle: 'Da confianza al conductor · viaja más seguro',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ClientVerificationScreen(),
+                  ),
                 ),
               ),
               _SettingTile(

@@ -1,9 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
+import 'package:nexum_driver/core/config/api_config.dart';
+import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
 /// Chat en vivo del viaje normal (conductor ↔ pasajero) sobre el WS singleton
@@ -19,16 +23,24 @@ class TripChatScreen extends StatefulWidget {
 }
 
 class _TripMsg {
-  const _TripMsg({required this.id, required this.mine, required this.body, required this.sentAt});
+  const _TripMsg({
+    required this.id,
+    required this.mine,
+    required this.body,
+    required this.imageUrl,
+    required this.sentAt,
+  });
   final String id;
   final bool mine;
   final String body;
+  final String? imageUrl;
   final DateTime sentAt;
 
   factory _TripMsg.fromJson(Map<String, dynamic> j) => _TripMsg(
         id: (j['id'] as String?) ?? '',
         mine: (j['senderRole'] as String?) == 'driver',
         body: (j['body'] as String?) ?? '',
+        imageUrl: j['imageUrl'] as String?,
         sentAt: DateTime.tryParse((j['sentAt'] as String?) ?? '')?.toLocal() ?? DateTime.now(),
       );
 }
@@ -82,6 +94,61 @@ class _TripChatScreenState extends State<TripChatScreen> {
     _ctrl.clear();
   }
 
+  bool _uploading = false;
+
+  Future<void> _sendPhoto() async {
+    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (picked == null || !mounted) return;
+    setState(() => _uploading = true);
+    try {
+      final bytes = await picked.readAsBytes();
+      final form = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: picked.name,
+          contentType: DioMediaType('image', 'jpeg'),
+        ),
+      });
+      await DioClient().dio.post<Map<String, dynamic>>(
+            '/driver/trips/${widget.tripId}/chat/photo',
+            data: form,
+          );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo enviar la foto.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  void _viewImage(String url) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              child: Center(child: Image.network(ApiConfig.resolveUrl(url))),
+            ),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _ws.unsubscribeTripChat(widget.tripId);
@@ -113,7 +180,7 @@ class _TripChatScreenState extends State<TripChatScreen> {
                     controller: _scroll,
                     padding: const EdgeInsets.all(16),
                     itemCount: _messages.length,
-                    itemBuilder: (_, i) => _Bubble(msg: _messages[i]),
+                    itemBuilder: (_, i) => _Bubble(msg: _messages[i], onTapImage: _viewImage),
                   ),
           ),
           _composer(context),
@@ -132,6 +199,15 @@ class _TripChatScreenState extends State<TripChatScreen> {
           ),
           child: Row(
             children: [
+              IconButton(
+                onPressed: _uploading ? null : _sendPhoto,
+                icon: _uploading
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+                    : const Icon(Icons.photo_camera_rounded, color: AppColors.primary),
+                tooltip: 'Enviar foto',
+              ),
               Expanded(
                 child: TextField(
                   controller: _ctrl,
@@ -164,20 +240,24 @@ class _TripChatScreenState extends State<TripChatScreen> {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.msg});
+  const _Bubble({required this.msg, required this.onTapImage});
   final _TripMsg msg;
+  final void Function(String url) onTapImage;
 
   @override
   Widget build(BuildContext context) {
     final mine = msg.mine;
     final time =
         '${msg.sentAt.hour.toString().padLeft(2, '0')}:${msg.sentAt.minute.toString().padLeft(2, '0')}';
+    final hasImage = msg.imageUrl != null && msg.imageUrl!.isNotEmpty;
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: hasImage
+            ? const EdgeInsets.all(4)
+            : const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.74),
         decoration: BoxDecoration(
           color: mine ? AppColors.primary : context.surfaceColor,
@@ -192,9 +272,29 @@ class _Bubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            Text(msg.body,
-                style: TextStyle(
-                    color: mine ? Colors.white : context.textPrimaryColor, fontSize: 14.5)),
+            if (hasImage)
+              GestureDetector(
+                onTap: () => onTapImage(msg.imageUrl!),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    ApiConfig.resolveUrl(msg.imageUrl!),
+                    width: 200,
+                    height: 200,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 200,
+                      height: 120,
+                      color: Colors.black12,
+                      child: const Icon(Icons.broken_image_outlined, color: Colors.white70),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Text(msg.body,
+                  style: TextStyle(
+                      color: mine ? Colors.white : context.textPrimaryColor, fontSize: 14.5)),
             const SizedBox(height: 2),
             Text(time,
                 style: TextStyle(

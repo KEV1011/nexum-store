@@ -169,6 +169,7 @@ async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | nul
       id: trip.passenger.id,
       name: trip.passenger.name ?? 'Pasajero',
       rating: 5.0,
+      verified: trip.passenger.kycStatus === 'VERIFIED',
     },
     origin: { lat: trip.originLat, lng: trip.originLng, address: trip.originAddress },
     destination: { lat: trip.destLat, lng: trip.destLng, address: trip.destAddress },

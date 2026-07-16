@@ -27,7 +27,9 @@ import {
   setDriverVerified,
   releaseDriver,
   diagnoseMatching,
+  listClientsForKyc,
 } from '../services/admin.service';
+import { setClientKycStatus, ClientKycError } from '../services/client-kyc.service';
 import { OperatorStatus } from '@prisma/client';
 import { setDriverKycStatus, KycError } from '../services/kyc.service';
 import {
@@ -101,7 +103,7 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/sos', '/promos', '/payouts', '/operators', '/routes', '/matching', '/support'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/promos', '/payouts', '/operators', '/routes', '/matching', '/support'], requireAdmin);
 
 // GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
 // por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.
@@ -234,6 +236,33 @@ router.post('/support/:id/status', async (req: Request, res: Response): Promise<
     res.json({ success: true, data: await setTicketStatus(req.params['id']!, status as SupportStatus) });
   } catch (err) {
     const st = err instanceof SupportError ? 404 : 500;
+    res.status(st).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Verificación de identidad de clientes (KYC pasajero) ─────────────────────
+
+// GET /admin/clients — clientes que iniciaron verificación.
+router.get('/clients', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listClientsForKyc() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /admin/clients/:id/kyc { status } — decisión manual de identidad del cliente.
+router.post('/clients/:id/kyc', async (req: Request, res: Response): Promise<void> => {
+  const { status } = req.body as { status?: string };
+  if (!status || !KYC_DECISIONS.has(status)) {
+    res.status(400).json({ success: false, error: 'status debe ser VERIFIED, REJECTED o IN_REVIEW' });
+    return;
+  }
+  try {
+    const data = await setClientKycStatus(req.params['id']!, status as 'VERIFIED' | 'REJECTED' | 'IN_REVIEW');
+    res.json({ success: true, data });
+  } catch (err) {
+    const st = err instanceof ClientKycError ? 404 : 500;
     res.status(st).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
@@ -503,6 +532,7 @@ const PANEL_HTML = `<!DOCTYPE html>
       <button data-tab="metrics" class="active" onclick="show('metrics')">Métricas</button>
       <button data-tab="docs" onclick="show('docs')">Verificaciones</button>
       <button data-tab="drivers" onclick="show('drivers')">Conductores</button>
+      <button data-tab="clients" onclick="show('clients')">Clientes</button>
       <button data-tab="operators" onclick="show('operators')">Empresas</button>
       <button data-tab="sos" onclick="show('sos')">SOS</button>
       <button data-tab="promos" onclick="show('promos')">Promos</button>
@@ -538,6 +568,12 @@ const PANEL_HTML = `<!DOCTYPE html>
       </div>
       <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
       <tbody id="drivers-body"><tr><td colspan="12" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+
+    <section id="tab-clients" style="display:none">
+      <p style="font-size:.78rem;color:#64748b;margin-bottom:10px">Verificación de identidad de pasajeros (anti-robo). Aprueba tras revisar la selfie.</p>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Selfie</th><th>Estado KYC</th><th>Registrado</th><th>Acciones</th></tr></thead>
+      <tbody id="clients-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-operators" style="display:none">
@@ -680,7 +716,7 @@ function show(tab) {
   for (const s of document.querySelectorAll('section[id^="tab-"]')) s.style.display = 'none';
   document.getElementById('tab-' + tab).style.display = 'block';
   for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
-  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, operators: loadOperators, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab]();
+  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperators, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab]();
 }
 
 const money = (v) => '$' + Number(v || 0).toLocaleString('es-CO');
@@ -755,6 +791,25 @@ function loadDrivers() {
 function setDriverKyc(id, status) {
   api('/admin/drivers/' + id + '/kyc', { method: 'POST', body: JSON.stringify({ status: status }) })
     .then(() => { showMsg('KYC actualizado.', false); loadDrivers(); })
+    .catch((e) => showMsg(e.message, true));
+}
+function loadClients() {
+  api('/admin/clients').then((rows) => {
+    const tb = document.getElementById('clients-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Ningún cliente inició verificación.</td></tr>'; return; }
+    tb.innerHTML = rows.map((c) => {
+      var selfie = c.hasSelfie && c.selfieUrl ? '<a href="' + esc(c.selfieUrl) + '" target="_blank" style="color:#059669">ver selfie</a>' : '—';
+      var btns = '';
+      if (c.kycStatus !== 'VERIFIED') btns += '<button class="btn-sm btn-approve" onclick="setClientKyc(\\'' + c.id + '\\', \\'VERIFIED\\')">Verificar</button> ';
+      if (c.kycStatus !== 'REJECTED') btns += '<button class="btn-sm btn-reject" onclick="setClientKyc(\\'' + c.id + '\\', \\'REJECTED\\')">Rechazar</button>';
+      return '<tr><td><strong>' + esc(c.name || '—') + '</strong></td><td>' + esc(c.phone) + '</td><td>' + selfie +
+        '</td><td>' + (KYC_LABEL[c.kycStatus] || c.kycStatus) + '</td><td>' + when(c.createdAt) + '</td><td>' + btns + '</td></tr>';
+    }).join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+function setClientKyc(id, status) {
+  api('/admin/clients/' + id + '/kyc', { method: 'POST', body: JSON.stringify({ status: status }) })
+    .then(() => { showMsg('Verificación del cliente actualizada.', false); loadClients(); })
     .catch((e) => showMsg(e.message, true));
 }
 function releaseDriver(id) {

@@ -158,6 +158,37 @@ export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
   });
 }
 
+// ─── Verificación de identidad de clientes (KYC pasajero) ─────────────────────
+
+export interface AdminClientKycRow {
+  id: string;
+  name: string | null;
+  phone: string;
+  kycStatus: string;
+  hasSelfie: boolean;
+  selfieUrl: string | null;
+  createdAt: string;
+}
+
+/** Clientes que iniciaron verificación (tienen selfie o estado no-PENDING). */
+export async function listClientsForKyc(): Promise<AdminClientKycRow[]> {
+  const users = await prisma.user.findMany({
+    where: { OR: [{ selfieUrl: { not: null } }, { kycStatus: { not: 'PENDING' } }] },
+    orderBy: { updatedAt: 'desc' },
+    take: 200,
+    select: { id: true, name: true, phone: true, kycStatus: true, selfieUrl: true, createdAt: true },
+  });
+  return users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    phone: u.phone,
+    kycStatus: u.kycStatus,
+    hasSelfie: !!u.selfieUrl,
+    selfieUrl: u.selfieUrl,
+    createdAt: u.createdAt.toISOString(),
+  }));
+}
+
 // ─── Diagnóstico de despacho ──────────────────────────────────────────────────
 // "Las apps no interactúan" casi siempre es UNO de los cuatro filtros del
 // matching fallando en silencio. Esta radiografía evalúa cada filtro por
