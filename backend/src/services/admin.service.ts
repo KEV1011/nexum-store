@@ -241,6 +241,30 @@ export async function setDriverVerified(driverId: string, verified: boolean): Pr
   return true;
 }
 
+/**
+ * Des-atasca a un conductor: cancela cualquier viaje activo suyo (liberando al
+ * cliente, que así puede volver a pedir) y lo devuelve a ONLINE. Herramienta de
+ * operación para cuando un viaje queda "colgado" (p. ej. la app se cerró a mitad
+ * de camino y el conductor quedó ON_TRIP sin poder recibir ni completar).
+ */
+export async function releaseDriver(
+  driverId: string,
+): Promise<{ ok: boolean; cancelledTrips: number }> {
+  const d = await prisma.driver.findUnique({ where: { id: driverId }, select: { id: true } });
+  if (!d) return { ok: false, cancelledTrips: 0 };
+
+  const active = await prisma.trip.updateMany({
+    where: {
+      driverId,
+      status: { in: ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'] },
+    },
+    data: { status: 'CANCELLED', cancelReason: 'Liberado por el administrador', completedAt: new Date() },
+  });
+
+  await prisma.driver.update({ where: { id: driverId }, data: { status: 'ONLINE' } });
+  return { ok: true, cancelledTrips: active.count };
+}
+
 // ─── Eventos SOS ──────────────────────────────────────────────────────────────
 
 export interface AdminSosRow {

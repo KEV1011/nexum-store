@@ -25,6 +25,7 @@ import {
   listOperatorRoutesForAdmin,
   setOperatorRouteAuthorized,
   setDriverVerified,
+  releaseDriver,
   diagnoseMatching,
 } from '../services/admin.service';
 import { OperatorStatus } from '@prisma/client';
@@ -151,6 +152,14 @@ router.post('/drivers/:id/unverify', async (req: Request, res: Response): Promis
   const ok = await setDriverVerified(req.params['id']!, false);
   if (!ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
   res.json({ success: true });
+});
+
+// POST /admin/drivers/:id/release — des-atasca al conductor (cancela su viaje
+// activo y lo devuelve a ONLINE). Libera también al cliente colgado.
+router.post('/drivers/:id/release', async (req: Request, res: Response): Promise<void> => {
+  const result = await releaseDriver(req.params['id']!);
+  if (!result.ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
+  res.json({ success: true, data: result });
 });
 
 // POST /admin/drivers/:id/kyc { status: 'VERIFIED'|'REJECTED'|'IN_REVIEW', reference? }
@@ -738,6 +747,7 @@ function loadDrivers() {
         ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
       ' ' + kycBtns +
+      (d.status === 'ON_TRIP' ? ' <button class="btn-sm" style="background:#f59e0b;color:#fff" onclick="releaseDriver(\\'' + d.id + '\\')">Liberar</button>' : '') +
       '</td></tr>';
     }).join('');
   }).catch((e) => showMsg(e.message, true));
@@ -745,6 +755,12 @@ function loadDrivers() {
 function setDriverKyc(id, status) {
   api('/admin/drivers/' + id + '/kyc', { method: 'POST', body: JSON.stringify({ status: status }) })
     .then(() => { showMsg('KYC actualizado.', false); loadDrivers(); })
+    .catch((e) => showMsg(e.message, true));
+}
+function releaseDriver(id) {
+  if (!confirm('¿Liberar al conductor? Se cancelará su viaje activo y volverá a ONLINE.')) return;
+  api('/admin/drivers/' + id + '/release', { method: 'POST' })
+    .then((r) => { showMsg('Conductor liberado (' + (r.cancelledTrips || 0) + ' viaje(s) cancelado(s)).', false); loadDrivers(); })
     .catch((e) => showMsg(e.message, true));
 }
 

@@ -22,6 +22,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/going_to_
 import 'package:nexum_driver/features/active_trip/presentation/widgets/pickup_proof_sheet.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/trip_in_progress_card.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_passenger_card.dart';
+import 'package:nexum_driver/features/active_trip/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
@@ -174,7 +175,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
       if (_autoFollow) {
         final zoom = current?.isInProgress == true ? 16.5 : MapConstants.tripZoom;
-        _mapController.move(next, zoom);
+        try {
+          _mapController.move(next, zoom);
+        } catch (_) {/* mapa no listo */}
       }
     });
   }
@@ -258,16 +261,36 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
   void _fitBoundsToRoute(List<LatLng> points) {
     if (points.length < 2) return;
-    _mapController.fitCamera(
-      CameraFit.coordinates(
-        coordinates: points,
-        padding: const EdgeInsets.all(72),
-      ),
-    );
+    // Si todos los puntos son (casi) idénticos —el conductor está sobre el punto
+    // de recogida, o el viaje tiene origen ≈ destino— CameraFit.coordinates
+    // produce un bounds degenerado con zoom NaN que REVIENTA el mapa (pantalla
+    // en blanco / congelada). En ese caso solo centramos con un move.
+    final first = points.first;
+    const eps = 1e-4; // ~11 m
+    final degenerate = points.every((p) =>
+        (p.latitude - first.latitude).abs() < eps &&
+        (p.longitude - first.longitude).abs() < eps);
+    try {
+      if (degenerate) {
+        _mapController.move(first, 16);
+        return;
+      }
+      _mapController.fitCamera(
+        CameraFit.coordinates(
+          coordinates: points,
+          padding: const EdgeInsets.all(72),
+        ),
+      );
+    } catch (_) {
+      // El mapa aún no está listo o los puntos son inválidos: nunca dejar que
+      // un error de cámara tumbe la pantalla del viaje.
+    }
   }
 
   void _zoomTo(LatLng target, {double zoom = 16}) {
-    _mapController.move(target, zoom);
+    try {
+      _mapController.move(target, zoom);
+    } catch (_) {/* mapa no listo */}
   }
 
   void _recenter(ActiveTripEntity trip) {
@@ -599,6 +622,34 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
               ),
 
               const SizedBox(width: AppConstants.spacingS),
+
+              // Chat con el pasajero — visible durante todo el viaje (viajes
+              // normales; pedidos/mandados no usan el chat de viaje).
+              if (!trip.request.isOrder && !trip.request.isErrand) ...[
+                Material(
+                  color: AppColors.primary,
+                  elevation: 4,
+                  shadowColor: AppColors.shadow,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => TripChatScreen(
+                          tripId: trip.request.id,
+                          peerName: trip.request.passenger.name,
+                        ),
+                      ),
+                    ),
+                    customBorder: const CircleBorder(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(Icons.chat_bubble_rounded,
+                          size: 24, color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppConstants.spacingS),
+              ],
 
               // SOS — emergency, accessible throughout the active trip.
               Material(
