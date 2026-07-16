@@ -303,15 +303,20 @@ router.put('/status', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Gating de habilitación: para ponerse EN LÍNEA el conductor debe estar
-  // "cleared" (documentos aprobados y, si KYC_ENFORCE=true, identidad VERIFIED).
-  // Sin estar online el matching no lo ofrece, así que gatear aquí basta.
-  if (status === 'online' && req.driverId && !(await isDriverCleared(req.driverId))) {
+  // Gating de habilitación: SOLO cuando KYC_ENFORCE=true se bloquea el ponerse
+  // EN LÍNEA a quien no esté "cleared" (documentos aprobados + identidad
+  // VERIFIED). Con KYC_ENFORCE=false el comportamiento es como antes: cualquiera
+  // se conecta y el matching ya filtra a los no verificados (nunca les ofrece
+  // viajes) — así el gate no bloquea de golpe a los conductores existentes.
+  if (
+    status === 'online' &&
+    req.driverId &&
+    kycEnforced() &&
+    !(await isDriverCleared(req.driverId))
+  ) {
     res.status(403).json({
       success: false,
-      error: kycEnforced()
-        ? 'Debes completar la verificación de identidad y documentos antes de conectarte.'
-        : 'Debes tener tus documentos aprobados antes de conectarte.',
+      error: 'Debes completar la verificación de identidad y documentos antes de conectarte.',
       code: 'driver_not_cleared',
     });
     return;
