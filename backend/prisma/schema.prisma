@@ -144,6 +144,17 @@ model Driver {
   licenseNumber     String?      @unique
   status            DriverStatus @default(OFFLINE)
   isVerified        Boolean      @default(false)
+  // ── KYC / verificación de identidad ──────────────────────────────────────
+  // isVerified = documentos aprobados; kycStatus = identidad validada (cédula/
+  // licencia contra registros + selfie/liveness). Un conductor está "habilitado
+  // para conducir" solo si AMBOS pasan (gating activable con KYC_ENFORCE).
+  kycStatus         KycStatus    @default(PENDING)
+  kycProvider       String?      // 'manual' | 'truora' | ... (quién validó)
+  kycReference      String?      // id de la verificación del proveedor
+  kycCheckedAt      DateTime?
+  selfieUrl         String?      // foto selfie para comparación/liveness
+  // Antifraude: contador de eventos GPS sospechosos (saltos/velocidad imposible).
+  fraudFlags        Int          @default(0)
   // Disponibilidad para recibir solicitudes de viajes intermunicipales.
   intercityEnabled  Boolean      @default(false)
   // Preferencias de servicio: qué tipos de solicitud recibe el conductor.
@@ -235,6 +246,13 @@ enum DocumentStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum KycStatus {
+  PENDING      // aún no envía verificación de identidad
+  IN_REVIEW    // enviada; en revisión (proveedor o admin manual)
+  VERIFIED     // identidad confirmada
+  REJECTED     // no pasó la verificación
 }
 
 model Vehicle {

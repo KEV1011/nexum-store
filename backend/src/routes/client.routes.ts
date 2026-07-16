@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { clientAuthMiddleware } from '../middleware/client-auth.middleware';
+import { clientRequestRateLimit } from '../middleware/client-rate-limit.middleware';
 import { OtpRateLimitError } from '../services/otp.service';
 import {
   sendClientOtp,
@@ -167,7 +168,7 @@ router.post(
 
 // ─── Fletes de carga (turbo/camión/mula) ──────────────────────────────────────
 
-router.post('/freight/request', clientAuthMiddleware, async (req, res) => {
+router.post('/freight/request', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
   try {
     const freight = await createFreightRequest(req.clientId!, req.body as CreateFreightDTO);
     res.status(201).json({ success: true, data: freight });
@@ -210,7 +211,7 @@ router.get('/businesses/:id', async (req, res) => {
 
 // ─── Orders (auth required) ───────────────────────────────────────────────────
 
-router.post('/orders', clientAuthMiddleware, async (req, res) => {
+router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
   const clientId = req.clientId!;
   const clientPhone = req.clientPhone!;
   const dto = req.body as { businessId?: string; deliveryAddress?: string; items?: unknown[] };
@@ -301,7 +302,7 @@ router.get('/trips/estimate', async (req, res) => {
   }
 });
 
-router.post('/trips/request', clientAuthMiddleware, async (req, res) => {
+router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
   const dto = req.body as {
     serviceType?: string; originAddress?: string; destinationAddress?: string;
     estimatedFare?: number; distanceKm?: number; etaMinutes?: number;
@@ -391,7 +392,7 @@ router.put('/fcm-token', clientAuthMiddleware, async (req, res) => {
 
 // ─── Errands (Mandados) ───────────────────────────────────────────────────────
 
-router.post('/errands/request', clientAuthMiddleware, async (req, res) => {
+router.post('/errands/request', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
   const dto = req.body as Partial<RequestClientErrandDTO> & { pickupLat?: number; pickupLng?: number };
   if (!dto.category || !dto.description || !dto.pickupAddress || !dto.dropoffAddress) {
     res.status(400).json({ success: false, error: 'category, description, pickupAddress, dropoffAddress are required' });
@@ -457,7 +458,7 @@ router.get('/intercity/routes', (_req, res) => {
   });
 });
 
-router.post('/intercity/request', clientAuthMiddleware, async (req, res) => {
+router.post('/intercity/request', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
   const dto = req.body as Partial<RequestIntercityDTO>;
   if (!dto.origin || !dto.destination || !dto.departureTime || !dto.seats || dto.offeredFare === undefined) {
     res.status(400).json({ success: false, error: 'origin, destination, departureTime, seats, offeredFare are required' });

@@ -15,6 +15,8 @@ import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
 import { otpMode } from './services/otp.service';
+import { kycProviderName, kycEnforced } from './services/kyc.service';
+import { pruneRateLimits } from './services/fraud.service';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -94,6 +96,9 @@ app.get('/health', async (_req, res) => {
     // al redeploy y si los push llegan con la app cerrada.
     uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',
     push: process.env['FIREBASE_SERVICE_ACCOUNT'] ? 'firebase' : 'apagado',
+    // KYC: qué proveedor de identidad corre y si el gating bloquea el "conectarse".
+    kyc: kycProviderName(),
+    kycEnforce: kycEnforced(),
   });
 });
 
@@ -170,6 +175,8 @@ server.listen(PORT, () => {
     'Nexum API + WebSocket escuchando',
   );
   scheduleDocumentExpiryChecks();
+  // Purga periódica del mapa en memoria del rate-limit por cliente (antifraude).
+  setInterval(pruneRateLimits, 5 * 60 * 1000).unref();
 });
 
 export default app;

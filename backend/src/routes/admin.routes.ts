@@ -28,6 +28,7 @@ import {
   diagnoseMatching,
 } from '../services/admin.service';
 import { OperatorStatus } from '@prisma/client';
+import { setDriverKycStatus, KycError } from '../services/kyc.service';
 import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
 import { listPayoutsForAdmin, adminUpdatePayout } from '../services/payout.service';
 
@@ -142,6 +143,31 @@ router.post('/drivers/:id/unverify', async (req: Request, res: Response): Promis
   const ok = await setDriverVerified(req.params['id']!, false);
   if (!ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
   res.json({ success: true });
+});
+
+// POST /admin/drivers/:id/kyc { status: 'VERIFIED'|'REJECTED'|'IN_REVIEW', reference? }
+// Decisión manual de identidad del conductor (revisión de selfie + documento).
+const KYC_DECISIONS = new Set(['VERIFIED', 'REJECTED', 'IN_REVIEW']);
+router.post('/drivers/:id/kyc', async (req: Request, res: Response): Promise<void> => {
+  const { status, reference } = req.body as { status?: string; reference?: string };
+  if (!status || !KYC_DECISIONS.has(status)) {
+    res.status(400).json({ success: false, error: 'status debe ser VERIFIED, REJECTED o IN_REVIEW' });
+    return;
+  }
+  try {
+    const data = await setDriverKycStatus(
+      req.params['id']!,
+      status as 'VERIFIED' | 'REJECTED' | 'IN_REVIEW',
+      reference,
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err instanceof KycError) {
+      res.status(404).json({ success: false, error: err.message });
+      return;
+    }
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
 });
 
 // ─── Empresas de transporte (operadores) ──────────────────────────────────────
@@ -441,8 +467,8 @@ const PANEL_HTML = `<!DOCTYPE html>
         <table><thead><tr><th>Conductor</th><th>Estado</th><th>Verif.</th><th>GPS hace</th><th>Distancia</th><th>Radio 5 km</th><th>GPS fresco</th><th>¿Recibiría oferta?</th></tr></thead>
         <tbody id="diag-body"></tbody></table>
       </div>
-      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
-      <tbody id="drivers-body"><tr><td colspan="10" class="empty">Cargando…</td></tr></tbody></table>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
+      <tbody id="drivers-body"><tr><td colspan="12" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-operators" style="display:none">
@@ -616,19 +642,35 @@ function reviewDoc(id, approve) {
     .catch((e) => showMsg(e.message, true));
 }
 
+var KYC_LABEL = { PENDING: 'Pendiente', IN_REVIEW: 'En revisión', VERIFIED: 'Verificado', REJECTED: 'Rechazado' };
 function loadDrivers() {
   api('/admin/drivers').then((rows) => {
     const tb = document.getElementById('drivers-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="10" class="empty">Sin conductores.</td></tr>'; return; }
-    tb.innerHTML = rows.map((d) => '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="12" class="empty">Sin conductores.</td></tr>'; return; }
+    tb.innerHTML = rows.map((d) => {
+      var kycCell = '<span style="font-size:.72rem">' + (KYC_LABEL[d.kycStatus] || d.kycStatus) + '</span>';
+      if (d.hasSelfie && d.selfieUrl) kycCell += ' <a href="' + esc(d.selfieUrl) + '" target="_blank" style="color:#059669">selfie</a>';
+      var kycBtns = '';
+      if (d.kycStatus !== 'VERIFIED') kycBtns += '<button class="btn-sm btn-approve" onclick="setDriverKyc(\\'' + d.id + '\\', \\'VERIFIED\\')">KYC ✓</button> ';
+      if (d.kycStatus !== 'REJECTED') kycBtns += '<button class="btn-sm btn-reject" onclick="setDriverKyc(\\'' + d.id + '\\', \\'REJECTED\\')">KYC ✕</button>';
+      var fraud = d.fraudFlags > 0 ? '<span class="badge badge-reject">⚠ ' + d.fraudFlags + '</span>' : '—';
+      return '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
       '</td><td><span class="badge badge-' + d.status + '">' + d.status + '</span></td><td>' + (d.isVerified ? '✅' : '—') +
       '</td><td>' + (d.intercityEnabled ? '🛣️' : '—') +
+      '</td><td>' + kycCell + '</td><td>' + fraud +
       '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
       (d.isVerified
         ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
-      '</td></tr>').join('');
+      ' ' + kycBtns +
+      '</td></tr>';
+    }).join('');
   }).catch((e) => showMsg(e.message, true));
+}
+function setDriverKyc(id, status) {
+  api('/admin/drivers/' + id + '/kyc', { method: 'POST', body: JSON.stringify({ status: status }) })
+    .then(() => { showMsg('KYC actualizado.', false); loadDrivers(); })
+    .catch((e) => showMsg(e.message, true));
 }
 
 // Radiografía del despacho: evalúa los 4 filtros del matching por conductor.
