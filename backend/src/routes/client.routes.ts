@@ -81,7 +81,13 @@ import {
   PromoError,
 } from '../services/promo.service';
 import { getFareEstimate } from '../services/surge.service';
-import { getTripChat, TripChatError } from '../services/trip-chat.service';
+import { getTripChat, postTripChatPhoto, TripChatError } from '../services/trip-chat.service';
+import {
+  getClientKyc,
+  setClientSelfie,
+  submitClientKyc,
+  ClientKycError,
+} from '../services/client-kyc.service';
 import {
   createTicket,
   listTicketsFor,
@@ -737,6 +743,73 @@ router.get('/trips/:id/chat', clientAuthMiddleware, async (req, res) => {
     res.json({ success: true, data });
   } catch (err) {
     const status = err instanceof TripChatError ? 403 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /client/trips/:id/chat/photo — envía una foto en el chat del viaje.
+router.post(
+  '/trips/:id/chat/photo',
+  clientAuthMiddleware,
+  (req, res, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req, res) => {
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' }); return; }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'El archivo debe ser una imagen.' }); return;
+    }
+    try {
+      const data = await postTripChatPhoto(req.params['id']!, 'client', req.clientId!, fileToUrl(req.file));
+      res.status(201).json({ success: true, data });
+    } catch (err) {
+      const status = err instanceof TripChatError ? 403 : 500;
+      res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
+
+// ─── Verificación de identidad del pasajero (KYC cliente) ──────────────────────
+
+router.get('/kyc', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await getClientKyc(req.clientId!) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post(
+  '/kyc/selfie',
+  clientAuthMiddleware,
+  (req, res, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req, res) => {
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' }); return; }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'La selfie debe ser una imagen.' }); return;
+    }
+    try {
+      await setClientSelfie(req.clientId!, fileToUrl(req.file));
+      res.status(201).json({ success: true, data: await getClientKyc(req.clientId!) });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
+
+router.post('/kyc/submit', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await submitClientKyc(req.clientId!) });
+  } catch (err) {
+    const status = err instanceof ClientKycError ? 422 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });

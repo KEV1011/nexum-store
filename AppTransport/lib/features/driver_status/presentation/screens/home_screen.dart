@@ -333,6 +333,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           name: name,
           rating: (p['rating'] as num).toDouble(),
           totalTrips: 0,
+          verified: (p['verified'] as bool?) ?? false,
           photoUrl:
               'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}'
               '&background=00C853&color=fff&size=128',
@@ -2488,11 +2489,47 @@ class _TripRequestModal extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    trip.passenger.name,
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(
-                                            fontWeight: FontWeight.w700),
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          trip.passenger.name,
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                                  fontWeight: FontWeight.w700),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (trip.passenger.verified) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 7, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.success
+                                                .withValues(alpha: 0.14),
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.verified_rounded,
+                                                  size: 13,
+                                                  color: AppColors.success),
+                                              SizedBox(width: 3),
+                                              Text('Verificado',
+                                                  style: TextStyle(
+                                                      fontSize: 10.5,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color:
+                                                          AppColors.success)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                   Row(
                                     children: [

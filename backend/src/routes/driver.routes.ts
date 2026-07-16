@@ -52,7 +52,7 @@ import {
   takeDriverFreight,
   FreightError,
 } from '../services/freight.service';
-import { getTripChat, TripChatError } from '../services/trip-chat.service';
+import { getTripChat, postTripChatPhoto, TripChatError } from '../services/trip-chat.service';
 import {
   createTicket,
   listTicketsFor,
@@ -805,6 +805,32 @@ router.get('/trips/:id/chat', async (req: Request, res: Response): Promise<void>
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
+
+// POST /driver/trips/:id/chat/photo — envía una foto en el chat del viaje.
+router.post(
+  '/trips/:id/chat/photo',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId;
+    if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' }); return; }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'El archivo debe ser una imagen.' }); return;
+    }
+    try {
+      const data = await postTripChatPhoto(req.params['id']!, 'driver', driverId, fileToUrl(req.file));
+      res.status(201).json({ success: true, data });
+    } catch (err) {
+      const status = err instanceof TripChatError ? 403 : 500;
+      res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
 
 // ─── Soporte con tickets ────────────────────────────────────────────────────────
 

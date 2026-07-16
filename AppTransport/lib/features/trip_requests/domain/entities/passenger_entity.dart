@@ -9,6 +9,7 @@ class PassengerEntity {
     required this.rating,
     required this.totalTrips,
     required this.photoUrl,
+    this.verified = false,
   });
 
   /// Unique identifier assigned by the platform.
@@ -26,6 +27,9 @@ class PassengerEntity {
   /// URL to the passenger's avatar / profile picture.
   final String photoUrl;
 
+  /// Identidad del pasajero verificada (KYC) — señal de confianza anti-robo.
+  final bool verified;
+
   /// Returns only the first name for compact UI labels.
   String get firstName => name.split(' ').first;
 
@@ -35,6 +39,7 @@ class PassengerEntity {
     double? rating,
     int? totalTrips,
     String? photoUrl,
+    bool? verified,
   }) {
     return PassengerEntity(
       id: id ?? this.id,
@@ -42,6 +47,7 @@ class PassengerEntity {
       rating: rating ?? this.rating,
       totalTrips: totalTrips ?? this.totalTrips,
       photoUrl: photoUrl ?? this.photoUrl,
+      verified: verified ?? this.verified,
     );
   }
 
