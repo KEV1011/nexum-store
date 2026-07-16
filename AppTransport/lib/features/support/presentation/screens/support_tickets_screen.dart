@@ -1,223 +1,21 @@
 import 'package:flutter/material.dart';
+
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
-import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/support/data/support_api.dart';
 import 'package:nexum_driver/features/support/presentation/screens/support_ticket_detail_screen.dart';
 import 'package:nexum_driver/features/support/presentation/widgets/support_common.dart';
 
-class SupportScreen extends StatefulWidget {
-  const SupportScreen({super.key});
+/// Centro de ayuda del conductor: lista de tickets + abrir uno nuevo.
+class SupportTicketsScreen extends StatefulWidget {
+  const SupportTicketsScreen({super.key});
 
   @override
-  State<SupportScreen> createState() => _SupportScreenState();
+  State<SupportTicketsScreen> createState() => _SupportTicketsScreenState();
 }
 
-class _SupportScreenState extends State<SupportScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Soporte'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'FAQ'),
-            Tab(text: 'Mis tickets'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          _FaqTab(),
-          _TicketsTab(),
-        ],
-      ),
-    );
-  }
-}
-
-// ── FAQ tab ────────────────────────────────────────────────────────────────────
-
-class _FaqTab extends StatefulWidget {
-  const _FaqTab();
-
-  @override
-  State<_FaqTab> createState() => _FaqTabState();
-}
-
-class _FaqTabState extends State<_FaqTab> {
-  int? _expanded;
-  String _query = '';
-
-  List<_Faq> get _filtered {
-    if (_query.isEmpty) return _faqs;
-    final q = _query.toLowerCase();
-    return _faqs
-        .where((f) =>
-            f.question.toLowerCase().contains(q) ||
-            f.answer.toLowerCase().contains(q))
-        .toList();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final filtered = _filtered;
-
-    return ListView(
-      padding: const EdgeInsets.all(AppConstants.spacingM),
-      children: [
-        TextField(
-          decoration: InputDecoration(
-            hintText: 'Buscar en FAQ...',
-            prefixIcon: const Icon(Icons.search_rounded),
-            border: OutlineInputBorder(
-              borderRadius:
-                  BorderRadius.circular(AppConstants.radiusCircular),
-            ),
-          ),
-          onChanged: (v) => setState(() {
-            _query = v;
-            _expanded = null;
-          }),
-        ),
-        const SizedBox(height: AppConstants.spacingL),
-        Text(
-          _query.isEmpty
-              ? 'Preguntas más comunes'
-              : '${filtered.length} resultado${filtered.length == 1 ? '' : 's'}',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: AppConstants.spacingM),
-        if (filtered.isEmpty)
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.only(top: AppConstants.spacingXL),
-              child: Column(
-                children: [
-                  Icon(Icons.search_off_rounded,
-                      size: 48, color: context.textTertiaryColor),
-                  const SizedBox(height: AppConstants.spacingM),
-                  Text(
-                    'Sin resultados para "$_query"',
-                    style: TextStyle(color: context.textSecondaryColor),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          ...filtered.asMap().entries.map(
-                (e) => _FaqItem(
-                  faq: e.value,
-                  isExpanded: _expanded == e.key,
-                  onTap: () => setState(
-                      () => _expanded = _expanded == e.key ? null : e.key),
-                ),
-              ),
-      ],
-    );
-  }
-}
-
-class _FaqItem extends StatelessWidget {
-  const _FaqItem({
-    required this.faq,
-    required this.isExpanded,
-    required this.onTap,
-  });
-
-  final _Faq faq;
-  final bool isExpanded;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppConstants.spacingS),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : context.surfaceColor,
-        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-        border: Border.all(
-          color: isExpanded
-              ? AppColors.primary
-              : (isDark ? AppColors.outlineDark : context.outlineColor),
-        ),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-        child: Column(
-          children: [
-            ListTile(
-              leading:
-                  Icon(faq.icon, color: AppColors.primary, size: 20),
-              title: Text(
-                faq.question,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              trailing: AnimatedRotation(
-                turns: isExpanded ? 0.5 : 0,
-                duration: AppConstants.shortAnimation,
-                child: Icon(Icons.expand_more_rounded,
-                    color: context.textSecondaryColor),
-              ),
-              onTap: onTap,
-            ),
-            if (isExpanded)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppConstants.spacingL + 4,
-                  0,
-                  AppConstants.spacingM,
-                  AppConstants.spacingM,
-                ),
-                child: Text(
-                  faq.answer,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: context.textSecondaryColor, height: 1.5),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Tickets tab (real, backend) ────────────────────────────────────────────────
-
-class _TicketsTab extends StatefulWidget {
-  const _TicketsTab();
-
-  @override
-  State<_TicketsTab> createState() => _TicketsTabState();
-}
-
-class _TicketsTabState extends State<_TicketsTab> {
+class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
   final _api = SupportApi();
   bool _loading = true;
   String? _error;
@@ -272,7 +70,13 @@ class _TicketsTabState extends State<_TicketsTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: context.backgroundColor,
+      appBar: AppBar(
+        title: const Text('Ayuda y soporte'),
+        backgroundColor: context.surfaceColor,
+        foregroundColor: context.textPrimaryColor,
+        elevation: 0,
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _newTicket,
         backgroundColor: AppColors.primary,
@@ -301,24 +105,17 @@ class _TicketsTabState extends State<_TicketsTab> {
 
   Widget _empty(BuildContext context) => ListView(
         children: [
-          const SizedBox(height: 100),
-          Icon(Icons.confirmation_number_outlined, size: 48, color: context.textTertiaryColor),
-          const SizedBox(height: 12),
+          const SizedBox(height: 120),
+          Icon(Icons.support_agent_rounded, size: 64, color: context.textTertiaryColor),
+          const SizedBox(height: 16),
           Center(
-            child: Text('No tienes tickets abiertos',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            child: Text('Aún no tienes tickets.',
+                style: TextStyle(fontSize: 15, color: context.textSecondaryColor)),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                'Si tienes un problema con un viaje, un pago o tus documentos, '
-                'abre un ticket y le haremos seguimiento.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
-              ),
-            ),
+            child: Text('Toca "Nuevo ticket" si necesitas ayuda.',
+                style: TextStyle(fontSize: 13, color: context.textTertiaryColor)),
           ),
         ],
       );
@@ -479,15 +276,4 @@ class _NewTicketSheetState extends State<_NewTicketSheet> {
       ),
     );
   }
-}
-
-class _Faq {
-  const _Faq({
-    required this.icon,
-    required this.question,
-    required this.answer,
-  });
-  final IconData icon;
-  final String question;
-  final String answer;
 }

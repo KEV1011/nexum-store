@@ -52,6 +52,14 @@ import {
   takeDriverFreight,
   FreightError,
 } from '../services/freight.service';
+import { getTripChat, TripChatError } from '../services/trip-chat.service';
+import {
+  createTicket,
+  listTicketsFor,
+  getTicketDetail,
+  addRequesterMessage,
+  SupportError,
+} from '../services/support.service';
 
 const router = Router();
 
@@ -778,5 +786,72 @@ router.post(
     }
   },
 );
+
+// ─── Chat del viaje (conductor ↔ pasajero) ─────────────────────────────────────
+
+// GET /driver/trips/:id/chat — historial del chat del viaje.
+router.get('/trips/:id/chat', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getTripChat(req.params['id']!, driverId) });
+  } catch (err) {
+    const status = err instanceof TripChatError ? 403 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Soporte con tickets ────────────────────────────────────────────────────────
+
+router.get('/support/tickets', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await listTicketsFor('driver', driverId) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post('/support/tickets', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  const { subject, body, category } = req.body as { subject?: string; body?: string; category?: string };
+  if (!subject || !body) { res.status(400).json({ success: false, error: 'subject y body son requeridos' }); return; }
+  try {
+    const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { name: true } });
+    const ticket = await createTicket('driver', driverId, {
+      subject, body, category, requesterName: driver?.name ?? null,
+    });
+    res.status(201).json({ success: true, data: ticket });
+  } catch (err) {
+    const status = err instanceof SupportError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.get('/support/tickets/:id', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    res.json({ success: true, data: await getTicketDetail(req.params['id']!, 'driver', driverId) });
+  } catch (err) {
+    const status = err instanceof SupportError ? 404 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post('/support/tickets/:id/messages', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  const { body } = req.body as { body?: string };
+  if (!body) { res.status(400).json({ success: false, error: 'body es requerido' }); return; }
+  try {
+    res.json({ success: true, data: await addRequesterMessage(req.params['id']!, 'driver', driverId, body) });
+  } catch (err) {
+    const status = err instanceof SupportError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
 
 export default router;

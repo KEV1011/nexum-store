@@ -5,6 +5,7 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
+import 'package:nexum_driver/features/active_trip/presentation/screens/trip_chat_screen.dart';
 
 /// Tarjeta inferior para el estado (a): conductor yendo al punto de recogida.
 ///
@@ -118,9 +119,13 @@ class GoingToPassengerCard extends ConsumerWidget {
                 'Por privacidad, el número del pasajero está protegido. '
                 'Comunícate por el chat in-app.',
               ),
-              onMessage: () => AppSnackbar.showInfo(
-                context,
-                'Abriendo chat con ${passenger.firstName}...',
+              onMessage: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => TripChatScreen(
+                    tripId: trip.request.id,
+                    peerName: passenger.name,
+                  ),
+                ),
               ),
             ),
 

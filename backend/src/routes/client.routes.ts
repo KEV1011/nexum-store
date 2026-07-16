@@ -81,6 +81,14 @@ import {
   PromoError,
 } from '../services/promo.service';
 import { getFareEstimate } from '../services/surge.service';
+import { getTripChat, TripChatError } from '../services/trip-chat.service';
+import {
+  createTicket,
+  listTicketsFor,
+  getTicketDetail,
+  addRequesterMessage,
+  SupportError,
+} from '../services/support.service';
 import {
   RequestClientErrandDTO,
   RequestIntercityDTO,
@@ -718,6 +726,68 @@ router.get('/payments/:ref', clientAuthMiddleware, async (req, res) => {
       tripId: payment.tripId ?? null,
     },
   });
+});
+
+// ─── Chat del viaje (pasajero ↔ conductor) ─────────────────────────────────────
+
+// GET /client/trips/:id/chat — historial del chat del viaje.
+router.get('/trips/:id/chat', clientAuthMiddleware, async (req, res) => {
+  try {
+    const data = await getTripChat(req.params['id']!, req.clientId!);
+    res.json({ success: true, data });
+  } catch (err) {
+    const status = err instanceof TripChatError ? 403 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Soporte con tickets ────────────────────────────────────────────────────────
+
+// GET /client/support/tickets — mis tickets.
+router.get('/support/tickets', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await listTicketsFor('client', req.clientId!) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /client/support/tickets { subject, body, category? } — abre un ticket.
+router.post('/support/tickets', clientAuthMiddleware, async (req, res) => {
+  const { subject, body, category } = req.body as { subject?: string; body?: string; category?: string };
+  if (!subject || !body) { res.status(400).json({ success: false, error: 'subject y body son requeridos' }); return; }
+  try {
+    const client = await getClientById(req.clientId!).catch(() => null);
+    const ticket = await createTicket('client', req.clientId!, {
+      subject, body, category, requesterName: client?.name ?? null,
+    });
+    res.status(201).json({ success: true, data: ticket });
+  } catch (err) {
+    const status = err instanceof SupportError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /client/support/tickets/:id — detalle con mensajes.
+router.get('/support/tickets/:id', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await getTicketDetail(req.params['id']!, 'client', req.clientId!) });
+  } catch (err) {
+    const status = err instanceof SupportError ? 404 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /client/support/tickets/:id/messages { body } — responde en el ticket.
+router.post('/support/tickets/:id/messages', clientAuthMiddleware, async (req, res) => {
+  const { body } = req.body as { body?: string };
+  if (!body) { res.status(400).json({ success: false, error: 'body es requerido' }); return; }
+  try {
+    res.json({ success: true, data: await addRequesterMessage(req.params['id']!, 'client', req.clientId!, body) });
+  } catch (err) {
+    const status = err instanceof SupportError ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
 });
 
 export default router;

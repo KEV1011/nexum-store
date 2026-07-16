@@ -62,6 +62,15 @@ class ChatMessageEvent {
   final Map<String, dynamic> message;
 }
 
+/// Chat del viaje normal (persistente). `history` no nulo = snapshot inicial;
+/// `message` no nulo = mensaje nuevo en vivo.
+class TripChatEvent {
+  const TripChatEvent({this.tripId, this.message, this.history});
+  final String? tripId;
+  final Map<String, dynamic>? message;
+  final List<Map<String, dynamic>>? history;
+}
+
 /// Singleton WS client for real-time trip, errand, and intercity updates.
 ///
 /// Protocol client→server:
@@ -112,6 +121,7 @@ class TransportWsService {
   final _rideCtrl = StreamController<RideUpdateEvent>.broadcast();
   final _rideLocationCtrl = StreamController<RideLocationEvent>.broadcast();
   final _chatCtrl = StreamController<ChatMessageEvent>.broadcast();
+  final _tripChatCtrl = StreamController<TripChatEvent>.broadcast();
 
   Stream<TripUpdateEvent> get tripUpdates => _tripCtrl.stream;
   Stream<DriverLocationEvent> get driverLocations => _locationCtrl.stream;
@@ -121,6 +131,7 @@ class TransportWsService {
   Stream<RideUpdateEvent> get rideUpdates => _rideCtrl.stream;
   Stream<RideLocationEvent> get rideLocations => _rideLocationCtrl.stream;
   Stream<ChatMessageEvent> get chatMessages => _chatCtrl.stream;
+  Stream<TripChatEvent> get tripChatEvents => _tripChatCtrl.stream;
 
   bool get isConnected => _channel != null && _authenticated;
 
@@ -254,6 +265,17 @@ class TransportWsService {
   void sendChat(String rideId, String text) =>
       _send({'type': 'chat_send', 'rideId': rideId, 'text': text});
 
+  // ── Chat del viaje normal (persistente) ─────────────────────────────────────
+
+  void subscribeTripChat(String tripId) => _recordSub(
+      'tripchat:$tripId', {'type': 'subscribe_trip_chat', 'tripId': tripId});
+
+  void unsubscribeTripChat(String tripId) => _dropSub(
+      'tripchat:$tripId', {'type': 'unsubscribe_trip_chat', 'tripId': tripId});
+
+  void sendTripChat(String tripId, String text) =>
+      _send({'type': 'trip_chat_send', 'tripId': tripId, 'text': text});
+
   // Registra/borra una suscripción y la envía. El registro permite reenviarla
   // automáticamente tras una reconexión.
   void _recordSub(String key, Map<String, dynamic> msg) {
@@ -349,6 +371,22 @@ class TransportWsService {
         final m = msg['message'];
         if (m is Map<String, dynamic>) {
           _chatCtrl.add(ChatMessageEvent(message: m));
+        }
+      } else if (type == 'trip_chat_message') {
+        final m = msg['message'];
+        if (m is Map<String, dynamic>) {
+          _tripChatCtrl.add(TripChatEvent(
+            tripId: m['tripId'] as String?,
+            message: m,
+          ));
+        }
+      } else if (type == 'trip_chat_history') {
+        final list = msg['messages'];
+        if (list is List) {
+          _tripChatCtrl.add(TripChatEvent(
+            tripId: msg['tripId'] as String?,
+            history: list.whereType<Map<String, dynamic>>().toList(),
+          ));
         }
       }
     } catch (_) {}

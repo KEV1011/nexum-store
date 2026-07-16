@@ -1015,3 +1015,57 @@ model FreightRequest {
   @@index([clientId])
   @@map("freight_requests")
 }
+
+// ─── Chat de viaje (pasajero ↔ conductor) ──────────────────────────────────────
+// Mensajería persistente atada a un Trip. senderRole: 'client' | 'driver'.
+model TripMessage {
+  id        String   @id @default(cuid())
+  tripId    String
+  senderRole String  // 'client' | 'driver'
+  senderId  String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([tripId])
+  @@map("trip_messages")
+}
+
+// ─── Soporte con tickets ────────────────────────────────────────────────────────
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model SupportTicket {
+  id            String          @id @default(cuid())
+  // Quién abre el ticket: 'client' | 'driver'.
+  requesterKind String
+  requesterId   String
+  requesterName String?
+  subject       String
+  category      String          @default("general")
+  status        SupportStatus   @default(OPEN)
+  messages      SupportMessage[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([requesterKind, requesterId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id         String        @id @default(cuid())
+  ticketId   String
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  // Autor: 'client' | 'driver' | 'admin'.
+  authorKind String
+  authorId   String?
+  body       String
+  createdAt  DateTime      @default(now())
+
+  @@index([ticketId])
+  @@map("support_messages")
+}
