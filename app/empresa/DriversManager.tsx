@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Users, UserPlus, ShieldCheck, Clock, Star, Loader2 } from 'lucide-react'
+import { Users, UserPlus, ShieldCheck, Clock, Star, Loader2, UserMinus } from 'lucide-react'
 import type { OperatorApi } from './api'
 
 interface OperatorDriver {
@@ -27,6 +27,7 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
   const [phone, setPhone] = useState('')
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [removingId, setRemovingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -42,6 +43,22 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
   }, [api])
 
   useEffect(() => { void load() }, [load])
+
+  async function unaffiliate(d: OperatorDriver) {
+    if (!confirm(`¿Desafiliar a ${d.name}? Dejará de operar para tu empresa y sus vehículos quedarán inactivos.`)) return
+    setRemovingId(d.id)
+    setError(null)
+    setNotice(null)
+    try {
+      await api(`/operator/drivers/${d.id}`, { method: 'DELETE' })
+      await load()
+      onChanged?.()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo desafiliar el conductor.')
+    } finally {
+      setRemovingId(null)
+    }
+  }
 
   async function invite() {
     setError(null)
@@ -144,6 +161,14 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
                   </span>
                 )}
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 ${st.cls}`}>{st.label}</span>
+                <button
+                  onClick={() => unaffiliate(d)}
+                  disabled={removingId === d.id}
+                  title="Desafiliar de la empresa"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0"
+                >
+                  {removingId === d.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserMinus className="w-4 h-4" />}
+                </button>
               </div>
             )
           })}

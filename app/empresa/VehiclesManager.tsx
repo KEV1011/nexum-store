@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Car, Plus, Loader2 } from 'lucide-react'
+import { Car, Plus, Loader2, Pencil, Trash2, Power } from 'lucide-react'
 import type { OperatorApi } from './api'
 
 interface OperatorVehicle {
@@ -39,25 +39,24 @@ const CARGO_TYPES = new Set(['TURBO', 'CAMION', 'MULA'])
 
 const currentYear = new Date().getFullYear()
 
+const EMPTY = {
+  driverId: '', type: 'TAXI', brand: '', model: '', year: String(currentYear),
+  plate: '', color: '', internalCode: '', operationCardNo: '', capacityKg: '',
+}
+
 export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi; refreshKey?: number }) {
   const [vehicles, setVehicles] = useState<OperatorVehicle[]>([])
   const [drivers, setDrivers] = useState<DriverOption[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Campos del formulario
-  const [driverId, setDriverId] = useState('')
-  const [type, setType] = useState('TAXI')
-  const [brand, setBrand] = useState('')
-  const [model, setModel] = useState('')
-  const [year, setYear] = useState(String(currentYear))
-  const [plate, setPlate] = useState('')
-  const [color, setColor] = useState('')
-  const [internalCode, setInternalCode] = useState('')
-  const [operationCardNo, setOperationCardNo] = useState('')
-  const [capacityKg, setCapacityKg] = useState('')
+  // Campos del formulario (compartidos por alta y edición).
+  const [f, setF] = useState({ ...EMPTY })
+  const set = (patch: Partial<typeof EMPTY>) => setF((prev) => ({ ...prev, ...patch }))
 
   const load = useCallback(async () => {
     try {
@@ -74,7 +73,6 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
     }
   }, [api])
 
-  // refreshKey permite al padre forzar recarga (p. ej. tras afiliar un conductor).
   useEffect(() => { void load() }, [load, refreshKey])
 
   const driverName = useCallback(
@@ -82,11 +80,36 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
     [drivers],
   )
 
-  async function addVehicle() {
+  function openCreate() {
+    setEditingId(null)
+    setF({ ...EMPTY })
     setError(null)
-    if (!driverId) { setError('Selecciona el conductor responsable del vehículo.'); return }
-    const yearNum = Number(year)
-    if (!brand.trim() || !model.trim() || !plate.trim() || !color.trim()) {
+    setShowForm(true)
+  }
+
+  function openEdit(v: OperatorVehicle) {
+    setEditingId(v.id)
+    setF({
+      driverId: v.driverId,
+      type: v.type,
+      brand: v.brand,
+      model: v.model,
+      year: String(v.year),
+      plate: v.plate,
+      color: v.color,
+      internalCode: v.internalCode ?? '',
+      operationCardNo: v.operationCardNo ?? '',
+      capacityKg: v.capacityKg ? String(v.capacityKg) : '',
+    })
+    setError(null)
+    setShowForm(true)
+  }
+
+  async function submit() {
+    setError(null)
+    if (!f.driverId) { setError('Selecciona el conductor responsable del vehículo.'); return }
+    const yearNum = Number(f.year)
+    if (!f.brand.trim() || !f.model.trim() || !f.plate.trim() || !f.color.trim()) {
       setError('Marca, modelo, placa y color son obligatorios.')
       return
     }
@@ -96,28 +119,61 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
     }
     setSaving(true)
     try {
-      await api('/operator/vehicles', {
-        method: 'POST',
-        body: JSON.stringify({
-          driverId,
-          type,
-          brand: brand.trim(),
-          model: model.trim(),
-          year: yearNum,
-          plate: plate.trim().toUpperCase(),
-          color: color.trim(),
-          internalCode: internalCode.trim() || undefined,
-          operationCardNo: operationCardNo.trim() || undefined,
-          capacityKg: CARGO_TYPES.has(type) && Number(capacityKg) > 0 ? Number(capacityKg) : undefined,
-        }),
+      const body = JSON.stringify({
+        driverId: f.driverId,
+        type: f.type,
+        brand: f.brand.trim(),
+        model: f.model.trim(),
+        year: yearNum,
+        plate: f.plate.trim().toUpperCase(),
+        color: f.color.trim(),
+        internalCode: f.internalCode.trim() || undefined,
+        operationCardNo: f.operationCardNo.trim() || undefined,
+        capacityKg: CARGO_TYPES.has(f.type) && Number(f.capacityKg) > 0 ? Number(f.capacityKg) : undefined,
       })
-      setBrand(''); setModel(''); setPlate(''); setColor(''); setInternalCode(''); setOperationCardNo(''); setCapacityKg('')
+      if (editingId) {
+        await api(`/operator/vehicles/${editingId}`, { method: 'PATCH', body })
+      } else {
+        await api('/operator/vehicles', { method: 'POST', body })
+      }
+      setF({ ...EMPTY })
       setShowForm(false)
+      setEditingId(null)
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo registrar el vehículo.')
+      setError(e instanceof Error ? e.message : 'No se pudo guardar el vehículo.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function toggleActive(v: OperatorVehicle) {
+    setBusyId(v.id)
+    setError(null)
+    try {
+      await api(`/operator/vehicles/${v.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isActive: !v.isActive }),
+      })
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo cambiar el estado.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function remove(v: OperatorVehicle) {
+    if (!confirm(`¿Eliminar el vehículo ${v.plate} de la flota?`)) return
+    setBusyId(v.id)
+    setError(null)
+    try {
+      await api(`/operator/vehicles/${v.id}`, { method: 'DELETE' })
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo eliminar el vehículo.')
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -129,24 +185,27 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
           <span className="text-slate-400 font-normal">({vehicles.length})</span>
         </h2>
         <button
-          onClick={() => { setShowForm((v) => !v); setError(null) }}
+          onClick={() => (showForm ? (setShowForm(false), setEditingId(null)) : openCreate())}
           className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" /> {showForm ? 'Cerrar' : 'Registrar vehículo'}
         </button>
       </div>
       <p className="text-xs text-slate-400 mb-3">
-        Registra los vehículos de tu flota asignando su conductor responsable (debe estar afiliado).
+        Registra, edita o da de baja los vehículos de tu flota y asígnales su conductor responsable (afiliado).
       </p>
 
       {showForm && (
         <div className="bg-white border border-slate-200 rounded-xl p-3.5 mb-3 space-y-3">
+          {editingId && (
+            <p className="text-xs font-semibold text-emerald-700">Editando vehículo</p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2">
               <label className="block text-[11px] font-semibold text-slate-500 mb-1">Conductor responsable</label>
               <select
-                value={driverId}
-                onChange={(e) => setDriverId(e.target.value)}
+                value={f.driverId}
+                onChange={(e) => set({ driverId: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
               >
                 <option value="">Selecciona un conductor…</option>
@@ -155,33 +214,33 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
             </div>
             <Field label="Tipo">
               <select
-                value={type}
-                onChange={(e) => setType(e.target.value)}
+                value={f.type}
+                onChange={(e) => set({ type: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
               >
                 {VEHICLE_TYPES.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
               </select>
             </Field>
-            <Input label="Placa" value={plate} onChange={setPlate} placeholder="ABC123" />
-            <Input label="Marca" value={brand} onChange={setBrand} placeholder="Chevrolet" />
-            <Input label="Modelo" value={model} onChange={setModel} placeholder="Spark GT" />
-            <Input label="Año" value={year} onChange={setYear} placeholder={String(currentYear)} numeric />
-            <Input label="Color" value={color} onChange={setColor} placeholder="Blanco" />
-            <Input label="Código interno (opcional)" value={internalCode} onChange={setInternalCode} placeholder="MOVIL-12" />
-            <Input label="Tarjeta de operación (opcional)" value={operationCardNo} onChange={setOperationCardNo} placeholder="N.º tarjeta" />
-            {CARGO_TYPES.has(type) && (
+            <Input label="Placa" value={f.plate} onChange={(v) => set({ plate: v })} placeholder="ABC123" />
+            <Input label="Marca" value={f.brand} onChange={(v) => set({ brand: v })} placeholder="Chevrolet" />
+            <Input label="Modelo" value={f.model} onChange={(v) => set({ model: v })} placeholder="Spark GT" />
+            <Input label="Año" value={f.year} onChange={(v) => set({ year: v })} placeholder={String(currentYear)} numeric />
+            <Input label="Color" value={f.color} onChange={(v) => set({ color: v })} placeholder="Blanco" />
+            <Input label="Código interno (opcional)" value={f.internalCode} onChange={(v) => set({ internalCode: v })} placeholder="MOVIL-12" />
+            <Input label="Tarjeta de operación (opcional)" value={f.operationCardNo} onChange={(v) => set({ operationCardNo: v })} placeholder="N.º tarjeta" />
+            {CARGO_TYPES.has(f.type) && (
               <div className="col-span-2">
-                <Input label="Capacidad de carga (kg)" value={capacityKg} onChange={setCapacityKg} placeholder="Ej: 8000" numeric />
+                <Input label="Capacidad de carga (kg)" value={f.capacityKg} onChange={(v) => set({ capacityKg: v })} placeholder="Ej: 8000" numeric />
               </div>
             )}
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button
-            onClick={addVehicle}
+            onClick={submit}
             disabled={saving}
             className="w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
           >
-            {saving && <Loader2 className="w-4 h-4 animate-spin" />} Guardar vehículo
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />} {editingId ? 'Guardar cambios' : 'Guardar vehículo'}
           </button>
         </div>
       )}
@@ -197,7 +256,9 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
       ) : (
         <div className="space-y-2.5">
           {vehicles.map((v) => (
-            <div key={v.id} className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3">
+            <div key={v.id} className={`bg-white border rounded-xl p-3.5 flex items-center gap-3 ${
+              v.isActive ? 'border-slate-200' : 'border-slate-200 opacity-70'
+            }`}>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-slate-900 text-sm truncate">
                   <span className="tracking-widest">{v.plate}</span>
@@ -212,6 +273,21 @@ export default function VehiclesManager({ api, refreshKey }: { api: OperatorApi;
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 ${v.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                 {v.isActive ? 'Activo' : 'Inactivo'}
               </span>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button onClick={() => toggleActive(v)} disabled={busyId === v.id}
+                  title={v.isActive ? 'Desactivar' : 'Activar'}
+                  className={`p-1.5 rounded-lg transition-colors ${v.isActive ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'}`}>
+                  {busyId === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
+                </button>
+                <button onClick={() => openEdit(v)} title="Editar"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button onClick={() => remove(v)} disabled={busyId === v.id} title="Eliminar"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>

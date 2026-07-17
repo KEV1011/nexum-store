@@ -120,6 +120,65 @@ export async function createOperatorVehicle(operatorId: string, dto: CreateVehic
   });
 }
 
+export interface UpdateVehicleDTO {
+  driverId?: string;
+  type?: VehicleType;
+  brand?: string;
+  model?: string;
+  year?: number;
+  plate?: string;
+  color?: string;
+  operationCardNo?: string | null;
+  capacityKg?: number | null;
+  internalCode?: string | null;
+  isActive?: boolean;
+}
+
+/** Actualiza un vehículo de la flota (verifica pertenencia a la empresa). */
+export async function updateOperatorVehicle(
+  operatorId: string,
+  vehicleId: string,
+  dto: UpdateVehicleDTO,
+) {
+  const existing = await prisma.vehicle.findFirst({
+    where: { id: vehicleId, operatorId },
+    select: { id: true },
+  });
+  if (!existing) throw new Error('Vehículo no encontrado.');
+
+  // Si se reasigna el conductor, debe estar afiliado a la empresa.
+  if (dto.driverId !== undefined) {
+    const driver = await prisma.driver.findFirst({
+      where: { id: dto.driverId, operatorId },
+      select: { id: true },
+    });
+    if (!driver) throw new Error('El conductor indicado no está afiliado a la empresa.');
+  }
+
+  return prisma.vehicle.update({
+    where: { id: vehicleId },
+    data: {
+      ...(dto.driverId !== undefined && { driverId: dto.driverId }),
+      ...(dto.type !== undefined && { type: dto.type }),
+      ...(dto.brand !== undefined && { brand: dto.brand.trim() }),
+      ...(dto.model !== undefined && { model: dto.model.trim() }),
+      ...(dto.year !== undefined && { year: dto.year }),
+      ...(dto.plate !== undefined && { plate: dto.plate.trim().toUpperCase() }),
+      ...(dto.color !== undefined && { color: dto.color.trim() }),
+      ...(dto.operationCardNo !== undefined && { operationCardNo: dto.operationCardNo || null }),
+      ...(dto.capacityKg !== undefined && { capacityKg: dto.capacityKg }),
+      ...(dto.internalCode !== undefined && { internalCode: dto.internalCode || null }),
+      ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+    },
+  });
+}
+
+/** Elimina un vehículo de la flota (verifica pertenencia a la empresa). */
+export async function deleteOperatorVehicle(operatorId: string, vehicleId: string): Promise<boolean> {
+  const res = await prisma.vehicle.deleteMany({ where: { id: vehicleId, operatorId } });
+  return res.count > 0;
+}
+
 // ─── Flota: conductores ─────────────────────────────────────────────────────────
 
 export async function listOperatorDrivers(operatorId: string) {
@@ -179,6 +238,31 @@ export async function affiliateDriver(operatorId: string, phone: string, name?: 
     },
     select: { id: true, name: true, phone: true, employmentType: true },
   });
+}
+
+/**
+ * Desafilia un conductor de la empresa: lo desvincula (operatorId=null), quita
+ * su tipo de empleo e intermunicipal, y desactiva sus vehículos en la flota
+ * (quedan registrados pero inactivos). Verifica que pertenezca a la empresa.
+ */
+export async function unaffiliateDriver(operatorId: string, driverId: string): Promise<boolean> {
+  const driver = await prisma.driver.findFirst({
+    where: { id: driverId, operatorId },
+    select: { id: true },
+  });
+  if (!driver) return false;
+
+  await prisma.$transaction([
+    prisma.vehicle.updateMany({
+      where: { driverId, operatorId },
+      data: { isActive: false },
+    }),
+    prisma.driver.update({
+      where: { id: driverId },
+      data: { operatorId: null, employmentType: null, intercityEnabled: false },
+    }),
+  ]);
+  return true;
 }
 
 // ─── Rastreo de flota en vivo ───────────────────────────────────────────────────
