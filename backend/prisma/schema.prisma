@@ -344,15 +344,31 @@ model Product {
   description  String?
   price        Float
   category     String   @default("General")
+  // Foto de portada (primera/principal). La galería adicional vive en `photos`.
   imageUrl     String?
   isAvailable  Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  business     Business    @relation(fields: [businessId], references: [id])
+  business     Business       @relation(fields: [businessId], references: [id])
   orderLines   OrderLine[]
+  photos       ProductPhoto[]
 
   @@index([businessId])
   @@map("products")
+}
+
+// Galería de fotos adicionales de un producto (además de `Product.imageUrl`).
+model ProductPhoto {
+  id         String   @id @default(cuid())
+  productId  String
+  url        String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_photos")
 }
 
 // ── Pedidos de domicilio ──────────────────────────────────────────────────────

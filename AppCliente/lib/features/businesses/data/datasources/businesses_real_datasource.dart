@@ -51,6 +51,9 @@ class BusinessesRealDataSource {
       price: (j['price'] as num).toDouble(),
       category: j['category'] as String? ?? 'General',
       imageUrl: j['imageUrl'] as String?,
+      images: ((j['images'] as List?) ?? const [])
+          .map((e) => (e as Map<String, dynamic>)['url'] as String)
+          .toList(),
     );
   }
 }

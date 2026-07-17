@@ -70,6 +70,7 @@ class ProductEntity {
     required this.price,
     this.category = 'General',
     this.imageUrl,
+    this.images = const [],
   });
 
   final String id;
@@ -82,6 +83,13 @@ class ProductEntity {
   /// Categoría dentro del menú (ej: "Almuerzos", "Bebidas").
   final String category;
 
-  /// Foto del producto subida por el negocio (null = sin foto).
+  /// Foto de portada del producto subida por el negocio (null = sin foto).
   final String? imageUrl;
+
+  /// Galería de fotos adicionales (URLs). Vacía si el negocio no subió más.
+  final List<String> images;
+
+  /// Todas las fotos del producto (portada + galería) para el visor.
+  List<String> get allPhotos =>
+      [if (imageUrl != null && imageUrl!.isNotEmpty) imageUrl!, ...images];
 }
