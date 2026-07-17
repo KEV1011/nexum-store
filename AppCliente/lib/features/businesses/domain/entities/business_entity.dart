@@ -35,6 +35,7 @@ class BusinessEntity {
     required this.products,
     this.isOpen = true,
     this.imageUrl,
+    this.openingHours,
   });
 
   final String id;
@@ -59,6 +60,10 @@ class BusinessEntity {
 
   /// Foto de portada del local (null = sin portada, cae al ícono de categoría).
   final String? imageUrl;
+
+  /// Horario de atención en texto libre (ej: "Lun-Sáb 8am-9pm"). Null si no se
+  /// configuró.
+  final String? openingHours;
 }
 
 /// Un producto del catálogo de un negocio.

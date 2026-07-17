@@ -156,6 +156,10 @@ export async function placeClientOrder(
 ): Promise<ClientOrderSummaryDTO> {
   const { getBusinessPublicById, getProductById } = await import('./business.service');
   const biz = await getBusinessPublicById(dto.businessId);
+  // El negocio debe estar recibiendo pedidos (vitrina abierta).
+  if (!biz.isOpen) {
+    throw new Error('El negocio no está recibiendo pedidos en este momento.');
+  }
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
   let subtotal = 0;

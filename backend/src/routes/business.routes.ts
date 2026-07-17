@@ -9,6 +9,9 @@ import {
   addProductPhoto,
   deleteProductPhoto,
   setProductOptions,
+  getBusinessSettings,
+  updateBusinessSettings,
+  getBusinessStats,
 } from '../services/business.service';
 import { getNotificationService } from '../services/notification.service';
 import {
@@ -24,6 +27,7 @@ import {
   CreateProductDTO,
   UpdateProductDTO,
   SetProductOptionsDTO,
+  BusinessSettingsDTO,
 } from '../types';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { authLimiter } from '../middleware/rate-limit.middleware';
@@ -86,6 +90,47 @@ router.get('/:token/info', async (req: Request, res: Response): Promise<void> =>
       success: false,
       error: message,
     });
+  }
+});
+
+// ─── Ajustes del negocio (perfil, tarifa, tiempo, abierto/cerrado) ────────────
+
+router.get('/:token/settings', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const settings = await getBusinessSettings(business.id);
+    res.status(200).json({ success: true, data: settings });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Access denied';
+    res.status(message.includes('not found') ? 404 : 403).json({ success: false, error: message });
+  }
+});
+
+router.put('/:token/settings', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const settings = await updateBusinessSettings(business.id, req.body as BusinessSettingsDTO);
+    res.status(200).json({ success: true, data: settings });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron guardar los ajustes';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// ─── Estadísticas de ventas del negocio ───────────────────────────────────────
+
+router.get('/:token/stats', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { from, to } = req.query as { from?: string; to?: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const stats = await getBusinessStats(business.id, from, to);
+    res.status(200).json({ success: true, data: stats });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron cargar las estadísticas';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });
 
