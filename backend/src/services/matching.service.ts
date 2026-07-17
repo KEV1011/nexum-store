@@ -1,4 +1,4 @@
-import { DriverStatus } from '@prisma/client';
+import { DriverStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { TripRequestDTO } from '../types';
 import { sendPushToDriver, sendPushToClient } from '../services/push.service';
@@ -93,6 +93,23 @@ export function registerOnNoDrivers(fn: (tripId: string) => void): void {
 /** Tipo de solicitud a despachar: decide qué preferencia del conductor aplica. */
 type ServiceKind = 'trip' | 'errand' | 'order';
 
+/**
+ * Tipos de vehículo válidos para un servicio pedido. El pasajero que pide MOTO
+ * solo debe recibir motos; quien pide carro (TAXI/PARTICULAR) solo carros —
+ * antes se ofrecía "al azar". Envíos/mandados aceptan cualquier vehículo.
+ */
+function vehicleTypesForService(serviceType: string | null | undefined): string[] | null {
+  switch (serviceType) {
+    case 'MOTO':
+      return ['MOTO'];
+    case 'TAXI':
+    case 'PARTICULAR':
+      return ['TAXI', 'PARTICULAR'];
+    default:
+      return null; // ENVIOS / MANDADO / otros → cualquier vehículo activo
+  }
+}
+
 async function findNearestAvailableDrivers(
   originLat: number,
   originLng: number,
@@ -100,11 +117,23 @@ async function findNearestAvailableDrivers(
   maxResults: number,
   freshnessSeconds: number,
   serviceKind: ServiceKind,
+  vehicleTypes: string[] | null = null,
 ): Promise<NearbyDriver[]> {
   // All parameters come from internal constants or trusted DB data — no user strings.
   // freshnessSeconds * INTERVAL '1 second' uses PostgreSQL's integer×interval operator.
   // Preferencias de servicio: cada tipo solo se ofrece a conductores que lo
   // aceptan (accepts*); el patrón (kind != X OR col) evita SQL dinámico.
+  // Filtro de vehículo: si se pide carro/moto, solo conductores con ese tipo de
+  // vehículo activo (EXISTS sobre vehicles). vehicleTypes viene de un mapa fijo.
+  const vehicleFilter =
+    vehicleTypes && vehicleTypes.length > 0
+      ? Prisma.sql`AND EXISTS (
+          SELECT 1 FROM "vehicles" v
+          WHERE v."driverId" = d."id" AND v."isActive" = true
+            AND v."type"::text IN (${Prisma.join(vehicleTypes)})
+        )`
+      : Prisma.empty;
+
   const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
     SELECT d."id" AS driver_id,
            ST_Distance(
@@ -118,6 +147,7 @@ async function findNearestAvailableDrivers(
       AND (${serviceKind} != 'trip' OR d."acceptsTrips" = true)
       AND (${serviceKind} != 'errand' OR d."acceptsErrands" = true)
       AND (${serviceKind} != 'order' OR d."acceptsOrders" = true)
+      ${vehicleFilter}
       AND d."lastSeenAt" >= now() - ${freshnessSeconds} * INTERVAL '1 second'
       AND ST_DWithin(
             d."geo",
@@ -190,6 +220,12 @@ export async function startMatchingCycle(
   originLat: number,
   originLng: number,
 ): Promise<void> {
+  // Filtra por tipo de vehículo pedido (carro vs moto) para no ofrecer "al azar".
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    select: { serviceType: true },
+  });
+  const vehicleTypes = vehicleTypesForService(trip?.serviceType);
   const candidates = await findNearestAvailableDrivers(
     originLat,
     originLng,
@@ -197,6 +233,7 @@ export async function startMatchingCycle(
     MAX_CANDIDATES,
     GEO_FRESHNESS_S,
     'trip',
+    vehicleTypes,
   );
   if (candidates.length === 0) {
     console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for trip ${tripId}`);

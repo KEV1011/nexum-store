@@ -611,7 +611,9 @@ class _VehicleTypeSelector extends StatelessWidget {
               ),
         ),
         const SizedBox(height: 8),
-        Row(
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
           children: [
             _TypeOption(
               label: 'Particular',
@@ -619,12 +621,35 @@ class _VehicleTypeSelector extends StatelessWidget {
               isSelected: selected == 'particular',
               onTap: () => onChanged('particular'),
             ),
-            const SizedBox(width: 12),
             _TypeOption(
               label: 'Taxi',
               icon: Icons.local_taxi_rounded,
               isSelected: selected == 'taxi',
               onTap: () => onChanged('taxi'),
+            ),
+            _TypeOption(
+              label: 'Moto',
+              icon: Icons.two_wheeler_rounded,
+              isSelected: selected == 'moto',
+              onTap: () => onChanged('moto'),
+            ),
+            _TypeOption(
+              label: 'Turbo',
+              icon: Icons.local_shipping_rounded,
+              isSelected: selected == 'turbo',
+              onTap: () => onChanged('turbo'),
+            ),
+            _TypeOption(
+              label: 'Camión',
+              icon: Icons.local_shipping_rounded,
+              isSelected: selected == 'camion',
+              onTap: () => onChanged('camion'),
+            ),
+            _TypeOption(
+              label: 'Mula',
+              icon: Icons.local_shipping_rounded,
+              isSelected: selected == 'mula',
+              onTap: () => onChanged('mula'),
             ),
           ],
         ),
@@ -648,7 +673,8 @@ class _TypeOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    return SizedBox(
+      width: 98,
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
