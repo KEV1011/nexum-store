@@ -517,6 +517,73 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   };
 }
 
+// ─── Analítica y rendimiento de la flota (ranking) ────────────────────────────
+
+export interface FleetAnalytics {
+  from: string;
+  to: string;
+  totalGross: number;
+  totalNet: number;
+  totalCommission: number;
+  totalServices: number;
+  avgTicket: number;
+  byService: { service: string; count: number; gross: number; avg: number }[];
+  topDrivers: { name: string; count: number; gross: number; net: number; avgTicket: number; rating: number | null }[];
+  topVehicles: { plate: string; count: number; gross: number; avgTicket: number; type: string | null }[];
+}
+
+/**
+ * Rendimiento de la flota: reutiliza la agregación financiera y la enriquece con
+ * el rating del conductor, el tipo de vehículo, el neto y el ticket promedio, en
+ * forma de ranking descendente por facturación.
+ */
+export async function getFleetAnalytics(operatorId: string, fromISO?: string, toISO?: string): Promise<FleetAnalytics> {
+  const fin = await getFleetFinance(operatorId, fromISO, toISO);
+
+  const [drivers, vehicles] = await Promise.all([
+    prisma.driver.findMany({ where: { operatorId }, select: { name: true, rating: true } }),
+    prisma.vehicle.findMany({ where: { operatorId }, select: { plate: true, type: true } }),
+  ]);
+  const ratingByName = new Map(drivers.map((d) => [d.name, d.rating]));
+  const typeByPlate = new Map(vehicles.map((v) => [v.plate, v.type as string]));
+
+  const net = (gross: number) => gross - Math.round(gross * COMMISSION_RATE);
+
+  const byService = Object.entries(fin.byService)
+    .map(([service, v]) => ({ service, count: v.count, gross: v.gross, avg: v.count ? Math.round(v.gross / v.count) : 0 }))
+    .sort((a, b) => b.gross - a.gross);
+
+  const topDrivers = fin.byDriver.map((d) => ({
+    name: d.name,
+    count: d.count,
+    gross: d.gross,
+    net: net(d.gross),
+    avgTicket: d.count ? Math.round(d.gross / d.count) : 0,
+    rating: ratingByName.get(d.name) ?? null,
+  }));
+
+  const topVehicles = fin.byVehicle.map((v) => ({
+    plate: v.plate,
+    count: v.count,
+    gross: v.gross,
+    avgTicket: v.count ? Math.round(v.gross / v.count) : 0,
+    type: typeByPlate.get(v.plate) ?? null,
+  }));
+
+  return {
+    from: fin.from,
+    to: fin.to,
+    totalGross: fin.totalGross,
+    totalNet: fin.totalNet,
+    totalCommission: fin.totalCommission,
+    totalServices: fin.totalServices,
+    avgTicket: fin.totalServices ? Math.round(fin.totalGross / fin.totalServices) : 0,
+    byService,
+    topDrivers,
+    topVehicles,
+  };
+}
+
 // ─── Conductor: sus fletes asignados ──────────────────────────────────────────
 
 /** Fletes asignados al conductor (la flota le asigna; él los ve en su app). */
