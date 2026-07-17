@@ -274,6 +274,7 @@ function _productToDTO(p: {
   category: string;
   imageUrl: string | null;
   isAvailable: boolean;
+  photos?: { id: string; url: string }[];
 }): ProductDTO {
   return {
     id: p.id,
@@ -284,13 +285,18 @@ function _productToDTO(p: {
     category: p.category,
     imageUrl: p.imageUrl ?? undefined,
     isAvailable: p.isAvailable,
+    images: (p.photos ?? []).map((ph) => ({ id: ph.id, url: ph.url })),
   };
 }
+
+// Incluir la galería ordenada en cada consulta de producto.
+const _photoInclude = { photos: { orderBy: { sortOrder: 'asc' as const } } };
 
 export async function getProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
   const products = await prisma.product.findMany({
     where: { businessId, isAvailable: true },
     orderBy: { createdAt: 'asc' },
+    include: _photoInclude,
   });
   return products.map(_productToDTO);
 }
@@ -300,14 +306,54 @@ export async function getManagedProductsForBusiness(businessId: string): Promise
   const products = await prisma.product.findMany({
     where: { businessId },
     orderBy: { createdAt: 'asc' },
+    include: _photoInclude,
   });
   return products.map(_productToDTO);
 }
 
 export async function getProductById(productId: string): Promise<ProductDTO | undefined> {
-  const p = await prisma.product.findUnique({ where: { id: productId } });
+  const p = await prisma.product.findUnique({
+    where: { id: productId },
+    include: _photoInclude,
+  });
   if (!p) return undefined;
   return _productToDTO(p);
+}
+
+// ─── Galería de fotos del producto ────────────────────────────────────────────
+
+async function _assertProductOwnership(businessId: string, productId: string): Promise<void> {
+  const existing = await prisma.product.findUnique({ where: { id: productId } });
+  if (!existing || existing.businessId !== businessId) {
+    throw new Error('Producto no encontrado.');
+  }
+}
+
+/** Agrega una foto a la galería del producto. Devuelve el producto actualizado. */
+export async function addProductPhoto(
+  businessId: string,
+  productId: string,
+  url: string,
+): Promise<ProductDTO> {
+  await _assertProductOwnership(businessId, productId);
+  const count = await prisma.productPhoto.count({ where: { productId } });
+  await prisma.productPhoto.create({
+    data: { productId, url, sortOrder: count },
+  });
+  const p = await prisma.product.findUnique({ where: { id: productId }, include: _photoInclude });
+  return _productToDTO(p!);
+}
+
+/** Elimina una foto de la galería del producto. */
+export async function deleteProductPhoto(
+  businessId: string,
+  productId: string,
+  photoId: string,
+): Promise<ProductDTO> {
+  await _assertProductOwnership(businessId, productId);
+  await prisma.productPhoto.deleteMany({ where: { id: photoId, productId } });
+  const p = await prisma.product.findUnique({ where: { id: productId }, include: _photoInclude });
+  return _productToDTO(p!);
 }
 
 // ─── Gestión del catálogo (dueño desde el portal, autenticado por token) ──────
@@ -353,6 +399,7 @@ export async function updateBusinessProduct(
       ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
       ...(dto.isAvailable !== undefined && { isAvailable: dto.isAvailable }),
     },
+    include: _photoInclude,
   });
   return _productToDTO(p);
 }
@@ -377,7 +424,7 @@ export async function updateBusinessCover(businessId: string, imageUrl: string):
 export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
   const businesses = await prisma.business.findMany({
     where: { isOpen: true },
-    include: { products: { where: { isAvailable: true } } },
+    include: { products: { where: { isAvailable: true }, include: _photoInclude } },
     orderBy: { name: 'asc' },
   });
   return businesses.map((b) => ({
@@ -397,7 +444,7 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
 export async function getBusinessPublicById(id: string): Promise<BusinessPublicDTO> {
   const b = await prisma.business.findUnique({
     where: { id },
-    include: { products: { where: { isAvailable: true } } },
+    include: { products: { where: { isAvailable: true }, include: _photoInclude } },
   });
   if (!b) throw new Error(`Business ${id} not found`);
   return {

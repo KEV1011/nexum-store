@@ -458,6 +458,11 @@ export interface ClientProfileDTO {
 
 // ─── Products & Public Business ──────────────────────────────────────────────
 
+export interface ProductPhotoDTO {
+  id: string;
+  url: string;
+}
+
 export interface ProductDTO {
   id: string;
   businessId: string;
@@ -467,6 +472,8 @@ export interface ProductDTO {
   category: string;
   imageUrl?: string;
   isAvailable: boolean;
+  // Galería adicional (además de `imageUrl`). Vacía si no hay más fotos.
+  images: ProductPhotoDTO[];
 }
 
 // El dueño gestiona su catálogo desde el portal (`/negocio/[token]`).

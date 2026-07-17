@@ -6,6 +6,8 @@ import {
   updateBusinessProduct,
   deleteBusinessProduct,
   updateBusinessCover,
+  addProductPhoto,
+  deleteProductPhoto,
 } from '../services/business.service';
 import { getNotificationService } from '../services/notification.service';
 import {
@@ -365,6 +367,54 @@ router.post(
     }
   },
 );
+
+// Agrega una foto a la GALERÍA del producto (además de la portada). Multipart 'file'.
+router.post(
+  '/:token/products/:productId/gallery',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const { token, productId } = req.params as { token: string; productId: string };
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'La foto debe ser una imagen (JPG, PNG o WebP).' });
+      return;
+    }
+    try {
+      const business = await getBusinessService().getBusinessByToken(token);
+      const product = await addProductPhoto(business.id, productId, fileToUrl(req.file));
+      res.status(201).json({ success: true, data: product });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo subir la foto';
+      const notFound = message.includes('not found') || message.includes('no encontrado');
+      res.status(notFound ? 404 : 400).json({ success: false, error: message });
+    }
+  },
+);
+
+// Elimina una foto de la galería del producto.
+router.delete('/:token/products/:productId/gallery/:photoId', async (req: Request, res: Response): Promise<void> => {
+  const { token, productId, photoId } = req.params as { token: string; productId: string; photoId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const product = await deleteProductPhoto(business.id, productId, photoId);
+    res.status(200).json({ success: true, data: product });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo eliminar la foto';
+    const notFound = message.includes('not found') || message.includes('no encontrado');
+    res.status(notFound ? 404 : 400).json({ success: false, error: message });
+  }
+});
 
 // Sube la foto de portada del local (multipart 'file') y devuelve el negocio.
 router.post(

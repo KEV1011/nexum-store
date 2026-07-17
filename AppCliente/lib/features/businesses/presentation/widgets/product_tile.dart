@@ -38,7 +38,16 @@ class ProductTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProductThumb(imageUrl: product.imageUrl, isDark: isDark),
+          GestureDetector(
+            onTap: product.allPhotos.length > 1
+                ? () => _showGallery(context, product)
+                : null,
+            child: _ProductThumb(
+              imageUrl: product.imageUrl,
+              isDark: isDark,
+              extraCount: product.images.length,
+            ),
+          ),
           const SizedBox(width: AppConstants.spacingM),
           Expanded(
             child: Column(
@@ -87,12 +96,29 @@ class ProductTile extends StatelessWidget {
   }
 }
 
+/// Abre un visor a pantalla completa con todas las fotos del producto.
+void _showGallery(BuildContext context, ProductEntity product) {
+  final photos = product.allPhotos;
+  if (photos.isEmpty) return;
+  showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (ctx) => _ProductGalleryViewer(product: product, photos: photos),
+  );
+}
+
 /// Miniatura del producto (foto del negocio o un marcador si no hay foto).
+/// [extraCount] = fotos adicionales en la galería; muestra un badge "+N".
 class _ProductThumb extends StatelessWidget {
-  const _ProductThumb({required this.imageUrl, required this.isDark});
+  const _ProductThumb({
+    required this.imageUrl,
+    required this.isDark,
+    this.extraCount = 0,
+  });
 
   final String? imageUrl;
   final bool isDark;
+  final int extraCount;
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +137,7 @@ class _ProductThumb extends StatelessWidget {
         );
 
     final url = imageUrl;
-    return ClipRRect(
+    final thumb = ClipRRect(
       borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
       child: (url == null || url.isEmpty)
           ? placeholder()
@@ -137,6 +163,136 @@ class _ProductThumb extends StatelessWidget {
                 );
               },
             ),
+    );
+
+    if (extraCount <= 0) return thumb;
+    // Badge "+N" indicando que hay más fotos (tocar la miniatura las abre).
+    return Stack(
+      children: [
+        thumb,
+        Positioned(
+          right: 3,
+          bottom: 3,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.photo_library_rounded,
+                    size: 10, color: Colors.white),
+                const SizedBox(width: 2),
+                Text(
+                  '+$extraCount',
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Visor de galería a pantalla completa (deslizable) con las fotos del producto.
+class _ProductGalleryViewer extends StatefulWidget {
+  const _ProductGalleryViewer({required this.product, required this.photos});
+
+  final ProductEntity product;
+  final List<String> photos;
+
+  @override
+  State<_ProductGalleryViewer> createState() => _ProductGalleryViewerState();
+}
+
+class _ProductGalleryViewerState extends State<_ProductGalleryViewer> {
+  final _controller = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              icon: const Icon(Icons.close_rounded, color: Colors.white),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          AspectRatio(
+            aspectRatio: 1,
+            child: PageView.builder(
+              controller: _controller,
+              itemCount: widget.photos.length,
+              onPageChanged: (i) => setState(() => _index = i),
+              itemBuilder: (_, i) => ClipRRect(
+                borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+                child: InteractiveViewer(
+                  child: Image.network(
+                    ApiConfig.resolveUrl(widget.photos[i]),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const ColoredBox(
+                      color: Colors.black26,
+                      child: Center(
+                        child: Icon(Icons.broken_image_rounded,
+                            color: Colors.white54, size: 40),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+          Text(
+            widget.product.name,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingS),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < widget.photos.length; i++)
+                Container(
+                  width: 7,
+                  height: 7,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i == _index
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.4),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
