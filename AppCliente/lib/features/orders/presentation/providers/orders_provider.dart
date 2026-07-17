@@ -150,7 +150,10 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
                 (item) => {
                   'productId': item.product.id,
                   'quantity': item.quantity,
-                  'unitPrice': item.product.price,
+                  // Precio unitario CON las opciones (deltas) incluidas.
+                  'unitPrice': item.unitPrice,
+                  if (item.optionsSummary != null)
+                    'optionsSummary': item.optionsSummary,
                 },
               )
               .toList(),
@@ -177,7 +180,8 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
             (item) => OrderLineEntity(
               productName: item.product.name,
               quantity: item.quantity,
-              unitPrice: item.product.price,
+              unitPrice: item.unitPrice,
+              optionsSummary: item.optionsSummary,
             ),
           )
           .toList(),

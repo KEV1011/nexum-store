@@ -159,7 +159,7 @@ export async function placeClientOrder(
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
   let subtotal = 0;
-  const lines: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number }> = [];
+  const lines: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number; optionsSummary: string | null }> = [];
 
   for (const line of dto.items) {
     const product = await getProductById(line.productId);
@@ -171,6 +171,7 @@ export async function placeClientOrder(
       quantity: line.quantity,
       unitPrice: line.unitPrice,
       subtotal: sub,
+      optionsSummary: line.optionsSummary?.trim() || null,
     });
   }
 
@@ -811,6 +812,7 @@ type PrismaOrder = {
 
 type PrismaOrderLine = {
   productName: string; quantity: number; unitPrice: number; subtotal: number;
+  optionsSummary?: string | null;
 };
 
 function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine[]): ClientOrderSummaryDTO {
@@ -834,7 +836,7 @@ function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine
     deliveryFee: o.deliveryFee,
     total: o.total,
     etaMinutes: o.etaMinutes ?? 30,
-    items: lines.map((l) => ({ productName: l.productName, quantity: l.quantity, unitPrice: l.unitPrice, subtotal: l.subtotal })),
+    items: lines.map((l) => ({ productName: l.productName, quantity: l.quantity, unitPrice: l.unitPrice, subtotal: l.subtotal, optionsSummary: l.optionsSummary ?? undefined })),
     deliveryAddress: o.deliveryAddress,
     driverName: o.driverName || undefined,
     // Privacy: never expose the driver's real number to the passenger.

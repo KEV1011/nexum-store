@@ -9,6 +9,7 @@ import {
   ProductDTO,
   CreateProductDTO,
   UpdateProductDTO,
+  SetProductOptionsDTO,
   BusinessPublicDTO,
   BusinessCategory,
 } from '../types';
@@ -275,6 +276,14 @@ function _productToDTO(p: {
   imageUrl: string | null;
   isAvailable: boolean;
   photos?: { id: string; url: string }[];
+  optionGroups?: {
+    id: string;
+    name: string;
+    required: boolean;
+    minSelect: number;
+    maxSelect: number;
+    options: { id: string; name: string; priceDelta: number; isAvailable: boolean }[];
+  }[];
 }): ProductDTO {
   return {
     id: p.id,
@@ -286,11 +295,30 @@ function _productToDTO(p: {
     imageUrl: p.imageUrl ?? undefined,
     isAvailable: p.isAvailable,
     images: (p.photos ?? []).map((ph) => ({ id: ph.id, url: ph.url })),
+    optionGroups: (p.optionGroups ?? []).map((g) => ({
+      id: g.id,
+      name: g.name,
+      required: g.required,
+      minSelect: g.minSelect,
+      maxSelect: g.maxSelect,
+      options: g.options.map((o) => ({
+        id: o.id,
+        name: o.name,
+        priceDelta: o.priceDelta,
+        isAvailable: o.isAvailable,
+      })),
+    })),
   };
 }
 
-// Incluir la galería ordenada en cada consulta de producto.
-const _photoInclude = { photos: { orderBy: { sortOrder: 'asc' as const } } };
+// Incluir galería y grupos de opciones ordenados en cada consulta de producto.
+const _photoInclude = {
+  photos: { orderBy: { sortOrder: 'asc' as const } },
+  optionGroups: {
+    orderBy: { sortOrder: 'asc' as const },
+    include: { options: { orderBy: { sortOrder: 'asc' as const } } },
+  },
+};
 
 export async function getProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
   const products = await prisma.product.findMany({
@@ -352,6 +380,54 @@ export async function deleteProductPhoto(
 ): Promise<ProductDTO> {
   await _assertProductOwnership(businessId, productId);
   await prisma.productPhoto.deleteMany({ where: { id: photoId, productId } });
+  const p = await prisma.product.findUnique({ where: { id: productId }, include: _photoInclude });
+  return _productToDTO(p!);
+}
+
+// ─── Variantes / opciones del producto ────────────────────────────────────────
+
+/**
+ * Reemplaza TODAS las opciones del producto por la estructura recibida (el
+ * portal edita todo y guarda de una vez). Borra los grupos existentes (cascade
+ * borra sus opciones) y recrea. Devuelve el producto actualizado.
+ */
+export async function setProductOptions(
+  businessId: string,
+  productId: string,
+  dto: SetProductOptionsDTO,
+): Promise<ProductDTO> {
+  await _assertProductOwnership(businessId, productId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.optionGroup.deleteMany({ where: { productId } });
+    for (const [gi, g] of (dto.groups ?? []).entries()) {
+      const name = g.name?.trim();
+      if (!name) continue;
+      const opts = (g.options ?? []).filter((o) => o.name?.trim());
+      if (opts.length === 0) continue;
+      const maxSelect = Math.max(1, Math.round(g.maxSelect ?? 1));
+      const minSelect = Math.max(0, Math.min(maxSelect, Math.round(g.minSelect ?? 0)));
+      await tx.optionGroup.create({
+        data: {
+          productId,
+          name,
+          required: g.required ?? minSelect > 0,
+          minSelect,
+          maxSelect,
+          sortOrder: gi,
+          options: {
+            create: opts.map((o, oi) => ({
+              name: o.name.trim(),
+              priceDelta: Number.isFinite(o.priceDelta) ? Number(o.priceDelta) : 0,
+              isAvailable: o.isAvailable ?? true,
+              sortOrder: oi,
+            })),
+          },
+        },
+      });
+    }
+  });
+
   const p = await prisma.product.findUnique({ where: { id: productId }, include: _photoInclude });
   return _productToDTO(p!);
 }

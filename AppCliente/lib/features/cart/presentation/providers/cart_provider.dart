@@ -2,19 +2,48 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 
-/// Una línea del carrito: producto + cantidad.
+/// Una línea del carrito: producto + opciones elegidas + cantidad.
+///
+/// Dos veces el mismo producto con opciones distintas (ej: "Hamburguesa Grande"
+/// y "Hamburguesa Mediana") son líneas SEPARADAS, distinguidas por `lineId`.
 class CartItem {
-  const CartItem({required this.product, required this.quantity});
+  const CartItem({
+    required this.product,
+    required this.quantity,
+    this.selectedOptions = const [],
+  });
 
   final ProductEntity product;
   final int quantity;
 
-  double get subtotal => product.price * quantity;
+  /// Opciones elegidas (tamaño, adiciones, quitar). Vacío = producto simple.
+  final List<ProductOptionEntity> selectedOptions;
+
+  /// Identificador de la línea: para productos sin opciones es el id del
+  /// producto (compatibilidad); con opciones, id + firma de las opciones.
+  String get lineId {
+    if (selectedOptions.isEmpty) return product.id;
+    final ids = selectedOptions.map((o) => o.id).toList()..sort();
+    return '${product.id}|${ids.join(',')}';
+  }
+
+  /// Precio unitario = precio base + suma de los deltas de las opciones.
+  double get unitPrice =>
+      product.price +
+      selectedOptions.fold(0.0, (sum, o) => sum + o.priceDelta);
+
+  double get subtotal => unitPrice * quantity;
+
+  /// Resumen legible de las opciones (ej: "Grande · +Queso · Sin cebolla").
+  String? get optionsSummary => selectedOptions.isEmpty
+      ? null
+      : selectedOptions.map((o) => o.name).join(' · ');
 
   CartItem copyWith({int? quantity}) {
     return CartItem(
       product: product,
       quantity: quantity ?? this.quantity,
+      selectedOptions: selectedOptions,
     );
   }
 }
@@ -33,7 +62,7 @@ class CartState {
       items.fold(0, (sum, item) => sum + item.quantity);
 
   double get subtotal =>
-      items.fold(0, (sum, item) => sum + item.subtotal);
+      items.fold(0.0, (sum, item) => sum + item.subtotal);
 
   double get deliveryFee => business?.deliveryFee ?? 0;
 
@@ -55,23 +84,31 @@ class CartState {
 class CartNotifier extends StateNotifier<CartState> {
   CartNotifier() : super(const CartState());
 
-  /// Agrega un producto al carrito. Si pertenece a otro negocio, reinicia.
-  void addProduct(ProductEntity product, BusinessEntity business) {
+  /// Agrega un producto al carrito, opcionalmente con opciones elegidas. Si
+  /// pertenece a otro negocio, reinicia. Las líneas se distinguen por `lineId`
+  /// (mismo producto con opciones distintas = líneas separadas).
+  void addProduct(
+    ProductEntity product,
+    BusinessEntity business, {
+    List<ProductOptionEntity> selectedOptions = const [],
+  }) {
+    final newItem = CartItem(
+      product: product,
+      quantity: 1,
+      selectedOptions: selectedOptions,
+    );
+
     // Si el carrito es de otro negocio, empezar de cero.
     if (state.business != null && state.business!.id != business.id) {
-      state = CartState(
-        items: [CartItem(product: product, quantity: 1)],
-        business: business,
-      );
+      state = CartState(items: [newItem], business: business);
       return;
     }
 
-    final index =
-        state.items.indexWhere((i) => i.product.id == product.id);
+    final index = state.items.indexWhere((i) => i.lineId == newItem.lineId);
 
     if (index == -1) {
       state = state.copyWith(
-        items: [...state.items, CartItem(product: product, quantity: 1)],
+        items: [...state.items, newItem],
         business: business,
       );
     } else {
@@ -82,9 +119,10 @@ class CartNotifier extends StateNotifier<CartState> {
     }
   }
 
-  void removeOne(String productId) {
-    final index =
-        state.items.indexWhere((i) => i.product.id == productId);
+  /// Quita una unidad de la línea indicada (por `lineId`; para productos simples
+  /// coincide con el id del producto).
+  void removeOne(String lineId) {
+    final index = state.items.indexWhere((i) => i.lineId == lineId);
     if (index == -1) return;
 
     final item = state.items[index];
@@ -101,10 +139,11 @@ class CartNotifier extends StateNotifier<CartState> {
         : state.copyWith(items: updated);
   }
 
+  /// Cantidad total del producto en el carrito (sumando todas sus variantes).
   int quantityOf(String productId) {
-    final index =
-        state.items.indexWhere((i) => i.product.id == productId);
-    return index == -1 ? 0 : state.items[index].quantity;
+    return state.items
+        .where((i) => i.product.id == productId)
+        .fold(0, (sum, i) => sum + i.quantity);
   }
 
   void clear() {

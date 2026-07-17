@@ -8,6 +8,7 @@ import {
   updateBusinessCover,
   addProductPhoto,
   deleteProductPhoto,
+  setProductOptions,
 } from '../services/business.service';
 import { getNotificationService } from '../services/notification.service';
 import {
@@ -22,6 +23,7 @@ import {
   CreateDeliveryOrderDTO,
   CreateProductDTO,
   UpdateProductDTO,
+  SetProductOptionsDTO,
 } from '../types';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { authLimiter } from '../middleware/rate-limit.middleware';
@@ -367,6 +369,20 @@ router.post(
     }
   },
 );
+
+// Reemplaza TODAS las variantes/opciones del producto (el portal guarda todo).
+router.put('/:token/products/:productId/options', async (req: Request, res: Response): Promise<void> => {
+  const { token, productId } = req.params as { token: string; productId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const product = await setProductOptions(business.id, productId, req.body as SetProductOptionsDTO);
+    res.status(200).json({ success: true, data: product });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron guardar las opciones';
+    const notFound = message.includes('not found') || message.includes('no encontrado');
+    res.status(notFound ? 404 : 400).json({ success: false, error: message });
+  }
+});
 
 // Agrega una foto a la GALERÍA del producto (además de la portada). Multipart 'file'.
 router.post(

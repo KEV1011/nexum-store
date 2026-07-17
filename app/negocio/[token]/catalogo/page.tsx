@@ -42,6 +42,22 @@ interface ProductPhoto {
   url: string
 }
 
+interface ProductOption {
+  id?: string
+  name: string
+  priceDelta: number
+  isAvailable?: boolean
+}
+
+interface OptionGroup {
+  id?: string
+  name: string
+  required: boolean
+  minSelect: number
+  maxSelect: number
+  options: ProductOption[]
+}
+
 interface Product {
   id: string
   name: string
@@ -51,6 +67,7 @@ interface Product {
   imageUrl?: string
   isAvailable: boolean
   images: ProductPhoto[]
+  optionGroups: OptionGroup[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -62,6 +79,139 @@ function formatCOP(n: number) {
 const INPUT =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ' +
   'placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20'
+
+// ─── Editor de variantes / opciones ──────────────────────────────────────────
+
+function OptionsEditor({
+  token,
+  product,
+  onChanged,
+  onClose,
+}: {
+  token: string
+  product: Product
+  onChanged: (p: Product) => void
+  onClose: () => void
+}) {
+  const [groups, setGroups] = useState<OptionGroup[]>(
+    () => JSON.parse(JSON.stringify(product.optionGroups ?? [])) as OptionGroup[],
+  )
+  const [saving, setSaving] = useState(false)
+
+  const addGroup = () =>
+    setGroups((g) => [...g, { name: '', required: false, minSelect: 0, maxSelect: 1, options: [{ name: '', priceDelta: 0 }] }])
+  const removeGroup = (gi: number) => setGroups((g) => g.filter((_, i) => i !== gi))
+  const patchGroup = (gi: number, patch: Partial<OptionGroup>) =>
+    setGroups((g) => g.map((grp, i) => (i === gi ? { ...grp, ...patch } : grp)))
+  const addOption = (gi: number) =>
+    setGroups((g) => g.map((grp, i) => (i === gi ? { ...grp, options: [...grp.options, { name: '', priceDelta: 0 }] } : grp)))
+  const removeOption = (gi: number, oi: number) =>
+    setGroups((g) => g.map((grp, i) => (i === gi ? { ...grp, options: grp.options.filter((_, j) => j !== oi) } : grp)))
+  const patchOption = (gi: number, oi: number, patch: Partial<ProductOption>) =>
+    setGroups((g) => g.map((grp, i) => (i === gi ? { ...grp, options: grp.options.map((o, j) => (j === oi ? { ...o, ...patch } : o)) } : grp)))
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`${BACKEND_URL}/business/${token}/products/${product.id}/options`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groups }),
+      })
+      const json = (await res.json()) as { success: boolean; data?: Product }
+      if (json.success && json.data) {
+        onChanged(json.data)
+        onClose()
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="border-t border-slate-100 bg-slate-50 p-3 space-y-3">
+      <p className="text-xs font-semibold text-slate-600">
+        Variantes y opciones (ej: Tamaño, Adiciones, Quitar)
+      </p>
+
+      {groups.map((g, gi) => (
+        <div key={gi} className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              className={INPUT}
+              placeholder="Nombre del grupo (ej: Tamaño)"
+              value={g.name}
+              onChange={(e) => patchGroup(gi, { name: e.target.value })}
+              maxLength={40}
+            />
+            <button onClick={() => removeGroup(gi)} className="text-slate-300 hover:text-red-500 p-1" aria-label="Quitar grupo">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+            <label className="inline-flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={g.maxSelect > 1}
+                onChange={(e) => patchGroup(gi, { maxSelect: e.target.checked ? Math.max(2, g.options.length) : 1 })}
+              />
+              Selección múltiple
+            </label>
+            <label className="inline-flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={g.required}
+                onChange={(e) => patchGroup(gi, { required: e.target.checked, minSelect: e.target.checked ? 1 : 0 })}
+              />
+              Obligatorio
+            </label>
+          </div>
+          {g.options.map((o, oi) => (
+            <div key={oi} className="flex items-center gap-2">
+              <input
+                className={INPUT}
+                placeholder="Opción (ej: Grande)"
+                value={o.name}
+                onChange={(e) => patchOption(gi, oi, { name: e.target.value })}
+                maxLength={40}
+              />
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-xs text-slate-400">+$</span>
+                <input
+                  className={`${INPUT} w-24`}
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={o.priceDelta ? String(o.priceDelta) : ''}
+                  onChange={(e) => patchOption(gi, oi, { priceDelta: Number(e.target.value.replace(/[^\d]/g, '')) })}
+                  maxLength={9}
+                />
+              </div>
+              <button onClick={() => removeOption(gi, oi)} className="text-slate-300 hover:text-red-500 p-1" aria-label="Quitar opción">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          <button onClick={() => addOption(gi)} className="text-xs font-semibold text-teal-700 hover:text-teal-800 inline-flex items-center gap-1">
+            <Plus className="w-3.5 h-3.5" /> Agregar opción
+          </button>
+        </div>
+      ))}
+
+      <button onClick={addGroup} className="w-full rounded-lg border-2 border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-500 hover:border-teal-500 hover:text-teal-600 inline-flex items-center justify-center gap-1">
+        <Plus className="w-4 h-4" /> Agregar grupo de opciones
+      </button>
+
+      <div className="flex gap-2 pt-1">
+        <button onClick={save} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white hover:bg-teal-800 disabled:opacity-50">
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar opciones
+        </button>
+        <button onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 
@@ -78,8 +228,11 @@ function ProductCard({
 }) {
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [showOptions, setShowOptions] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
+
+  const optionCount = (product.optionGroups ?? []).length
 
   // Campos de edición inline
   const [eName, setEName] = useState(product.name)
@@ -241,6 +394,15 @@ function ProductCard({
                   {product.isAvailable ? 'Disponible' : 'Agotado'}
                 </button>
                 <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowOptions((v) => !v)}
+                    disabled={busy}
+                    className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                      optionCount > 0 ? 'bg-teal-50 text-teal-700' : 'text-slate-400 hover:text-teal-600'
+                    }`}
+                  >
+                    Opciones{optionCount > 0 ? ` (${optionCount})` : ''}
+                  </button>
                   <button onClick={() => setEditing(true)} disabled={busy} className="text-slate-300 hover:text-teal-600 transition-colors p-1" aria-label="Editar producto">
                     <Pencil className="w-4 h-4" />
                   </button>
@@ -291,6 +453,16 @@ function ProductCard({
           }}
         />
       </div>
+
+      {/* Editor de variantes/opciones (expandible) */}
+      {showOptions && (
+        <OptionsEditor
+          token={token}
+          product={product}
+          onChanged={onChanged}
+          onClose={() => setShowOptions(false)}
+        />
+      )}
     </div>
   )
 }

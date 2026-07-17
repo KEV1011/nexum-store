@@ -463,6 +463,22 @@ export interface ProductPhotoDTO {
   url: string;
 }
 
+export interface ProductOptionDTO {
+  id: string;
+  name: string;
+  priceDelta: number;
+  isAvailable: boolean;
+}
+
+export interface OptionGroupDTO {
+  id: string;
+  name: string;
+  required: boolean;
+  minSelect: number;
+  maxSelect: number;
+  options: ProductOptionDTO[];
+}
+
 export interface ProductDTO {
   id: string;
   businessId: string;
@@ -474,6 +490,20 @@ export interface ProductDTO {
   isAvailable: boolean;
   // Galería adicional (además de `imageUrl`). Vacía si no hay más fotos.
   images: ProductPhotoDTO[];
+  // Variantes/opciones del producto (tamaños, adiciones, quitar). Vacío si no.
+  optionGroups: OptionGroupDTO[];
+}
+
+// Payload para reemplazar TODAS las opciones de un producto de una vez (el
+// portal edita la estructura completa y la guarda con un PUT).
+export interface SetProductOptionsDTO {
+  groups: Array<{
+    name: string;
+    required?: boolean;
+    minSelect?: number;
+    maxSelect?: number;
+    options: Array<{ name: string; priceDelta?: number; isAvailable?: boolean }>;
+  }>;
 }
 
 // El dueño gestiona su catálogo desde el portal (`/negocio/[token]`).
@@ -513,6 +543,8 @@ export interface ClientOrderLineDTO {
   productId: string;
   quantity: number;
   unitPrice: number;
+  // Resumen de las opciones elegidas (el unitPrice ya incluye sus deltas).
+  optionsSummary?: string;
 }
 
 export interface ClientPlaceOrderDTO {
@@ -536,6 +568,7 @@ export interface ClientOrderSummaryDTO {
     quantity: number;
     unitPrice: number;
     subtotal: number;
+    optionsSummary?: string;
   }>;
   deliveryAddress: string;
   driverName?: string;
