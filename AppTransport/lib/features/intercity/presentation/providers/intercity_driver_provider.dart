@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/ws_service.dart' show IntercityLifecycleEvent;
 
 /// Fase del viaje intermunicipal activo del conductor.
@@ -99,10 +100,14 @@ class IntercityDriverNotifier extends StateNotifier<IntercityDriverState> {
   StreamSubscription<String>? _errorSub;
 
   void _onRequest(IntercityRequestEntity req) {
+    final isNew = !state.requests.any((r) => r.bookingId == req.bookingId);
     // Reemplaza si ya existía (reoferta tras rechazo del cliente).
     final rest =
         state.requests.where((r) => r.bookingId != req.bookingId).toList();
     state = state.copyWith(requests: [req, ...rest]);
+    // Alarma: sonido + vibración cuando llega una solicitud intermunicipal
+    // nueva (antes no avisaba nada).
+    if (isNew) unawaited(NotificationService().playTripRequestSound());
   }
 
   void _onCancelled(String bookingId) {
