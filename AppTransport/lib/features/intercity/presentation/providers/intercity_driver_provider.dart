@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
-import 'package:nexum_driver/shared/services/ws_service.dart';
+import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/ws_service.dart' show IntercityLifecycleEvent;
 
 /// Fase del viaje intermunicipal activo del conductor.
 enum IntercityTripPhase {
@@ -90,7 +91,7 @@ class IntercityDriverNotifier extends StateNotifier<IntercityDriverState> {
   }
 
   final DioClient _client;
-  final WsService _ws;
+  final DriverWsService _ws;
 
   StreamSubscription<IntercityRequestEntity>? _reqSub;
   StreamSubscription<String>? _cancelSub;
@@ -252,5 +253,5 @@ class IntercityDriverNotifier extends StateNotifier<IntercityDriverState> {
 final intercityDriverProvider =
     StateNotifierProvider<IntercityDriverNotifier, IntercityDriverState>(
         (ref) {
-  return IntercityDriverNotifier(DioClient(), WsService());
+  return IntercityDriverNotifier(DioClient(), DriverWsService());
 });

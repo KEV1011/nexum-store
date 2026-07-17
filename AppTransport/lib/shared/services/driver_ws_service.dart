@@ -7,6 +7,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
+import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
+import 'package:nexum_driver/shared/services/ws_service.dart' show IntercityLifecycleEvent;
 
 /// Liquidación real de un viaje calculada por el backend. Llega dentro del
 /// `trip_status_ack` cuando el conductor reporta `completed`.
@@ -76,6 +78,11 @@ class DriverWsService {
   final _chatCtrl = StreamController<Map<String, dynamic>>.broadcast();
   // Chat persistente del viaje normal: emite {tripId?, message?, history?}.
   final _tripChatCtrl = StreamController<Map<String, dynamic>>.broadcast();
+  // Intermunicipal (unificado en la socket principal para recibir en el home).
+  final _intercityCtrl = StreamController<IntercityRequestEntity>.broadcast();
+  final _intercityCancelCtrl = StreamController<String>.broadcast();
+  final _intercityLifecycleCtrl = StreamController<IntercityLifecycleEvent>.broadcast();
+  final _wsErrorCtrl = StreamController<String>.broadcast();
   // Liquidaciones confirmadas por el backend, bufferizadas por tripId porque
   // el ack suele llegar antes de que la pantalla de resumen se suscriba.
   final _settlementCtrl = StreamController<TripSettlement>.broadcast();
@@ -114,6 +121,12 @@ class DriverWsService {
 
   /// Chat del viaje normal: emite {tripId, message?} en vivo o {tripId, history?}.
   Stream<Map<String, dynamic>> get tripChatEvents => _tripChatCtrl.stream;
+
+  /// Ofertas intermunicipales (`intercity_request`) — llegan en el home.
+  Stream<IntercityRequestEntity> get intercityRequests => _intercityCtrl.stream;
+  Stream<String> get intercityCancellations => _intercityCancelCtrl.stream;
+  Stream<IntercityLifecycleEvent> get intercityLifecycle => _intercityLifecycleCtrl.stream;
+  Stream<String> get wsErrors => _wsErrorCtrl.stream;
 
   /// Liquidaciones reales del backend (`trip_status_ack` con `settlement`).
   Stream<TripSettlement> get settlements => _settlementCtrl.stream;
@@ -383,6 +396,23 @@ class DriverWsService {
   void sendTripChat(String tripId, String text) =>
       _send({'type': 'trip_chat_send', 'tripId': tripId, 'text': text});
 
+  // ── Intermunicipal ──────────────────────────────────────────────────────────
+
+  void acceptIntercity(String bookingId, {double? counterFare}) => _send({
+        'type': 'intercity_accept',
+        'bookingId': bookingId,
+        if (counterFare != null) 'counterFare': counterFare,
+      });
+
+  void rejectIntercity(String bookingId) =>
+      _send({'type': 'intercity_reject', 'bookingId': bookingId});
+
+  void startIntercity(String bookingId) =>
+      _send({'type': 'intercity_start', 'bookingId': bookingId});
+
+  void completeIntercity(String bookingId) =>
+      _send({'type': 'intercity_complete', 'bookingId': bookingId});
+
   // Registra/borra una suscripción y la envía. El registro permite reenviarla
   // automáticamente tras una reconexión.
   void _recordSub(String key, Map<String, dynamic> msg) {
@@ -491,9 +521,40 @@ class DriverWsService {
             });
           }
 
+        // ── Intermunicipal (unificado en esta socket) ─────────────────────────
+        case 'intercity_request':
+          _intercityCtrl.add(IntercityRequestEntity.fromWs(msg));
+
+        case 'intercity_cancelled':
+          final bId = msg['bookingId'] as String?;
+          if (bId != null) _intercityCancelCtrl.add(bId);
+
+        case 'intercity_accept_ok':
+        case 'intercity_start_ok':
+        case 'intercity_complete_ok':
+        case 'intercity_update':
+          final ev = _parseIntercityLifecycle(type!, msg);
+          if (ev != null) _intercityLifecycleCtrl.add(ev);
+
+        case 'error':
+          final m = msg['message'] as String?;
+          if (m != null && m.isNotEmpty) _wsErrorCtrl.add(m);
+
         default:
           break;
       }
     } catch (_) {}
+  }
+
+  IntercityLifecycleEvent? _parseIntercityLifecycle(String type, Map<String, dynamic> msg) {
+    final bookingId = msg['bookingId'] as String?;
+    if (bookingId == null) return null;
+    final booking = msg['booking'] as Map<String, dynamic>?;
+    return IntercityLifecycleEvent(
+      type: type.replaceFirst('intercity_', ''),
+      bookingId: bookingId,
+      status: booking?['status'] as String?,
+      finalFare: (booking?['finalFare'] as num?)?.toDouble(),
+    );
   }
 }

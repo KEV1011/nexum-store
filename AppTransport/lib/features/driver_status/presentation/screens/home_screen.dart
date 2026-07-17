@@ -1411,7 +1411,10 @@ class _IntercityPanelCard extends ConsumerWidget {
               color: AppColors.intercityBrand.withValues(alpha: 0.45),
             ),
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+          Row(
             children: [
               Container(
                 width: 38,
@@ -1486,6 +1489,37 @@ class _IntercityPanelCard extends ConsumerWidget {
                   }
                 },
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push('/intercity-requests'),
+                  icon: const Icon(Icons.list_alt_rounded, size: 16),
+                  label: const Text('Solicitudes', style: TextStyle(fontSize: 12.5)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _text,
+                    side: BorderSide(color: AppColors.intercityBrand.withValues(alpha: 0.6)),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => context.push('/pooled-publish'),
+                  icon: const Icon(Icons.add_road_rounded, size: 16),
+                  label: const Text('Publicar viaje', style: TextStyle(fontSize: 12.5)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.intercityBrand,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                ),
+              ),
+            ],
+          ),
             ],
           ),
         ),
