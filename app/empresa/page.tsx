@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   Building2, Car, RefreshCw, LogOut, MapPin, ShieldCheck, ShieldAlert, Loader2,
-  Route, Wallet, Download, LayoutDashboard, UserCog, TrendingUp, Truck, Bus,
+  Route, Wallet, Download, LayoutDashboard, UserCog, TrendingUp, Truck, Bus, Trophy,
 } from 'lucide-react'
 import { createOperatorApi } from './api'
 import FleetMap, { type FleetMapPoint } from './FleetMap'
@@ -13,6 +13,7 @@ import SchedulesManager from './SchedulesManager'
 import DriversManager from './DriversManager'
 import FreightManager from './FreightManager'
 import FinancePanel from './FinancePanel'
+import AnalyticsPanel from './AnalyticsPanel'
 import VehiclesManager from './VehiclesManager'
 
 const BACKEND_URL =
@@ -364,6 +365,7 @@ function Dashboard({ token, operator, onLogout }: {
     { key: 'torre', label: 'Torre de control', icon: LayoutDashboard, show: true },
     { key: 'equipo', label: 'Equipo y vehículos', icon: UserCog, show: true },
     { key: 'viajes', label: 'Viajes y liquidación', icon: Route, show: true },
+    { key: 'rendimiento', label: 'Rendimiento', icon: Trophy, show: true },
     { key: 'finanzas', label: 'Finanzas', icon: TrendingUp, show: true },
     { key: 'carga', label: 'Fletes de carga', icon: Truck, show: isCargo },
     { key: 'intermunicipal', label: 'Intermunicipal', icon: Bus, show: isIntercity },
@@ -558,6 +560,14 @@ function Dashboard({ token, operator, onLogout }: {
                 </div>
               )}
             </section>
+          )}
+
+          {/* ══ RENDIMIENTO ══ */}
+          {section === 'rendimiento' && (
+            <>
+              <h1 className="font-bold text-slate-900 text-lg">Rendimiento</h1>
+              <AnalyticsPanel api={api} />
+            </>
           )}
 
           {/* ══ FINANZAS ══ */}

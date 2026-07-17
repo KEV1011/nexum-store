@@ -44,6 +44,7 @@ import {
   acceptFreight,
   updateFreightStatus,
   getFleetFinance,
+  getFleetAnalytics,
   FreightError,
 } from '../services/freight.service';
 
@@ -453,6 +454,13 @@ router.get('/finance/summary', async (req: Request, res: Response): Promise<void
   const from = typeof req.query['from'] === 'string' ? req.query['from'] : undefined;
   const to = typeof req.query['to'] === 'string' ? req.query['to'] : undefined;
   res.json({ success: true, data: await getFleetFinance(req.operatorId!, from, to) });
+});
+
+// GET /operator/fleet/analytics — rendimiento (ranking de conductores y vehículos).
+router.get('/fleet/analytics', async (req: Request, res: Response): Promise<void> => {
+  const from = typeof req.query['from'] === 'string' ? req.query['from'] : undefined;
+  const to = typeof req.query['to'] === 'string' ? req.query['to'] : undefined;
+  res.json({ success: true, data: await getFleetAnalytics(req.operatorId!, from, to) });
 });
 
 router.get('/pool', async (req: Request, res: Response): Promise<void> => {
