@@ -7,7 +7,6 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
-import 'package:nexum_driver/shared/services/ws_service.dart';
 
 const _kIntercityColor = AppColors.intercityBrand;
 
@@ -29,8 +28,9 @@ class _IntercityRequestsScreenState
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(intercityDriverProvider.notifier).loadAvailability();
-      // Asegura el canal WS abierto para recibir intercity_request.
-      WsService().connect();
+      // El canal WS ya está abierto (DriverWsService, unificado) desde que el
+      // conductor se pone en línea; las ofertas intermunicipales llegan también
+      // en el home.
     });
   }
 

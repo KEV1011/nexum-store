@@ -7,7 +7,7 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/safety/data/safety_api.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
-import 'package:nexum_driver/shared/services/ws_service.dart';
+import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Línea única de emergencias en Colombia (no es 911).
@@ -153,7 +153,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
     SosResult? result;
     try {
       final loc = await LocationService().getCurrentLocation();
-      final tripId = WsService().activeTripId;
+      final tripId = DriverWsService().activeTripId;
       result = await SafetyApi().sendSos(
         tripId: (tripId == null || tripId.isEmpty) ? null : tripId,
         lat: loc.latitude,
