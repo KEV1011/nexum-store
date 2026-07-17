@@ -8,7 +8,12 @@ import {
   updateBusinessCover,
 } from '../services/business.service';
 import { getNotificationService } from '../services/notification.service';
-import { getClientOrdersForBusiness } from '../services/client.service';
+import {
+  getClientOrdersForBusiness,
+  acceptOrderByBusiness,
+  rejectOrderByBusiness,
+  markOrderReadyByBusiness,
+} from '../services/client.service';
 import {
   RegisterBusinessDTO,
   OrderStatusUpdateDTO,
@@ -208,6 +213,63 @@ router.get('/:token/client-orders', async (req: Request, res: Response): Promise
     res.status(200).json({ success: true, data: orders });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Could not load orders';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// ─── Gestión del pedido por el restaurante (portal, token-auth) ───────────────
+// El restaurante acepta y fija el tiempo de preparación (dispara el despacho),
+// rechaza, o marca el pedido listo para recoger.
+
+router.post('/:token/client-orders/:orderId/accept', async (req: Request, res: Response): Promise<void> => {
+  const { token, orderId } = req.params as { token: string; orderId: string };
+  const prepMinutes = Number((req.body as { prepMinutes?: unknown }).prepMinutes);
+  if (!Number.isFinite(prepMinutes) || prepMinutes <= 0) {
+    res.status(400).json({ success: false, error: 'prepMinutes (minutos de preparación) es requerido' });
+    return;
+  }
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const order = await acceptOrderByBusiness(business.id, orderId, prepMinutes);
+    if (!order) {
+      res.status(409).json({ success: false, error: 'El pedido ya no está pendiente de aceptación' });
+      return;
+    }
+    res.status(200).json({ success: true, data: order });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo aceptar el pedido';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.post('/:token/client-orders/:orderId/reject', async (req: Request, res: Response): Promise<void> => {
+  const { token, orderId } = req.params as { token: string; orderId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const order = await rejectOrderByBusiness(business.id, orderId);
+    if (!order) {
+      res.status(409).json({ success: false, error: 'El pedido ya no se puede rechazar' });
+      return;
+    }
+    res.status(200).json({ success: true, data: order });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo rechazar el pedido';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.post('/:token/client-orders/:orderId/ready', async (req: Request, res: Response): Promise<void> => {
+  const { token, orderId } = req.params as { token: string; orderId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const order = await markOrderReadyByBusiness(business.id, orderId);
+    if (!order) {
+      res.status(409).json({ success: false, error: 'El pedido no se puede marcar como listo' });
+      return;
+    }
+    res.status(200).json({ success: true, data: order });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo marcar el pedido';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });

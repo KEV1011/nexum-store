@@ -21,7 +21,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DeliveryOrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
-type ClientOrderStatus = 'confirmed' | 'driverToPickup' | 'atPickup' | 'inTransit' | 'delivered' | 'cancelled'
+type ClientOrderStatus = 'pending' | 'confirmed' | 'preparing' | 'driverToPickup' | 'atPickup' | 'inTransit' | 'delivered' | 'cancelled'
 
 interface Order {
   id: string
@@ -59,6 +59,9 @@ interface ClientOrder {
   deliveredAt?: string
   pickupPhotoUrl?: string
   deliveryPhotoUrl?: string
+  prepMinutes?: number
+  acceptedAt?: string
+  readyAt?: string
 }
 
 interface BusinessStats {
@@ -115,7 +118,9 @@ function formatTime(iso: string) {
 // ─── Client Order Badge ───────────────────────────────────────────────────────
 
 const CLIENT_STATUS: Record<ClientOrderStatus, { label: string; className: string }> = {
-  confirmed:      { label: 'Nuevo pedido',       className: 'bg-orange-100 text-orange-700 ring-1 ring-orange-200' },
+  pending:        { label: 'Nuevo · acepta',     className: 'bg-orange-100 text-orange-700 ring-1 ring-orange-200' },
+  confirmed:      { label: 'Confirmado',         className: 'bg-amber-100 text-amber-700' },
+  preparing:      { label: 'En preparación',     className: 'bg-violet-100 text-violet-700' },
   driverToPickup: { label: 'Driver en camino',   className: 'bg-blue-100 text-blue-700' },
   atPickup:       { label: 'Driver en local',    className: 'bg-violet-100 text-violet-700' },
   inTransit:      { label: 'En camino',          className: 'bg-teal-100 text-teal-700' },
@@ -124,7 +129,7 @@ const CLIENT_STATUS: Record<ClientOrderStatus, { label: string; className: strin
 }
 
 function ClientStatusBadge({ status }: { status: ClientOrderStatus }) {
-  const { label, className } = CLIENT_STATUS[status] ?? CLIENT_STATUS.confirmed
+  const { label, className } = CLIENT_STATUS[status] ?? CLIENT_STATUS.pending
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${className}`}>
       {label}
@@ -134,8 +139,39 @@ function ClientStatusBadge({ status }: { status: ClientOrderStatus }) {
 
 // ─── Client Order Card ────────────────────────────────────────────────────────
 
-function ClientOrderCard({ order }: { order: ClientOrder }) {
-  const isNew = order.status === 'confirmed'
+function ClientOrderCard({ order, token, onChanged }: {
+  order: ClientOrder
+  token: string
+  onChanged: (updated: ClientOrder) => void
+}) {
+  const isNew = order.status === 'pending'
+  const [prep, setPrep] = useState('20')
+  const [busy, setBusy] = useState<null | 'accept' | 'reject' | 'ready'>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  async function act(kind: 'accept' | 'reject' | 'ready') {
+    setBusy(kind)
+    setActionError(null)
+    try {
+      const body = kind === 'accept' ? { prepMinutes: Number(prep) } : {}
+      const res = await fetch(`${BACKEND_URL}/business/${token}/client-orders/${order.id}/${kind}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json() as { success: boolean; data?: ClientOrder; error?: string }
+      if (!res.ok || !json.success || !json.data) {
+        setActionError(json.error ?? 'No se pudo completar la acción')
+        return
+      }
+      onChanged(json.data)
+    } catch {
+      setActionError('Error de conexión')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div className={`bg-white border rounded-xl shadow-sm p-4 transition-all ${
       isNew ? 'border-orange-300 shadow-orange-100' : 'border-slate-200'
@@ -213,6 +249,59 @@ function ClientOrderCard({ order }: { order: ClientOrder }) {
         </div>
         <p className="text-sm font-bold text-slate-800">{formatCOP(order.total)}</p>
       </div>
+
+      {/* Estado de cocina */}
+      {order.readyAt && (
+        <p className="mt-2 text-xs font-semibold text-emerald-600">✓ Listo para recoger · {formatTime(order.readyAt)}</p>
+      )}
+      {order.status === 'preparing' && !order.readyAt && order.prepMinutes && (
+        <p className="mt-2 text-xs text-violet-600">🍳 Preparación: {order.prepMinutes} min</p>
+      )}
+
+      {actionError && <p className="mt-2 text-xs text-red-600">{actionError}</p>}
+
+      {/* Acciones del restaurante */}
+      {order.status === 'pending' && (
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Tiempo de preparación</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={prep}
+              onChange={(e) => setPrep(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+              className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-center"
+            />
+            <span className="text-xs text-slate-500">min</span>
+            <button
+              onClick={() => act('accept')}
+              disabled={busy !== null || !prep || Number(prep) <= 0}
+              className="ml-auto flex-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white
+                         hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {busy === 'accept' ? 'Aceptando…' : 'Aceptar pedido'}
+            </button>
+            <button
+              onClick={() => act('reject')}
+              disabled={busy !== null}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600
+                         hover:bg-slate-50 disabled:opacity-50"
+            >
+              {busy === 'reject' ? '…' : 'Rechazar'}
+            </button>
+          </div>
+        </div>
+      )}
+      {order.status === 'preparing' && !order.readyAt && (
+        <button
+          onClick={() => act('ready')}
+          disabled={busy !== null}
+          className="mt-3 w-full rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white
+                     hover:bg-violet-700 disabled:opacity-50"
+        >
+          {busy === 'ready' ? 'Marcando…' : 'Marcar listo para recoger'}
+        </button>
+      )}
     </div>
   )
 }
@@ -428,8 +517,8 @@ export default function PortalDashboard({
   // ─── Derived ────────────────────────────────────────────────────────────────
 
   const activeDeliveryCount = data?.orders.filter((o) => o.status !== 'delivered').length ?? 0
-  const newOnlineCount = clientOrders.filter((o) => o.status === 'confirmed').length
-  const preparingCount = clientOrders.filter((o) => ['confirmed', 'driverToPickup'].includes(o.status)).length
+  const newOnlineCount = clientOrders.filter((o) => o.status === 'pending').length
+  const preparingCount = clientOrders.filter((o) => ['pending', 'preparing', 'driverToPickup'].includes(o.status)).length
 
   if (loading) {
     return (
@@ -588,7 +677,14 @@ export default function PortalDashboard({
             ) : (
               <div className="space-y-3">
                 {clientOrders.map((order) => (
-                  <ClientOrderCard key={order.id} order={order} />
+                  <ClientOrderCard
+                    key={order.id}
+                    order={order}
+                    token={token}
+                    onChanged={(updated) =>
+                      setClientOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)))
+                    }
+                  />
                 ))}
               </div>
             )}

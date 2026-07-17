@@ -541,6 +541,11 @@ export interface ClientOrderSummaryDTO {
   createdAt: string;
   pickedUpAt?: string;
   deliveredAt?: string;
+  // Cocina: tiempo de preparación fijado por el restaurante y sus marcas de
+  // tiempo. Permiten al cliente ver un ETA en vivo (aceptado + prep → listo).
+  prepMinutes?: number;
+  acceptedAt?: string;
+  readyAt?: string;
 }
 
 // ─── Client Trips ─────────────────────────────────────────────────────────────

@@ -169,7 +169,9 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       businessName: business.name,
       businessAddress: business.address,
       deliveryAddress: deliveryAddress,
-      status: CustomerOrderStatus.confirmed,
+      // El pedido nace PENDING: el negocio debe confirmarlo y fijar el tiempo
+      // de preparación antes de que se busque repartidor.
+      status: CustomerOrderStatus.pending,
       lines: cart.items
           .map(
             (item) => OrderLineEntity(
@@ -217,6 +219,8 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
       final pickedUpAtStr = payload['pickedUpAt'] as String?;
       final deliveredAtStr = payload['deliveredAt'] as String?;
+      final acceptedAtStr = payload['acceptedAt'] as String?;
+      final readyAtStr = payload['readyAt'] as String?;
 
       return order.copyWith(
         status: status,
@@ -224,7 +228,15 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         driverPhone:
             payload['driverPhone'] as String? ?? order.driverPhone,
         etaMinutes:
-            payload['etaMinutes'] as int? ?? order.etaMinutes,
+            (payload['etaMinutes'] as num?)?.toInt() ?? order.etaMinutes,
+        prepMinutes:
+            (payload['prepMinutes'] as num?)?.toInt() ?? order.prepMinutes,
+        acceptedAt: acceptedAtStr != null
+            ? DateTime.tryParse(acceptedAtStr)
+            : order.acceptedAt,
+        readyAt: readyAtStr != null
+            ? DateTime.tryParse(readyAtStr)
+            : order.readyAt,
         pickedUpAt: pickedUpAtStr != null
             ? DateTime.tryParse(pickedUpAtStr)
             : order.pickedUpAt,

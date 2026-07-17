@@ -373,6 +373,14 @@ model Order {
   deliveryFee      Float
   total            Float
   etaMinutes       Int?
+  // Tiempo de preparación (min) que el restaurante fija al aceptar el pedido.
+  prepMinutes      Int?
+  // Momento en que el restaurante aceptó (arranca el contador de preparación).
+  acceptedAt       DateTime?
+  // Momento en que el restaurante marcó el pedido listo para recoger. Corre en
+  // paralelo a los estados de entrega (el conductor puede ir en camino mientras
+  // se cocina), por eso es timestamp y no un estado del enum.
+  readyAt          DateTime?
   pickupPhotoUrl   String?
   deliveryPhotoUrl String?
   hasSignature     Boolean     @default(false)
@@ -400,7 +408,9 @@ model Order {
 }
 
 enum OrderStatus {
+  PENDING
   CONFIRMED
+  PREPARING
   DRIVER_TO_PICKUP
   AT_PICKUP
   IN_TRANSIT
