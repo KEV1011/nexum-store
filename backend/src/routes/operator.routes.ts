@@ -22,8 +22,11 @@ import {
   getOperatorProfile,
   listOperatorVehicles,
   createOperatorVehicle,
+  updateOperatorVehicle,
+  deleteOperatorVehicle,
   listOperatorDrivers,
   affiliateDriver,
+  unaffiliateDriver,
   getFleetPositions,
   listOperatorTrips,
   exportOperatorTripsCsv,
@@ -221,6 +224,41 @@ router.post('/vehicles', requireOperatorRole('OWNER', 'DISPATCHER'), async (req:
   }
 });
 
+// PATCH /operator/vehicles/:id — editar / activar-desactivar / reasignar conductor.
+router.patch('/vehicles/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as Record<string, unknown>;
+  if (typeof b['type'] === 'string' && !VEHICLE_TYPES.has(b['type'])) {
+    res.status(400).json({ success: false, error: 'Tipo de vehículo inválido' });
+    return;
+  }
+  try {
+    const vehicle = await updateOperatorVehicle(req.operatorId!, req.params['id'] as string, {
+      driverId: typeof b['driverId'] === 'string' ? b['driverId'] : undefined,
+      type: typeof b['type'] === 'string' ? (b['type'] as VehicleType) : undefined,
+      brand: typeof b['brand'] === 'string' ? b['brand'] : undefined,
+      model: typeof b['model'] === 'string' ? b['model'] : undefined,
+      year: typeof b['year'] === 'number' ? b['year'] : undefined,
+      plate: typeof b['plate'] === 'string' ? b['plate'] : undefined,
+      color: typeof b['color'] === 'string' ? b['color'] : undefined,
+      operationCardNo: typeof b['operationCardNo'] === 'string' ? b['operationCardNo'] : undefined,
+      capacityKg: typeof b['capacityKg'] === 'number' ? b['capacityKg'] : undefined,
+      internalCode: typeof b['internalCode'] === 'string' ? b['internalCode'] : undefined,
+      isActive: typeof b['isActive'] === 'boolean' ? b['isActive'] : undefined,
+    });
+    res.json({ success: true, data: vehicle });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'No se pudo actualizar el vehículo';
+    res.status(msg.includes('no encontrado') ? 404 : 400).json({ success: false, error: msg });
+  }
+});
+
+// DELETE /operator/vehicles/:id — eliminar un vehículo de la flota.
+router.delete('/vehicles/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const ok = await deleteOperatorVehicle(req.operatorId!, req.params['id'] as string);
+  if (!ok) { res.status(404).json({ success: false, error: 'Vehículo no encontrado' }); return; }
+  res.json({ success: true, data: { deleted: true } });
+});
+
 // GET /operator/trips — viajes sellados con la empresa (trazabilidad + liquidación).
 router.get('/trips', async (req: Request, res: Response): Promise<void> => {
   const raw = Number((req.query as Record<string, unknown>)['limit']);
@@ -280,6 +318,13 @@ router.post('/drivers/invite', requireOperatorRole('OWNER', 'DISPATCHER'), async
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo afiliar el conductor' });
   }
+});
+
+// DELETE /operator/drivers/:id — desafiliar un conductor de la empresa.
+router.delete('/drivers/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const ok = await unaffiliateDriver(req.operatorId!, req.params['id'] as string);
+  if (!ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
+  res.json({ success: true, data: { unaffiliated: true } });
 });
 
 // GET /operator/documents · POST /operator/documents (multipart)
