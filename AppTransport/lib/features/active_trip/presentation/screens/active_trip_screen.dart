@@ -848,11 +848,28 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   }
 
   Future<void> _handleFinishTrip() async {
+    final tripBeforeFinish = ref.read(activeTripProvider);
+    final workMode = tripBeforeFinish != null
+        ? _deliveryWorkMode(tripBeforeFinish.request)
+        : WorkMode.pasajero;
+
+    // Para entregas (envío/pedido/mandado) pedimos la prueba de foto ANTES de
+    // cerrar el viaje. Si cerráramos primero, `finishTrip()` deja el estado en
+    // null y la pantalla navega a /home antes de que el conductor pueda
+    // fotografiar la entrega (bug reportado: "se sale y se termina el envío").
+    DeliveryProof? proof;
+    if (workMode.isDelivery && tripBeforeFinish != null) {
+      proof = await DeliveryProofSheet.show(
+        context,
+        recipientName: tripBeforeFinish.request.passenger.name,
+        workMode: workMode,
+      );
+      if (!mounted) return;
+    }
+
     setState(() => _isLoading = true);
     try {
-      final tripBeforeFinish = ref.read(activeTripProvider);
       if (tripBeforeFinish != null) {
-        final workMode = _deliveryWorkMode(tripBeforeFinish.request);
         if (tripBeforeFinish.request.isOrder) {
           // Entregado: el backend liquida el domicilio en la billetera.
           DriverWsService()
@@ -863,6 +880,24 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           DriverWsService().sendTripStatus(tripBeforeFinish.request.id, 'completed');
         }
       }
+
+      // La prueba de entrega sube al backend en segundo plano (best-effort).
+      final deliveryPhoto = proof?.photoPath;
+      if (tripBeforeFinish != null && deliveryPhoto != null) {
+        unawaited(uploadProofPhoto(
+          kind: tripBeforeFinish.request.isOrder
+              ? 'order'
+              : workMode.isErrand
+                  ? 'errand'
+                  : 'trip',
+          id: tripBeforeFinish.request.isOrder
+              ? tripBeforeFinish.request.orderId!
+              : tripBeforeFinish.request.id,
+          phase: 'delivery',
+          photoPath: deliveryPhoto,
+        ));
+      }
+
       final tripModel =
           await ref.read(activeTripProvider.notifier).finishTrip();
       await ref
@@ -870,32 +905,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           .updateEarnings(tripModel.netEarning);
       if (!mounted) return;
 
-      final workMode = tripBeforeFinish != null
-          ? _deliveryWorkMode(tripBeforeFinish.request)
-          : WorkMode.pasajero;
       if (workMode.isDelivery) {
-        final proof = await DeliveryProofSheet.show(
-          context,
-          recipientName: tripModel.passengerName,
-          workMode: workMode,
-        );
-        if (!mounted) return;
-        // La prueba de entrega sube al backend en segundo plano (best-effort).
-        final deliveryPhoto = proof?.photoPath;
-        if (tripBeforeFinish != null && deliveryPhoto != null) {
-          unawaited(uploadProofPhoto(
-            kind: tripBeforeFinish.request.isOrder
-                ? 'order'
-                : workMode.isErrand
-                    ? 'errand'
-                    : 'trip',
-            id: tripBeforeFinish.request.isOrder
-                ? tripBeforeFinish.request.orderId!
-                : tripBeforeFinish.request.id,
-            phase: 'delivery',
-            photoPath: deliveryPhoto,
-          ));
-        }
         context.go(
           '/trip-summary',
           extra: tripModel.copyWith(
