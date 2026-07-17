@@ -13,9 +13,9 @@ import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
-import 'package:nexum_driver/core/domain/work_mode_provider.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/delivery_proof_sheet.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/going_to_passenger_card.dart';
@@ -674,7 +674,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   }
 
   String _statusLabel(ActiveTripEntity trip) {
-    final workMode = ref.read(selectedWorkModeProvider);
+    final workMode = _deliveryWorkMode(trip.request);
     return switch (trip.state) {
       ActiveTripState.toPickup => switch (workMode) {
           WorkMode.pedido => 'Yendo al restaurante',
@@ -700,8 +700,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   // ── Bottom card ──────────────────────────────────────────────────────────
 
   Widget _buildBottomCard(ActiveTripEntity trip) {
-    final workMode = ref.read(selectedWorkModeProvider);
-    final isDelivery = workMode.isDelivery;
+    // La prueba de foto se decide por el TIPO REAL del viaje (envío/pedido/
+    // mandado), no por el modo del conductor: desde la unificación recibe
+    // entregas aunque esté en modo Pasajeros (antes se saltaba la foto).
+    final isDelivery = trip.request.isDelivery;
     return switch (trip.state) {
       ActiveTripState.toPickup => GoingToPassengerCard(
           trip: trip,
@@ -713,7 +715,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       ActiveTripState.waiting => WaitingPassengerCard(
           trip: trip,
           isEnvios: isDelivery,
-          isMandado: workMode.isErrand,
+          isMandado: trip.request.isErrand,
           onStartTrip: isDelivery || _isLoading ? null : _handleStartTrip,
           onPickupConfirm: isDelivery && !_isLoading ? _handlePickupConfirm : null,
         ),
@@ -725,6 +727,16 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     };
   }
 
+  // Deriva el modo de trabajo del TIPO REAL del viaje (no del selector del
+  // conductor): así envíos/pedidos/mandados disparan su flujo de foto y estados
+  // aunque el conductor esté en modo Pasajeros (unificación del despacho).
+  WorkMode _deliveryWorkMode(TripRequestEntity r) {
+    if (r.isErrand) return WorkMode.mandado;
+    if (r.isOrder) return WorkMode.pedido;
+    if (r.isEnvios) return WorkMode.paquete;
+    return WorkMode.pasajero;
+  }
+
   // ── Action handlers ──────────────────────────────────────────────────────
 
   Future<void> _handleArrived() async {
@@ -733,7 +745,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       final trip = ref.read(activeTripProvider);
       await ref.read(activeTripProvider.notifier).arrivedAtPassenger();
       if (trip != null) {
-        final workMode = ref.read(selectedWorkModeProvider);
+        final workMode = _deliveryWorkMode(trip.request);
         if (trip.request.isOrder) {
           // Entrega de pedido: llegó al negocio a recoger.
           DriverWsService().sendOrderStatus(trip.request.orderId!, 'at_pickup');
@@ -771,7 +783,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     final trip = ref.read(activeTripProvider);
     if (trip == null) return;
 
-    final workMode = ref.read(selectedWorkModeProvider);
+    final workMode = _deliveryWorkMode(trip.request);
     final proof = await PickupProofSheet.show(
       context,
       businessName: trip.request.passenger.name,
@@ -840,7 +852,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     try {
       final tripBeforeFinish = ref.read(activeTripProvider);
       if (tripBeforeFinish != null) {
-        final workMode = ref.read(selectedWorkModeProvider);
+        final workMode = _deliveryWorkMode(tripBeforeFinish.request);
         if (tripBeforeFinish.request.isOrder) {
           // Entregado: el backend liquida el domicilio en la billetera.
           DriverWsService()
@@ -858,7 +870,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           .updateEarnings(tripModel.netEarning);
       if (!mounted) return;
 
-      final workMode = ref.read(selectedWorkModeProvider);
+      final workMode = tripBeforeFinish != null
+          ? _deliveryWorkMode(tripBeforeFinish.request)
+          : WorkMode.pasajero;
       if (workMode.isDelivery) {
         final proof = await DeliveryProofSheet.show(
           context,

@@ -27,6 +27,7 @@ import 'package:nexum_driver/features/active_trip/presentation/providers/active_
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/service_prefs_provider.dart';
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
+import 'package:nexum_driver/features/ride_pool/presentation/providers/ride_pool_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
@@ -268,6 +269,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }),
     );
 
+    // Entra al pool "Pon tu precio" al ponerse en línea (antes solo se unía al
+    // abrir esa pantalla → las ofertas nunca llegaban en el home).
+    ref.read(ridePoolProvider.notifier).register();
+
     // Subscribe to incoming trip requests from the server.
     _wsTripSub = DriverWsService().tripRequests.listen((tripMap) {
       if (!mounted) return;
@@ -354,6 +359,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         distanceToPickupKm: 0.5,
         etaToPickupMinutes: 3,
         requestedAt: DateTime.now(),
+        serviceType: t['serviceType'] as String?,
       );
     } catch (_) {
       return null;

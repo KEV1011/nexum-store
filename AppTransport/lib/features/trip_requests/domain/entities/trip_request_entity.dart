@@ -27,6 +27,7 @@ class TripRequestEntity {
     this.requestedAt,
     this.errand,
     this.orderId,
+    this.serviceType,
   });
 
   /// Identificador único de la solicitud.
@@ -71,6 +72,9 @@ class TripRequestEntity {
   /// por `order_status` (at_pickup/in_transit/delivered), no por trip_status.
   final String? orderId;
 
+  /// Tipo de servicio del backend (TAXI | MOTO | PARTICULAR | ENVIOS | MANDADO).
+  final String? serviceType;
+
   bool get isPending => status == TripRequestStatus.pending;
   bool get isAccepted => status == TripRequestStatus.accepted;
 
@@ -79,6 +83,12 @@ class TripRequestEntity {
 
   /// Indica si esta solicitud es la entrega de un pedido a negocio.
   bool get isOrder => orderId != null;
+
+  /// Indica si es un ENVÍO (paquetería): requiere foto de recogida y entrega.
+  bool get isEnvios => serviceType == 'ENVIOS';
+
+  /// Cualquier entrega (envío, pedido o mandado) → flujo con prueba de foto.
+  bool get isDelivery => isEnvios || isOrder || isErrand;
 
   TripRequestEntity copyWith({
     String? id,
@@ -94,6 +104,7 @@ class TripRequestEntity {
     DateTime? requestedAt,
     ErrandDetails? errand,
     String? orderId,
+    String? serviceType,
   }) {
     return TripRequestEntity(
       id: id ?? this.id,
@@ -109,6 +120,7 @@ class TripRequestEntity {
       requestedAt: requestedAt ?? this.requestedAt,
       errand: errand ?? this.errand,
       orderId: orderId ?? this.orderId,
+      serviceType: serviceType ?? this.serviceType,
     );
   }
 
