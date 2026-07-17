@@ -91,6 +91,9 @@ export interface CreateVehicleDTO {
   capacity?: number;      // # de pasajeros
   capacityKg?: number;    // capacidad de carga en kg (turbo/camión/mula)
   internalCode?: string;
+  soatExpiry?: string;
+  rtmExpiry?: string;
+  operationCardExpiry?: string;
 }
 
 export async function createOperatorVehicle(operatorId: string, dto: CreateVehicleDTO) {
@@ -116,6 +119,9 @@ export async function createOperatorVehicle(operatorId: string, dto: CreateVehic
       capacity: dto.capacity ?? null,
       capacityKg: dto.capacityKg ?? null,
       internalCode: dto.internalCode ?? null,
+      soatExpiry: _toDateOrNull(dto.soatExpiry) ?? null,
+      rtmExpiry: _toDateOrNull(dto.rtmExpiry) ?? null,
+      operationCardExpiry: _toDateOrNull(dto.operationCardExpiry) ?? null,
     },
   });
 }
@@ -132,6 +138,18 @@ export interface UpdateVehicleDTO {
   capacityKg?: number | null;
   internalCode?: string | null;
   isActive?: boolean;
+  // Documentos / cumplimiento (fechas ISO 'YYYY-MM-DD' o null para limpiar).
+  soatExpiry?: string | null;
+  rtmExpiry?: string | null;
+  operationCardExpiry?: string | null;
+}
+
+// Convierte una fecha ISO ('YYYY-MM-DD') a Date, o null si viene vacía/inválida.
+function _toDateOrNull(iso: string | null | undefined): Date | null | undefined {
+  if (iso === undefined) return undefined;
+  if (iso === null || iso === '') return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /** Actualiza un vehículo de la flota (verifica pertenencia a la empresa). */
@@ -169,8 +187,25 @@ export async function updateOperatorVehicle(
       ...(dto.capacityKg !== undefined && { capacityKg: dto.capacityKg }),
       ...(dto.internalCode !== undefined && { internalCode: dto.internalCode || null }),
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      ...(_toDateOrNull(dto.soatExpiry) !== undefined && { soatExpiry: _toDateOrNull(dto.soatExpiry) }),
+      ...(_toDateOrNull(dto.rtmExpiry) !== undefined && { rtmExpiry: _toDateOrNull(dto.rtmExpiry) }),
+      ...(_toDateOrNull(dto.operationCardExpiry) !== undefined && { operationCardExpiry: _toDateOrNull(dto.operationCardExpiry) }),
     },
   });
+}
+
+/** Guarda la URL de la foto del vehículo (verifica pertenencia a la empresa). */
+export async function setOperatorVehiclePhoto(
+  operatorId: string,
+  vehicleId: string,
+  photoUrl: string,
+) {
+  const existing = await prisma.vehicle.findFirst({
+    where: { id: vehicleId, operatorId },
+    select: { id: true },
+  });
+  if (!existing) throw new Error('Vehículo no encontrado.');
+  return prisma.vehicle.update({ where: { id: vehicleId }, data: { photoUrl } });
 }
 
 /** Elimina un vehículo de la flota (verifica pertenencia a la empresa). */

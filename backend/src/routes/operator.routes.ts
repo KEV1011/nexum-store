@@ -24,6 +24,7 @@ import {
   createOperatorVehicle,
   updateOperatorVehicle,
   deleteOperatorVehicle,
+  setOperatorVehiclePhoto,
   listOperatorDrivers,
   affiliateDriver,
   unaffiliateDriver,
@@ -217,6 +218,9 @@ router.post('/vehicles', requireOperatorRole('OWNER', 'DISPATCHER'), async (req:
       capacity: typeof b['capacity'] === 'number' ? b['capacity'] : undefined,
       capacityKg: typeof b['capacityKg'] === 'number' ? b['capacityKg'] : undefined,
       internalCode: typeof b['internalCode'] === 'string' ? b['internalCode'] : undefined,
+      soatExpiry: typeof b['soatExpiry'] === 'string' ? b['soatExpiry'] : undefined,
+      rtmExpiry: typeof b['rtmExpiry'] === 'string' ? b['rtmExpiry'] : undefined,
+      operationCardExpiry: typeof b['operationCardExpiry'] === 'string' ? b['operationCardExpiry'] : undefined,
     });
     res.status(201).json({ success: true, data: vehicle });
   } catch (err) {
@@ -244,6 +248,9 @@ router.patch('/vehicles/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async 
       capacityKg: typeof b['capacityKg'] === 'number' ? b['capacityKg'] : undefined,
       internalCode: typeof b['internalCode'] === 'string' ? b['internalCode'] : undefined,
       isActive: typeof b['isActive'] === 'boolean' ? b['isActive'] : undefined,
+      soatExpiry: typeof b['soatExpiry'] === 'string' || b['soatExpiry'] === null ? (b['soatExpiry'] as string | null) : undefined,
+      rtmExpiry: typeof b['rtmExpiry'] === 'string' || b['rtmExpiry'] === null ? (b['rtmExpiry'] as string | null) : undefined,
+      operationCardExpiry: typeof b['operationCardExpiry'] === 'string' || b['operationCardExpiry'] === null ? (b['operationCardExpiry'] as string | null) : undefined,
     });
     res.json({ success: true, data: vehicle });
   } catch (err) {
@@ -326,6 +333,35 @@ router.delete('/drivers/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async 
   if (!ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
   res.json({ success: true, data: { unaffiliated: true } });
 });
+
+// POST /operator/vehicles/:id/photo (multipart) — foto del vehículo.
+router.post(
+  '/vehicles/:id/photo',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'La foto debe ser una imagen (JPG, PNG o WebP).' });
+      return;
+    }
+    try {
+      const vehicle = await setOperatorVehiclePhoto(req.operatorId!, req.params['id'] as string, fileToUrl(req.file));
+      res.status(201).json({ success: true, data: vehicle });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo subir la foto';
+      res.status(msg.includes('no encontrado') ? 404 : 400).json({ success: false, error: msg });
+    }
+  },
+);
 
 // GET /operator/documents · POST /operator/documents (multipart)
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {

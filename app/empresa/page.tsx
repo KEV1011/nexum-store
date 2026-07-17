@@ -507,7 +507,7 @@ function Dashboard({ token, operator, onLogout }: {
             <>
               <h1 className="font-bold text-slate-900 text-lg">Equipo y vehículos</h1>
               <DriversManager api={api} onChanged={() => { setTeamVersion((v) => v + 1); void load() }} />
-              <VehiclesManager api={api} refreshKey={teamVersion} />
+              <VehiclesManager api={api} token={token} refreshKey={teamVersion} />
             </>
           )}
 
