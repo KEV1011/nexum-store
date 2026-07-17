@@ -102,6 +102,8 @@ export interface TripRequestDTO {
   distanceKm: number;
   estimatedMinutes: number;
   estimatedFare: number;
+  /** TAXI | MOTO | PARTICULAR | ENVIOS | MANDADO — ENVIOS exige prueba de foto. */
+  serviceType?: string;
 }
 
 export interface TripSummaryDTO {

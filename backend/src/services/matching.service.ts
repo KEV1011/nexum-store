@@ -206,6 +206,9 @@ async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | nul
     distanceKm: trip.distanceKm ?? 0,
     estimatedMinutes: trip.etaMinutes ?? 0,
     estimatedFare: trip.estimatedFare,
+    // Tipo de servicio: el conductor lo necesita para saber si es un ENVÍO
+    // (requiere foto de recogida/entrega) vs un viaje de pasajero.
+    serviceType: trip.serviceType,
   };
 }
 
