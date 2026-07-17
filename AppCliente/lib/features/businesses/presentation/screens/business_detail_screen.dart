@@ -15,6 +15,8 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'business_visuals.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'product_tile.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'product_options_sheet.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
 
@@ -80,13 +82,27 @@ class _DetailView extends ConsumerWidget {
                     const SizedBox(height: AppConstants.spacingS),
                 itemBuilder: (context, i) {
                   final product = entry.value[i];
+                  // Con opciones: el tile siempre muestra "Agregar" y abre la
+                  // hoja de selección (las variantes se gestionan en el carrito).
+                  final qty = (product.hasOptions ||
+                          cart.business?.id != business.id)
+                      ? 0
+                      : cartNotifier.quantityOf(product.id);
                   return ProductTile(
                     product: product,
-                    quantity: cart.business?.id == business.id
-                        ? cartNotifier.quantityOf(product.id)
-                        : 0,
-                    onAdd: () =>
-                        cartNotifier.addProduct(product, business),
+                    quantity: qty,
+                    onAdd: () async {
+                      if (product.hasOptions) {
+                        final chosen =
+                            await showProductOptionsSheet(context, product);
+                        if (chosen != null) {
+                          cartNotifier.addProduct(product, business,
+                              selectedOptions: chosen);
+                        }
+                      } else {
+                        cartNotifier.addProduct(product, business);
+                      }
+                    },
                     onRemove: () => cartNotifier.removeOne(product.id),
                   );
                 },

@@ -352,9 +352,46 @@ model Product {
   business     Business       @relation(fields: [businessId], references: [id])
   orderLines   OrderLine[]
   photos       ProductPhoto[]
+  optionGroups OptionGroup[]
 
   @@index([businessId])
   @@map("products")
+}
+
+// Grupo de opciones/variantes de un producto (ej: "Tamaño", "Adiciones",
+// "Quitar"). `minSelect`/`maxSelect` controlan cuántas opciones puede elegir el
+// cliente (maxSelect=1 → selección única tipo radio; >1 → múltiple tipo check).
+model OptionGroup {
+  id         String   @id @default(cuid())
+  productId  String
+  name       String
+  required   Boolean  @default(false)
+  minSelect  Int      @default(0)
+  maxSelect  Int      @default(1)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options    ProductOption[]
+
+  @@index([productId])
+  @@map("option_groups")
+}
+
+// Una opción dentro de un grupo (ej: "Grande" +3000, "+Queso" +2000,
+// "Sin cebolla" +0). `priceDelta` se suma al precio base del producto.
+model ProductOption {
+  id          String   @id @default(cuid())
+  groupId     String
+  name        String
+  priceDelta  Float    @default(0)
+  isAvailable Boolean  @default(true)
+  sortOrder   Int      @default(0)
+
+  group       OptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@map("product_options")
 }
 
 // Galería de fotos adicionales de un producto (además de `Product.imageUrl`).
@@ -442,6 +479,9 @@ model OrderLine {
   quantity    Int
   unitPrice   Float
   subtotal    Float
+  // Resumen legible de las opciones elegidas (ej: "Grande · +Queso · Sin cebolla").
+  // El `unitPrice` ya incluye los deltas de esas opciones.
+  optionsSummary String?
 
   order       Order   @relation(fields: [orderId], references: [id])
   product     Product @relation(fields: [productId], references: [id])

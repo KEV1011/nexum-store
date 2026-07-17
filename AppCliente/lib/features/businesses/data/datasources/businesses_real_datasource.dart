@@ -54,6 +54,31 @@ class BusinessesRealDataSource {
       images: ((j['images'] as List?) ?? const [])
           .map((e) => (e as Map<String, dynamic>)['url'] as String)
           .toList(),
+      optionGroups: ((j['optionGroups'] as List?) ?? const [])
+          .map((g) => _mapOptionGroup(g as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  static OptionGroupEntity _mapOptionGroup(Map<String, dynamic> j) {
+    return OptionGroupEntity(
+      id: j['id'] as String,
+      name: j['name'] as String? ?? '',
+      required: j['required'] as bool? ?? false,
+      minSelect: (j['minSelect'] as num?)?.toInt() ?? 0,
+      maxSelect: (j['maxSelect'] as num?)?.toInt() ?? 1,
+      options: ((j['options'] as List?) ?? const [])
+          .map((o) => _mapOption(o as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  static ProductOptionEntity _mapOption(Map<String, dynamic> j) {
+    return ProductOptionEntity(
+      id: j['id'] as String,
+      name: j['name'] as String? ?? '',
+      priceDelta: (j['priceDelta'] as num?)?.toDouble() ?? 0,
+      isAvailable: j['isAvailable'] as bool? ?? true,
     );
   }
 }

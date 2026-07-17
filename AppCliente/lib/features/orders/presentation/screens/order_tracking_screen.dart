@@ -606,12 +606,26 @@ class _OrderSummary extends StatelessWidget {
                   ),
                   const SizedBox(width: AppConstants.spacingS),
                   Expanded(
-                    child: Text(
-                      line.productName,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 14,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          line.productName,
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                          ),
+                        ),
+                        if (line.optionsSummary != null)
+                          Text(
+                            line.optionsSummary!,
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              color: context.textSecondaryColor,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   Text(

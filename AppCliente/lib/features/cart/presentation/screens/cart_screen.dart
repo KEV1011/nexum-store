@@ -61,9 +61,12 @@ class _CartContent extends ConsumerWidget {
             padding: const EdgeInsets.only(bottom: AppConstants.spacingS),
             child: _CartLine(
               item: item,
-              onAdd: () =>
-                  notifier.addProduct(item.product, cart.business!),
-              onRemove: () => notifier.removeOne(item.product.id),
+              onAdd: () => notifier.addProduct(
+                item.product,
+                cart.business!,
+                selectedOptions: item.selectedOptions,
+              ),
+              onRemove: () => notifier.removeOne(item.lineId),
             ),
           ),
         ),
@@ -154,9 +157,20 @@ class _CartLine extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (item.optionsSummary != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    item.optionsSummary!,
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 12,
+                      color: context.textSecondaryColor,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 2),
                 Text(
-                  CurrencyFormatter.format(item.product.price),
+                  CurrencyFormatter.format(item.unitPrice),
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 13,

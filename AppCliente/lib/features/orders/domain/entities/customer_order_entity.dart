@@ -59,17 +59,22 @@ class OrderLineEntity {
     required this.productName,
     required this.quantity,
     required this.unitPrice,
+    this.optionsSummary,
   });
 
   factory OrderLineEntity.fromJson(Map<String, dynamic> j) => OrderLineEntity(
         productName: j['productName'] as String,
         quantity: j['quantity'] as int,
         unitPrice: (j['unitPrice'] as num).toDouble(),
+        optionsSummary: j['optionsSummary'] as String?,
       );
 
   final String productName;
   final int quantity;
   final double unitPrice;
+
+  /// Opciones elegidas (ej: "Grande · +Queso"). Null si el producto es simple.
+  final String? optionsSummary;
 
   double get subtotal => unitPrice * quantity;
 
@@ -77,6 +82,7 @@ class OrderLineEntity {
         'productName': productName,
         'quantity': quantity,
         'unitPrice': unitPrice,
+        if (optionsSummary != null) 'optionsSummary': optionsSummary,
       };
 }
 
