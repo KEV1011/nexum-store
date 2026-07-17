@@ -534,7 +534,32 @@ export interface BusinessPublicDTO {
   deliveryFee: number;
   isOpen: boolean;
   imageUrl?: string;
+  openingHours?: string;
   products: ProductDTO[];
+}
+
+// Ajustes que el dueño edita desde el portal (perfil + vitrina).
+export interface BusinessSettingsDTO {
+  name?: string;
+  address?: string;
+  phone?: string;
+  whatsapp?: string;
+  deliveryFee?: number;
+  etaMinutes?: number;
+  acceptingOrders?: boolean;
+  openingHours?: string;
+}
+
+// Estadísticas de ventas del negocio en un rango de fechas.
+export interface BusinessStatsDTO {
+  from: string;
+  to: string;
+  ordersCount: number;
+  deliveredCount: number;
+  cancelledCount: number;
+  inProgressCount: number;
+  revenue: number; // suma de subtotales de pedidos no cancelados
+  topProducts: Array<{ name: string; quantity: number; revenue: number }>;
 }
 
 // ─── Client Orders ────────────────────────────────────────────────────────────

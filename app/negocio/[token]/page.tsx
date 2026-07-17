@@ -16,6 +16,7 @@ import {
   ShoppingBag,
   Bell,
   UtensilsCrossed,
+  Settings,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -600,6 +601,12 @@ export default function PortalDashboard({
                          bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1.5 hover:bg-teal-100 transition-colors">
               <UtensilsCrossed className="w-3.5 h-3.5" />
               Catálogo
+            </Link>
+            <Link href={`/negocio/${token}/ajustes`}
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600
+                         bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-100 transition-colors">
+              <Settings className="w-3.5 h-3.5" />
+              Ajustes
             </Link>
             <button onClick={() => fetchOrders(true)} disabled={refreshing}
               className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:border-teal-300 hover:text-teal-700 transition-colors disabled:opacity-50">

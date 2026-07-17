@@ -70,6 +70,10 @@ class _DetailView extends ConsumerWidget {
       body: CustomScrollView(
         slivers: [
           _BusinessAppBar(business: business),
+          if (!business.isOpen || business.openingHours != null)
+            SliverToBoxAdapter(
+              child: _StatusBanner(business: business),
+            ),
           for (final entry in grouped.entries) ...[
             SliverToBoxAdapter(child: _SectionHeader(title: entry.key)),
             SliverPadding(
@@ -92,6 +96,14 @@ class _DetailView extends ConsumerWidget {
                     product: product,
                     quantity: qty,
                     onAdd: () async {
+                      if (!business.isOpen) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('El negocio está cerrado ahora.'),
+                          ),
+                        );
+                        return;
+                      }
                       if (product.hasOptions) {
                         final chosen =
                             await showProductOptionsSheet(context, product);
@@ -276,6 +288,56 @@ class _SectionHeader extends StatelessWidget {
           fontSize: 17,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+/// Aviso de estado del negocio: cerrado y/o su horario de atención.
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({required this.business});
+
+  final BusinessEntity business;
+
+  @override
+  Widget build(BuildContext context) {
+    final closed = !business.isOpen;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppConstants.spacingM,
+        AppConstants.spacingM,
+        AppConstants.spacingM,
+        0,
+      ),
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: closed
+            ? AppColors.error.withValues(alpha: 0.08)
+            : AppColors.primaryContainer,
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            closed ? Icons.lock_clock_rounded : Icons.schedule_rounded,
+            size: 20,
+            color: closed ? AppColors.error : AppColors.primaryDim,
+          ),
+          const SizedBox(width: AppConstants.spacingS),
+          Expanded(
+            child: Text(
+              closed
+                  ? 'Cerrado ahora. ${business.openingHours ?? 'Vuelve más tarde.'}'
+                  : 'Horario: ${business.openingHours}',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: closed ? AppColors.error : AppColors.primaryDim,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

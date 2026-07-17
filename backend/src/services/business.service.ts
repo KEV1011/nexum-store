@@ -10,6 +10,8 @@ import {
   CreateProductDTO,
   UpdateProductDTO,
   SetProductOptionsDTO,
+  BusinessSettingsDTO,
+  BusinessStatsDTO,
   BusinessPublicDTO,
   BusinessCategory,
 } from '../types';
@@ -497,6 +499,123 @@ export async function updateBusinessCover(businessId: string, imageUrl: string):
   return _dbToBusinessInterface(biz);
 }
 
+// ─── Ajustes del negocio (perfil + vitrina) ───────────────────────────────────
+
+export interface BusinessSettingsView {
+  name: string;
+  address: string;
+  phone: string;
+  whatsapp: string;
+  deliveryFee: number;
+  etaMinutes: number;
+  acceptingOrders: boolean;
+  openingHours: string;
+  imageUrl?: string;
+}
+
+function _settingsView(b: {
+  name: string; address: string; phone: string | null; whatsapp: string | null;
+  deliveryFee: number; etaMinutes: number; acceptingOrders: boolean;
+  openingHours: string | null; imageUrl: string | null;
+}): BusinessSettingsView {
+  return {
+    name: b.name,
+    address: b.address,
+    phone: b.phone ?? '',
+    whatsapp: b.whatsapp ?? '',
+    deliveryFee: b.deliveryFee,
+    etaMinutes: b.etaMinutes,
+    acceptingOrders: b.acceptingOrders,
+    openingHours: b.openingHours ?? '',
+    imageUrl: b.imageUrl ?? undefined,
+  };
+}
+
+export async function getBusinessSettings(businessId: string): Promise<BusinessSettingsView> {
+  const b = await prisma.business.findUnique({ where: { id: businessId } });
+  if (!b) throw new Error('Business not found');
+  return _settingsView(b);
+}
+
+export async function updateBusinessSettings(
+  businessId: string,
+  dto: BusinessSettingsDTO,
+): Promise<BusinessSettingsView> {
+  const b = await prisma.business.update({
+    where: { id: businessId },
+    data: {
+      ...(dto.name !== undefined && dto.name.trim() ? { name: dto.name.trim() } : {}),
+      ...(dto.address !== undefined && dto.address.trim() ? { address: dto.address.trim() } : {}),
+      ...(dto.phone !== undefined && { phone: dto.phone.trim() || null }),
+      ...(dto.whatsapp !== undefined && { whatsapp: dto.whatsapp.trim() || null }),
+      ...(dto.deliveryFee !== undefined && Number.isFinite(dto.deliveryFee) && dto.deliveryFee >= 0
+        ? { deliveryFee: Math.round(dto.deliveryFee) }
+        : {}),
+      ...(dto.etaMinutes !== undefined && Number.isFinite(dto.etaMinutes) && dto.etaMinutes > 0
+        ? { etaMinutes: Math.round(dto.etaMinutes) }
+        : {}),
+      ...(dto.acceptingOrders !== undefined && { acceptingOrders: dto.acceptingOrders }),
+      ...(dto.openingHours !== undefined && { openingHours: dto.openingHours.trim() || null }),
+    },
+  });
+  return _settingsView(b);
+}
+
+// ─── Estadísticas de ventas ───────────────────────────────────────────────────
+
+export async function getBusinessStats(
+  businessId: string,
+  fromISO?: string,
+  toISO?: string,
+): Promise<BusinessStatsDTO> {
+  // Rango por defecto: hoy (00:00 → ahora).
+  const from = fromISO ? new Date(fromISO) : new Date(new Date().setHours(0, 0, 0, 0));
+  const to = toISO ? new Date(toISO) : new Date();
+
+  const orders = await prisma.order.findMany({
+    where: { businessId, createdAt: { gte: from, lte: to } },
+    include: { lines: true },
+  });
+
+  let deliveredCount = 0;
+  let cancelledCount = 0;
+  let inProgressCount = 0;
+  let revenue = 0;
+  const productMap = new Map<string, { name: string; quantity: number; revenue: number }>();
+
+  for (const o of orders) {
+    if (o.status === 'CANCELLED') {
+      cancelledCount++;
+      continue;
+    }
+    if (o.status === 'DELIVERED') deliveredCount++;
+    else inProgressCount++;
+    revenue += o.subtotal;
+    for (const l of o.lines) {
+      const key = l.productName;
+      const agg = productMap.get(key) ?? { name: key, quantity: 0, revenue: 0 };
+      agg.quantity += l.quantity;
+      agg.revenue += l.subtotal;
+      productMap.set(key, agg);
+    }
+  }
+
+  const topProducts = [...productMap.values()]
+    .sort((a, b) => b.quantity - a.quantity)
+    .slice(0, 5);
+
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    ordersCount: orders.length,
+    deliveredCount,
+    cancelledCount,
+    inProgressCount,
+    revenue,
+    topProducts,
+  };
+}
+
 export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
   const businesses = await prisma.business.findMany({
     where: { isOpen: true },
@@ -511,8 +630,10 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     rating: b.rating,
     etaMinutes: b.etaMinutes,
     deliveryFee: b.deliveryFee,
-    isOpen: b.isOpen,
+    // "Abierto" para el cliente = la vitrina está recibiendo pedidos.
+    isOpen: b.acceptingOrders,
     imageUrl: b.imageUrl ?? undefined,
+    openingHours: b.openingHours ?? undefined,
     products: b.products.map(_productToDTO),
   }));
 }
@@ -531,8 +652,9 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     rating: b.rating,
     etaMinutes: b.etaMinutes,
     deliveryFee: b.deliveryFee,
-    isOpen: b.isOpen,
+    isOpen: b.acceptingOrders,
     imageUrl: b.imageUrl ?? undefined,
+    openingHours: b.openingHours ?? undefined,
     products: b.products.map(_productToDTO),
   };
 }

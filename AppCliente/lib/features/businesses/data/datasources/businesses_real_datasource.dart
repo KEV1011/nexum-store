@@ -29,6 +29,7 @@ class BusinessesRealDataSource {
       address: j['address'] as String,
       isOpen: j['isOpen'] as bool? ?? true,
       imageUrl: j['imageUrl'] as String?,
+      openingHours: j['openingHours'] as String?,
       products: ((j['products'] as List?) ?? [])
           .cast<Map<String, dynamic>>()
           .map(_mapProduct)

@@ -315,7 +315,14 @@ model Business {
   rating       Float            @default(5.0)
   etaMinutes   Int              @default(30)
   deliveryFee  Float            @default(2500)
+  // isOpen = cuenta activa (gate de acceso al portal, lo controla el admin/registro).
   isOpen       Boolean          @default(true)
+  // acceptingOrders = vitrina abierta/cerrada (pausa de pedidos que el dueño
+  // controla desde el portal). Distinto de isOpen para no perder el acceso al
+  // portal al cerrar. Cerrado = el negocio se ve como "Cerrado" y no toma pedidos.
+  acceptingOrders Boolean       @default(true)
+  // Horario de atención en texto libre (ej: "Lun-Sáb 8am-9pm"). Informativo.
+  openingHours String?
   // Foto de portada del local (subida por el dueño desde el portal). Null = sin
   // portada (el cliente cae al color/ícono de la categoría).
   imageUrl     String?
