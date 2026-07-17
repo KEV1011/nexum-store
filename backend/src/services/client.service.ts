@@ -12,7 +12,7 @@ import {
   TransportServiceType,
 } from '../types';
 import { prisma } from '../lib/prisma';
-import { startMatchingCycle } from './matching.service';
+import { startMatchingCycle, startOrderMatchingCycle } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
@@ -28,6 +28,24 @@ const orderListeners = new Map<string, Set<OrderCallback>>();
 
 type BusinessNewOrderCallback = (order: ClientOrderSummaryDTO) => void;
 const businessOrderListeners = new Map<string, Set<BusinessNewOrderCallback>>();
+
+// Estimación de trayecto (min) que se suma al tiempo de preparación para el ETA
+// total que ve el cliente. Configurable por negocio en una fase posterior.
+const DELIVERY_TRAVEL_MIN = 15;
+
+// Un pedido nace PENDING y espera que el restaurante lo acepte. Si no responde a
+// tiempo se cancela solo y se avisa al cliente (evita pedidos zombis). El timer
+// se limpia al aceptar/rechazar. En memoria: un redeploy lo reinicia (aceptable).
+const ORDER_ACCEPT_TIMEOUT_MS = 8 * 60 * 1000;
+const pendingOrderTimers = new Map<string, NodeJS.Timeout>();
+
+function clearOrderAcceptTimer(orderId: string): void {
+  const t = pendingOrderTimers.get(orderId);
+  if (t) {
+    clearTimeout(t);
+    pendingOrderTimers.delete(orderId);
+  }
+}
 
 type TripCallback = (tripId: string, trip: ClientTripDTO) => void;
 const tripListeners = new Map<string, Set<TripCallback>>();
@@ -162,7 +180,10 @@ export async function placeClientOrder(
       userId: clientId,
       businessId: dto.businessId,
       deliveryAddress: dto.deliveryAddress,
-      status: 'CONFIRMED',
+      // El pedido nace PENDING: espera que el restaurante lo acepte y fije el
+      // tiempo de preparación. El despacho al repartidor ya NO es inmediato — se
+      // dispara cuando el negocio acepta (así el conductor no espera en la puerta).
+      status: 'PENDING',
       subtotal,
       deliveryFee: biz.deliveryFee,
       total: subtotal + biz.deliveryFee,
@@ -176,10 +197,155 @@ export async function placeClientOrder(
   });
 
   const summary = _toSummary(order, biz.name, order.lines);
-  // El despacho a un repartidor real lo dispara la ruta (startOrderMatchingCycle),
-  // igual que los mandados. Ya no existe la simulación server-side con
-  // repartidores inventados.
+  // Aviso al portal del negocio (WS new_order) para que acepte y ponga el prep.
   for (const cb of businessOrderListeners.get(dto.businessId) ?? []) cb(summary);
+
+  // Salvaguarda: si el restaurante no responde, el pedido se auto-cancela.
+  const timer = setTimeout(() => {
+    void autoCancelUnacceptedOrder(order.id);
+  }, ORDER_ACCEPT_TIMEOUT_MS);
+  // Evita retener el proceso solo por este timer (entorno de test/CLI).
+  if (typeof timer.unref === 'function') timer.unref();
+  pendingOrderTimers.set(order.id, timer);
+
+  return summary;
+}
+
+/**
+ * Auto-cancela un pedido que el restaurante nunca aceptó (sigue PENDING). Avisa
+ * al cliente por WS y push. No-op si ya avanzó de estado.
+ */
+async function autoCancelUnacceptedOrder(orderId: string): Promise<void> {
+  clearOrderAcceptTimer(orderId);
+  const existing = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!existing || existing.status !== 'PENDING') return;
+
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: { status: 'CANCELLED' },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+
+  if (updated.userId) {
+    void sendPushToClient(updated.userId, {
+      title: 'Pedido no confirmado',
+      body: `${updated.business?.name ?? 'El negocio'} no confirmó tu pedido a tiempo. No se te cobró.`,
+      data: { type: 'order_cancelled', orderId },
+    });
+  }
+
+  const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+}
+
+/**
+ * El restaurante ACEPTA el pedido y fija el tiempo de preparación (min). Pasa a
+ * PREPARING, calcula el ETA total (prep + trayecto) y DISPARA el despacho al
+ * repartidor. Devuelve null si el pedido ya no está PENDING o no es del negocio.
+ */
+export async function acceptOrderByBusiness(
+  businessId: string,
+  orderId: string,
+  prepMinutes: number,
+): Promise<ClientOrderSummaryDTO | null> {
+  const existing = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!existing || existing.businessId !== businessId || existing.status !== 'PENDING') {
+    return null;
+  }
+  clearOrderAcceptTimer(orderId);
+
+  const prep = Math.max(1, Math.min(180, Math.round(prepMinutes)));
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      status: 'PREPARING',
+      prepMinutes: prep,
+      acceptedAt: new Date(),
+      etaMinutes: prep + DELIVERY_TRAVEL_MIN,
+    },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+
+  if (updated.userId) {
+    void sendPushToClient(updated.userId, {
+      title: 'Pedido confirmado',
+      body: `${updated.business?.name ?? 'El negocio'} está preparando tu pedido (~${prep} min).`,
+      data: { type: 'order_preparing', orderId },
+    });
+  }
+
+  const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+
+  // Ahora sí buscamos repartidor (antes esperaba en la puerta del negocio).
+  void startOrderMatchingCycle(orderId);
+  return summary;
+}
+
+/** El restaurante RECHAZA el pedido (no lo puede preparar). Avisa al cliente. */
+export async function rejectOrderByBusiness(
+  businessId: string,
+  orderId: string,
+): Promise<ClientOrderSummaryDTO | null> {
+  const existing = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!existing || existing.businessId !== businessId) return null;
+  // Solo se puede rechazar antes de que un repartidor esté asignado.
+  if (!['PENDING', 'PREPARING'].includes(existing.status) || existing.driverId) return null;
+  clearOrderAcceptTimer(orderId);
+
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: { status: 'CANCELLED' },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+
+  if (updated.userId) {
+    void sendPushToClient(updated.userId, {
+      title: 'Pedido rechazado',
+      body: `${updated.business?.name ?? 'El negocio'} no pudo tomar tu pedido. No se te cobró.`,
+      data: { type: 'order_cancelled', orderId },
+    });
+  }
+
+  const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  return summary;
+}
+
+/**
+ * El restaurante marca el pedido LISTO para recoger. Es un timestamp paralelo a
+ * los estados de entrega (el conductor puede ir en camino mientras se cocina),
+ * por eso no cambia el enum `status`. Avisa al cliente y al repartidor asignado.
+ */
+export async function markOrderReadyByBusiness(
+  businessId: string,
+  orderId: string,
+): Promise<ClientOrderSummaryDTO | null> {
+  const existing = await prisma.order.findUnique({ where: { id: orderId } });
+  if (!existing || existing.businessId !== businessId) return null;
+  // Solo tiene sentido cuando está en preparación o el repartidor ya va/está.
+  const okStates = ['PREPARING', 'DRIVER_TO_PICKUP', 'AT_PICKUP'];
+  if (!okStates.includes(existing.status) || existing.readyAt) return null;
+
+  const updated = await prisma.order.update({
+    where: { id: orderId },
+    data: { readyAt: new Date() },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+
+  if (updated.driverId) {
+    _sendToDriver?.(updated.driverId, { type: 'order_ready', orderId });
+  }
+  if (updated.userId) {
+    void sendPushToClient(updated.userId, {
+      title: 'Pedido listo',
+      body: `Tu pedido en ${updated.business?.name ?? 'el negocio'} está listo y saldrá pronto.`,
+      data: { type: 'order_ready', orderId },
+    });
+  }
+
+  const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
   return summary;
 }
 
@@ -251,7 +417,8 @@ export async function acceptClientOrder(
   driverId: string,
 ): Promise<ClientOrderSummaryDTO | null> {
   const existing = await prisma.order.findUnique({ where: { id: orderId } });
-  if (!existing || existing.status !== 'CONFIRMED' || existing.driverId) return null;
+  // El pedido llega al matching en PREPARING (el restaurante ya lo aceptó).
+  if (!existing || existing.status !== 'PREPARING' || existing.driverId) return null;
 
   const d = await prisma.driver.findUnique({
     where: { id: driverId },
@@ -297,8 +464,9 @@ export async function acceptClientOrder(
 export async function cancelClientOrder(clientId: string, orderId: string): Promise<boolean> {
   const order = await prisma.order.findFirst({ where: { id: orderId, userId: clientId } });
   if (!order) return false;
-  const cancellable = ['CONFIRMED', 'DRIVER_TO_PICKUP', 'AT_PICKUP'];
+  const cancellable = ['PENDING', 'CONFIRMED', 'PREPARING', 'DRIVER_TO_PICKUP', 'AT_PICKUP'];
   if (!cancellable.includes(order.status)) return false;
+  clearOrderAcceptTimer(orderId);
 
   const updated = await prisma.order.update({
     where: { id: orderId },
@@ -638,6 +806,7 @@ type PrismaOrder = {
   pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
   createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
   driverName: string | null; driverPhone: string | null; customerName: string | null;
+  prepMinutes: number | null; acceptedAt: Date | null; readyAt: Date | null;
 };
 
 type PrismaOrderLine = {
@@ -646,7 +815,9 @@ type PrismaOrderLine = {
 
 function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine[]): ClientOrderSummaryDTO {
   const statusMap: Record<string, string> = {
+    PENDING: 'pending',
     CONFIRMED: 'confirmed',
+    PREPARING: 'preparing',
     DRIVER_TO_PICKUP: 'driverToPickup',
     AT_PICKUP: 'atPickup',
     IN_TRANSIT: 'inTransit',
@@ -676,6 +847,9 @@ function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine
     createdAt: o.createdAt.toISOString(),
     pickedUpAt: o.pickedUpAt?.toISOString(),
     deliveredAt: o.deliveredAt?.toISOString(),
+    prepMinutes: o.prepMinutes ?? undefined,
+    acceptedAt: o.acceptedAt?.toISOString(),
+    readyAt: o.readyAt?.toISOString(),
   };
 }
 

@@ -438,6 +438,8 @@ function _orderStatusForPortal(status: string): string {
     case 'DRIVER_TO_PICKUP':
     case 'AT_PICKUP':
     case 'IN_TRANSIT': return 'IN_PROGRESS';
+    case 'PENDING':
+    case 'PREPARING':
     case 'CONFIRMED': return 'SEARCHING';
     default: return status; // CANCELLED
   }

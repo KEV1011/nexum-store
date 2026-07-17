@@ -3,8 +3,14 @@
 /// Refleja el mismo ciclo que ve el negocio y el conductor, garantizando
 /// una única fuente de verdad en toda la plataforma Nexum.
 enum CustomerOrderStatus {
+  /// Pedido enviado, esperando que el restaurante lo acepte.
+  pending,
+
   /// Pedido confirmado, buscando conductor.
   confirmed,
+
+  /// El restaurante está preparando el pedido (con tiempo estimado).
+  preparing,
 
   /// Conductor en camino al local a recoger.
   driverToPickup,
@@ -24,7 +30,9 @@ enum CustomerOrderStatus {
 
 extension CustomerOrderStatusX on CustomerOrderStatus {
   String get label => switch (this) {
+        CustomerOrderStatus.pending => 'Esperando confirmación del negocio',
         CustomerOrderStatus.confirmed => 'Pedido confirmado',
+        CustomerOrderStatus.preparing => 'Preparando tu pedido',
         CustomerOrderStatus.driverToPickup => 'Conductor en camino al local',
         CustomerOrderStatus.atPickup => 'Recogiendo tu pedido',
         CustomerOrderStatus.inTransit => 'En camino hacia ti',
@@ -34,8 +42,10 @@ extension CustomerOrderStatusX on CustomerOrderStatus {
 
   /// Índice 0-4 para pintar la barra de progreso del seguimiento.
   int get step => switch (this) {
+        CustomerOrderStatus.pending => 0,
         CustomerOrderStatus.confirmed => 0,
-        CustomerOrderStatus.driverToPickup => 1,
+        CustomerOrderStatus.preparing => 1,
+        CustomerOrderStatus.driverToPickup => 2,
         CustomerOrderStatus.atPickup => 2,
         CustomerOrderStatus.inTransit => 3,
         CustomerOrderStatus.delivered => 4,
@@ -86,6 +96,9 @@ class CustomerOrderEntity {
     this.driverName,
     this.driverPhone,
     this.etaMinutes,
+    this.prepMinutes,
+    this.acceptedAt,
+    this.readyAt,
     this.pickedUpAt,
     this.deliveredAt,
     this.pickupPhotoPath,
@@ -114,6 +127,13 @@ class CustomerOrderEntity {
         driverName: j['driverName'] as String?,
         driverPhone: j['driverPhone'] as String?,
         etaMinutes: j['etaMinutes'] as int?,
+        prepMinutes: j['prepMinutes'] as int?,
+        acceptedAt: j['acceptedAt'] != null
+            ? DateTime.tryParse(j['acceptedAt'] as String)
+            : null,
+        readyAt: j['readyAt'] != null
+            ? DateTime.tryParse(j['readyAt'] as String)
+            : null,
         pickedUpAt: j['pickedUpAt'] != null
             ? DateTime.parse(j['pickedUpAt'] as String)
             : null,
@@ -154,6 +174,13 @@ class CustomerOrderEntity {
         driverName: j['driverName'] as String?,
         driverPhone: j['driverPhone'] as String?,
         etaMinutes: (j['etaMinutes'] as num?)?.toInt(),
+        prepMinutes: (j['prepMinutes'] as num?)?.toInt(),
+        acceptedAt: j['acceptedAt'] != null
+            ? DateTime.tryParse(j['acceptedAt'] as String)
+            : null,
+        readyAt: j['readyAt'] != null
+            ? DateTime.tryParse(j['readyAt'] as String)
+            : null,
         pickedUpAt: j['pickedUpAt'] != null
             ? DateTime.tryParse(j['pickedUpAt'] as String)
             : null,
@@ -179,6 +206,15 @@ class CustomerOrderEntity {
   final String? driverName;
   final String? driverPhone;
   final int? etaMinutes;
+
+  /// Tiempo de preparación (min) que fijó el restaurante al aceptar.
+  final int? prepMinutes;
+
+  /// Momento en que el restaurante aceptó (arranca el contador de cocina).
+  final DateTime? acceptedAt;
+
+  /// Momento en que el restaurante marcó el pedido listo para recoger.
+  final DateTime? readyAt;
 
   final DateTime? pickedUpAt;
   final DateTime? deliveredAt;
@@ -208,6 +244,25 @@ class CustomerOrderEntity {
   bool get isCancelled => status == CustomerOrderStatus.cancelled;
   bool get isActive => !isDelivered && !isCancelled;
 
+  /// El restaurante ya marcó el pedido listo para recoger.
+  bool get isReady => readyAt != null;
+
+  /// Hora estimada en que el pedido estará listo (aceptado + preparación).
+  DateTime? get estimatedReadyAt =>
+      (acceptedAt != null && prepMinutes != null)
+          ? acceptedAt!.add(Duration(minutes: prepMinutes!))
+          : null;
+
+  /// Minutos restantes de preparación (>= 0). Null si no hay estimación o ya
+  /// está listo. Sirve para el contador en vivo del seguimiento.
+  int? get prepMinutesRemaining {
+    if (isReady) return null;
+    final eta = estimatedReadyAt;
+    if (eta == null) return null;
+    final diff = eta.difference(DateTime.now()).inMinutes;
+    return diff < 0 ? 0 : diff;
+  }
+
   /// Cadena de custodia completa: foto en el local + prueba de entrega.
   bool get hasFullCustody => hasPickupProof && hasDeliveryProof;
 
@@ -216,6 +271,9 @@ class CustomerOrderEntity {
     String? driverName,
     String? driverPhone,
     int? etaMinutes,
+    int? prepMinutes,
+    DateTime? acceptedAt,
+    DateTime? readyAt,
     DateTime? pickedUpAt,
     DateTime? deliveredAt,
     String? pickupPhotoPath,
@@ -239,6 +297,9 @@ class CustomerOrderEntity {
       driverName: driverName ?? this.driverName,
       driverPhone: driverPhone ?? this.driverPhone,
       etaMinutes: etaMinutes ?? this.etaMinutes,
+      prepMinutes: prepMinutes ?? this.prepMinutes,
+      acceptedAt: acceptedAt ?? this.acceptedAt,
+      readyAt: readyAt ?? this.readyAt,
       pickedUpAt: pickedUpAt ?? this.pickedUpAt,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       pickupPhotoPath: pickupPhotoPath ?? this.pickupPhotoPath,
@@ -264,6 +325,9 @@ class CustomerOrderEntity {
         'driverName': driverName,
         'driverPhone': driverPhone,
         'etaMinutes': etaMinutes,
+        'prepMinutes': prepMinutes,
+        'acceptedAt': acceptedAt?.toIso8601String(),
+        'readyAt': readyAt?.toIso8601String(),
         'pickedUpAt': pickedUpAt?.toIso8601String(),
         'deliveredAt': deliveredAt?.toIso8601String(),
         'pickupPhotoPath': pickupPhotoPath,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -36,6 +38,24 @@ class OrderTrackingScreen extends ConsumerStatefulWidget {
 class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
   bool _ratingShown = false;
   CustomerOrderEntity? _pendingRatingOrder;
+
+  // Refresca la vista cada 30 s para que el contador de preparación en vivo
+  // ("listo en ~X min") avance aunque no llegue una actualización del backend.
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,8 +102,9 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
             _DriverCard(order: order),
             const SizedBox(height: AppConstants.spacingM),
           ],
-          if (order.status != CustomerOrderStatus.confirmed &&
-              !order.isDelivered) ...[
+          // El mapa de seguimiento solo tiene sentido con repartidor asignado
+          // (antes se pintaba un repartidor falso mientras el negocio cocinaba).
+          if (order.driverName != null && !order.isDelivered) ...[
             _TrackingMap(order: order),
             const SizedBox(height: AppConstants.spacingM),
           ],
@@ -102,7 +123,9 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
           ],
           const SizedBox(height: AppConstants.spacingL),
           _OrderSummary(order: order),
-          if (order.status == CustomerOrderStatus.confirmed) ...[
+          // Se puede cancelar mientras el repartidor no haya recogido el pedido.
+          if (order.isActive &&
+              order.status != CustomerOrderStatus.inTransit) ...[
             const SizedBox(height: AppConstants.spacingM),
             _CancelButton(onCancel: () => _confirmCancel(context)),
           ],
@@ -373,6 +396,32 @@ class _StatusHeader extends StatelessWidget {
 
   final CustomerOrderEntity order;
 
+  /// Mensaje de estado con ETA en vivo, priorizando la fase de cocina.
+  String _subtitle(CustomerOrderEntity o) {
+    if (o.isDelivered) return 'Tu pedido de ${o.businessName} fue entregado.';
+    if (o.isCancelled) return 'Tu pedido de ${o.businessName} fue cancelado.';
+    switch (o.status) {
+      case CustomerOrderStatus.pending:
+        return '${o.businessName} está confirmando tu pedido…';
+      case CustomerOrderStatus.preparing:
+        if (o.isReady) return '¡Tu pedido está listo! Sale hacia ti en breve.';
+        final rem = o.prepMinutesRemaining;
+        if (rem != null) {
+          return rem <= 0
+              ? '${o.businessName} está terminando tu pedido…'
+              : 'Listo en ~$rem min · ${o.businessName} lo está preparando';
+        }
+        return '${o.businessName} está preparando tu pedido';
+      default:
+        if (o.isReady && o.driverName == null) {
+          return '¡Listo! Buscando repartidor para llevártelo';
+        }
+        return o.etaMinutes != null
+            ? 'Llega en ~${o.etaMinutes} min desde ${o.businessName}'
+            : 'Tu pedido de ${o.businessName} va en camino';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -393,7 +442,10 @@ class _StatusHeader extends StatelessWidget {
               Icon(
                 order.isDelivered
                     ? Icons.check_circle_rounded
-                    : Icons.delivery_dining_rounded,
+                    : (order.status == CustomerOrderStatus.pending ||
+                            order.status == CustomerOrderStatus.preparing)
+                        ? Icons.restaurant_rounded
+                        : Icons.delivery_dining_rounded,
                 color: Colors.white,
                 size: 28,
               ),
@@ -413,12 +465,7 @@ class _StatusHeader extends StatelessWidget {
           ),
           const SizedBox(height: AppConstants.spacingS),
           Text(
-            order.isDelivered
-                ? 'Tu pedido de ${order.businessName} fue entregado.'
-                : order.etaMinutes != null
-                    ? 'Llega en ~${order.etaMinutes} min desde '
-                        '${order.businessName}'
-                    : 'Preparando tu pedido de ${order.businessName}',
+            _subtitle(order),
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 14,

@@ -541,8 +541,9 @@ async function _offerOrderToCandidate(
   const candidate = candidates[index]!;
 
   // El pedido debe seguir disponible (pudo aceptarse o cancelarse entretanto).
+  // Llega al matching en PREPARING (el restaurante ya lo aceptó y cocina).
   const info = await getOrderOfferInfo(orderId);
-  if (!info || info.status !== 'CONFIRMED' || info.hasDriver) return;
+  if (!info || info.status !== 'PREPARING' || info.hasDriver) return;
 
   const timeout = setTimeout(() => {
     void onOrderDeclineOrTimeout(orderId);

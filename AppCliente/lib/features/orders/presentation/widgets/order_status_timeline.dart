@@ -5,25 +5,42 @@ import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
 
-/// Línea de tiempo vertical con los 5 pasos del pedido.
+/// Línea de tiempo vertical con los 5 pasos del pedido. Las etiquetas son fijas
+/// (no derivan del enum, que tiene estados que no son pasos, como `cancelled`).
 class OrderStatusTimeline extends StatelessWidget {
   const OrderStatusTimeline({required this.status, super.key});
 
   final CustomerOrderStatus status;
 
+  /// Los 5 pasos visibles, alineados con `CustomerOrderStatusX.step` (0-4).
+  static const _labels = [
+    'Pedido confirmado',
+    'En preparación',
+    'Conductor recogiendo',
+    'En camino hacia ti',
+    'Entregado',
+  ];
+
   @override
   Widget build(BuildContext context) {
-    const steps = CustomerOrderStatus.values;
+    if (status == CustomerOrderStatus.cancelled) {
+      return const _TimelineStep(
+        label: 'Pedido cancelado',
+        isDone: false,
+        isCurrent: true,
+        isLast: true,
+      );
+    }
     final currentStep = status.step;
 
     return Column(
       children: [
-        for (var i = 0; i < steps.length; i++)
+        for (var i = 0; i < _labels.length; i++)
           _TimelineStep(
-            label: steps[i].label,
+            label: _labels[i],
             isDone: i < currentStep,
             isCurrent: i == currentStep,
-            isLast: i == steps.length - 1,
+            isLast: i == _labels.length - 1,
           ),
       ],
     );
