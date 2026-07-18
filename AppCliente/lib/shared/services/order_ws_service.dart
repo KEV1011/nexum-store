@@ -18,7 +18,7 @@ class OrderUpdateEvent {
 }
 
 /// Singleton WebSocket client para recibir actualizaciones de pedidos
-/// en tiempo real desde el backend Nexum.
+/// en tiempo real desde el backend ZIPA.
 ///
 /// Protocolo cliente → servidor:
 ///   {"type": "client_auth", "token": "..."}   ← autenticación

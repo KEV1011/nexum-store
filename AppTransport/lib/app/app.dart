@@ -6,8 +6,8 @@ import 'package:nexum_driver/app/theme/app_theme.dart';
 import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/network/interceptors/auth_interceptor.dart';
 
-class NexumDriverApp extends ConsumerWidget {
-  const NexumDriverApp({super.key});
+class ZIPADriverApp extends ConsumerWidget {
+  const ZIPADriverApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -18,7 +18,7 @@ class NexumDriverApp extends ConsumerWidget {
     AuthInterceptor.onSessionExpired = () => router.go(AppRoutes.login);
 
     return MaterialApp.router(
-      title: 'Nexum Driver',
+      title: 'ZIPA Conductor',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(),
       darkTheme: AppTheme.darkTheme(),

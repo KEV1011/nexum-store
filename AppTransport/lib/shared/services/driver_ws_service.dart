@@ -27,7 +27,7 @@ class TripSettlement {
 }
 
 /// Singleton WebSocket driver service for real-time communication with the
-/// Nexum backend.
+/// ZIPA backend.
 ///
 /// Lifecycle:
 ///   await connect(token, workMode)  → authenticate → returns true on auth_ok

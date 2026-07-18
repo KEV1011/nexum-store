@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 
-/// Tipos de servicio disponibles en Nexum Driver (Pamplona, Colombia).
+/// Tipos de servicio disponibles en ZIPA Conductor (Pamplona, Colombia).
 enum ServiceType {
   particular,
   taxi,

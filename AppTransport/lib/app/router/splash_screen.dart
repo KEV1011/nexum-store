@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:nexum_driver/app/theme/app_colors.dart';
-import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 
 /// Pantalla de carga inicial con animación de entrada.
 class SplashScreen extends StatefulWidget {
@@ -52,8 +50,9 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
+          // Esmeralda pleno → hondo (marca ZIPA).
           gradient: LinearGradient(
-            colors: [Color(0xFF003D1F), Color(0xFF00C853), Color(0xFF00963D)],
+            colors: [Color(0xFF12C892), Color(0xFF0A7D57), Color(0xFF075C40)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             stops: [0.0, 0.55, 1.0],
@@ -64,35 +63,19 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo icon
+                // Marca ZIPA (Zip-Pin + wordmark).
                 ScaleTransition(
                   scale: _scale,
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: context.surfaceColor,
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.25),
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.two_wheeler_rounded,
-                        size: 54,
-                        color: AppColors.primary,
-                      ),
-                    ),
+                  child: Image.asset(
+                    'assets/icons/splash_logo.png',
+                    width: 176,
+                    height: 210,
+                    fit: BoxFit.contain,
                   ),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
 
-                // App name
+                // Subtítulo de la app del conductor
                 FadeTransition(
                   opacity: _fadeTitle,
                   child: SlideTransition(
@@ -100,27 +83,14 @@ class _SplashScreenState extends State<SplashScreen>
                       begin: const Offset(0, 0.3),
                       end: Offset.zero,
                     ).animate(_fadeTitle),
-                    child: const Column(
-                      children: [
-                        Text(
-                          'NEXUM',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 38,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 6,
-                          ),
-                        ),
-                        Text(
-                          'DRIVER',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w400,
-                            letterSpacing: 10,
-                          ),
-                        ),
-                      ],
+                    child: const Text(
+                      'CONDUCTOR',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: 10,
+                      ),
                     ),
                   ),
                 ),
@@ -186,7 +156,7 @@ class _PulseDotsState extends State<_PulseDots>
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: context.surfaceColor,
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),

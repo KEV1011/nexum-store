@@ -96,7 +96,7 @@ class PaymentMethodsScreen extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     'Tus pagos en línea se procesan por Wompi, vigilado por la '
-                    'Superintendencia Financiera. Nexum no almacena tu tarjeta.',
+                    'Superintendencia Financiera. ZIPA no almacena tu tarjeta.',
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 12,

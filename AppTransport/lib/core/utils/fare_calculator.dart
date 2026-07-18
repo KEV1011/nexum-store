@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:nexum_driver/core/constants/app_constants.dart';
 
-/// Calculadora de tarifas para la plataforma Nexum (Pamplona, Colombia).
+/// Calculadora de tarifas para la plataforma ZIPA (Pamplona, Colombia).
 ///
 /// Fórmula:
 /// Tarifa = max(TARIFA_MÍNIMA, BASE + (distancia_km × TASA_KM) + (duración_min × TASA_MIN))

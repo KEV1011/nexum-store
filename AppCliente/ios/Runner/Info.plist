@@ -14,7 +14,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Nexum Client</string>
+	<string>ZIPA</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -34,11 +34,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Nexum usa tu ubicación para fijar el punto de recogida, mostrar conductores cercanos y seguir tu viaje en tiempo real.</string>
+	<string>ZIPA usa tu ubicación para fijar el punto de recogida, mostrar conductores cercanos y seguir tu viaje en tiempo real.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Nexum usa la cámara para adjuntar fotos en pedidos y soporte.</string>
+	<string>ZIPA usa la cámara para adjuntar fotos en pedidos y soporte.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Nexum accede a tus fotos para adjuntar imágenes en pedidos y soporte.</string>
+	<string>ZIPA accede a tus fotos para adjuntar imágenes en pedidos y soporte.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

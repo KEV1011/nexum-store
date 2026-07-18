@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-/// Transiciones de página para la app Nexum Driver.
+/// Transiciones de página para la app ZIPA Conductor.
 abstract final class AppTransitions {
   /// Slide desde abajo + fade — para pantallas secundarias (push).
   static Page<T> slideUp<T>({

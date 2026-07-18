@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
-/// Configuración de conexión al backend Nexum.
+/// Configuración de conexión al backend ZIPA.
 ///
 /// - En **debug** (flutter run / Android Studio) apunta por defecto al backend
 ///   LOCAL del emulador Android (`10.0.2.2` = localhost del host). Es el flujo

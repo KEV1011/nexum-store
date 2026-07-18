@@ -1,7 +1,7 @@
 /// Estado de un pedido desde la perspectiva del cliente.
 ///
 /// Refleja el mismo ciclo que ve el negocio y el conductor, garantizando
-/// una única fuente de verdad en toda la plataforma Nexum.
+/// una única fuente de verdad en toda la plataforma ZIPA.
 enum CustomerOrderStatus {
   /// Pedido enviado, esperando que el restaurante lo acepte.
   pending,

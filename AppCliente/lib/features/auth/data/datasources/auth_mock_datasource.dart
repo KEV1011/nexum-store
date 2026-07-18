@@ -30,7 +30,7 @@ class AuthMockDataSource implements AuthDataSource {
       'client': {
         'id': 'client-${normalized.hashCode.abs()}',
         'phone': phoneNumber,
-        'name': 'Cliente Nexum',
+        'name': 'Cliente ZIPA',
       },
     };
   }

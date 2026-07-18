@@ -55,7 +55,7 @@ class AuthRepository {
       final client = ClientEntity(
         id: c['id'] as String,
         phone: c['phone'] as String,
-        name: c['name'] as String? ?? 'Usuario Nexum',
+        name: c['name'] as String? ?? 'Usuario ZIPA',
       );
 
       // Persist profile so checkAuth() can restore it without an API call.
@@ -97,7 +97,7 @@ class AuthRepository {
       return ClientEntity(
         id: map['id'] as String,
         phone: map['phone'] as String,
-        name: map['name'] as String? ?? 'Usuario Nexum',
+        name: map['name'] as String? ?? 'Usuario ZIPA',
       );
     } catch (_) {
       return null;

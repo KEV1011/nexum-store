@@ -5,7 +5,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 
-/// Privacidad y manejo de datos. Explica de forma clara qué datos usa Nexum y
+/// Privacidad y manejo de datos. Explica de forma clara qué datos usa ZIPA y
 /// para qué (Ley 1581 de 2012 de protección de datos personales — Colombia).
 class PrivacyScreen extends StatelessWidget {
   const PrivacyScreen({super.key});
@@ -44,7 +44,7 @@ class PrivacyScreen extends StatelessWidget {
             icon: Icons.credit_card_rounded,
             title: 'Pagos',
             body: 'Los pagos en línea los procesa Wompi (Bancolombia), vigilado '
-                'por la Superintendencia Financiera. Nexum NO almacena los datos '
+                'por la Superintendencia Financiera. ZIPA NO almacena los datos '
                 'de tu tarjeta.',
           ),
           _Section(
@@ -152,7 +152,7 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'Nexum · Tratamiento de datos conforme a la Ley 1581 de 2012 (Colombia).',
+      'ZIPA · Tratamiento de datos conforme a la Ley 1581 de 2012 (Colombia).',
       textAlign: TextAlign.center,
       style: TextStyle(
         fontFamily: 'Inter',

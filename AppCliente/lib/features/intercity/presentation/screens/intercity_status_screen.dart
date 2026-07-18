@@ -870,7 +870,7 @@ class _SafetyBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'Comparte el viaje con alguien de confianza. '
-              'Nexum registra la ruta y los datos del conductor.',
+              'ZIPA registra la ruta y los datos del conductor.',
               style: TextStyle(color: AppColors.warning, fontSize: 11),
             ),
           ),

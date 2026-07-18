@@ -467,7 +467,7 @@ class _MessengerCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '  ·  Tu mensajero Nexum',
+                      '  ·  Tu mensajero ZIPA',
                       style: TextStyle(
                           fontSize: 12, color: context.textSecondaryColor),
                     ),

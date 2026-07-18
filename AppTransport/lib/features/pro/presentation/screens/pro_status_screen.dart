@@ -7,7 +7,7 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/features/pro/presentation/providers/pro_status_provider.dart';
 
-/// Nexum Pro: nivel del conductor (Bronce → Diamante) calculado por el
+/// ZIPA Pro: nivel del conductor (Bronce → Diamante) calculado por el
 /// backend con servicios liquidados y calificación reales. Nada inventado:
 /// un conductor nuevo ve Bronce con 0 servicios.
 class ProStatusScreen extends ConsumerStatefulWidget {
@@ -47,7 +47,7 @@ class _ProStatusScreenState extends ConsumerState<ProStatusScreen> {
     return Scaffold(
       backgroundColor: context.backgroundColor,
       appBar: AppBar(
-        title: const Text('Nexum Pro'),
+        title: const Text('ZIPA Pro'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => safeBack(context),

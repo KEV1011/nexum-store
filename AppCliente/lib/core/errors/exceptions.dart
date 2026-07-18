@@ -1,4 +1,4 @@
-/// Excepciones internas de Nexum Cliente. Se convierten en Failure en repos.
+/// Excepciones internas de ZIPA Cliente. Se convierten en Failure en repos.
 library;
 
 class AppException implements Exception {

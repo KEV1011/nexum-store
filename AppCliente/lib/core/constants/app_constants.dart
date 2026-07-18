@@ -1,7 +1,7 @@
-/// Constantes globales de la aplicación Nexum Cliente.
+/// Constantes globales de la aplicación ZIPA Cliente.
 abstract final class AppConstants {
   // Nombre de la app
-  static const String appName = 'Nexum Cliente';
+  static const String appName = 'ZIPA';
   static const String appVersion = '1.0.0';
 
   // Storage keys

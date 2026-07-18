@@ -497,7 +497,7 @@ const _faqs = [
     icon: Icons.payments_outlined,
     question: '¿Cuándo recibo mis pagos?',
     answer:
-        'Los pagos se acreditan automáticamente en tu billetera Nexum al finalizar cada viaje. Puedes solicitar retiros a tu cuenta bancaria en cualquier momento desde la sección Billetera.',
+        'Los pagos se acreditan automáticamente en tu billetera ZIPA al finalizar cada viaje. Puedes solicitar retiros a tu cuenta bancaria en cualquier momento desde la sección Billetera.',
   ),
   _Faq(
     icon: Icons.cancel_outlined,
@@ -521,7 +521,7 @@ const _faqs = [
     icon: Icons.document_scanner_rounded,
     question: '¿Qué documentos necesito tener al día?',
     answer:
-        'Licencia de conducción vigente, SOAT al día, revisión técnico-mecánica (si aplica) y tarjeta de operación. Nexum puede solicitarte verificación en cualquier momento.',
+        'Licencia de conducción vigente, SOAT al día, revisión técnico-mecánica (si aplica) y tarjeta de operación. ZIPA puede solicitarte verificación en cualquier momento.',
   ),
   _Faq(
     icon: Icons.account_balance_rounded,
@@ -533,13 +533,13 @@ const _faqs = [
     icon: Icons.card_giftcard_rounded,
     question: '¿Cómo funcionan los bonos e incentivos?',
     answer:
-        'Nexum ofrece bonos por metas de viajes semanales, zonas de alta demanda (surge) y calificación perfecta. Los bonos se acreditan automáticamente en tu billetera al cumplir los requisitos.',
+        'ZIPA ofrece bonos por metas de viajes semanales, zonas de alta demanda (surge) y calificación perfecta. Los bonos se acreditan automáticamente en tu billetera al cumplir los requisitos.',
   ),
   _Faq(
     icon: Icons.block_rounded,
     question: '¿Por qué puede bloquearse mi cuenta?',
     answer:
-        'Las causas más comunes son: tasa de cancelación alta (>5%), reportes de pasajeros, documentos vencidos o comportamiento contrario a las políticas de Nexum. Contacta soporte para apelar una suspensión.',
+        'Las causas más comunes son: tasa de cancelación alta (>5%), reportes de pasajeros, documentos vencidos o comportamiento contrario a las políticas de ZIPA. Contacta soporte para apelar una suspensión.',
   ),
 ];
 

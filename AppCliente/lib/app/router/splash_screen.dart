@@ -1,55 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:nexum_client/app/theme/app_colors.dart';
-import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 
 /// Pantalla de bienvenida mientras se inicializa la app.
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
 
+  // Esmeralda hondo — igual que el splash nativo para una transición sin costura.
+  static const _zipaGreen = Color(0xFF0A7D57);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.primary,
+      backgroundColor: _zipaGreen,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                color: context.surfaceColor,
-                borderRadius:
-                    BorderRadius.circular(AppConstants.radiusXLarge),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppColors.shadowMedium,
-                    blurRadius: 24,
-                    offset: Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.delivery_dining_rounded,
-                size: 56,
-                color: AppColors.primary,
-              ),
+            // Marca ZIPA (Zip-Pin blanco con la Z calada).
+            Image.asset(
+              'assets/icons/splash_logo.png',
+              width: 168,
+              height: 200,
+              fit: BoxFit.contain,
             ),
-            const SizedBox(height: AppConstants.spacingL),
-            const Text(
-              'Nexum',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 34,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: AppConstants.spacingXS),
+            const SizedBox(height: AppConstants.spacingS),
             Text(
-              'Movilidad y domicilios',
+              'Tu ciudad, en un zip',
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 15,

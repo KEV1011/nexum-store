@@ -21,7 +21,7 @@ class PaymentInit {
   final double amount;
 }
 
-/// Cliente del API de pagos (Wompi a través del backend Nexum).
+/// Cliente del API de pagos (Wompi a través del backend ZIPA).
 ///
 /// El backend genera el link de checkout firmado y valida la firma del webhook;
 /// la app solo inicia el pago, abre el checkout y consulta el estado.
