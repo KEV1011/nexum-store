@@ -30,7 +30,7 @@ export function recordCompletedTrip(entry: TripEarningEntry, driverId?: string):
     },
   }).catch(() => { /* ignore DB errors */ });
 
-  // Contador de servicios de por vida del conductor (perfil + niveles Nexum
+  // Contador de servicios de por vida del conductor (perfil + niveles ZIPA
   // Pro). Antes nadie lo incrementaba y quedaba congelado en 0.
   void prisma.driver
     .update({ where: { id: driverId }, data: { totalTrips: { increment: 1 } } })

@@ -75,7 +75,7 @@ export default function RoutesManager({ api }: { api: OperatorApi }) {
         <span className="text-slate-400 font-normal">({routes.length})</span>
       </h2>
       <p className="text-xs text-slate-400 mb-3">
-        Declara las rutas intermunicipales que operas. Nexum las autoriza tras verificar tu habilitación;
+        Declara las rutas intermunicipales que operas. ZIPA las autoriza tras verificar tu habilitación;
         solo entonces recibirás despachos de esos trayectos.
       </p>
 

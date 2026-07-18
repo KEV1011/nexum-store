@@ -1,4 +1,4 @@
-// ── Nexum Pro: niveles del conductor con datos 100 % reales ──────────────────
+// ── ZIPA Pro: niveles del conductor con datos 100 % reales ──────────────────
 //
 // El nivel se calcula SOLO con datos verificables de la plataforma:
 //  - Servicios completados: suma de DriverEarning.tripCount (alimentado por
@@ -48,7 +48,7 @@ export const PRO_LEVELS: ProLevelDef[] = [
     label: 'Diamante',
     minServices: 500,
     minRating: 4.85,
-    perks: ['Insignia Diamante', 'Soporte prioritario 24/7', 'Reconocimiento en la comunidad Nexum'],
+    perks: ['Insignia Diamante', 'Soporte prioritario 24/7', 'Reconocimiento en la comunidad ZIPA'],
   },
 ];
 

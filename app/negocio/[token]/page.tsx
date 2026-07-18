@@ -725,7 +725,7 @@ export default function PortalDashboard({
 
         <footer className="text-center py-4">
           <p className="text-xs text-slate-400">
-            Nexum Delivery ·{' '}
+            ZIPA Delivery ·{' '}
             <Link href="/negocio/registro" className="text-teal-600 hover:underline">
               ¿Qué es este portal?
             </Link>

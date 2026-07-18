@@ -208,7 +208,7 @@ export async function updateErrandStatus(
     }
     void sendPushToClient(existing.userId, {
       title: 'Mandado entregado',
-      body: 'Tu mandado fue entregado. ¡Gracias por usar Nexum!',
+      body: 'Tu mandado fue entregado. ¡Gracias por usar ZIPA!',
       data: { type: 'errand_delivered', errandId },
     });
   }

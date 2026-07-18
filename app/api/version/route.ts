@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 
 export function GET() {
   return NextResponse.json({
-    service: 'Nexum Portal',
+    service: 'ZIPA Portal',
     status: 'ok',
     commit:
       process.env.RENDER_GIT_COMMIT ??

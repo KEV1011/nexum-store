@@ -104,7 +104,7 @@ export default function OperatorRegisterPage() {
           </div>
           <div>
             <h1 className="font-bold text-slate-900 text-lg leading-tight">Registra tu empresa</h1>
-            <p className="text-xs text-slate-400">Nexum · Portal de Empresa</p>
+            <p className="text-xs text-slate-400">ZIPA · Portal de Empresa</p>
           </div>
         </div>
 

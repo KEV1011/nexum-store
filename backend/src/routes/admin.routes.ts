@@ -458,7 +458,7 @@ const PANEL_HTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nexum — Panel de Operación</title>
+  <title>ZIPA — Panel de Operación</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #f1f5f9; color: #0f172a; }
@@ -507,7 +507,7 @@ const PANEL_HTML = `<!DOCTYPE html>
 <body>
 
 <div id="login" class="card">
-  <h2>Panel de operación Nexum</h2>
+  <h2>Panel de operación ZIPA</h2>
   <div id="step-phone">
     <input id="phone" type="tel" autocomplete="tel" placeholder="+573001234567" />
     <button onclick="sendOtp()">Enviarme el código</button>
@@ -523,7 +523,7 @@ const PANEL_HTML = `<!DOCTYPE html>
 <div id="app">
   <header>
     <span style="font-size:1.4rem">🛡️</span>
-    <h1>Nexum — Panel de Operación</h1>
+    <h1>ZIPA — Panel de Operación</h1>
     <button onclick="logout()" style="width:auto">Salir</button>
   </header>
   <div style="padding:18px 0">

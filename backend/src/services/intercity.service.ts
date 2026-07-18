@@ -343,7 +343,7 @@ export async function driverAcceptIntercity(
   clearTimeout(state.timeout);
   intercityOffers.delete(bookingId);
 
-  let driverName = 'Conductor Nexum';
+  let driverName = 'Conductor ZIPA';
   let driverPhone: string | null = null;
   let driverVehicle: string | null = null;
   try {

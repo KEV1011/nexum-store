@@ -192,7 +192,7 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
             <Building2 className="w-7 h-7 text-white" />
           </div>
           <h1 className="font-bold text-slate-900 text-lg">Portal de Empresa</h1>
-          <p className="text-xs text-slate-400">Nexum · Gestión de flota</p>
+          <p className="text-xs text-slate-400">ZIPA · Gestión de flota</p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">

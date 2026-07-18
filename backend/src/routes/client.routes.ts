@@ -562,7 +562,7 @@ router.get('/intercity/pool/:id', clientAuthMiddleware, async (req, res) => {
 router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) => {
   const dto = req.body as Partial<BookSeatsDTO>;
   if (dto.seatsBooked === undefined) { res.status(400).json({ success: false, error: 'seatsBooked is required' }); return; }
-  const passengerName = (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero Nexum';
+  const passengerName = (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero ZIPA';
   try {
     const result = await bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
       seatsBooked: dto.seatsBooked, pickupAddress: dto.pickupAddress, notes: dto.notes,
@@ -594,7 +594,7 @@ router.post('/rides/request', clientAuthMiddleware, async (req, res) => {
     if (dto[f] === undefined) { res.status(400).json({ success: false, error: `${f} is required` }); return; }
   }
   const client = await getClientById(req.clientId!);
-  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Usuario Nexum';
+  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Usuario ZIPA';
   try {
     const ride = await createRideRequest(req.clientId!, clientName, req.clientPhone!, {
       serviceType: dto['serviceType'] as never,

@@ -314,7 +314,7 @@ export function getIntercityRoute(origin: IntercityCity, dest: IntercityCity): I
 // not commercial transport), the per-seat fare a particular driver may charge
 // is capped at the proportional running cost of the trip — fuel plus an
 // estimated toll allowance — divided across the occupants. The driver recovers
-// costs but does not profit, so Nexum acts as a tech intermediary rather than a
+// costs but does not profit, so ZIPA acts as a tech intermediary rather than a
 // transport operator. See INTERCITY_LEGAL_NOTES.md for the full legal context
 // and the three configurable options (A default / B dual / C no-cap).
 

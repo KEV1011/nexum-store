@@ -4,20 +4,20 @@ import { WhatsAppNotification, WhatsAppTemplateId, DeliveryOrderSummaryDTO } fro
 
 const TEMPLATES: Record<WhatsAppTemplateId, (vars: Record<string, string>) => string> = {
   driver_arriving: (v) =>
-    `🛵 *Nexum Envíos*\n\n` +
+    `🛵 *ZIPA Envíos*\n\n` +
     `El conductor *${v['driverName']}* está en camino a recoger el pedido *${v['orderRef']}* de tu local.\n\n` +
     `ETA: ~${v['eta']} minutos\n` +
     `📱 ${v['driverPhone']}`,
 
   order_picked_up: (v) =>
-    `📦 *Nexum Envíos — Pedido recogido*\n\n` +
+    `📦 *ZIPA Envíos — Pedido recogido*\n\n` +
     `El pedido *${v['orderRef']}* para *${v['customerName']}* salió de tu local.\n\n` +
     `📸 Foto de verificación registrada\n` +
     `🕐 ${v['time']}\n\n` +
     `El conductor va en camino al cliente. Tu pedido está protegido.`,
 
   order_delivered: (v) =>
-    `✅ *Nexum Envíos — Entregado*\n\n` +
+    `✅ *ZIPA Envíos — Entregado*\n\n` +
     `El pedido *${v['orderRef']}* fue entregado a *${v['customerName']}*.\n\n` +
     `🕐 Hora de entrega: ${v['time']}\n` +
     `${v['hasSignature'] === 'true' ? '✍️ Firmado digitalmente' : '📸 Foto de entrega registrada'}\n\n` +

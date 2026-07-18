@@ -2,10 +2,10 @@
 
 export const metadata = {
   title: {
-    default: 'Portal de Negocios — Nexum',
-    template: '%s | Portal Nexum',
+    default: 'Portal de Negocios — ZIPA',
+    template: '%s | Portal ZIPA',
   },
-  description: 'Portal de seguimiento de pedidos en tiempo real para negocios aliados de Nexum.',
+  description: 'Portal de seguimiento de pedidos en tiempo real para negocios aliados de ZIPA.',
 }
 
 export default function NegocioLayout({ children }: { children: React.ReactNode }) {

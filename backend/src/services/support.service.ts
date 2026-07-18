@@ -165,7 +165,7 @@ export async function adminReply(ticketId: string, body: string): Promise<Suppor
     where: { id: ticketId },
     data: { status: t.status === 'CLOSED' ? 'IN_PROGRESS' : t.status === 'OPEN' ? 'IN_PROGRESS' : t.status },
   });
-  _notifyRequester(t.requesterKind, t.requesterId, 'Soporte Nexum respondió tu ticket', text);
+  _notifyRequester(t.requesterKind, t.requesterId, 'Soporte ZIPA respondió tu ticket', text);
   return getTicketForAdmin(ticketId);
 }
 

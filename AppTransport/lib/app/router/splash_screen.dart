@@ -50,9 +50,10 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
-          // Esmeralda pleno → hondo (marca ZIPA).
+          // Pizarra oscura (identidad del conductor), igual que el ícono y el
+          // splash nativo — la variante oscura de ZIPA.
           gradient: LinearGradient(
-            colors: [Color(0xFF12C892), Color(0xFF0A7D57), Color(0xFF075C40)],
+            colors: [Color(0xFF141B18), Color(0xFF0B0F0E), Color(0xFF060908)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             stops: [0.0, 0.55, 1.0],
@@ -86,9 +87,9 @@ class _SplashScreenState extends State<SplashScreen>
                     child: const Text(
                       'CONDUCTOR',
                       style: TextStyle(
-                        color: Colors.white70,
+                        color: Color(0xFF12C892),
                         fontSize: 16,
-                        fontWeight: FontWeight.w400,
+                        fontWeight: FontWeight.w500,
                         letterSpacing: 10,
                       ),
                     ),

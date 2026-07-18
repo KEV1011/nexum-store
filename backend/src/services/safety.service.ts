@@ -137,7 +137,7 @@ async function notifyTrustedContact(payload: {
   }
 
   const body =
-    `ALERTA NEXUM: tu contacto activó el botón de emergencia. ` +
+    `ALERTA ZIPA: tu contacto activó el botón de emergencia. ` +
     `Ubicación: ${mapLink}` +
     (trackLink ? ` · Sigue el viaje en vivo: ${trackLink}` : '') +
     ` · Si no logras comunicarte, llama al 123.`;
