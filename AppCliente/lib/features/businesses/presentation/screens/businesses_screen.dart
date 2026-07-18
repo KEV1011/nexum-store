@@ -58,9 +58,15 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                   onTap: () => context.push(AppRoutes.addresses),
                 ),
               ),
-              SliverToBoxAdapter(
-                child: _ProminentSearchBar(
-                  onChanged: (v) => setState(() => _query = v),
+              // Buscador FIJO al hacer scroll (patrón Rappi): la lupa "sigue"
+              // al usuario en vez de desaparecer con el contenido.
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _PinnedSearchBarDelegate(
+                  background: context.backgroundColor,
+                  child: _ProminentSearchBar(
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
@@ -340,6 +346,38 @@ class _ProminentSearchBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Delegate que mantiene el buscador ANCLADO arriba mientras el usuario
+/// desplaza la lista (la lupa "queda con movimiento": acompaña el scroll).
+class _PinnedSearchBarDelegate extends SliverPersistentHeaderDelegate {
+  _PinnedSearchBarDelegate({required this.child, required this.background});
+
+  final Widget child;
+  final Color background;
+
+  // Alto del buscador (TextField denso) + un respiro vertical.
+  static const double _height = 68;
+
+  @override
+  double get minExtent => _height;
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: background,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: child,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_PinnedSearchBarDelegate oldDelegate) =>
+      background != oldDelegate.background || child != oldDelegate.child;
 }
 
 // ── Promo teaser ──────────────────────────────────────────────────────────────

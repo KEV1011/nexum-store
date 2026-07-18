@@ -157,6 +157,7 @@ class ErrandEntity {
     this.messengerPhone,
     this.messengerRating,
     this.actualPurchaseCost,
+    this.rating,
   });
 
   final String id;
@@ -180,8 +181,13 @@ class ErrandEntity {
   /// Lo que efectivamente costaron las compras (lo reporta el mensajero).
   final double? actualPurchaseCost;
 
+  /// Calificación que el cliente le dio al mensajero (1-5), o null si no ha
+  /// calificado todavía.
+  final int? rating;
+
   bool get hasMessenger => messengerName != null;
   bool get isActive => status.isActive;
+  bool get isRated => rating != null;
   bool get hasBudget => purchaseBudget != null && purchaseBudget! > 0;
 
   /// Total estimado a pagar: tarifa de servicio + presupuesto de compras.
@@ -205,6 +211,7 @@ class ErrandEntity {
     String? messengerPhone,
     double? messengerRating,
     double? actualPurchaseCost,
+    int? rating,
   }) =>
       ErrandEntity(
         id: id ?? this.id,
@@ -221,5 +228,6 @@ class ErrandEntity {
         messengerPhone: messengerPhone ?? this.messengerPhone,
         messengerRating: messengerRating ?? this.messengerRating,
         actualPurchaseCost: actualPurchaseCost ?? this.actualPurchaseCost,
+        rating: rating ?? this.rating,
       );
 }

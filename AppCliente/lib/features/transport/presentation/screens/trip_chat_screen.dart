@@ -57,7 +57,14 @@ class _TripChatScreenState extends ConsumerState<TripChatScreen> {
   void initState() {
     super.initState();
     _sub = _ws.tripChatEvents.listen(_onEvent);
-    _ws.subscribeTripChat(widget.tripId); // el backend responde con el historial
+    // El cliente usa polling REST para el tracking, así que el WS puede NO estar
+    // conectado al abrir el chat (antes: subscribeTripChat sobre un canal nulo =
+    // no-op silencioso → "el chat no funciona"). Conectamos primero; si ya está
+    // conectado, connect() devuelve de inmediato. subscribeTripChat registra la
+    // suscripción y el backend responde con el historial.
+    unawaited(_ws.connect().then((_) {
+      if (mounted) _ws.subscribeTripChat(widget.tripId);
+    }));
   }
 
   void _onEvent(TripChatEvent e) {

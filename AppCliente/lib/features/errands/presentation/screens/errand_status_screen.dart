@@ -84,9 +84,9 @@ class ErrandStatusScreen extends ConsumerWidget {
                 child: ElevatedButton.icon(
                   onPressed: () {
                     HapticFeedback.mediumImpact();
+                    // Marca entregado y se QUEDA en la pantalla: abajo aparece
+                    // el resumen + la calificación (antes rebotaba a /home).
                     ref.read(errandProvider.notifier).markDelivered();
-                    _showRatingHint(context);
-                    context.go('/home');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
@@ -103,6 +103,34 @@ class ErrandStatusScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+
+            // ── Envío entregado: calificación + cierre ──────────────────────
+            if (errand.status == ErrandStatus.delivered) ...[
+              _ErrandRatingSection(errand: errand),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    ref.read(errandProvider.notifier).dismissDelivered();
+                    context.go('/home');
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.home_rounded),
+                  label: const Text(
+                    'Volver al inicio',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -114,6 +142,11 @@ class ErrandStatusScreen extends ConsumerWidget {
     if (errand.status.canCancel) {
       _confirmCancel(context, ref);
     } else {
+      // Si ya se entregó, archívalo antes de salir para no dejar la tarjeta
+      // colgada en memoria.
+      if (errand.status == ErrandStatus.delivered) {
+        ref.read(errandProvider.notifier).dismissDelivered();
+      }
       context.go('/home');
     }
   }
@@ -143,12 +176,74 @@ class ErrandStatusScreen extends ConsumerWidget {
     }
   }
 
-  void _showRatingHint(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('¡Envío completado! Gracias por usar Nexum.'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
+}
+
+// ── Calificación del mensajero (envío entregado) ──────────────────────────────
+
+class _ErrandRatingSection extends ConsumerStatefulWidget {
+  const _ErrandRatingSection({required this.errand});
+  final ErrandEntity errand;
+
+  @override
+  ConsumerState<_ErrandRatingSection> createState() =>
+      _ErrandRatingSectionState();
+}
+
+class _ErrandRatingSectionState extends ConsumerState<_ErrandRatingSection> {
+  int _selected = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.errand.rating ?? 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.starContainer,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.star.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            '¡Envío entregado! ¿Cómo estuvo ${widget.errand.messengerName ?? 'el mensajero'}?',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (i) {
+              final filled = i < _selected;
+              return GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _selected = i + 1);
+                  ref.read(errandProvider.notifier).rateActiveErrand(i + 1);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(
+                    filled ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: AppColors.star,
+                    size: 36,
+                  ),
+                ),
+              );
+            }),
+          ),
+          if (_selected > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              '¡Gracias por calificar!',
+              style: TextStyle(color: context.textSecondaryColor, fontSize: 13),
+            ),
+          ],
+        ],
       ),
     );
   }

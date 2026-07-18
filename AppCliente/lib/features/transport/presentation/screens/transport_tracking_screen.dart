@@ -1313,8 +1313,9 @@ class _ChatButtonState extends State<_ChatButton> {
       final msg = event.message;
       if (msg == null) return;
       if (event.tripId != null && event.tripId != widget.tripId) return;
-      // Solo mensajes del conductor (no los propios del pasajero).
-      if ((msg['senderRole'] as String?) == 'passenger') return;
+      // Solo mensajes del conductor (no los propios del pasajero). El backend
+      // marca los del pasajero con senderRole 'client'.
+      if ((msg['senderRole'] as String?) == 'client') return;
       setState(() => _unread++);
       AppSnackbar.showInfo(context, 'Nuevo mensaje de ${widget.peerName}');
     });

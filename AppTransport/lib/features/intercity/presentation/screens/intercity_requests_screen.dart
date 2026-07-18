@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
@@ -236,6 +237,15 @@ class _ActiveTripCard extends StatelessWidget {
   final VoidCallback onComplete;
   final VoidCallback onDismiss;
 
+  Future<void> _callPassenger(BuildContext context, String phone) async {
+    final uri = Uri(scheme: 'tel', path: phone.replaceAll(' ', ''));
+    if (!await launchUrl(uri) && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir el marcador.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final req = trip.request;
@@ -290,6 +300,43 @@ class _ActiveTripCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
+            // Pasajero: quién viaja + botón para llamar y coordinar la recogida
+            // (solo cuando el viaje ya está confirmado o en curso).
+            if (req.passengerName != null && req.passengerName!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.person_rounded,
+                        size: 15, color: context.textSecondaryColor),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Pasajero: ${req.passengerName}',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: context.textPrimaryColor,
+                        ),
+                      ),
+                    ),
+                    if (req.passengerPhone != null &&
+                        req.passengerPhone!.isNotEmpty &&
+                        (trip.phase == IntercityTripPhase.confirmed ||
+                            trip.phase == IntercityTripPhase.inProgress))
+                      TextButton.icon(
+                        onPressed: () => _callPassenger(context, req.passengerPhone!),
+                        icon: const Icon(Icons.phone_rounded, size: 16),
+                        style: TextButton.styleFrom(
+                          foregroundColor: _kIntercityColor,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        label: const Text('Llamar'),
+                      ),
+                  ],
+                ),
+              ),
             _InfoRow(
               icon: Icons.payments_outlined,
               text: 'Tarifa: ${CurrencyFormatter.format(trip.fare)}',
