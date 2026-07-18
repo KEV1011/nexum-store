@@ -176,7 +176,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       context,
       ref,
       amount: amount,
-      description: 'Pedido en ${businessName ?? 'Nexum'}',
+      description: 'Pedido en ${businessName ?? 'ZIPA'}',
       orderId: orderId,
     );
     if (!mounted) return;

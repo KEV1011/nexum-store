@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/network/dio_client.dart';
 
-/// Nivel Nexum Pro del conductor, calculado por el backend con datos 100 %
+/// Nivel ZIPA Pro del conductor, calculado por el backend con datos 100 %
 /// reales (`GET /driver/pro-status`): servicios liquidados + calificación.
 class ProLevelDef {
   const ProLevelDef({

@@ -2,7 +2,7 @@ import 'package:nexum_driver/core/errors/exceptions.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/features/auth/data/datasources/auth_datasource.dart';
 
-/// Remote datasource for authentication via the Nexum Driver REST API.
+/// Remote datasource for authentication via the ZIPA Conductor REST API.
 class AuthRemoteDataSource implements AuthDataSource {
   AuthRemoteDataSource({DioClient? client}) : _client = client ?? DioClient();
 

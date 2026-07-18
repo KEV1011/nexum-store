@@ -185,7 +185,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                         value: CurrencyFormatter.format(grossFare),
                       ),
                       _FareRow(
-                        label: 'Comisión Nexum (${(AppConstants.platformCommissionRate * 100).toInt()}%)',
+                        label: 'Comisión ZIPA (${(AppConstants.platformCommissionRate * 100).toInt()}%)',
                         value: '- ${CurrencyFormatter.format(commission)}',
                         valueColor: AppColors.error,
                       ),

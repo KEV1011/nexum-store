@@ -398,7 +398,7 @@ class _PromoTeaser extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Nexum Fest 🎉',
+                  'ZIPA Fest 🎉',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,

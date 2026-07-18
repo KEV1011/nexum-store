@@ -769,5 +769,5 @@ const _emergencyNumbers = [
   ('Policía Nacional', '123'),
   ('Bomberos', '119'),
   ('Cruz Roja', '132'),
-  ('Línea Nexum Emergencias', '01-800-090-0111'),
+  ('Línea ZIPA Emergencias', '01-800-090-0111'),
 ];

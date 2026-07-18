@@ -312,16 +312,16 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
     final commissionPct =
         (AppConstants.platformCommissionRate * 100).toStringAsFixed(0);
     final summary = '''
-Resumen de ganancias — Nexum Driver
+Resumen de ganancias — ZIPA Conductor
 Período: $period
 ─────────────────────────────
 Viajes completados: $trips
 Tarifa bruta total: ${CurrencyFormatter.format(gross)}
-Comisión Nexum ($commissionPct%): -${CurrencyFormatter.format(commission)}
+Comisión ZIPA ($commissionPct%): -${CurrencyFormatter.format(commission)}
 ─────────────────────────────
 GANANCIAS NETAS: ${CurrencyFormatter.format(net)}
 ─────────────────────────────
-Generado por Nexum Driver v${AppConstants.appVersion}''';
+Generado por ZIPA Conductor v${AppConstants.appVersion}''';
 
     showDialog<void>(
       context: context,
@@ -662,7 +662,7 @@ class _CommissionCard extends StatelessWidget {
                 ),
                 _CommissionLegend(
                   color: AppColors.error,
-                  label: 'Nexum ($nexumPct%)',
+                  label: 'ZIPA ($nexumPct%)',
                   value: '-${CurrencyFormatter.format(commission)}',
                   alignRight: true,
                 ),

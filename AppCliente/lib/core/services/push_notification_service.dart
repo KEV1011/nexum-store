@@ -110,7 +110,7 @@ class PushNotificationService {
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'nexum_client',
-          'Notificaciones Nexum',
+          'Notificaciones ZIPA',
           channelDescription:
               'Estado de tus viajes, pedidos, pagos y promociones',
           importance: Importance.high,

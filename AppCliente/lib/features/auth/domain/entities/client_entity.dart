@@ -1,4 +1,4 @@
-/// Cliente autenticado en la app Nexum.
+/// Cliente autenticado en la app ZIPA.
 class ClientEntity {
   const ClientEntity({
     required this.id,

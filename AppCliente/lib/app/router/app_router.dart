@@ -56,7 +56,7 @@ import 'package:nexum_client/features/transport/presentation/screens/'
     'trip_history_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Rutas con nombre de la app Nexum Cliente.
+/// Rutas con nombre de la app ZIPA Cliente.
 abstract final class AppRoutes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';

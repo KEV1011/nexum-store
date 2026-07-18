@@ -124,7 +124,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                     const SizedBox(height: AppConstants.spacingXXL),
 
                     // ── Logo ─────────────────────────────────────────────
-                    Center(child: _NexumDriverLogo()),
+                    Center(child: _ZIPADriverLogo()),
 
                     const SizedBox(height: AppConstants.spacingXXL),
 
@@ -185,7 +185,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
 
                     // ── Terms disclaimer ──────────────────────────────────
                     Text(
-                      'Al continuar aceptas los Términos y Condiciones y la\nPolítica de Privacidad de Nexum.',
+                      'Al continuar aceptas los Términos y Condiciones y la\nPolítica de Privacidad de ZIPA.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: context.textSecondaryColor,
                       ),
@@ -204,7 +204,7 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
 
-class _NexumDriverLogo extends StatelessWidget {
+class _ZIPADriverLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -249,7 +249,7 @@ class _NexumDriverLogo extends StatelessWidget {
           ),
           const SizedBox(height: AppConstants.spacingM),
           const Text(
-            'Nexum Conductor',
+            'ZIPA Conductor',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 24,
@@ -260,7 +260,7 @@ class _NexumDriverLogo extends StatelessWidget {
           ),
           const SizedBox(height: AppConstants.spacingXS),
           Text(
-            'Conduce y gana con Nexum',
+            'Conduce y gana con ZIPA',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 13.5,

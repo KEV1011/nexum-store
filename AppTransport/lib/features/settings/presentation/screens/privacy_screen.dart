@@ -82,7 +82,7 @@ class _Intro extends StatelessWidget {
           Expanded(
             child: Text(
               'Cuidamos tus datos y solo los usamos para que puedas trabajar '
-              'con Nexum de forma segura.',
+              'con ZIPA de forma segura.',
               style: const TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 13,
@@ -147,7 +147,7 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'Nexum · Tratamiento de datos conforme a la Ley 1581 de 2012 (Colombia).',
+      'ZIPA · Tratamiento de datos conforme a la Ley 1581 de 2012 (Colombia).',
       textAlign: TextAlign.center,
       style: TextStyle(
         fontFamily: 'Inter',

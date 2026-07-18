@@ -180,7 +180,7 @@ class _Bubble extends StatelessWidget {
     final mine = msg.isMine;
     final time =
         '${msg.sentAt.hour.toString().padLeft(2, '0')}:${msg.sentAt.minute.toString().padLeft(2, '0')}';
-    final label = msg.isSupport ? 'Soporte Nexum' : null;
+    final label = msg.isSupport ? 'Soporte ZIPA' : null;
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,

@@ -97,7 +97,7 @@ class LocationService {
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'Nexum Conductor — en línea',
+          notificationTitle: 'ZIPA Conductor — en línea',
           notificationText:
               'Compartiendo tu ubicación para asignarte viajes cercanos',
           notificationChannelName: 'Ubicación en segundo plano',

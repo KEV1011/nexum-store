@@ -21,7 +21,7 @@ Future<void> main() async {
 
   runApp(
     const ProviderScope(
-      child: NexumClientApp(),
+      child: ZIPAClientApp(),
     ),
   );
 }

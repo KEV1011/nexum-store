@@ -356,7 +356,7 @@ class _BrandHero extends StatelessWidget {
           ),
           const SizedBox(height: AppConstants.spacingM),
           const Text(
-            'Nexum',
+            'ZIPA',
             style: TextStyle(
               fontFamily: 'Inter',
               color: Colors.white,

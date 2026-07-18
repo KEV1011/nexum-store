@@ -100,7 +100,7 @@ class TripHistoryTile extends StatelessWidget {
                   icon: Icons.receipt_rounded,
                 ),
                 _DetailRow(
-                  label: 'Comisión Nexum (15%)',
+                  label: 'Comisión ZIPA (15%)',
                   value: '- ${CurrencyFormatter.format(trip.commission)}',
                   icon: Icons.percent_rounded,
                   valueColor: AppColors.error,

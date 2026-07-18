@@ -37,5 +37,5 @@ void main() async {
     ),
   );
 
-  runApp(const ProviderScope(child: NexumDriverApp()));
+  runApp(const ProviderScope(child: ZIPADriverApp()));
 }

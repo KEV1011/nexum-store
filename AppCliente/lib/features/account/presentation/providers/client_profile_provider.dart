@@ -16,7 +16,7 @@ class ClientProfile {
 
   factory ClientProfile.fromJson(Map<String, dynamic> json) {
     return ClientProfile(
-      name: json['name'] as String? ?? 'Cliente Nexum',
+      name: json['name'] as String? ?? 'Cliente ZIPA',
       phone: json['phone'] as String? ?? '',
       email: json['email'] as String?,
       avatarUrl: json['avatarUrl'] as String?,

@@ -361,7 +361,7 @@ class _SlideWelcomeState extends State<_SlideWelcome>
               ),
               const SizedBox(height: 40),
               const Text(
-                'Bienvenido a\nNexum Driver',
+                'Bienvenido a\nZIPA Conductor',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.white,

@@ -535,7 +535,7 @@ class _BottomPanel extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // Bloque hero intermunicipal PRIMERO: es el plus de Nexum y antes
+          // Bloque hero intermunicipal PRIMERO: es el plus de ZIPA y antes
           // quedaba bajo el pliegue del panel colapsado (nadie lo veía).
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -846,7 +846,7 @@ class _RecentTile extends StatelessWidget {
 
 // ── Bloque hero intermunicipal ───────────────────────────────────────────────
 //
-// La propuesta diferencial de Nexum en la región: viajes entre municipios
+// La propuesta diferencial de ZIPA en la región: viajes entre municipios
 // privados o con cupos compartidos. Por eso ocupa el lugar protagonista.
 
 class _IntercityHeroCard extends StatelessWidget {

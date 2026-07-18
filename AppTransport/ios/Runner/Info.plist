@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Nexum Driver</string>
+	<string>ZIPA Conductor</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -27,13 +27,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Nexum Conductor usa tu ubicación para recibir viajes cercanos y compartir tu posición con el pasajero durante el servicio.</string>
+	<string>ZIPA Conductor usa tu ubicación para recibir viajes cercanos y compartir tu posición con el pasajero durante el servicio.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Nexum Conductor usa tu ubicación en segundo plano para mantenerte visible mientras estás en línea.</string>
+	<string>ZIPA Conductor usa tu ubicación en segundo plano para mantenerte visible mientras estás en línea.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Nexum Conductor usa la cámara para subir tus documentos y pruebas de entrega.</string>
+	<string>ZIPA Conductor usa la cámara para subir tus documentos y pruebas de entrega.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Nexum Conductor accede a tus fotos para subir documentos y pruebas de entrega.</string>
+	<string>ZIPA Conductor accede a tus fotos para subir documentos y pruebas de entrega.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

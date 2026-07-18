@@ -24,7 +24,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       title: 'Tracking en vivo',
       body: 'Sigue cada paso de tu pedido en tiempo real, con el nombre '
           'y contacto de tu conductor.',
-      gradient: [Color(0xFF00C853), Color(0xFF00963D)],
+      gradient: [Color(0xFF12C892), Color(0xFF0A7D57)],
     ),
     _PageData(
       icon: Icons.verified_user_rounded,
@@ -34,11 +34,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       gradient: [Color(0xFF1565C0), Color(0xFF003C8F)],
     ),
     _PageData(
-      icon: Icons.delivery_dining_rounded,
-      title: 'Tu ciudad en minutos',
-      body: 'Restaurantes, droguerías y más, a tu puerta. '
-          'Nexum: movilidad hecha para tu ciudad.',
-      gradient: [Color(0xFF4A148C), Color(0xFF311B92)],
+      icon: Icons.location_on_rounded,
+      title: 'Tu ciudad, en un zip',
+      body: 'Viajes, envíos, mandados, pedidos e intermunicipal. '
+          'Todo ZIPA, en una sola app.',
+      gradient: [Color(0xFF12C892), Color(0xFF0A7D57)],
     ),
   ];
 

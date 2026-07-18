@@ -118,11 +118,11 @@ class AccountScreen extends ConsumerWidget {
               ),
               _SettingTile(
                 icon: Icons.info_outline_rounded,
-                title: 'Acerca de Nexum',
+                title: 'Acerca de ZIPA',
                 subtitle: 'Versión ${AppConstants.appVersion}',
                 onTap: () => AppSnackbar.showInfo(
                   context,
-                  'Nexum — Domicilios con cadena de custodia',
+                  'ZIPA — Domicilios con cadena de custodia',
                 ),
               ),
             ],
@@ -161,7 +161,7 @@ class AccountScreen extends ConsumerWidget {
           style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
         ),
         content: const Text(
-          '¿Deseas cerrar sesión de Nexum?',
+          '¿Deseas cerrar sesión de ZIPA?',
           style: TextStyle(fontFamily: 'Inter'),
         ),
         actions: [
@@ -195,7 +195,7 @@ class _ProfileHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(clientProfileProvider);
-    final name = profile?.name ?? client?.name ?? 'Cliente Nexum';
+    final name = profile?.name ?? client?.name ?? 'Cliente ZIPA';
     final phone = profile?.phone ?? client?.phone ?? '';
     final avatarUrl = profile?.avatarUrl;
 

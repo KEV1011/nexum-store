@@ -1,4 +1,4 @@
-/// Excepciones base de la aplicación Nexum Driver.
+/// Excepciones base de la aplicación ZIPA Conductor.
 /// Estas son excepciones internas que se convierten en [Failure] en la capa de dominio.
 
 /// Excepción base de la app

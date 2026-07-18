@@ -35,7 +35,7 @@ class DriverAffiliation {
   final bool isVerified;
   final String employmentType; // OWN | AFFILIATED
 
-  /// La empresa está habilitada y verificada por Nexum.
+  /// La empresa está habilitada y verificada por ZIPA.
   bool get isActiveVerified => isVerified && status == 'ACTIVE';
 
   String get typeLabel {

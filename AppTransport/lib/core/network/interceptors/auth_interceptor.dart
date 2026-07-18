@@ -16,7 +16,7 @@ class AuthInterceptor extends Interceptor {
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
             );
 
-  /// Hook global de sesión vencida. Lo registra [NexumDriverApp] al construir
+  /// Hook global de sesión vencida. Lo registra [ZIPADriverApp] al construir
   /// el router (aquí no hay acceso a GoRouter sin acoplar capas).
   static void Function()? onSessionExpired;
 

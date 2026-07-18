@@ -1,4 +1,4 @@
-/// Categoría de un negocio aliado en Nexum.
+/// Categoría de un negocio aliado en ZIPA.
 enum BusinessCategory {
   restaurant,
   supermarket,

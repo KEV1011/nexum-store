@@ -379,10 +379,10 @@ class ProfileScreen extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       aff.isActiveVerified
-                          ? 'Empresa habilitada y verificada por Nexum.'
+                          ? 'Empresa habilitada y verificada por ZIPA.'
                           : aff.status == 'SUSPENDED'
                               ? 'Empresa suspendida. No puedes operar bajo ella.'
-                              : 'Empresa en verificación. Podrás operar cuando Nexum la habilite.',
+                              : 'Empresa en verificación. Podrás operar cuando ZIPA la habilite.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: statusColor,
                         fontWeight: FontWeight.w600,

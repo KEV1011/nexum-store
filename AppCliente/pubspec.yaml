@@ -44,9 +44,9 @@ flutter_launcher_icons:
   android: true
   ios: true
   remove_alpha_ios: true
-  background_color_ios: "#00C853"
+  background_color_ios: "#0A7D57"
   image_path: "assets/icons/app_icon.png"
-  adaptive_icon_background: "#00C853"
+  adaptive_icon_background: "#0A7D57"
   adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
   min_sdk_android: 21
   web:
@@ -57,21 +57,22 @@ flutter_launcher_icons:
 # TODO(branding): requiere assets/icons/splash_logo.png. Genera con:
 #   dart run flutter_native_splash:create
 flutter_native_splash:
-  color: "#FFFFFF"
+  color: "#0A7D57"
   image: assets/icons/splash_logo.png
   android: true
   ios: true
   web: false
   android_12:
-    color: "#FFFFFF"
+    color: "#0A7D57"
     image: assets/icons/splash_logo.png
-    icon_background_color: "#00C853"
+    icon_background_color: "#0A7D57"
   fullscreen: true
 
 flutter:
   uses-material-design: true
 
   assets:
+    - assets/icons/
     - assets/fonts/
 
   fonts:

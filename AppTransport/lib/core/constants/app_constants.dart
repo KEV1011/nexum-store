@@ -3,10 +3,10 @@
 /// mirada qué versión corre el dispositivo.
 const String kBuildTag = String.fromEnvironment('BUILD_TAG', defaultValue: 'dev');
 
-/// Constantes globales de la aplicación Nexum Driver.
+/// Constantes globales de la aplicación ZIPA Conductor.
 abstract final class AppConstants {
   // Nombre de la app
-  static const String appName = 'Nexum Driver';
+  static const String appName = 'ZIPA Conductor';
   static const String appVersion = '1.0.0';
 
   // Storage keys
