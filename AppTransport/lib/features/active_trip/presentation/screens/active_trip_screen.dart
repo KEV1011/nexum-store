@@ -25,6 +25,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_p
 import 'package:nexum_driver/features/active_trip/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_marker.dart';
@@ -68,6 +69,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   int _waypointIndex = 0;
   bool _nearDestinationShown = false;
   StreamSubscription<String>? _orderCancelSub;
+  // Chat: mensajes sin leer del pasajero mientras el chat no está abierto.
+  StreamSubscription<Map<String, dynamic>>? _chatSub;
+  int _unreadChat = 0;
 
   @override
   void initState() {
@@ -105,6 +109,26 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             }
           });
         }
+
+        // Chat con el pasajero: avisa cuando llega un mensaje suyo y el chat no
+        // está abierto (badge en el botón + snackbar + vibración), para que el
+        // conductor sepa que le escribieron.
+        if (!trip.request.isOrder && !trip.request.isErrand) {
+          _chatSub = DriverWsService().tripChatEvents.listen((event) {
+            if (!mounted) return;
+            final msg = event['message'];
+            if (msg is! Map<String, dynamic>) return;
+            if (event['tripId'] != trip.request.id) return;
+            // Solo cuenta los mensajes del pasajero (no los propios).
+            if ((msg['senderRole'] as String?) == 'driver') return;
+            setState(() => _unreadChat++);
+            NotificationService().vibrateSelection();
+            AppSnackbar.showInfo(
+              context,
+              'Nuevo mensaje de ${trip.request.passenger.name}',
+            );
+          });
+        }
       }
     });
   }
@@ -113,6 +137,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   void dispose() {
     DriverWsService().activeTripId = null;
     _orderCancelSub?.cancel();
+    _chatSub?.cancel();
     _pulse.dispose();
     _movementTimer?.cancel();
     _etaTimer?.cancel();
@@ -626,25 +651,32 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
               // Chat con el pasajero — visible durante todo el viaje (viajes
               // normales; pedidos/mandados no usan el chat de viaje).
               if (!trip.request.isOrder && !trip.request.isErrand) ...[
-                Material(
-                  color: AppColors.primary,
-                  elevation: 4,
-                  shadowColor: AppColors.shadow,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => TripChatScreen(
-                          tripId: trip.request.id,
-                          peerName: trip.request.passenger.name,
-                        ),
+                Badge(
+                  isLabelVisible: _unreadChat > 0,
+                  label: Text('$_unreadChat'),
+                  child: Material(
+                    color: AppColors.primary,
+                    elevation: 4,
+                    shadowColor: AppColors.shadow,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() => _unreadChat = 0);
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => TripChatScreen(
+                              tripId: trip.request.id,
+                              peerName: trip.request.passenger.name,
+                            ),
+                          ),
+                        );
+                      },
+                      customBorder: const CircleBorder(),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.chat_bubble_rounded,
+                            size: 24, color: Colors.white),
                       ),
-                    ),
-                    customBorder: const CircleBorder(),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(Icons.chat_bubble_rounded,
-                          size: 24, color: Colors.white),
                     ),
                   ),
                 ),

@@ -54,8 +54,28 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                     children: [
                       _StatusBanner(profile: profile),
                       const SizedBox(height: 20),
+                      // Paso 1 — la selfie va PRIMERO: es lo primero que pedimos
+                      // por seguridad del conductor y del pasajero (antifraude).
                       const Text(
-                        'Documentos requeridos',
+                        '1. Verificación de identidad',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Toma una selfie para confirmar que eres tú. Es el primer '
+                        'paso: protege a los pasajeros y a tu cuenta contra '
+                        'suplantación.',
+                        style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                      ),
+                      const SizedBox(height: 12),
+                      _KycCard(
+                        busy: _kycBusy,
+                        onTakeSelfie: _kycBusy ? null : _takeSelfie,
+                        onSubmit: _kycBusy ? null : _submitKyc,
+                      ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        '2. Documentos requeridos',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 4),
@@ -75,23 +95,6 @@ class _VerificationScreenState extends ConsumerState<VerificationScreen> {
                           doc: doc,
                           onUpload: _uploading ? null : () => _upload(doc),
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Verificación de identidad',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Toma una selfie para confirmar que eres tú. Protege a los '
-                        'pasajeros y a tu cuenta contra suplantación.',
-                        style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
-                      ),
-                      const SizedBox(height: 12),
-                      _KycCard(
-                        busy: _kycBusy,
-                        onTakeSelfie: _kycBusy ? null : _takeSelfie,
-                        onSubmit: _kycBusy ? null : _submitKyc,
                       ),
                     ],
                   ),
