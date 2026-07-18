@@ -303,10 +303,20 @@ class _ProminentSearchBar extends StatelessWidget {
               color: context.textTertiaryColor,
               fontSize: 14,
             ),
-            prefixIcon: const Icon(
-              Icons.search_rounded,
-              color: AppColors.primary,
+            // Lupa alineada y del tamaño del texto (antes sobresalía).
+            prefixIcon: const Padding(
+              padding: EdgeInsets.only(left: 14, right: 10),
+              child: Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: AppColors.primary,
+              ),
             ),
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 0,
+              minHeight: 0,
+            ),
+            isDense: true,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide.none,

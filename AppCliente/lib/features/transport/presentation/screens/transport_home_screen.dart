@@ -477,7 +477,7 @@ class _BottomPanel extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(Icons.search_rounded,
-                        size: 22, color: _colorOf(selected)),
+                        size: 20, color: _colorOf(selected)),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
