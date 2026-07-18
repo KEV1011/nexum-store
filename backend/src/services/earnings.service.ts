@@ -127,15 +127,24 @@ export async function getDriverTripHistory(
   driverId: string,
   take = 50,
 ): Promise<DriverTripHistoryDTO[]> {
-  const trips = await prisma.trip.findMany({
-    where: { driverId, status: 'COMPLETED' },
-    orderBy: { completedAt: 'desc' },
-    take,
-  });
-  return trips.map((t) => {
+  // El historial de ganancias del conductor incluye TODOS los servicios que
+  // liquidan a su billetera, no solo los viajes urbanos: intermunicipal,
+  // mandados, pedidos y fletes. Antes solo se listaban los Trip, por eso "Mis
+  // ganancias" salía vacía si el conductor ganó con otros servicios.
+  const [trips, intercity, errands, orders, freights] = await Promise.all([
+    prisma.trip.findMany({ where: { driverId, status: 'COMPLETED' }, orderBy: { completedAt: 'desc' }, take }),
+    prisma.intercityBooking.findMany({ where: { driverId, status: 'COMPLETED' }, orderBy: { completedAt: 'desc' }, take }),
+    prisma.errand.findMany({ where: { driverId, status: 'DELIVERED' }, orderBy: { deliveredAt: 'desc' }, take }),
+    prisma.order.findMany({ where: { driverId, status: 'DELIVERED' }, orderBy: { deliveredAt: 'desc' }, take }),
+    prisma.freightRequest.findMany({ where: { driverId, status: 'COMPLETED' }, orderBy: { completedAt: 'desc' }, take }),
+  ]);
+
+  const rows: DriverTripHistoryDTO[] = [];
+
+  for (const t of trips) {
     const gross = t.finalFare ?? t.estimatedFare;
     const net = t.netEarning ?? 0;
-    return {
+    rows.push({
       id: t.id,
       passengerName: t.passengerName ?? 'Pasajero',
       originAddress: t.originAddress,
@@ -152,8 +161,102 @@ export async function getDriverTripHistory(
       startedAt: (t.startedAt ?? t.acceptedAt ?? t.createdAt).toISOString(),
       finishedAt: (t.completedAt ?? t.createdAt).toISOString(),
       rating: t.rating ?? null,
-    };
+    });
+  }
+
+  // Helper: los servicios que no guardan neto/comisión se derivan del bruto.
+  const derived = (gross: number) => ({
+    net: Math.round(gross * (1 - COMMISSION_RATE)),
+    commission: Math.round(gross * COMMISSION_RATE),
   });
+
+  for (const b of intercity) {
+    const gross = b.finalFare ?? b.offeredFare;
+    const d = derived(gross);
+    rows.push({
+      id: b.id,
+      passengerName: `Intermunicipal · ${b.origin} → ${b.destination}`,
+      originAddress: b.pickupAddress ?? String(b.origin),
+      originLat: 0, originLng: 0,
+      destAddress: String(b.destination),
+      destLat: 0, destLng: 0,
+      distanceKm: 0,
+      durationMinutes: 0,
+      grossFare: gross,
+      netEarning: d.net,
+      commission: d.commission,
+      startedAt: (b.completedAt ?? b.createdAt).toISOString(),
+      finishedAt: (b.completedAt ?? b.createdAt).toISOString(),
+      rating: b.rating ?? null,
+    });
+  }
+
+  for (const e of errands) {
+    const gross = e.serviceFee;
+    const d = derived(gross);
+    rows.push({
+      id: e.id,
+      passengerName: 'Mandado',
+      originAddress: e.pickupAddress,
+      originLat: 0, originLng: 0,
+      destAddress: e.dropoffAddress,
+      destLat: 0, destLng: 0,
+      distanceKm: 0,
+      durationMinutes: 0,
+      grossFare: gross,
+      netEarning: d.net,
+      commission: d.commission,
+      startedAt: (e.deliveredAt ?? e.createdAt).toISOString(),
+      finishedAt: (e.deliveredAt ?? e.createdAt).toISOString(),
+      rating: null,
+    });
+  }
+
+  for (const o of orders) {
+    const gross = o.deliveryFee;
+    const d = derived(gross);
+    rows.push({
+      id: o.id,
+      passengerName: o.customerName ? `Pedido · ${o.customerName}` : 'Pedido',
+      originAddress: 'Negocio',
+      originLat: 0, originLng: 0,
+      destAddress: o.deliveryAddress,
+      destLat: 0, destLng: 0,
+      distanceKm: 0,
+      durationMinutes: 0,
+      grossFare: gross,
+      netEarning: d.net,
+      commission: d.commission,
+      startedAt: (o.deliveredAt ?? o.createdAt).toISOString(),
+      finishedAt: (o.deliveredAt ?? o.createdAt).toISOString(),
+      rating: null,
+    });
+  }
+
+  for (const f of freights) {
+    const gross = f.finalPrice ?? 0;
+    const net = f.netEarning ?? Math.round(gross * (1 - COMMISSION_RATE));
+    rows.push({
+      id: f.id,
+      passengerName: 'Flete de carga',
+      originAddress: f.originAddress,
+      originLat: 0, originLng: 0,
+      destAddress: f.destAddress,
+      destLat: 0, destLng: 0,
+      distanceKm: 0,
+      durationMinutes: 0,
+      grossFare: gross,
+      netEarning: net,
+      commission: f.commission ?? Math.max(0, gross - net),
+      startedAt: (f.completedAt ?? f.createdAt).toISOString(),
+      finishedAt: (f.completedAt ?? f.createdAt).toISOString(),
+      rating: null,
+    });
+  }
+
+  // Orden global por fecha de finalización (más reciente primero) y recorte.
+  rows.sort((a, b) => new Date(b.finishedAt).getTime() - new Date(a.finishedAt).getTime());
+  return rows.slice(0, take);
 }
 
 export async function getWeeklyHistory(driverId?: string): Promise<DailyEarningsDTO[]> {

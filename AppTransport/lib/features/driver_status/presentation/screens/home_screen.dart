@@ -163,6 +163,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(intercityDriverProvider.notifier).loadAvailability();
         // Preferencias de servicio (qué solicitudes recibe).
         ref.read(servicePrefsProvider.notifier).load();
+        // Restaurar EN LÍNEA si el socket sigue conectado. Al terminar un viaje
+        // se navega al resumen con go(), que DESTRUYE este home; al volver, un
+        // home nuevo nacía "desconectado" aunque el conductor seguía en línea
+        // (socket vivo). Si el conductor se desconectó de verdad, el toggle
+        // cierra el socket, así que isConnected == sigue en línea.
+        if (DriverWsService().isConnected && mounted) {
+          setState(() => _state = _state.copyWith(isOnline: true));
+          _connectWs();
+        }
       },
     );
     // Con sesión activa, registrar el token FCM en el backend para recibir
