@@ -197,10 +197,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _toggleOnline() {
     final goingOnline = !_state.isOnline;
 
-    // Block going online when the driver is not yet verified.
+    // Block going online when the driver is not yet verified — salvo en modo
+    // piloto (verificationRequired=false), donde se permite operar sin esperar
+    // la aprobación del admin (para probar el arranque).
     if (goingOnline) {
       final profile = ref.read(driverProfileProvider).profile;
-      if (profile != null && !profile.isVerified) {
+      if (profile != null && profile.verificationRequired && !profile.isVerified) {
         context.push(AppRoutes.verification);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

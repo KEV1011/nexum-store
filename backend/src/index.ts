@@ -15,7 +15,7 @@ import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
 import { otpMode } from './services/otp.service';
-import { kycProviderName, kycEnforced } from './services/kyc.service';
+import { kycProviderName, kycEnforced, pilotSkipVerification } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 
 import authRouter from './routes/auth.routes';
@@ -99,6 +99,8 @@ app.get('/health', async (_req, res) => {
     // KYC: qué proveedor de identidad corre y si el gating bloquea el "conectarse".
     kyc: kycProviderName(),
     kycEnforce: kycEnforced(),
+    // Piloto: si está activo, el despacho ignora la verificación (probar arranque).
+    pilotSkipVerification: pilotSkipVerification(),
   });
 });
 

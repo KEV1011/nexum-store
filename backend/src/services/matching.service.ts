@@ -5,6 +5,7 @@ import { sendPushToDriver, sendPushToClient } from '../services/push.service';
 import { getErrandOfferInfo } from './errand.service';
 import { getOrderOfferInfo } from './order-offer.service';
 import { evaluateGeoJump } from './fraud.service';
+import { pilotSkipVerification } from './kyc.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -134,6 +135,12 @@ async function findNearestAvailableDrivers(
         )`
       : Prisma.empty;
 
+  // Piloto: se puede despachar a conductores aún no verificados (default off →
+  // en producción se exige d."isVerified" = true como siempre).
+  const verifiedFilter = pilotSkipVerification()
+    ? Prisma.empty
+    : Prisma.sql`AND d."isVerified" = true`;
+
   const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
     SELECT d."id" AS driver_id,
            ST_Distance(
@@ -143,7 +150,7 @@ async function findNearestAvailableDrivers(
     FROM "drivers" d
     WHERE d."geo" IS NOT NULL
       AND d."status" = 'ONLINE'
-      AND d."isVerified" = true
+      ${verifiedFilter}
       AND (${serviceKind} != 'trip' OR d."acceptsTrips" = true)
       AND (${serviceKind} != 'errand' OR d."acceptsErrands" = true)
       AND (${serviceKind} != 'order' OR d."acceptsOrders" = true)

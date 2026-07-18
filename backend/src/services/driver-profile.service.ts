@@ -8,6 +8,7 @@ import {
   UpsertDriverDocumentDTO,
 } from '../types';
 import { prisma } from '../lib/prisma';
+import { pilotSkipVerification } from './kyc.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Driver profile & document verification (Features D + E)
@@ -80,6 +81,8 @@ function _vehicleDescription(
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function isDriverVerified(driverId: string): Promise<boolean> {
+  // Piloto: se salta la verificación para recibir despacho (default off).
+  if (pilotSkipVerification()) return true;
   const driver = await prisma.driver.findUnique({
     where: { id: driverId },
     select: { isVerified: true },
@@ -123,6 +126,7 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
     bankAccountNumber: driver.bankAccountNumber ?? undefined,
     memberSince: driver.createdAt.toISOString(),
     isVerified: driver.isVerified,
+    verificationRequired: !pilotSkipVerification(),
     documents: docs,
     requiredDocsCount: REQUIRED_DOCS.length,
     approvedDocsCount: approvedCount,

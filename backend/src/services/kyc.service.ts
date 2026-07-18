@@ -25,6 +25,17 @@ export function kycEnforced(): boolean {
   return (process.env['KYC_ENFORCE'] ?? 'false').toLowerCase() === 'true';
 }
 
+/**
+ * Modo PILOTO: cuando `PILOT_SKIP_VERIFICATION=true`, los conductores pueden
+ * conectarse y recibir despacho SIN esperar la aprobación del admin. Sirve para
+ * probar toda la cadena de despacho (viajes, pon-tu-precio, intermunicipal) en
+ * el arranque, cuando aún no hay quién apruebe. APAGADO por defecto → en
+ * producción se exige verificación como siempre.
+ */
+export function pilotSkipVerification(): boolean {
+  return (process.env['PILOT_SKIP_VERIFICATION'] ?? 'false').toLowerCase() === 'true';
+}
+
 export interface KycStatusDTO {
   status: KycStatus;
   provider: string | null;
@@ -129,6 +140,8 @@ export async function setDriverKycStatus(
  * Con KYC_ENFORCE=false se comporta como antes (solo documentos).
  */
 export async function isDriverCleared(driverId: string): Promise<boolean> {
+  // Piloto: se salta toda la verificación (default off → producción intacta).
+  if (pilotSkipVerification()) return true;
   const d = await prisma.driver.findUnique({
     where: { id: driverId },
     select: { isVerified: true, kycStatus: true },
