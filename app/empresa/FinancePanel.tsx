@@ -78,7 +78,7 @@ export default function FinancePanel({ api }: { api: OperatorApi }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             <Stat label="Servicios" value={String(data.totalServices)} />
             <Stat label="Ingreso bruto" value={cop(data.totalGross)} />
-            <Stat label="Comisión Nexum" value={`- ${cop(data.totalCommission)}`} muted />
+            <Stat label="Comisión ZIPA" value={`- ${cop(data.totalCommission)}`} muted />
             <Stat label="Neto flota" value={cop(data.totalNet)} highlight />
           </div>
 

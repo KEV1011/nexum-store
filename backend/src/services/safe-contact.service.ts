@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Safe-contact module — number privacy between passengers and drivers.
 //
-// Like Uber/Didi, Nexum NEVER exposes the other party's real phone number by
+// Like Uber/Didi, ZIPA NEVER exposes the other party's real phone number by
 // default. Cross-party DTOs carry a `contactChannel` ('in_app_chat') plus an
 // optional `maskedPhone` (e.g. "+57 •••• ••• 12") shown only as a reference —
 // never as a directly-dialable number.

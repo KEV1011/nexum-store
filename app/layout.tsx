@@ -17,19 +17,19 @@ const montserrat = Montserrat({
 
 export const metadata: Metadata = {
   title: {
-    default:  'Nexum — Movilidad y envíos',
-    template: '%s | Nexum',
+    default:  'ZIPA — Movilidad y envíos',
+    template: '%s | ZIPA',
   },
   description:
     'Plataforma de movilidad, envíos y pedidos en Colombia. ' +
     'Portal de negocios aliados con seguimiento de pedidos en tiempo real.',
-  keywords: ['transporte', 'envíos', 'domicilios', 'Colombia', 'Nexum'],
-  authors:  [{ name: 'Nexum' }],
+  keywords: ['transporte', 'envíos', 'domicilios', 'Colombia', 'ZIPA'],
+  authors:  [{ name: 'ZIPA' }],
   openGraph: {
     type:        'website',
     locale:      'es_CO',
-    siteName:    'Nexum',
-    title:       'Nexum — Movilidad y envíos',
+    siteName:    'ZIPA',
+    title:       'ZIPA — Movilidad y envíos',
     description: 'Transporte, envíos y pedidos con seguimiento en tiempo real.',
   },
   robots: { index: true, follow: true },

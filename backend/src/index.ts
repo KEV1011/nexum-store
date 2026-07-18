@@ -66,7 +66,7 @@ const startTime = Date.now();
 // "Route not found" parece un servicio caído. Esto orienta sin exponer nada.
 app.get('/', (_req, res) => {
   res.status(200).json({
-    service: 'Nexum API',
+    service: 'ZIPA API',
     status: 'ok',
     salud: '/health',
     panel: '/admin',
@@ -174,7 +174,7 @@ setupWebSocket(wss);
 server.listen(PORT, () => {
   logger.info(
     { port: PORT, env: process.env['NODE_ENV'] ?? 'development' },
-    'Nexum API + WebSocket escuchando',
+    'ZIPA API + WebSocket escuchando',
   );
   scheduleDocumentExpiryChecks();
   // Purga periódica del mapa en memoria del rate-limit por cliente (antifraude).

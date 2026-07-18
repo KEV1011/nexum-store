@@ -513,7 +513,7 @@ router.post('/intercity/pool/publish', async (req: Request, res: Response): Prom
     });
     const trip = await publishPooledTrip(
       req.driverId!,
-      me?.name ?? 'Conductor Nexum',
+      me?.name ?? 'Conductor ZIPA',
       me?.phone ?? req.driverPhone ?? '',
       {
         origin: dto.origin,
@@ -614,7 +614,7 @@ router.get('/notifications', async (req: Request, res: Response): Promise<void> 
   }
 });
 
-// ── Nexum Pro: nivel del conductor con datos reales ──────────────────────────
+// ── ZIPA Pro: nivel del conductor con datos reales ──────────────────────────
 
 // GET /driver/pro-status — nivel, progreso al siguiente y escalera completa.
 router.get('/pro-status', async (req: Request, res: Response): Promise<void> => {

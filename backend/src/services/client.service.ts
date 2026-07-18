@@ -76,10 +76,10 @@ export async function verifyClientOtp(
 
   let user = await prisma.user.findUnique({ where: { phone: normalized } });
   if (!user) {
-    user = await prisma.user.create({ data: { phone: normalized, name: 'Usuario Nexum' } });
+    user = await prisma.user.create({ data: { phone: normalized, name: 'Usuario ZIPA' } });
   }
 
-  const client: ClientDTO = { id: user.id, phone: user.phone, name: user.name ?? 'Usuario Nexum' };
+  const client: ClientDTO = { id: user.id, phone: user.phone, name: user.name ?? 'Usuario ZIPA' };
   const payload: ClientJwtPayload = { clientId: user.id, phone: user.phone, role: 'client' };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   return { token, client };
@@ -99,7 +99,7 @@ export async function getClientNameByPhone(phone: string): Promise<string | null
 export async function getClientById(clientId: string): Promise<ClientDTO | null> {
   const user = await prisma.user.findUnique({ where: { id: clientId } });
   if (!user) return null;
-  return { id: user.id, phone: user.phone, name: user.name ?? 'Usuario Nexum' };
+  return { id: user.id, phone: user.phone, name: user.name ?? 'Usuario ZIPA' };
 }
 
 // ─── Perfil del cliente ───────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ export async function getClientProfile(clientId: string): Promise<ClientProfileD
   return {
     id: user.id,
     phone: user.phone,
-    name: user.name ?? 'Usuario Nexum',
+    name: user.name ?? 'Usuario ZIPA',
     email: user.email ?? undefined,
     avatarUrl: user.avatarUrl ?? undefined,
     memberSince: user.createdAt.toISOString(),
@@ -550,7 +550,7 @@ export async function updateOrderStatusByDriver(
   } else if (updated.userId && status === 'delivered') {
     void sendPushToClient(updated.userId, {
       title: 'Pedido entregado',
-      body: 'Tu pedido fue entregado. ¡Gracias por comprar con Nexum!',
+      body: 'Tu pedido fue entregado. ¡Gracias por comprar con ZIPA!',
       data: { type: 'order_delivered', orderId },
     });
   }

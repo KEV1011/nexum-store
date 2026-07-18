@@ -16,7 +16,7 @@ const router = Router();
 const STATUS_VIEW: Record<string, { icon: string; color: string; title: string; detail: string }> = {
   approved: {
     icon: '✓', color: '#00C853', title: 'Pago aprobado',
-    detail: 'Tu pago fue procesado con éxito. Ya puedes volver a la app Nexum.',
+    detail: 'Tu pago fue procesado con éxito. Ya puedes volver a la app ZIPA.',
   },
   rejected: {
     icon: '✕', color: '#D32F2F', title: 'Pago rechazado',
@@ -43,7 +43,7 @@ function _renderPage(status: string, reference: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   ${autoRefresh}
-  <title>${view.title} — Nexum</title>
+  <title>${view.title} — ZIPA</title>
   <style>
     body { margin:0; font-family:-apple-system,'Segoe UI',Roboto,sans-serif; background:#fff;
            display:flex; align-items:center; justify-content:center; min-height:100vh; }
@@ -69,7 +69,7 @@ function _renderPage(status: string, reference: string): string {
 
 router.get('/result', async (req: Request, res: Response): Promise<void> => {
   const ref = typeof req.query['ref'] === 'string' ? req.query['ref'] : '';
-  // Las referencias Nexum son NX-<timestamp>-<6 hex>; rechaza cualquier otra
+  // Las referencias ZIPA son NX-<timestamp>-<6 hex>; rechaza cualquier otra
   // cosa antes de tocar la base de datos o interpolar en el HTML.
   if (!/^NX-[0-9]+-[A-Z0-9]{6}$/.test(ref)) {
     res.status(400).send(_renderPage('voided', 'inválida'));

@@ -91,7 +91,7 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
       </h2>
       <p className="text-xs text-slate-400 mb-3">
         Afilia conductores por su celular. Al ingresar a la app con ese número quedarán
-        vinculados a tu empresa; podrán operar cuando Nexum apruebe sus documentos.
+        vinculados a tu empresa; podrán operar cuando ZIPA apruebe sus documentos.
       </p>
 
       <div className="bg-white border border-slate-200 rounded-xl p-3.5 mb-3">

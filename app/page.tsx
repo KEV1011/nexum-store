@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight, Store, Car, Package } from 'lucide-react'
 
-// Landing mínima: la web pública de Nexum es el portal de negocios.
+// Landing mínima: la web pública de ZIPA es el portal de negocios.
 // Las apps (cliente y conductor) viven en GitHub Pages / stores.
 
 const SERVICES = [
@@ -28,7 +28,7 @@ export default function HomePage() {
       <section className="flex-1 flex items-center justify-center px-6 py-20">
         <div className="max-w-2xl text-center">
           <p className="text-sm font-semibold tracking-[0.3em] uppercase text-emerald-400 mb-4">
-            Nexum
+            ZIPA
           </p>
           <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight mb-4">
             Movilidad y envíos para tu ciudad
@@ -97,7 +97,7 @@ export default function HomePage() {
       </section>
 
       <footer className="border-t border-slate-800 py-6 text-center text-sm text-slate-500">
-        © {new Date().getFullYear()} Nexum · Colombia
+        © {new Date().getFullYear()} ZIPA · Colombia
       </footer>
     </main>
   )

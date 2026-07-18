@@ -149,7 +149,7 @@ function SuccessCard({ business }: { business: RegisteredBusiness }) {
         <p className="text-sm text-amber-800 leading-relaxed">
           <strong>Guarda este enlace.</strong> Es la única llave de acceso a tu portal:
           cópialo y envíatelo por WhatsApp o guárdalo en favoritos. Si lo pierdes,
-          contacta al soporte de Nexum.
+          contacta al soporte de ZIPA.
         </p>
       </div>
     </div>
@@ -221,7 +221,7 @@ export default function RegistroPage() {
             <Package className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="font-bold text-slate-900 text-sm leading-tight">Nexum Delivery</p>
+            <p className="font-bold text-slate-900 text-sm leading-tight">ZIPA Delivery</p>
             <p className="text-xs text-slate-400">Registro de negocios</p>
           </div>
         </div>
@@ -368,7 +368,7 @@ export default function RegistroPage() {
 
             {/* ── Footer ── */}
             <footer className="text-center pb-6">
-              <p className="text-xs text-slate-400">Nexum Delivery · Todos los derechos reservados</p>
+              <p className="text-xs text-slate-400">ZIPA Delivery · Todos los derechos reservados</p>
             </footer>
           </>
         )}
