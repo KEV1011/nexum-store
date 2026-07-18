@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +15,7 @@ import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dar
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
+import 'package:nexum_client/shared/services/transport_ws_service.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -295,21 +298,9 @@ class _DriverCard extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-            ),
-            tooltip: 'Chat con el conductor',
-            icon: const Icon(Icons.chat_bubble_outline_rounded),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => TripChatScreen(
-                  tripId: request.id,
-                  peerName: request.driverName ?? 'Conductor',
-                ),
-              ),
-            ),
+          _ChatButton(
+            tripId: request.id,
+            peerName: request.driverName ?? 'Conductor',
           ),
           const SizedBox(width: 8),
           IconButton(
@@ -1292,6 +1283,72 @@ class _RatingDisplay extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Botón de chat con badge de mensajes sin leer. Avisa (badge + snackbar) cuando
+/// el conductor escribe y el chat no está abierto — así el cliente sabe que le
+/// escribieron aunque esté en la pantalla de seguimiento.
+class _ChatButton extends StatefulWidget {
+  const _ChatButton({required this.tripId, required this.peerName});
+
+  final String tripId;
+  final String peerName;
+
+  @override
+  State<_ChatButton> createState() => _ChatButtonState();
+}
+
+class _ChatButtonState extends State<_ChatButton> {
+  StreamSubscription<TripChatEvent>? _sub;
+  int _unread = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = TransportWsService().tripChatEvents.listen((event) {
+      if (!mounted) return;
+      final msg = event.message;
+      if (msg == null) return;
+      if (event.tripId != null && event.tripId != widget.tripId) return;
+      // Solo mensajes del conductor (no los propios del pasajero).
+      if ((msg['senderRole'] as String?) == 'passenger') return;
+      setState(() => _unread++);
+      AppSnackbar.showInfo(context, 'Nuevo mensaje de ${widget.peerName}');
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Badge(
+      isLabelVisible: _unread > 0,
+      label: Text('$_unread'),
+      child: IconButton(
+        style: IconButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+        ),
+        tooltip: 'Chat con el conductor',
+        icon: const Icon(Icons.chat_bubble_outline_rounded),
+        onPressed: () {
+          setState(() => _unread = 0);
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => TripChatScreen(
+                tripId: widget.tripId,
+                peerName: widget.peerName,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
