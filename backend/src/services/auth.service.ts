@@ -65,10 +65,16 @@ export async function verifyOtp(
 }
 
 export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: string; driver: DriverDTO }> {
-  const plateRegex = /^[A-Z]{3}-[0-9]{3}$/;
-  if (!plateRegex.test(dto.vehiclePlate)) {
-    throw new Error('Invalid vehicle plate format. Expected Colombian format: ABC-123');
+  // Normaliza la placa (mayúsculas, sin espacios ni guiones) y acepta los
+  // formatos colombianos REALES: carro ABC123 y moto ABC12D. El formato anterior
+  // exigía un guión (ABC-123) que no existe en las placas → registro rechazado.
+  const plate = dto.vehiclePlate.toUpperCase().replace(/[\s-]/g, '');
+  const carPlate = /^[A-Z]{3}[0-9]{3}$/; // ABC123
+  const motoPlate = /^[A-Z]{3}[0-9]{2}[A-Z]$/; // ABC12D
+  if (!carPlate.test(plate) && !motoPlate.test(plate)) {
+    throw new Error('Placa inválida. Usa el formato colombiano: ABC123 (carro) o ABC12D (moto).');
   }
+  dto = { ...dto, vehiclePlate: plate };
 
   const vehicleTypeMap: Record<string, 'PARTICULAR' | 'TAXI' | 'MOTO' | 'TURBO' | 'CAMION' | 'MULA'> = {
     particular: 'PARTICULAR',

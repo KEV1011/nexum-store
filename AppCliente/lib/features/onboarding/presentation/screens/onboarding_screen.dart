@@ -48,11 +48,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  void _complete() {
-    // Navega de inmediato; el flag se persiste en segundo plano. Así el tap
-    // nunca queda colgado si SharedPreferences tarda o falla (típico en web).
-    GoRouter.of(context).go(AppRoutes.login);
-    unawaited(_persistOnboardingDone());
+  Future<void> _complete() async {
+    // Persiste el flag ANTES de navegar. Si navegáramos primero (persistiendo en
+    // segundo plano), la redirección del router evaluaría /login con
+    // onboardingComplete aún en false y lo devolvería a /onboarding → bucle
+    // "/login ⇒ /onboarding ⇒ /login" (redirect loop detected).
+    await _persistOnboardingDone();
+    if (mounted) GoRouter.of(context).go(AppRoutes.login);
   }
 
   Future<void> _persistOnboardingDone() async {
@@ -122,7 +124,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     children: [
                       if (!isLast)
                         TextButton(
-                          onPressed: _complete,
+                          onPressed: () => unawaited(_complete()),
                           child: Text(
                             'Omitir',
                             style: TextStyle(
@@ -138,7 +140,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         // ancho infinito dentro del Row (causa del crash en web).
                         constraints: const BoxConstraints(maxWidth: 260),
                         child: ElevatedButton(
-                          onPressed: isLast ? _complete : _next,
+                          onPressed: () =>
+                              isLast ? unawaited(_complete()) : _next(),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: context.surfaceColor,
                             foregroundColor: page.gradient.first,

@@ -73,11 +73,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _slideControllers[page].forward(from: 0);
   }
 
-  void _finish() {
-    // Navega de inmediato; el flag se persiste en segundo plano (no bloquea el
-    // tap si SharedPreferences tarda o falla, p. ej. en web).
-    context.go(AppRoutes.login);
-    unawaited(_persistOnboardingDone());
+  Future<void> _finish() async {
+    // Persiste el flag ANTES de navegar. Si navegáramos primero (persistiendo en
+    // segundo plano), la redirección del router evaluaría /login con
+    // onboardingComplete todavía en false y lo devolvería a /onboarding → bucle
+    // "/login ⇒ /onboarding ⇒ /login" (redirect loop detected).
+    await _persistOnboardingDone();
+    if (mounted) context.go(AppRoutes.login);
   }
 
   Future<void> _persistOnboardingDone() async {
@@ -96,7 +98,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         curve: Curves.easeInOutCubic,
       );
     } else {
-      _finish();
+      unawaited(_finish());
     }
   }
 
@@ -141,7 +143,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: Padding(
                   padding: const EdgeInsets.all(AppConstants.spacingM),
                   child: TextButton(
-                    onPressed: _finish,
+                    onPressed: () => unawaited(_finish()),
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.white70,
                     ),
