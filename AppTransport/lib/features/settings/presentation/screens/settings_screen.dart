@@ -9,6 +9,7 @@ import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
+import 'package:nexum_driver/features/settings/presentation/screens/privacy_screen.dart';
 
 enum _MapApp { googleMaps, waze, mapsDotMe, system }
 
@@ -123,10 +124,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             icon: Icons.privacy_tip_outlined,
             iconColor: context.textSecondaryColor,
             title: 'Privacidad de datos',
-            subtitle: 'Gestiona tus datos personales',
+            subtitle: 'Cómo cuidamos tu información',
             trailing: Icon(Icons.chevron_right_rounded,
                 color: context.textSecondaryColor),
-            onTap: () => _showComingSoon('Privacidad de datos'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const PrivacyScreen()),
+            ),
           ),
           const Divider(),
           _SectionHeader(title: 'Datos y almacenamiento'),
@@ -173,7 +176,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: 'Política de privacidad',
             trailing: Icon(Icons.chevron_right_rounded,
                 color: context.textSecondaryColor),
-            onTap: () => _showComingSoon('Política de privacidad'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const PrivacyScreen()),
+            ),
           ),
           _SettingsTile(
             icon: Icons.star_outline_rounded,

@@ -20,6 +20,8 @@ import 'package:nexum_client/features/account/presentation/providers/'
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
 import 'package:nexum_client/features/support/presentation/screens/support_tickets_screen.dart';
 import 'package:nexum_client/features/account/presentation/screens/client_verification_screen.dart';
+import 'package:nexum_client/features/account/presentation/screens/payment_methods_screen.dart';
+import 'package:nexum_client/features/account/presentation/screens/privacy_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 
 /// Pestaña "Cuenta": perfil del cliente y preferencias.
@@ -60,10 +62,11 @@ class AccountScreen extends ConsumerWidget {
               _SettingTile(
                 icon: Icons.account_balance_wallet_rounded,
                 title: 'Métodos de pago',
-                subtitle: 'Efectivo, tarjeta, Nequi',
-                onTap: () => AppSnackbar.showInfo(
-                  context,
-                  'Métodos de pago próximamente',
+                subtitle: 'Efectivo o pago en línea (Wompi)',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PaymentMethodsScreen(),
+                  ),
                 ),
               ),
               _SettingTile(
@@ -100,6 +103,16 @@ class AccountScreen extends ConsumerWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const SupportTicketsScreen(basePath: '/client'),
+                  ),
+                ),
+              ),
+              _SettingTile(
+                icon: Icons.privacy_tip_outlined,
+                title: 'Privacidad y datos',
+                subtitle: 'Cómo cuidamos tu información',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const PrivacyScreen(),
                   ),
                 ),
               ),
