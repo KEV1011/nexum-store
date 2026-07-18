@@ -37,7 +37,14 @@ class AccountScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Mi cuenta')),
       body: ListView(
-        padding: const EdgeInsets.all(AppConstants.spacingM),
+        // Espacio inferior extra para que el último ítem (Cerrar sesión) no
+        // quede tapado por la barra de navegación flotante (glass bar).
+        padding: const EdgeInsets.fromLTRB(
+          AppConstants.spacingM,
+          AppConstants.spacingM,
+          AppConstants.spacingM,
+          100,
+        ),
         children: [
           _ProfileHeader(client: client),
           const SizedBox(height: AppConstants.spacingL),

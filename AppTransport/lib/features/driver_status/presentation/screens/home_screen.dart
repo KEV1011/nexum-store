@@ -34,7 +34,7 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/errand_detai
 import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
-import 'package:nexum_driver/shared/services/audio_service.dart';
+import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
@@ -299,6 +299,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) return;
       if (_state.pendingRequest?.id == tripId) {
         _countdownTimer?.cancel();
+        NotificationService().stopTripRequestAlarm();
         setState(() => _state = _state.copyWith(clearPending: true));
       }
     });
@@ -309,6 +310,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) return;
       if (_state.pendingRequest?.id == errandId) {
         _countdownTimer?.cancel();
+        NotificationService().stopTripRequestAlarm();
         setState(() => _state = _state.copyWith(clearPending: true));
       }
     });
@@ -318,6 +320,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) return;
       if (_state.pendingRequest?.orderId == orderId) {
         _countdownTimer?.cancel();
+        NotificationService().stopTripRequestAlarm();
         setState(() => _state = _state.copyWith(clearPending: true));
         AppSnackbar.showInfo(context, 'El cliente canceló el pedido.');
       }
@@ -476,7 +479,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _onTripRequest(TripRequestEntity request) {
     if (!mounted || !_state.isOnline) return;
-    AudioService().playTripRequest();
+    // Alarma en BUCLE mientras dura la espera de aceptación (no un beep corto).
+    NotificationService().startTripRequestAlarm();
     setState(() {
       _state = _state.copyWith(
         pendingRequest: request,
@@ -496,6 +500,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final newLeft = _state.requestSecondsLeft - 1;
       if (newLeft <= 0) {
         timer.cancel();
+        NotificationService().stopTripRequestAlarm();
         setState(() => _state = _state.copyWith(clearPending: true));
       } else {
         setState(() => _state = _state.copyWith(requestSecondsLeft: newLeft));
@@ -505,6 +510,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _acceptTrip(TripRequestEntity request) async {
     _countdownTimer?.cancel();
+    NotificationService().stopTripRequestAlarm();
     setState(() => _state = _state.copyWith(clearPending: true));
     if (DriverWsService().isConnected) {
       if (request.isOrder) {
@@ -521,6 +527,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _rejectTrip(TripRequestEntity request) {
     _countdownTimer?.cancel();
+    NotificationService().stopTripRequestAlarm();
     setState(() => _state = _state.copyWith(clearPending: true));
     if (DriverWsService().isConnected) {
       if (request.isOrder) {
