@@ -78,13 +78,22 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
           current.actualPurchaseCost,
     );
 
-    if (status == ErrandStatus.delivered || status == ErrandStatus.cancelled) {
+    if (status == ErrandStatus.delivered) {
+      // Entregado: se MANTIENE como activo para que la pantalla muestre el
+      // resumen del envío y permita calificar al mensajero (antes se limpiaba
+      // y la pantalla rebotaba a /home sin resumen ni calificación). Se deja de
+      // escuchar este mandado; el cliente cierra la tarjeta al terminar.
+      state = state.copyWith(active: updated);
+      if (_activeServerId != null) _wsService.unsubscribeErrand(_activeServerId!);
+      _activeServerId = null;
+      _clearTimers();
+    } else if (status == ErrandStatus.cancelled) {
       state = state.copyWith(
         clearActive: true,
         past: [updated, ...state.past],
       );
       _activeServerId = null;
-      _sub?.cancel();
+      _clearTimers();
     } else {
       state = state.copyWith(active: updated);
     }
@@ -173,15 +182,34 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
     }
   }
 
+  /// El cliente confirma la recepción. Se MANTIENE como activo (entregado) para
+  /// mostrar el resumen y permitir calificar; se cierra al tocar "Volver".
   void markDelivered() {
     final current = state.active;
     if (current == null) return;
     final done = current.copyWith(status: ErrandStatus.delivered);
+    state = state.copyWith(active: done);
+    if (_activeServerId != null) _wsService.unsubscribeErrand(_activeServerId!);
+    _activeServerId = null;
+    _clearTimers();
+  }
+
+  /// Calificación local del mensajero (1-5). Se guarda en el mandado activo.
+  void rateActiveErrand(int stars) {
+    final current = state.active;
+    if (current == null) return;
+    state = state.copyWith(active: current.copyWith(rating: stars));
+  }
+
+  /// Cierra la tarjeta del envío entregado: lo archiva en el historial y limpia
+  /// el activo (la pantalla vuelve al inicio).
+  void dismissDelivered() {
+    final current = state.active;
+    if (current == null) return;
     state = state.copyWith(
       clearActive: true,
-      past: [done, ...state.past],
+      past: [current, ...state.past],
     );
-    _activeServerId = null;
   }
 
   Future<void> cancelErrand() async {

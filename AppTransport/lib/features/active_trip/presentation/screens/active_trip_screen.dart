@@ -43,6 +43,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   final _mapController = MapController();
   bool _isLoading = false;
   bool _autoFollow = true;
+  // Al finalizar navegamos a /trip-summary; sin este guard, el build detecta
+  // trip==null (finishTrip lo anula) y redirige a /home antes, robándose la
+  // navegación al resumen (el conductor "se salía al inicio").
+  bool _finishing = false;
 
   // Continuous pulse for the live driver marker halo.
   late final AnimationController _pulse;
@@ -339,9 +343,13 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     final serviceType = ref.watch(selectedServiceTypeProvider);
 
     if (trip == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.go('/home');
-      });
+      // Si estamos finalizando, _handleFinishTrip ya navega a /trip-summary; no
+      // redirigir a /home (evita el "se sale al inicio" tras un envío/viaje).
+      if (!_finishing) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) context.go('/home');
+        });
+      }
       return const Scaffold(
         body: Center(
             child: CircularProgressIndicator(color: AppColors.primary)),
@@ -880,6 +888,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   }
 
   Future<void> _handleFinishTrip() async {
+    // Marca que estamos finalizando: cuando finishTrip() anule el estado, el
+    // build NO debe redirigir a /home (vamos a /trip-summary).
+    _finishing = true;
     final tripBeforeFinish = ref.read(activeTripProvider);
     final workMode = tripBeforeFinish != null
         ? _deliveryWorkMode(tripBeforeFinish.request)

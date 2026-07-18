@@ -19,6 +19,8 @@ class IntercityRequestEntity {
     this.notes,
     this.distanceKm,
     this.durationMinutes,
+    this.passengerName,
+    this.passengerPhone,
     this.timeoutSeconds = 30,
   });
 
@@ -41,6 +43,8 @@ class IntercityRequestEntity {
       notes: b['notes'] as String?,
       distanceKm: (route?['distanceKm'] as num?)?.toDouble(),
       durationMinutes: (route?['durationMinutes'] as num?)?.toInt(),
+      passengerName: msg['passengerName'] as String?,
+      passengerPhone: msg['passengerPhone'] as String?,
       timeoutSeconds: (msg['timeoutSeconds'] as num?)?.toInt() ?? 30,
       receivedAt: DateTime.now(),
     );
@@ -60,6 +64,12 @@ class IntercityRequestEntity {
   final String? notes;
   final double? distanceKm;
   final int? durationMinutes;
+
+  /// Identidad del pasajero (para saber a quién se lleva y poder coordinar la
+  /// recogida). Llegan en el nivel superior del mensaje WS, no dentro de booking.
+  final String? passengerName;
+  final String? passengerPhone;
+
   final int timeoutSeconds;
   final DateTime receivedAt;
 

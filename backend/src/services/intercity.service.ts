@@ -286,6 +286,14 @@ async function _offerIntercityTo(
   const dto = _toDTO(b as DbBooking);
   const route = getIntercityRoute(dto.origin, dto.destination);
 
+  // Identidad del pasajero para que el conductor SEPA a quién lleva (antes la
+  // tarjeta del viaje activo solo mostraba tarifa + botones; "no muestra el
+  // viaje"). El teléfono va también para que pueda coordinar la recogida.
+  const passenger = await prisma.user.findUnique({
+    where: { id: b.userId },
+    select: { name: true, phone: true },
+  });
+
   const timeout = setTimeout(() => {
     void driverRejectIntercity(driverId, bookingId, true);
   }, INTERCITY_OFFER_TIMEOUT_MS);
@@ -301,6 +309,8 @@ async function _offerIntercityTo(
   _sendToDriver?.(driverId, {
     type: 'intercity_request',
     booking: dto,
+    passengerName: passenger?.name ?? 'Pasajero',
+    passengerPhone: passenger?.phone ?? null,
     route: route
       ? { distanceKm: route.distanceKm, durationMinutes: route.durationMinutes }
       : null,
