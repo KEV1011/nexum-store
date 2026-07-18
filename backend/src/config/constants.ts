@@ -11,13 +11,25 @@ export const NODE_ENV = process.env['NODE_ENV'] ?? 'development';
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-// En producción el secreto JWT debe venir del entorno: con el default
-// publicado en el repo cualquiera podría firmar tokens válidos.
+// El secreto JWT DEBE venir del entorno en cualquier despliegue: con el default
+// publicado en el repo cualquiera podría firmar tokens válidos. El respaldo solo
+// se permite en desarrollo local (NODE_ENV=development). Fuera de ahí —
+// producción, staging o NODE_ENV mal configurado a un valor no-dev— arrancar sin
+// un secreto propio (o usando el valor público conocido) aborta el proceso.
+const _PUBLIC_FALLBACK_SECRET = 'nexum-driver-secret-key-2024';
 const _jwtSecret = process.env['JWT_SECRET'];
-if (NODE_ENV === 'production' && (!_jwtSecret || _jwtSecret === 'CHANGE_ME_IN_PRODUCTION')) {
-  throw new Error('JWT_SECRET must be set to a strong random value in production (openssl rand -hex 32)');
+if (
+  NODE_ENV === 'production' &&
+  (!_jwtSecret ||
+    _jwtSecret === 'CHANGE_ME_IN_PRODUCTION' ||
+    _jwtSecret === _PUBLIC_FALLBACK_SECRET)
+) {
+  throw new Error(
+    'JWT_SECRET must be set to a strong random value in production ' +
+      '(openssl rand -hex 32). El valor de respaldo del repo está prohibido.',
+  );
 }
-export const JWT_SECRET = _jwtSecret ?? 'nexum-driver-secret-key-2024';
+export const JWT_SECRET = _jwtSecret ?? _PUBLIC_FALLBACK_SECRET;
 export const JWT_EXPIRES_IN = '30d';
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
