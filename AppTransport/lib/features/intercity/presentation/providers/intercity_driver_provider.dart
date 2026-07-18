@@ -105,12 +105,13 @@ class IntercityDriverNotifier extends StateNotifier<IntercityDriverState> {
     final rest =
         state.requests.where((r) => r.bookingId != req.bookingId).toList();
     state = state.copyWith(requests: [req, ...rest]);
-    // Alarma: sonido + vibración cuando llega una solicitud intermunicipal
-    // nueva (antes no avisaba nada).
-    if (isNew) unawaited(NotificationService().playTripRequestSound());
+    // Alarma en BUCLE (sonido + vibración) mientras el conductor decide;
+    // se detiene al aceptar/rechazar/cancelar.
+    if (isNew) unawaited(NotificationService().startTripRequestAlarm());
   }
 
   void _onCancelled(String bookingId) {
+    unawaited(NotificationService().stopTripRequestAlarm());
     final activeMatches = state.active?.request.bookingId == bookingId;
     state = state.copyWith(
       requests:
@@ -201,6 +202,7 @@ class IntercityDriverNotifier extends StateNotifier<IntercityDriverState> {
   // ── Respuesta a ofertas ─────────────────────────────────────────────────────
 
   void accept(String bookingId, {double? counterFare}) {
+    unawaited(NotificationService().stopTripRequestAlarm());
     final req = state.requests
         .where((r) => r.bookingId == bookingId)
         .toList();

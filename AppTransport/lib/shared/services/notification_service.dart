@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 
 import 'package:nexum_driver/shared/services/audio_service.dart';
@@ -60,11 +62,35 @@ class NotificationService {
   // ── Audio feedback ────────────────────────────────────────────────────────
 
   /// Sonido real de solicitud (assets/sounds/trip_request.wav) + vibración.
+  /// Una sola reproducción (compatibilidad).
   Future<void> playTripRequestSound() async {
     await Future.wait([
       AudioService().playTripRequest(),
       vibrateForTripRequest(),
     ]);
+  }
+
+  Timer? _vibrateTimer;
+
+  /// ALARMA de solicitud entrante: sonido en BUCLE + vibración repetida
+  /// mientras el conductor decide (dura toda la espera de aceptación, no un
+  /// beep corto). Llamar [stopTripRequestAlarm] al aceptar/rechazar/expirar.
+  Future<void> startTripRequestAlarm() async {
+    unawaited(AudioService().startAlarm());
+    _vibrateTimer?.cancel();
+    unawaited(vibrateForTripRequest());
+    _vibrateTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+      unawaited(vibrateForTripRequest());
+    });
+    // Cinturón de seguridad: la vibración también se auto-corta.
+    Timer(const Duration(seconds: 30), () => _vibrateTimer?.cancel());
+  }
+
+  /// Detiene la alarma en bucle (sonido + vibración).
+  Future<void> stopTripRequestAlarm() async {
+    _vibrateTimer?.cancel();
+    _vibrateTimer = null;
+    await AudioService().stopAlarm();
   }
 
   /// Confirmación (viaje aceptado): mismo beep corto + vibración de éxito.

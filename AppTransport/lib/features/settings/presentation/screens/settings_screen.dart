@@ -37,6 +37,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Configuración')),
       body: ListView(
+        // Espacio inferior para que "Cerrar sesión" no quede pegado al borde /
+        // tapado por la barra del sistema.
+        padding: const EdgeInsets.only(bottom: 40),
         children: [
           _buildDriverCard(theme),
           const SizedBox(height: AppConstants.spacingS),
