@@ -100,6 +100,7 @@ class DriverProfileEntity {
     required this.documents,
     required this.requiredDocsCount,
     required this.approvedDocsCount,
+    this.verificationRequired = true,
     this.photoUrl,
     this.bio,
   });
@@ -112,6 +113,8 @@ class DriverProfileEntity {
   final String vehicleDescription;
   final String memberSince;
   final bool isVerified;
+  /// false en modo piloto: la app permite conectarse sin esperar aprobación.
+  final bool verificationRequired;
   final List<DriverDocument> documents;
   final int requiredDocsCount;
   final int approvedDocsCount;
@@ -128,6 +131,7 @@ class DriverProfileEntity {
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         memberSince: j['memberSince'] as String? ?? '',
         isVerified: j['isVerified'] as bool? ?? false,
+        verificationRequired: j['verificationRequired'] as bool? ?? true,
         documents: (j['documents'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(DriverDocument.fromJson)

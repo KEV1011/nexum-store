@@ -7,6 +7,7 @@ import {
 } from '../types';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { pilotSkipVerification } from './kyc.service';
 import { maskPhone } from './safe-contact.service';
 import { getDriverProfile } from './driver-profile.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
@@ -216,6 +217,11 @@ async function _findIntercityDrivers(
       )`
     : Prisma.empty;
 
+  // Piloto: despacha a conductores intercity aún no verificados (default off).
+  const verifiedFilter = pilotSkipVerification()
+    ? Prisma.empty
+    : Prisma.sql`AND d."isVerified" = true`;
+
   // Parámetros internos (constantes + centroide de tabla fija): sin strings de
   // usuario. SQL parametrizado vía tagged template — nunca interpolación.
   const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
@@ -227,7 +233,7 @@ async function _findIntercityDrivers(
     FROM "drivers" d
     WHERE d."geo" IS NOT NULL
       AND d."status" = 'ONLINE'
-      AND d."isVerified" = true
+      ${verifiedFilter}
       AND d."intercityEnabled" = true
       AND d."lastSeenAt" >= now() - ${INTERCITY_GEO_FRESHNESS_S} * INTERVAL '1 second'
       AND ST_DWithin(

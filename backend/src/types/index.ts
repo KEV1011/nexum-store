@@ -1017,6 +1017,9 @@ export interface DriverProfileDTO {
   bankAccountNumber?: string;
   memberSince: string;
   isVerified: boolean;
+  // false en modo piloto (PILOT_SKIP_VERIFICATION) → la app deja conectarse sin
+  // esperar la aprobación; true = comportamiento normal (exige verificación).
+  verificationRequired: boolean;
   documents: DriverDocumentDTO[];
   requiredDocsCount: number;
   approvedDocsCount: number;
