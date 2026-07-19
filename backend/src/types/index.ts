@@ -792,6 +792,10 @@ export interface IntercityBookingDTO {
   /** Calificación del pasajero al viaje completado (1-5). */
   rating?: number;
   ratingComment?: string;
+  /** Posición en vivo del conductor asignado (heartbeat GPS), solo cuando el
+   *  viaje está CONFIRMED/IN_PROGRESS — para el mapa de seguimiento. */
+  driverLat?: number;
+  driverLng?: number;
 }
 
 // ─── Shared Pooled Rides (Modelo A: conductor publica → pasajero reserva) ───────

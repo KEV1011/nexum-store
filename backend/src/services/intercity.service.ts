@@ -108,6 +108,28 @@ function _notify(bookingId: string, dto: IntercityBookingDTO): void {
   for (const cb of bookingListeners.get(bookingId) ?? []) cb(bookingId, dto);
 }
 
+/**
+ * Enriquece el DTO con la posición EN VIVO del conductor asignado (el heartbeat
+ * GPS ya escribe lastLat/lastLng cada pocos segundos). Solo aplica con viaje
+ * CONFIRMED/IN_PROGRESS — el cliente pinta el carro moviéndose en el mapa de
+ * seguimiento (paridad con el viaje urbano).
+ */
+async function _withDriverPosition(
+  dto: IntercityBookingDTO,
+  b: { driverId?: string | null; status: string },
+): Promise<IntercityBookingDTO> {
+  if (!b.driverId || (b.status !== 'CONFIRMED' && b.status !== 'IN_PROGRESS')) return dto;
+  const d = await prisma.driver.findUnique({
+    where: { id: b.driverId },
+    select: { lastLat: true, lastLng: true },
+  });
+  if (d?.lastLat != null && d.lastLng != null) {
+    dto.driverLat = d.lastLat;
+    dto.driverLng = d.lastLng;
+  }
+  return dto;
+}
+
 function _scheduleDriverResponse(bookingId: string, offeredFare: number): void {
   const delayMs = Math.random() * 6000 + 6000;
   const hasCounter = Math.random() > 0.45;
@@ -650,13 +672,13 @@ export async function getActiveIntercityBooking(clientId: string): Promise<Inter
     where: { userId: clientId, status: { in: ['SEARCHING', 'DRIVER_FOUND', 'CONFIRMED', 'IN_PROGRESS'] } },
     orderBy: { createdAt: 'desc' },
   });
-  return b ? _toDTO(b as DbBooking) : null;
+  return b ? _withDriverPosition(_toDTO(b as DbBooking), b) : null;
 }
 
 export async function getIntercityBookingById(clientId: string, bookingId: string): Promise<IntercityBookingDTO | null> {
   const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
   if (!b || b.userId !== clientId) return null;
-  return _toDTO(b as DbBooking);
+  return _withDriverPosition(_toDTO(b as DbBooking), b);
 }
 
 /** Viajes terminados (completados o cancelados) del cliente, más reciente primero. */
@@ -702,5 +724,5 @@ export function subscribeIntercityBooking(bookingId: string, cb: BookingCallback
 
 export async function getIntercityBookingSnapshot(bookingId: string): Promise<IntercityBookingDTO | null> {
   const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
-  return b ? _toDTO(b as DbBooking) : null;
+  return b ? _withDriverPosition(_toDTO(b as DbBooking), b) : null;
 }

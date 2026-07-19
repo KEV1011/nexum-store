@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
@@ -103,6 +106,14 @@ class IntercityStatusScreen extends ConsumerWidget {
             if (request.status == IntercityStatus.confirmed &&
                 request.hasDriver)
               _DriverConfirmedCard(request: request),
+
+            // ── Mapa EN VIVO (paridad con el viaje urbano): conductor
+            // moviéndose sobre la ruta origen→destino ──────────────────────
+            if (request.status == IntercityStatus.confirmed ||
+                request.status == IntercityStatus.inProgress) ...[
+              const SizedBox(height: 12),
+              _LiveTripMap(request: request),
+            ],
 
             const SizedBox(height: 12),
 
@@ -903,6 +914,181 @@ class _InfoChip extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Mapa en vivo del viaje intermunicipal ─────────────────────────────────────
+
+/// Paridad con el seguimiento urbano: mapa con la ruta origen→destino y el
+/// vehículo del conductor moviéndose (posición del heartbeat GPS, refrescada
+/// por el sondeo del provider cada 8 s).
+class _LiveTripMap extends StatefulWidget {
+  const _LiveTripMap({required this.request});
+  final IntercityRequestEntity request;
+
+  @override
+  State<_LiveTripMap> createState() => _LiveTripMapState();
+}
+
+class _LiveTripMapState extends State<_LiveTripMap>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  LatLng? _prevDriver;
+  double _heading = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _LiveTripMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final r = widget.request;
+    if (r.driverLat != null && r.driverLng != null) {
+      final cur = LatLng(r.driverLat!, r.driverLng!);
+      if (_prevDriver != null && cur != _prevDriver) {
+        setState(() => _heading = bearingBetween(_prevDriver!, cur));
+      }
+      _prevDriver = cur;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.request;
+    final o = IntercityRoute.coordsOf(r.origin);
+    final d = IntercityRoute.coordsOf(r.destination);
+    final origin = LatLng(o.lat, o.lng);
+    final destination = LatLng(d.lat, d.lng);
+    final driver = (r.driverLat != null && r.driverLng != null)
+        ? LatLng(r.driverLat!, r.driverLng!)
+        : null;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        height: 230,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: FlutterMap(
+                options: MapOptions(
+                  initialCenter: driver ??
+                      LatLng(
+                        (origin.latitude + destination.latitude) / 2,
+                        (origin.longitude + destination.longitude) / 2,
+                      ),
+                  initialZoom: driver != null ? 12.5 : 8.6,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
+                  ),
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.nexum.client',
+                  ),
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: [origin, if (driver != null) driver, destination],
+                        color: _kInterColor,
+                        strokeWidth: 4,
+                      ),
+                    ],
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: origin,
+                        width: 26,
+                        height: 26,
+                        child: const Icon(Icons.trip_origin_rounded,
+                            color: AppColors.primary, size: 22),
+                      ),
+                      Marker(
+                        point: destination,
+                        width: 26,
+                        height: 26,
+                        child: const Icon(Icons.location_on_rounded,
+                            color: AppColors.error, size: 24),
+                      ),
+                      if (driver != null)
+                        Marker(
+                          point: driver,
+                          width: 60,
+                          height: 60,
+                          child: VehicleMarker(
+                            headingDegrees: _heading,
+                            color: _kInterColor,
+                            isMoto: false,
+                            pulse: _pulse,
+                            animate: !reduceMotion,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Chip de estado en vivo.
+            Positioned(
+              left: 10,
+              top: 10,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.intercitySurface,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: driver != null
+                            ? const Color(0xFF22C55E)
+                            : AppColors.warning,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      driver != null
+                          ? 'Conductor en vivo'
+                          : 'Esperando señal GPS…',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

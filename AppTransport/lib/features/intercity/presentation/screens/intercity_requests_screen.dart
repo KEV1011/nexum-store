@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
+import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
 
@@ -145,8 +146,9 @@ class _IntercityRequestsScreenState
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               subtitle: const Text(
-                'Recibirás reservas privadas entre municipios cuando '
-                'estés en línea y cerca de la ciudad de origen.',
+                'Activado por defecto: en línea recibes también reservas entre '
+                'municipios (cerca de la ciudad de origen). Apágalo si no '
+                'quieres viajes largos.',
               ),
             ),
           ),
@@ -351,6 +353,16 @@ class _ActiveTripCard extends StatelessWidget {
                 icon: Icons.flag_outlined,
                 text: 'Destino: ${req.dropoffAddress}',
               ),
+            // Ruta del viaje en el mapa (paridad con el flete): el conductor ve
+            // el trayecto completo origen→destino de un vistazo.
+            const SizedBox(height: 10),
+            FreightRouteMap(
+              originLat: req.origin.coords.lat,
+              originLng: req.origin.coords.lng,
+              destLat: req.destination.coords.lat,
+              destLng: req.destination.coords.lng,
+              height: 140,
+            ),
             const SizedBox(height: 12),
             switch (trip.phase) {
               IntercityTripPhase.pending => const LinearProgressIndicator(

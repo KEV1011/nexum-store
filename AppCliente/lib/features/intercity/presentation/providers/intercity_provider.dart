@@ -51,6 +51,48 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
   final _rng = math.Random();
   Timer? _matchTimer;
 
+  /// Sondeo de la posición EN VIVO del conductor (confirmado/en curso): el WS
+  /// solo avisa transiciones; la posición viaja en el DTO del booking
+  /// (driverLat/driverLng, del heartbeat GPS) y se refresca cada 8 s.
+  Timer? _trackTimer;
+
+  void _startTracking() {
+    if (_trackTimer != null) return;
+    _trackTimer = Timer.periodic(const Duration(seconds: 8), (t) async {
+      final serverId = _activeServerId;
+      final active = state.active;
+      if (!mounted || serverId == null || active == null) {
+        t.cancel();
+        _trackTimer = null;
+        return;
+      }
+      if (active.status != IntercityStatus.confirmed &&
+          active.status != IntercityStatus.inProgress) {
+        return; // aún no hay conductor en ruta; se reintenta en el siguiente tick
+      }
+      try {
+        final res =
+            await _dio.get<Map<String, dynamic>>('/client/intercity/$serverId');
+        final dto = res.data?['data'] as Map<String, dynamic>?;
+        if (dto == null || !mounted) return;
+        final lat = (dto['driverLat'] as num?)?.toDouble();
+        final lng = (dto['driverLng'] as num?)?.toDouble();
+        final current = state.active;
+        if (current == null || lat == null || lng == null) return;
+        state = state.copyWith(
+          active: current.copyWith(driverLat: lat, driverLng: lng),
+        );
+      } catch (_) {
+        // Red intermitente: siguiente tick.
+      }
+    });
+  }
+
+  void _stopTracking() {
+    _trackTimer?.cancel();
+    _trackTimer = null;
+  }
+
   static const _mockDrivers = [
     ('Carlos Vega', '3174521890', 'Toyota Hilux · VBN 432', 4.8),
     ('Jhon Díaz', '3123456789', 'Chevrolet Spark GT · KLP 871', 4.6),
@@ -89,6 +131,7 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
 
     if (status == IntercityStatus.completed ||
         status == IntercityStatus.cancelled) {
+      _stopTracking();
       state = state.copyWith(
         clearActive: true,
         past: [updated, ...state.past],
@@ -97,6 +140,11 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
       _sub?.cancel();
     } else {
       state = state.copyWith(active: updated);
+      // Con conductor confirmado/en ruta, empieza el seguimiento en vivo.
+      if (status == IntercityStatus.confirmed ||
+          status == IntercityStatus.inProgress) {
+        _startTracking();
+      }
     }
   }
 
@@ -197,6 +245,8 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
         await _dio.post<void>('/client/intercity/$serverId/confirm');
       } catch (_) {}
     }
+    // Con la reserva confirmada arranca el mapa en vivo.
+    _startTracking();
   }
 
   Future<void> rejectCounterOffer() async {
@@ -237,6 +287,7 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
 
   Future<void> cancelRequest() async {
     _matchTimer?.cancel();
+    _stopTracking();
     final current = state.active;
     if (current == null) return;
 
@@ -351,6 +402,7 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
   @override
   void dispose() {
     _matchTimer?.cancel();
+    _trackTimer?.cancel();
     _sub?.cancel();
     super.dispose();
   }

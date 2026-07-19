@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
@@ -32,10 +34,20 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
     'COMPLETED': 'Completado',
   };
 
+  /// Refresco periódico: nuevos fletes disponibles y posición en vivo.
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
