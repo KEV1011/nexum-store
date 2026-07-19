@@ -35,6 +35,7 @@ import { OperatorStatus } from '@prisma/client';
 import { setDriverKycStatus, KycError } from '../services/kyc.service';
 import { adminClearCompliance } from '../services/document-expiry.service';
 import { listSafetyAlerts } from '../services/safety-alerts.service';
+import { checkDriverBackground, BackgroundCheckError } from '../services/background-check.service';
 import {
   listAllTickets,
   getTicketForAdmin,
@@ -176,6 +177,21 @@ router.post('/drivers/:id/compliance/clear', async (req: Request, res: Response)
     res.json({ success: true });
   } catch {
     res.status(404).json({ success: false, error: 'Conductor no encontrado' });
+  }
+});
+
+// POST /admin/drivers/:id/background — (re)consulta antecedentes a demanda.
+// Con BACKGROUND_CHECK_PROVIDER=none devuelve el estado actual sin tocar nada.
+router.post('/drivers/:id/background', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await checkDriverBackground(req.params['id']!);
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err instanceof BackgroundCheckError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
 
@@ -771,12 +787,28 @@ function loadDocs() {
   api('/admin/verifications' + (status ? '?status=' + status : '')).then((docs) => {
     const tb = document.getElementById('docs-body');
     if (!docs.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin documentos.</td></tr>'; return; }
-    tb.innerHTML = docs.map((d) => '<tr><td><strong>' + esc(d.driverName) + '</strong></td><td>' + esc(d.label) +
-      '</td><td><a href="' + esc(d.fileUrl) + '" target="_blank">Ver archivo</a></td><td><span class="badge badge-' + d.status + '">' + d.status +
+    tb.innerHTML = docs.map((d) => {
+      var ocr = '';
+      if (d.ocrFields) {
+        try {
+          var f = JSON.parse(d.ocrFields);
+          var bits = [];
+          if (f.documentNumber) bits.push('N° ' + esc(f.documentNumber));
+          if (f.fullName) bits.push(esc(f.fullName));
+          if (f.expiresAt) bits.push('vence ' + esc(f.expiresAt));
+          if (f.plate) bits.push('placa ' + esc(f.plate));
+          if (bits.length) ocr = '<div style="font-size:.7rem;color:#0369a1;margin-top:2px">🔎 OCR: ' + bits.join(' · ') +
+            (d.ocrConfidence != null ? ' (' + Math.round(d.ocrConfidence * 100) + '%)' : '') + '</div>';
+        } catch (_) {}
+      }
+      var vence = d.expiresAt ? '<div style="font-size:.7rem;color:#92400e">Vence: ' + esc(d.expiresAt) + '</div>' : '';
+      return '<tr><td><strong>' + esc(d.driverName) + '</strong></td><td>' + esc(d.label) +
+      '</td><td><a href="' + esc(d.fileUrl) + '" target="_blank">Ver archivo</a>' + ocr + vence + '</td><td><span class="badge badge-' + d.status + '">' + d.status +
       '</span></td><td>' + when(d.uploadedAt) + '</td><td>' +
       (d.status !== 'APPROVED' ? '<button class="btn-sm btn-approve" onclick="reviewDoc(\\'' + d.docId + '\\', true)">Aprobar</button>' : '') +
       (d.status !== 'REJECTED' ? '<button class="btn-sm btn-reject" onclick="reviewDoc(\\'' + d.docId + '\\', false)">Rechazar</button>' : '') +
-      '</td></tr>').join('');
+      '</td></tr>';
+    }).join('');
   }).catch((e) => showMsg(e.message, true));
 }
 
@@ -795,6 +827,8 @@ function loadDrivers() {
     tb.innerHTML = rows.map((d) => {
       var kycCell = '<span style="font-size:.72rem">' + (KYC_LABEL[d.kycStatus] || d.kycStatus) + '</span>';
       if (d.hasSelfie && d.selfieUrl) kycCell += ' <a href="' + esc(d.selfieUrl) + '" target="_blank" style="color:#059669">selfie</a>';
+      var BG_LABEL = { UNCHECKED: '', PENDING: '<div style="font-size:.68rem;color:#92400e">Antec: pendiente</div>', CLEAR: '<div style="font-size:.68rem;color:#059669">Antec: ✓</div>', HIT: '<div style="font-size:.68rem;color:#dc2626;font-weight:700">Antec: ⚠ HALLAZGO</div>' };
+      kycCell += BG_LABEL[d.backgroundStatus] || '';
       var kycBtns = '';
       if (d.kycStatus !== 'VERIFIED') kycBtns += '<button class="btn-sm btn-approve" onclick="setDriverKyc(\\'' + d.id + '\\', \\'VERIFIED\\')">KYC ✓</button> ';
       if (d.kycStatus !== 'REJECTED') kycBtns += '<button class="btn-sm btn-reject" onclick="setDriverKyc(\\'' + d.id + '\\', \\'REJECTED\\')">KYC ✕</button>';

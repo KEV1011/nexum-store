@@ -18,6 +18,8 @@ import { otpMode } from './services/otp.service';
 import { kycProviderName, kycEnforced, pilotSkipVerification } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState } from './services/safety-alerts.service';
+import { ocrProviderName } from './services/ocr.service';
+import { backgroundProviderName } from './services/background-check.service';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -102,6 +104,9 @@ app.get('/health', async (_req, res) => {
     kycEnforce: kycEnforced(),
     // Kill-switch documental: 'activo' = documentos vencidos bloquean el match.
     docKillSwitch: docKillSwitchEnforced() ? 'activo' : 'apagado',
+    // OCR y antecedentes (env-gated): qué proveedor corre cada uno.
+    ocr: ocrProviderName(),
+    background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),
     // Piloto: si está activo, el despacho ignora la verificación (probar arranque).
     pilotSkipVerification: pilotSkipVerification(),
   });
