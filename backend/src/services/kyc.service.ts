@@ -11,6 +11,7 @@
 
 import { KycStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { checkDriverBackground } from './background-check.service';
 
 export class KycError extends Error {}
 
@@ -109,6 +110,9 @@ export async function submitDriverKyc(driverId: string): Promise<KycStatusDTO> {
       kycCheckedAt: new Date(),
     },
   });
+  // Antecedentes (env-gated): se consultan en paralelo al enviar el KYC.
+  // Fire-and-forget: un HIT solo marca para revisión del admin, jamás bloquea.
+  void checkDriverBackground(driverId).catch(() => undefined);
   // Si el proveedor confirmó, sincroniza el flag de habilitación por si los
   // documentos ya estaban aprobados.
   return getDriverKyc(driverId);

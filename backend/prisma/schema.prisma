@@ -161,6 +161,11 @@ model Driver {
   kycReference      String?      // id de la verificación del proveedor
   kycCheckedAt      DateTime?
   selfieUrl         String?      // foto selfie para comparación/liveness
+  // ── Antecedentes (env-gated) ─────────────────────────────────────────────
+  backgroundStatus     BackgroundStatus @default(UNCHECKED)
+  backgroundProvider   String?
+  backgroundReference  String?
+  backgroundCheckedAt  DateTime?
   // Antifraude: contador de eventos GPS sospechosos (saltos/velocidad imposible).
   fraudFlags        Int          @default(0)
   // ── Kill-switch documental ───────────────────────────────────────────────
@@ -237,6 +242,10 @@ model DriverDocument {
   fileUrl         String
   status          DocumentStatus @default(PENDING)
   expiresAt       String?
+  // OCR (env-gated): campos extraídos (JSON string) y confianza del proveedor,
+  // para que el admin los vea junto a la imagen al revisar.
+  ocrFields       String?
+  ocrConfidence   Float?
   rejectionReason String?
   reviewedBy      String?
   uploadedAt      DateTime       @default(now())
@@ -279,6 +288,16 @@ enum ComplianceStatus {
   CLEAR
   EXPIRING
   BLOCKED
+}
+
+// Antecedentes del conductor (env-gated, BACKGROUND_CHECK_PROVIDER).
+// UNCHECKED = nunca consultado; PENDING = consulta en curso (jamás bloquea);
+// CLEAR = sin hallazgos; HIT = hallazgo → revisión del admin (no auto-aprueba).
+enum BackgroundStatus {
+  UNCHECKED
+  PENDING
+  CLEAR
+  HIT
 }
 
 model Vehicle {

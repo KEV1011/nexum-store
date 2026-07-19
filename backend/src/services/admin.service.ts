@@ -132,6 +132,8 @@ export interface AdminDriverRow {
   // Kill-switch documental: CLEAR / EXPIRING / BLOCKED (+ motivo del bloqueo).
   complianceStatus: string;
   blockedReason: string | null;
+  // Antecedentes (env-gated): UNCHECKED / PENDING / CLEAR / HIT.
+  backgroundStatus: string;
 }
 
 export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
@@ -160,6 +162,7 @@ export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
       fraudFlags: d.fraudFlags,
       complianceStatus: d.complianceStatus,
       blockedReason: d.blockedReason,
+      backgroundStatus: d.backgroundStatus,
     };
   });
 }

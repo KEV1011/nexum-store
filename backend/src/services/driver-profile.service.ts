@@ -10,6 +10,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { pilotSkipVerification } from './kyc.service';
 import { evaluateDriverCompliance } from './document-expiry.service';
+import { runDocumentOcr } from './ocr.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Driver profile & document verification (Features D + E)
@@ -187,12 +188,17 @@ export async function upsertDriverDocument(
   dto: UpsertDriverDocumentDTO,
 ): Promise<DriverProfileDTO> {
   const docType = dto.type as DocumentType;
+  // OCR env-gated: con proveedor extrae número/nombre/vencimiento (autollenar
+  // expiresAt solo si el conductor no lo escribió); sin proveedor es no-op.
+  const ocr = await runDocumentOcr(driverId, docType, dto.fileUrl, dto.expiresAt);
   await prisma.driverDocument.upsert({
     where: { driverId_type: { driverId, type: docType } },
     update: {
       fileUrl: dto.fileUrl,
       status: PrismaDocumentStatus.PENDING,
-      expiresAt: dto.expiresAt ?? null,
+      expiresAt: ocr.expiresAt,
+      ocrFields: ocr.ocrFields,
+      ocrConfidence: ocr.ocrConfidence,
       rejectionReason: null,
       reviewedAt: null,
       reviewedBy: null,
@@ -203,7 +209,9 @@ export async function upsertDriverDocument(
       type: docType,
       fileUrl: dto.fileUrl,
       status: PrismaDocumentStatus.PENDING,
-      expiresAt: dto.expiresAt ?? null,
+      expiresAt: ocr.expiresAt,
+      ocrFields: ocr.ocrFields,
+      ocrConfidence: ocr.ocrConfidence,
     },
   });
   // Renovar un documento vencido levanta el kill-switch (el doc pasa a PENDING
@@ -219,12 +227,17 @@ export async function uploadDriverDocument(
   fileUrl: string,
   expiresAt?: string,
 ): Promise<DriverProfileDTO> {
+  // OCR env-gated (ver upsert de arriba): autollenado de expiresAt + campos
+  // extraídos para la revisión del admin. No-op sin proveedor.
+  const ocr = await runDocumentOcr(driverId, type, fileUrl, expiresAt);
   await prisma.driverDocument.upsert({
     where: { driverId_type: { driverId, type } },
     update: {
       fileUrl,
       status: PrismaDocumentStatus.PENDING,
-      expiresAt: expiresAt ?? null,
+      expiresAt: ocr.expiresAt,
+      ocrFields: ocr.ocrFields,
+      ocrConfidence: ocr.ocrConfidence,
       rejectionReason: null,
       reviewedAt: null,
       reviewedBy: null,
@@ -235,7 +248,9 @@ export async function uploadDriverDocument(
       type,
       fileUrl,
       status: PrismaDocumentStatus.PENDING,
-      expiresAt: expiresAt ?? null,
+      expiresAt: ocr.expiresAt,
+      ocrFields: ocr.ocrFields,
+      ocrConfidence: ocr.ocrConfidence,
     },
   });
   // Renovar un documento vencido levanta el kill-switch (ver upsert de arriba).
@@ -324,6 +339,11 @@ export interface AdminDocumentItem {
   reviewedBy: string | null;
   uploadedAt: string;
   reviewedAt: string | null;
+  /** Campos extraídos por OCR (JSON string) + confianza, si hubo proveedor. */
+  ocrFields: string | null;
+  ocrConfidence: number | null;
+  /** Fecha de vencimiento del documento (autollenada por OCR si aplica). */
+  expiresAt: string | null;
 }
 
 export async function listDocumentsForAdmin(
@@ -346,6 +366,9 @@ export async function listDocumentsForAdmin(
     status: d.status,
     rejectionReason: d.rejectionReason,
     reviewedBy: d.reviewedBy,
+    ocrFields: d.ocrFields,
+    ocrConfidence: d.ocrConfidence,
+    expiresAt: d.expiresAt,
     uploadedAt: d.uploadedAt.toISOString(),
     reviewedAt: d.reviewedAt?.toISOString() ?? null,
   }));
