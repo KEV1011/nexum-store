@@ -17,6 +17,7 @@ import { prisma } from './lib/prisma';
 import { otpMode } from './services/otp.service';
 import { kycProviderName, kycEnforced, pilotSkipVerification } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
+import { pruneSafetyState } from './services/safety-alerts.service';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -181,6 +182,7 @@ server.listen(PORT, () => {
   scheduleDocumentExpiryChecks();
   // Purga periódica del mapa en memoria del rate-limit por cliente (antifraude).
   setInterval(pruneRateLimits, 5 * 60 * 1000).unref();
+  setInterval(pruneSafetyState, 10 * 60 * 1000).unref();
 });
 
 export default app;

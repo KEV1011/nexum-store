@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { listSafetyAlerts } from '../services/safety-alerts.service';
 import { OperatorType, OperatorDocType, VehicleType } from '@prisma/client';
 import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
 import { isSmsConfigured } from '../services/sms.service';
@@ -265,6 +266,12 @@ router.delete('/vehicles/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async
   const ok = await deleteOperatorVehicle(req.operatorId!, req.params['id'] as string);
   if (!ok) { res.status(404).json({ success: false, error: 'Vehículo no encontrado' }); return; }
   res.json({ success: true, data: { deleted: true } });
+});
+
+// GET /operator/alerts — alertas de seguridad EN VIVO de la flota (geocerca de
+// destino, detención prolongada, desvío de ruta) para la Torre de Control.
+router.get('/alerts', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: listSafetyAlerts(req.operatorId!) });
 });
 
 // GET /operator/trips — viajes sellados con la empresa (trazabilidad + liquidación).
