@@ -26,6 +26,18 @@ enum PooledCity {
         (c) => c.name == s,
         orElse: () => PooledCity.pamplona,
       );
+
+  /// Centroide municipal (paridad con INTERCITY_CITY_COORDS del backend) para
+  /// pintar la ruta del viaje en el mapa.
+  ({double lat, double lng}) get coords => switch (this) {
+        PooledCity.pamplona => (lat: 7.3754, lng: -72.6486),
+        PooledCity.cucuta => (lat: 7.8939, lng: -72.5078),
+        PooledCity.bucaramanga => (lat: 7.1193, lng: -73.1227),
+        PooledCity.chitaga => (lat: 6.9000, lng: -72.6660),
+        PooledCity.malaga => (lat: 6.6983, lng: -72.7333),
+        PooledCity.ocana => (lat: 8.2375, lng: -73.3561),
+        PooledCity.bogota => (lat: 4.7110, lng: -74.0721),
+      };
 }
 
 enum PooledTripStatus {

@@ -14,6 +14,8 @@ class FreightRouteMap extends StatelessWidget {
     required this.originLng,
     required this.destLat,
     required this.destLng,
+    this.driverLat,
+    this.driverLng,
     this.height = 150,
   });
 
@@ -21,6 +23,12 @@ class FreightRouteMap extends StatelessWidget {
   final double originLng;
   final double destLat;
   final double destLng;
+
+  /// Posición EN VIVO del conductor asignado (si el backend la envía en el
+  /// DTO del flete ACCEPTED/IN_PROGRESS): pinta el camión sobre la ruta.
+  final double? driverLat;
+  final double? driverLng;
+
   final double height;
 
   /// Construye el widget desde un JSON de flete; devuelve `null` si no hay
@@ -38,6 +46,8 @@ class FreightRouteMap extends StatelessWidget {
       originLng: oLng,
       destLat: dLat,
       destLng: dLng,
+      driverLat: (f['driverLat'] as num?)?.toDouble(),
+      driverLng: (f['driverLng'] as num?)?.toDouble(),
       height: height,
     );
   }
@@ -46,6 +56,9 @@ class FreightRouteMap extends StatelessWidget {
   Widget build(BuildContext context) {
     final origin = LatLng(originLat, originLng);
     final dest = LatLng(destLat, destLng);
+    final driver = (driverLat != null && driverLng != null)
+        ? LatLng(driverLat!, driverLng!)
+        : null;
     final center = LatLng(
       (originLat + destLat) / 2,
       (originLng + destLng) / 2,
@@ -86,7 +99,7 @@ class FreightRouteMap extends StatelessWidget {
               PolylineLayer(
                 polylines: [
                   Polyline(
-                    points: [origin, dest],
+                    points: [origin, if (driver != null) driver, dest],
                     strokeWidth: 3.5,
                     color: const Color(0xFFF59E0B),
                   ),
@@ -112,6 +125,16 @@ class FreightRouteMap extends StatelessWidget {
                       icon: Icons.location_on_rounded,
                     ),
                   ),
+                  if (driver != null)
+                    Marker(
+                      point: driver,
+                      width: 34,
+                      height: 34,
+                      child: const _Pin(
+                        color: Color(0xFF0EA5E9),
+                        icon: Icons.local_shipping_rounded,
+                      ),
+                    ),
                 ],
               ),
             ],

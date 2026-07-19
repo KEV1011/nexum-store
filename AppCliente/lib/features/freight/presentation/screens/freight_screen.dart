@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
@@ -46,14 +48,24 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
     'CANCELLED': 'Cancelado',
   };
 
+  /// Refresco periódico: mantiene el estado y la posición EN VIVO del
+  /// transportador (driverLat/Lng del DTO) sin que el usuario tenga que salir
+  /// y volver a entrar.
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     _loadMine();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _loadMine(),
+    );
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     for (final c in [_origin, _dest, _originCity, _destCity, _description, _weight, _price]) {
       c.dispose();
     }

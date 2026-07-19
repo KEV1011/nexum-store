@@ -170,7 +170,9 @@ model Driver {
   blockedReason     String?
   blockedAt         DateTime?
   // Disponibilidad para recibir solicitudes de viajes intermunicipales.
-  intercityEnabled  Boolean      @default(false)
+  // Default TRUE (paridad con el urbano): un conductor ONLINE recibe
+  // intermunicipales salvo que lo apague en Preferencias de servicio.
+  intercityEnabled  Boolean      @default(true)
   // Preferencias de servicio: qué tipos de solicitud recibe el conductor.
   // El matching las respeta al elegir candidatos (default: todo activo).
   acceptsTrips      Boolean      @default(true)

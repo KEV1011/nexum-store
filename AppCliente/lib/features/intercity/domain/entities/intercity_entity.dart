@@ -116,6 +116,9 @@ class IntercityRoute {
     IntercityCity.bogota: (lat: 4.7110, lng: -74.0721),
   };
 
+  /// Centroide de la ciudad para el mapa de seguimiento en vivo.
+  static ({double lat, double lng}) coordsOf(IntercityCity c) => _cityCoords[c]!;
+
   static const double _roadFactor = 1.4;
   static const double _avgSpeedKmh = 55;
   static const double _farePerKm = 220;
@@ -315,6 +318,8 @@ class IntercityRequestEntity {
     this.driverRating,
     this.counterFare,
     this.myRating,
+    this.driverLat,
+    this.driverLng,
   });
 
   /// Parses the backend `IntercityBookingDTO` JSON shape.
@@ -359,6 +364,8 @@ class IntercityRequestEntity {
       driverVehicle: json['driverVehicle'] as String?,
       counterFare: (json['counterFare'] as num?)?.toDouble(),
       myRating: json['rating'] as int?,
+      driverLat: (json['driverLat'] as num?)?.toDouble(),
+      driverLng: (json['driverLng'] as num?)?.toDouble(),
     );
   }
 
@@ -381,6 +388,11 @@ class IntercityRequestEntity {
 
   /// Calificación (1-5) que el pasajero le dio al viaje completado.
   final int? myRating;
+
+  /// Posición EN VIVO del conductor asignado (heartbeat GPS del backend);
+  /// solo llega con el viaje confirmado o en curso — alimenta el mapa.
+  final double? driverLat;
+  final double? driverLng;
 
   bool get hasDriver => driverName != null;
   bool get isActive => status.isActive;
@@ -405,6 +417,8 @@ class IntercityRequestEntity {
     double? driverRating,
     double? counterFare,
     int? myRating,
+    double? driverLat,
+    double? driverLng,
   }) =>
       IntercityRequestEntity(
         id: id ?? this.id,
@@ -424,5 +438,7 @@ class IntercityRequestEntity {
         driverRating: driverRating ?? this.driverRating,
         counterFare: counterFare ?? this.counterFare,
         myRating: myRating ?? this.myRating,
+        driverLat: driverLat ?? this.driverLat,
+        driverLng: driverLng ?? this.driverLng,
       );
 }

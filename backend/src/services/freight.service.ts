@@ -68,7 +68,7 @@ function _toDTO(f: {
   acceptedAt: Date | null; completedAt: Date | null;
   originLat?: number | null; originLng?: number | null;
   destLat?: number | null; destLng?: number | null;
-}) {
+}, driverPos?: { lat: number | null; lng: number | null } | null) {
   return {
     id: f.id,
     clientName: f.clientName ?? undefined,
@@ -96,9 +96,46 @@ function _toDTO(f: {
     createdAt: f.createdAt.toISOString(),
     acceptedAt: f.acceptedAt?.toISOString(),
     completedAt: f.completedAt?.toISOString(),
+    // Posición en vivo del conductor asignado (heartbeat GPS) — solo se llena
+    // en fletes ACCEPTED/IN_PROGRESS, para el mapa de seguimiento.
+    driverLat: driverPos?.lat ?? undefined,
+    driverLng: driverPos?.lng ?? undefined,
   };
 }
 export type FreightDTO = ReturnType<typeof _toDTO>;
+
+/**
+ * Mapea filas a DTO añadiendo la posición EN VIVO del conductor asignado en los
+ * fletes activos (paridad con el seguimiento urbano). Una sola consulta por
+ * lote para todos los conductores involucrados.
+ */
+async function _toDTOsWithDriverPos(
+  rows: Parameters<typeof _toDTO>[0][] & { driverId: string | null; status: FreightStatus }[],
+): Promise<FreightDTO[]> {
+  const activeDriverIds = [
+    ...new Set(
+      rows
+        .filter((r) => r.driverId && (r.status === 'ACCEPTED' || r.status === 'IN_PROGRESS'))
+        .map((r) => r.driverId as string),
+    ),
+  ];
+  const positions = new Map<string, { lat: number | null; lng: number | null }>();
+  if (activeDriverIds.length > 0) {
+    const drivers = await prisma.driver.findMany({
+      where: { id: { in: activeDriverIds } },
+      select: { id: true, lastLat: true, lastLng: true },
+    });
+    for (const d of drivers) positions.set(d.id, { lat: d.lastLat, lng: d.lastLng });
+  }
+  return rows.map((r) =>
+    _toDTO(
+      r,
+      r.driverId && (r.status === 'ACCEPTED' || r.status === 'IN_PROGRESS')
+        ? positions.get(r.driverId) ?? null
+        : null,
+    ),
+  );
+}
 
 // ─── Cliente ──────────────────────────────────────────────────────────────────
 
@@ -193,7 +230,7 @@ export async function listClientFreights(clientId: string): Promise<FreightDTO[]
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
-  return rows.map(_toDTO);
+  return _toDTOsWithDriverPos(rows);
 }
 
 export async function cancelClientFreight(clientId: string, id: string): Promise<FreightDTO> {
@@ -236,7 +273,7 @@ export async function listAvailableFreights(operatorId: string): Promise<Freight
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
-  return rows.map(_toDTO);
+  return rows.map((r) => _toDTO(r));
 }
 
 export async function listOperatorFreights(operatorId: string): Promise<FreightDTO[]> {
@@ -245,7 +282,7 @@ export async function listOperatorFreights(operatorId: string): Promise<FreightD
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
-  return rows.map(_toDTO);
+  return rows.map((r) => _toDTO(r));
 }
 
 export async function acceptFreight(
@@ -603,7 +640,7 @@ export async function listDriverFreights(driverId: string): Promise<FreightDTO[]
     orderBy: { createdAt: 'desc' },
     take: 30,
   });
-  return rows.map(_toDTO);
+  return _toDTOsWithDriverPos(rows);
 }
 
 // ─── Conductor: tomar fletes disponibles desde su app (owner-operator) ────────
@@ -638,7 +675,7 @@ export async function listDriverAvailableFreights(
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
-  return { freights: rows.map(_toDTO), vehicles };
+  return { freights: rows.map((r) => _toDTO(r)), vehicles };
 }
 
 /** El conductor toma un flete asignándose a sí mismo + su camión. */
