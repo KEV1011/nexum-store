@@ -5,6 +5,7 @@ import { sendPushToDriver, sendPushToClient } from '../services/push.service';
 import { getErrandOfferInfo } from './errand.service';
 import { getOrderOfferInfo } from './order-offer.service';
 import { evaluateGeoJump } from './fraud.service';
+import { onDriverHeartbeat } from './safety-alerts.service';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 
@@ -47,6 +48,10 @@ export async function updateDriverGeo(driverId: string, lat: number, lng: number
         "lastLng" = ${lng},
         "lastSeenAt" = now()
     WHERE "id" = ${driverId}`;
+
+  // Seguridad operativa (geocerca de destino, detención, desvío): pasivo y
+  // best-effort — jamás afecta el fix ni el servicio.
+  void onDriverHeartbeat(driverId, lat, lng);
 }
 
 // ─── Phase 2: geospatial nearest-driver matching ──────────────────────────────

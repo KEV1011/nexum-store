@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { createOperatorApi } from './api'
 import FleetMap, { type FleetMapPoint } from './FleetMap'
+import AlertsPanel from './AlertsPanel'
 import RoutesManager from './RoutesManager'
 import SchedulesManager from './SchedulesManager'
 import DriversManager from './DriversManager'
@@ -501,6 +502,9 @@ function Dashboard({ token, operator, onLogout }: {
                   </div>
                 )}
               </section>
+
+              {/* Alertas de seguridad en vivo (geocerca/detención/desvío) */}
+              <AlertsPanel api={api} />
             </>
           )}
 

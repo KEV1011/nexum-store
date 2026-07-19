@@ -34,6 +34,7 @@ import { setClientKycStatus, ClientKycError } from '../services/client-kyc.servi
 import { OperatorStatus } from '@prisma/client';
 import { setDriverKycStatus, KycError } from '../services/kyc.service';
 import { adminClearCompliance } from '../services/document-expiry.service';
+import { listSafetyAlerts } from '../services/safety-alerts.service';
 import {
   listAllTickets,
   getTicketForAdmin,
@@ -105,7 +106,7 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/promos', '/payouts', '/operators', '/routes', '/matching', '/support'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/alerts', '/promos', '/payouts', '/operators', '/routes', '/matching', '/support'], requireAdmin);
 
 // GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
 // por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.
@@ -201,6 +202,12 @@ router.post('/drivers/:id/kyc', async (req: Request, res: Response): Promise<voi
     }
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
+});
+
+// GET /admin/alerts — alertas de seguridad en vivo (geocerca/detención/desvío)
+// de TODA la plataforma, para la pestaña SOS del panel.
+router.get('/alerts', (_req: Request, res: Response): void => {
+  res.json({ success: true, data: listSafetyAlerts() });
 });
 
 // ─── Soporte con tickets ────────────────────────────────────────────────────────
@@ -614,6 +621,10 @@ const PANEL_HTML = `<!DOCTYPE html>
     <section id="tab-sos" style="display:none">
       <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Quién</th><th>Teléfono</th><th>Viaje</th><th>Ubicación</th></tr></thead>
       <tbody id="sos-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
+      <h3 style="margin-top:22px;color:#0f172a">Alertas de ruta (en vivo)</h3>
+      <p style="font-size:.8rem;color:#64748b;margin:4px 0 10px">Geocerca de destino, detenciones prolongadas y desvíos del corredor de la ruta en servicios EN CURSO. Se reinician con el redeploy.</p>
+      <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Conductor</th><th>Servicio</th><th>Detalle</th></tr></thead>
+      <tbody id="alerts-body"><tr><td colspan="5" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-promos" style="display:none">
@@ -924,7 +935,18 @@ function setOperator(id, action) {
     .catch((e) => showMsg(e.message, true));
 }
 
+var ALERT_LABEL = { geofence: '📍 Llegando', stall: '⏸ Detención', deviation: '↪ Desvío' };
+function loadAlerts() {
+  api('/admin/alerts').then((rows) => {
+    const tb = document.getElementById('alerts-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">Sin alertas de ruta. 🎉</td></tr>'; return; }
+    tb.innerHTML = rows.map((a) => '<tr><td>' + when(a.at) + '</td><td>' + (ALERT_LABEL[a.kind] || a.kind) +
+      '</td><td>' + esc(a.driverName) + '</td><td>' + esc(a.serviceKind) + ' · ' + esc(a.serviceId.slice(0, 8)) +
+      '</td><td>' + esc(a.detail) + '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
 function loadSos() {
+  loadAlerts();
   api('/admin/sos').then((rows) => {
     const tb = document.getElementById('sos-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin eventos SOS. 🎉</td></tr>'; return; }
