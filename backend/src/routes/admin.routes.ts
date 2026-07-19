@@ -19,6 +19,7 @@ import {
 import {
   getAdminMetrics,
   listDriversForAdmin,
+  // (kill-switch documental: desbloqueo manual vive en document-expiry.service)
   listSosForAdmin,
   listOperatorsForAdmin,
   setOperatorStatus,
@@ -32,6 +33,7 @@ import {
 import { setClientKycStatus, ClientKycError } from '../services/client-kyc.service';
 import { OperatorStatus } from '@prisma/client';
 import { setDriverKycStatus, KycError } from '../services/kyc.service';
+import { adminClearCompliance } from '../services/document-expiry.service';
 import {
   listAllTickets,
   getTicketForAdmin,
@@ -162,6 +164,18 @@ router.post('/drivers/:id/release', async (req: Request, res: Response): Promise
   const result = await releaseDriver(req.params['id']!);
   if (!result.ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
   res.json({ success: true, data: result });
+});
+
+// POST /admin/drivers/:id/compliance/clear — desbloqueo manual del kill-switch
+// documental. OJO: si el documento sigue vencido en BD, el barrido diario
+// vuelve a bloquear; corrige también el documento (fecha o re-aprobación).
+router.post('/drivers/:id/compliance/clear', async (req: Request, res: Response): Promise<void> => {
+  try {
+    await adminClearCompliance(req.params['id']!);
+    res.json({ success: true });
+  } catch {
+    res.status(404).json({ success: false, error: 'Conductor no encontrado' });
+  }
 });
 
 // POST /admin/drivers/:id/kyc { status: 'VERIFIED'|'REJECTED'|'IN_REVIEW', reference? }
@@ -566,8 +580,8 @@ const PANEL_HTML = `<!DOCTYPE html>
         <table><thead><tr><th>Conductor</th><th>Estado</th><th>Verif.</th><th>GPS hace</th><th>Distancia</th><th>Radio 5 km</th><th>GPS fresco</th><th>¿Recibiría oferta?</th></tr></thead>
         <tbody id="diag-body"></tbody></table>
       </div>
-      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
-      <tbody id="drivers-body"><tr><td colspan="12" class="empty">Cargando…</td></tr></tbody></table>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Docs</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
+      <tbody id="drivers-body"><tr><td colspan="13" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-clients" style="display:none">
@@ -766,7 +780,7 @@ var KYC_LABEL = { PENDING: 'Pendiente', IN_REVIEW: 'En revisión', VERIFIED: 'Ve
 function loadDrivers() {
   api('/admin/drivers').then((rows) => {
     const tb = document.getElementById('drivers-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="12" class="empty">Sin conductores.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="13" class="empty">Sin conductores.</td></tr>'; return; }
     tb.innerHTML = rows.map((d) => {
       var kycCell = '<span style="font-size:.72rem">' + (KYC_LABEL[d.kycStatus] || d.kycStatus) + '</span>';
       if (d.hasSelfie && d.selfieUrl) kycCell += ' <a href="' + esc(d.selfieUrl) + '" target="_blank" style="color:#059669">selfie</a>';
@@ -774,15 +788,21 @@ function loadDrivers() {
       if (d.kycStatus !== 'VERIFIED') kycBtns += '<button class="btn-sm btn-approve" onclick="setDriverKyc(\\'' + d.id + '\\', \\'VERIFIED\\')">KYC ✓</button> ';
       if (d.kycStatus !== 'REJECTED') kycBtns += '<button class="btn-sm btn-reject" onclick="setDriverKyc(\\'' + d.id + '\\', \\'REJECTED\\')">KYC ✕</button>';
       var fraud = d.fraudFlags > 0 ? '<span class="badge badge-reject">⚠ ' + d.fraudFlags + '</span>' : '—';
+      var compliance = d.complianceStatus === 'BLOCKED'
+        ? '<span class="badge badge-reject" title="' + esc(d.blockedReason || '') + '">⛔ Vencidos</span>'
+        : d.complianceStatus === 'EXPIRING'
+          ? '<span class="badge" style="background:#fef3c7;color:#92400e">⏳ Por vencer</span>'
+          : '✅';
       return '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
       '</td><td><span class="badge badge-' + d.status + '">' + d.status + '</span></td><td>' + (d.isVerified ? '✅' : '—') +
       '</td><td>' + (d.intercityEnabled ? '🛣️' : '—') +
-      '</td><td>' + kycCell + '</td><td>' + fraud +
+      '</td><td>' + kycCell + '</td><td>' + compliance + '</td><td>' + fraud +
       '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
       (d.isVerified
         ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
       ' ' + kycBtns +
+      (d.complianceStatus === 'BLOCKED' ? ' <button class="btn-sm" style="background:#0ea5e9;color:#fff" onclick="clearCompliance(\\'' + d.id + '\\')">Desbloquear docs</button>' : '') +
       (d.status === 'ON_TRIP' ? ' <button class="btn-sm" style="background:#f59e0b;color:#fff" onclick="releaseDriver(\\'' + d.id + '\\')">Liberar</button>' : '') +
       '</td></tr>';
     }).join('');
@@ -791,6 +811,12 @@ function loadDrivers() {
 function setDriverKyc(id, status) {
   api('/admin/drivers/' + id + '/kyc', { method: 'POST', body: JSON.stringify({ status: status }) })
     .then(() => { showMsg('KYC actualizado.', false); loadDrivers(); })
+    .catch((e) => showMsg(e.message, true));
+}
+function clearCompliance(id) {
+  if (!confirm('¿Desbloquear a este conductor? Si el documento sigue vencido, el chequeo diario volverá a bloquearlo — corrige también el documento.')) return;
+  api('/admin/drivers/' + id + '/compliance/clear', { method: 'POST' })
+    .then(() => { showMsg('Conductor desbloqueado.', false); loadDrivers(); })
     .catch((e) => showMsg(e.message, true));
 }
 function loadClients() {

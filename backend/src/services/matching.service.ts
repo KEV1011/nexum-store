@@ -6,6 +6,7 @@ import { getErrandOfferInfo } from './errand.service';
 import { getOrderOfferInfo } from './order-offer.service';
 import { evaluateGeoJump } from './fraud.service';
 import { pilotSkipVerification } from './kyc.service';
+import { docKillSwitchEnforced } from './document-expiry.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -141,6 +142,12 @@ async function findNearestAvailableDrivers(
     ? Prisma.empty
     : Prisma.sql`AND d."isVerified" = true`;
 
+  // Kill-switch documental: con DOC_KILL_SWITCH_ENFORCE=true, un conductor con
+  // documentos obligatorios vencidos (BLOCKED) se cae del matching.
+  const complianceFilter = docKillSwitchEnforced()
+    ? Prisma.sql`AND d."complianceStatus"::text <> 'BLOCKED'`
+    : Prisma.empty;
+
   const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
     SELECT d."id" AS driver_id,
            ST_Distance(
@@ -151,6 +158,7 @@ async function findNearestAvailableDrivers(
     WHERE d."geo" IS NOT NULL
       AND d."status" = 'ONLINE'
       ${verifiedFilter}
+      ${complianceFilter}
       AND (${serviceKind} != 'trip' OR d."acceptsTrips" = true)
       AND (${serviceKind} != 'errand' OR d."acceptsErrands" = true)
       AND (${serviceKind} != 'order' OR d."acceptsOrders" = true)

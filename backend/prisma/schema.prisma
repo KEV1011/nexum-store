@@ -163,6 +163,12 @@ model Driver {
   selfieUrl         String?      // foto selfie para comparación/liveness
   // Antifraude: contador de eventos GPS sospechosos (saltos/velocidad imposible).
   fraudFlags        Int          @default(0)
+  // ── Kill-switch documental ───────────────────────────────────────────────
+  // Estado calculado por el chequeo diario de vencimientos (document-expiry):
+  // BLOCKED = algún documento obligatorio vencido. blockedReason lista cuáles.
+  complianceStatus  ComplianceStatus @default(CLEAR)
+  blockedReason     String?
+  blockedAt         DateTime?
   // Disponibilidad para recibir solicitudes de viajes intermunicipales.
   intercityEnabled  Boolean      @default(false)
   // Preferencias de servicio: qué tipos de solicitud recibe el conductor.
@@ -261,6 +267,16 @@ enum KycStatus {
   IN_REVIEW    // enviada; en revisión (proveedor o admin manual)
   VERIFIED     // identidad confirmada
   REJECTED     // no pasó la verificación
+}
+
+// Cumplimiento documental del conductor (kill-switch de documentos vencidos).
+// CLEAR = todo vigente; EXPIRING = algún obligatorio vence pronto (aviso);
+// BLOCKED = obligatorio VENCIDO → con DOC_KILL_SWITCH_ENFORCE=true se cae del
+// matching y no puede ponerse en línea hasta renovar.
+enum ComplianceStatus {
+  CLEAR
+  EXPIRING
+  BLOCKED
 }
 
 model Vehicle {

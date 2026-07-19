@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { pilotSkipVerification } from './kyc.service';
+import { docKillSwitchEnforced } from './document-expiry.service';
 import { maskPhone } from './safe-contact.service';
 import { getDriverProfile } from './driver-profile.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
@@ -222,6 +223,11 @@ async function _findIntercityDrivers(
     ? Prisma.empty
     : Prisma.sql`AND d."isVerified" = true`;
 
+  // Kill-switch documental: BLOCKED no recibe intermunicipales (con enforce).
+  const complianceFilter = docKillSwitchEnforced()
+    ? Prisma.sql`AND d."complianceStatus"::text <> 'BLOCKED'`
+    : Prisma.empty;
+
   // Parámetros internos (constantes + centroide de tabla fija): sin strings de
   // usuario. SQL parametrizado vía tagged template — nunca interpolación.
   const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
@@ -234,6 +240,7 @@ async function _findIntercityDrivers(
     WHERE d."geo" IS NOT NULL
       AND d."status" = 'ONLINE'
       ${verifiedFilter}
+      ${complianceFilter}
       AND d."intercityEnabled" = true
       AND d."lastSeenAt" >= now() - ${INTERCITY_GEO_FRESHNESS_S} * INTERVAL '1 second'
       AND ST_DWithin(
