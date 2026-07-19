@@ -18,6 +18,7 @@ class RegisterDriverParams {
     required this.bankName,
     required this.bankAccountType,
     required this.bankAccountNumber,
+    this.acceptedTerms = false,
   });
 
   final String phone;
@@ -34,6 +35,10 @@ class RegisterDriverParams {
   final String bankAccountType;
   final String bankAccountNumber;
 
+  /// Clickwrap: aceptación explícita de términos y privacidad (checkbox no
+  /// preseleccionado en el paso final del registro).
+  final bool acceptedTerms;
+
   Map<String, dynamic> toMap() => {
         'phone': phone,
         'fullName': fullName,
@@ -48,6 +53,7 @@ class RegisterDriverParams {
         'bankName': bankName,
         'bankAccountType': bankAccountType,
         'bankAccountNumber': bankAccountNumber,
+        'acceptedTerms': acceptedTerms,
       };
 }
 

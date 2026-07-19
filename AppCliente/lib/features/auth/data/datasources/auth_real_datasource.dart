@@ -31,7 +31,10 @@ class AuthRealDataSource implements AuthDataSource {
     try {
       final res = await _dio.post<Map<String, dynamic>>(
         '/client/auth/verify-otp',
-        data: {'phone': phoneNumber, 'otp': otpCode},
+        // acceptedTerms: el único camino a esta llamada pasa por el checkbox
+        // de términos/privacidad (no preseleccionado) de la pantalla de
+        // teléfono — el backend guarda la constancia {versión, fecha, IP}.
+        data: {'phone': phoneNumber, 'otp': otpCode, 'acceptedTerms': true},
       );
       if (res.data?['success'] != true) throw const InvalidOtpException();
       return res.data!['data'] as Map<String, dynamic>;

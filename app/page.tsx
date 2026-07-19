@@ -96,8 +96,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="border-t border-slate-800 py-6 text-center text-sm text-slate-500">
-        © {new Date().getFullYear()} ZIPA · Colombia
+      <footer className="border-t border-slate-800 py-6 text-center text-sm text-slate-500 space-y-2">
+        <p>© {new Date().getFullYear()} ZIPA · Colombia</p>
+        {/* Transparencia de IA (FTC/Ley 1581): declaración pública del uso de
+            algoritmos en el emparejamiento, rutas y prevención de fraude. */}
+        <p className="text-xs text-slate-600 max-w-xl mx-auto px-4">
+          ZIPA usa inteligencia artificial para emparejar servicios con conductores,
+          estimar rutas y tarifas, y detectar fraudes y anomalías de seguridad.
+        </p>
       </footer>
     </main>
   )
