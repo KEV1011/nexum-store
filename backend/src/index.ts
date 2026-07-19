@@ -20,6 +20,7 @@ import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState } from './services/safety-alerts.service';
 import { ocrProviderName } from './services/ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
+import { legalConsentEnforced } from './services/legal.service';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -33,6 +34,7 @@ import safetyRouter from './routes/safety.routes';
 import adminRouter from './routes/admin.routes';
 import operatorRouter from './routes/operator.routes';
 import geoRouter from './routes/geo.routes';
+import legalRouter from './routes/legal.routes';
 
 // Crash reporting (no-op sin SENTRY_DSN).
 initSentry();
@@ -107,6 +109,8 @@ app.get('/health', async (_req, res) => {
     // OCR y antecedentes (env-gated): qué proveedor corre cada uno.
     ocr: ocrProviderName(),
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),
+    // Clickwrap legal: 'activo' = el registro exige aceptar términos.
+    legalConsent: legalConsentEnforced() ? 'activo' : 'apagado',
     // Piloto: si está activo, el despacho ignora la verificación (probar arranque).
     pilotSkipVerification: pilotSkipVerification(),
   });
@@ -115,7 +119,7 @@ app.get('/health', async (_req, res) => {
 // ─── Rate limiting ─────────────────────────────────────────────────────────────
 // Estricto en autenticación/OTP; global (generoso) en el resto.
 
-app.use(['/auth', '/client/auth', '/admin/auth', '/operator/auth'], authLimiter);
+app.use(['/auth', '/client/auth', '/admin/auth', '/operator/auth', '/legal/takedown'], authLimiter);
 app.use(globalLimiter);
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -132,6 +136,7 @@ app.use('/safety', safetyRouter);
 app.use('/admin', adminRouter);
 app.use('/operator', operatorRouter);
 app.use('/geo', geoRouter);
+app.use('/legal', legalRouter);
 
 // Serve uploaded driver documents (protected path — no directory listing).
 const uploadsDir = path.resolve(process.cwd(), 'uploads');

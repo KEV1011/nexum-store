@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { isValidColombianPhone, sendOtp, verifyOtp, registerDriver, verifyToken } from '../services/auth.service';
 import { OtpRateLimitError } from '../services/otp.service';
 import { RegisterDriverDTO } from '../types';
+import { legalConsentEnforced, recordConsent } from '../services/legal.service';
 
 const router = Router();
 
@@ -82,6 +83,18 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // Clickwrap: con LEGAL_CONSENT_ENFORCE=true el registro exige la aceptación
+  // EXPLÍCITA de términos y privacidad (checkbox no preseleccionado en la app).
+  const acceptedTerms = (req.body as { acceptedTerms?: unknown }).acceptedTerms === true;
+  if (legalConsentEnforced() && !acceptedTerms) {
+    res.status(400).json({
+      success: false,
+      error: 'Debes aceptar los Términos y Condiciones y la Política de Privacidad para registrarte.',
+      code: 'legal_consent_required',
+    });
+    return;
+  }
+
   if (!dto.fullName || typeof dto.fullName !== 'string') {
     res.status(400).json({ success: false, error: 'fullName is required' });
     return;
@@ -149,6 +162,11 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
   try {
     const result = await registerDriver(validatedDto);
+    // Constancia de aceptación { versión, fecha, IP } — se guarda siempre que
+    // el campo llegó (aunque el enforcement esté apagado). Best-effort.
+    if (acceptedTerms) {
+      void recordConsent('driver', result.driver.id, req.ip).catch(() => undefined);
+    }
     res.status(201).json({ success: true, data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Driver registration failed';

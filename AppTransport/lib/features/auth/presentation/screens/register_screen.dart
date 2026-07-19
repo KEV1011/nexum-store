@@ -106,8 +106,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
   }
 
+  bool _acceptedTerms = false;
+
   Future<void> _submit() async {
     if (!(_step3Key.currentState?.validate() ?? false)) return;
+    if (!_acceptedTerms) return; // el botón ya está deshabilitado; blindaje extra
 
     final year = int.tryParse(_vehicleYearCtrl.text.trim()) ?? 0;
 
@@ -126,6 +129,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             bankName: _bankName,
             bankAccountType: _bankAccountType,
             bankAccountNumber: _bankAccountNumberCtrl.text.trim(),
+            acceptedTerms: _acceptedTerms,
           ),
         );
   }
@@ -200,6 +204,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       setState(() => _bankAccountType = v ?? 'Ahorros'),
                   onSubmit: _submit,
                   isLoading: isLoading,
+                  acceptedTerms: _acceptedTerms,
+                  onAcceptedTermsChanged: (v) =>
+                      setState(() => _acceptedTerms = v ?? false),
                 ),
               ],
             ),
@@ -502,6 +509,8 @@ class _Step3Bank extends StatelessWidget {
     required this.onAccountTypeChanged,
     required this.onSubmit,
     required this.isLoading,
+    required this.acceptedTerms,
+    required this.onAcceptedTermsChanged,
   });
 
   final GlobalKey<FormState> formKey;
@@ -512,6 +521,10 @@ class _Step3Bank extends StatelessWidget {
   final ValueChanged<String?> onAccountTypeChanged;
   final VoidCallback onSubmit;
   final bool isLoading;
+
+  /// Clickwrap: checkbox NO preseleccionado; sin aceptar no hay registro.
+  final bool acceptedTerms;
+  final ValueChanged<bool?> onAcceptedTermsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -574,10 +587,29 @@ class _Step3Bank extends StatelessWidget {
                 color: context.textSecondaryColor,
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 20),
+            // Aceptación EXPLÍCITA de términos (cláusula de arbitraje incluida)
+            // y privacidad — checkbox no preseleccionado.
+            CheckboxListTile(
+              value: acceptedTerms,
+              onChanged: isLoading ? null : onAcceptedTermsChanged,
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(
+                'Acepto los Términos y Condiciones (incluida la cláusula de '
+                'arbitraje) y la Política de Privacidad de ZIPA.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: context.textSecondaryColor,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             _PrimaryButton(
               label: 'Completar registro',
-              onPressed: isLoading ? null : onSubmit,
+              onPressed: (isLoading || !acceptedTerms) ? null : onSubmit,
               icon: Icons.check_circle_rounded,
               isLoading: isLoading,
             ),

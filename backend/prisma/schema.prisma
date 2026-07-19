@@ -1193,3 +1193,59 @@ model SupportMessage {
   @@index([ticketId])
   @@map("support_messages")
 }
+
+// ── Blindaje legal: términos versionados, consentimientos y DMCA ──────────────
+
+enum LegalDocKind {
+  TERMS
+  PRIVACY
+}
+
+// Documento legal versionado (Términos / Política). El texto vigente lo sirve
+// el backend (GET /legal/terms|privacy); publicar una versión nueva desactiva
+// la anterior y obliga re-aceptación en el próximo registro/login gateado.
+model LegalDocument {
+  id          String       @id @default(cuid())
+  kind        LegalDocKind
+  version     String
+  title       String
+  body        String
+  publishedAt DateTime     @default(now())
+  active      Boolean      @default(true)
+
+  @@unique([kind, version])
+  @@index([kind, active])
+  @@map("legal_documents")
+}
+
+// Constancia de aceptación: quién (cliente/conductor/empresa), qué versión,
+// cuándo y desde qué IP — soporte probatorio del clickwrap (arbitraje).
+model LegalConsent {
+  id         String       @id @default(cuid())
+  subjectKind String      // 'user' | 'driver' | 'operator'
+  subjectId  String
+  docKind    LegalDocKind
+  docVersion String
+  acceptedAt DateTime     @default(now())
+  ip         String?
+
+  @@index([subjectKind, subjectId])
+  @@map("legal_consents")
+}
+
+// Solicitud de retiro DMCA/derechos de autor sobre contenido subido por
+// usuarios (documentos, fotos de entrega/chat/catálogo). El admin la procesa.
+model TakedownRequest {
+  id            String    @id @default(cuid())
+  reporterName  String
+  reporterEmail String
+  contentUrl    String
+  reason        String
+  status        String    @default("OPEN") // OPEN | REMOVED | REJECTED
+  createdAt     DateTime  @default(now())
+  resolvedAt    DateTime?
+  resolvedBy    String?
+
+  @@index([status])
+  @@map("takedown_requests")
+}

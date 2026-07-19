@@ -36,6 +36,7 @@ import { setDriverKycStatus, KycError } from '../services/kyc.service';
 import { adminClearCompliance } from '../services/document-expiry.service';
 import { listSafetyAlerts } from '../services/safety-alerts.service';
 import { checkDriverBackground, BackgroundCheckError } from '../services/background-check.service';
+import { listTakedowns, resolveTakedown } from '../services/legal.service';
 import {
   listAllTickets,
   getTicketForAdmin,
@@ -107,7 +108,7 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/alerts', '/promos', '/payouts', '/operators', '/routes', '/matching', '/support'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/alerts', '/takedowns', '/promos', '/payouts', '/operators', '/routes', '/matching', '/support'], requireAdmin);
 
 // GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
 // por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.
@@ -224,6 +225,23 @@ router.post('/drivers/:id/kyc', async (req: Request, res: Response): Promise<voi
 // de TODA la plataforma, para la pestaña SOS del panel.
 router.get('/alerts', (_req: Request, res: Response): void => {
   res.json({ success: true, data: listSafetyAlerts() });
+});
+
+// GET /admin/takedowns — solicitudes de retiro DMCA. POST .../:id/resolve
+// { action: 'REMOVED'|'REJECTED' } — el admin retira el contenido a mano
+// (borrar el archivo/producto) y deja constancia aquí.
+router.get('/takedowns', async (_req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listTakedowns() });
+});
+router.post('/takedowns/:id/resolve', async (req: Request, res: Response): Promise<void> => {
+  const action = (req.body as { action?: string }).action;
+  if (action !== 'REMOVED' && action !== 'REJECTED') {
+    res.status(400).json({ success: false, error: "action debe ser 'REMOVED' o 'REJECTED'" });
+    return;
+  }
+  const data = await resolveTakedown(req.params['id']!, action, req.adminPhone ?? 'admin');
+  if (!data) { res.status(404).json({ success: false, error: 'Solicitud no encontrada' }); return; }
+  res.json({ success: true, data });
 });
 
 // ─── Soporte con tickets ────────────────────────────────────────────────────────
@@ -637,6 +655,9 @@ const PANEL_HTML = `<!DOCTYPE html>
     <section id="tab-sos" style="display:none">
       <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Quién</th><th>Teléfono</th><th>Viaje</th><th>Ubicación</th></tr></thead>
       <tbody id="sos-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
+      <h3 style="margin-top:22px;color:#0f172a">Retiros DMCA</h3>
+      <table><thead><tr><th>Fecha</th><th>Reportante</th><th>Contenido</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <tbody id="takedowns-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
       <h3 style="margin-top:22px;color:#0f172a">Alertas de ruta (en vivo)</h3>
       <p style="font-size:.8rem;color:#64748b;margin:4px 0 10px">Geocerca de destino, detenciones prolongadas y desvíos del corredor de la ruta en servicios EN CURSO. Se reinician con el redeploy.</p>
       <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Conductor</th><th>Servicio</th><th>Detalle</th></tr></thead>
@@ -979,8 +1000,29 @@ function loadAlerts() {
       '</td><td>' + esc(a.detail) + '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
+function loadTakedowns() {
+  api('/admin/takedowns').then((rows) => {
+    const tb = document.getElementById('takedowns-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin solicitudes de retiro.</td></tr>'; return; }
+    tb.innerHTML = rows.map((t) => '<tr><td>' + when(t.createdAt) + '</td><td>' + esc(t.reporterName) + '<br><span style="font-size:.7rem;color:#64748b">' + esc(t.reporterEmail) +
+      '</span></td><td><a href="' + esc(t.contentUrl) + '" target="_blank">Ver contenido</a></td><td style="max-width:260px">' + esc(t.reason) +
+      '</td><td><span class="badge">' + t.status + '</span></td><td>' +
+      (t.status === 'OPEN'
+        ? '<button class="btn-sm btn-approve" onclick="resolveTakedown(\'' + t.id + '\', \'REMOVED\')">Retirado</button> ' +
+          '<button class="btn-sm btn-reject" onclick="resolveTakedown(\'' + t.id + '\', \'REJECTED\')">Rechazar</button>'
+        : (t.resolvedBy ? 'por ' + esc(t.resolvedBy) : '—')) +
+      '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+function resolveTakedown(id, action) {
+  if (action === 'REMOVED' && !confirm('Confirma que YA retiraste/borraste el contenido reportado (el registro aquí es la constancia).')) return;
+  api('/admin/takedowns/' + id + '/resolve', { method: 'POST', body: JSON.stringify({ action: action }) })
+    .then(() => { showMsg('Solicitud actualizada.', false); loadTakedowns(); })
+    .catch((e) => showMsg(e.message, true));
+}
 function loadSos() {
   loadAlerts();
+  loadTakedowns();
   api('/admin/sos').then((rows) => {
     const tb = document.getElementById('sos-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin eventos SOS. 🎉</td></tr>'; return; }

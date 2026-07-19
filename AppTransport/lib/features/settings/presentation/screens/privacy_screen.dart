@@ -51,6 +51,15 @@ class PrivacyScreen extends StatelessWidget {
                 'ganancias. Los datos bancarios se usan solo para pagarte.',
           ),
           _Section(
+            icon: Icons.auto_awesome_rounded,
+            title: 'Uso de inteligencia artificial',
+            body: 'ZIPA usa algoritmos e inteligencia artificial para '
+                'asignarte servicios según tu cercanía y disponibilidad, '
+                'estimar rutas y tarifas, y detectar fraudes y anomalías de '
+                'seguridad en la ruta. Puedes pedir revisión humana de una '
+                'decisión automatizada a través de soporte.',
+          ),
+          _Section(
             icon: Icons.delete_outline_rounded,
             title: 'Tus derechos',
             body: 'Puedes acceder, actualizar o eliminar tus datos escribiendo a '

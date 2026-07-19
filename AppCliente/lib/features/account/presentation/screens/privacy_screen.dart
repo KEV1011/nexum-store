@@ -55,6 +55,15 @@ class PrivacyScreen extends StatelessWidget {
                 'comunidad. Se guardan de forma restringida.',
           ),
           _Section(
+            icon: Icons.auto_awesome_rounded,
+            title: 'Uso de inteligencia artificial',
+            body: 'ZIPA usa algoritmos e inteligencia artificial para '
+                'emparejar tu solicitud con el conductor más cercano, estimar '
+                'rutas y tarifas, y detectar fraudes y anomalías de seguridad. '
+                'Puedes pedir revisión humana de una decisión automatizada a '
+                'través de soporte.',
+          ),
+          _Section(
             icon: Icons.delete_outline_rounded,
             title: 'Tus derechos',
             body: 'Puedes solicitar acceder, actualizar o eliminar tus datos '

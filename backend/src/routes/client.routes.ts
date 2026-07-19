@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { clientAuthMiddleware } from '../middleware/client-auth.middleware';
 import { clientRequestRateLimit } from '../middleware/client-rate-limit.middleware';
+import { legalConsentEnforced, recordConsent, hasCurrentConsent } from '../services/legal.service';
 import { OtpRateLimitError } from '../services/otp.service';
 import {
   sendClientOtp,
@@ -119,10 +120,29 @@ router.post('/auth/send-otp', async (req, res) => {
 });
 
 router.post('/auth/verify-otp', async (req, res) => {
-  const { phone, otp } = req.body as { phone?: string; otp?: string };
+  const { phone, otp, acceptedTerms } = req.body as {
+    phone?: string; otp?: string; acceptedTerms?: unknown;
+  };
   if (!phone || !otp) { res.status(400).json({ success: false, error: 'phone and otp are required' }); return; }
   try {
     const result = await verifyClientOtp(phone, otp);
+    // Clickwrap del cliente: verify-otp también CREA la cuenta. Con enforcement
+    // activo se exige aceptación explícita salvo que ya conste la versión
+    // vigente (login de un usuario que ya aceptó antes).
+    if (legalConsentEnforced() && acceptedTerms !== true) {
+      const already = await hasCurrentConsent('user', result.client.id);
+      if (!already) {
+        res.status(403).json({
+          success: false,
+          error: 'Debes aceptar los Términos y Condiciones y la Política de Privacidad para continuar.',
+          code: 'legal_consent_required',
+        });
+        return;
+      }
+    }
+    if (acceptedTerms === true) {
+      void recordConsent('user', result.client.id, req.ip).catch(() => undefined);
+    }
     res.json({ success: true, data: result });
   } catch (err) {
     res.status(401).json({ success: false, error: err instanceof Error ? err.message : 'Verification failed' });

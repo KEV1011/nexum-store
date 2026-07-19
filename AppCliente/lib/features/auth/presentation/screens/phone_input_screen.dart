@@ -26,6 +26,10 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
   final _phoneController = TextEditingController();
   final _phoneFocusNode = FocusNode();
 
+  /// Clickwrap: el usuario debe marcar la aceptación de términos/privacidad
+  /// (no preseleccionada) antes de poder continuar.
+  bool _acceptedTerms = false;
+
   String get _fullPhone {
     final raw = _phoneController.text.replaceAll(' ', '');
     return '+57$raw';
@@ -216,8 +220,9 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                         SizedBox(
                           height: AppConstants.minTouchTarget + 10,
                           child: ElevatedButton(
-                            onPressed:
-                                (isLoading || !_isValid) ? null : _onContinue,
+                            onPressed: (isLoading || !_isValid || !_acceptedTerms)
+                                ? null
+                                : _onContinue,
                             style: ElevatedButton.styleFrom(
                               elevation: _isValid ? 2 : 0,
                               shape: RoundedRectangleBorder(
@@ -243,14 +248,26 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                           ),
                         ),
 
-                        const SizedBox(height: AppConstants.spacingL),
-                        Text(
-                          'Al continuar aceptas nuestros Términos y la '
-                          'Política de privacidad.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: context.textTertiaryColor,
-                            height: 1.4,
+                        const SizedBox(height: AppConstants.spacingM),
+                        // Clickwrap: aceptación EXPLÍCITA (no preseleccionada)
+                        // de términos (con cláusula de arbitraje) y privacidad.
+                        CheckboxListTile(
+                          value: _acceptedTerms,
+                          onChanged: isLoading
+                              ? null
+                              : (v) => setState(
+                                  () => _acceptedTerms = v ?? false),
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: Text(
+                            'Acepto los Términos y Condiciones (incluida la '
+                            'cláusula de arbitraje) y la Política de '
+                            'Privacidad de ZIPA.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: context.textTertiaryColor,
+                              height: 1.35,
+                            ),
                           ),
                         ),
 

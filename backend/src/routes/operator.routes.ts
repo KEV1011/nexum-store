@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { listSafetyAlerts } from '../services/safety-alerts.service';
+import { legalConsentEnforced, recordConsent } from '../services/legal.service';
 import { OperatorType, OperatorDocType, VehicleType } from '@prisma/client';
 import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
 import { isSmsConfigured } from '../services/sms.service';
@@ -63,6 +64,16 @@ const VEHICLE_TYPES = new Set<string>(['PARTICULAR', 'TAXI', 'MOTO', 'TURBO', 'C
 // que el admin verifique su habilitación.
 router.post('/register', async (req: Request, res: Response): Promise<void> => {
   const b = req.body as Record<string, unknown>;
+  // Clickwrap: con LEGAL_CONSENT_ENFORCE=true el registro de empresas exige la
+  // aceptación explícita (checkbox no preseleccionado en el portal).
+  if (legalConsentEnforced() && b['acceptedTerms'] !== true) {
+    res.status(400).json({
+      success: false,
+      error: 'Debes aceptar los Términos y Condiciones y la Política de Privacidad para registrar la empresa.',
+      code: 'legal_consent_required',
+    });
+    return;
+  }
   if (
     typeof b['legalName'] !== 'string' ||
     typeof b['nit'] !== 'string' ||
@@ -89,6 +100,9 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       // PERSONA = dueño natural de vehículos (nombre + cédula en los mismos campos).
       kind: b['kind'] === 'PERSONA' ? 'PERSONA' : 'EMPRESA',
     });
+    if (b['acceptedTerms'] === true) {
+      void recordConsent('operator', operator.id, req.ip).catch(() => undefined);
+    }
     res.status(201).json({ success: true, data: { id: operator.id, status: operator.status } });
   } catch (err) {
     // NIT duplicado u otro error de unicidad.

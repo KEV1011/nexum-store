@@ -30,6 +30,7 @@ export default function OperatorRegisterPage() {
   const [contactPhone, setContactPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [city, setCity] = useState('')
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -39,6 +40,10 @@ export default function OperatorRegisterPage() {
     setError(null)
     if (!legalName.trim() || !nit.trim() || !contactPhone.trim()) {
       setError('Razón social, NIT y teléfono de contacto son obligatorios.')
+      return
+    }
+    if (!acceptedTerms) {
+      setError('Debes aceptar los Términos y Condiciones y la Política de Privacidad.')
       return
     }
     const phone = contactPhone.trim().startsWith('+') ? contactPhone.trim() : `+57${contactPhone.replace(/\D/g, '')}`
@@ -56,6 +61,7 @@ export default function OperatorRegisterPage() {
           contactPhone: phone,
           contactEmail: contactEmail.trim() || undefined,
           city: city.trim() || undefined,
+          acceptedTerms,
         }),
       })
       const json = await res.json().catch(() => ({})) as { success?: boolean; error?: string }
@@ -172,6 +178,22 @@ export default function OperatorRegisterPage() {
           <Field label="Ciudad" value={city} onChange={setCity} placeholder="Tu ciudad" />
 
           {error && <p className="text-sm text-red-600">{error}</p>}
+
+          {/* Clickwrap: aceptación EXPLÍCITA, checkbox no preseleccionado. */}
+          <label className="flex items-start gap-2.5 text-xs text-slate-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            <span>
+              Acepto los{' '}
+              <a href={`${BACKEND_URL}/legal/terms`} target="_blank" rel="noreferrer" className="text-emerald-700 underline">Términos y Condiciones</a>{' '}
+              (incluida la cláusula de arbitraje) y la{' '}
+              <a href={`${BACKEND_URL}/legal/privacy`} target="_blank" rel="noreferrer" className="text-emerald-700 underline">Política de Privacidad</a>.
+            </span>
+          </label>
 
           <button
             type="submit"
