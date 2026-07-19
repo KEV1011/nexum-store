@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { prisma } from '../lib/prisma';
 import { pilotSkipVerification } from './kyc.service';
+import { evaluateDriverCompliance } from './document-expiry.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Driver profile & document verification (Features D + E)
@@ -127,6 +128,8 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
     memberSince: driver.createdAt.toISOString(),
     isVerified: driver.isVerified,
     verificationRequired: !pilotSkipVerification(),
+    complianceStatus: driver.complianceStatus,
+    blockedReason: driver.blockedReason ?? undefined,
     documents: docs,
     requiredDocsCount: REQUIRED_DOCS.length,
     approvedDocsCount: approvedCount,
@@ -203,6 +206,9 @@ export async function upsertDriverDocument(
       expiresAt: dto.expiresAt ?? null,
     },
   });
+  // Renovar un documento vencido levanta el kill-switch (el doc pasa a PENDING
+  // y deja de contar como "aprobado y vencido"); el admin re-revisa después.
+  await evaluateDriverCompliance(driverId);
   return getDriverProfile(driverId);
 }
 
@@ -232,6 +238,8 @@ export async function uploadDriverDocument(
       expiresAt: expiresAt ?? null,
     },
   });
+  // Renovar un documento vencido levanta el kill-switch (ver upsert de arriba).
+  await evaluateDriverCompliance(driverId);
   return getDriverProfile(driverId);
 }
 
@@ -256,6 +264,8 @@ export async function adminReviewDocument(
   });
 
   await _syncIsVerified(doc.driverId);
+  // La aprobación (con nueva fecha) o el rechazo cambian el cumplimiento.
+  await evaluateDriverCompliance(doc.driverId);
   return getDriverProfile(doc.driverId);
 }
 
@@ -280,6 +290,8 @@ export async function reviewDriverDocument(
   });
 
   await _syncIsVerified(driverId);
+  // La aprobación (con nueva fecha) o el rechazo cambian el cumplimiento.
+  await evaluateDriverCompliance(driverId);
   return getDriverProfile(driverId);
 }
 

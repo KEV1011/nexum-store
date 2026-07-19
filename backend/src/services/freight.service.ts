@@ -11,6 +11,7 @@ import { prisma } from '../lib/prisma';
 import { COMMISSION_RATE, INTERCITY_CITY_COORDS } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
+import { docKillSwitchEnforced } from './document-expiry.service';
 
 export class FreightError extends Error {}
 
@@ -256,11 +257,20 @@ export async function acceptFreight(
   notifyDriver = true,
 ): Promise<FreightDTO> {
   const [driver, vehicle] = await Promise.all([
-    prisma.driver.findFirst({ where: { id: driverId, operatorId }, select: { id: true } }),
+    prisma.driver.findFirst({
+      where: { id: driverId, operatorId },
+      select: { id: true, complianceStatus: true, blockedReason: true },
+    }),
     prisma.vehicle.findFirst({ where: { id: vehicleId, operatorId, isActive: true } }),
   ]);
   if (!driver) throw new FreightError('El conductor indicado no está afiliado a tu flota.');
   if (!vehicle) throw new FreightError('El vehículo indicado no pertenece a tu flota.');
+  // Kill-switch documental: un conductor BLOCKED no puede tomar/recibir fletes.
+  if (docKillSwitchEnforced() && driver.complianceStatus === 'BLOCKED') {
+    throw new FreightError(
+      `El conductor tiene documentos vencidos (${driver.blockedReason ?? 'sin detalle'}). Renuévalos para poder asignarle fletes.`,
+    );
+  }
 
   const f = await prisma.freightRequest.findUnique({ where: { id: freightId } });
   if (!f) throw new FreightError('El flete no existe.');

@@ -9,7 +9,7 @@ import pinoHttp from 'pino-http';
 
 import { PORT, CORS_ORIGIN } from './config/constants';
 import { setupWebSocket } from './websocket/ws.handler';
-import { scheduleDocumentExpiryChecks } from './services/document-expiry.service';
+import { scheduleDocumentExpiryChecks, docKillSwitchEnforced } from './services/document-expiry.service';
 import { logger } from './lib/logger';
 import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
@@ -99,6 +99,8 @@ app.get('/health', async (_req, res) => {
     // KYC: qué proveedor de identidad corre y si el gating bloquea el "conectarse".
     kyc: kycProviderName(),
     kycEnforce: kycEnforced(),
+    // Kill-switch documental: 'activo' = documentos vencidos bloquean el match.
+    docKillSwitch: docKillSwitchEnforced() ? 'activo' : 'apagado',
     // Piloto: si está activo, el despacho ignora la verificación (probar arranque).
     pilotSkipVerification: pilotSkipVerification(),
   });

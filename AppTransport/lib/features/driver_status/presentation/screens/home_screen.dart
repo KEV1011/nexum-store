@@ -202,6 +202,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // la aprobación del admin (para probar el arranque).
     if (goingOnline) {
       final profile = ref.read(driverProfileProvider).profile;
+      // Kill-switch documental: documento obligatorio vencido → no se conecta.
+      if (profile != null && profile.complianceStatus == 'BLOCKED') {
+        context.push(AppRoutes.verification);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Cuenta suspendida: ${profile.blockedReason ?? 'documentos vencidos'}. '
+              'Renueva tus documentos para volver a conectarte.',
+            ),
+            backgroundColor: const Color(0xFFC62828),
+          ),
+        );
+        return;
+      }
       if (profile != null && profile.verificationRequired && !profile.isVerified) {
         context.push(AppRoutes.verification);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -854,6 +868,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           const SizedBox(height: AppConstants.spacingM),
+
+          // ── Kill-switch documental: banner rojo cuando la cuenta está
+          // suspendida por documentos vencidos (CTA → renovar en Verificación).
+          if (ref.watch(driverProfileProvider
+                  .select((s) => s.profile?.complianceStatus)) ==
+              'BLOCKED') ...[
+            _ComplianceBlockedBanner(
+              reason: ref.watch(driverProfileProvider
+                  .select((s) => s.profile?.blockedReason)),
+              onTap: () => context.push(AppRoutes.verification),
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
 
           // Greeting + daily goal
           Row(
@@ -2893,6 +2920,72 @@ class _ErrandRequestCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ── Banner de cuenta suspendida (kill-switch documental) ──────────────────────
+
+/// Aviso rojo cuando el conductor tiene documentos obligatorios VENCIDOS
+/// (complianceStatus == 'BLOCKED'). Tocar lleva a Verificación para renovar.
+class _ComplianceBlockedBanner extends StatelessWidget {
+  const _ComplianceBlockedBanner({required this.reason, required this.onTap});
+
+  final String? reason;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFC62828).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFFC62828).withValues(alpha: 0.45),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.gpp_bad_rounded,
+                  color: Color(0xFFC62828), size: 26),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Cuenta suspendida por documentos vencidos',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFC62828),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${reason ?? 'Renueva tus documentos'} · '
+                      'Toca para renovarlos y volver a recibir servicios.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF8B4C4C),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: Color(0xFFC62828)),
+            ],
+          ),
+        ),
       ),
     );
   }

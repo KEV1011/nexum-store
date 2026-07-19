@@ -101,6 +101,8 @@ class DriverProfileEntity {
     required this.requiredDocsCount,
     required this.approvedDocsCount,
     this.verificationRequired = true,
+    this.complianceStatus = 'CLEAR',
+    this.blockedReason,
     this.photoUrl,
     this.bio,
   });
@@ -115,6 +117,13 @@ class DriverProfileEntity {
   final bool isVerified;
   /// false en modo piloto: la app permite conectarse sin esperar aprobación.
   final bool verificationRequired;
+
+  /// Kill-switch documental: 'CLEAR' | 'EXPIRING' | 'BLOCKED'.
+  /// BLOCKED = documento obligatorio vencido → banner rojo + Conectarse
+  /// deshabilitado (el backend además rechaza el online con enforce activo).
+  final String complianceStatus;
+  final String? blockedReason;
+
   final List<DriverDocument> documents;
   final int requiredDocsCount;
   final int approvedDocsCount;
@@ -132,6 +141,8 @@ class DriverProfileEntity {
         memberSince: j['memberSince'] as String? ?? '',
         isVerified: j['isVerified'] as bool? ?? false,
         verificationRequired: j['verificationRequired'] as bool? ?? true,
+        complianceStatus: j['complianceStatus'] as String? ?? 'CLEAR',
+        blockedReason: j['blockedReason'] as String?,
         documents: (j['documents'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(DriverDocument.fromJson)

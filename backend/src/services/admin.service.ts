@@ -1,6 +1,7 @@
 import { OperatorStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
+import { docKillSwitchEnforced } from './document-expiry.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin service — métricas operativas y listados para el panel /admin.
@@ -128,6 +129,9 @@ export interface AdminDriverRow {
   hasSelfie: boolean;
   selfieUrl: string | null;
   fraudFlags: number;
+  // Kill-switch documental: CLEAR / EXPIRING / BLOCKED (+ motivo del bloqueo).
+  complianceStatus: string;
+  blockedReason: string | null;
 }
 
 export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
@@ -154,6 +158,8 @@ export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
       hasSelfie: !!d.selfieUrl,
       selfieUrl: d.selfieUrl,
       fraudFlags: d.fraudFlags,
+      complianceStatus: d.complianceStatus,
+      blockedReason: d.blockedReason,
     };
   });
 }
@@ -208,6 +214,8 @@ export interface MatchingDiagRow {
   online: boolean;
   fresh: boolean;
   inRadius: boolean;
+  /** Kill-switch documental: CLEAR / EXPIRING / BLOCKED. */
+  complianceStatus: string;
   /** Pasa TODOS los filtros del matching urbano: recibiría la oferta. */
   dispatchable: boolean;
 }
@@ -223,10 +231,12 @@ export async function diagnoseMatching(lat: number, lng: number): Promise<Matchi
     status: string;
     isVerified: boolean;
     intercityEnabled: boolean;
+    complianceStatus: string;
     geo_age_s: number | null;
     distance_m: number | null;
   }>>`
     SELECT d."id", d."name", d."phone", d."status", d."isVerified", d."intercityEnabled",
+           d."complianceStatus"::text AS "complianceStatus",
            CASE WHEN d."lastSeenAt" IS NULL THEN NULL
                 ELSE EXTRACT(EPOCH FROM (now() - d."lastSeenAt")) END AS geo_age_s,
            CASE WHEN d."geo" IS NULL THEN NULL
@@ -256,7 +266,11 @@ export async function diagnoseMatching(lat: number, lng: number): Promise<Matchi
       online,
       fresh,
       inRadius,
-      dispatchable: online && r.isVerified && fresh && inRadius,
+      complianceStatus: r.complianceStatus,
+      // El filtro de cumplimiento solo aplica con DOC_KILL_SWITCH_ENFORCE=true.
+      dispatchable:
+        online && r.isVerified && fresh && inRadius &&
+        !(docKillSwitchEnforced() && r.complianceStatus === 'BLOCKED'),
     };
   });
 }

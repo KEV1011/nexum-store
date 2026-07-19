@@ -46,6 +46,10 @@ import {
   KycError,
 } from '../services/kyc.service';
 import {
+  docKillSwitchEnforced,
+  getDriverCompliance,
+} from '../services/document-expiry.service';
+import {
   listDriverFreights,
   updateDriverFreightStatus,
   listDriverAvailableFreights,
@@ -320,6 +324,20 @@ router.put('/status', async (req: Request, res: Response): Promise<void> => {
       code: 'driver_not_cleared',
     });
     return;
+  }
+
+  // Kill-switch documental: con DOC_KILL_SWITCH_ENFORCE=true, un conductor con
+  // documentos obligatorios VENCIDOS (BLOCKED) no puede ponerse en línea.
+  if (status === 'online' && req.driverId && docKillSwitchEnforced()) {
+    const compliance = await getDriverCompliance(req.driverId);
+    if (compliance.status === 'BLOCKED') {
+      res.status(403).json({
+        success: false,
+        error: `Tu cuenta está suspendida: ${compliance.reason ?? 'documentos vencidos'}. Renueva tus documentos en Verificación para volver a conectarte.`,
+        code: 'documents_expired',
+      });
+      return;
+    }
   }
 
   const svc = getTripService();

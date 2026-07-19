@@ -1020,6 +1020,10 @@ export interface DriverProfileDTO {
   // false en modo piloto (PILOT_SKIP_VERIFICATION) → la app deja conectarse sin
   // esperar la aprobación; true = comportamiento normal (exige verificación).
   verificationRequired: boolean;
+  // Kill-switch documental: BLOCKED = documento obligatorio vencido (la app
+  // muestra el banner rojo y deshabilita Conectarse). blockedReason lo detalla.
+  complianceStatus: 'CLEAR' | 'EXPIRING' | 'BLOCKED';
+  blockedReason?: string;
   documents: DriverDocumentDTO[];
   requiredDocsCount: number;
   approvedDocsCount: number;
