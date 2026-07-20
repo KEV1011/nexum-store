@@ -2,12 +2,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:nexum_client/core/services/geo_service.dart';
 
 /// Mapa compacto del trayecto de un flete: marcador de origen (verde),
 /// marcador de destino (rojo) y una línea entre ambos. Las coordenadas vienen
 /// del backend (centroide de ciudad); si faltan, no se muestra el mapa.
-class FreightRouteMap extends StatelessWidget {
+class FreightRouteMap extends ConsumerStatefulWidget {
   const FreightRouteMap({
     super.key,
     required this.originLat,
@@ -53,21 +55,45 @@ class FreightRouteMap extends StatelessWidget {
   }
 
   @override
+  ConsumerState<FreightRouteMap> createState() => _FreightRouteMapState();
+}
+
+class _FreightRouteMapState extends ConsumerState<FreightRouteMap> {
+  /// Ruta REAL por las vías (Routes API vía el proxy). Null = fallback recta.
+  List<LatLng>? _route;
+
+  @override
+  void initState() {
+    super.initState();
+    ref
+        .read(geoServiceProvider)
+        .routePoints(
+          originLat: widget.originLat,
+          originLng: widget.originLng,
+          destLat: widget.destLat,
+          destLng: widget.destLng,
+        )
+        .then((pts) {
+      if (mounted && pts != null) setState(() => _route = pts);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final origin = LatLng(originLat, originLng);
-    final dest = LatLng(destLat, destLng);
-    final driver = (driverLat != null && driverLng != null)
-        ? LatLng(driverLat!, driverLng!)
+    final origin = LatLng(widget.originLat, widget.originLng);
+    final dest = LatLng(widget.destLat, widget.destLng);
+    final driver = (widget.driverLat != null && widget.driverLng != null)
+        ? LatLng(widget.driverLat!, widget.driverLng!)
         : null;
     final center = LatLng(
-      (originLat + destLat) / 2,
-      (originLng + destLng) / 2,
+      (widget.originLat + widget.destLat) / 2,
+      (widget.originLng + widget.destLng) / 2,
     );
 
     // Zoom aproximado según la separación entre puntos (grados → nivel).
     final span = math.max(
-      (originLat - destLat).abs(),
-      (originLng - destLng).abs(),
+      (widget.originLat - widget.destLat).abs(),
+      (widget.originLng - widget.destLng).abs(),
     );
     final zoom = span < 0.02
         ? 13.0
@@ -82,7 +108,7 @@ class FreightRouteMap extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
-        height: height,
+        height: widget.height,
         child: IgnorePointer(
           // El mapa es una vista previa dentro de una tarjeta desplazable: no
           // captura los gestos de scroll de la lista.
@@ -99,7 +125,9 @@ class FreightRouteMap extends StatelessWidget {
               PolylineLayer(
                 polylines: [
                   Polyline(
-                    points: [origin, if (driver != null) driver, dest],
+                    // Ruta real por las calles si el proxy tiene llave; recta
+                    // (pasando por el camión) como fallback.
+                    points: _route ?? [origin, if (driver != null) driver, dest],
                     strokeWidth: 3.5,
                     color: const Color(0xFFF59E0B),
                   ),

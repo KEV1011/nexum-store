@@ -14,6 +14,7 @@ import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
@@ -376,16 +377,16 @@ class _DriverCard extends StatelessWidget {
 // pin, a pulsing "live" halo (reduce-motion aware), the route, and a floating
 // status + ETA overlay.
 
-class _TripMap extends StatefulWidget {
+class _TripMap extends ConsumerStatefulWidget {
   const _TripMap({required this.request});
 
   final TransportRequestEntity request;
 
   @override
-  State<_TripMap> createState() => _TripMapState();
+  ConsumerState<_TripMap> createState() => _TripMapState();
 }
 
-class _TripMapState extends State<_TripMap>
+class _TripMapState extends ConsumerState<_TripMap>
     with SingleTickerProviderStateMixin {
   static const _pamplona = LatLng(7.3762, -72.6465);
 
@@ -396,6 +397,10 @@ class _TripMapState extends State<_TripMap>
   LatLng? _prevDriver;
   double _heading = 0;
 
+  /// Ruta REAL por las calles (Routes API vía el proxy /geo del backend);
+  /// null = el proxy no tiene llave → se dibuja la línea recta de siempre.
+  List<LatLng>? _route;
+
   @override
   void initState() {
     super.initState();
@@ -403,6 +408,22 @@ class _TripMapState extends State<_TripMap>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat();
+    final r = widget.request;
+    // Solo con coordenadas REALES del autocompletado (no el fallback por hash).
+    if (r.originLat != null && r.originLng != null &&
+        r.destLat != null && r.destLng != null) {
+      ref
+          .read(geoServiceProvider)
+          .routePoints(
+            originLat: r.originLat!,
+            originLng: r.originLng!,
+            destLat: r.destLat!,
+            destLng: r.destLng!,
+          )
+          .then((pts) {
+        if (mounted && pts != null) setState(() => _route = pts);
+      });
+    }
   }
 
   @override
@@ -480,7 +501,10 @@ class _TripMapState extends State<_TripMap>
                   PolylineLayer(
                     polylines: [
                       Polyline(
-                        points: [origin, if (driver != null) driver, destination],
+                        // Ruta real por las calles cuando el proxy tiene llave;
+                        // recta (pasando por el conductor) como fallback.
+                        points: _route ??
+                            [origin, if (driver != null) driver, destination],
                         color: AppColors.routeColor,
                         strokeWidth: 4,
                       ),

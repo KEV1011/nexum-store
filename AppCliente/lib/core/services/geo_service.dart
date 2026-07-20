@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:nexum_client/core/utils/polyline_decoder.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 
 /// Sugerencia de dirección devuelta por el autocompletado.
@@ -126,6 +128,41 @@ class GeoService {
     } catch (_) {
       return null;
     }
+  }
+}
+
+// ── Ruta real por las calles (con caché en memoria) ─────────────────────────
+//
+// Devuelve los puntos del trayecto siguiendo las vías (Routes API vía el proxy
+// del backend), o null si el proxy no tiene llave/no responde — los mapas caen
+// a la línea recta actual. La caché evita quemar cuota en rebuilds.
+final Map<String, List<LatLng>> _routeCache = {};
+
+String _routeKey(double aLat, double aLng, double bLat, double bLng) =>
+    '${aLat.toStringAsFixed(4)},${aLng.toStringAsFixed(4)}'
+    '->${bLat.toStringAsFixed(4)},${bLng.toStringAsFixed(4)}';
+
+extension GeoRoutePoints on GeoService {
+  Future<List<LatLng>?> routePoints({
+    required double originLat,
+    required double originLng,
+    required double destLat,
+    required double destLng,
+  }) async {
+    final key = _routeKey(originLat, originLng, destLat, destLng);
+    final cached = _routeCache[key];
+    if (cached != null) return cached;
+    final route = await directions(
+      originLat: originLat,
+      originLng: originLng,
+      destLat: destLat,
+      destLng: destLng,
+    );
+    if (route == null || route.polyline.isEmpty) return null;
+    final points = decodePolyline(route.polyline);
+    if (points.length < 2) return null;
+    _routeCache[key] = points;
+    return points;
   }
 }
 

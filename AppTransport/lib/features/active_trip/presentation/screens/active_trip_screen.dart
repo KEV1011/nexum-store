@@ -28,6 +28,7 @@ import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
+import 'package:nexum_driver/shared/services/route_service.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_marker.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
@@ -160,6 +161,35 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     _waypoints = _generateWaypoints(_driverPos, target);
     _waypointIndex = 0;
     _nearDestinationShown = false;
+
+    // Ruta REAL por las calles (Routes API vía el proxy del backend): si el
+    // servidor tiene GOOGLE_MAPS_API_KEY, reemplaza la esquina en L simulada.
+    // Sin llave/red devuelve null y el trazado actual se mantiene.
+    final routeTarget = target;
+    fetchRoutePoints(
+      originLat: _driverPos.latitude,
+      originLng: _driverPos.longitude,
+      destLat: routeTarget.latitude,
+      destLng: routeTarget.longitude,
+    ).then((points) {
+      if (!mounted || points == null) return;
+      // Solo si seguimos en el mismo tramo (no cambió la fase del viaje).
+      final t = ref.read(activeTripProvider);
+      final currentTarget = t == null
+          ? null
+          : (t.isInProgress
+              ? t.request.destination.latLng
+              : t.request.origin.latLng);
+      if (currentTarget == null ||
+          currentTarget.latitude != routeTarget.latitude ||
+          currentTarget.longitude != routeTarget.longitude) {
+        return;
+      }
+      setState(() {
+        _waypoints = points;
+        _waypointIndex = 0;
+      });
+    });
 
     _movementTimer?.cancel();
     _movementTimer = Timer.periodic(const Duration(milliseconds: 1800), (_) {
