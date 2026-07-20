@@ -13,6 +13,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
+import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
@@ -781,11 +782,7 @@ class _TrackingMapState extends State<_TrackingMap>
             ),
           ),
           children: [
-            TileLayer(
-              urlTemplate:
-                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.nexum.cliente',
-            ),
+            const GoogleMapTiles(),
             AnimatedBuilder(
               animation: _ctrl,
               builder: (_, __) => MarkerLayer(

@@ -8,6 +8,7 @@ import {
   reverseGeocode,
   directions,
   geoHealth,
+  fetchMapTile,
   GeoError,
 } from '../services/geo.service';
 
@@ -21,30 +22,21 @@ router.get('/health', async (_req: Request, res: Response) => {
   res.status(health.upstreamOk ? 200 : 503).json({ success: health.upstreamOk, data: health });
 });
 
-// Acepta token de cliente O de conductor: ambos usan los servicios geo.
-function anyAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const authHeader = req.headers['authorization'];
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, error: 'Missing or malformed Authorization header' });
-    return;
-  }
-  const token = authHeader.slice(7);
+// Verifica un token de cliente O de conductor: ambos usan los servicios geo.
+function isValidAnyToken(token: string): boolean {
   try {
     verifyClientToken(token);
-    next();
-    return;
+    return true;
   } catch {
     // not a client token — try driver
   }
   try {
     jwt.verify(token, JWT_SECRET);
-    next();
+    return true;
   } catch {
-    res.status(401).json({ success: false, error: 'Invalid or expired token' });
+    return false;
   }
 }
-
-router.use(anyAuthMiddleware);
 
 function handleGeoError(res: Response, err: unknown): void {
   if (err instanceof GeoError) {
@@ -53,6 +45,54 @@ function handleGeoError(res: Response, err: unknown): void {
   }
   res.status(502).json({ success: false, error: 'Geo service error' });
 }
+
+// GET /geo/tile/:z/:x/:y — imagen REAL del mapa de Google (Map Tiles API),
+// proxeada con la key server-side. flutter_map pide esta URL como capa de
+// tiles. El token va por query (`?t=`) porque una capa de tiles no siempre
+// puede añadir el header Authorization; se acepta también por header.
+// Se declara ANTES del middleware de header porque hace su propia validación.
+router.get('/tile/:z/:x/:y', async (req: Request, res: Response) => {
+  const authHeader = req.headers['authorization'];
+  const token =
+    (req.query['t'] as string | undefined) ??
+    (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined);
+  if (!token || !isValidAnyToken(token)) {
+    res.status(401).json({ success: false, error: 'Invalid or expired token' });
+    return;
+  }
+  const z = parseInt(req.params['z'] as string, 10);
+  const x = parseInt(req.params['x'] as string, 10);
+  const y = parseInt(req.params['y'] as string, 10);
+  if ([z, x, y].some(Number.isNaN)) {
+    res.status(400).json({ success: false, error: 'z, x, y requeridos' });
+    return;
+  }
+  try {
+    const tile = await fetchMapTile(z, x, y);
+    res.setHeader('Content-Type', tile.contentType);
+    // Los tiles del mapa cambian raramente: se cachean en el cliente/CDN.
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(tile.body);
+  } catch (err) {
+    handleGeoError(res, err);
+  }
+});
+
+// Acepta token de cliente O de conductor por header: ambos usan los servicios geo.
+function anyAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader?.startsWith('Bearer ')) {
+    res.status(401).json({ success: false, error: 'Missing or malformed Authorization header' });
+    return;
+  }
+  if (isValidAnyToken(authHeader.slice(7))) {
+    next();
+    return;
+  }
+  res.status(401).json({ success: false, error: 'Invalid or expired token' });
+}
+
+router.use(anyAuthMiddleware);
 
 // GET /geo/autocomplete?input=cra+5&lat=&lng=
 router.get('/autocomplete', async (req, res) => {

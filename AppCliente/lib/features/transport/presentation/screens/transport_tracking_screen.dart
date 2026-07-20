@@ -17,6 +17,7 @@ import 'package:nexum_client/features/transport/presentation/providers/transport
 import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
+import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -493,11 +494,7 @@ class _TripMapState extends ConsumerState<_TripMap>
                   ),
                 ),
                 children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.nexum.client',
-                  ),
+                  const GoogleMapTiles(),
                   PolylineLayer(
                     polylines: [
                       Polyline(

@@ -10,6 +10,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
+import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 
 const _kInterColor = AppColors.intercityBrand;
 
@@ -1017,11 +1018,7 @@ class _LiveTripMapState extends ConsumerState<_LiveTripMap>
                   ),
                 ),
                 children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.nexum.client',
-                  ),
+                  const GoogleMapTiles(),
                   PolylineLayer(
                     polylines: [
                       Polyline(
