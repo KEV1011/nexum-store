@@ -151,6 +151,7 @@ jobs:
         run: |
           flutter build apk --release \
             --build-number=${{ github.run_number }} \
+            --dart-define=BUILD_TAG=${{ github.run_number }} \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
             --dart-define=WS_BASE_URL=${WS_BASE_URL}
 
