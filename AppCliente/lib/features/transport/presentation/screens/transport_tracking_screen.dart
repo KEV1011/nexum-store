@@ -489,8 +489,19 @@ class _TripMapState extends ConsumerState<_TripMap>
                 options: MapOptions(
                   initialCenter: driver ?? center,
                   initialZoom: 14.5,
+                  // Enmarca TODO el trayecto (origen · conductor · destino) para
+                  // que se vea por dónde va el viaje, no un punto congelado.
+                  initialCameraFit: CameraFit.coordinates(
+                    coordinates: [origin, destination, if (driver != null) driver],
+                    padding: const EdgeInsets.all(48),
+                    maxZoom: 16,
+                  ),
+                  // Mapa interactivo: el cliente puede mover y hacer zoom.
                   interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
+                    flags: InteractiveFlag.pinchZoom |
+                        InteractiveFlag.drag |
+                        InteractiveFlag.doubleTapZoom |
+                        InteractiveFlag.flingAnimation,
                   ),
                 ),
                 children: [
