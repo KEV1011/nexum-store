@@ -127,8 +127,16 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     res.status(400).json({ success: false, error: 'vehicleColor is required' });
     return;
   }
-  if (!dto.vehicleType || !['particular', 'taxi'].includes(dto.vehicleType)) {
-    res.status(400).json({ success: false, error: 'vehicleType must be particular or taxi' });
+  // El servicio (vehicleTypeMap) soporta también moto y los tipos de carga;
+  // esta validación estaba desactualizada y rechazaba el registro con Moto.
+  if (
+    !dto.vehicleType ||
+    !['particular', 'taxi', 'moto', 'turbo', 'camion', 'mula'].includes(dto.vehicleType)
+  ) {
+    res.status(400).json({
+      success: false,
+      error: 'El tipo de vehículo debe ser particular, taxi, moto, turbo, camión o mula.',
+    });
     return;
   }
   if (!dto.bankName || typeof dto.bankName !== 'string') {
