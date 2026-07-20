@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -923,20 +924,24 @@ class _InfoChip extends StatelessWidget {
 /// Paridad con el seguimiento urbano: mapa con la ruta origen→destino y el
 /// vehículo del conductor moviéndose (posición del heartbeat GPS, refrescada
 /// por el sondeo del provider cada 8 s).
-class _LiveTripMap extends StatefulWidget {
+class _LiveTripMap extends ConsumerStatefulWidget {
   const _LiveTripMap({required this.request});
   final IntercityRequestEntity request;
 
   @override
-  State<_LiveTripMap> createState() => _LiveTripMapState();
+  ConsumerState<_LiveTripMap> createState() => _LiveTripMapState();
 }
 
-class _LiveTripMapState extends State<_LiveTripMap>
+class _LiveTripMapState extends ConsumerState<_LiveTripMap>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
 
   LatLng? _prevDriver;
   double _heading = 0;
+
+  /// Ruta REAL por carretera entre las dos ciudades (Routes API vía proxy);
+  /// null = fallback a la línea recta.
+  List<LatLng>? _route;
 
   @override
   void initState() {
@@ -945,6 +950,19 @@ class _LiveTripMapState extends State<_LiveTripMap>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat();
+    final o = IntercityRoute.coordsOf(widget.request.origin);
+    final d = IntercityRoute.coordsOf(widget.request.destination);
+    ref
+        .read(geoServiceProvider)
+        .routePoints(
+          originLat: o.lat,
+          originLng: o.lng,
+          destLat: d.lat,
+          destLng: d.lng,
+        )
+        .then((pts) {
+      if (mounted && pts != null) setState(() => _route = pts);
+    });
   }
 
   @override
@@ -1007,7 +1025,10 @@ class _LiveTripMapState extends State<_LiveTripMap>
                   PolylineLayer(
                     polylines: [
                       Polyline(
-                        points: [origin, if (driver != null) driver, destination],
+                        // Carretera real entre municipios cuando hay llave;
+                        // recta como fallback.
+                        points: _route ??
+                            [origin, if (driver != null) driver, destination],
                         color: _kInterColor,
                         strokeWidth: 4,
                       ),
