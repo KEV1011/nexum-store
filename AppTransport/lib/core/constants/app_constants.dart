@@ -44,7 +44,10 @@ abstract final class AppConstants {
 
   // Timeouts de red. Holgados para tolerar el cold-start del backend (el plan
   // free de Render tarda ~50s en despertar el primer request).
-  static const int connectTimeoutMs = 30000;
+  // 60 s de conexión para tolerar el cold-start del plan free de Render
+  // (~50 s el primer request tras dormir). Con backend siempre encendido nunca
+  // se alcanza; un keep-warm externo lo evita del todo.
+  static const int connectTimeoutMs = 60000;
   static const int receiveTimeoutMs = 60000;
 
   // Animaciones

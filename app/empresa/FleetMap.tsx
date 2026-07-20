@@ -23,7 +23,11 @@ interface LMap {
   invalidateSize(): void
   remove(): void
 }
-interface LLayer { addTo(map: LMap): LLayer }
+interface LLayer {
+  addTo(map: LMap): LLayer
+  on(event: string, handler: () => void): LLayer
+  remove(): void
+}
 interface LMarker {
   addTo(map: LMap): LMarker
   bindPopup(html: string): LMarker
@@ -87,7 +91,44 @@ function escapeHtml(s: string): string {
   })
 }
 
-export default function FleetMap({ points }: { points: FleetMapPoint[] }) {
+const OSM_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+
+// Capa de tiles: mapa REAL de Google proxeado por el backend (`/geo/tile`, key
+// server-side) cuando hay token; si un tile falla (Render sin desplegar/dormido,
+// Map Tiles API sin habilitar) cae a OpenStreetMap para no dejar el mapa en gris.
+function addTiles(
+  L: LStatic,
+  map: LMap,
+  token: string | null | undefined,
+  backendUrl: string | undefined,
+): void {
+  if (!token || !backendUrl) {
+    L.tileLayer(OSM_URL, { maxZoom: 19 }).addTo(map)
+    return
+  }
+  const google = L.tileLayer(
+    `${backendUrl}/geo/tile/{z}/{x}/{y}?t=${encodeURIComponent(token)}`,
+    { maxZoom: 19 },
+  )
+  let fellBack = false
+  google.on('tileerror', () => {
+    if (fellBack) return
+    fellBack = true
+    google.remove()
+    L.tileLayer(OSM_URL, { maxZoom: 19 }).addTo(map)
+  })
+  google.addTo(map)
+}
+
+export default function FleetMap({
+  points,
+  token,
+  backendUrl,
+}: {
+  points: FleetMapPoint[]
+  token?: string | null
+  backendUrl?: string
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<LMap | null>(null)
   const markersRef = useRef<globalThis.Map<string, LMarker>>(new globalThis.Map())
@@ -104,7 +145,7 @@ export default function FleetMap({ points }: { points: FleetMapPoint[] }) {
         const L = (window as unknown as { L: LStatic }).L
         const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false })
         map.setView(PAMPLONA, 13)
-        L.tileLayer(`https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`, { maxZoom: 19 }).addTo(map)
+        addTiles(L, map, token, backendUrl)
         map.invalidateSize()
         mapRef.current = map
         setReady(true)
@@ -115,6 +156,8 @@ export default function FleetMap({ points }: { points: FleetMapPoint[] }) {
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null }
       markersRef.current.clear()
     }
+    // El mapa se inicializa una sola vez; token/backendUrl son estables al montar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Sincroniza los marcadores cada vez que cambian las posiciones.

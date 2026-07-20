@@ -482,7 +482,9 @@ function Dashboard({ token, operator, onLogout }: {
                   <span className="text-slate-400 font-normal">({fleet.length})</span>
                 </h2>
 
-                {mapPoints.length > 0 && <FleetMap points={mapPoints} />}
+                {mapPoints.length > 0 && (
+                  <FleetMap points={mapPoints} token={token} backendUrl={BACKEND_URL} />
+                )}
 
                 {loading ? (
                   <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-400 text-sm">Cargando flota…</div>

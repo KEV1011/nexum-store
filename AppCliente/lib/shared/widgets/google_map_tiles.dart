@@ -37,8 +37,12 @@ class GoogleMapTiles extends ConsumerWidget {
       );
     }
     // Los tiles de Google Map Tiles API son 256 px, el default de flutter_map.
+    // fallbackUrl: si el tile del backend falla (Render no desplegado, dormido,
+    // 404/401 o Map Tiles API sin habilitar) flutter_map usa OpenStreetMap por
+    // tile — el mapa NUNCA queda en blanco.
     return TileLayer(
       urlTemplate: '${ApiConfig.baseUrl}/geo/tile/{z}/{x}/{y}?t=$token',
+      fallbackUrl: _osm,
       userAgentPackageName: 'com.nexum.client',
     );
   }
