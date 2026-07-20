@@ -308,6 +308,20 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                             ),
                           ),
                         ],
+
+                        // Sello de versión SIEMPRE visible (BUILD_TAG del CI) —
+                        // permite saber, desde la propia pantalla de login, qué
+                        // build corre el teléfono sin tener que iniciar sesión.
+                        const SizedBox(height: AppConstants.spacingL),
+                        Center(
+                          child: Text(
+                            'ZIPA · build ${const String.fromEnvironment('BUILD_TAG', defaultValue: 'dev')}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: context.textTertiaryColor,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
