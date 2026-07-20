@@ -43,12 +43,40 @@ export interface GeoHealth {
    * restricción de aplicación para uso server-side).
    */
   upstreamError: string | null;
+  /**
+   * Estado por API: cada una debe habilitarse por separado en Google Cloud
+   * (Geocoding, Places New, Routes). Un `upstreamOk:true` que solo probaba
+   * Geocoding ocultaba que el autocompletado (Places) o las rutas (Routes)
+   * estaban deshabilitados y fallaban en silencio.
+   */
+  apis: {
+    geocoding: string; // 'ok' | mensaje de error de Google
+    places: string;
+    routes: string;
+  };
+}
+
+/** Prueba UNA API de Google y devuelve 'ok' o el error exacto que reporta. */
+async function _probeApi(
+  label: string,
+  run: () => Promise<{ status?: string; error?: string; httpOk: boolean; httpStatus: number }>,
+): Promise<string> {
+  try {
+    const r = await run();
+    if (r.status === 'OK' || r.status === 'ZERO_RESULTS' || (r.httpOk && !r.status && !r.error)) {
+      return 'ok';
+    }
+    return `${r.status ?? `HTTP ${r.httpStatus}`}${r.error ? `: ${r.error}` : ''}`;
+  } catch (err) {
+    return err instanceof Error ? err.message : `Error de red (${label})`;
+  }
 }
 
 /**
- * Diagnóstico del proxy geo: verifica la key con un reverse geocode barato
- * del centro de Pamplona. Pensado para abrirse en el navegador cuando "los
- * mapas no funcionan" y ver la causa exacta sin leer logs.
+ * Diagnóstico del proxy geo: prueba LAS TRES APIs que usan las apps
+ * (Geocoding, Places New, Routes) por separado. Pensado para abrirse en el
+ * navegador cuando "los mapas no funcionan" y ver EXACTAMENTE cuál API falta
+ * habilitar o está bloqueada por la restricción de la llave — sin leer logs.
  */
 export async function geoHealth(): Promise<GeoHealth> {
   if (!isGeoConfigured()) {
@@ -56,31 +84,74 @@ export async function geoHealth(): Promise<GeoHealth> {
       keyConfigured: false,
       upstreamOk: false,
       upstreamError: 'GOOGLE_MAPS_API_KEY no está definida en el servidor (Render → Environment).',
+      apis: { geocoding: 'sin llave', places: 'sin llave', routes: 'sin llave' },
     };
   }
-  try {
+
+  // Geocoding API (reverse geocode barato).
+  const geocoding = await _probeApi('geocoding', async () => {
     const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
     url.searchParams.set('latlng', `${DEFAULT_LAT},${DEFAULT_LNG}`);
     url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
     const res = await fetch(url);
     const json = (await res.json()) as Record<string, unknown>;
-    const status = json['status'] as string | undefined;
-    if (status === 'OK' || status === 'ZERO_RESULTS') {
-      return { keyConfigured: true, upstreamOk: true, upstreamError: null };
-    }
-    const detail = json['error_message'] as string | undefined;
     return {
-      keyConfigured: true,
-      upstreamOk: false,
-      upstreamError: `${status ?? `HTTP ${res.status}`}${detail ? `: ${detail}` : ''}`,
+      status: json['status'] as string | undefined,
+      error: json['error_message'] as string | undefined,
+      httpOk: res.ok,
+      httpStatus: res.status,
     };
-  } catch (err) {
-    return {
-      keyConfigured: true,
-      upstreamOk: false,
-      upstreamError: err instanceof Error ? err.message : 'Error de red hacia Google',
-    };
-  }
+  });
+
+  // Places API (New): autocompletado. REQUEST_DENIED aquí = Places no habilitada
+  // o la key está restringida y no la permite.
+  const places = await _probeApi('places', async () => {
+    const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+      },
+      body: JSON.stringify({ input: 'cra', languageCode: 'es', regionCode: 'CO' }),
+    });
+    const json = (await res.json()) as Record<string, unknown>;
+    const err = (json['error'] as { message?: string } | undefined)?.message;
+    return { error: err, httpOk: res.ok, httpStatus: res.status };
+  });
+
+  // Routes API: rutas por las calles.
+  const routes = await _probeApi('routes', async () => {
+    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'routes.distanceMeters',
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: DEFAULT_LAT, longitude: DEFAULT_LNG } } },
+        destination: { location: { latLng: { latitude: DEFAULT_LAT + 0.02, longitude: DEFAULT_LNG } } },
+        travelMode: 'DRIVE',
+      }),
+    });
+    const json = (await res.json()) as Record<string, unknown>;
+    const err = (json['error'] as { message?: string } | undefined)?.message;
+    return { error: err, httpOk: res.ok, httpStatus: res.status };
+  });
+
+  const allOk = geocoding === 'ok' && places === 'ok' && routes === 'ok';
+  const failing = [
+    geocoding !== 'ok' ? `Geocoding (${geocoding})` : null,
+    places !== 'ok' ? `Places New (${places})` : null,
+    routes !== 'ok' ? `Routes (${routes})` : null,
+  ].filter(Boolean);
+
+  return {
+    keyConfigured: true,
+    upstreamOk: allOk,
+    upstreamError: allOk ? null : `Falta habilitar/permitir: ${failing.join(' · ')}`,
+    apis: { geocoding, places, routes },
+  };
 }
 
 async function _googleFetch(
