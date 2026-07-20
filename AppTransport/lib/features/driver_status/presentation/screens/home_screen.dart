@@ -38,6 +38,7 @@ import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
+import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -677,11 +678,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               initialZoom: MapConstants.initialZoom,
             ),
             children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.nexum.driver',
-              ),
+              const GoogleMapTiles(),
               if (_showHeatmap)
                 CircleLayer(circles: _buildHeatmapCircles()),
               if (_state.isOnline)

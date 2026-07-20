@@ -29,6 +29,7 @@ import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/services/route_service.dart';
+import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_marker.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
@@ -437,10 +438,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         },
       ),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.nexum.driver',
-        ),
+        const GoogleMapTiles(),
         PolylineLayer(polylines: _buildPolylines(trip, serviceType)),
         MarkerLayer(markers: _buildMarkers(trip, serviceType)),
       ],

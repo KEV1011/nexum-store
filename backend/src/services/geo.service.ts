@@ -53,6 +53,7 @@ export interface GeoHealth {
     geocoding: string; // 'ok' | mensaje de error de Google
     places: string;
     routes: string;
+    mapTiles: string; // Map Tiles API (imágenes del mapa) — createSession
   };
 }
 
@@ -84,7 +85,7 @@ export async function geoHealth(): Promise<GeoHealth> {
       keyConfigured: false,
       upstreamOk: false,
       upstreamError: 'GOOGLE_MAPS_API_KEY no está definida en el servidor (Render → Environment).',
-      apis: { geocoding: 'sin llave', places: 'sin llave', routes: 'sin llave' },
+      apis: { geocoding: 'sin llave', places: 'sin llave', routes: 'sin llave', mapTiles: 'sin llave' },
     };
   }
 
@@ -139,18 +140,36 @@ export async function geoHealth(): Promise<GeoHealth> {
     return { error: err, httpOk: res.ok, httpStatus: res.status };
   });
 
-  const allOk = geocoding === 'ok' && places === 'ok' && routes === 'ok';
+  // Map Tiles API: imágenes del mapa de Google (createSession). REQUEST_DENIED /
+  // 403 aquí = Map Tiles API no habilitada o key restringida.
+  const mapTiles = await _probeApi('mapTiles', async () => {
+    const res = await fetch(
+      `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mapType: 'roadmap', language: 'es-419', region: 'CO' }),
+      },
+    );
+    const json = (await res.json()) as Record<string, unknown>;
+    const err = (json['error'] as { message?: string } | undefined)?.message;
+    return { error: err, httpOk: res.ok, httpStatus: res.status };
+  });
+
+  const allOk =
+    geocoding === 'ok' && places === 'ok' && routes === 'ok' && mapTiles === 'ok';
   const failing = [
     geocoding !== 'ok' ? `Geocoding (${geocoding})` : null,
     places !== 'ok' ? `Places New (${places})` : null,
     routes !== 'ok' ? `Routes (${routes})` : null,
+    mapTiles !== 'ok' ? `Map Tiles (${mapTiles})` : null,
   ].filter(Boolean);
 
   return {
     keyConfigured: true,
     upstreamOk: allOk,
     upstreamError: allOk ? null : `Falta habilitar/permitir: ${failing.join(' · ')}`,
-    apis: { geocoding, places, routes },
+    apis: { geocoding, places, routes, mapTiles },
   };
 }
 
@@ -327,4 +346,86 @@ export async function directions(
     durationMinutes: Math.max(1, Math.round(durationSeconds / 60)),
     polyline,
   };
+}
+
+// ─── Map Tiles API (imágenes REALES del mapa de Google) ───────────────────────
+// Las apps piden /geo/tile/{z}/{x}/{y} al backend y este trae el tile de Google
+// con la key server-side (la app nunca ve la key). El aspecto es idéntico a
+// maps.google.com. Requiere habilitar "Map Tiles API" en Google Cloud.
+//
+// Map Tiles API exige un token de sesión (createSession) reutilizable ~2 semanas;
+// lo cacheamos en memoria y lo recreamos solo cuando expira o Google lo rechaza.
+
+interface MapSession {
+  token: string;
+  /** epoch en segundos en que expira (según Google). */
+  expiry: number;
+}
+
+let _mapSession: MapSession | null = null;
+let _mapSessionInFlight: Promise<string> | null = null;
+
+async function _createMapSession(): Promise<string> {
+  const res = await fetch(
+    `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mapType: 'roadmap', language: 'es-419', region: 'CO' }),
+    },
+  );
+  const json = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    const err = (json['error'] as { message?: string } | undefined)?.message;
+    throw new GeoError(err ?? `createSession falló (${res.status})`);
+  }
+  const token = json['session'] as string;
+  const expiry =
+    parseInt((json['expiry'] as string | undefined) ?? '0', 10) ||
+    Math.floor(Date.now() / 1000) + 3600;
+  _mapSession = { token, expiry };
+  return token;
+}
+
+async function _getMapSession(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (_mapSession && _mapSession.expiry - 60 > now) return _mapSession.token;
+  if (!_mapSessionInFlight) {
+    _mapSessionInFlight = _createMapSession().finally(() => {
+      _mapSessionInFlight = null;
+    });
+  }
+  return _mapSessionInFlight;
+}
+
+export interface MapTile {
+  body: Buffer;
+  contentType: string;
+}
+
+/** Descarga un tile del mapa de Google (proxeado, key server-side). */
+export async function fetchMapTile(z: number, x: number, y: number): Promise<MapTile> {
+  if (!isGeoConfigured()) throw new GeoError('Geo service not configured', 503);
+
+  const doFetch = async (session: string): Promise<globalThis.Response> => {
+    const url =
+      `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}` +
+      `?session=${encodeURIComponent(session)}&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
+    return fetch(url);
+  };
+
+  let session = await _getMapSession();
+  let res = await doFetch(session);
+  // Sesión expirada/invalidada por Google → recrear una vez.
+  if (res.status === 401 || res.status === 403) {
+    _mapSession = null;
+    session = await _getMapSession();
+    res = await doFetch(session);
+  }
+  if (!res.ok) {
+    throw new GeoError(`tile upstream (${res.status})`, res.status === 404 ? 404 : 502);
+  }
+  const contentType = res.headers.get('content-type') ?? 'image/png';
+  const arrayBuf = await res.arrayBuffer();
+  return { body: Buffer.from(arrayBuf), contentType };
 }

@@ -16,6 +16,7 @@ import 'package:nexum_client/features/intercity/domain/entities/intercity_entity
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 
 // Centro de Pamplona, Norte de Santander (misma referencia que el backend).
 const _pamplona = LatLng(7.3754, -72.6486);
@@ -108,11 +109,7 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
               initialZoom: 15.2,
             ),
             children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.nexum.client',
-              ),
+              const GoogleMapTiles(),
               MarkerLayer(
                 markers: [
                   // Mi ubicación

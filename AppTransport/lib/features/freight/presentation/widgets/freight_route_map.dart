@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/shared/services/route_service.dart';
+import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
 
 /// Mapa compacto del trayecto de un flete: marcador de origen (verde),
 /// marcador de destino (rojo) y una línea entre ambos. Las coordenadas vienen
@@ -115,10 +116,7 @@ class _FreightRouteMapState extends State<FreightRouteMap> {
               initialZoom: zoom,
             ),
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.nexum.driver',
-              ),
+              const GoogleMapTiles(),
               PolylineLayer(
                 polylines: [
                   Polyline(
