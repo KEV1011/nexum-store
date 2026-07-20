@@ -16,7 +16,19 @@ class _AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final token = await _storage.read(key: AppConstants.authTokenKey);
+    // La lectura del token NUNCA debe bloquear la petición: en algunos
+    // dispositivos el almacenamiento seguro (Android Keystore) se cuelga y, sin
+    // timeout, el interceptor jamás llamaría a handler.next() → la petición no
+    // sale y el login se queda "cargando" para siempre, sin error. Con timeout
+    // (y try/catch) la app sigue sin token — el login no lo necesita.
+    String? token;
+    try {
+      token = await _storage
+          .read(key: AppConstants.authTokenKey)
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
+    } catch (_) {
+      token = null;
+    }
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
     }
