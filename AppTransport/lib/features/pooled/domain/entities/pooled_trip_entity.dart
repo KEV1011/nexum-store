@@ -118,6 +118,7 @@ class PooledTripEntity {
     required this.status,
     required this.vehicleDescription,
     this.notes,
+    this.stops = const [],
     this.distanceKm,
     this.durationMinutes,
     this.bookings = const [],
@@ -136,6 +137,9 @@ class PooledTripEntity {
   final PooledTripStatus status;
   final String vehicleDescription;
   final String? notes;
+
+  /// Paradas intermedias de la salida ("pasa por"), en orden.
+  final List<String> stops;
   final double? distanceKm;
   final int? durationMinutes;
   final List<PooledSeatBooking> bookings;
@@ -157,6 +161,11 @@ class PooledTripEntity {
         status: PooledTripStatus.fromApi(j['status'] as String?),
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         notes: j['notes'] as String?,
+        stops: [
+          for (final st in (j['stops'] as List<dynamic>? ?? const []))
+            if (st is Map<String, dynamic> && st['name'] is String)
+              st['name'] as String,
+        ],
         distanceKm: (j['distanceKm'] as num?)?.toDouble(),
         durationMinutes: (j['durationMinutes'] as num?)?.toInt(),
         bookings: (j['bookings'] as List<dynamic>? ?? [])

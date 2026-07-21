@@ -316,6 +316,7 @@ class IntercityRequestEntity {
     this.driverPhone,
     this.driverVehicle,
     this.driverVehicleType,
+    this.stops = const [],
     this.driverRating,
     this.counterFare,
     this.myRating,
@@ -364,6 +365,11 @@ class IntercityRequestEntity {
       driverPhone: json['maskedPhone'] as String?,
       driverVehicle: json['driverVehicle'] as String?,
       driverVehicleType: json['driverVehicleType'] as String?,
+      stops: [
+        for (final st in (json['stops'] as List<dynamic>? ?? const []))
+          if (st is Map<String, dynamic> && st['name'] is String)
+            st['name'] as String,
+      ],
       counterFare: (json['counterFare'] as num?)?.toDouble(),
       myRating: json['rating'] as int?,
       driverLat: (json['driverLat'] as num?)?.toDouble(),
@@ -388,6 +394,9 @@ class IntercityRequestEntity {
 
   /// Tipo REAL del vehículo asignado — decide el ícono del mapa.
   final String? driverVehicleType;
+
+  /// Paradas intermedias del trayecto ("pasa por"), en orden.
+  final List<String> stops;
   final double? driverRating;
   final double? counterFare;
 
@@ -420,6 +429,7 @@ class IntercityRequestEntity {
     String? driverPhone,
     String? driverVehicle,
     String? driverVehicleType,
+    List<String>? stops,
     double? driverRating,
     double? counterFare,
     int? myRating,
@@ -442,6 +452,7 @@ class IntercityRequestEntity {
         driverPhone: driverPhone ?? this.driverPhone,
         driverVehicle: driverVehicle ?? this.driverVehicle,
         driverVehicleType: driverVehicleType ?? this.driverVehicleType,
+        stops: stops ?? this.stops,
         driverRating: driverRating ?? this.driverRating,
         counterFare: counterFare ?? this.counterFare,
         myRating: myRating ?? this.myRating,

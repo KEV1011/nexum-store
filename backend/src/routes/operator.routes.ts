@@ -502,6 +502,7 @@ router.post(
       farePerSeat?: number;
       vehicleDescription?: string;
       notes?: string;
+      stops?: Array<{ name?: string; lat?: number; lng?: number; order?: number }>;
     };
     if (
       !b.driverId || !b.origin || !b.destination || !b.departureTime ||
@@ -552,6 +553,9 @@ router.post(
           vehicleDescription,
           notes: b.notes,
           allowFleet: true,
+          stops: (b.stops ?? []).map((st, i) => ({
+            name: String(st.name ?? ''), lat: st.lat, lng: st.lng, order: st.order ?? i,
+          })),
         },
         { operatorId: req.operatorId!, licensedOperator: operator?.isVerified === true },
       );

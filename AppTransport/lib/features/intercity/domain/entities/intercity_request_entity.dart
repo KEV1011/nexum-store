@@ -17,6 +17,7 @@ class IntercityRequestEntity {
     this.pickupAddress,
     this.dropoffAddress,
     this.notes,
+    this.stops = const [],
     this.distanceKm,
     this.durationMinutes,
     this.passengerName,
@@ -41,6 +42,11 @@ class IntercityRequestEntity {
       pickupAddress: b['pickupAddress'] as String?,
       dropoffAddress: b['dropoffAddress'] as String?,
       notes: b['notes'] as String?,
+      stops: [
+        for (final st in (b['stops'] as List<dynamic>? ?? const []))
+          if (st is Map<String, dynamic> && st['name'] is String)
+            st['name'] as String,
+      ],
       distanceKm: (route?['distanceKm'] as num?)?.toDouble(),
       durationMinutes: (route?['durationMinutes'] as num?)?.toInt(),
       passengerName: msg['passengerName'] as String?,
@@ -62,6 +68,9 @@ class IntercityRequestEntity {
   final String? pickupAddress;
   final String? dropoffAddress;
   final String? notes;
+
+  /// Paradas intermedias del trayecto ("pasa por"), en orden.
+  final List<String> stops;
   final double? distanceKm;
   final int? durationMinutes;
 

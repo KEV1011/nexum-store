@@ -27,6 +27,18 @@ class _IntercityBookingScreenState
   IntercitySeats _seats = IntercitySeats.one;
   final _fareCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
+  final _stopCtrl = TextEditingController();
+  // Paradas intermedias del trayecto ("pasa por"), máx. 6.
+  final List<String> _stops = [];
+
+  void _addStop() {
+    final name = _stopCtrl.text.trim();
+    if (name.isEmpty || _stops.length >= 6) return;
+    setState(() {
+      _stops.add(name);
+      _stopCtrl.clear();
+    });
+  }
   final _pickupCtrl = TextEditingController();
   final _dropoffCtrl = TextEditingController();
   bool _isSubmitting = false;
@@ -52,6 +64,7 @@ class _IntercityBookingScreenState
   void dispose() {
     _fareCtrl.dispose();
     _notesCtrl.dispose();
+    _stopCtrl.dispose();
     _pickupCtrl.dispose();
     _dropoffCtrl.dispose();
     super.dispose();
@@ -136,6 +149,7 @@ class _IntercityBookingScreenState
           _pickupCtrl.text.trim().isEmpty ? null : _pickupCtrl.text.trim(),
       dropoffAddress:
           _dropoffCtrl.text.trim().isEmpty ? null : _dropoffCtrl.text.trim(),
+      stops: List.of(_stops),
     );
 
     final error =
@@ -506,11 +520,60 @@ class _IntercityBookingScreenState
                 const SizedBox(height: 8),
                 _DarkTextField(
                   controller: _notesCtrl,
-                  hint: 'Notas para el conductor (equipaje, paradas, etc.)',
+                  hint: 'Notas para el conductor (equipaje, etc.)',
                   icon: Icons.notes_rounded,
                   iconColor: AppColors.intercityTextMuted,
                   maxLines: 2,
                 ),
+                const SizedBox(height: 8),
+                // Paradas intermedias ("pasa por"): el viaje puede recoger o
+                // dejar en puntos del camino (máx. 6).
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DarkTextField(
+                        controller: _stopCtrl,
+                        hint: 'Agregar parada (ej: Los Patios)',
+                        icon: Icons.alt_route_rounded,
+                        iconColor: AppColors.intercityAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      onPressed: _addStop,
+                      style: IconButton.styleFrom(
+                        backgroundColor: _kInterColor,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.add_rounded),
+                      tooltip: 'Agregar parada',
+                    ),
+                  ],
+                ),
+                if (_stops.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (var i = 0; i < _stops.length; i++)
+                          Chip(
+                            label: Text('${i + 1}. ${_stops[i]}'),
+                            labelStyle: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
+                            ),
+                            backgroundColor:
+                                AppColors.intercityAccent.withValues(alpha: .25),
+                            deleteIconColor: Colors.white70,
+                            onDeleted: () =>
+                                setState(() => _stops.removeAt(i)),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),

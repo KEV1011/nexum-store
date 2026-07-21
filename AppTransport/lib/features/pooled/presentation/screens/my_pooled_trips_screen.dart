@@ -6,6 +6,7 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
+import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 
@@ -216,6 +217,39 @@ class _PooledTripCard extends StatelessWidget {
                       fontWeight: FontWeight.w700, color: _kPooledColor)),
             ],
           ),
+          const SizedBox(height: 12),
+
+          // Ruta del trayecto en el mapa (paridad con intermunicipal/flete):
+          // el conductor ve por dónde va la salida de un vistazo.
+          FreightRouteMap(
+            originLat: trip.origin.coords.lat,
+            originLng: trip.origin.coords.lng,
+            destLat: trip.destination.coords.lat,
+            destLng: trip.destination.coords.lng,
+            height: 140,
+          ),
+          // Lugares por donde pasa la salida (paradas publicadas).
+          if (trip.stops.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.alt_route_rounded,
+                      size: 15, color: _kPooledColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Pasa por: ${trip.stops.join(' · ')}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 12),
 
           // Occupancy

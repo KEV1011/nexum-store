@@ -769,6 +769,8 @@ model IntercityBooking {
   pickupAddress  String?
   dropoffAddress String?
   notes          String?
+  // Paradas intermedias del trayecto: [{name, lat?, lng?, order}] (máx. 6).
+  stops          Json?
   driverName     String?
   driverPhone    String?
   driverVehicle  String?
@@ -834,6 +836,8 @@ model PooledTrip {
   allowFleet         Boolean          @default(false)
   status             PooledTripStatus @default(OPEN)
   notes              String?
+  // Paradas intermedias de la salida: [{name, lat?, lng?, order}] (máx. 6).
+  stops              Json?
   // Empresa que publicó la salida (null = conductor particular). Sin FK,
   // mismo patrón que IntercityBooking.operatorId.
   operatorId         String?

@@ -321,6 +321,27 @@ class _TripCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
               ],
+              // Lugares por donde pasa la salida (paradas publicadas).
+              if (trip.stops.isNotEmpty) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.alt_route_rounded,
+                        size: 16, color: context.textSecondaryColor),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Pasa por: ${trip.stops.join(' · ')}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
               Row(
                 children: [
                   Icon(Icons.person_rounded, size: 16, color: context.textSecondaryColor),

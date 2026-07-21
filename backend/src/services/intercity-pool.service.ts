@@ -1,3 +1,4 @@
+import { sanitizeStops, stopsFromDb } from '../lib/trip-stops';
 import {
   IntercityCity,
   PooledTripStatus,
@@ -52,6 +53,7 @@ type DbPooledTrip = {
   vehicleDescription: string; origin: string; destination: string; departureTime: Date;
   totalSeats: number; farePerSeat: number; maxFarePerSeat: number; allowFleet: boolean;
   status: string; notes: string | null; createdAt: Date;
+  stops?: unknown;
   operatorId?: string | null;
   bookings?: DbSeatBooking[];
 };
@@ -106,6 +108,7 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     allowFleet: t.allowFleet,
     status: (STATUS_FROM_PRISMA[t.status] ?? 'open') as PooledTripStatus,
     notes: t.notes ?? undefined,
+    stops: stopsFromDb(t.stops),
     distanceKm: route?.distanceKm,
     durationMinutes: route?.durationMinutes,
     createdAt: t.createdAt.toISOString(),
@@ -196,6 +199,7 @@ export async function publishPooledTrip(
       allowFleet: dto.allowFleet ?? false,
       status: 'OPEN',
       notes: dto.notes ?? null,
+      stops: sanitizeStops(dto.stops),
       operatorId: opts?.operatorId ?? null,
     },
     include: { bookings: true },

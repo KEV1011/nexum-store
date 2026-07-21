@@ -504,6 +504,7 @@ router.post('/intercity/request', clientAuthMiddleware, clientRequestRateLimit, 
       origin: dto.origin, destination: dto.destination, departureTime: dto.departureTime,
       seats: dto.seats, offeredFare: dto.offeredFare,
       pickupAddress: dto.pickupAddress, dropoffAddress: dto.dropoffAddress, notes: dto.notes,
+      stops: dto.stops,
     });
     res.status(201).json({ success: true, data: booking });
   } catch (err) {

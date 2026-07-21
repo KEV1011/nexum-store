@@ -34,7 +34,10 @@ interface SeatBookingRow {
   notes?: string
 }
 
+interface TripStop { name: string; order: number }
+
 interface PooledTripRow {
+  stops?: TripStop[]
   id: string
   tripRef: string
   driverName: string
@@ -86,6 +89,9 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   const [seats, setSeats] = useState('4')
   const [fare, setFare] = useState('22000')
   const [notes, setNotes] = useState('')
+  // Paradas intermedias ("pasa por"): nombres de lugar, máx. 6.
+  const [stops, setStops] = useState<string[]>([])
+  const [stopDraft, setStopDraft] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -124,10 +130,15 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           totalSeats: Number(seats),
           farePerSeat: Number(fare),
           notes: notes.trim() || undefined,
+          stops: stops.length > 0
+            ? stops.map((name, i) => ({ name, order: i }))
+            : undefined,
         }),
       })
       setNotes('')
       setDeparture('')
+      setStops([])
+      setStopDraft('')
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo publicar la salida.')
@@ -208,6 +219,50 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm" />
       </label>
 
+      {/* Paradas intermedias ("pasa por") */}
+      <div className="mb-3">
+        <span className="block text-[11px] font-semibold text-slate-500 mb-1">
+          Paradas del trayecto (opcional, máx. 6)
+        </span>
+        <div className="flex gap-2">
+          <input
+            value={stopDraft}
+            onChange={(e) => setStopDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                const name = stopDraft.trim()
+                if (name && stops.length < 6) { setStops([...stops, name]); setStopDraft('') }
+              }
+            }}
+            placeholder="Ej: Los Patios, Pamplonita…"
+            className="flex-1 px-2.5 py-2 rounded-lg border border-slate-200 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const name = stopDraft.trim()
+              if (name && stops.length < 6) { setStops([...stops, name]); setStopDraft('') }
+            }}
+            disabled={!stopDraft.trim() || stops.length >= 6}
+            className="px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+          >
+            Agregar
+          </button>
+        </div>
+        {stops.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {stops.map((name, i) => (
+              <span key={`${name}-${i}`} className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-full text-[11px] font-medium">
+                {i + 1}. {name}
+                <button type="button" onClick={() => setStops(stops.filter((_, j) => j !== i))}
+                  className="text-amber-500 hover:text-amber-800" aria-label={`Quitar ${name}`}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
       {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
 
       <button onClick={publish} disabled={saving || drivers.length === 0}
@@ -241,6 +296,11 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                     <p className="text-[11px] text-slate-400 truncate">
                       {t.driverName} · {t.vehicleDescription} · {formatCOP(t.farePerSeat)}/puesto · ref {t.tripRef}
                     </p>
+                    {(t.stops?.length ?? 0) > 0 && (
+                      <p className="text-[11px] text-amber-700 truncate">
+                        Pasa por: {t.stops!.map((s) => s.name).join(' · ')}
+                      </p>
+                    )}
                   </div>
                   {/* Ocupación desde la óptica del operador: puestos VENDIDOS de
                       los totales (antes mostraba disponibles, que confundía —

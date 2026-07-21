@@ -761,6 +761,14 @@ export type IntercityStatus =
   | 'completed'
   | 'cancelled';
 
+/** Parada intermedia de un trayecto intermunicipal ("pasa por"). */
+export interface TripStopDTO {
+  name: string;
+  lat?: number;
+  lng?: number;
+  order: number;
+}
+
 export interface RequestIntercityDTO {
   origin: IntercityCity;
   destination: IntercityCity;
@@ -770,6 +778,8 @@ export interface RequestIntercityDTO {
   pickupAddress?: string;
   dropoffAddress?: string;
   notes?: string;
+  /** Paradas intermedias opcionales (máx. 6). */
+  stops?: TripStopDTO[];
 }
 
 export interface IntercityBookingDTO {
@@ -792,6 +802,8 @@ export interface IntercityBookingDTO {
   pickupAddress?: string;
   dropoffAddress?: string;
   notes?: string;
+  /** Paradas intermedias del trayecto ("pasa por"). */
+  stops?: TripStopDTO[];
   createdAt: string;
   confirmedAt?: string;
   /** Calificación del pasajero al viaje completado (1-5). */
@@ -828,6 +840,8 @@ export interface PublishPooledTripDTO {
   vehicleDescription: string; // e.g. "Toyota Corolla Blanco • ABC 123"
   notes?: string;
   allowFleet?: boolean; // passenger may book the whole vehicle at once
+  /** Paradas intermedias opcionales (máx. 6). */
+  stops?: TripStopDTO[];
 }
 
 /** A single passenger's booking on a pooled trip. */
@@ -872,6 +886,8 @@ export interface PooledTripDTO {
   allowFleet: boolean;
   status: PooledTripStatus;
   notes?: string;
+  /** Paradas intermedias de la salida ("pasa por"). */
+  stops?: TripStopDTO[];
   distanceKm?: number;
   durationMinutes?: number;
   createdAt: string;
