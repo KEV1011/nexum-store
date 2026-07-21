@@ -698,3 +698,137 @@ export async function takeDriverFreight(
   if (!vehicle) throw new FreightError('Ese vehículo no está a tu nombre.');
   return acceptFreight(driver.operatorId, freightId, driverId, vehicleId, false);
 }
+
+// ─── Trazabilidad en ruta: tanqueos, paradas y notas del conductor ───────────
+// El conductor registra cada evento (dónde echó gasolina, dónde paró) y la
+// empresa lo ve como línea de tiempo del flete — control total del trayecto.
+
+export type FreightEventType = 'FUEL' | 'STOP' | 'NOTE';
+
+export interface FreightEventDTO {
+  id: string;
+  freightId: string;
+  type: FreightEventType;
+  lat?: number;
+  lng?: number;
+  address?: string;
+  amountCop?: number;
+  gallons?: number;
+  odometerKm?: number;
+  note?: string;
+  photoUrl?: string;
+  createdAt: string;
+}
+
+type DbFreightEvent = {
+  id: string; freightId: string; type: string; lat: number | null; lng: number | null;
+  address: string | null; amountCop: number | null; gallons: number | null;
+  odometerKm: number | null; note: string | null; photoUrl: string | null; createdAt: Date;
+};
+
+function _eventToDTO(e: DbFreightEvent): FreightEventDTO {
+  return {
+    id: e.id,
+    freightId: e.freightId,
+    type: e.type as FreightEventType,
+    lat: e.lat ?? undefined,
+    lng: e.lng ?? undefined,
+    address: e.address ?? undefined,
+    amountCop: e.amountCop ?? undefined,
+    gallons: e.gallons ?? undefined,
+    odometerKm: e.odometerKm ?? undefined,
+    note: e.note ?? undefined,
+    photoUrl: e.photoUrl ?? undefined,
+    createdAt: e.createdAt.toISOString(),
+  };
+}
+
+export interface AddFreightEventInput {
+  type: string;
+  lat?: number;
+  lng?: number;
+  address?: string;
+  amountCop?: number;
+  gallons?: number;
+  odometerKm?: number;
+  note?: string;
+  photoUrl?: string;
+}
+
+/** El conductor asignado registra un evento del flete EN RUTA. */
+export async function addFreightEvent(
+  driverId: string,
+  freightId: string,
+  input: AddFreightEventInput,
+): Promise<FreightEventDTO> {
+  const type = String(input.type ?? '').toUpperCase();
+  if (!['FUEL', 'STOP', 'NOTE'].includes(type)) {
+    throw new FreightError('El tipo de evento debe ser FUEL, STOP o NOTE.');
+  }
+  const f = await prisma.freightRequest.findUnique({
+    where: { id: freightId },
+    select: { driverId: true, status: true },
+  });
+  if (!f || f.driverId !== driverId) {
+    throw new FreightError('Este flete no está asignado a ti.');
+  }
+  if (f.status !== 'ACCEPTED' && f.status !== 'IN_PROGRESS') {
+    throw new FreightError('Solo puedes registrar eventos con el flete aceptado o en ruta.');
+  }
+  if (type === 'FUEL' && !(typeof input.amountCop === 'number' && input.amountCop > 0)) {
+    throw new FreightError('Un tanqueo necesita el monto en pesos (amountCop).');
+  }
+  const created = await prisma.freightEvent.create({
+    data: {
+      freightId,
+      driverId,
+      type,
+      lat: typeof input.lat === 'number' ? input.lat : null,
+      lng: typeof input.lng === 'number' ? input.lng : null,
+      address: input.address?.trim().slice(0, 160) || null,
+      amountCop: typeof input.amountCop === 'number' ? input.amountCop : null,
+      gallons: typeof input.gallons === 'number' ? input.gallons : null,
+      odometerKm: typeof input.odometerKm === 'number' ? input.odometerKm : null,
+      note: input.note?.trim().slice(0, 300) || null,
+      photoUrl: input.photoUrl ?? null,
+    },
+  });
+  return _eventToDTO(created);
+}
+
+/** Línea de tiempo del flete para su conductor asignado. */
+export async function listFreightEventsForDriver(
+  driverId: string,
+  freightId: string,
+): Promise<FreightEventDTO[]> {
+  const f = await prisma.freightRequest.findUnique({
+    where: { id: freightId },
+    select: { driverId: true },
+  });
+  if (!f || f.driverId !== driverId) return [];
+  const rows = await prisma.freightEvent.findMany({
+    where: { freightId },
+    orderBy: { createdAt: 'asc' },
+  });
+  return rows.map(_eventToDTO);
+}
+
+/** Línea de tiempo + total de combustible para la EMPRESA dueña del flete. */
+export async function listFreightEventsForOperator(
+  operatorId: string,
+  freightId: string,
+): Promise<{ events: FreightEventDTO[]; fuelTotalCop: number } | null> {
+  const f = await prisma.freightRequest.findUnique({
+    where: { id: freightId },
+    select: { operatorId: true },
+  });
+  if (!f || f.operatorId !== operatorId) return null;
+  const rows = await prisma.freightEvent.findMany({
+    where: { freightId },
+    orderBy: { createdAt: 'asc' },
+  });
+  const fuelTotalCop = rows
+    .filter((r) => r.type === 'FUEL')
+    .reduce((sum, r) => sum + (r.amountCop ?? 0), 0);
+  return { events: rows.map(_eventToDTO), fuelTotalCop };
+}

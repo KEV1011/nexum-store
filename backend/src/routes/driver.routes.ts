@@ -55,6 +55,8 @@ import {
   listDriverAvailableFreights,
   takeDriverFreight,
   FreightError,
+  addFreightEvent,
+  listFreightEventsForDriver,
 } from '../services/freight.service';
 import { getTripChat, postTripChatPhoto, TripChatError } from '../services/trip-chat.service';
 import {
@@ -735,6 +737,62 @@ router.post('/freight/:id/status', async (req: Request, res: Response): Promise<
     const st = err instanceof FreightError ? 400 : 500;
     res.status(st).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo actualizar el flete' });
   }
+});
+
+// ─── Trazabilidad del flete: tanqueos, paradas y notas en ruta ────────────────
+
+// POST /driver/freight/:id/events — registra un evento del flete (multipart
+// opcional 'photo' con la factura/recibo; campos como form-data o JSON).
+router.post(
+  '/freight/:id/events',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('photo')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId;
+    if (!driverId) {
+      res.status(401).json({ success: false, error: 'No autenticado' });
+      return;
+    }
+    if (req.file && !req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({ success: false, error: 'La foto debe ser una imagen.' });
+      return;
+    }
+    const b = req.body as Record<string, string | undefined>;
+    const num = (v?: string): number | undefined => {
+      const n = v !== undefined ? Number(v) : NaN;
+      return Number.isFinite(n) ? n : undefined;
+    };
+    try {
+      const event = await addFreightEvent(driverId, req.params['id']!, {
+        type: b['type'] ?? '',
+        lat: num(b['lat']),
+        lng: num(b['lng']),
+        address: b['address'],
+        amountCop: num(b['amountCop']),
+        gallons: num(b['gallons']),
+        odometerKm: num(b['odometerKm']),
+        note: b['note'],
+        photoUrl: req.file ? fileToUrl(req.file) : undefined,
+      });
+      res.status(201).json({ success: true, data: event });
+    } catch (err) {
+      const st = err instanceof FreightError ? 400 : 500;
+      res.status(st).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo registrar el evento' });
+    }
+  },
+);
+
+// GET /driver/freight/:id/events — línea de tiempo del flete del conductor
+router.get('/freight/:id/events', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  res.json({ success: true, data: await listFreightEventsForDriver(driverId, req.params['id']!) });
 });
 
 // ─── Prueba de recogida/entrega ────────────────────────────────────────────────
