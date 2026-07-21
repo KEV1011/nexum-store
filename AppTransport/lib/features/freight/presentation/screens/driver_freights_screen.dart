@@ -1,7 +1,9 @@
-import 'package:dio/dio.dart';
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 
@@ -400,7 +402,325 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            // Trazabilidad en ruta: el conductor registra tanqueos y paradas
+            // para que la empresa tenga control total del trayecto.
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openEventSheet(f),
+                    icon: const Icon(Icons.local_gas_station_rounded, size: 17),
+                    label: const Text('Tanqueo / parada'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _showEventLog(f),
+                  icon: const Icon(Icons.receipt_long_rounded, size: 17),
+                  label: const Text('Bitácora'),
+                ),
+              ],
+            ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // ── Trazabilidad: registrar evento y ver bitácora ─────────────────────────
+
+  Future<void> _openEventSheet(Map<String, dynamic> f) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _FreightEventSheet(freightId: f['id'] as String),
+    );
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Evento registrado en la bitácora.')),
+      );
+    }
+  }
+
+  Future<void> _showEventLog(Map<String, dynamic> f) async {
+    List<Map<String, dynamic>> events = const [];
+    try {
+      final res = await DioClient().get<Map<String, dynamic>>(
+        '/driver/freight/${f['id']}/events',
+      );
+      events = ((res.data?['data'] as List<dynamic>?) ?? const [])
+          .cast<Map<String, dynamic>>();
+    } catch (_) {}
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bitácora del flete'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: events.isEmpty
+              ? const Text(
+                  'Aún no has registrado tanqueos ni paradas en este flete.')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: events.length,
+                  itemBuilder: (_, i) {
+                    final e = events[i];
+                    final type = e['type'] as String? ?? '';
+                    final when = DateTime.tryParse(
+                        e['createdAt'] as String? ?? '');
+                    final icon = switch (type) {
+                      'FUEL' => Icons.local_gas_station_rounded,
+                      'STOP' => Icons.pause_circle_outline_rounded,
+                      _ => Icons.sticky_note_2_outlined,
+                    };
+                    final title = switch (type) {
+                      'FUEL' =>
+                        'Tanqueo · \$${((e['amountCop'] as num?) ?? 0).toStringAsFixed(0)}',
+                      'STOP' => 'Parada',
+                      _ => 'Nota',
+                    };
+                    final parts = <String>[
+                      if (when != null)
+                        '${when.toLocal().hour.toString().padLeft(2, '0')}:${when.toLocal().minute.toString().padLeft(2, '0')}',
+                      if (e['gallons'] != null) '${e['gallons']} gal',
+                      if (e['odometerKm'] != null) '${e['odometerKm']} km',
+                      if ((e['note'] as String?)?.isNotEmpty == true)
+                        e['note'] as String,
+                    ];
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(icon, size: 20),
+                      title: Text(title,
+                          style: const TextStyle(fontSize: 13.5)),
+                      subtitle: parts.isEmpty
+                          ? null
+                          : Text(parts.join(' · '),
+                              style: const TextStyle(fontSize: 12)),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Sheet para registrar un evento del flete en ruta: tanqueo (monto/galones/
+/// odómetro + foto del recibo), parada o nota. Adjunta la posición GPS actual
+/// (best-effort) para la trazabilidad de la empresa.
+class _FreightEventSheet extends StatefulWidget {
+  const _FreightEventSheet({required this.freightId});
+
+  final String freightId;
+
+  @override
+  State<_FreightEventSheet> createState() => _FreightEventSheetState();
+}
+
+class _FreightEventSheetState extends State<_FreightEventSheet> {
+  String _type = 'FUEL';
+  final _amountCtrl = TextEditingController();
+  final _gallonsCtrl = TextEditingController();
+  final _odoCtrl = TextEditingController();
+  final _noteCtrl = TextEditingController();
+  XFile? _photo;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    _gallonsCtrl.dispose();
+    _odoCtrl.dispose();
+    _noteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    final img = await ImagePicker()
+        .pickImage(source: ImageSource.camera, imageQuality: 80);
+    if (img != null && mounted) setState(() => _photo = img);
+  }
+
+  Future<void> _save() async {
+    if (_type == 'FUEL' && double.tryParse(_amountCtrl.text.trim()) == null) {
+      setState(() => _error = 'Escribe el monto del tanqueo en pesos.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    // Posición actual best-effort (no bloquea el registro si no hay GPS).
+    double? lat;
+    double? lng;
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.medium),
+      ).timeout(const Duration(seconds: 6));
+      lat = pos.latitude;
+      lng = pos.longitude;
+    } catch (_) {}
+
+    try {
+      final form = FormData.fromMap({
+        'type': _type,
+        if (lat != null) 'lat': lat.toString(),
+        if (lng != null) 'lng': lng.toString(),
+        if (_amountCtrl.text.trim().isNotEmpty)
+          'amountCop': _amountCtrl.text.trim(),
+        if (_gallonsCtrl.text.trim().isNotEmpty)
+          'gallons': _gallonsCtrl.text.trim(),
+        if (_odoCtrl.text.trim().isNotEmpty)
+          'odometerKm': _odoCtrl.text.trim(),
+        if (_noteCtrl.text.trim().isNotEmpty) 'note': _noteCtrl.text.trim(),
+        if (_photo != null)
+          'photo': MultipartFile.fromBytes(
+            await _photo!.readAsBytes(),
+            filename: 'evento.jpg',
+            contentType: DioMediaType('image', 'jpeg'),
+          ),
+      });
+      await DioClient().post<Map<String, dynamic>>(
+        '/driver/freight/${widget.freightId}/events',
+        data: form,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } on DioException catch (e) {
+      setState(() {
+        _saving = false;
+        _error = (e.response?.data as Map?)?['error'] as String? ??
+            'No se pudo registrar el evento.';
+      });
+    } catch (_) {
+      setState(() {
+        _saving = false;
+        _error = 'No se pudo registrar el evento.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isFuel = _type == 'FUEL';
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Registrar en la bitácora',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                  value: 'FUEL',
+                  label: Text('Tanqueo'),
+                  icon: Icon(Icons.local_gas_station_rounded, size: 16)),
+              ButtonSegment(
+                  value: 'STOP',
+                  label: Text('Parada'),
+                  icon: Icon(Icons.pause_circle_outline_rounded, size: 16)),
+              ButtonSegment(
+                  value: 'NOTE',
+                  label: Text('Nota'),
+                  icon: Icon(Icons.sticky_note_2_outlined, size: 16)),
+            ],
+            selected: {_type},
+            onSelectionChanged: (s) => setState(() => _type = s.first),
+          ),
+          const SizedBox(height: 12),
+          if (isFuel) ...[
+            TextField(
+              controller: _amountCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Monto (COP) *',
+                prefixText: r'$ ',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _gallonsCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration:
+                        const InputDecoration(labelText: 'Galones'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _odoCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration:
+                        const InputDecoration(labelText: 'Odómetro (km)'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          TextField(
+            controller: _noteCtrl,
+            maxLines: 2,
+            decoration: InputDecoration(
+              labelText: isFuel
+                  ? 'Estación / nota (opcional)'
+                  : 'Descripción (dónde y por qué)',
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: _pickPhoto,
+                icon: Icon(
+                    _photo == null
+                        ? Icons.photo_camera_outlined
+                        : Icons.check_circle_rounded,
+                    size: 17),
+                label: Text(_photo == null ? 'Foto del recibo' : 'Foto lista'),
+              ),
+              const Spacer(),
+              Text('Se guarda tu ubicación',
+                  style:
+                      TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ],
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(_error!,
+                  style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+            ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? 'Guardando…' : 'Guardar en la bitácora'),
+            ),
+          ),
         ],
       ),
     );

@@ -48,6 +48,7 @@ import {
   getFleetFinance,
   getFleetAnalytics,
   FreightError,
+  listFreightEventsForOperator,
 } from '../services/freight.service';
 
 const router = Router();
@@ -454,6 +455,17 @@ router.post('/freight/:id/accept', requireOperatorRole('OWNER', 'DISPATCHER'), a
 });
 
 // in_progress | completed | cancelled (cancelar lo devuelve al tablero).
+// GET /operator/freight/:id/events — trazabilidad del flete: tanqueos, paradas
+// y notas registrados por el conductor en ruta + total de combustible.
+router.get('/freight/:id/events', async (req: Request, res: Response): Promise<void> => {
+  const data = await listFreightEventsForOperator(req.operatorId!, req.params['id']!);
+  if (!data) {
+    res.status(404).json({ success: false, error: 'Ese flete no pertenece a tu empresa.' });
+    return;
+  }
+  res.json({ success: true, data });
+});
+
 router.post('/freight/:id/status', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
   const { status } = req.body as { status?: string };
   if (status !== 'in_progress' && status !== 'completed' && status !== 'cancelled') {

@@ -45,6 +45,13 @@ function when(f: Freight) {
   return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(f.scheduledFor))
 }
 
+// Base HTTP del backend para resolver URLs relativas (/uploads/...) de recibos.
+const HTTP_BASE =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  (process.env.NODE_ENV === 'development'
+    ? 'http://localhost:3000'
+    : 'https://nexum-api-trxr.onrender.com')
+
 // WS del backend para avisos en vivo (mismo fallback de producción que api.ts).
 const WS_URL = (() => {
   const base =
@@ -61,6 +68,25 @@ const WS_URL = (() => {
   }
 })()
 
+interface FreightEventRow {
+  id: string
+  type: 'FUEL' | 'STOP' | 'NOTE'
+  lat?: number
+  lng?: number
+  amountCop?: number
+  gallons?: number
+  odometerKm?: number
+  note?: string
+  photoUrl?: string
+  createdAt: string
+}
+
+const EVENT_LABEL: Record<string, string> = {
+  FUEL: 'Tanqueo',
+  STOP: 'Parada',
+  NOTE: 'Nota',
+}
+
 export default function FreightManager({ api, token }: { api: OperatorApi; token: string }) {
   const [available, setAvailable] = useState<Freight[]>([])
   const [mine, setMine] = useState<Freight[]>([])
@@ -74,6 +100,23 @@ export default function FreightManager({ api, token }: { api: OperatorApi; token
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Selección de conductor/vehículo por flete disponible.
   const [assign, setAssign] = useState<Record<string, { driverId: string; vehicleId: string }>>({})
+  // Trazabilidad: bitácora expandida por flete (tanqueos/paradas del conductor).
+  const [traceId, setTraceId] = useState<string | null>(null)
+  const [trace, setTrace] = useState<{ events: FreightEventRow[]; fuelTotalCop: number } | null>(null)
+  const [traceLoading, setTraceLoading] = useState(false)
+
+  async function toggleTrace(id: string) {
+    if (traceId === id) { setTraceId(null); setTrace(null); return }
+    setTraceId(id); setTrace(null); setTraceLoading(true)
+    try {
+      const data = await api<{ events: FreightEventRow[]; fuelTotalCop: number }>(`/operator/freight/${id}/events`)
+      setTrace(data)
+    } catch {
+      setTrace({ events: [], fuelTotalCop: 0 })
+    } finally {
+      setTraceLoading(false)
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -278,6 +321,50 @@ export default function FreightManager({ api, token }: { api: OperatorApi; token
                   Soltar
                 </button>
               </div>
+              {/* Trazabilidad en ruta: bitácora del conductor (tanqueos/paradas). */}
+              <button onClick={() => void toggleTrace(f.id)}
+                className="text-[11px] font-semibold text-amber-700 hover:text-amber-900">
+                {traceId === f.id ? 'Ocultar trazabilidad' : 'Ver trazabilidad (tanqueos y paradas)'}
+              </button>
+              {traceId === f.id && (
+                <div className="border-t border-slate-100 pt-2">
+                  {traceLoading ? (
+                    <p className="text-[11px] text-slate-400">Cargando bitácora…</p>
+                  ) : !trace || trace.events.length === 0 ? (
+                    <p className="text-[11px] text-slate-400">El conductor aún no registra eventos en este flete.</p>
+                  ) : (
+                    <>
+                      <p className="text-[11px] font-semibold text-slate-600 mb-1.5">
+                        Combustible total: {cop(trace.fuelTotalCop)}
+                      </p>
+                      <ul className="space-y-1">
+                        {trace.events.map((e) => (
+                          <li key={e.id} className="text-[11px] text-slate-600 flex items-start gap-1.5">
+                            <span className="font-semibold text-slate-800 shrink-0">
+                              {new Date(e.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                              {' '}· {EVENT_LABEL[e.type] ?? e.type}
+                            </span>
+                            <span className="min-w-0 truncate">
+                              {e.type === 'FUEL' && e.amountCop != null ? `${cop(e.amountCop)}` : ''}
+                              {e.gallons != null ? ` · ${e.gallons} gal` : ''}
+                              {e.odometerKm != null ? ` · ${e.odometerKm} km` : ''}
+                              {e.note ? ` · ${e.note}` : ''}
+                              {e.lat != null && e.lng != null ? (
+                                <a href={`https://maps.google.com/?q=${e.lat},${e.lng}`} target="_blank" rel="noreferrer"
+                                  className="text-emerald-700 hover:underline"> · ver lugar</a>
+                              ) : null}
+                              {e.photoUrl ? (
+                                <a href={e.photoUrl.startsWith('http') ? e.photoUrl : `${HTTP_BASE}${e.photoUrl}`} target="_blank" rel="noreferrer"
+                                  className="text-emerald-700 hover:underline"> · recibo</a>
+                              ) : null}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 

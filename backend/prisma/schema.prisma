@@ -1137,11 +1137,40 @@ model FreightRequest {
   acceptedAt       DateTime?
   completedAt      DateTime?
 
+  events           FreightEvent[]
+
   @@index([status])
   @@index([operatorId])
   @@index([clientId])
   @@map("freight_requests")
 }
+
+// Trazabilidad del flete: eventos que el conductor registra en ruta
+// (tanqueos de combustible, paradas, notas) para control total de la empresa.
+model FreightEvent {
+  id         String   @id @default(cuid())
+  freightId  String
+  driverId   String
+  // FUEL | STOP | NOTE
+  type       String
+  lat        Float?
+  lng        Float?
+  address    String?
+  // Solo FUEL: monto en COP, galones y odómetro al tanquear.
+  amountCop  Float?
+  gallons    Float?
+  odometerKm Float?
+  note       String?
+  photoUrl   String?
+  createdAt  DateTime @default(now())
+
+  freight    FreightRequest @relation(fields: [freightId], references: [id])
+
+  @@index([freightId])
+  @@index([driverId])
+  @@map("freight_events")
+}
+
 
 // ─── Chat de viaje (pasajero ↔ conductor) ──────────────────────────────────────
 // Mensajería persistente atada a un Trip. senderRole: 'client' | 'driver'.
