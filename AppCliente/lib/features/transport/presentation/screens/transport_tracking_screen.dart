@@ -18,6 +18,7 @@ import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_client/shared/widgets/map_pin.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -522,16 +523,23 @@ class _TripMapState extends ConsumerState<_TripMap>
                     markers: [
                       Marker(
                         point: origin,
-                        width: 32,
-                        height: 32,
-                        child: const _MapDot(color: AppColors.pickupMarker),
+                        width: MapPin.markerWidth,
+                        height: MapPin.markerHeight,
+                        alignment: Alignment.topCenter,
+                        child: const MapPin(
+                          color: AppColors.pickupMarker,
+                          icon: Icons.trip_origin,
+                        ),
                       ),
                       Marker(
                         point: destination,
-                        width: 32,
-                        height: 32,
-                        child:
-                            const _MapDot(color: AppColors.destinationMarker),
+                        width: MapPin.markerWidth,
+                        height: MapPin.markerHeight,
+                        alignment: Alignment.topCenter,
+                        child: const MapPin(
+                          color: AppColors.destinationMarker,
+                          icon: Icons.flag_rounded,
+                        ),
                       ),
                       if (driver != null)
                         Marker(
@@ -658,25 +666,6 @@ class _MapLiveOverlay extends StatelessWidget {
     );
   }
 }
-
-class _MapDot extends StatelessWidget {
-  const _MapDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2.5),
-        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6)],
-      ),
-    );
-  }
-}
-
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
