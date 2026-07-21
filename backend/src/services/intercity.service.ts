@@ -1,3 +1,4 @@
+import { sanitizeStops, stopsFromDb } from '../lib/trip-stops';
 import {
   IntercityCity,
   IntercitySeats,
@@ -73,6 +74,7 @@ type DbBooking = {
   offeredFare: number; counterFare: number | null; status: string;
   driverName: string | null; driverPhone: string | null; driverVehicle: string | null;
   pickupAddress: string | null; dropoffAddress: string | null; notes: string | null;
+  stops?: unknown;
   createdAt: Date; confirmedAt: Date | null;
   rating?: number | null; ratingComment?: string | null;
 };
@@ -97,6 +99,7 @@ function _toDTO(b: DbBooking): IntercityBookingDTO {
     pickupAddress: b.pickupAddress ?? undefined,
     dropoffAddress: b.dropoffAddress ?? undefined,
     notes: b.notes ?? undefined,
+    stops: stopsFromDb(b.stops),
     createdAt: b.createdAt.toISOString(),
     confirmedAt: b.confirmedAt?.toISOString(),
     rating: b.rating ?? undefined,
@@ -592,6 +595,7 @@ export async function requestIntercityBooking(
       pickupAddress: dto.pickupAddress ?? null,
       dropoffAddress: dto.dropoffAddress ?? null,
       notes: dto.notes ?? null,
+      stops: sanitizeStops(dto.stops),
     },
   });
   _dispatchDriverSearch(booking.id, dto.offeredFare);

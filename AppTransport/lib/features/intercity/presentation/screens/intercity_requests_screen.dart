@@ -363,6 +363,15 @@ class _ActiveTripCard extends StatelessWidget {
               destLng: req.destination.coords.lng,
               height: 140,
             ),
+            // Lugares por donde pasa el trayecto (paradas acordadas).
+            if (req.stops.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _InfoRow(
+                  icon: Icons.alt_route_rounded,
+                  text: 'Pasa por: ${req.stops.join(' · ')}',
+                ),
+              ),
             const SizedBox(height: 12),
             switch (trip.phase) {
               IntercityTripPhase.pending => const LinearProgressIndicator(

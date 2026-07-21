@@ -419,6 +419,27 @@ class _RouteSummaryCard extends StatelessWidget {
               ),
             ],
           ),
+          // Paradas intermedias del trayecto ("pasa por").
+          if (request.stops.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.alt_route_rounded,
+                    size: 16, color: AppColors.intercityAccent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Pasa por: ${request.stops.join(' · ')}',
+                    style: const TextStyle(
+                      color: AppColors.intercityTextMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (route != null) ...[
             const SizedBox(height: 12),
             const Divider(color: AppColors.intercityOutline, height: 1),

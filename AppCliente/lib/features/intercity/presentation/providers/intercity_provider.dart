@@ -181,6 +181,11 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
           if (request.dropoffAddress != null)
             'dropoffAddress': request.dropoffAddress,
           if (request.notes != null) 'notes': request.notes,
+          if (request.stops.isNotEmpty)
+            'stops': [
+              for (var i = 0; i < request.stops.length; i++)
+                {'name': request.stops[i], 'order': i},
+            ],
         },
       );
 
