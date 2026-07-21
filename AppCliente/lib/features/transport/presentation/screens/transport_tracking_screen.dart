@@ -19,6 +19,7 @@ import 'package:nexum_client/features/transport/presentation/screens/trip_chat_s
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/map_pin.dart';
+import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -579,13 +580,14 @@ class _TripMapState extends ConsumerState<_TripMap>
                       if (driver != null)
                         Marker(
                           point: driver,
-                          width: 66,
-                          height: 66,
-                          child: VehicleMarker(
+                          width: VehicleGlyph.markerWidth,
+                          height: VehicleGlyph.markerHeight,
+                          child: VehicleGlyph(
+                            kind: request.serviceType ==
+                                    TransportServiceType.moto
+                                ? VehicleGlyphKind.moto
+                                : VehicleGlyphKind.car,
                             headingDegrees: _heading,
-                            color: color,
-                            isMoto: request.serviceType ==
-                                TransportServiceType.moto,
                             pulse: _pulse,
                             animate: live && !reduceMotion,
                           ),
