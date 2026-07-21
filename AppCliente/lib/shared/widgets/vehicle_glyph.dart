@@ -88,3 +88,25 @@ class VehicleGlyph extends StatelessWidget {
     );
   }
 }
+
+/// Traduce el tipo REAL del vehículo del backend (PARTICULAR|TAXI|MOTO|TURBO|
+/// CAMION|MULA) al glifo ilustrado. [fallback] cubre viajes sin el dato
+/// (histórico/APK viejo) — nunca rompe un mapa por dato faltante.
+VehicleGlyphKind vehicleGlyphKindFor(
+  String? vehicleType, {
+  VehicleGlyphKind fallback = VehicleGlyphKind.car,
+}) {
+  switch (vehicleType?.toUpperCase()) {
+    case 'MOTO':
+      return VehicleGlyphKind.moto;
+    case 'TURBO':
+    case 'CAMION':
+    case 'MULA':
+      return VehicleGlyphKind.truck;
+    case 'PARTICULAR':
+    case 'TAXI':
+      return VehicleGlyphKind.car;
+    default:
+      return fallback;
+  }
+}

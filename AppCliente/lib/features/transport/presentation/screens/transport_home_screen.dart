@@ -37,9 +37,10 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   TransportServiceType _selected = TransportServiceType.transporte;
   Timer? _vehicleTimer;
 
-  // Posiciones REALES (anónimas) de los conductores en línea cercanos,
-  // refrescadas del backend. Nada de vehículos simulados en el mapa.
-  List<LatLng> _nearby = const [];
+  // Posiciones REALES (anónimas) de los conductores en línea cercanos, con el
+  // TIPO de su vehículo activo (moto/carro/camión) para pintar el ícono real.
+  // Nada de vehículos simulados en el mapa.
+  List<({LatLng point, String? vehicleType})> _nearby = const [];
 
   // Tamaños del panel arrastrable (fracción de la pantalla). Colapsado deja
   // visible solo el asa + la barra de búsqueda para poder usar el mapa.
@@ -71,9 +72,12 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
       setState(() {
         _nearby = [
           for (final e in data.cast<Map<String, dynamic>>())
-            LatLng(
-              (e['lat'] as num).toDouble(),
-              (e['lng'] as num).toDouble(),
+            (
+              point: LatLng(
+                (e['lat'] as num).toDouble(),
+                (e['lng'] as num).toDouble(),
+              ),
+              vehicleType: e['vehicleType'] as String?,
             ),
         ];
       });
@@ -120,16 +124,20 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
                     height: 22,
                     child: _MyLocationDot(),
                   ),
-                  // Conductores en línea reales cercanos (anónimos)
+                  // Conductores en línea reales cercanos (anónimos), cada uno
+                  // con el ícono de SU vehículo real (moto/carro/camión).
                   ..._nearby.map(
-                    (p) => Marker(
-                      point: p,
+                    (d) => Marker(
+                      point: d.point,
                       width: VehicleGlyph.markerWidth,
                       height: VehicleGlyph.markerHeight,
                       child: VehicleGlyph(
-                        kind: _selected == TransportServiceType.moto
-                            ? VehicleGlyphKind.moto
-                            : VehicleGlyphKind.car,
+                        kind: vehicleGlyphKindFor(
+                          d.vehicleType,
+                          fallback: _selected == TransportServiceType.moto
+                              ? VehicleGlyphKind.moto
+                              : VehicleGlyphKind.car,
+                        ),
                         headingDegrees: 90,
                         animate: false,
                       ),

@@ -734,7 +734,7 @@ export async function getClientTripHistory(clientId: string, limit = 50): Promis
   return trips.map((trip) => {
     const v = trip.driver?.vehicles[0];
     const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
-    return _toTripDTO(trip, clientId, trip.driver?.name, trip.driver?.phone, driverVehicle);
+    return _toTripDTO(trip, clientId, trip.driver?.name, trip.driver?.phone, driverVehicle, v?.type);
   });
 }
 
@@ -772,9 +772,21 @@ export function subscribeClientTrip(tripId: string, cb: TripCallback): () => voi
 }
 
 export async function getClientTripSnapshot(tripId: string): Promise<ClientTripDTO | null> {
-  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
+  // Incluye la identidad del conductor asignado para que el fallback por
+  // polling REST pinte lo mismo que el WS (nombre, vehículo y su TIPO real).
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    include: {
+      driver: { include: { vehicles: { where: { isActive: true }, take: 1 } } },
+    },
+  });
   if (!trip) return null;
-  return _toTripDTO(trip, trip.passengerId ?? '');
+  const v = trip.driver?.vehicles[0];
+  const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
+  return _toTripDTO(
+    trip, trip.passengerId ?? '',
+    trip.driver?.name, trip.driver?.phone, driverVehicle, v?.type,
+  );
 }
 
 function _notifyTripListeners(tripId: string, _passengerId: string, dto: ClientTripDTO): void {
@@ -799,7 +811,7 @@ export async function notifyClientTripUpdateById(tripId: string): Promise<void> 
   if (!trip || !trip.passengerId) return;
   const v = trip.driver?.vehicles[0];
   const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
-  const dto = _toTripDTO(trip, trip.passengerId, trip.driver?.name, trip.driver?.phone, driverVehicle);
+  const dto = _toTripDTO(trip, trip.passengerId, trip.driver?.name, trip.driver?.phone, driverVehicle, v?.type);
   _notifyTripListeners(tripId, trip.passengerId, dto);
 }
 
@@ -868,7 +880,7 @@ type PrismaTrip = {
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
 };
 
-function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string, driverPhone?: string, driverVehicle?: string): ClientTripDTO {
+function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string, driverPhone?: string, driverVehicle?: string, driverVehicleType?: string): ClientTripDTO {
   const statusMap: Record<string, ClientTripStatus> = {
     SEARCHING: 'searching', ACCEPTED: 'accepted', ARRIVING: 'arriving',
     ARRIVED: 'arrived', IN_PROGRESS: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled',
@@ -890,6 +902,7 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     contactChannel: 'in_app_chat',
     maskedPhone: maskPhone(driverPhone),
     driverVehicle,
+    driverVehicleType,
     createdAt: trip.createdAt.toISOString(),
     acceptedAt: trip.acceptedAt?.toISOString(),
     completedAt: trip.completedAt?.toISOString(),

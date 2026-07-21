@@ -187,11 +187,19 @@ async function findNearestAvailableDrivers(
 export async function getNearbyDriverPositions(
   lat: number,
   lng: number,
-): Promise<Array<{ lat: number; lng: number }>> {
-  const rows = await prisma.$queryRaw<Array<{ lat: number; lng: number }>>`
+): Promise<Array<{ lat: number; lng: number; vehicleType: string }>> {
+  const rows = await prisma.$queryRaw<
+    Array<{ lat: number; lng: number; vehicleType: string | null }>
+  >`
     SELECT ST_Y(d."geo"::geometry) AS lat,
-           ST_X(d."geo"::geometry) AS lng
+           ST_X(d."geo"::geometry) AS lng,
+           v."type"::text          AS "vehicleType"
     FROM "drivers" d
+    LEFT JOIN LATERAL (
+      SELECT "type" FROM "vehicles"
+      WHERE "driverId" = d."id" AND "isActive" = true
+      LIMIT 1
+    ) v ON true
     WHERE d."geo" IS NOT NULL
       AND d."status" = 'ONLINE'
       AND d."isVerified" = true
@@ -202,7 +210,11 @@ export async function getNearbyDriverPositions(
             ${SEARCH_RADIUS_M}
           )
     LIMIT 25`;
-  return rows.map((r) => ({ lat: Number(r.lat), lng: Number(r.lng) }));
+  return rows.map((r) => ({
+    lat: Number(r.lat),
+    lng: Number(r.lng),
+    vehicleType: r.vehicleType ?? 'PARTICULAR',
+  }));
 }
 
 // ─── TripRequestDTO builder ───────────────────────────────────────────────────

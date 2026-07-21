@@ -29,6 +29,7 @@ import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/services/route_service.dart';
+import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_driver/shared/widgets/map_pin.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_glyph.dart';
@@ -475,15 +476,20 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           icon: Icons.flag_rounded,
         ),
       ),
-      // Mi vehículo — ilustrado, se voltea según el rumbo.
+      // Mi vehículo — ilustrado con MI vehículo real (moto/carro/camión),
+      // se voltea según el rumbo. Fallback al tipo de servicio si el perfil
+      // aún no cargó.
       Marker(
         point: _driverPos,
         width: VehicleGlyph.markerWidth,
         height: VehicleGlyph.markerHeight,
         child: VehicleGlyph(
-          kind: serviceType == ServiceType.moto
-              ? VehicleGlyphKind.moto
-              : VehicleGlyphKind.car,
+          kind: vehicleGlyphKindFor(
+            ref.watch(driverProfileProvider).profile?.vehicleType,
+            fallback: serviceType == ServiceType.moto
+                ? VehicleGlyphKind.moto
+                : VehicleGlyphKind.car,
+          ),
           headingDegrees: _heading,
           pulse: _pulse,
           animate: !reduceMotion,
