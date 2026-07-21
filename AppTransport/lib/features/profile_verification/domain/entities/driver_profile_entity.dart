@@ -95,6 +95,7 @@ class DriverProfileEntity {
     required this.rating,
     required this.totalTrips,
     required this.vehicleDescription,
+    this.vehicleType,
     required this.memberSince,
     required this.isVerified,
     required this.documents,
@@ -113,6 +114,10 @@ class DriverProfileEntity {
   final double rating;
   final int totalTrips;
   final String vehicleDescription;
+
+  /// Tipo REAL del vehículo activo (PARTICULAR|TAXI|MOTO|TURBO|CAMION|MULA)
+  /// — decide el ícono ilustrado en el mapa del viaje activo.
+  final String? vehicleType;
   final String memberSince;
   final bool isVerified;
   /// false en modo piloto: la app permite conectarse sin esperar aprobación.
@@ -138,6 +143,7 @@ class DriverProfileEntity {
         rating: (j['rating'] as num?)?.toDouble() ?? 5.0,
         totalTrips: (j['totalTrips'] as num?)?.toInt() ?? 0,
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
+        vehicleType: j['vehicleType'] as String?,
         memberSince: j['memberSince'] as String? ?? '',
         isVerified: j['isVerified'] as bool? ?? false,
         verificationRequired: j['verificationRequired'] as bool? ?? true,

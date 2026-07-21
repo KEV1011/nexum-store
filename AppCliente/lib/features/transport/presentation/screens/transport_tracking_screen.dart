@@ -583,10 +583,15 @@ class _TripMapState extends ConsumerState<_TripMap>
                           width: VehicleGlyph.markerWidth,
                           height: VehicleGlyph.markerHeight,
                           child: VehicleGlyph(
-                            kind: request.serviceType ==
-                                    TransportServiceType.moto
-                                ? VehicleGlyphKind.moto
-                                : VehicleGlyphKind.car,
+                            // Ícono por el vehículo REAL asignado; si el dato
+                            // no llegó, cae al tipo de servicio.
+                            kind: vehicleGlyphKindFor(
+                              request.driverVehicleType,
+                              fallback: request.serviceType ==
+                                      TransportServiceType.moto
+                                  ? VehicleGlyphKind.moto
+                                  : VehicleGlyphKind.car,
+                            ),
                             headingDegrees: _heading,
                             pulse: _pulse,
                             animate: live && !reduceMotion,

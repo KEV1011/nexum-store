@@ -121,6 +121,7 @@ class TransportRequestEntity {
     this.maskedPhone,
     this.contactChannel,
     this.driverVehicle,
+    this.driverVehicleType,
     this.acceptedAt,
     this.completedAt,
     this.recipientName,
@@ -168,6 +169,7 @@ class TransportRequestEntity {
         maskedPhone: json['maskedPhone'] as String?,
         contactChannel: json['contactChannel'] as String?,
         driverVehicle: json['driverVehicle'] as String?,
+        driverVehicleType: json['driverVehicleType'] as String?,
         acceptedAt: json['acceptedAt'] != null
             ? DateTime.parse(json['acceptedAt'] as String)
             : null,
@@ -202,6 +204,10 @@ class TransportRequestEntity {
   final String? maskedPhone;
   final String? contactChannel;
   final String? driverVehicle;
+
+  /// Tipo REAL del vehículo asignado (PARTICULAR|TAXI|MOTO|TURBO|CAMION|MULA)
+  /// — decide el ícono ilustrado del mapa.
+  final String? driverVehicleType;
   final DateTime? acceptedAt;
   final DateTime? completedAt;
   final String? recipientName;
@@ -240,6 +246,7 @@ class TransportRequestEntity {
     String? maskedPhone,
     String? contactChannel,
     String? driverVehicle,
+    String? driverVehicleType,
     DateTime? acceptedAt,
     DateTime? completedAt,
     String? recipientName,
@@ -270,6 +277,7 @@ class TransportRequestEntity {
       maskedPhone: maskedPhone ?? this.maskedPhone,
       contactChannel: contactChannel ?? this.contactChannel,
       driverVehicle: driverVehicle ?? this.driverVehicle,
+      driverVehicleType: driverVehicleType ?? this.driverVehicleType,
       acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,
       recipientName: recipientName ?? this.recipientName,

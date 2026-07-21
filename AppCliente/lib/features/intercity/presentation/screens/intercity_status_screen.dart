@@ -1061,7 +1061,11 @@ class _LiveTripMapState extends ConsumerState<_LiveTripMap>
                           width: VehicleGlyph.markerWidth,
                           height: VehicleGlyph.markerHeight,
                           child: VehicleGlyph(
-                            kind: VehicleGlyphKind.car,
+                            // Ícono por el vehículo REAL asignado (carro,
+                            // camioneta, moto…); fallback carro.
+                            kind: vehicleGlyphKindFor(
+                              widget.request.driverVehicleType,
+                            ),
                             headingDegrees: _heading,
                             pulse: _pulse,
                             animate: !reduceMotion,

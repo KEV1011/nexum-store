@@ -315,6 +315,7 @@ class IntercityRequestEntity {
     this.driverName,
     this.driverPhone,
     this.driverVehicle,
+    this.driverVehicleType,
     this.driverRating,
     this.counterFare,
     this.myRating,
@@ -362,6 +363,7 @@ class IntercityRequestEntity {
       driverName: json['driverName'] as String?,
       driverPhone: json['maskedPhone'] as String?,
       driverVehicle: json['driverVehicle'] as String?,
+      driverVehicleType: json['driverVehicleType'] as String?,
       counterFare: (json['counterFare'] as num?)?.toDouble(),
       myRating: json['rating'] as int?,
       driverLat: (json['driverLat'] as num?)?.toDouble(),
@@ -383,6 +385,9 @@ class IntercityRequestEntity {
   final String? driverName;
   final String? driverPhone;
   final String? driverVehicle;
+
+  /// Tipo REAL del vehículo asignado — decide el ícono del mapa.
+  final String? driverVehicleType;
   final double? driverRating;
   final double? counterFare;
 
@@ -414,6 +419,7 @@ class IntercityRequestEntity {
     String? driverName,
     String? driverPhone,
     String? driverVehicle,
+    String? driverVehicleType,
     double? driverRating,
     double? counterFare,
     int? myRating,
@@ -435,6 +441,7 @@ class IntercityRequestEntity {
         driverName: driverName ?? this.driverName,
         driverPhone: driverPhone ?? this.driverPhone,
         driverVehicle: driverVehicle ?? this.driverVehicle,
+        driverVehicleType: driverVehicleType ?? this.driverVehicleType,
         driverRating: driverRating ?? this.driverRating,
         counterFare: counterFare ?? this.counterFare,
         myRating: myRating ?? this.myRating,

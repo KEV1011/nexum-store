@@ -121,12 +121,19 @@ async function _withDriverPosition(
   if (!b.driverId || (b.status !== 'CONFIRMED' && b.status !== 'IN_PROGRESS')) return dto;
   const d = await prisma.driver.findUnique({
     where: { id: b.driverId },
-    select: { lastLat: true, lastLng: true },
+    select: {
+      lastLat: true,
+      lastLng: true,
+      vehicles: { where: { isActive: true }, take: 1, select: { type: true } },
+    },
   });
   if (d?.lastLat != null && d.lastLng != null) {
     dto.driverLat = d.lastLat;
     dto.driverLng = d.lastLng;
   }
+  // Tipo REAL del vehículo activo del conductor → la app elige el ícono del mapa.
+  const vType = d?.vehicles[0]?.type;
+  if (vType) dto.driverVehicleType = vType;
   return dto;
 }
 

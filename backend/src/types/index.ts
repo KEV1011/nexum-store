@@ -643,6 +643,9 @@ export interface ClientTripDTO {
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
   driverVehicle?: string;
+  /** Tipo REAL del vehículo asignado (PARTICULAR|TAXI|MOTO|TURBO|CAMION|MULA) —
+   *  la app elige el ícono del mapa con esto, no con el tipo de servicio. */
+  driverVehicleType?: string;
   driverLat?: number;
   driverLng?: number;
   createdAt: string;
@@ -784,6 +787,8 @@ export interface IntercityBookingDTO {
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
   driverVehicle?: string;
+  /** Tipo REAL del vehículo asignado (PARTICULAR|TAXI|MOTO|TURBO|CAMION|MULA). */
+  driverVehicleType?: string;
   pickupAddress?: string;
   dropoffAddress?: string;
   notes?: string;
