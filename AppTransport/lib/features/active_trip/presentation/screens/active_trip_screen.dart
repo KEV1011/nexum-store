@@ -30,6 +30,8 @@ import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/services/route_service.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_driver/shared/widgets/map_pin.dart';
+import 'package:nexum_driver/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_marker.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
@@ -451,48 +453,40 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
     return [
-      Marker(
-        point: _driverPos,
-        width: 66,
-        height: 66,
-        child: VehicleMarker(
-          headingDegrees: _heading,
-          color: serviceType.color,
-          isMoto: serviceType == ServiceType.moto,
-          pulse: _pulse,
-          animate: !reduceMotion,
-        ),
-      ),
+      // Pickup (origen) — pin gota Google Maps.
       Marker(
         point: originLatLng,
-        width: 44,
-        height: 44,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.pickupMarker,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.person_pin_rounded,
-            color: Colors.white,
-            size: 22,
-          ),
+        width: MapPin.markerWidth,
+        height: MapPin.markerHeight,
+        alignment: Alignment.topCenter,
+        child: const MapPin(
+          color: AppColors.pickupMarker,
+          icon: Icons.person_rounded,
         ),
       ),
+      // Destino — pin gota.
       Marker(
         point: trip.request.destination.latLng,
-        width: 44,
-        height: 44,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.destinationMarker,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.location_on_rounded,
-            color: Colors.white,
-            size: 22,
-          ),
+        width: MapPin.markerWidth,
+        height: MapPin.markerHeight,
+        alignment: Alignment.topCenter,
+        child: const MapPin(
+          color: AppColors.destinationMarker,
+          icon: Icons.flag_rounded,
+        ),
+      ),
+      // Mi vehículo — ilustrado, se voltea según el rumbo.
+      Marker(
+        point: _driverPos,
+        width: VehicleGlyph.markerWidth,
+        height: VehicleGlyph.markerHeight,
+        child: VehicleGlyph(
+          kind: serviceType == ServiceType.moto
+              ? VehicleGlyphKind.moto
+              : VehicleGlyphKind.car,
+          headingDegrees: _heading,
+          pulse: _pulse,
+          animate: !reduceMotion,
         ),
       ),
     ];
