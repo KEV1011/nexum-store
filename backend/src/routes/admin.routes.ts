@@ -826,8 +826,8 @@ function loadDocs() {
       return '<tr><td><strong>' + esc(d.driverName) + '</strong></td><td>' + esc(d.label) +
       '</td><td><a href="' + esc(d.fileUrl) + '" target="_blank">Ver archivo</a>' + ocr + vence + '</td><td><span class="badge badge-' + d.status + '">' + d.status +
       '</span></td><td>' + when(d.uploadedAt) + '</td><td>' +
-      (d.status !== 'APPROVED' ? '<button class="btn-sm btn-approve" onclick="reviewDoc(\'' + d.docId + '\', true)">Aprobar</button>' : '') +
-      (d.status !== 'REJECTED' ? '<button class="btn-sm btn-reject" onclick="reviewDoc(\'' + d.docId + '\', false)">Rechazar</button>' : '') +
+      (d.status !== 'APPROVED' ? '<button class="btn-sm btn-approve" onclick="reviewDoc(\\'' + d.docId + '\\', true)">Aprobar</button>' : '') +
+      (d.status !== 'REJECTED' ? '<button class="btn-sm btn-reject" onclick="reviewDoc(\\'' + d.docId + '\\', false)">Rechazar</button>' : '') +
       '</td></tr>';
     }).join('');
   }).catch((e) => showMsg(e.message, true));
@@ -851,8 +851,8 @@ function loadDrivers() {
       var BG_LABEL = { UNCHECKED: '', PENDING: '<div style="font-size:.68rem;color:#92400e">Antec: pendiente</div>', CLEAR: '<div style="font-size:.68rem;color:#059669">Antec: ✓</div>', HIT: '<div style="font-size:.68rem;color:#dc2626;font-weight:700">Antec: ⚠ HALLAZGO</div>' };
       kycCell += BG_LABEL[d.backgroundStatus] || '';
       var kycBtns = '';
-      if (d.kycStatus !== 'VERIFIED') kycBtns += '<button class="btn-sm btn-approve" onclick="setDriverKyc(\'' + d.id + '\', \'VERIFIED\')">KYC ✓</button> ';
-      if (d.kycStatus !== 'REJECTED') kycBtns += '<button class="btn-sm btn-reject" onclick="setDriverKyc(\'' + d.id + '\', \'REJECTED\')">KYC ✕</button>';
+      if (d.kycStatus !== 'VERIFIED') kycBtns += '<button class="btn-sm btn-approve" onclick="setDriverKyc(\\'' + d.id + '\\', \\'VERIFIED\\')">KYC ✓</button> ';
+      if (d.kycStatus !== 'REJECTED') kycBtns += '<button class="btn-sm btn-reject" onclick="setDriverKyc(\\'' + d.id + '\\', \\'REJECTED\\')">KYC ✕</button>';
       var fraud = d.fraudFlags > 0 ? '<span class="badge badge-reject">⚠ ' + d.fraudFlags + '</span>' : '—';
       var compliance = d.complianceStatus === 'BLOCKED'
         ? '<span class="badge badge-reject" title="' + esc(d.blockedReason || '') + '">⛔ Vencidos</span>'
@@ -865,11 +865,11 @@ function loadDrivers() {
       '</td><td>' + kycCell + '</td><td>' + compliance + '</td><td>' + fraud +
       '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
       (d.isVerified
-        ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\'' + d.id + '\', \'unverify\')">Quitar verif.</button>'
-        : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\'' + d.id + '\', \'verify\')">Verificar</button>') +
+        ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
+        : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
       ' ' + kycBtns +
-      (d.complianceStatus === 'BLOCKED' ? ' <button class="btn-sm" style="background:#0ea5e9;color:#fff" onclick="clearCompliance(\'' + d.id + '\')">Desbloquear docs</button>' : '') +
-      (d.status === 'ON_TRIP' ? ' <button class="btn-sm" style="background:#f59e0b;color:#fff" onclick="releaseDriver(\'' + d.id + '\')">Liberar</button>' : '') +
+      (d.complianceStatus === 'BLOCKED' ? ' <button class="btn-sm" style="background:#0ea5e9;color:#fff" onclick="clearCompliance(\\'' + d.id + '\\')">Desbloquear docs</button>' : '') +
+      (d.status === 'ON_TRIP' ? ' <button class="btn-sm" style="background:#f59e0b;color:#fff" onclick="releaseDriver(\\'' + d.id + '\\')">Liberar</button>' : '') +
       '</td></tr>';
     }).join('');
   }).catch((e) => showMsg(e.message, true));
@@ -892,8 +892,8 @@ function loadClients() {
     tb.innerHTML = rows.map((c) => {
       var selfie = c.hasSelfie && c.selfieUrl ? '<a href="' + esc(c.selfieUrl) + '" target="_blank" style="color:#059669">ver selfie</a>' : '—';
       var btns = '';
-      if (c.kycStatus !== 'VERIFIED') btns += '<button class="btn-sm btn-approve" onclick="setClientKyc(\'' + c.id + '\', \'VERIFIED\')">Verificar</button> ';
-      if (c.kycStatus !== 'REJECTED') btns += '<button class="btn-sm btn-reject" onclick="setClientKyc(\'' + c.id + '\', \'REJECTED\')">Rechazar</button>';
+      if (c.kycStatus !== 'VERIFIED') btns += '<button class="btn-sm btn-approve" onclick="setClientKyc(\\'' + c.id + '\\', \\'VERIFIED\\')">Verificar</button> ';
+      if (c.kycStatus !== 'REJECTED') btns += '<button class="btn-sm btn-reject" onclick="setClientKyc(\\'' + c.id + '\\', \\'REJECTED\\')">Rechazar</button>';
       return '<tr><td><strong>' + esc(c.name || '—') + '</strong></td><td>' + esc(c.phone) + '</td><td>' + selfie +
         '</td><td>' + (KYC_LABEL[c.kycStatus] || c.kycStatus) + '</td><td>' + when(c.createdAt) + '</td><td>' + btns + '</td></tr>';
     }).join('');
@@ -947,9 +947,9 @@ function loadOperators() {
     tb.innerHTML = rows.map((o) => '<tr><td><strong>' + esc(o.legalName) + '</strong><div style="font-size:.72rem;color:#777">NIT ' + esc(o.nit) + '</div></td><td>' + esc(o.type) +
       '</td><td>' + esc(o.city || '—') + '</td><td>' + o.vehicles + ' / ' + o.drivers + '</td><td>' + (o.pendingDocs || 0) +
       '</td><td><span class="badge badge-' + (o.status === 'ACTIVE' ? 'ok' : o.status === 'SUSPENDED' ? 'REJECTED' : 'PENDING') + '">' + o.status + '</span></td><td>' + when(o.createdAt) + '</td><td>' +
-      (o.status !== 'ACTIVE' ? '<button class="btn-sm btn-approve" onclick="setOperator(\'' + o.id + '\', \'verify\')">Verificar</button>' : '') +
-      (o.status !== 'SUSPENDED' ? '<button class="btn-sm btn-reject" onclick="setOperator(\'' + o.id + '\', \'suspend\')">Suspender</button>' : '') +
-      (o.type !== 'TAXI' ? '<button class="btn-sm" style="background:#e8eaf6;color:#3949ab" onclick="loadRoutes(\'' + o.id + '\', \'' + encodeURIComponent(o.legalName).replace(/'/g, '%27') + '\')">Rutas</button>' : '') +
+      (o.status !== 'ACTIVE' ? '<button class="btn-sm btn-approve" onclick="setOperator(\\'' + o.id + '\\', \\'verify\\')">Verificar</button>' : '') +
+      (o.status !== 'SUSPENDED' ? '<button class="btn-sm btn-reject" onclick="setOperator(\\'' + o.id + '\\', \\'suspend\\')">Suspender</button>' : '') +
+      (o.type !== 'TAXI' ? '<button class="btn-sm" style="background:#e8eaf6;color:#3949ab" onclick="loadRoutes(\\'' + o.id + '\\', \\'' + encodeURIComponent(o.legalName).replace(/'/g, '%27') + '\\')">Rutas</button>' : '') +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
@@ -971,8 +971,8 @@ function renderRoutes(id) {
       '<td><span class="badge badge-' + (r.authorized ? 'ok' : 'PENDING') + '">' + (r.authorized ? 'Autorizada' : 'Pendiente') + '</span></td>' +
       '<td>' + when(r.createdAt) + '</td><td>' +
       (r.authorized
-        ? '<button class="btn-sm btn-reject" onclick="setRoute(\'' + r.id + '\', \'revoke\')">Revocar</button>'
-        : '<button class="btn-sm btn-approve" onclick="setRoute(\'' + r.id + '\', \'authorize\')">Autorizar</button>') +
+        ? '<button class="btn-sm btn-reject" onclick="setRoute(\\'' + r.id + '\\', \\'revoke\\')">Revocar</button>'
+        : '<button class="btn-sm btn-approve" onclick="setRoute(\\'' + r.id + '\\', \\'authorize\\')">Autorizar</button>') +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
@@ -1008,8 +1008,8 @@ function loadTakedowns() {
       '</span></td><td><a href="' + esc(t.contentUrl) + '" target="_blank">Ver contenido</a></td><td style="max-width:260px">' + esc(t.reason) +
       '</td><td><span class="badge">' + t.status + '</span></td><td>' +
       (t.status === 'OPEN'
-        ? '<button class="btn-sm btn-approve" onclick="resolveTakedown(\'' + t.id + '\', \'REMOVED\')">Retirado</button> ' +
-          '<button class="btn-sm btn-reject" onclick="resolveTakedown(\'' + t.id + '\', \'REJECTED\')">Rechazar</button>'
+        ? '<button class="btn-sm btn-approve" onclick="resolveTakedown(\\'' + t.id + '\\', \\'REMOVED\\')">Retirado</button> ' +
+          '<button class="btn-sm btn-reject" onclick="resolveTakedown(\\'' + t.id + '\\', \\'REJECTED\\')">Rechazar</button>'
         : (t.resolvedBy ? 'por ' + esc(t.resolvedBy) : '—')) +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
@@ -1040,7 +1040,7 @@ function loadPromos() {
       '</td><td>' + (p.type === 'PERCENT' ? p.value + '%' : money(p.value)) + '</td><td>' + p.scope + '</td><td>' + p.redemptions +
       (p.maxRedemptions ? ' / ' + p.maxRedemptions : '') + '</td><td>' + (p.expiresAt ? when(p.expiresAt) : '—') +
       '</td><td><span class="badge ' + (p.active ? 'badge-ok' : 'badge-OFFLINE') + '">' + (p.active ? 'Activo' : 'Inactivo') +
-      '</span></td><td><button class="btn-sm" onclick="togglePromo(\'' + p.id + '\', ' + !p.active + ')">' + (p.active ? 'Desactivar' : 'Activar') + '</button></td></tr>').join('');
+      '</span></td><td><button class="btn-sm" onclick="togglePromo(\\'' + p.id + '\\', ' + !p.active + ')">' + (p.active ? 'Desactivar' : 'Activar') + '</button></td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
 
@@ -1081,8 +1081,8 @@ function loadPayouts() {
       '</td><td>' + money(p.amount) + '</td><td>' + esc(p.accountInfo || '—') +
       '</td><td><span class="badge badge-' + p.status + '">' + payoutLabel(p.status) + '</span></td><td>' + when(p.requestedAt) +
       '</td><td>' +
-      (p.status === 'REQUESTED' ? '<button class="btn-sm" onclick="setPayout(\'' + p.id + '\', \'PROCESSING\')">Procesar</button>' : '') +
-      (p.status === 'REQUESTED' || p.status === 'PROCESSING' ? '<button class="btn-sm btn-approve" onclick="payPayout(\'' + p.id + '\')">Pagar</button><button class="btn-sm btn-reject" onclick="setPayout(\'' + p.id + '\', \'REJECTED\')">Rechazar</button>' : '') +
+      (p.status === 'REQUESTED' ? '<button class="btn-sm" onclick="setPayout(\\'' + p.id + '\\', \\'PROCESSING\\')">Procesar</button>' : '') +
+      (p.status === 'REQUESTED' || p.status === 'PROCESSING' ? '<button class="btn-sm btn-approve" onclick="payPayout(\\'' + p.id + '\\')">Pagar</button><button class="btn-sm btn-reject" onclick="setPayout(\\'' + p.id + '\\', \\'REJECTED\\')">Rechazar</button>' : '') +
       (p.reference ? '<div style="font-size:.72rem;color:#777;margin-top:3px">Ref: ' + esc(p.reference) + '</div>' : '') +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
@@ -1113,7 +1113,7 @@ function loadSupport() {
       var last = t.lastMessage ? esc(t.lastMessage.slice(0, 60)) : '—';
       return '<tr><td>' + who + '</td><td><strong>' + esc(t.subject) + '</strong></td><td>' + esc(t.category) +
         '</td><td>' + (SUP_STATUS[t.status] || t.status) + '</td><td style="color:#64748b;font-size:.78rem">' + last +
-        '</td><td>' + when(t.updatedAt) + '</td><td><button class="btn-sm btn-approve" onclick="openTicket(\'' + t.id + '\')">Ver</button></td></tr>';
+        '</td><td>' + when(t.updatedAt) + '</td><td><button class="btn-sm btn-approve" onclick="openTicket(\\'' + t.id + '\\')">Ver</button></td></tr>';
     }).join('');
   }).catch((e) => showMsg(e.message, true));
 }
@@ -1132,13 +1132,13 @@ function openTicket(id) {
     box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
       '<h3 style="margin:0">' + esc(t.subject) + ' <span style="font-size:.75rem;color:#64748b">(' + (SUP_STATUS[t.status] || t.status) + ')</span></h3>' +
       '<div>' +
-      '<button class="btn-sm btn-approve" onclick="setTicketStatus(\'' + t.id + '\', \'RESOLVED\')">Resolver</button>' +
-      '<button class="btn-sm" style="background:#e2e8f0" onclick="setTicketStatus(\'' + t.id + '\', \'CLOSED\')">Cerrar</button>' +
+      '<button class="btn-sm btn-approve" onclick="setTicketStatus(\\'' + t.id + '\\', \\'RESOLVED\\')">Resolver</button>' +
+      '<button class="btn-sm" style="background:#e2e8f0" onclick="setTicketStatus(\\'' + t.id + '\\', \\'CLOSED\\')">Cerrar</button>' +
       '</div></div>' +
       '<div style="max-height:340px;overflow-y:auto;padding:6px;background:#fff;border:1px solid #e2e8f0;border-radius:8px">' + msgs + '</div>' +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
       '<input id="ticket-reply" placeholder="Escribe tu respuesta…" style="flex:1;margin:0" />' +
-      '<button style="width:auto" onclick="replyTicket(\'' + t.id + '\')">Responder</button></div>';
+      '<button style="width:auto" onclick="replyTicket(\\'' + t.id + '\\')">Responder</button></div>';
   }).catch((e) => showMsg(e.message, true));
 }
 function replyTicket(id) {
