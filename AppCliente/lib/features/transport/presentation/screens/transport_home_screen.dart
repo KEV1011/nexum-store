@@ -17,6 +17,7 @@ import 'package:nexum_client/features/intercity/presentation/providers/intercity
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 
 // Centro de Pamplona, Norte de Santander (misma referencia que el backend).
 const _pamplona = LatLng(7.3754, -72.6486);
@@ -123,9 +124,15 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
                   ..._nearby.map(
                     (p) => Marker(
                       point: p,
-                      width: 44,
-                      height: 44,
-                      child: _VehicleMarker(type: _selected),
+                      width: VehicleGlyph.markerWidth,
+                      height: VehicleGlyph.markerHeight,
+                      child: VehicleGlyph(
+                        kind: _selected == TransportServiceType.moto
+                            ? VehicleGlyphKind.moto
+                            : VehicleGlyphKind.car,
+                        headingDegrees: 90,
+                        animate: false,
+                      ),
                     ),
                   ),
                 ],
@@ -238,31 +245,6 @@ class _MyLocationDot extends StatelessWidget {
 }
 
 // ── Marcador de vehículo ──────────────────────────────────────────────────────
-
-class _VehicleMarker extends StatelessWidget {
-  const _VehicleMarker({required this.type});
-  final TransportServiceType type;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _colorOf(type);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: color, width: 2.5),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.35),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Icon(_iconOf(type), size: 22, color: color),
-    );
-  }
-}
 
 // ── Chip de ubicación (top left) ──────────────────────────────────────────────
 

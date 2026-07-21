@@ -14,6 +14,8 @@ import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_client/shared/widgets/map_pin.dart';
+import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
@@ -789,91 +791,41 @@ class _TrackingMapState extends State<_TrackingMap>
                 markers: [
                   Marker(
                     point: _businessPos,
-                    width: 36,
-                    height: 36,
-                    child: const _MapPin(
-                      icon: Icons.restaurant_rounded,
-                      color: AppColors.primaryDim,
-                      bgColor: AppColors.primaryContainer,
+                    width: MapPin.markerWidth,
+                    height: MapPin.markerHeight,
+                    alignment: Alignment.topCenter,
+                    child: const MapPin(
+                      color: Color(0xFF12A150),
+                      icon: Icons.storefront_rounded,
                     ),
                   ),
                   Marker(
                     point: _deliveryPos,
-                    width: 36,
-                    height: 36,
-                    child: const _MapPin(
-                      icon: Icons.home_rounded,
+                    width: MapPin.markerWidth,
+                    height: MapPin.markerHeight,
+                    alignment: Alignment.topCenter,
+                    child: const MapPin(
                       color: AppColors.error,
-                      bgColor: AppColors.errorContainer,
+                      icon: Icons.flag_rounded,
                     ),
                   ),
                   Marker(
                     point: _driverPos(_ctrl.value),
-                    width: 40,
-                    height: 40,
-                    child: const _DriverPin(),
+                    width: VehicleGlyph.markerWidth,
+                    height: VehicleGlyph.markerHeight,
+                    child: VehicleGlyph(
+                      kind: VehicleGlyphKind.moto,
+                      headingDegrees:
+                          _deliveryPos.longitude >= _businessPos.longitude
+                              ? 90
+                              : 270,
+                    ),
                   ),
                 ],
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _MapPin extends StatelessWidget {
-  const _MapPin({
-    required this.icon,
-    required this.color,
-    required this.bgColor,
-  });
-
-  final IconData icon;
-  final Color color;
-  final Color bgColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: bgColor,
-        shape: BoxShape.circle,
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.shadow,
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Icon(icon, size: 20, color: color),
-    );
-  }
-}
-
-class _DriverPin extends StatelessWidget {
-  const _DriverPin();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.primary,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadowMedium,
-            blurRadius: 6,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: const Icon(
-        Icons.delivery_dining_rounded,
-        size: 24,
-        color: Colors.white,
       ),
     );
   }

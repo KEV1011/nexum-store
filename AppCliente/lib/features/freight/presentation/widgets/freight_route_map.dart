@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_client/shared/widgets/map_pin.dart';
+import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 
 /// Mapa compacto del trayecto de un flete: marcador de origen (verde),
 /// marcador de destino (rojo) y una línea entre ambos. Las coordenadas vienen
@@ -135,30 +137,33 @@ class _FreightRouteMapState extends ConsumerState<FreightRouteMap> {
                 markers: [
                   Marker(
                     point: origin,
-                    width: 34,
-                    height: 34,
-                    child: const _Pin(
+                    width: MapPin.markerWidth,
+                    height: MapPin.markerHeight,
+                    alignment: Alignment.topCenter,
+                    child: const MapPin(
                       color: Color(0xFF16A34A),
-                      icon: Icons.radio_button_checked_rounded,
+                      icon: Icons.trip_origin,
                     ),
                   ),
                   Marker(
                     point: dest,
-                    width: 34,
-                    height: 34,
-                    child: const _Pin(
+                    width: MapPin.markerWidth,
+                    height: MapPin.markerHeight,
+                    alignment: Alignment.topCenter,
+                    child: const MapPin(
                       color: Color(0xFFDC2626),
-                      icon: Icons.location_on_rounded,
+                      icon: Icons.flag_rounded,
                     ),
                   ),
                   if (driver != null)
                     Marker(
                       point: driver,
-                      width: 34,
-                      height: 34,
-                      child: const _Pin(
-                        color: Color(0xFF0EA5E9),
-                        icon: Icons.local_shipping_rounded,
+                      width: VehicleGlyph.markerWidth,
+                      height: VehicleGlyph.markerHeight,
+                      child: VehicleGlyph(
+                        kind: VehicleGlyphKind.truck,
+                        headingDegrees:
+                            dest.longitude >= driver.longitude ? 90 : 270,
                       ),
                     ),
                 ],
@@ -171,28 +176,3 @@ class _FreightRouteMapState extends ConsumerState<FreightRouteMap> {
   }
 }
 
-class _Pin extends StatelessWidget {
-  const _Pin({required this.color, required this.icon});
-
-  final Color color;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2.5),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.4),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Icon(icon, color: Colors.white, size: 16),
-    );
-  }
-}

@@ -11,6 +11,8 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_client/shared/widgets/map_pin.dart';
+import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 
 const _kInterColor = AppColors.intercityBrand;
 
@@ -1035,27 +1037,32 @@ class _LiveTripMapState extends ConsumerState<_LiveTripMap>
                     markers: [
                       Marker(
                         point: origin,
-                        width: 26,
-                        height: 26,
-                        child: const Icon(Icons.trip_origin_rounded,
-                            color: AppColors.primary, size: 22),
+                        width: MapPin.markerWidth,
+                        height: MapPin.markerHeight,
+                        alignment: Alignment.topCenter,
+                        child: const MapPin(
+                          color: AppColors.primary,
+                          icon: Icons.trip_origin,
+                        ),
                       ),
                       Marker(
                         point: destination,
-                        width: 26,
-                        height: 26,
-                        child: const Icon(Icons.location_on_rounded,
-                            color: AppColors.error, size: 24),
+                        width: MapPin.markerWidth,
+                        height: MapPin.markerHeight,
+                        alignment: Alignment.topCenter,
+                        child: const MapPin(
+                          color: AppColors.error,
+                          icon: Icons.flag_rounded,
+                        ),
                       ),
                       if (driver != null)
                         Marker(
                           point: driver,
-                          width: 60,
-                          height: 60,
-                          child: VehicleMarker(
+                          width: VehicleGlyph.markerWidth,
+                          height: VehicleGlyph.markerHeight,
+                          child: VehicleGlyph(
+                            kind: VehicleGlyphKind.car,
                             headingDegrees: _heading,
-                            color: _kInterColor,
-                            isMoto: false,
                             pulse: _pulse,
                             animate: !reduceMotion,
                           ),
