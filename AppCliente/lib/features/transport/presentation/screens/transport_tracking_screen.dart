@@ -18,6 +18,8 @@ import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_client/shared/widgets/map_pin.dart';
+import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
@@ -388,15 +390,33 @@ class _TripMap extends ConsumerStatefulWidget {
 }
 
 class _TripMapState extends ConsumerState<_TripMap>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _pamplona = LatLng(7.3762, -72.6465);
 
   late final AnimationController _pulse;
+
+  // Movimiento fluido del vehículo (estilo Uber/DiDi): en vez de SALTAR entre
+  // posiciones GPS (que llegan cada ~4 s), el marcador se DESLIZA de la posición
+  // anterior a la nueva con este controlador, girando hacia el rumbo.
+  late final AnimationController _move;
+  LatLng? _animFrom;
+  LatLng? _animTo;
 
   // Rumbo del conductor (grados) para orientar el marcador del vehículo, y la
   // última posición conocida para calcularlo entre actualizaciones de GPS.
   LatLng? _prevDriver;
   double _heading = 0;
+
+  /// Posición ANIMADA del vehículo (interpolada entre GPS). null = aún sin GPS.
+  LatLng? get _displayDriver {
+    if (_animTo == null) return null;
+    if (_animFrom == null) return _animTo;
+    final t = Curves.easeInOut.transform(_move.value);
+    return LatLng(
+      _animFrom!.latitude + (_animTo!.latitude - _animFrom!.latitude) * t,
+      _animFrom!.longitude + (_animTo!.longitude - _animFrom!.longitude) * t,
+    );
+  }
 
   /// Ruta REAL por las calles (Routes API vía el proxy /geo del backend);
   /// null = el proxy no tiene llave → se dibuja la línea recta de siempre.
@@ -409,7 +429,17 @@ class _TripMapState extends ConsumerState<_TripMap>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat();
+    // Repinta cada frame mientras el vehículo se desliza a su nueva posición.
+    _move = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..addListener(() {
+        if (mounted) setState(() {});
+      });
     final r = widget.request;
+    if (r.driverLat != null && r.driverLng != null) {
+      _animTo = LatLng(r.driverLat!, r.driverLng!);
+    }
     // Solo con coordenadas REALES del autocompletado (no el fallback por hash).
     if (r.originLat != null && r.originLng != null &&
         r.destLat != null && r.destLng != null) {
@@ -433,8 +463,14 @@ class _TripMapState extends ConsumerState<_TripMap>
     final r = widget.request;
     if (r.driverLat != null && r.driverLng != null) {
       final cur = LatLng(r.driverLat!, r.driverLng!);
-      if (_prevDriver != null && cur != _prevDriver) {
-        setState(() => _heading = bearingBetween(_prevDriver!, cur));
+      if (_animTo == null) {
+        _animTo = cur; // primer fix: coloca sin animar
+      } else if (cur != _animTo) {
+        // Nueva posición GPS → desliza desde donde se ve ahora hasta la nueva.
+        _animFrom = _displayDriver ?? _animTo;
+        _animTo = cur;
+        _heading = bearingBetween(_animFrom!, cur);
+        _move.forward(from: 0);
       }
       _prevDriver = cur;
     }
@@ -443,6 +479,7 @@ class _TripMapState extends ConsumerState<_TripMap>
   @override
   void dispose() {
     _pulse.dispose();
+    _move.dispose();
     super.dispose();
   }
 
@@ -471,8 +508,8 @@ class _TripMapState extends ConsumerState<_TripMap>
     final destination = (request.destLat != null && request.destLng != null)
         ? LatLng(request.destLat!, request.destLng!)
         : _hashLatLng(request.destinationAddress, 0x2B);
-    final driver =
-        hasDriver ? LatLng(request.driverLat!, request.driverLng!) : null;
+    // Posición ANIMADA (se desliza entre fixes GPS) en lugar de la cruda.
+    final driver = _displayDriver;
     final center = LatLng(
       (origin.latitude + destination.latitude) / 2,
       (origin.longitude + destination.longitude) / 2,
@@ -489,8 +526,19 @@ class _TripMapState extends ConsumerState<_TripMap>
                 options: MapOptions(
                   initialCenter: driver ?? center,
                   initialZoom: 14.5,
+                  // Enmarca TODO el trayecto (origen · conductor · destino) para
+                  // que se vea por dónde va el viaje, no un punto congelado.
+                  initialCameraFit: CameraFit.coordinates(
+                    coordinates: [origin, destination, if (driver != null) driver],
+                    padding: const EdgeInsets.all(48),
+                    maxZoom: 16,
+                  ),
+                  // Mapa interactivo: el cliente puede mover y hacer zoom.
                   interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
+                    flags: InteractiveFlag.pinchZoom |
+                        InteractiveFlag.drag |
+                        InteractiveFlag.doubleTapZoom |
+                        InteractiveFlag.flingAnimation,
                   ),
                 ),
                 children: [
@@ -511,27 +559,35 @@ class _TripMapState extends ConsumerState<_TripMap>
                     markers: [
                       Marker(
                         point: origin,
-                        width: 32,
-                        height: 32,
-                        child: const _MapDot(color: AppColors.pickupMarker),
+                        width: MapPin.markerWidth,
+                        height: MapPin.markerHeight,
+                        alignment: Alignment.topCenter,
+                        child: const MapPin(
+                          color: AppColors.pickupMarker,
+                          icon: Icons.trip_origin,
+                        ),
                       ),
                       Marker(
                         point: destination,
-                        width: 32,
-                        height: 32,
-                        child:
-                            const _MapDot(color: AppColors.destinationMarker),
+                        width: MapPin.markerWidth,
+                        height: MapPin.markerHeight,
+                        alignment: Alignment.topCenter,
+                        child: const MapPin(
+                          color: AppColors.destinationMarker,
+                          icon: Icons.flag_rounded,
+                        ),
                       ),
                       if (driver != null)
                         Marker(
                           point: driver,
-                          width: 66,
-                          height: 66,
-                          child: VehicleMarker(
+                          width: VehicleGlyph.markerWidth,
+                          height: VehicleGlyph.markerHeight,
+                          child: VehicleGlyph(
+                            kind: request.serviceType ==
+                                    TransportServiceType.moto
+                                ? VehicleGlyphKind.moto
+                                : VehicleGlyphKind.car,
                             headingDegrees: _heading,
-                            color: color,
-                            isMoto: request.serviceType ==
-                                TransportServiceType.moto,
                             pulse: _pulse,
                             animate: live && !reduceMotion,
                           ),
@@ -647,25 +703,6 @@ class _MapLiveOverlay extends StatelessWidget {
     );
   }
 }
-
-class _MapDot extends StatelessWidget {
-  const _MapDot({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2.5),
-        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 6)],
-      ),
-    );
-  }
-}
-
 
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
