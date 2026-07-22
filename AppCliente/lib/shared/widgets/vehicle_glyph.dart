@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
 
-/// Tipo de vehículo ilustrado para el marcador del mapa.
+/// Tipo de vehículo para el marcador del mapa.
 enum VehicleGlyphKind { car, moto, truck }
 
-/// Marcador de vehículo ILUSTRADO (estilo flat: carro / moto / camión de vista
-/// lateral) que se desliza por la ruta A→B. Los dibujos miran a la DERECHA y se
-/// voltean automáticamente cuando el conductor va hacia el oeste, para que el
-/// vehículo siempre "mire" hacia donde avanza (estilo Uber/DiDi casual).
+/// Marcador de vehículo estilo Google Maps: chip circular blanco con el ícono
+/// oficial de Google (Material Icons: directions_car / two_wheeler /
+/// local_shipping) que se desliza por la ruta A→B. Los íconos miran a la
+/// DERECHA y se voltean automáticamente cuando el conductor va hacia el oeste,
+/// para que el vehículo siempre "mire" hacia donde avanza.
 class VehicleGlyph extends StatelessWidget {
   const VehicleGlyph({
     required this.kind,
     required this.headingDegrees,
     this.pulse,
     this.animate = true,
+    this.color = const Color(0xFF202124), // gris 900 de Google
     super.key,
   });
 
@@ -25,13 +27,17 @@ class VehicleGlyph extends StatelessWidget {
   final Animation<double>? pulse;
   final bool animate;
 
+  /// Color del ícono del vehículo (por defecto gris oscuro estilo Google Maps).
+  final Color color;
+
   static const double markerWidth = 66;
   static const double markerHeight = 52;
 
-  String get _asset => switch (kind) {
-        VehicleGlyphKind.car => 'assets/vehicles/car.png',
-        VehicleGlyphKind.moto => 'assets/vehicles/moto.png',
-        VehicleGlyphKind.truck => 'assets/vehicles/truck.png',
+  /// Ícono OFICIAL de Google (Material Icons) según el tipo de vehículo.
+  IconData get _icon => switch (kind) {
+        VehicleGlyphKind.car => Icons.directions_car,
+        VehicleGlyphKind.moto => Icons.two_wheeler,
+        VehicleGlyphKind.truck => Icons.local_shipping,
       };
 
   @override
@@ -53,34 +59,39 @@ class VehicleGlyph extends StatelessWidget {
               builder: (context, _) {
                 final t = pulse!.value;
                 return Container(
-                  width: 30 + 26 * t,
-                  height: 30 + 26 * t,
+                  width: 34 + 26 * t,
+                  height: 34 + 26 * t,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF0A7D57).withValues(alpha: 0.16 * (1 - t)),
+                    color: const Color(0xFF1A73E8)
+                        .withValues(alpha: 0.18 * (1 - t)),
                   ),
                 );
               },
             ),
-          // Sombra en el suelo (bajo las ruedas).
-          Positioned(
-            bottom: 4,
-            child: Container(
-              width: 40,
-              height: 8,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(4),
+          // Chip circular blanco con el ícono de Google, estilo marcador de
+          // vehículo de Google Maps (sombra suave + borde tenue).
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.black.withValues(alpha: 0.06),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.28),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ),
-          // Vehículo ilustrado, volteado según la dirección.
-          Transform.flip(
-            flipX: faceLeft,
-            child: Image.asset(
-              _asset,
-              width: 58,
-              filterQuality: FilterQuality.medium,
+            alignment: Alignment.center,
+            child: Transform.flip(
+              flipX: faceLeft,
+              child: Icon(_icon, size: 22, color: color),
             ),
           ),
         ],
@@ -90,7 +101,7 @@ class VehicleGlyph extends StatelessWidget {
 }
 
 /// Traduce el tipo REAL del vehículo del backend (PARTICULAR|TAXI|MOTO|TURBO|
-/// CAMION|MULA) al glifo ilustrado. [fallback] cubre viajes sin el dato
+/// CAMION|MULA) al glifo del mapa. [fallback] cubre datos faltantes
 /// (histórico/APK viejo) — nunca rompe un mapa por dato faltante.
 VehicleGlyphKind vehicleGlyphKindFor(
   String? vehicleType, {
