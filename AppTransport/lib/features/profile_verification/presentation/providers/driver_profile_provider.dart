@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/profile_verification/domain/entities/driver_profile_entity.dart';
 
 class DriverProfileState {
@@ -122,5 +123,8 @@ class DriverProfileNotifier extends StateNotifier<DriverProfileState> {
 
 final driverProfileProvider =
     StateNotifierProvider<DriverProfileNotifier, DriverProfileState>((ref) {
+  // Recrea el estado cuando cambia el conductor autenticado, para que al
+  // cerrar sesión y entrar con otro número no queden datos del anterior.
+  ref.watch(currentDriverProvider.select((d) => d?.id));
   return DriverProfileNotifier(DioClient());
 });

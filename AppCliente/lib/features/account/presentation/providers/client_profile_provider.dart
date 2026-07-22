@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 
 /// Perfil del cliente persistido en el backend (GET /client/profile).
 class ClientProfile {
@@ -113,5 +114,9 @@ class ClientProfileNotifier extends StateNotifier<ClientProfile?> {
 
 final clientProfileProvider =
     StateNotifierProvider<ClientProfileNotifier, ClientProfile?>((ref) {
+  // Recrea (y recarga) el perfil cuando cambia el usuario autenticado. Sin
+  // esto, al cerrar sesión y entrar con otro número el provider quedaba
+  // cacheado con el perfil anterior y seguía mostrando el número viejo.
+  ref.watch(currentClientProvider.select((c) => c?.id));
   return ClientProfileNotifier(ref.watch(apiClientProvider));
 });

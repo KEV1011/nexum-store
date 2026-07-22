@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 
 /// Afiliación del conductor a una empresa/operador (taxi o intermunicipal).
 /// Ausente = conductor independiente.
@@ -315,5 +316,9 @@ class EditableProfileNotifier extends StateNotifier<EditableProfile> {
 /// Proveedor del perfil del conductor (real, cargado desde el backend).
 final editableProfileProvider =
     StateNotifierProvider<EditableProfileNotifier, EditableProfile>((ref) {
+  // Recrea (y recarga) el perfil cuando cambia el conductor autenticado. Sin
+  // esto, al cerrar sesión y entrar con otro número el provider quedaba
+  // cacheado con el perfil anterior y seguía mostrando el número viejo.
+  ref.watch(currentDriverProvider.select((d) => d?.id));
   return EditableProfileNotifier(DioClient());
 });
