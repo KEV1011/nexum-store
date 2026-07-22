@@ -1008,8 +1008,8 @@ function loadTakedowns() {
       '</span></td><td><a href="' + esc(t.contentUrl) + '" target="_blank">Ver contenido</a></td><td style="max-width:260px">' + esc(t.reason) +
       '</td><td><span class="badge">' + t.status + '</span></td><td>' +
       (t.status === 'OPEN'
-        ? '<button class="btn-sm btn-approve" onclick="resolveTakedown(\'' + t.id + '\', \'REMOVED\')">Retirado</button> ' +
-          '<button class="btn-sm btn-reject" onclick="resolveTakedown(\'' + t.id + '\', \'REJECTED\')">Rechazar</button>'
+        ? '<button class="btn-sm btn-approve" onclick="resolveTakedown(\\'' + t.id + '\\', \\'REMOVED\\')">Retirado</button> ' +
+          '<button class="btn-sm btn-reject" onclick="resolveTakedown(\\'' + t.id + '\\', \\'REJECTED\\')">Rechazar</button>'
         : (t.resolvedBy ? 'por ' + esc(t.resolvedBy) : '—')) +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
