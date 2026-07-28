@@ -393,13 +393,25 @@ export async function getClientOrderById(
   };
 }
 
-export async function getClientOrdersForBusiness(businessId: string): Promise<ClientOrderSummaryDTO[]> {
+/**
+ * Pedidos de la app vistos por SU negocio: incluyen el PIN de RECOGIDA, que el
+ * dueño dicta al repartidor al entregarle el pedido. Nunca el de entrega —ese
+ * es del cliente— ni ninguno de los dos al repartidor.
+ */
+export type BusinessOrderWithPinDTO = ClientOrderSummaryDTO & { pickupPin?: string };
+
+export async function getClientOrdersForBusiness(
+  businessId: string,
+): Promise<BusinessOrderWithPinDTO[]> {
   const orders = await prisma.order.findMany({
     where: { businessId },
     include: { lines: true, business: { select: { name: true } } },
     orderBy: { createdAt: 'desc' },
   });
-  return orders.map((o) => _toSummary(o, o.business?.name ?? 'Negocio', o.lines));
+  return orders.map((o) => ({
+    ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines),
+    pickupPin: o.pickupPin ?? undefined,
+  }));
 }
 
 export function onNewClientOrderForBusiness(businessId: string, cb: BusinessNewOrderCallback): () => void {

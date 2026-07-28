@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/shared/widgets/custody_pin_dialog.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 
 /// Fletes de carga del conductor: los que puede TOMAR (abiertos, para su flota
@@ -129,13 +130,26 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
   }
 
   /// Inicia la ruta o confirma la entrega del flete asignado.
+  ///
+  /// La cadena de custodia exige un PIN de 4 dígitos en ambos pasos: al cargar
+  /// lo dicta el remitente, al entregar el destinatario. Sin PIN válido el
+  /// backend rechaza el cambio de estado.
   Future<void> _updateStatus(Map<String, dynamic> f, String status) async {
     final id = f['id'] as String;
+
+    final pin = await showCustodyPinDialog(
+      context,
+      phase: status == 'in_progress'
+          ? CustodyPinPhase.pickup
+          : CustodyPinPhase.delivery,
+    );
+    if (!mounted || pin == null) return;
+
     setState(() => _busyId = id);
     try {
       final res = await DioClient().post<Map<String, dynamic>>(
         '/driver/freight/$id/status',
-        data: {'status': status},
+        data: {'status': status, 'pin': pin},
       );
       final data = res.data?['data'] as Map<String, dynamic>?;
       if (status == 'completed') {

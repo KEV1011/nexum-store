@@ -22,6 +22,7 @@ import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
 import 'package:nexum_client/features/orders/presentation/widgets/'
     'custody_proof_card.dart';
+import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
 import 'package:nexum_client/features/orders/presentation/widgets/'
     'order_status_timeline.dart';
 import 'package:nexum_client/features/orders/presentation/widgets/'
@@ -103,6 +104,13 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
           const SizedBox(height: AppConstants.spacingL),
           if (order.driverName != null) ...[
             _DriverCard(order: order),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
+          // PIN de entrega: se muestra en cuanto hay repartidor y hasta que el
+          // pedido se entrega. Es lo que el cliente dicta para recibirlo — sin
+          // él nadie puede marcar la entrega.
+          if (order.deliveryPin != null && !order.isDelivered) ...[
+            CustodyPinCard(pin: order.deliveryPin!),
             const SizedBox(height: AppConstants.spacingM),
           ],
           // El mapa de seguimiento solo tiene sentido con repartidor asignado
