@@ -154,8 +154,20 @@ function explainS3WriteError(msg: string): string {
     return 'El bucket no existe con ese nombre. Revisa S3_BUCKET (debe ser el nombre exacto ' +
       'del bucket en R2, no la URL).';
   }
+  if (/eproto|ssl|handshake|tls|certificate/i.test(msg)) {
+    return 'El endpoint responde pero rechaza la conexión segura: casi siempre significa que ' +
+      'el ACCOUNT_ID del host no es el tuyo. Copia tu Account ID real desde Cloudflare ' +
+      '(R2 → Overview → Account details) y ponlo en S3_ENDPOINT: ' +
+      'https://TU_ACCOUNT_ID.r2.cloudflarestorage.com';
+  }
   if (/getaddrinfo|enotfound|econnrefused|timeout/i.test(msg)) {
-    return 'No se pudo contactar el endpoint. Revisa que S3_ENDPOINT sea correcto y accesible.';
+    return 'No se pudo contactar el endpoint: ese host no existe. Comprueba que el ACCOUNT_ID ' +
+      'de S3_ENDPOINT sea el tuyo (Cloudflare → R2 → Overview → Account details), no un ejemplo.';
+  }
+  if (/deserial|is not expected/i.test(msg)) {
+    return 'El endpoint respondió algo que no es una API S3 (probablemente una página web). ' +
+      'Revisa S3_ENDPOINT: debe ser https://TU_ACCOUNT_ID.r2.cloudflarestorage.com, no la ' +
+      'URL pública del bucket ni el panel de Cloudflare.';
   }
   return 'No se pudo escribir en el bucket. Revisa S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY, ' +
     'S3_ENDPOINT y que el token tenga permiso de Object Read & Write.';
@@ -170,7 +182,11 @@ function describeS3Config(): string {
   } else {
     try {
       const u = new URL(endpoint);
-      endpointEstado = `${u.protocol}//${u.host}`;
+      // Valores de ejemplo copiados literalmente de una guía: el host no existe
+      // y el fallo aparece tarde (error TLS), difícil de relacionar con esto.
+      endpointEstado = /abc123|<|TU_ACCOUNT_ID|ACCOUNT_ID|ejemplo|example/i.test(u.host)
+        ? `${u.protocol}//${u.host} ← ¡ES UN EJEMPLO! pon tu Account ID real de Cloudflare`
+        : `${u.protocol}//${u.host}`;
     } catch {
       endpointEstado = `INVÁLIDO ("${endpoint}") — falta https:// o sobra algo`;
     }
