@@ -56,9 +56,45 @@ async function _post(path: string, form: Record<string, string>): Promise<Record
   if (!res.ok) {
     // Twilio devuelve { message, code } en errores; nunca propagar el token.
     const msg = typeof body['message'] === 'string' ? body['message'] : `Twilio HTTP ${res.status}`;
-    throw new Error(`SMS provider error: ${msg}`);
+    const code = typeof body['code'] === 'number' ? body['code'] : undefined;
+    throw new Error(explainTwilioError(code, msg));
   }
   return body;
+}
+
+/**
+ * Traduce el error de Twilio a algo accionable. "Invalid parameter" a secas no
+ * dice nada; el código numérico sí identifica la causa y qué hacer.
+ */
+export function explainTwilioError(code: number | undefined, msg: string): string {
+  const detalle = code ? ` (Twilio ${code}: ${msg})` : ` (${msg})`;
+  switch (code) {
+    case 21608:
+      return 'Tu cuenta de Twilio es de PRUEBA y solo envía a números verificados. ' +
+        'Verifica este número en Twilio (Phone Numbers → Verified Caller IDs) o carga ' +
+        'saldo para salir del modo trial.' + detalle;
+    case 21211:
+    case 60200:
+      return 'Twilio rechazó el número o un parámetro. Revisa que el teléfono esté en ' +
+        'formato internacional (+57XXXXXXXXXX) y que el canal SMS esté habilitado en el ' +
+        'Verify Service.' + detalle;
+    case 60203:
+      return 'Se alcanzó el máximo de intentos de envío para este número. Espera unos ' +
+        'minutos antes de volver a pedir el código.' + detalle;
+    case 60410:
+      return 'Twilio bloqueó temporalmente la verificación de este número.' + detalle;
+    case 20404:
+      return 'El Verify Service no existe en esta cuenta: revisa TWILIO_VERIFY_SID ' +
+        '(debe empezar por VA...).' + detalle;
+    case 20003:
+      return 'Twilio rechaza las credenciales: revisa TWILIO_ACCOUNT_SID y ' +
+        'TWILIO_AUTH_TOKEN.' + detalle;
+    case 60605:
+      return 'Twilio no tiene habilitado el envío a este país. Actívalo en Verify → ' +
+        'Geo Permissions (Colombia).' + detalle;
+    default:
+      return `No se pudo enviar el SMS${detalle}`;
+  }
 }
 
 /** Pide a Twilio Verify que genere y envíe un código por SMS. */
