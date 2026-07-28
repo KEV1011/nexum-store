@@ -485,6 +485,13 @@ model Order {
   readyAt          DateTime?
   pickupPhotoUrl   String?
   deliveryPhotoUrl String?
+  // Cadena de custodia por PIN: el negocio entrega el pedido al repartidor
+  // contra `pickupPin`, y el cliente lo recibe contra `deliveryPin`. Nunca se
+  // exponen al conductor: él los pide de viva voz y los teclea.
+  pickupPin        String?
+  deliveryPin      String?
+  pickupPinAt      DateTime?
+  deliveryPinAt    DateTime?
   hasSignature     Boolean     @default(false)
   customerName     String?
   driverName       String?
@@ -715,6 +722,11 @@ model Errand {
   status           ErrandStatus  @default(SEARCHING)
   proofPhotoUrl    String?
   deliveryPhotoUrl String?
+  // Cadena de custodia por PIN (ver Order): recogida y entrega.
+  pickupPin        String?
+  deliveryPin      String?
+  pickupPinAt      DateTime?
+  deliveryPinAt    DateTime?
   hasSignature     Boolean       @default(false)
   driverName       String?
   driverPhone      String?
@@ -1120,6 +1132,12 @@ model FreightRequest {
   offeredPrice     Float
   scheduledFor     DateTime?     // null = lo antes posible
   status           FreightStatus @default(REQUESTED)
+  // Cadena de custodia por PIN (ver Order): el remitente entrega la carga
+  // contra `pickupPin` y el destinatario la recibe contra `deliveryPin`.
+  pickupPin        String?
+  deliveryPin      String?
+  pickupPinAt      DateTime?
+  deliveryPinAt    DateTime?
   operatorId       String?
   driverId         String?
   vehicleId        String?

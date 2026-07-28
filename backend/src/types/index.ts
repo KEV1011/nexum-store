@@ -389,6 +389,8 @@ export interface DeliveryOrderSummaryDTO {
   deliveredAt?: string;
   pickupPhotoUrl?: string;
   deliveryPhotoUrl?: string;
+  /** PIN que el negocio dicta al repartidor al entregarle el pedido. */
+  pickupPin?: string;
   hasSignature: boolean;
   driverName: string;
   driverPhone: string;

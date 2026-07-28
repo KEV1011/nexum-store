@@ -26,6 +26,7 @@ import {
   DriverDocumentType,
 } from '../types';
 import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
+import { CustodyPinError } from '../lib/custody-pin';
 import { prisma } from '../lib/prisma';
 import { registerDriverFcmToken } from '../services/push.service';
 import { getSurgeMultiplier } from '../services/surge.service';
@@ -725,16 +726,17 @@ router.post('/freight/:id/take', async (req: Request, res: Response): Promise<vo
 // (misma liquidación y avisos que el portal de la flota).
 router.post('/freight/:id/status', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId ?? MOCK_DRIVER.id;
-  const status = (req.body as { status?: string }).status;
+  const { status, pin } = req.body as { status?: string; pin?: string };
   if (status !== 'in_progress' && status !== 'completed') {
     res.status(400).json({ success: false, error: "status debe ser 'in_progress' o 'completed'" });
     return;
   }
   try {
-    const freight = await updateDriverFreightStatus(driverId, req.params['id']!, status);
+    const freight = await updateDriverFreightStatus(driverId, req.params['id']!, status, pin);
     res.json({ success: true, data: freight });
   } catch (err) {
-    const st = err instanceof FreightError ? 400 : 500;
+    // El PIN inválido es un 400 con mensaje en español para mostrar tal cual.
+    const st = err instanceof FreightError || err instanceof CustodyPinError ? 400 : 500;
     res.status(st).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo actualizar el flete' });
   }
 });

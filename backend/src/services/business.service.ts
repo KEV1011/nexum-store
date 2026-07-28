@@ -91,7 +91,7 @@ function _toSummaryDTO(order: {
   id: string; orderRef: string; customerName: string | null; deliveryAddress: string;
   status: string; total: number; createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
   pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
-  driverName: string | null; driverPhone: string | null;
+  driverName: string | null; driverPhone: string | null; pickupPin?: string | null;
 }): DeliveryOrderSummaryDTO {
   const hasPickupProof = !!order.pickupPhotoUrl;
   const hasDeliveryProof = !!order.deliveryPhotoUrl || order.hasSignature;
@@ -107,6 +107,9 @@ function _toSummaryDTO(order: {
     deliveredAt: order.deliveredAt?.toISOString(),
     pickupPhotoUrl: order.pickupPhotoUrl ?? undefined,
     deliveryPhotoUrl: order.deliveryPhotoUrl ?? undefined,
+    // PIN que el negocio dicta al repartidor para entregarle el pedido. Este
+    // portal es del dueño del negocio (token propio); el repartidor no lo ve.
+    pickupPin: order.pickupPin ?? undefined,
     hasSignature: order.hasSignature,
     driverName: order.driverName ?? '',
     // Privacy: the driver's real number is never exposed to the business.

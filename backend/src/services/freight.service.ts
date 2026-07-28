@@ -8,6 +8,7 @@
 
 import { FreightStatus, VehicleType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { generateCustodyPins, assertCustodyPin } from '../lib/custody-pin';
 import { COMMISSION_RATE, INTERCITY_CITY_COORDS } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
@@ -182,6 +183,8 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
       originLng: oc.lng,
       destLat: dc.lat,
       destLng: dc.lng,
+      // Cadena de custodia: PIN de carga (remitente) y de entrega (destinatario).
+      ...generateCustodyPins(),
     },
   });
   const dto2 = _toDTO(f);
@@ -224,13 +227,28 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
   return dto2;
 }
 
-export async function listClientFreights(clientId: string): Promise<FreightDTO[]> {
+/**
+ * Flete visto por SU cliente: incluye los PIN de custodia. `_toDTO` nunca los
+ * añade (seguro por defecto: conductor y flota jamás los reciben aunque se
+ * agreguen consumidores nuevos); solo esta vista los expone.
+ */
+export type ClientFreightDTO = FreightDTO & {
+  pickupPin?: string;
+  deliveryPin?: string;
+};
+
+export async function listClientFreights(clientId: string): Promise<ClientFreightDTO[]> {
   const rows = await prisma.freightRequest.findMany({
     where: { clientId },
     orderBy: { createdAt: 'desc' },
     take: 50,
   });
-  return _toDTOsWithDriverPos(rows);
+  const dtos = await _toDTOsWithDriverPos(rows);
+  return dtos.map((dto, i) => ({
+    ...dto,
+    pickupPin: rows[i]?.pickupPin ?? undefined,
+    deliveryPin: rows[i]?.deliveryPin ?? undefined,
+  }));
 }
 
 export async function cancelClientFreight(clientId: string, id: string): Promise<FreightDTO> {
@@ -365,17 +383,34 @@ export async function updateDriverFreightStatus(
   driverId: string,
   freightId: string,
   status: 'in_progress' | 'completed',
+  pin?: string,
 ): Promise<FreightDTO> {
   const f = await prisma.freightRequest.findUnique({ where: { id: freightId } });
   if (!f || f.driverId !== driverId) throw new FreightError('El flete no existe o no está asignado a ti.');
-  return _applyFreightStatus(f, status);
+  // Cadena de custodia: cargar exige el PIN del remitente y entregar el del
+  // destinatario. Solo se exige por esta vía —el conductor SÍ está en el sitio—;
+  // el portal de la flota conserva su vía administrativa (a distancia nadie
+  // puede conocer el PIN) y esas transiciones quedan registradas igual.
+  if (status === 'in_progress') {
+    assertCustodyPin(f.pickupPin, pin, 'recogida');
+  } else {
+    assertCustodyPin(f.deliveryPin, pin, 'entrega');
+  }
+  return _applyFreightStatus(f, status, true);
 }
 
 async function _applyFreightStatus(
   f: NonNullable<Awaited<ReturnType<typeof prisma.freightRequest.findUnique>>>,
   status: 'in_progress' | 'completed' | 'cancelled',
+  /** true cuando el PIN de custodia ya se validó (vía del conductor). */
+  pinVerified = false,
 ): Promise<FreightDTO> {
   const freightId = f.id;
+  const pinStamp = pinVerified
+    ? status === 'in_progress'
+      ? { pickupPinAt: new Date() }
+      : { deliveryPinAt: new Date() }
+    : {};
 
   // Todas las transiciones usan updateMany con guard de status: dos llamadas
   // concurrentes (portal + app del conductor) no pueden aplicar la misma
@@ -383,7 +418,7 @@ async function _applyFreightStatus(
   if (status === 'in_progress') {
     const res = await prisma.freightRequest.updateMany({
       where: { id: freightId, status: 'ACCEPTED' },
-      data: { status: 'IN_PROGRESS' },
+      data: { status: 'IN_PROGRESS', ...pinStamp },
     });
     if (res.count === 0) throw new FreightError('Solo un flete aceptado puede iniciar ruta.');
     const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
@@ -419,7 +454,7 @@ async function _applyFreightStatus(
   const netEarning = finalPrice - commission;
   const res = await prisma.freightRequest.updateMany({
     where: { id: freightId, status: { in: ['IN_PROGRESS', 'ACCEPTED'] } },
-    data: { status: 'COMPLETED', finalPrice, commission, netEarning, completedAt: new Date() },
+    data: { status: 'COMPLETED', finalPrice, commission, netEarning, completedAt: new Date(), ...pinStamp },
   });
   if (res.count === 0) throw new FreightError('El flete no está en ruta.');
   const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });

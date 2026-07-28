@@ -31,6 +31,7 @@ import {
   registerErrandSendToDriver,
 } from '../services/errand.service';
 import { registerComplianceSendToDriver } from '../services/document-expiry.service';
+import { CustodyPinError } from '../lib/custody-pin';
 import {
   subscribeIntercityBooking,
   getIntercityBookingSnapshot,
@@ -295,6 +296,7 @@ async function handleErrandStatus(
   errandId: string,
   status: string,
   actualCost: number | null,
+  pin?: string,
 ): Promise<void> {
   const validStatuses: ErrandStatus[] = ['shopping', 'on_the_way', 'delivered', 'cancelled'];
   if (!validStatuses.includes(status as ErrandStatus)) {
@@ -317,11 +319,22 @@ async function handleErrandStatus(
     return;
   }
 
-  const updated = await updateErrandStatus(
-    errandId,
-    status as ErrandStatus,
-    actualCost ?? undefined,
-  );
+  let updated;
+  try {
+    updated = await updateErrandStatus(
+      errandId,
+      status as ErrandStatus,
+      actualCost ?? undefined,
+      pin,
+    );
+  } catch (err) {
+    // PIN de custodia ausente o incorrecto: el mandado NO avanza.
+    if (err instanceof CustodyPinError) {
+      sendTo(ws, { type: 'custody_pin_error', errandId, status, message: err.message });
+      return;
+    }
+    throw err;
+  }
   if (updated) {
     sendTo(ws, { type: 'errand_update', errandId, errand: updated });
     const clientWs = clientSockets.get(clientErrand.clientId);
@@ -840,17 +853,30 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated' }); return; }
       const orderId = msg['orderId'];
       const status = msg['status'];
+      const pin = typeof msg['pin'] === 'string' ? (msg['pin'] as string) : undefined;
       const valid = ['at_pickup', 'in_transit', 'delivered'];
       if (typeof orderId !== 'string' || typeof status !== 'string' || !valid.includes(status)) {
         sendTo(ws, { type: 'error', message: 'orderId y status (at_pickup|in_transit|delivered) requeridos' });
         return;
       }
       void (async () => {
-        const updated = await updateOrderStatusByDriver(orderId, driverId, status as DriverOrderStatus);
-        if (updated) {
-          sendTo(ws, { type: 'order_status_ack', orderId, status });
-        } else {
-          sendTo(ws, { type: 'error', message: `Pedido ${orderId} no encontrado o no es tuyo` });
+        try {
+          const updated = await updateOrderStatusByDriver(
+            orderId, driverId, status as DriverOrderStatus, pin,
+          );
+          if (updated) {
+            sendTo(ws, { type: 'order_status_ack', orderId, status });
+          } else {
+            sendTo(ws, { type: 'error', message: `Pedido ${orderId} no encontrado o no es tuyo` });
+          }
+        } catch (err) {
+          // PIN de custodia ausente o incorrecto: mensaje accionable en español
+          // en un tipo propio, para que la app lo muestre en el diálogo del PIN.
+          if (err instanceof CustodyPinError) {
+            sendTo(ws, { type: 'custody_pin_error', orderId, status, message: err.message });
+            return;
+          }
+          sendTo(ws, { type: 'error', message: 'No se pudo actualizar el pedido' });
         }
       })();
       break;
@@ -866,7 +892,8 @@ function onMessage(ws: WebSocket, raw: string): void {
         return;
       }
       const actualCost = typeof msg['actualCost'] === 'number' ? msg['actualCost'] : null;
-      void handleErrandStatus(ws, errandId, status, actualCost);
+      const errandPin = typeof msg['pin'] === 'string' ? (msg['pin'] as string) : undefined;
+      void handleErrandStatus(ws, errandId, status, actualCost, errandPin);
       break;
     }
 
