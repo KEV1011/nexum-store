@@ -167,6 +167,30 @@ jobs:
             --dart-define=WS_BASE_URL=${WS_BASE_URL} \
             -PGOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY}"
 
+      # ── 8b. Verificar la firma REAL del APK ──────────────────────────────────
+      # El paso de configuración solo dice que escribió key.properties; esto
+      # comprueba con qué llave quedó firmado el APK que se va a publicar.
+      # Huella esperada de la llave estable de ZIPA (alias 'nexum'):
+      #   SHA-1 BE:43:56:0E:CB:21:B4:2D:99:A7:5A:3C:B5:6F:B0:FA:05:B5:21:76
+      # Informativo: no falla el build (sin secrets la firma debug es legítima
+      # para pruebas), pero deja la evidencia en el log.
+      - name: Verify APK signature
+        working-directory: AppTransport
+        run: |
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          EXPECTED="BE:43:56:0E:CB:21:B4:2D:99:A7:5A:3C:B5:6F:B0:FA:05:B5:21:76"
+          FINGERPRINT=$(keytool -printcert -jarfile "$APK" 2>/dev/null \
+            | grep -m1 'SHA1:' | sed 's/.*SHA1: *//' | tr -d ' \r')
+          echo "Huella SHA-1 del APK: ${FINGERPRINT:-<no se pudo leer>}"
+          if [ "$FINGERPRINT" = "$EXPECTED" ]; then
+            echo "✅ Firmado con la llave estable de ZIPA — se instala sobre la versión anterior."
+          else
+            echo "⚠️  NO coincide con la llave estable (esperada: $EXPECTED)."
+            echo "    Probable firma debug: hay que desinstalar la app antes de instalar,"
+            echo "    y este APK no sirve para Google Play."
+            echo "    Revisa los secrets ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD."
+          fi
+
       # ── 9. Upload artifacts ──────────────────────────────────────────────────
       - name: Upload APK
         uses: actions/upload-artifact@v4
