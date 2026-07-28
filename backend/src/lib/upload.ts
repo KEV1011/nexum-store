@@ -266,12 +266,34 @@ export async function probeUploads(): Promise<UploadsProbe> {
     publicRead,
     veredicto: ok
       ? 'Almacenamiento permanente OK: se escribió y se leyó públicamente un objeto de prueba.'
-      : publicRead === 'sin S3_PUBLIC_URL definido'
-        ? 'Se escribe bien, pero falta S3_PUBLIC_URL para construir las URL públicas de las fotos.'
-        : 'Se escribe bien, pero el objeto NO se lee por la URL pública: habilita el acceso ' +
-          'público del bucket (R2 → Settings → Public Development URL) y revisa S3_PUBLIC_URL.',
+      : explainPublicReadError(publicRead),
     config: describeS3Config(),
   };
+}
+
+/**
+ * La escritura funciona pero el objeto no se lee por la URL pública. El código
+ * HTTP distingue dos causas MUY distintas que se arreglan en sitios distintos:
+ * 403 = el bucket no es público; 404 = es público pero la URL es de otro bucket.
+ */
+function explainPublicReadError(publicRead: string): string {
+  if (publicRead === 'sin S3_PUBLIC_URL definido') {
+    return 'Se escribe bien, pero falta S3_PUBLIC_URL para construir las URL públicas ' +
+      'de las fotos. Cópiala de R2 → tu bucket → Settings → Public Development URL.';
+  }
+  if (/403|401/.test(publicRead)) {
+    return 'Se escribe bien, pero el bucket NO es público (HTTP 403). Habilítalo en ' +
+      'R2 → tu bucket → Settings → Public Development URL → Enable. La subida ya funciona; ' +
+      'sin esto las fotos se guardan pero no se ven.';
+  }
+  if (/404/.test(publicRead)) {
+    return 'Se escribe bien y el dominio público responde, pero devuelve 404: la ' +
+      'S3_PUBLIC_URL apunta a OTRO bucket distinto de S3_BUCKET. Copia la Public ' +
+      'Development URL del bucket correcto (el mismo de S3_BUCKET).';
+  }
+  return 'Se escribe bien, pero el objeto NO se lee por la URL pública (' + publicRead +
+    '). Revisa que el acceso público del bucket esté habilitado y que S3_PUBLIC_URL ' +
+    'sea la Public Development URL de ESE bucket.';
 }
 
 export { ALLOWED_TYPES, UPLOAD_DIR };
