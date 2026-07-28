@@ -67,6 +67,53 @@ export async function sendSmsVerification(phone: string): Promise<void> {
 }
 
 /**
+ * Diagnóstico: valida las credenciales consultando el Verify Service — NO
+ * envía ningún SMS (no gasta saldo ni molesta a nadie). /health solo mira si
+ * las variables existen; un SID mal copiado diría igual "twilio-sms" y luego
+ * fallaría el login de todos.
+ */
+export async function probeSms(): Promise<{ mode: string; check: string; veredicto: string }> {
+  if (!isSmsConfigured()) {
+    return {
+      mode: 'codigo-local',
+      check: 'no aplica',
+      veredicto:
+        'Sin TWILIO_*: el OTP usa el código local/fijo. Válido para piloto, no para usuarios reales.',
+    };
+  }
+  try {
+    const res = await fetch(`${VERIFY_BASE}/${TWILIO_VERIFY_SID}`, {
+      headers: { Authorization: _authHeader() },
+    });
+    if (res.ok) {
+      return {
+        mode: 'twilio-sms',
+        check: 'ok',
+        veredicto: 'Twilio Verify responde: las credenciales son válidas y el SMS real está activo.',
+      };
+    }
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const msg = typeof body['message'] === 'string' ? body['message'] : `HTTP ${res.status}`;
+    return {
+      mode: 'twilio-sms',
+      check: msg,
+      veredicto:
+        res.status === 401
+          ? 'Twilio rechaza las credenciales: revisa TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN.'
+          : res.status === 404
+            ? 'El TWILIO_VERIFY_SID no existe en esta cuenta: revísalo (empieza por VA...).'
+            : `Twilio respondió un error: ${msg}`,
+    };
+  } catch (err) {
+    return {
+      mode: 'twilio-sms',
+      check: err instanceof Error ? err.message : String(err),
+      veredicto: 'No se pudo contactar a Twilio desde el servidor.',
+    };
+  }
+}
+
+/**
  * Comprueba el código contra Twilio Verify.
  * Devuelve true solo si Twilio responde status "approved".
  */

@@ -16,6 +16,8 @@ import {
   OtpRateLimitError,
   OtpConfigError,
 } from '../services/otp.service';
+import { probeUploads } from '../lib/upload';
+import { probeSms } from '../services/sms.service';
 import {
   getAdminMetrics,
   listDriversForAdmin,
@@ -134,6 +136,19 @@ router.get('/matching/diagnose', async (req: Request, res: Response): Promise<vo
 router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
   try {
     res.json({ success: true, data: await getAdminMetrics() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/diagnostics — comprobación REAL de las integraciones.
+// /health solo mira si las variables existen; esto las EJERCITA: escribe y lee
+// un objeto en el bucket y consulta el Verify Service de Twilio (sin enviar
+// SMS). Protegido por requireAdmin porque hace llamadas con efectos.
+router.get('/diagnostics', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const [uploads, sms] = await Promise.all([probeUploads(), probeSms()]);
+    res.json({ success: true, data: { uploads, sms } });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
@@ -595,7 +610,16 @@ const PANEL_HTML = `<!DOCTYPE html>
       <button data-tab="support" onclick="show('support')">Soporte</button>
     </nav>
 
-    <section id="tab-metrics"><div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div></section>
+    <section id="tab-metrics">
+      <div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div>
+      <h3 style="margin:22px 0 10px">Estado de las integraciones</h3>
+      <p style="color:#94a3b8;font-size:13px;margin:0 0 10px">
+        Comprobación REAL: escribe y lee un archivo de prueba en el bucket y consulta Twilio
+        (sin enviar SMS). Distinto de /health, que solo mira si las variables existen.
+      </p>
+      <button class="btn-sm" onclick="loadDiagnostics()">Probar ahora</button>
+      <div id="diagnostics" style="margin-top:12px"></div>
+    </section>
 
     <section id="tab-docs" style="display:none">
       <div style="display:flex;gap:8px;margin-bottom:14px">
@@ -801,6 +825,25 @@ function loadMetrics() {
       [m.safety.sosLast24h, 'SOS últimas 24 h'],
     ].map(([v, l]) => '<div class="metric"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('');
   }).catch((e) => showMsg(e.message, true));
+}
+
+// Diagnóstico real de integraciones (fotos y SMS). Sin argumentos en el
+// onclick: nada de comillas escapadas dentro del template del panel.
+function loadDiagnostics() {
+  const box = document.getElementById('diagnostics');
+  box.innerHTML = '<div class="empty">Probando…</div>';
+  api('/admin/diagnostics').then((d) => {
+    const row = (titulo, estado, detalle, veredicto) =>
+      '<div style="border:1px solid #1e293b;border-radius:8px;padding:12px;margin-bottom:10px">' +
+      '<strong>' + titulo + '</strong> — <span class="badge">' + esc(estado) + '</span>' +
+      '<div style="color:#94a3b8;font-size:13px;margin-top:6px">' + esc(detalle) + '</div>' +
+      '<div style="margin-top:6px">' + esc(veredicto) + '</div></div>';
+    box.innerHTML =
+      row('Fotos y documentos', d.uploads.mode,
+          'escritura: ' + d.uploads.write + ' · lectura pública: ' + d.uploads.publicRead,
+          d.uploads.veredicto) +
+      row('Códigos SMS (OTP)', d.sms.mode, 'comprobación: ' + d.sms.check, d.sms.veredicto);
+  }).catch((e) => { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
 }
 
 function loadDocs() {

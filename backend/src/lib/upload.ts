@@ -1,6 +1,6 @@
 import multer, { StorageEngine } from 'multer';
 import multerS3 from 'multer-s3';
-import { S3Client } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import path from 'path';
 import fs from 'fs';
 import { DocumentType } from '@prisma/client';
@@ -53,22 +53,30 @@ function randomName(originalname: string): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
 }
 
+/**
+ * Cliente S3/R2 con la configuración del entorno. `forcePathStyle` con endpoint
+ * propio es lo que exigen R2 y los S3 compatibles.
+ */
+function buildS3Client(): S3Client {
+  return new S3Client({
+    region: process.env['S3_REGION'] ?? 'auto',
+    ...(process.env['S3_ENDPOINT']
+      ? { endpoint: process.env['S3_ENDPOINT'], forcePathStyle: true }
+      : {}),
+    ...(process.env['S3_ACCESS_KEY_ID'] && process.env['S3_SECRET_ACCESS_KEY']
+      ? {
+          credentials: {
+            accessKeyId: process.env['S3_ACCESS_KEY_ID'],
+            secretAccessKey: process.env['S3_SECRET_ACCESS_KEY'],
+          },
+        }
+      : {}),
+  });
+}
+
 function buildStorage(): StorageEngine {
   if (useS3) {
-    const s3 = new S3Client({
-      region: process.env['S3_REGION'] ?? 'auto',
-      ...(process.env['S3_ENDPOINT']
-        ? { endpoint: process.env['S3_ENDPOINT'], forcePathStyle: true }
-        : {}),
-      ...(process.env['S3_ACCESS_KEY_ID'] && process.env['S3_SECRET_ACCESS_KEY']
-        ? {
-            credentials: {
-              accessKeyId: process.env['S3_ACCESS_KEY_ID'],
-              secretAccessKey: process.env['S3_SECRET_ACCESS_KEY'],
-            },
-          }
-        : {}),
-    });
+    const s3 = buildS3Client();
     return multerS3({
       s3,
       bucket: S3_BUCKET!,
@@ -107,6 +115,93 @@ export function fileToUrl(file: Express.Multer.File): string {
     return f.location ?? `${f.key ?? ''}`;
   }
   return `/uploads/driver-documents/${file.filename}`;
+}
+
+// ── Diagnóstico real del almacenamiento ───────────────────────────────────────
+// /health solo mira si S3_BUCKET está definido: unas llaves mal copiadas o un
+// bucket sin acceso público darían igual "s3-r2" y fallarían al subir. Esta
+// sonda ESCRIBE un objeto, comprueba que se lea por la URL pública y lo borra.
+
+export interface UploadsProbe {
+  /** 's3-r2' | 'disco-efimero' — el modo configurado. */
+  mode: string;
+  /** 'ok' o el error de escritura (llaves/endpoint/bucket incorrectos). */
+  write: string;
+  /** 'ok', el error de lectura pública, o por qué no se pudo comprobar. */
+  publicRead: string;
+  /** Resumen accionable en español. */
+  veredicto: string;
+}
+
+export async function probeUploads(): Promise<UploadsProbe> {
+  if (!useS3) {
+    return {
+      mode: 'disco-efimero',
+      write: 'no aplica',
+      publicRead: 'no aplica',
+      veredicto:
+        'Sin S3_BUCKET: los archivos van al disco EFÍMERO de Render y se pierden en cada redeploy.',
+    };
+  }
+
+  const key = `_diagnostics/probe-${Date.now()}.txt`;
+  const s3 = buildS3Client();
+
+  let write = 'ok';
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: S3_BUCKET!,
+        Key: key,
+        Body: 'zipa-probe',
+        ContentType: 'text/plain',
+      }),
+    );
+  } catch (err) {
+    write = err instanceof Error ? err.message : String(err);
+    return {
+      mode: 's3-r2',
+      write,
+      publicRead: 'no comprobado (falló la escritura)',
+      veredicto:
+        'No se pudo escribir en el bucket. Revisa S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY, ' +
+        'S3_ENDPOINT y que el token tenga permiso de Object Read & Write.',
+    };
+  }
+
+  // Lectura pública: es lo que falla cuando el bucket no tiene habilitado el
+  // acceso público (la subida funciona, pero las fotos no se ven).
+  let publicRead: string;
+  if (!S3_PUBLIC_URL) {
+    publicRead = 'sin S3_PUBLIC_URL definido';
+  } else {
+    try {
+      const res = await fetch(`${S3_PUBLIC_URL}/${key}`);
+      publicRead = res.ok ? 'ok' : `HTTP ${res.status}`;
+    } catch (err) {
+      publicRead = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // Limpieza best-effort: el objeto de prueba no debe quedarse en el bucket.
+  try {
+    await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET!, Key: key }));
+  } catch {
+    /* si no se pudo borrar, no es motivo para fallar el diagnóstico */
+  }
+
+  const ok = write === 'ok' && publicRead === 'ok';
+  return {
+    mode: 's3-r2',
+    write,
+    publicRead,
+    veredicto: ok
+      ? 'Almacenamiento permanente OK: se escribió y se leyó públicamente un objeto de prueba.'
+      : publicRead === 'sin S3_PUBLIC_URL definido'
+        ? 'Se escribe bien, pero falta S3_PUBLIC_URL para construir las URL públicas de las fotos.'
+        : 'Se escribe bien, pero el objeto NO se lee por la URL pública: habilita el acceso ' +
+          'público del bucket (R2 → Settings → Public Development URL) y revisa S3_PUBLIC_URL.',
+  };
 }
 
 export { ALLOWED_TYPES, UPLOAD_DIR };
