@@ -833,16 +833,17 @@ function loadDiagnostics() {
   const box = document.getElementById('diagnostics');
   box.innerHTML = '<div class="empty">Probando…</div>';
   api('/admin/diagnostics').then((d) => {
-    const row = (titulo, estado, detalle, veredicto) =>
+    const row = (titulo, estado, detalle, veredicto, config) =>
       '<div style="border:1px solid #1e293b;border-radius:8px;padding:12px;margin-bottom:10px">' +
       '<strong>' + titulo + '</strong> — <span class="badge">' + esc(estado) + '</span>' +
       '<div style="color:#94a3b8;font-size:13px;margin-top:6px">' + esc(detalle) + '</div>' +
+      (config ? '<div style="color:#64748b;font-size:12px;margin-top:4px">' + esc(config) + '</div>' : '') +
       '<div style="margin-top:6px">' + esc(veredicto) + '</div></div>';
     box.innerHTML =
       row('Fotos y documentos', d.uploads.mode,
           'escritura: ' + d.uploads.write + ' · lectura pública: ' + d.uploads.publicRead,
-          d.uploads.veredicto) +
-      row('Códigos SMS (OTP)', d.sms.mode, 'comprobación: ' + d.sms.check, d.sms.veredicto);
+          d.uploads.veredicto, d.uploads.config) +
+      row('Códigos SMS (OTP)', d.sms.mode, 'comprobación: ' + d.sms.check, d.sms.veredicto, '');
   }).catch((e) => { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
 }
 
