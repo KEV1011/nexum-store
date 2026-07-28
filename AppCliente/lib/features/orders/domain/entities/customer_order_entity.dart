@@ -109,6 +109,7 @@ class CustomerOrderEntity {
     this.deliveredAt,
     this.pickupPhotoPath,
     this.deliveryPhotoPath,
+    this.deliveryPin,
     this.hasSignature = false,
     this.rating,
     this.ratingComment,
@@ -148,6 +149,7 @@ class CustomerOrderEntity {
             : null,
         pickupPhotoPath: j['pickupPhotoPath'] as String?,
         deliveryPhotoPath: j['deliveryPhotoPath'] as String?,
+        deliveryPin: j['deliveryPin'] as String?,
         hasSignature: j['hasSignature'] as bool? ?? false,
         rating: j['rating'] as int?,
         ratingComment: j['ratingComment'] as String?,
@@ -195,6 +197,7 @@ class CustomerOrderEntity {
             : null,
         pickupPhotoPath: j['pickupPhotoUrl'] as String?,
         deliveryPhotoPath: j['deliveryPhotoUrl'] as String?,
+        deliveryPin: j['deliveryPin'] as String?,
         hasSignature: j['hasSignature'] as bool? ?? false,
       );
 
@@ -211,6 +214,11 @@ class CustomerOrderEntity {
 
   final String? driverName;
   final String? driverPhone;
+
+  /// PIN de 4 dígitos que el cliente dicta al repartidor para recibir el
+  /// pedido. Sin él, el repartidor no puede marcarlo como entregado.
+  final String? deliveryPin;
+
   final int? etaMinutes;
 
   /// Tiempo de preparación (min) que fijó el restaurante al aceptar.

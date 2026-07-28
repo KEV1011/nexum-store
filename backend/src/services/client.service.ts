@@ -18,6 +18,7 @@ import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
 import { normalizeColombianPhone } from './auth.service';
 import { calcFare } from '../lib/fare';
+import { generateCustodyPins, assertCustodyPin } from '../lib/custody-pin';
 import { recordCompletedTrip } from './earnings.service';
 import { sendPushToClient } from './push.service';
 
@@ -193,6 +194,9 @@ export async function placeClientOrder(
       deliveryFee: biz.deliveryFee,
       total: subtotal + biz.deliveryFee,
       etaMinutes: biz.etaMinutes,
+      // Cadena de custodia: el negocio guarda el PIN de recogida y el cliente
+      // el de entrega. El repartidor los pide de viva voz en cada paso.
+      ...generateCustodyPins(),
       hasSignature: false,
       lines: {
         create: lines,
@@ -354,31 +358,60 @@ export async function markOrderReadyByBusiness(
   return summary;
 }
 
-export async function getClientOrders(clientId: string): Promise<ClientOrderSummaryDTO[]> {
+/**
+ * Pedido visto por SU cliente: incluye el PIN que debe dar al repartidor para
+ * recibirlo. `_toSummary` nunca lo añade (seguro por defecto: el repartidor
+ * recibe el mismo DTO por WS y jamás debe ver PIN alguno); el PIN de recogida
+ * pertenece al negocio y viaja solo en el portal de negocios.
+ */
+export type ClientOrderWithPinDTO = ClientOrderSummaryDTO & { deliveryPin?: string };
+
+export async function getClientOrders(clientId: string): Promise<ClientOrderWithPinDTO[]> {
   const orders = await prisma.order.findMany({
     where: { userId: clientId },
     include: { lines: true, business: { select: { name: true } } },
     orderBy: { createdAt: 'desc' },
   });
-  return orders.map((o) => _toSummary(o, o.business?.name ?? 'Negocio', o.lines));
+  return orders.map((o) => ({
+    ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines),
+    deliveryPin: o.deliveryPin ?? undefined,
+  }));
 }
 
-export async function getClientOrderById(clientId: string, orderId: string): Promise<ClientOrderSummaryDTO | null> {
+export async function getClientOrderById(
+  clientId: string,
+  orderId: string,
+): Promise<ClientOrderWithPinDTO | null> {
   const o = await prisma.order.findFirst({
     where: { id: orderId, userId: clientId },
     include: { lines: true, business: { select: { name: true } } },
   });
   if (!o) return null;
-  return _toSummary(o, o.business?.name ?? 'Negocio', o.lines);
+  return {
+    ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines),
+    deliveryPin: o.deliveryPin ?? undefined,
+  };
 }
 
-export async function getClientOrdersForBusiness(businessId: string): Promise<ClientOrderSummaryDTO[]> {
+/**
+ * Pedidos de la app vistos por SU negocio: incluyen el PIN de RECOGIDA, que el
+ * dueño dicta al repartidor al entregarle el pedido. Nunca el de entrega —ese
+ * es del cliente— ni ninguno de los dos al repartidor.
+ */
+export type BusinessOrderWithPinDTO = ClientOrderSummaryDTO & { pickupPin?: string };
+
+export async function getClientOrdersForBusiness(
+  businessId: string,
+): Promise<BusinessOrderWithPinDTO[]> {
   const orders = await prisma.order.findMany({
     where: { businessId },
     include: { lines: true, business: { select: { name: true } } },
     orderBy: { createdAt: 'desc' },
   });
-  return orders.map((o) => _toSummary(o, o.business?.name ?? 'Negocio', o.lines));
+  return orders.map((o) => ({
+    ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines),
+    pickupPin: o.pickupPin ?? undefined,
+  }));
 }
 
 export function onNewClientOrderForBusiness(businessId: string, cb: BusinessNewOrderCallback): () => void {
@@ -503,9 +536,18 @@ export async function updateOrderStatusByDriver(
   orderId: string,
   driverId: string,
   status: DriverOrderStatus,
+  pin?: string,
 ): Promise<ClientOrderSummaryDTO | null> {
   const existing = await prisma.order.findUnique({ where: { id: orderId } });
   if (!existing || existing.driverId !== driverId) return null;
+
+  // Cadena de custodia: recoger exige el PIN del negocio y entregar el del
+  // cliente. Lanza CustodyPinError (mensaje en español) si falta o no coincide.
+  if (status === 'in_transit') {
+    assertCustodyPin(existing.pickupPin, pin, 'recogida');
+  } else if (status === 'delivered') {
+    assertCustodyPin(existing.deliveryPin, pin, 'entrega');
+  }
 
   const map = {
     at_pickup: 'AT_PICKUP',
@@ -517,8 +559,12 @@ export async function updateOrderStatusByDriver(
     where: { id: orderId },
     data: {
       status: map[status],
-      ...(status === 'in_transit' ? { pickedUpAt: new Date() } : {}),
-      ...(status === 'delivered' ? { deliveredAt: new Date() } : {}),
+      ...(status === 'in_transit'
+        ? { pickedUpAt: new Date(), pickupPinAt: new Date() }
+        : {}),
+      ...(status === 'delivered'
+        ? { deliveredAt: new Date(), deliveryPinAt: new Date() }
+        : {}),
     },
     include: { lines: true, business: { select: { name: true } } },
   });

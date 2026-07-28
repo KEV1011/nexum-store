@@ -60,6 +60,8 @@ interface ClientOrder {
   deliveredAt?: string
   pickupPhotoUrl?: string
   deliveryPhotoUrl?: string
+  /** PIN que el negocio dicta al repartidor para entregarle el pedido. */
+  pickupPin?: string
   prepMinutes?: number
   acceptedAt?: string
   readyAt?: string
@@ -189,6 +191,23 @@ function ClientOrderCard({ order, token, onChanged }: {
         <span className="shrink-0 mt-0.5">📍</span>
         <span className="truncate">{order.deliveryAddress}</span>
       </div>
+
+      {/* PIN de recogida: el dueño se lo dicta al repartidor al entregarle el
+          pedido. Sin él, el repartidor no puede marcarlo como recogido. Se
+          oculta cuando ya salió del negocio (deja de tener utilidad). */}
+      {order.pickupPin && !order.pickedUpAt && (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+            PIN de recogida
+          </p>
+          <p className="font-mono text-2xl font-bold tracking-[0.3em] text-emerald-900">
+            {order.pickupPin}
+          </p>
+          <p className="mt-0.5 text-[11px] text-emerald-700">
+            Dícteselo al repartidor solo al entregarle el pedido.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-1 mb-3 bg-slate-50 rounded-lg p-2.5">
         {order.items.map((item, i) => (

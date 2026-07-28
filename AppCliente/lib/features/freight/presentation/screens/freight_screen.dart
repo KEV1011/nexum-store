@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/freight/presentation/widgets/freight_route_map.dart';
+import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
 
 /// Fletes y acarreos con camiones (turbo / camión / mula).
 ///
@@ -386,6 +387,26 @@ class _FreightTile extends StatelessWidget {
               ),
             ],
           ),
+          // PIN de custodia: al cargar lo dicta quien entrega la mercancía, al
+          // entregar quien la recibe. Se muestra el que toca según el estado.
+          if (status == 'ACCEPTED' && freight['pickupPin'] != null) ...[
+            const SizedBox(height: 10),
+            CustodyPinCard(
+              pin: freight['pickupPin'] as String,
+              label: 'PIN de carga',
+              hint: 'Dígaselo al conductor solo cuando recoja la carga.',
+              color: const Color(0xFFB45309),
+            ),
+          ],
+          if (status == 'IN_PROGRESS' && freight['deliveryPin'] != null) ...[
+            const SizedBox(height: 10),
+            CustodyPinCard(
+              pin: freight['deliveryPin'] as String,
+              label: 'PIN de entrega',
+              hint: 'Quien reciba la carga debe dictarlo al conductor.',
+              color: const Color(0xFFB45309),
+            ),
+          ],
           // Mapa del trayecto una vez tomado el flete (aceptado / en ruta): el
           // cliente ve por dónde va su carga.
           if (status == 'ACCEPTED' || status == 'IN_PROGRESS') ...[

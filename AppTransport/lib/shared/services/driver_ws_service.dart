@@ -72,6 +72,8 @@ class DriverWsService {
   final _tripCancelCtrl = StreamController<String>.broadcast();
   final _errandCancelCtrl = StreamController<String>.broadcast();
   final _orderCancelCtrl = StreamController<String>.broadcast();
+  /// Rechazos del PIN de custodia (mensaje en español listo para mostrar).
+  final _custodyPinErrorCtrl = StreamController<String>.broadcast();
   // Ride negotiation (inDriver-style) + chat.
   final _rideRequestCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _rideUpdateCtrl = StreamController<Map<String, dynamic>>.broadcast();
@@ -109,6 +111,9 @@ class DriverWsService {
   /// Emits the `orderId` from every `order_cancelled` server message (el cliente
   /// canceló el pedido antes de que el repartidor lo recogiera).
   Stream<String> get orderCancellations => _orderCancelCtrl.stream;
+
+  /// Emite cuando el backend rechaza el PIN: el servicio no avanzó de estado.
+  Stream<String> get custodyPinErrors => _custodyPinErrorCtrl.stream;
 
   /// Emits the raw `ride` JSON for every new open request (`ride_request_new`).
   Stream<Map<String, dynamic>> get rideRequests => _rideRequestCtrl.stream;
@@ -282,16 +287,20 @@ class DriverWsService {
   /// Update errand progress.
   ///
   /// [status] must be one of `'shopping'`, `'on_the_way'`, or `'delivered'`.
+  /// [pin] es el PIN de custodia que dicta quien entrega (al recoger) o quien
+  /// recibe (al entregar). Sin él, el backend rechaza el cambio de estado.
   void sendErrandStatus(
     String errandId,
     String status, {
     double? actualCost,
+    String? pin,
   }) {
     _send({
       'type': 'errand_status',
       'errandId': errandId,
       'status': status,
       if (actualCost != null) 'actualCost': actualCost,
+      if (pin != null) 'pin': pin,
     });
   }
 
@@ -314,8 +323,14 @@ class DriverWsService {
   ///
   /// [status] ∈ {'at_pickup', 'in_transit', 'delivered'}. Al entregar, el
   /// backend liquida el domicilio en la billetera del repartidor.
-  void sendOrderStatus(String orderId, String status) =>
-      _send({'type': 'order_status', 'orderId': orderId, 'status': status});
+  /// [pin] es el PIN de custodia (del negocio al recoger, del cliente al
+  /// entregar). Sin él, el backend rechaza el cambio de estado.
+  void sendOrderStatus(String orderId, String status, {String? pin}) => _send({
+        'type': 'order_status',
+        'orderId': orderId,
+        'status': status,
+        if (pin != null) 'pin': pin,
+      });
 
   /// Send a GPS location update, optionally associated with an active trip.
   void sendLocationUpdate(double lat, double lng, {String? tripId}) {
@@ -493,6 +508,13 @@ class DriverWsService {
         case 'order_cancelled':
           final orderId = msg['orderId'] as String?;
           if (orderId != null) _orderCancelCtrl.add(orderId);
+
+        // El PIN de custodia faltó o no coincide: el servicio NO avanzó. El
+        // mensaje ya viene en español y listo para mostrar al conductor.
+        case 'custody_pin_error':
+          _custodyPinErrorCtrl.add(
+            (msg['message'] as String?) ?? 'El PIN no es válido.',
+          );
 
         case 'ride_request_new':
           final ride = msg['ride'];

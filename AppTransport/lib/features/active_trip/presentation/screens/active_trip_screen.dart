@@ -30,6 +30,7 @@ import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/services/route_service.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
+import 'package:nexum_driver/shared/widgets/custody_pin_dialog.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_driver/shared/widgets/map_pin.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_glyph.dart';
@@ -78,6 +79,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   int _waypointIndex = 0;
   bool _nearDestinationShown = false;
   StreamSubscription<String>? _orderCancelSub;
+  StreamSubscription<String>? _custodyPinSub;
   // Chat: mensajes sin leer del pasajero mientras el chat no está abierto.
   StreamSubscription<Map<String, dynamic>>? _chatSub;
   int _unreadChat = 0;
@@ -119,6 +121,15 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           });
         }
 
+        // El backend rechazó el PIN de custodia: el servicio NO avanzó de
+        // estado allá, así que hay que avisar con claridad para que el
+        // conductor lo pida de nuevo y reintente.
+        _custodyPinSub =
+            DriverWsService().custodyPinErrors.listen((mensaje) {
+          if (!mounted) return;
+          AppSnackbar.showError(context, mensaje);
+        });
+
         // Chat con el pasajero: avisa cuando llega un mensaje suyo y el chat no
         // está abierto (badge en el botón + snackbar + vibración), para que el
         // conductor sepa que le escribieron.
@@ -146,6 +157,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   void dispose() {
     DriverWsService().activeTripId = null;
     _orderCancelSub?.cancel();
+    _custodyPinSub?.cancel();
     _chatSub?.cancel();
     _pulse.dispose();
     _movementTimer?.cancel();
@@ -860,6 +872,16 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
     if (!mounted || proof == null) return;
 
+    // Cadena de custodia: quien entrega el paquete dicta un PIN de 4 dígitos.
+    // Se pide ANTES de avanzar el estado local: si el conductor cancela, no
+    // cambia nada. Solo aplica a pedidos y mandados (un pasajero no lleva PIN).
+    final necesitaPin = trip.request.isOrder || workMode.isErrand;
+    String? pin;
+    if (necesitaPin) {
+      pin = await showCustodyPinDialog(context, phase: CustodyPinPhase.pickup);
+      if (!mounted || pin == null) return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final tripBeforeStart = ref.read(activeTripProvider);
@@ -870,13 +892,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       if (tripBeforeStart != null) {
         if (tripBeforeStart.request.isOrder) {
           // Pedido recogido en el negocio: en tránsito al cliente.
-          DriverWsService()
-              .sendOrderStatus(tripBeforeStart.request.orderId!, 'in_transit');
+          DriverWsService().sendOrderStatus(
+            tripBeforeStart.request.orderId!,
+            'in_transit',
+            pin: pin,
+          );
         } else if (workMode.isErrand) {
           DriverWsService().sendErrandStatus(
             tripBeforeStart.request.id,
             'on_the_way',
             actualCost: proof.actualCost,
+            pin: pin,
           );
         } else {
           DriverWsService().sendTripStatus(tripBeforeStart.request.id, 'in_progress');
@@ -938,15 +964,36 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       if (!mounted) return;
     }
 
+    // Cadena de custodia: quien recibe dicta su PIN de 4 dígitos. Se pide antes
+    // de cerrar el servicio; si el conductor cancela, la entrega no se marca.
+    final necesitaPin = tripBeforeFinish != null &&
+        (tripBeforeFinish.request.isOrder || workMode.isErrand);
+    String? pin;
+    if (necesitaPin) {
+      pin = await showCustodyPinDialog(context, phase: CustodyPinPhase.delivery);
+      if (!mounted) return;
+      if (pin == null) {
+        _finishing = false; // permite reintentar la entrega
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
     try {
       if (tripBeforeFinish != null) {
         if (tripBeforeFinish.request.isOrder) {
           // Entregado: el backend liquida el domicilio en la billetera.
-          DriverWsService()
-              .sendOrderStatus(tripBeforeFinish.request.orderId!, 'delivered');
+          DriverWsService().sendOrderStatus(
+            tripBeforeFinish.request.orderId!,
+            'delivered',
+            pin: pin,
+          );
         } else if (workMode.isErrand) {
-          DriverWsService().sendErrandStatus(tripBeforeFinish.request.id, 'delivered');
+          DriverWsService().sendErrandStatus(
+            tripBeforeFinish.request.id,
+            'delivered',
+            pin: pin,
+          );
         } else {
           DriverWsService().sendTripStatus(tripBeforeFinish.request.id, 'completed');
         }
