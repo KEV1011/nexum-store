@@ -607,6 +607,9 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   const [bizCategory, setBizCategory] = useState<string | undefined>(undefined)
   const conInventario = manejaInventario(bizCategory)
   const [escaneando, setEscaneando] = useState(false)
+  const [busqueda, setBusqueda] = useState('')
+  const [seccionFiltro, setSeccionFiltro] = useState('todas')
+  const [soloAgotados, setSoloAgotados] = useState(false)
   const [avisoEscaner, setAvisoEscaner] = useState<string | null>(null)
 
   /**
@@ -730,8 +733,24 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
     new Set([...CATEGORIES, ...products.map((p) => p.category)]),
   )
 
+  // Con cientos de referencias la lista completa deja de servir: se filtra por
+  // texto (nombre, marca o código de barras), por sección, y se puede aislar lo
+  // agotado —que es lo que el dueño necesita reponer.
+  const q = busqueda.trim().toLowerCase()
+  const visibles = products.filter((p) => {
+    if (soloAgotados && !(p.stock === 0 || !p.isAvailable)) return false
+    if (seccionFiltro !== 'todas' && p.category !== seccionFiltro) return false
+    if (!q) return true
+    return (
+      p.name.toLowerCase().includes(q) ||
+      (p.brand?.toLowerCase().includes(q) ?? false) ||
+      (p.barcode?.includes(q) ?? false)
+    )
+  })
+  const agotados = products.filter((p) => p.stock === 0 || !p.isAvailable).length
+
   // Agrupa los productos por sección para mostrarlos como un menú real.
-  const grouped = products.reduce<Record<string, Product[]>>((acc, p) => {
+  const grouped = visibles.reduce<Record<string, Product[]>>((acc, p) => {
     (acc[p.category] ??= []).push(p)
     return acc
   }, {})
@@ -870,7 +889,63 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
             <p className="text-sm text-slate-600">{error}</p>
           </div>
-        ) : products.length === 0 ? (
+        ) : products.length > 0 ? (
+          <>
+          {/* Buscador: con cientos de referencias la lista sola no sirve. */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-3 mb-4 space-y-2.5">
+            <input
+              className={INPUT}
+              placeholder="Buscar por nombre, marca o código…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-700"
+                value={seccionFiltro}
+                onChange={(e) => setSeccionFiltro(e.target.value)}
+              >
+                <option value="todas">Todas las secciones</option>
+                {Array.from(new Set(products.map((p) => p.category)))
+                  .sort((a, b) => a.localeCompare(b, 'es'))
+                  .map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {agotados > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setSoloAgotados((v) => !v)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                    soloAgotados
+                      ? 'bg-red-600 text-white'
+                      : 'bg-red-50 text-red-700 hover:bg-red-100'
+                  }`}
+                >
+                  {agotados} agotado{agotados === 1 ? '' : 's'}
+                </button>
+              ) : null}
+              <span className="text-xs text-slate-400 ml-auto">
+                {visibles.length} de {products.length}
+              </span>
+            </div>
+          </div>
+          {visibles.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
+              <p className="text-sm text-slate-500">
+                Ningún producto coincide con la búsqueda.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setBusqueda(''); setSeccionFiltro('todas'); setSoloAgotados(false) }}
+                className="mt-2 text-sm font-semibold text-teal-700 hover:underline"
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          ) : null}
+          </>
+        ) : null}
+
+        {loading || error ? null : products.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center">
             <Package className="w-10 h-10 text-slate-300 mx-auto mb-3" />
             <p className="font-medium text-slate-600">Tu catálogo está vacío</p>
