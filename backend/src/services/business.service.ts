@@ -470,6 +470,24 @@ function _inventarioData(dto: {
   };
 }
 
+/**
+ * Busca un producto por su código de barras DENTRO de un negocio. El mismo EAN
+ * existe en muchos comercios y cada uno tiene su precio, por eso la búsqueda
+ * siempre va acotada al negocio. Devuelve null si no lo tiene todavía.
+ */
+export async function findProductByBarcode(
+  businessId: string,
+  barcode: string,
+): Promise<ProductDTO | null> {
+  const codigo = barcode.trim();
+  if (!codigo) return null;
+  const p = await prisma.product.findFirst({
+    where: { businessId, barcode: codigo },
+    include: _photoInclude,
+  });
+  return p ? _productToDTO(p) : null;
+}
+
 export async function createBusinessProduct(
   businessId: string,
   dto: CreateProductDTO,
