@@ -51,18 +51,41 @@ class BusinessDetailScreen extends ConsumerWidget {
   }
 }
 
-class _DetailView extends ConsumerWidget {
+class _DetailView extends ConsumerStatefulWidget {
   const _DetailView({required this.business});
 
   final BusinessEntity business;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_DetailView> createState() => _DetailViewState();
+}
+
+class _DetailViewState extends ConsumerState<_DetailView> {
+  /// Texto del buscador. Un supermercado tiene cientos de referencias y
+  /// recorrer la lista entera no es viable; en un restaurante con pocos
+  /// platos el buscador ni se muestra.
+  String _query = '';
+
+  /// A partir de aquí la lista deja de poder recorrerse a ojo.
+  static const _minParaBuscador = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    final business = widget.business;
     final cart = ref.watch(cartProvider);
     final cartNotifier = ref.read(cartProvider.notifier);
 
+    final q = _query.trim().toLowerCase();
+    final visibles = q.isEmpty
+        ? business.products
+        : business.products.where((p) {
+            return p.name.toLowerCase().contains(q) ||
+                p.category.toLowerCase().contains(q) ||
+                p.description.toLowerCase().contains(q);
+          }).toList();
+
     final grouped = <String, List<ProductEntity>>{};
-    for (final product in business.products) {
+    for (final product in visibles) {
       grouped.putIfAbsent(product.category, () => []).add(product);
     }
 
@@ -73,6 +96,42 @@ class _DetailView extends ConsumerWidget {
           if (!business.isOpen || business.openingHours != null)
             SliverToBoxAdapter(
               child: _StatusBanner(business: business),
+            ),
+          if (business.products.length >= _minParaBuscador)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.spacingM,
+                  AppConstants.spacingM,
+                  AppConstants.spacingM,
+                  0,
+                ),
+                child: TextField(
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar en ${business.name}',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    isDense: true,
+                    filled: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (visibles.isEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(AppConstants.spacingXL),
+                child: Center(
+                  child: Text(
+                    'Nada coincide con "$_query".',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ),
+              ),
             ),
           for (final entry in grouped.entries) ...[
             SliverToBoxAdapter(child: _SectionHeader(title: entry.key)),
