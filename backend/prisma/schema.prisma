@@ -396,6 +396,16 @@ model Product {
   // Foto de portada (primera/principal). La galería adicional vive en `photos`.
   imageUrl     String?
   isAvailable  Boolean  @default(true)
+  // ── Inventario (supermercados y farmacias) ────────────────────────────────
+  // Todo opcional: un restaurante no lleva código de barras ni stock, y con
+  // estos campos en null se comporta exactamente como antes.
+  barcode      String?  // EAN-13 / UPC impreso en el empaque
+  sku          String?  // código interno del negocio
+  /// null = el negocio NO controla inventario de este producto (caso
+  /// restaurante: la cocina decide). Un número sí se descuenta al vender.
+  stock        Int?
+  unit         String?  // 'unidad' | 'kg' | 'g' | 'litro' | 'libra'
+  brand        String?
   createdAt    DateTime @default(now())
 
   business     Business       @relation(fields: [businessId], references: [id])
@@ -404,6 +414,9 @@ model Product {
   optionGroups OptionGroup[]
 
   @@index([businessId])
+  // El escáner busca por código dentro de UN negocio: el mismo EAN puede
+  // existir en varios comercios y cada uno tiene su producto y su precio.
+  @@index([businessId, barcode])
   @@map("products")
 }
 

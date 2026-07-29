@@ -280,6 +280,11 @@ function _productToDTO(p: {
   category: string;
   imageUrl: string | null;
   isAvailable: boolean;
+  barcode?: string | null;
+  sku?: string | null;
+  stock?: number | null;
+  unit?: string | null;
+  brand?: string | null;
   photos?: { id: string; url: string }[];
   optionGroups?: {
     id: string;
@@ -299,6 +304,11 @@ function _productToDTO(p: {
     category: p.category,
     imageUrl: p.imageUrl ?? undefined,
     isAvailable: p.isAvailable,
+    barcode: p.barcode ?? undefined,
+    sku: p.sku ?? undefined,
+    stock: p.stock ?? undefined,
+    unit: p.unit ?? undefined,
+    brand: p.brand ?? undefined,
     images: (p.photos ?? []).map((ph) => ({ id: ph.id, url: ph.url })),
     optionGroups: (p.optionGroups ?? []).map((g) => ({
       id: g.id,

@@ -155,7 +155,7 @@ export async function placeClientOrder(
   _clientPhone: string,
   dto: ClientPlaceOrderDTO,
 ): Promise<ClientOrderSummaryDTO> {
-  const { getBusinessPublicById, getProductById } = await import('./business.service');
+  const { getBusinessPublicById } = await import('./business.service');
   const biz = await getBusinessPublicById(dto.businessId);
   // El negocio debe estar recibiendo pedidos (vitrina abierta).
   if (!biz.isOpen) {
@@ -163,21 +163,84 @@ export async function placeClientOrder(
   }
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
+  // ── Validación contra la BD ────────────────────────────────────────────────
+  // El precio y la disponibilidad los decide SIEMPRE el servidor, nunca el
+  // cliente: la app corre en el teléfono del usuario y cualquiera puede
+  // modificar lo que envía (antes se cobraba `line.unitPrice` tal cual, así
+  // que bastaba con mandar unitPrice:1 para llevarse cualquier producto).
   let subtotal = 0;
   const lines: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number; optionsSummary: string | null }> = [];
+  // Productos con inventario que habrá que descontar (stock no nulo).
+  const aDescontar: Array<{ productId: string; cantidad: number; nombre: string }> = [];
 
   for (const line of dto.items) {
-    const product = await getProductById(line.productId);
-    const sub = line.quantity * line.unitPrice;
+    if (!(line.quantity > 0)) {
+      throw new Error('La cantidad de cada producto debe ser mayor a cero.');
+    }
+    const producto = await prisma.product.findUnique({ where: { id: line.productId } });
+    if (!producto || producto.businessId !== dto.businessId) {
+      throw new Error('Uno de los productos ya no está disponible en este negocio.');
+    }
+    if (!producto.isAvailable) {
+      throw new Error(`${producto.name} no está disponible en este momento.`);
+    }
+    // stock null = el negocio no controla inventario (caso restaurante).
+    if (producto.stock !== null && producto.stock < line.quantity) {
+      throw new Error(
+        producto.stock <= 0
+          ? `${producto.name} se agotó.`
+          : `Solo quedan ${producto.stock} de ${producto.name}.`,
+      );
+    }
+    if (producto.stock !== null) {
+      aDescontar.push({ productId: producto.id, cantidad: line.quantity, nombre: producto.name });
+    }
+
+    // El precio del catálogo es el SUELO: nunca se cobra menos, así que enviar
+    // unitPrice:1 ya no sirve de nada. Por encima se admite el recargo de las
+    // opciones elegidas (el DTO las trae sumadas en unitPrice), acotado al
+    // triple del precio base para que tampoco se pueda inflar el total.
+    // Mejora futura: que el cliente mande los IDs de opción y el servidor
+    // calcule el recargo exacto, en vez de aceptar un total ya sumado.
+    const enviado = Number(line.unitPrice) || 0;
+    const precioUnitario = Math.min(
+      Math.max(producto.price, enviado),
+      producto.price * 3,
+    );
+    const sub = line.quantity * precioUnitario;
     subtotal += sub;
     lines.push({
       productId: line.productId,
-      productName: product?.name ?? 'Producto',
+      productName: producto.name,
       quantity: line.quantity,
-      unitPrice: line.unitPrice,
+      unitPrice: precioUnitario,
       subtotal: sub,
       optionsSummary: line.optionsSummary?.trim() || null,
     });
+  }
+
+  // ── Descuento de inventario, a prueba de concurrencia ──────────────────────
+  // updateMany con guardia `stock >= cantidad`: si dos clientes compran la
+  // última unidad a la vez, solo uno afecta filas y el otro recibe el aviso.
+  // Se hace ANTES de crear el pedido para no dejar pedidos sin respaldo.
+  const descontados: Array<{ productId: string; cantidad: number }> = [];
+  for (const item of aDescontar) {
+    const res = await prisma.product.updateMany({
+      where: { id: item.productId, stock: { gte: item.cantidad } },
+      data: { stock: { decrement: item.cantidad } },
+    });
+    if (res.count === 0) {
+      // Alguien se adelantó: se devuelve lo ya descontado y se avisa con el
+      // nombre del producto, para que el cliente sepa qué quitar del carrito.
+      for (const hecho of descontados) {
+        await prisma.product.update({
+          where: { id: hecho.productId },
+          data: { stock: { increment: hecho.cantidad } },
+        });
+      }
+      throw new Error(`${item.nombre} se agotó mientras confirmabas el pedido.`);
+    }
+    descontados.push({ productId: item.productId, cantidad: item.cantidad });
   }
 
   const order = await prisma.order.create({
@@ -224,10 +287,33 @@ export async function placeClientOrder(
  * Auto-cancela un pedido que el restaurante nunca aceptó (sigue PENDING). Avisa
  * al cliente por WS y push. No-op si ya avanzó de estado.
  */
+/**
+ * Devuelve al inventario lo que el pedido había descontado. Solo afecta a los
+ * productos con `stock` no nulo (los que llevan control); los del restaurante
+ * quedan intactos. Idempotencia: se llama una vez por cancelación, siempre
+ * junto al cambio de estado a CANCELLED.
+ */
+async function restoreOrderStock(orderId: string): Promise<void> {
+  const lines = await prisma.orderLine.findMany({
+    where: { orderId },
+    select: { productId: true, quantity: true },
+  });
+  for (const l of lines) {
+    if (!l.productId) continue;
+    // El guardia `stock: { not: null }` evita empezar a contar inventario en un
+    // producto que el negocio dejó sin control.
+    await prisma.product.updateMany({
+      where: { id: l.productId, stock: { not: null } },
+      data: { stock: { increment: l.quantity } },
+    });
+  }
+}
+
 async function autoCancelUnacceptedOrder(orderId: string): Promise<void> {
   clearOrderAcceptTimer(orderId);
   const existing = await prisma.order.findUnique({ where: { id: orderId } });
   if (!existing || existing.status !== 'PENDING') return;
+  await restoreOrderStock(orderId);
 
   const updated = await prisma.order.update({
     where: { id: orderId },
@@ -301,6 +387,7 @@ export async function rejectOrderByBusiness(
   // Solo se puede rechazar antes de que un repartidor esté asignado.
   if (!['PENDING', 'PREPARING'].includes(existing.status) || existing.driverId) return null;
   clearOrderAcceptTimer(orderId);
+  await restoreOrderStock(orderId);
 
   const updated = await prisma.order.update({
     where: { id: orderId },
@@ -505,6 +592,7 @@ export async function cancelClientOrder(clientId: string, orderId: string): Prom
   const cancellable = ['PENDING', 'CONFIRMED', 'PREPARING', 'DRIVER_TO_PICKUP', 'AT_PICKUP'];
   if (!cancellable.includes(order.status)) return false;
   clearOrderAcceptTimer(orderId);
+  await restoreOrderStock(orderId);
 
   const updated = await prisma.order.update({
     where: { id: orderId },
