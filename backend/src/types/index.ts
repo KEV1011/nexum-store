@@ -515,6 +515,13 @@ export interface CreateProductDTO {
   description?: string;
   category?: string;
   imageUrl?: string;
+  // ── Inventario (supermercados/farmacias). Omitir en restaurantes. ────────
+  barcode?: string;
+  sku?: string;
+  /** null explícito = dejar de controlar inventario de este producto. */
+  stock?: number | null;
+  unit?: string;
+  brand?: string;
 }
 
 export interface UpdateProductDTO {
@@ -524,6 +531,13 @@ export interface UpdateProductDTO {
   category?: string;
   imageUrl?: string;
   isAvailable?: boolean;
+  // ── Inventario (supermercados/farmacias). Omitir en restaurantes. ────────
+  barcode?: string;
+  sku?: string;
+  /** null explícito = dejar de controlar inventario de este producto. */
+  stock?: number | null;
+  unit?: string;
+  brand?: string;
 }
 
 export interface BusinessPublicDTO {
