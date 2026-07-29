@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:nexum_driver/shared/widgets/zipa_logo.dart';
+
 /// Pantalla de carga inicial con animación de entrada.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -65,15 +67,9 @@ class _SplashScreenState extends State<SplashScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Marca ZIPA (Zip-Pin + wordmark).
-                ScaleTransition(
-                  scale: _scale,
-                  child: Image.asset(
-                    'assets/icons/splash_logo.png',
-                    width: 176,
-                    height: 210,
-                    fit: BoxFit.contain,
-                  ),
-                ),
+                // Marca ZIPA dibujándose: los tres trazos de la Z entran
+                // escalonados y la corona se asienta encima.
+                const ZipaLogoIntro(size: 150),
                 const SizedBox(height: 20),
 
                 // Subtítulo de la app del conductor

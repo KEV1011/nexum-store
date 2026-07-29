@@ -1,6 +1,7 @@
 'use client'
 
 import { use, useState, useEffect, useCallback, useRef } from 'react'
+import { ZipaLogo, ZipaLoading } from '../../ZipaLogo'
 import Link from 'next/link'
 import {
   Package,
@@ -540,16 +541,9 @@ export default function PortalDashboard({
   const newOnlineCount = clientOrders.filter((o) => o.status === 'pending').length
   const preparingCount = clientOrders.filter((o) => ['pending', 'preparing', 'driverToPickup'].includes(o.status)).length
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-slate-500">
-          <RefreshCw className="w-8 h-8 animate-spin text-teal-600" />
-          <p className="text-sm">Cargando portal…</p>
-        </div>
-      </div>
-    )
-  }
+  // La marca dibujándose mientras llega el pedido del día: la misma entrada
+  // que el splash de las apps, para que ZIPA se sienta igual en todas partes.
+  if (loading) return <ZipaLoading label="Abriendo tu portal" />
 
   if (error) {
     return (
@@ -589,8 +583,8 @@ export default function PortalDashboard({
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-teal-700 flex items-center justify-center">
-              <Package className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-700 flex items-center justify-center">
+              <ZipaLogo size={24} />
             </div>
             <div>
               <p className="font-bold text-slate-900 text-sm leading-tight">{businessName}</p>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ZipaLogo } from '../ZipaLogo'
 import Link from 'next/link'
 import {
   Building2, Car, RefreshCw, LogOut, MapPin, ShieldCheck, ShieldAlert, Loader2,
@@ -189,8 +190,8 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
       <div className="max-w-sm w-full">
         <div className="flex flex-col items-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-600 flex items-center justify-center mb-3">
-            <Building2 className="w-7 h-7 text-white" />
+          <div className="w-14 h-14 rounded-2xl bg-emerald-700 flex items-center justify-center mb-3">
+            <ZipaLogo size={36} animated />
           </div>
           <h1 className="font-bold text-slate-900 text-lg">Portal de Empresa</h1>
           <p className="text-xs text-slate-400">ZIPA · Gestión de flota</p>

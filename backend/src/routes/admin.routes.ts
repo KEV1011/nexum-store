@@ -577,6 +577,17 @@ const PANEL_HTML = `<!DOCTYPE html>
 <body>
 
 <div id="login" class="card">
+  <div style="display:flex;justify-content:center;margin-bottom:14px">
+    <svg width="64" height="64" viewBox="0 0 64 64" aria-label="ZIPA">
+      <g stroke-width="9" stroke-linecap="round" fill="none">
+        <path d="M17 20 H47" stroke="#10b981"/>
+        <path d="M45 22 L19 42" stroke="#34d399"/>
+        <path d="M17 44 H47" stroke="#6ee7b7"/>
+      </g>
+      <path d="M21 14.5 L26 7 L32 12.5 L38 7 L43 14.5 Z" fill="#F2C75C"/>
+      <circle cx="32" cy="10" r="1.6" fill="#FFF6DC"/>
+    </svg>
+  </div>
   <h2>Panel de operación ZIPA</h2>
   <div id="step-phone">
     <input id="phone" type="tel" autocomplete="tel" placeholder="+573001234567" />

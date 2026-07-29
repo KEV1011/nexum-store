@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import 'package:nexum_client/shared/widgets/zipa_logo.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 
 /// Pantalla de bienvenida mientras se inicializa la app.
@@ -16,13 +18,9 @@ class SplashScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Marca ZIPA (Zip-Pin blanco con la Z calada).
-            Image.asset(
-              'assets/icons/splash_logo.png',
-              width: 168,
-              height: 200,
-              fit: BoxFit.contain,
-            ),
+            // Marca ZIPA dibujándose: los tres trazos de la Z entran
+            // escalonados y la corona muisca se asienta encima.
+            const ZipaLogoIntro(size: 150),
             const SizedBox(height: AppConstants.spacingS),
             Text(
               'Tu ciudad, en un zip',
