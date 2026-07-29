@@ -42,55 +42,9 @@ jobs:
         run: flutter pub get
 
       # ── 5. Generate launcher icons & splash ──────────────────────────────────
-      - name: Install Python image tools
-        run: pip install Pillow
-
-      - name: Generate app icons
-        working-directory: AppTransport
-        run: |
-          python3 - <<'PYEOF'
-          from PIL import Image, ImageDraw
-          import os, math
-
-          os.makedirs('assets/icons', exist_ok=True)
-          size = 1024
-          primary = (0, 200, 83, 255)
-          white = (255, 255, 255, 240)
-          glass = (180, 255, 210, 200)
-          wheel_color = (26, 35, 126, 255)
-
-          def draw_car(draw, ox=0, oy=0, scale=1.0):
-              def sx(v): return int(ox + v * scale)
-              def sy(v): return int(oy + v * scale)
-              bx1,by1,bx2,by2 = sx(180),sy(380),sx(844),sy(660)
-              rx1,ry1,rx2,ry2 = sx(270),sy(280),sx(754),sy(460)
-              wr = int(58 * scale)
-              draw.rounded_rectangle([bx1,by1,bx2,by2], radius=int(60*scale), fill=white)
-              draw.rounded_rectangle([rx1,ry1,rx2,ry2], radius=int(50*scale), fill=white)
-              draw.rounded_rectangle([sx(300),sy(300),sx(724),sy(440)], radius=int(30*scale), fill=glass)
-              for xo, yo in [(bx1-wr+10,by1+30),(bx2-3*wr-10,by1+30),(bx1-wr+10,by2-30-wr*2),(bx2-3*wr-10,by2-30-wr*2)]:
-                  draw.ellipse([xo,yo,xo+wr*2,yo+wr*2], fill=wheel_color)
-
-          # Full icon
-          img = Image.new('RGBA', (size, size), (0,0,0,0))
-          draw = ImageDraw.Draw(img)
-          draw.ellipse([0,0,size-1,size-1], fill=primary)
-          draw_car(draw)
-          img.save('assets/icons/app_icon.png')
-
-          # Foreground (transparent bg)
-          img2 = Image.new('RGBA', (size, size), (0,0,0,0))
-          draw_car(ImageDraw.Draw(img2))
-          img2.save('assets/icons/app_icon_foreground.png')
-
-          # Splash logo
-          img3 = Image.new('RGBA', (size, size), (0,0,0,0))
-          ox = int(size * 0.225); oy = int(size * 0.225)
-          draw_car(ImageDraw.Draw(img3), ox, oy, 0.55)
-          img3.save('assets/icons/splash_logo.png')
-          print("Icons generated ✓")
-          PYEOF
-
+      # Los íconos son ASSETS VERSIONADOS (assets/icons/), no generados en CI:
+      # antes un script de Pillow los dibujaba en cada build y el resultado
+      # se veía amateur. Ahora flutter_launcher_icons parte del logo real.
       - name: Generate launcher icons
         working-directory: AppTransport
         run: flutter pub run flutter_launcher_icons

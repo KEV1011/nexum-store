@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- ZIPA — corona muisca sobre una Z de TRES trazos: personas, encargos y
+       carga. En estático leen como una sola letra; en la animación entran por
+       separado y el oro los conecta. -->
+  <g stroke-width="9" stroke-linecap="round" fill="none">
+    <path d="M17 20 H47"      stroke="#FFFFFF"/>
+    <path d="M45 22 L19 42"   stroke="#EAF7F1"/>
+    <path d="M17 44 H47"      stroke="#D6EFE4"/>
+  </g>
+  <!-- Corona muisca, asentada sobre el trazo superior. -->
+  <path d="M21 14.5 L26 7 L32 12.5 L38 7 L43 14.5 Z" fill="#F2C75C"/>
+  <circle cx="32" cy="10" r="1.6" fill="#FFF6DC"/>
+</svg>

@@ -135,3 +135,37 @@ h1, h2, h3, h4, h5, h6 {
 .animate-slide-in {
   animation: slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* ── Animación de entrada de la marca ZIPA ──────────────────────────────────
+   Los tres trazos de la Z se dibujan escalonados y la corona se asienta
+   encima. Mismo ritmo que el splash de las apps para que la marca se sienta
+   igual en web y en móvil. */
+.zipa-strokes path {
+  stroke-dasharray: 46;
+  stroke-dashoffset: 46;
+  animation: zipa-draw .5s cubic-bezier(.65, 0, .35, 1) forwards;
+}
+.zipa-strokes .zipa-s1 { animation-delay: .05s }
+.zipa-strokes .zipa-s2 { animation-delay: .28s; stroke-dasharray: 40; stroke-dashoffset: 40 }
+.zipa-strokes .zipa-s3 { animation-delay: .5s }
+@keyframes zipa-draw { to { stroke-dashoffset: 0 } }
+
+.zipa-crown {
+  opacity: 0;
+  transform-origin: 50% 100%;
+  animation: zipa-crown .5s cubic-bezier(.34, 1.56, .64, 1) .78s forwards;
+}
+@keyframes zipa-crown {
+  from { opacity: 0; transform: translateY(-8px) scale(.8) }
+  to   { opacity: 1; transform: none }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zipa-strokes path,
+  .zipa-crown {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transform: none;
+  }
+}

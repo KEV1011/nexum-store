@@ -44,56 +44,9 @@ jobs:
       # ── 5. Generate launcher icons & splash ──────────────────────────────────
       # AppCliente aún no tiene assets de branding (ver TODO en pubspec):
       # se genera un pin de ubicación provisional con la paleta Nexum.
-      - name: Install Python image tools
-        run: pip install Pillow
-
-      - name: Generate app icons
-        working-directory: AppCliente
-        run: |
-          python3 - <<'PYEOF'
-          from PIL import Image, ImageDraw
-          import os
-
-          os.makedirs('assets/icons', exist_ok=True)
-          size = 1024
-          primary = (0, 200, 83, 255)      # verde Nexum
-          white = (255, 255, 255, 240)
-          navy = (26, 35, 126, 255)        # azul Nexum
-
-          def draw_pin(draw, ox=0, oy=0, scale=1.0):
-              def sx(v): return int(ox + v * scale)
-              def sy(v): return int(oy + v * scale)
-              # Cabeza circular del pin
-              draw.ellipse([sx(262), sy(160), sx(762), sy(660)], fill=white)
-              # Punta triangular
-              draw.polygon(
-                  [(sx(352), sy(560)), (sx(672), sy(560)), (sx(512), sy(880))],
-                  fill=white,
-              )
-              # Centro del pin
-              draw.ellipse([sx(412), sy(310), sx(612), sy(510)], fill=navy)
-
-          # Icono completo (fondo verde circular)
-          img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-          draw = ImageDraw.Draw(img)
-          draw.ellipse([0, 0, size - 1, size - 1], fill=primary)
-          draw_pin(draw)
-          img.save('assets/icons/app_icon.png')
-
-          # Foreground (fondo transparente, para adaptive icon)
-          img2 = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-          draw_pin(ImageDraw.Draw(img2), ox=int(size*0.125), oy=int(size*0.125), scale=0.75)
-          img2.save('assets/icons/app_icon_foreground.png')
-
-          # Splash logo
-          img3 = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-          d3 = ImageDraw.Draw(img3)
-          d3.ellipse([int(size*0.2), int(size*0.2), int(size*0.8), int(size*0.8)], fill=primary)
-          draw_pin(d3, ox=int(size*0.25), oy=int(size*0.25), scale=0.5)
-          img3.save('assets/icons/splash_logo.png')
-          print("Icons generated ✓")
-          PYEOF
-
+      # Los íconos son ASSETS VERSIONADOS (assets/icons/), no generados en CI:
+      # antes un script de Pillow los dibujaba en cada build y el resultado
+      # se veía amateur. Ahora flutter_launcher_icons parte del logo real.
       - name: Generate launcher icons
         working-directory: AppCliente
         run: dart run flutter_launcher_icons
