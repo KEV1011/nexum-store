@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -311,7 +312,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
+                color: context.surfaceVariantColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(

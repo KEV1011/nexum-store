@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
@@ -34,6 +35,10 @@ class TransportHomeScreen extends ConsumerStatefulWidget {
 
 class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   final _mapController = MapController();
+  /// Ubicación REAL del usuario. Hasta obtenerla el punto azul no se pinta:
+  /// antes se dibujaba fijo en el centro de Pamplona, así que el usuario veía
+  /// "su" ubicación en un sitio donde no estaba (o no la veía en absoluto).
+  LatLng? _myLocation;
   TransportServiceType _selected = TransportServiceType.transporte;
   Timer? _vehicleTimer;
 
@@ -51,11 +56,35 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _locateMe();
     _refreshNearby();
     _vehicleTimer = Timer.periodic(
       const Duration(seconds: 15),
       (_) => _refreshNearby(),
     );
+  }
+
+  /// Obtiene la ubicación real y centra el mapa en ella. Si el permiso se
+  /// niega o el GPS falla, el mapa se queda en el centro por defecto: nunca
+  /// bloquea la pantalla ni muestra un punto falso.
+  Future<void> _locateMe() async {
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      final here = LatLng(pos.latitude, pos.longitude);
+      setState(() => _myLocation = here);
+      _mapController.move(here, 16);
+    } catch (_) {
+      // Sin GPS disponible: se conserva el centro por defecto.
+    }
   }
 
   Future<void> _refreshNearby() async {
@@ -109,21 +138,23 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
           // ── Mapa de fondo ────────────────────────────────────────────────
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: _pamplona,
+            options: MapOptions(
+              initialCenter: _myLocation ?? _pamplona,
               initialZoom: 15.2,
+              maxZoom: 19,
             ),
             children: [
               const GoogleMapTiles(),
               MarkerLayer(
                 markers: [
-                  // Mi ubicación
-                  Marker(
-                    point: _pamplona,
-                    width: 22,
-                    height: 22,
-                    child: _MyLocationDot(),
-                  ),
+                  // Mi ubicación REAL (solo cuando ya se conoce).
+                  if (_myLocation != null)
+                    Marker(
+                      point: _myLocation!,
+                      width: 22,
+                      height: 22,
+                      child: _MyLocationDot(),
+                    ),
                   // Conductores en línea reales cercanos (anónimos), cada uno
                   // con el ícono de SU vehículo real (moto/carro/camión).
                   ..._nearby.map(

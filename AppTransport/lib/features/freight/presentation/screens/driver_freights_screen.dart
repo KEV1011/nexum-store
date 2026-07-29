@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
@@ -322,7 +323,7 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.grey.shade300),
-        color: done ? Colors.grey.shade50 : Colors.white,
+        color: done ? context.surfaceVariantColor : context.cardColor2,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
