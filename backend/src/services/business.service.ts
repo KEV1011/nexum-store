@@ -449,6 +449,27 @@ export async function setProductOptions(
 
 // ─── Gestión del catálogo (dueño desde el portal, autenticado por token) ──────
 
+/**
+ * Normaliza los campos de inventario que llegan del portal. Un texto vacío se
+ * guarda como null (no como ""), para que "sin código de barras" y "código
+ * vacío" sean la misma cosa y el índice no se llene de cadenas vacías.
+ */
+function _inventarioData(dto: {
+  barcode?: string; sku?: string; stock?: number | null; unit?: string; brand?: string;
+}) {
+  const limpio = (v?: string) => (v?.trim() ? v.trim() : null);
+  return {
+    ...(dto.barcode !== undefined && { barcode: limpio(dto.barcode) }),
+    ...(dto.sku !== undefined && { sku: limpio(dto.sku) }),
+    // null explícito = el negocio deja de controlar inventario del producto.
+    ...(dto.stock !== undefined && {
+      stock: dto.stock === null ? null : Math.max(0, Math.trunc(Number(dto.stock) || 0)),
+    }),
+    ...(dto.unit !== undefined && { unit: limpio(dto.unit) }),
+    ...(dto.brand !== undefined && { brand: limpio(dto.brand) }),
+  };
+}
+
 export async function createBusinessProduct(
   businessId: string,
   dto: CreateProductDTO,
@@ -464,6 +485,7 @@ export async function createBusinessProduct(
       description: dto.description?.trim() || null,
       category: dto.category?.trim() || 'General',
       imageUrl: dto.imageUrl ?? null,
+      ..._inventarioData(dto),
     },
   });
   return _productToDTO(p);
@@ -489,6 +511,7 @@ export async function updateBusinessProduct(
       ...(dto.category !== undefined && { category: dto.category.trim() || 'General' }),
       ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
       ...(dto.isAvailable !== undefined && { isAvailable: dto.isAvailable }),
+      ..._inventarioData(dto),
     },
     include: _photoInclude,
   });

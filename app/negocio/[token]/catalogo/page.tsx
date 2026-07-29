@@ -35,6 +35,17 @@ function resolveImg(url?: string): string | undefined {
 // Sugerencias por defecto; el dueño puede escribir SUS propias secciones.
 const CATEGORIES = ['General', 'Entradas', 'Platos fuertes', 'Bebidas', 'Postres', 'Combos', 'Promociones']
 
+/** Unidades de venta para negocios que manejan inventario. */
+const UNIDADES = ['unidad', 'kg', 'g', 'libra', 'litro', 'ml', 'paquete'] as const
+
+/**
+ * Los negocios con inventario (supermercado, farmacia) necesitan código de
+ * barras y existencias; un restaurante no — ahí esos campos solo estorban.
+ */
+function manejaInventario(categoria?: string): boolean {
+  return categoria === 'supermarket' || categoria === 'pharmacy' || categoria === 'other'
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ProductPhoto {
@@ -59,6 +70,11 @@ interface OptionGroup {
 }
 
 interface Product {
+  barcode?: string
+  sku?: string
+  stock?: number
+  unit?: string
+  brand?: string
   id: string
   name: string
   description: string
@@ -378,9 +394,35 @@ function ProductCard({
                   <p className="font-semibold text-slate-900 text-sm truncate">{product.name}</p>
                   <p className="font-bold text-teal-700 text-sm shrink-0">{formatCOP(product.price)}</p>
                 </div>
-                <p className="text-xs text-slate-400">{product.category}</p>
+                <p className="text-xs text-slate-400">
+                  {product.brand ? `${product.brand} · ` : ''}{product.category}
+                  {product.unit && product.unit !== 'unidad' ? ` · por ${product.unit}` : ''}
+                </p>
                 {product.description ? (
                   <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{product.description}</p>
+                ) : null}
+                {/* Existencias y código: solo aparecen si el negocio los usa. */}
+                {product.stock !== undefined || product.barcode ? (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    {product.stock !== undefined ? (
+                      <span
+                        className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${
+                          product.stock === 0
+                            ? 'bg-red-50 text-red-600'
+                            : product.stock <= 5
+                              ? 'bg-amber-50 text-amber-700'
+                              : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {product.stock === 0 ? 'Sin existencias' : `${product.stock} en stock`}
+                      </span>
+                    ) : null}
+                    {product.barcode ? (
+                      <span className="text-[11px] font-mono text-slate-400">
+                        {product.barcode}
+                      </span>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               <div className="flex items-center justify-between mt-2">
@@ -555,6 +597,14 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   const [price, setPrice] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0])
   const [description, setDescription] = useState('')
+  // Inventario (solo visible en supermercado/farmacia/otro)
+  const [barcode, setBarcode] = useState('')
+  const [brand, setBrand] = useState('')
+  const [unit, setUnit] = useState<string>(UNIDADES[0])
+  const [stock, setStock] = useState('')
+  // Categoría del negocio: decide qué campos se muestran.
+  const [bizCategory, setBizCategory] = useState<string | undefined>(undefined)
+  const conInventario = manejaInventario(bizCategory)
   const [creating, setCreating] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -581,6 +631,20 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
     void load()
   }, [load])
 
+  // El tipo de negocio decide el formulario: un restaurante no ve código de
+  // barras ni existencias, un supermercado sí.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/business/${token}/info`, { cache: 'no-store' })
+        const json = (await res.json()) as { success: boolean; data?: { category?: string } }
+        if (json.success) setBizCategory(json.data?.category)
+      } catch {
+        // Sin la categoría se muestra el formulario básico: nunca bloquea.
+      }
+    })()
+  }, [token])
+
   const createProduct = async (e: React.FormEvent) => {
     e.preventDefault()
     const priceNum = Number(price.replace(/[^\d]/g, ''))
@@ -597,6 +661,13 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           price: priceNum,
           category,
           description: description.trim() || undefined,
+          ...(conInventario && {
+            barcode: barcode.trim() || undefined,
+            brand: brand.trim() || undefined,
+            unit,
+            // Vacío = el negocio no controla existencias de este producto.
+            stock: stock.trim() === '' ? null : Number(stock.replace(/[^\d]/g, '')),
+          }),
         }),
       })
       const json = (await res.json()) as { success: boolean; data?: Product; error?: string }
@@ -606,6 +677,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       }
       setProducts((prev) => [...prev, json.data as Product])
       setName(''); setPrice(''); setDescription(''); setCategory(CATEGORIES[0])
+      setBarcode(''); setBrand(''); setStock('')
     } catch {
       setFormError('No se pudo conectar con el servidor.')
     } finally {
@@ -673,6 +745,54 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             />
             <input className={INPUT} placeholder="Descripción (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={140} />
           </div>
+
+          {/* Inventario: solo para negocios que lo manejan. Un restaurante no
+              lleva código de barras ni existencias, y verlos aquí solo estorba. */}
+          {conInventario ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                Inventario
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  className={INPUT}
+                  placeholder="Código de barras (opcional)"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={20}
+                />
+                <input
+                  className={INPUT}
+                  placeholder="Marca (ej: Diana)"
+                  value={brand}
+                  onChange={(e) => setBrand(e.target.value)}
+                  maxLength={40}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <select className={INPUT} value={unit} onChange={(e) => setUnit(e.target.value)}>
+                  {UNIDADES.map((u) => (
+                    <option key={u} value={u}>Se vende por {u}</option>
+                  ))}
+                </select>
+                <input
+                  className={INPUT}
+                  placeholder="Existencias (vacío = no controlar)"
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={7}
+                />
+              </div>
+              <p className="text-xs text-emerald-700/80">
+                Si dejas las existencias vacías, el producto se vende sin llevar
+                cuenta. Con un número, se descuenta en cada pedido y deja de
+                venderse al llegar a cero.
+              </p>
+            </div>
+          ) : null}
+
           {formError ? (
             <p className="text-sm text-red-600">{formError}</p>
           ) : null}
