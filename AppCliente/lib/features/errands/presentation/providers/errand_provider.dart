@@ -137,10 +137,13 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
       final serverId = data['id'] as String;
       _activeServerId = serverId;
 
-      // Patch the active entity with the server-assigned ID and ref.
+      // Patch the active entity with the server-assigned ID and ref. El
+      // deliveryPin lo genera el backend: es lo que el cliente dicta al
+      // mandadero para que pueda cerrar la entrega.
       final serverErrand = errand.copyWith(
         id: serverId,
         status: ErrandStatus.searching,
+        deliveryPin: data['deliveryPin'] as String?,
       );
       state = state.copyWith(active: serverErrand, isLoading: false);
 

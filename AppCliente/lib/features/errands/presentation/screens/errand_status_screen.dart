@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
@@ -66,6 +67,19 @@ class ErrandStatusScreen extends ConsumerWidget {
             // ── Mensajero ────────────────────────────────────────────────────
             if (errand.hasMessenger) ...[
               _MessengerCard(errand: errand),
+              const SizedBox(height: 12),
+            ],
+
+            // ── PIN de entrega ───────────────────────────────────────────────
+            // Se muestra con mandadero asignado y hasta que entregue: es lo que
+            // el cliente le dicta para poder cerrar el encargo. En los mandados
+            // no hay PIN de recogida (el establecimiento de origen no está
+            // registrado en la plataforma).
+            if (errand.deliveryPin != null && errand.status.isActive) ...[
+              CustodyPinCard(
+                pin: errand.deliveryPin!,
+                hint: 'Dígaselo al mandadero solo cuando reciba su encargo.',
+              ),
               const SizedBox(height: 12),
             ],
 

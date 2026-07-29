@@ -8,7 +8,7 @@ import {
 import { DriverStatus } from '@prisma/client';
 import { ERRAND_SERVICE_FEE, COMMISSION_RATE } from '../config/constants';
 import { prisma } from '../lib/prisma';
-import { generateCustodyPins, assertCustodyPin } from '../lib/custody-pin';
+import { generatePin, assertCustodyPin } from '../lib/custody-pin';
 import { maskPhone } from './safe-contact.service';
 import { sendPushToClient, sendPushToDriver } from './push.service';
 import { recordCompletedTrip } from './earnings.service';
@@ -96,7 +96,7 @@ function _notify(errandId: string, errand: ClientErrandDTO): void {
 export async function requestClientErrand(
   clientId: string,
   dto: RequestClientErrandDTO,
-): Promise<ClientErrandDTO> {
+): Promise<ClientErrandWithPinsDTO> {
   const requestRef = `NXE-${Math.floor(1000 + Math.random() * 8000)}`;
   const errand = await prisma.errand.create({
     data: {
@@ -110,12 +110,12 @@ export async function requestClientErrand(
       purchaseBudget: dto.purchaseBudget ?? null,
       notes: dto.notes ?? null,
       status: 'SEARCHING',
-      // Cadena de custodia: PIN de recogida (quien entrega el encargo) y de
-      // entrega (quien lo recibe). El mandadero los pide de viva voz.
-      ...generateCustodyPins(),
+      // Cadena de custodia: SOLO PIN de entrega. Se recoge en establecimientos
+      // que no están registrados en la plataforma y no podrían dictar un PIN.
+      deliveryPin: generatePin(),
     },
   });
-  return _toDTO(errand);
+  return { ..._toDTO(errand), deliveryPin: errand.deliveryPin ?? undefined };
 }
 
 export async function acceptClientErrand(
@@ -183,11 +183,12 @@ export async function updateErrandStatus(
   // evita revivir un cancelado y que un doble "delivered" liquide dos veces.
   if (existing.status === 'DELIVERED' || existing.status === 'CANCELLED') return null;
 
-  // Cadena de custodia: salir con el encargo exige el PIN de quien lo entrega;
-  // cerrarlo, el de quien lo recibe. Lanza CustodyPinError si falta o no casa.
-  if (status === 'on_the_way') {
-    assertCustodyPin(existing.pickupPin, pin, 'recogida');
-  } else if (status === 'delivered') {
+  // Cadena de custodia: SOLO en la entrega. En un mandado el mandadero recoge
+  // en un establecimiento cualquiera (farmacia, tienda, oficina) que NO está
+  // registrado en la plataforma: nadie allí puede ver ni dictar un PIN, así que
+  // exigirlo al recoger dejaría el mandado bloqueado sin salida. Quien recibe sí
+  // es el cliente, y su PIN prueba que la entrega ocurrió.
+  if (status === 'delivered') {
     assertCustodyPin(existing.deliveryPin, pin, 'entrega');
   }
 
@@ -267,7 +268,8 @@ export async function cancelClientErrand(clientId: string, errandId: string): Pr
  * debe llevar PIN); solo estas vistas del cliente los exponen.
  */
 export type ClientErrandWithPinsDTO = ClientErrandDTO & {
-  pickupPin?: string;
+  /** PIN que el cliente dicta al mandadero al recibir. No hay PIN de recogida:
+   *  el establecimiento de origen no está registrado en la plataforma. */
   deliveryPin?: string;
 };
 
@@ -282,11 +284,7 @@ export async function getActiveClientErrand(
     orderBy: { createdAt: 'desc' },
   });
   if (!errand) return null;
-  return {
-    ..._toDTO(errand),
-    pickupPin: errand.pickupPin ?? undefined,
-    deliveryPin: errand.deliveryPin ?? undefined,
-  };
+  return { ..._toDTO(errand), deliveryPin: errand.deliveryPin ?? undefined };
 }
 
 export async function getClientErrandById(
@@ -295,11 +293,7 @@ export async function getClientErrandById(
 ): Promise<ClientErrandWithPinsDTO | null> {
   const errand = await prisma.errand.findUnique({ where: { id: errandId } });
   if (!errand || errand.userId !== clientId) return null;
-  return {
-    ..._toDTO(errand),
-    pickupPin: errand.pickupPin ?? undefined,
-    deliveryPin: errand.deliveryPin ?? undefined,
-  };
+  return { ..._toDTO(errand), deliveryPin: errand.deliveryPin ?? undefined };
 }
 
 export async function getClientErrandRaw(
