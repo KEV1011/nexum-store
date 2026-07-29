@@ -531,7 +531,7 @@ class _TripMapState extends ConsumerState<_TripMap>
                   initialCameraFit: CameraFit.coordinates(
                     coordinates: [origin, destination, if (driver != null) driver],
                     padding: const EdgeInsets.all(48),
-                    maxZoom: 16,
+                    maxZoom: 19,
                   ),
                   // Mapa interactivo: el cliente puede mover y hacer zoom.
                   interactionOptions: const InteractionOptions(

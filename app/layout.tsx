@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter, Montserrat } from 'next/font/google'
 import './globals.css'
 
@@ -33,6 +33,15 @@ export const metadata: Metadata = {
     description: 'Transporte, envíos y pedidos con seguimiento en tiempo real.',
   },
   robots: { index: true, follow: true },
+}
+
+// Sin esto el móvil renderiza la página a ~980 px y la escala: los portales se
+// ven diminutos e inservibles en el celular, que es donde el dueño de un
+// negocio abre su panel de pedidos. `maximum-scale` se deja libre para no
+// impedir el zoom (accesibilidad).
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

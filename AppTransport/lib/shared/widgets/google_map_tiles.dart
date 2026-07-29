@@ -33,6 +33,10 @@ class GoogleMapTiles extends ConsumerWidget {
     if (token == null || token.isEmpty) {
       return TileLayer(
         urlTemplate: _osm,
+        // Sin esto las teselas de 256 px se ven BORROSAS en pantallas de alta
+        // densidad (el usuario lo describió como "parece un dibujo"): flutter_map
+        // pide un zoom más y las escala, así el mapa se ve nítido.
+        retinaMode: RetinaMode.isHighDensity(context),
         userAgentPackageName: 'com.nexum.driver',
       );
     }
@@ -43,6 +47,7 @@ class GoogleMapTiles extends ConsumerWidget {
     return TileLayer(
       urlTemplate: '${ApiConfig.baseUrl}/geo/tile/{z}/{x}/{y}?t=$token',
       fallbackUrl: _osm,
+      retinaMode: RetinaMode.isHighDensity(context),
       userAgentPackageName: 'com.nexum.driver',
     );
   }
