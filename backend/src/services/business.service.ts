@@ -488,6 +488,77 @@ export async function findProductByBarcode(
   return p ? _productToDTO(p) : null;
 }
 
+/**
+ * Todos los códigos de barras que el negocio ya tiene, para que la vista previa
+ * del CSV sepa qué fila crea y cuál actualiza.
+ */
+export async function getBarcodeIndexForBusiness(
+  businessId: string,
+): Promise<Map<string, { id: string; name: string }>> {
+  const rows = await prisma.product.findMany({
+    where: { businessId, barcode: { not: null } },
+    select: { id: true, name: true, barcode: true },
+  });
+  const map = new Map<string, { id: string; name: string }>();
+  for (const r of rows) {
+    if (r.barcode) map.set(r.barcode, { id: r.id, name: r.name });
+  }
+  return map;
+}
+
+/**
+ * Aplica una importación YA revisada por el dueño. Crea los nuevos y actualiza
+ * los existentes; las filas con error nunca llegan aquí (se descartaron en la
+ * vista previa). Devuelve el recuento real de lo aplicado.
+ */
+export async function applyProductImport(
+  businessId: string,
+  nuevos: Array<{ nombre: string; precio: number; seccion: string; descripcion?: string;
+    barcode?: string; brand?: string; unit?: string; stock?: number | null }>,
+  actualizaciones: Array<{ productId: string; nombre: string; precio: number; seccion: string;
+    descripcion?: string; barcode?: string; brand?: string; unit?: string; stock?: number | null }>,
+): Promise<{ creados: number; actualizados: number }> {
+  let creados = 0;
+  let actualizados = 0;
+
+  for (const n of nuevos) {
+    await prisma.product.create({
+      data: {
+        businessId,
+        name: n.nombre,
+        price: n.precio,
+        category: n.seccion,
+        description: n.descripcion ?? null,
+        barcode: n.barcode ?? null,
+        brand: n.brand ?? null,
+        unit: n.unit ?? null,
+        stock: n.stock ?? null,
+      },
+    });
+    creados++;
+  }
+
+  for (const a of actualizaciones) {
+    // updateMany con businessId en el where: un token no puede tocar el
+    // catálogo de otro negocio ni aunque le pasen un productId ajeno.
+    const res = await prisma.product.updateMany({
+      where: { id: a.productId, businessId },
+      data: {
+        name: a.nombre,
+        price: a.precio,
+        category: a.seccion,
+        ...(a.descripcion !== undefined && { description: a.descripcion }),
+        ...(a.brand !== undefined && { brand: a.brand }),
+        ...(a.unit !== undefined && { unit: a.unit }),
+        ...(a.stock !== undefined && { stock: a.stock }),
+      },
+    });
+    if (res.count > 0) actualizados++;
+  }
+
+  return { creados, actualizados };
+}
+
 export async function createBusinessProduct(
   businessId: string,
   dto: CreateProductDTO,

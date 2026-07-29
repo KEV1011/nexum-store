@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useCallback, useRef } from 'react'
 import { BarcodeScanner } from './BarcodeScanner'
+import { CsvImport } from './CsvImport'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -878,6 +879,14 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           </button>
           <p className="text-xs text-slate-400 text-center">La foto se agrega después, tocando la imagen del producto.</p>
         </form>
+
+        {/* Carga masiva: un supermercado no teclea 3.000 referencias una por una.
+            Va junto al inventario porque es el mismo tipo de negocio. */}
+        {conInventario ? (
+          <div className="mt-4">
+            <CsvImport token={token} onImported={() => void load()} />
+          </div>
+        ) : null}
 
         {/* Lista */}
         {loading ? (

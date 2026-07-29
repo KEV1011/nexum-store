@@ -1,9 +1,12 @@
 import { Router, Request, Response } from 'express';
+import { csvTemplate, parseProductCsv } from '../lib/product-csv';
 import {
   getBusinessService,
   getManagedProductsForBusiness,
   createBusinessProduct,
   findProductByBarcode,
+  getBarcodeIndexForBusiness,
+  applyProductImport,
   updateBusinessProduct,
   deleteBusinessProduct,
   updateBusinessCover,
@@ -336,6 +339,72 @@ router.get('/:token/products', async (req: Request, res: Response): Promise<void
     res.status(200).json({ success: true, data: products });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo cargar el catálogo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// ── Carga masiva por CSV ─────────────────────────────────────────────────────
+
+// GET /business/:token/products/csv-template — plantilla con la fila de ejemplo.
+router.get('/:token/products/csv-template', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    await getBusinessService().getBusinessByToken(token);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-productos.csv"');
+    // BOM para que Excel en Windows respete las tildes.
+    res.status(200).send('\uFEFF' + csvTemplate());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo generar la plantilla';
+    res.status(404).json({ success: false, error: message });
+  }
+});
+
+// POST /business/:token/products/csv-preview { csv } — dice QUÉ pasaría, sin
+// tocar nada. Un archivo con la columna de precio corrida destrozaría el
+// catálogo entero: esta pantalla es lo único que lo impide.
+router.post('/:token/products/csv-preview', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { csv } = req.body as { csv?: string };
+  if (typeof csv !== 'string' || !csv.trim()) {
+    res.status(400).json({ success: false, error: 'Envía el contenido del archivo CSV.' });
+    return;
+  }
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const indice = await getBarcodeIndexForBusiness(business.id);
+    res.status(200).json({ success: true, data: parseProductCsv(csv, indice) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo leer el archivo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// POST /business/:token/products/csv-import — aplica lo que el dueño confirmó.
+// Se vuelve a interpretar el CSV en el servidor en vez de confiar en la lista
+// que manda el navegador: así lo aplicado es exactamente lo que se validó.
+router.post('/:token/products/csv-import', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { csv } = req.body as { csv?: string };
+  if (typeof csv !== 'string' || !csv.trim()) {
+    res.status(400).json({ success: false, error: 'Envía el contenido del archivo CSV.' });
+    return;
+  }
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const indice = await getBarcodeIndexForBusiness(business.id);
+    const preview = parseProductCsv(csv, indice);
+    const resultado = await applyProductImport(
+      business.id,
+      preview.nuevos,
+      preview.actualizaciones,
+    );
+    res.status(200).json({
+      success: true,
+      data: { ...resultado, omitidos: preview.errores.length },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo importar el catálogo';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });
