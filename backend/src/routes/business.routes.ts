@@ -3,6 +3,7 @@ import {
   getBusinessService,
   getManagedProductsForBusiness,
   createBusinessProduct,
+  findProductByBarcode,
   updateBusinessProduct,
   deleteBusinessProduct,
   updateBusinessCover,
@@ -335,6 +336,23 @@ router.get('/:token/products', async (req: Request, res: Response): Promise<void
     res.status(200).json({ success: true, data: products });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo cargar el catálogo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// GET /business/:token/products/barcode/:code — el escáner pregunta si el
+// negocio YA tiene ese producto. Si existe se abre su ficha para ajustar precio
+// o sumar existencias (el caso frecuente al reponer); si no, se crea uno nuevo
+// con el código ya rellenado.
+router.get('/:token/products/barcode/:code', async (req: Request, res: Response): Promise<void> => {
+  const { token, code } = req.params as { token: string; code: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const product = await findProductByBarcode(business.id, code);
+    // 200 con data:null — "no lo tienes" es una respuesta válida, no un error.
+    res.status(200).json({ success: true, data: product });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo buscar el producto';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });

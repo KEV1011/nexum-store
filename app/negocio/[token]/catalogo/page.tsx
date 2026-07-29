@@ -1,6 +1,7 @@
 'use client'
 
 import { use, useState, useEffect, useCallback, useRef } from 'react'
+import { BarcodeScanner } from './BarcodeScanner'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -605,6 +606,42 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   // Categoría del negocio: decide qué campos se muestran.
   const [bizCategory, setBizCategory] = useState<string | undefined>(undefined)
   const conInventario = manejaInventario(bizCategory)
+  const [escaneando, setEscaneando] = useState(false)
+  const [avisoEscaner, setAvisoEscaner] = useState<string | null>(null)
+
+  /**
+   * Un código leído. Si el negocio YA tiene ese producto se sube su ficha al
+   * formulario para ajustar precio o sumar existencias — reponer es el caso
+   * frecuente en un supermercado, no dar de alta. Si no lo tiene, se rellena el
+   * código y queda listo para crearlo.
+   */
+  const onCodigoLeido = useCallback(async (code: string) => {
+    setBarcode(code)
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/business/${token}/products/barcode/${encodeURIComponent(code)}`,
+        { cache: 'no-store' },
+      )
+      const json = (await res.json()) as { success: boolean; data?: Product | null }
+      const existente = json.success ? json.data : null
+      if (existente) {
+        // Reponer: se trae lo que ya estaba para no volver a teclearlo.
+        setName(existente.name)
+        setPrice(String(existente.price))
+        setCategory(existente.category)
+        setBrand(existente.brand ?? '')
+        setUnit(existente.unit ?? UNIDADES[0])
+        setStock(existente.stock !== undefined ? String(existente.stock) : '')
+        setAvisoEscaner(
+          `Ya tienes "${existente.name}". Ajusta el precio o las existencias y guarda para actualizarlo.`,
+        )
+      } else {
+        setAvisoEscaner('Producto nuevo: completa el nombre y el precio.')
+      }
+    } catch {
+      setAvisoEscaner('Código capturado. No se pudo consultar el catálogo, complétalo a mano.')
+    }
+  }, [token])
   const [creating, setCreating] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -793,6 +830,22 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             </div>
           ) : null}
 
+          {/* Escáner: solo donde hay código de barras (supermercado/farmacia). */}
+          {conInventario ? (
+            <button
+              type="button"
+              onClick={() => { setAvisoEscaner(null); setEscaneando(true) }}
+              className="w-full rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 px-4 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+            >
+              Escanear código de barras
+            </button>
+          ) : null}
+          {avisoEscaner ? (
+            <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              {avisoEscaner}
+            </p>
+          ) : null}
+
           {formError ? (
             <p className="text-sm text-red-600">{formError}</p>
           ) : null}
@@ -856,6 +909,15 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       <datalist id="cat-list">
         {allCategories.map((c) => <option key={c} value={c} />)}
       </datalist>
+
+      {/* Escáner a pantalla completa. Queda abierto entre lecturas para poder
+          cargar varios productos seguidos. */}
+      {escaneando ? (
+        <BarcodeScanner
+          onDetected={(code) => { void onCodigoLeido(code) }}
+          onClose={() => setEscaneando(false)}
+        />
+      ) : null}
     </div>
   )
 }
