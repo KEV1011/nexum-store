@@ -494,6 +494,14 @@ export interface ProductDTO {
   images: ProductPhotoDTO[];
   // Variantes/opciones del producto (tamaños, adiciones, quitar). Vacío si no.
   optionGroups: OptionGroupDTO[];
+  // ── Inventario (supermercados y farmacias) ──────────────────────────────
+  // Ausentes en un restaurante, que no lleva control de existencias.
+  barcode?: string;
+  sku?: string;
+  /** undefined = el negocio no controla inventario de este producto. */
+  stock?: number;
+  unit?: string;
+  brand?: string;
 }
 
 // Payload para reemplazar TODAS las opciones de un producto de una vez (el
