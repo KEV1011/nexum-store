@@ -158,6 +158,7 @@ class ErrandEntity {
     this.messengerRating,
     this.actualPurchaseCost,
     this.rating,
+    this.deliveryPin,
   });
 
   final String id;
@@ -184,6 +185,12 @@ class ErrandEntity {
   /// Calificación que el cliente le dio al mensajero (1-5), o null si no ha
   /// calificado todavía.
   final int? rating;
+
+  /// PIN de 4 dígitos que el cliente dicta al mandadero para recibir el
+  /// encargo. En los mandados la custodia se prueba SOLO en la entrega: se
+  /// recoge en establecimientos que no están registrados en la plataforma y no
+  /// tendrían forma de dar un PIN.
+  final String? deliveryPin;
 
   bool get hasMessenger => messengerName != null;
   bool get isActive => status.isActive;
@@ -212,6 +219,7 @@ class ErrandEntity {
     double? messengerRating,
     double? actualPurchaseCost,
     int? rating,
+    String? deliveryPin,
   }) =>
       ErrandEntity(
         id: id ?? this.id,
@@ -229,5 +237,6 @@ class ErrandEntity {
         messengerRating: messengerRating ?? this.messengerRating,
         actualPurchaseCost: actualPurchaseCost ?? this.actualPurchaseCost,
         rating: rating ?? this.rating,
+        deliveryPin: deliveryPin ?? this.deliveryPin,
       );
 }

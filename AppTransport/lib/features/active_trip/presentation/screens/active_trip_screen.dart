@@ -872,10 +872,12 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
     if (!mounted || proof == null) return;
 
-    // Cadena de custodia: quien entrega el paquete dicta un PIN de 4 dígitos.
-    // Se pide ANTES de avanzar el estado local: si el conductor cancela, no
-    // cambia nada. Solo aplica a pedidos y mandados (un pasajero no lleva PIN).
-    final necesitaPin = trip.request.isOrder || workMode.isErrand;
+    // Cadena de custodia al RECOGER: solo en pedidos, donde el negocio está
+    // registrado y ve su PIN en el portal. En un mandado se recoge en un
+    // establecimiento cualquiera (farmacia, tienda) que no tiene forma de dar
+    // un PIN — allí la custodia se prueba en la entrega. Se pide ANTES de
+    // avanzar el estado local: si el conductor cancela, no cambia nada.
+    final necesitaPin = trip.request.isOrder;
     String? pin;
     if (necesitaPin) {
       pin = await showCustodyPinDialog(context, phase: CustodyPinPhase.pickup);
