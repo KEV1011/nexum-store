@@ -69,6 +69,7 @@ import { getBusinessService } from '../services/business.service';
 import {
   updateDriverGeo,
   registerSendToDriver,
+  registerNotifyBusinessNoDriver,
   registerNotifyTripUpdate,
   registerOnNoDrivers,
   onDriverAccept,
@@ -1300,6 +1301,13 @@ export function setupWebSocket(wss: WebSocketServer): void {
         sendTo(sock, { type: 'freight_new', freight });
       }
     }
+  });
+  // Sin repartidor tras insistir: el negocio tiene la comida hecha y es quien
+  // debe decidir si la lleva él o cancela. Callarse era lo que lo dejaba
+  // esperando indefinidamente.
+  registerNotifyBusinessNoDriver((businessId, orderId, orderRef) => {
+    const sock = businessSockets.get(businessId);
+    if (sock) sendTo(sock, { type: 'order_no_driver', orderId, orderRef });
   });
   registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   // Kill-switch documental: aviso en vivo al conductor bloqueado/reactivado.

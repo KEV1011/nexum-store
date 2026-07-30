@@ -61,6 +61,47 @@ const SEARCH_RADIUS_M = 5_000;   // 5 km initial radius
 const MAX_CANDIDATES = 5;         // try up to 5 drivers before giving up
 const GEO_FRESHNESS_S = 120;      // ignore drivers last seen > 2 min ago
 
+// ─── Reintento de búsqueda ───────────────────────────────────────────────────
+//
+// Pedidos, mandados e intermunicipales buscaban conductor UNA sola vez: si en
+// ese instante no había nadie conectado a menos de 5 km, el servicio quedaba
+// esperando para siempre y nadie se enteraba (solo quedaba un console.log).
+// Aunque un repartidor se conectara medio minuto después, nunca se le ofrecía.
+//
+// Un restaurante tarda ~20 min en cocinar, así que hay tiempo de sobra para
+// insistir. El viaje urbano NO reintenta a propósito: el pasajero está parado
+// en la calle esperando y prefiere saber ya que no hay carro.
+const RETRY_DELAY_MS = 30_000;
+const MAX_SEARCH_RETRIES = 20; // 20 × 30 s = 10 minutos insistiendo
+
+const searchRetries = new Map<string, NodeJS.Timeout>();
+
+/**
+ * Reintenta la búsqueda más tarde. Devuelve false cuando ya se agotaron los
+ * intentos, para que quien llama avise a las partes en vez de callar.
+ */
+export function scheduleSearchRetry(key: string, attempt: number, run: () => void): boolean {
+  if (attempt >= MAX_SEARCH_RETRIES) return false;
+  cancelSearchRetry(key);
+  const timer = setTimeout(() => {
+    searchRetries.delete(key);
+    run();
+  }, RETRY_DELAY_MS);
+  // No debe impedir que el proceso termine (tests, apagado del servidor).
+  timer.unref?.();
+  searchRetries.set(key, timer);
+  return true;
+}
+
+/** Corta la insistencia: alguien aceptó, o el servicio se canceló. */
+export function cancelSearchRetry(key: string): void {
+  const t = searchRetries.get(key);
+  if (t) {
+    clearTimeout(t);
+    searchRetries.delete(key);
+  }
+}
+
 type NearbyDriver = { driverId: string; distanceMeters: number };
 
 interface OfferState {
@@ -418,6 +459,9 @@ interface ErrandOfferState {
   candidateIndex: number;
   currentDriverId: string;
   timeout: NodeJS.Timeout;
+  // Contexto para seguir insistiendo si todos los cercanos dejan pasar la
+  // oferta: sin esto, agotar los candidatos volvía a ser un callejón sin salida.
+  retry?: { pickupLat: number; pickupLng: number; attempt: number };
 }
 
 const activeErrandOffers = new Map<string, ErrandOfferState>();
@@ -431,7 +475,15 @@ export async function startErrandMatchingCycle(
   errandId: string,
   pickupLat: number,
   pickupLng: number,
+  attempt = 0,
 ): Promise<void> {
+  // Pudo aceptarse o cancelarse entre reintentos.
+  const estado = await getErrandOfferInfo(errandId);
+  if (!estado || estado.status !== 'searching') {
+    cancelSearchRetry(`errand:${errandId}`);
+    return;
+  }
+
   const candidates = await findNearestAvailableDrivers(
     pickupLat,
     pickupLng,
@@ -441,19 +493,53 @@ export async function startErrandMatchingCycle(
     'errand',
   );
   if (candidates.length === 0) {
-    console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for errand ${errandId}`);
+    console.log(
+      `[Matching] No drivers available within ${SEARCH_RADIUS_M}m for errand ${errandId} ` +
+        `(intento ${attempt + 1}/${MAX_SEARCH_RETRIES})`,
+    );
+    _retryOrSurrenderErrand(errandId, pickupLat, pickupLng, attempt);
     return;
   }
-  await _offerErrandToCandidate(errandId, candidates, 0);
+  await _offerErrandToCandidate(errandId, candidates, 0, { pickupLat, pickupLng, attempt });
+}
+
+/** Insiste con el mandado y, agotados los intentos, se lo dice al cliente. */
+function _retryOrSurrenderErrand(
+  errandId: string,
+  pickupLat: number,
+  pickupLng: number,
+  attempt: number,
+): void {
+  const sigue = scheduleSearchRetry(`errand:${errandId}`, attempt, () => {
+    void startErrandMatchingCycle(errandId, pickupLat, pickupLng, attempt + 1);
+  });
+  if (!sigue) void _notifyErrandNoDriver(errandId);
+}
+
+async function _notifyErrandNoDriver(errandId: string): Promise<void> {
+  console.log(`[Matching] Sin conductor para el mandado ${errandId} tras agotar los reintentos`);
+  const e = await prisma.errand.findUnique({
+    where: { id: errandId },
+    select: { userId: true, driverId: true, requestRef: true },
+  });
+  if (!e || e.driverId != null || !e.userId) return;
+  void sendPushToClient(e.userId, {
+    title: 'No encontramos quien haga tu mandado',
+    body: `Nadie disponible por ahora para ${e.requestRef}. Puedes cancelarlo o intentar más tarde.`,
+    data: { type: 'errand_no_driver', errandId },
+  });
 }
 
 async function _offerErrandToCandidate(
   errandId: string,
   candidates: NearbyDriver[],
   index: number,
+  retry?: { pickupLat: number; pickupLng: number; attempt: number },
 ): Promise<void> {
   if (index >= candidates.length) {
     console.log(`[Matching] All ${candidates.length} candidates exhausted for errand ${errandId}`);
+    // Puede que en 30 s haya otro conductor conectado.
+    if (retry) _retryOrSurrenderErrand(errandId, retry.pickupLat, retry.pickupLng, retry.attempt);
     return;
   }
 
@@ -473,6 +559,7 @@ async function _offerErrandToCandidate(
     candidateIndex: index,
     currentDriverId: candidate.driverId,
     timeout,
+    retry,
   });
 
   _sendToDriver?.(candidate.driverId, { type: 'errand_request', errand: info.dto });
@@ -502,7 +589,7 @@ export async function onErrandDeclineOrTimeout(
   if (driverId && state.currentDriverId !== driverId) return;
   clearTimeout(state.timeout);
   activeErrandOffers.delete(errandId);
-  await _offerErrandToCandidate(errandId, state.candidates, state.candidateIndex + 1);
+  await _offerErrandToCandidate(errandId, state.candidates, state.candidateIndex + 1, state.retry);
 }
 
 /**
@@ -516,6 +603,7 @@ export function onErrandAccept(errandId: string, driverId: string): boolean {
   if (!state || state.currentDriverId !== driverId) return false;
   clearTimeout(state.timeout);
   activeErrandOffers.delete(errandId);
+  cancelSearchRetry(`errand:${errandId}`);
   return true;
 }
 
@@ -533,6 +621,8 @@ interface OrderOfferState {
   candidateIndex: number;
   currentDriverId: string;
   timeout: NodeJS.Timeout;
+  /** Intento de búsqueda en curso, para no reiniciar la cuenta al declinar. */
+  attempt: number;
 }
 
 const activeOrderOffers = new Map<string, OrderOfferState>();
@@ -542,9 +632,16 @@ const activeOrderOffers = new Map<string, OrderOfferState>();
  * Fire-and-forget. El matching se ancla a las coordenadas del negocio (donde
  * el repartidor debe recoger); sin coords, al centro de Pamplona.
  */
-export async function startOrderMatchingCycle(orderId: string): Promise<void> {
+export async function startOrderMatchingCycle(orderId: string, attempt = 0): Promise<void> {
   const info = await getOrderOfferInfo(orderId);
   if (!info) return;
+  // El pedido pudo cancelarse o conseguir repartidor entre reintento y
+  // reintento: no hay nada que buscar.
+  if (info.status !== 'PREPARING' || info.hasDriver) {
+    cancelSearchRetry(`order:${orderId}`);
+    return;
+  }
+
   const candidates = await findNearestAvailableDrivers(
     info.lat,
     info.lng,
@@ -554,19 +651,67 @@ export async function startOrderMatchingCycle(orderId: string): Promise<void> {
     'order',
   );
   if (candidates.length === 0) {
-    console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for order ${orderId}`);
+    console.log(
+      `[Matching] No drivers available within ${SEARCH_RADIUS_M}m for order ${orderId} ` +
+        `(intento ${attempt + 1}/${MAX_SEARCH_RETRIES})`,
+    );
+    _retryOrSurrenderOrder(orderId, attempt);
     return;
   }
-  await _offerOrderToCandidate(orderId, candidates, 0);
+  await _offerOrderToCandidate(orderId, candidates, 0, attempt);
+}
+
+/**
+ * Insiste, y cuando ya no queda nada por intentar lo dice. Callarse es lo que
+ * dejaba al restaurante con la comida hecha y sin repartidor, sin saberlo.
+ */
+function _retryOrSurrenderOrder(orderId: string, attempt: number): void {
+  const sigue = scheduleSearchRetry(`order:${orderId}`, attempt, () => {
+    void startOrderMatchingCycle(orderId, attempt + 1);
+  });
+  if (!sigue) void _notifyOrderNoDriver(orderId);
+}
+
+/** Avisa al cliente y al negocio que no apareció repartidor. */
+async function _notifyOrderNoDriver(orderId: string): Promise<void> {
+  console.log(`[Matching] Sin repartidor para el pedido ${orderId} tras agotar los reintentos`);
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { userId: true, orderRef: true, status: true, driverId: true, businessId: true },
+  });
+  if (!o || o.driverId != null) return;
+  if (o.userId) {
+    void sendPushToClient(o.userId, {
+      title: 'Seguimos buscando repartidor',
+      body: `No hemos encontrado un repartidor para tu pedido ${o.orderRef}. El negocio puede entregarlo o cancelarlo.`,
+      data: { type: 'order_no_driver', orderId },
+    });
+  }
+  // El negocio es quien tiene la comida en la mano: es el que debe decidir.
+  _notifyBusinessNoDriver?.(o.businessId, orderId, o.orderRef);
+}
+
+let _notifyBusinessNoDriver:
+  | ((businessId: string, orderId: string, orderRef: string) => void)
+  | null = null;
+
+/** Inyectada por ws.handler (los servicios no importan sockets). */
+export function registerNotifyBusinessNoDriver(
+  fn: (businessId: string, orderId: string, orderRef: string) => void,
+): void {
+  _notifyBusinessNoDriver = fn;
 }
 
 async function _offerOrderToCandidate(
   orderId: string,
   candidates: NearbyDriver[],
   index: number,
+  attempt = 0,
 ): Promise<void> {
   if (index >= candidates.length) {
     console.log(`[Matching] All ${candidates.length} candidates exhausted for order ${orderId}`);
+    // Ninguno de los cercanos contestó: puede que en 30 s haya otro conectado.
+    _retryOrSurrenderOrder(orderId, attempt);
     return;
   }
 
@@ -587,6 +732,7 @@ async function _offerOrderToCandidate(
     candidateIndex: index,
     currentDriverId: candidate.driverId,
     timeout,
+    attempt,
   });
 
   _sendToDriver?.(candidate.driverId, { type: 'order_request', order: info.dto });
@@ -611,7 +757,7 @@ export async function onOrderDeclineOrTimeout(
   if (driverId && state.currentDriverId !== driverId) return;
   clearTimeout(state.timeout);
   activeOrderOffers.delete(orderId);
-  await _offerOrderToCandidate(orderId, state.candidates, state.candidateIndex + 1);
+  await _offerOrderToCandidate(orderId, state.candidates, state.candidateIndex + 1, state.attempt);
 }
 
 /**
@@ -623,5 +769,6 @@ export function onOrderAccept(orderId: string, driverId: string): boolean {
   if (!state || state.currentDriverId !== driverId) return false;
   clearTimeout(state.timeout);
   activeOrderOffers.delete(orderId);
+  cancelSearchRetry(`order:${orderId}`);
   return true;
 }

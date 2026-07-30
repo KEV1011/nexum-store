@@ -441,6 +441,8 @@ export default function PortalDashboard({
   // Pedidos que todavía esperan una decisión del negocio. Mientras haya alguno
   // el título de la pestaña parpadea: el aviso no se pierde aunque el dueño se
   // haya alejado del computador justo cuando sonó.
+  // Pedido que se quedó sin repartidor tras los reintentos del backend.
+  const [sinRepartidor, setSinRepartidor] = useState<string | null>(null)
   const pendientesCount = clientOrders.filter((o) => o.status === 'pending').length
   const { avisarPedido, sonidoBloqueado, activarSonido } = useOrderAlert(pendientesCount)
 
@@ -512,6 +514,14 @@ export default function PortalDashboard({
             avisarPedido(
               '¡Pedido nuevo!',
               `${order.items?.length ?? 0} producto(s) · ${formatCOP(order.total)}`,
+            )
+          } else if (msg['type'] === 'order_no_driver') {
+            // El backend insistió 10 minutos y no apareció repartidor. El
+            // negocio tiene la comida hecha: es quien debe decidir.
+            setSinRepartidor(String(msg['orderRef'] ?? ''))
+            avisarPedido(
+              'Sin repartidor',
+              `No encontramos repartidor para el pedido ${String(msg['orderRef'] ?? '')}.`,
             )
           } else if (msg['type'] === 'business_auth_error') {
             ws.close()
@@ -669,6 +679,29 @@ export default function PortalDashboard({
               </span>
             </span>
           </button>
+        )}
+
+        {sinRepartidor && (
+          <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+            <span className="w-9 h-9 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0">
+              <AlertCircle className="w-4.5 h-4.5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-rose-900 text-sm">
+                Sin repartidor para el pedido {sinRepartidor}
+              </p>
+              <p className="text-xs text-rose-800/80">
+                Estuvimos buscando 10 minutos y no apareció ninguno cerca. Puedes
+                llevarlo tú o cancelarlo desde el pedido.
+              </p>
+            </div>
+            <button
+              onClick={() => setSinRepartidor(null)}
+              className="shrink-0 text-xs font-semibold text-rose-700 hover:text-rose-900"
+            >
+              Entendido
+            </button>
+          </div>
         )}
 
         {/* Stats */}

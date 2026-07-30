@@ -22,6 +22,7 @@ import {
   COMMISSION_RATE,
 } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
+import { scheduleSearchRetry, cancelSearchRetry } from './matching.service';
 
 export class IntercityError extends Error {
   constructor(message: string) {
@@ -289,9 +290,12 @@ async function _findIntercityDrivers(
 }
 
 /** Arranca (o reinicia) el ciclo de oferta a conductores reales. */
-export async function startIntercityMatching(bookingId: string): Promise<void> {
+export async function startIntercityMatching(bookingId: string, attempt = 0): Promise<void> {
   const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
-  if (!b || b.status !== 'SEARCHING') return;
+  if (!b || b.status !== 'SEARCHING') {
+    cancelSearchRetry(`intercity:${bookingId}`);
+    return;
+  }
 
   const origin = (CITY_FROM_PRISMA[b.origin] ?? 'pamplona') as IntercityCity;
   const dest = (CITY_FROM_PRISMA[b.destination] ?? 'cucuta') as IntercityCity;
@@ -301,19 +305,52 @@ export async function startIntercityMatching(bookingId: string): Promise<void> {
   const candidates = await _findIntercityDrivers(origin, dest, declined, requireLicensed);
   if (candidates.length === 0) {
     // Sin datos personales en logs: solo ids técnicos.
-    console.log(`[Intercity] No drivers available for booking ${bookingId}`);
+    console.log(
+      `[Intercity] No drivers available for booking ${bookingId} (intento ${attempt + 1})`,
+    );
+    _retryOrSurrenderIntercity(bookingId, attempt);
     return;
   }
-  await _offerIntercityTo(bookingId, candidates, 0);
+  await _offerIntercityTo(bookingId, candidates, 0, attempt);
+}
+
+/**
+ * Un intermunicipal se reserva con antelación: insistir tiene todo el sentido,
+ * porque el conductor que hace la ruta puede conectarse minutos después. Antes
+ * se buscaba una sola vez y la reserva quedaba en SEARCHING para siempre, sin
+ * que el pasajero lo supiera.
+ */
+function _retryOrSurrenderIntercity(bookingId: string, attempt: number): void {
+  const sigue = scheduleSearchRetry(`intercity:${bookingId}`, attempt, () => {
+    void startIntercityMatching(bookingId, attempt + 1);
+  });
+  if (!sigue) void _notifyIntercityNoDriver(bookingId);
+}
+
+async function _notifyIntercityNoDriver(bookingId: string): Promise<void> {
+  console.log(`[Intercity] Sin conductor para la reserva ${bookingId} tras agotar los reintentos`);
+  const b = await prisma.intercityBooking.findUnique({
+    where: { id: bookingId },
+    select: { userId: true, status: true, driverId: true },
+  });
+  if (!b || b.status !== 'SEARCHING' || b.driverId != null || !b.userId) return;
+  void sendPushToClient(b.userId, {
+    title: 'Sin conductor por ahora',
+    body: 'No encontramos conductor para tu viaje intermunicipal. Mira las salidas programadas o inténtalo más tarde.',
+    data: { type: 'intercity_no_driver', bookingId },
+  });
 }
 
 async function _offerIntercityTo(
   bookingId: string,
   candidates: string[],
   index: number,
+  attempt = 0,
 ): Promise<void> {
   if (index >= candidates.length) {
     console.log(`[Intercity] All ${candidates.length} candidates exhausted for booking ${bookingId}`);
+    // Los de la ruta no contestaron: puede que otro se conecte en un minuto.
+    _retryOrSurrenderIntercity(bookingId, attempt);
     return;
   }
   const driverId = candidates[index]!;
@@ -377,6 +414,8 @@ export async function driverAcceptIntercity(
   bookingId: string,
   counterFare?: number,
 ): Promise<IntercityBookingDTO | null> {
+  // El conductor apareció (o el pasajero desistió): deja de insistir.
+  cancelSearchRetry(`intercity:${bookingId}`);
   const state = intercityOffers.get(bookingId);
   if (!state || state.currentDriverId !== driverId) return null;
   clearTimeout(state.timeout);
@@ -651,6 +690,8 @@ export async function rejectIntercityOffer(clientId: string, bookingId: string):
 }
 
 export async function cancelIntercityBooking(clientId: string, bookingId: string): Promise<boolean> {
+  // El conductor apareció (o el pasajero desistió): deja de insistir.
+  cancelSearchRetry(`intercity:${bookingId}`);
   const b = await prisma.intercityBooking.findUnique({ where: { id: bookingId } });
   if (!b || b.userId !== clientId) return false;
   if (!['SEARCHING', 'DRIVER_FOUND', 'CONFIRMED'].includes(b.status)) return false;
