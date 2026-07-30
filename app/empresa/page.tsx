@@ -6,6 +6,7 @@ import Link from 'next/link'
 import {
   Building2, Car, RefreshCw, LogOut, MapPin, ShieldCheck, ShieldAlert, Loader2,
   Route, Wallet, Download, LayoutDashboard, UserCog, TrendingUp, Truck, Bus, Trophy,
+  FileText,
 } from 'lucide-react'
 import { createOperatorApi } from './api'
 import FleetMap, { type FleetMapPoint } from './FleetMap'
@@ -17,6 +18,7 @@ import FreightManager from './FreightManager'
 import FinancePanel from './FinancePanel'
 import AnalyticsPanel from './AnalyticsPanel'
 import VehiclesManager from './VehiclesManager'
+import DocumentsManager from './DocumentsManager'
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ??
@@ -366,6 +368,7 @@ function Dashboard({ token, operator, onLogout }: {
   const nav = [
     { key: 'torre', label: 'Torre de control', icon: LayoutDashboard, show: true },
     { key: 'equipo', label: 'Equipo y vehículos', icon: UserCog, show: true },
+    { key: 'documentos', label: 'Habilitación', icon: FileText, show: true },
     { key: 'viajes', label: 'Viajes y liquidación', icon: Route, show: true },
     { key: 'rendimiento', label: 'Rendimiento', icon: Trophy, show: true },
     { key: 'finanzas', label: 'Finanzas', icon: TrendingUp, show: true },
@@ -517,6 +520,14 @@ function Dashboard({ token, operator, onLogout }: {
               <h1 className="font-bold text-slate-900 text-lg">Equipo y vehículos</h1>
               <DriversManager api={api} onChanged={() => { setTeamVersion((v) => v + 1); void load() }} />
               <VehiclesManager api={api} token={token} refreshKey={teamVersion} />
+            </>
+          )}
+
+          {/* ══ HABILITACIÓN (documentos legales) ══ */}
+          {section === 'documentos' && (
+            <>
+              <h1 className="font-bold text-slate-900 text-lg">Habilitación</h1>
+              <DocumentsManager api={api} token={token} />
             </>
           )}
 

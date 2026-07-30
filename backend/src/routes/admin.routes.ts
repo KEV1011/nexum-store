@@ -34,6 +34,8 @@ import {
   listClientsForKyc,
   listBusinessesForAdmin,
   setBusinessActive,
+  listOperatorDocumentsForAdmin,
+  reviewOperatorDocument,
 } from '../services/admin.service';
 import { setClientKycStatus, ClientKycError } from '../services/client-kyc.service';
 import { OperatorStatus } from '@prisma/client';
@@ -113,7 +115,7 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/alerts', '/takedowns', '/promos', '/payouts', '/operators', '/businesses', '/routes', '/matching', '/support'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/alerts', '/takedowns', '/promos', '/payouts', '/operators', '/operator-documents', '/businesses', '/routes', '/matching', '/support'], requireAdmin);
 
 // GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
 // por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.
@@ -393,6 +395,33 @@ router.post('/operators/:id/verify', async (req: Request, res: Response): Promis
 router.post('/operators/:id/suspend', async (req: Request, res: Response): Promise<void> => {
   const ok = await setOperatorStatus(req.params['id']!, 'SUSPENDED');
   if (!ok) { res.status(404).json({ success: false, error: 'Empresa no encontrada' }); return; }
+  res.json({ success: true });
+});
+
+// GET /admin/operators/:id/documents — habilitación, RUT, cámara de comercio…
+router.get('/operators/:id/documents', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listOperatorDocumentsForAdmin(req.params['id']!) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /admin/operator-documents/:docId/:action (approve|reject)
+router.post('/operator-documents/:docId/:action', async (req: Request, res: Response): Promise<void> => {
+  const action = req.params['action'];
+  if (action !== 'approve' && action !== 'reject') {
+    res.status(400).json({ success: false, error: 'Acción inválida' });
+    return;
+  }
+  const { reason } = (req.body ?? {}) as { reason?: string };
+  const ok = await reviewOperatorDocument(
+    req.params['docId']!,
+    action === 'approve',
+    reason,
+    req.adminPhone,
+  );
+  if (!ok) { res.status(404).json({ success: false, error: 'Documento no encontrado' }); return; }
   res.json({ success: true });
 });
 
@@ -720,8 +749,20 @@ const PANEL_HTML = `<!DOCTYPE html>
           <option value="SUSPENDED">Suspendidas</option>
         </select>
       </div>
-      <table><thead><tr><th>Empresa</th><th>Tipo</th><th>Ciudad</th><th>Veh/Cond</th><th>Docs pend.</th><th>Estado</th><th>Creada</th><th>Acciones</th></tr></thead>
+      <table><thead><tr><th>Empresa</th><th>Tipo</th><th>Ciudad</th><th>Veh/Cond</th><th>Habilitación</th><th>Estado</th><th>Creada</th><th>Acciones</th></tr></thead>
       <tbody id="operators-body"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table>
+      <div id="opdocs-panel" style="display:none;margin-top:18px;padding:16px;background:#fafafe;border:1px solid #e4e4ef;border-radius:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <strong id="opdocs-title" style="color:#00695c">Documentos de la empresa</strong>
+          <button class="btn-sm" style="background:#eee;color:#555" onclick="document.getElementById('opdocs-panel').style.display='none'">Cerrar</button>
+        </div>
+        <p style="font-size:.78rem;color:#64748b;margin-bottom:10px">
+          La habilitación del Ministerio de Transporte es lo que legalmente sostiene el
+          intermunicipal. Ábrela, compruébala y solo entonces verifica la empresa.
+        </p>
+        <table><thead><tr><th>Documento</th><th>Archivo</th><th>Vence</th><th>Estado</th><th>Subido</th><th>Acciones</th></tr></thead>
+        <tbody id="opdocs-body"></tbody></table>
+      </div>
       <div id="routes-panel" style="display:none;margin-top:18px;padding:16px;background:#fafafe;border:1px solid #e4e4ef;border-radius:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <strong id="routes-title" style="color:#3949ab">Rutas troncales</strong>
@@ -1075,9 +1116,14 @@ function loadOperators() {
     const tb = document.getElementById('operators-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Sin empresas registradas.</td></tr>'; return; }
     tb.innerHTML = rows.map((o) => '<tr><td><strong>' + esc(o.legalName) + '</strong><div style="font-size:.72rem;color:#777">NIT ' + esc(o.nit) + '</div></td><td>' + esc(o.type) +
-      '</td><td>' + esc(o.city || '—') + '</td><td>' + o.vehicles + ' / ' + o.drivers + '</td><td>' + (o.pendingDocs || 0) +
+      '</td><td>' + esc(o.city || '—') + '</td><td>' + o.vehicles + ' / ' + o.drivers + '</td><td>' +
+      (o.habilitacionOk
+        ? '<span class="badge badge-ok">Aprobada</span>'
+        : '<span class="badge badge-REJECTED">Sin habilitación</span>') +
+      (o.pendingDocs ? ' <span class="badge badge-PENDING">' + o.pendingDocs + ' por revisar</span>' : '') +
       '</td><td><span class="badge badge-' + (o.status === 'ACTIVE' ? 'ok' : o.status === 'SUSPENDED' ? 'REJECTED' : 'PENDING') + '">' + o.status + '</span></td><td>' + when(o.createdAt) + '</td><td>' +
-      (o.status !== 'ACTIVE' ? '<button class="btn-sm btn-approve" onclick="setOperator(\\'' + o.id + '\\', \\'verify\\')">Verificar</button>' : '') +
+      '<button class="btn-sm" style="background:#e0f2f1;color:#00695c" onclick="loadOperatorDocs(\\'' + o.id + '\\', \\'' + encodeURIComponent(o.legalName).replace(/'/g, '%27') + '\\')">Docs</button> ' +
+      (o.status !== 'ACTIVE' ? '<button class="btn-sm btn-approve" onclick="setOperator(\\'' + o.id + '\\', \\'verify\\', ' + (o.habilitacionOk ? 'true' : 'false') + ')">Verificar</button>' : '') +
       (o.status !== 'SUSPENDED' ? '<button class="btn-sm btn-reject" onclick="setOperator(\\'' + o.id + '\\', \\'suspend\\')">Suspender</button>' : '') +
       (o.type !== 'TAXI' ? '<button class="btn-sm" style="background:#e8eaf6;color:#3949ab" onclick="loadRoutes(\\'' + o.id + '\\', \\'' + encodeURIComponent(o.legalName).replace(/'/g, '%27') + '\\')">Rutas</button>' : '') +
       '</td></tr>').join('');
@@ -1114,7 +1160,66 @@ function setRoute(rid, action) {
     .catch((e) => showMsg(e.message, true));
 }
 
-function setOperator(id, action) {
+var OPDOC_LABEL = {
+  HABILITACION: 'Habilitación (Mintransporte)', RUT: 'RUT',
+  CAMARA_COMERCIO: 'Cámara de comercio', INSURANCE: 'Póliza / seguro', OTHER: 'Otro',
+};
+
+function loadOperatorDocs(id, encName) {
+  const panel = document.getElementById('opdocs-panel');
+  panel.style.display = 'block';
+  panel.dataset.op = id;
+  document.getElementById('opdocs-title').textContent = 'Documentos · ' + decodeURIComponent(encName);
+  renderOperatorDocs(id);
+}
+
+function renderOperatorDocs(id) {
+  document.getElementById('opdocs-body').innerHTML = '<tr><td colspan="6" class="empty">Cargando…</td></tr>';
+  api('/admin/operators/' + id + '/documents').then((rows) => {
+    const tb = document.getElementById('opdocs-body');
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="empty">Esta empresa no ha subido ningún documento. Pídeselo antes de verificarla.</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map((d) => '<tr><td><strong>' + esc(OPDOC_LABEL[d.type] || d.type) + '</strong></td>' +
+      '<td><a href="' + esc(d.fileUrl) + '" target="_blank" rel="noopener">Ver archivo</a></td>' +
+      '<td>' + (d.expiresAt ? (d.expired ? '<span class="badge badge-REJECTED">Vencido ' + when(d.expiresAt) + '</span>' : when(d.expiresAt)) : '—') + '</td>' +
+      '<td><span class="badge badge-' + (d.status === 'APPROVED' ? 'ok' : d.status) + '">' + d.status + '</span>' +
+      (d.rejectionReason ? '<div style="font-size:.72rem;color:#c62828">' + esc(d.rejectionReason) + '</div>' : '') + '</td>' +
+      '<td>' + when(d.uploadedAt) + '</td><td>' +
+      (d.status !== 'APPROVED' ? '<button class="btn-sm btn-approve" onclick="reviewOpDoc(\\'' + d.id + '\\', \\'approve\\')">Aprobar</button> ' : '') +
+      (d.status !== 'REJECTED' ? '<button class="btn-sm btn-reject" onclick="reviewOpDoc(\\'' + d.id + '\\', \\'reject\\')">Rechazar</button>' : '') +
+      '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function reviewOpDoc(docId, action) {
+  let reason;
+  if (action === 'reject') {
+    // El motivo llega a la empresa en su portal: sin él, el dueño no sabe qué
+    // corregir y vuelve a subir lo mismo.
+    reason = prompt('¿Por qué se rechaza? La empresa verá este motivo:');
+    if (reason === null) return;
+  }
+  const opId = document.getElementById('opdocs-panel').dataset.op;
+  api('/admin/operator-documents/' + docId + '/' + action, {
+    method: 'POST',
+    body: JSON.stringify({ reason: reason || '' }),
+  }).then(() => {
+    showMsg(action === 'approve' ? 'Documento aprobado.' : 'Documento rechazado.', false);
+    renderOperatorDocs(opId);
+    loadOperators();
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function setOperator(id, action, habilitacionOk) {
+  // Verificar una empresa es habilitarla para despachar intermunicipal. Si no
+  // hay habilitación aprobada, se avisa antes — no se bloquea, porque el admin
+  // pudo haber visto los papeles en físico, pero que sea una decisión y no un
+  // descuido.
+  if (action === 'verify' && habilitacionOk === false) {
+    if (!confirm('Esta empresa NO tiene la habilitación del Mintransporte aprobada en el sistema.\\n\\n¿Verificarla de todos modos?')) return;
+  }
   api('/admin/operators/' + id + '/' + action, { method: 'POST' })
     .then(() => { showMsg(action === 'verify' ? 'Empresa verificada.' : 'Empresa suspendida.', false); loadOperators(); })
     .catch((e) => showMsg(e.message, true));

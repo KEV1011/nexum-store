@@ -368,6 +368,8 @@ export interface AdminOperatorRow {
   vehicles: number;
   drivers: number;
   pendingDocs: number;
+  /** Habilitación aprobada y vigente: lo que legalmente sostiene el intermunicipal. */
+  habilitacionOk: boolean;
   createdAt: string;
 }
 
@@ -378,9 +380,10 @@ export async function listOperatorsForAdmin(status?: OperatorStatus): Promise<Ad
     take: 200,
     include: {
       _count: { select: { vehicles: true, drivers: true } },
-      documents: { where: { status: 'PENDING' }, select: { id: true } },
+      documents: { select: { id: true, type: true, status: true, expiresAt: true } },
     },
   });
+  const ahora = Date.now();
   return ops.map((o) => ({
     id: o.id,
     legalName: o.legalName,
@@ -392,7 +395,13 @@ export async function listOperatorsForAdmin(status?: OperatorStatus): Promise<Ad
     contactPhone: o.contactPhone,
     vehicles: o._count.vehicles,
     drivers: o._count.drivers,
-    pendingDocs: o.documents.length,
+    pendingDocs: o.documents.filter((d) => d.status === 'PENDING').length,
+    habilitacionOk: o.documents.some(
+      (d) =>
+        d.type === 'HABILITACION' &&
+        d.status === 'APPROVED' &&
+        (d.expiresAt == null || d.expiresAt.getTime() > ahora),
+    ),
     createdAt: o.createdAt.toISOString(),
   }));
 }
@@ -498,4 +507,82 @@ export async function listBusinessesForAdmin(query?: string): Promise<AdminBusin
 /** Activa o desactiva la cuenta del negocio (isOpen = gate de acceso al portal). */
 export async function setBusinessActive(id: string, active: boolean): Promise<void> {
   await prisma.business.update({ where: { id }, data: { isOpen: active } });
+}
+
+// ─── Documentos de habilitación de empresas ───────────────────────────────────
+// El backend ya recibía los documentos (POST /operator/documents), pero nadie
+// podía revisarlos: el admin verificaba la empresa a ciegas. Para el
+// intermunicipal eso es justo el requisito legal que el modelo asume.
+
+export interface AdminOperatorDocRow {
+  id: string;
+  type: string;
+  fileUrl: string;
+  status: string;
+  expiresAt: string | null;
+  rejectionReason: string | null;
+  uploadedAt: string;
+  reviewedAt: string | null;
+  /** true si tiene vencimiento y ya pasó: aprobado pero inservible. */
+  expired: boolean;
+}
+
+export async function listOperatorDocumentsForAdmin(
+  operatorId: string,
+): Promise<AdminOperatorDocRow[]> {
+  const docs = await prisma.operatorDocument.findMany({
+    where: { operatorId },
+    orderBy: { uploadedAt: 'desc' },
+  });
+  const ahora = Date.now();
+  return docs.map((d) => ({
+    id: d.id,
+    type: String(d.type),
+    fileUrl: d.fileUrl,
+    status: String(d.status),
+    expiresAt: d.expiresAt?.toISOString() ?? null,
+    rejectionReason: d.rejectionReason,
+    uploadedAt: d.uploadedAt.toISOString(),
+    reviewedAt: d.reviewedAt?.toISOString() ?? null,
+    expired: d.expiresAt != null && d.expiresAt.getTime() < ahora,
+  }));
+}
+
+/** Aprueba o rechaza un documento. Al rechazar, el motivo llega a la empresa. */
+export async function reviewOperatorDocument(
+  docId: string,
+  approved: boolean,
+  rejectionReason?: string,
+  reviewedBy?: string,
+): Promise<boolean> {
+  const res = await prisma.operatorDocument.updateMany({
+    where: { id: docId },
+    data: {
+      status: approved ? 'APPROVED' : 'REJECTED',
+      rejectionReason: approved ? null : (rejectionReason ?? 'Documento ilegible o incorrecto'),
+      reviewedBy: reviewedBy ?? null,
+      reviewedAt: new Date(),
+    },
+  });
+  return res.count > 0;
+}
+
+/**
+ * ¿La empresa tiene su habilitación aprobada y vigente?
+ *
+ * No bloquea la verificación —el admin puede haber visto los papeles en
+ * físico— pero el panel lo advierte antes de aprobar, que es la diferencia
+ * entre decidir con información y decidir a ciegas.
+ */
+export async function hasApprovedHabilitacion(operatorId: string): Promise<boolean> {
+  const doc = await prisma.operatorDocument.findFirst({
+    where: {
+      operatorId,
+      type: 'HABILITACION',
+      status: 'APPROVED',
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
+    select: { id: true },
+  });
+  return doc != null;
 }
