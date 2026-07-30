@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { PortalTabs } from '../PortalTabs'
 import {
   ArrowLeft,
   Loader2,
@@ -112,7 +113,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className="bg-white border-b border-slate-200 sm:sticky sm:top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
           <Link href={`/negocio/${token}`} className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100">
             <ArrowLeft className="w-5 h-5" />
@@ -128,6 +129,8 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
           </div>
         </div>
       </header>
+
+      <PortalTabs token={token} activa="ajustes" />
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         {loading ? (
