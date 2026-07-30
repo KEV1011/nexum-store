@@ -89,6 +89,10 @@ export default function HomePage() {
 
           <p className="mt-6 text-sm text-slate-500">
             ¿Ya tienes cuenta?{' '}
+            <Link href="/negocio" className="text-emerald-400 hover:underline">
+              Ingreso de negocios
+            </Link>
+            {' · '}
             <Link href="/empresa" className="text-emerald-400 hover:underline">
               Ingreso de empresas
             </Link>

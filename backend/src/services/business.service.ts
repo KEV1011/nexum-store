@@ -17,6 +17,7 @@ import {
 } from '../types';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
+import { normalizeColombianPhone } from './auth.service';
 
 // ─── Order-update notification subscriptions (ephemeral WS session state) ─────
 
@@ -782,4 +783,57 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     openingHours: b.openingHours ?? undefined,
     products: b.products.map(_productToDTO),
   };
+}
+
+// ─── Recuperación del enlace del portal ───────────────────────────────────────
+
+export interface BusinessLinkDTO {
+  id: string;
+  name: string;
+  token: string;
+  category: string;
+  isOpen: boolean;
+}
+
+/**
+ * Negocios asociados a un teléfono, para recuperar el enlace del portal.
+ *
+ * El portal es un enlace mágico sin contraseña: si el dueño lo pierde, hoy se
+ * queda por fuera para siempre. Esta búsqueda es la puerta de vuelta.
+ *
+ * No puede ser una igualdad simple: el teléfono se guarda tal como lo escribió
+ * el dueño al registrarse ("300 111 2233", "+573001112233", "3001112233"). Se
+ * filtran candidatos por los últimos 4 dígitos —contiguos en cualquiera de esos
+ * formatos— y recién ahí se comparan ya normalizados. Así también funciona con
+ * los negocios que ya estaban registrados antes de esta función.
+ */
+export async function findBusinessesByPhone(rawPhone: string): Promise<BusinessLinkDTO[]> {
+  const normalizado = normalizeColombianPhone(rawPhone);
+  const ultimos4 = normalizado.slice(-4);
+  if (!/^\d{4}$/.test(ultimos4)) return [];
+
+  const candidatos = await prisma.business.findMany({
+    where: {
+      OR: [{ phone: { endsWith: ultimos4 } }, { whatsapp: { endsWith: ultimos4 } }],
+    },
+    select: {
+      id: true, name: true, token: true, category: true, isOpen: true,
+      phone: true, whatsapp: true,
+    },
+    take: 200,
+  });
+
+  return candidatos
+    .filter(
+      (b) =>
+        (b.phone != null && normalizeColombianPhone(b.phone) === normalizado) ||
+        (b.whatsapp != null && normalizeColombianPhone(b.whatsapp) === normalizado),
+    )
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      token: b.token,
+      category: String(b.category),
+      isOpen: b.isOpen,
+    }));
 }

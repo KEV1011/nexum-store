@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useCallback, useRef } from 'react'
 import { BarcodeScanner } from './BarcodeScanner'
 import { CsvImport } from './CsvImport'
+import { PortalTabs } from '../PortalTabs'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -760,7 +761,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className="bg-white border-b border-slate-200 sm:sticky sm:top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
           <Link href={`/negocio/${token}`} className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100">
             <ArrowLeft className="w-5 h-5" />
@@ -776,6 +777,8 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           </div>
         </div>
       </header>
+
+      <PortalTabs token={token} activa="catalogo" />
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         {/* Portada del local */}

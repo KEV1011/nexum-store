@@ -16,7 +16,10 @@ import {
   getBusinessSettings,
   updateBusinessSettings,
   getBusinessStats,
+  findBusinessesByPhone,
 } from '../services/business.service';
+import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
+import { isSmsConfigured } from '../services/sms.service';
 import { getNotificationService } from '../services/notification.service';
 import {
   getClientOrdersForBusiness,
@@ -68,6 +71,70 @@ router.post('/register', authLimiter, async (req: Request, res: Response): Promi
     const message = err instanceof Error ? err.message : 'Registration failed';
     res.status(400).json({ success: false, error: message });
   }
+});
+
+// ─── Recuperación del enlace del portal ───────────────────────────────────────
+// El portal es un enlace mágico sin contraseña: quien lo pierde se queda por
+// fuera para siempre. Con OTP al teléfono del registro se prueba la posesión
+// del número y se devuelven los enlaces de sus negocios.
+
+// POST /business/recover/send-otp { phone }
+router.post('/recover/send-otp', authLimiter, async (req: Request, res: Response): Promise<void> => {
+  const { phone } = req.body as { phone?: string };
+  if (!phone || typeof phone !== 'string') {
+    res.status(400).json({ success: false, error: 'Escribe tu número de teléfono.' });
+    return;
+  }
+  try {
+    // Con Twilio, el SMS real solo sale si el número tiene negocios (evita
+    // SMS-pumping); en modo local la sesión se crea siempre para que el verify
+    // pueda validar el código primero. La respuesta es idéntica en ambos casos:
+    // desde afuera no se puede averiguar qué números están registrados.
+    const negocios = await findBusinessesByPhone(phone);
+    if (negocios.length > 0 || !isSmsConfigured()) await requestOtp(phone.trim());
+    res.json({ success: true, data: { sent: true } });
+  } catch (err) {
+    const status = err instanceof OtpRateLimitError ? 429 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo enviar el código.',
+    });
+  }
+});
+
+// POST /business/recover/verify-otp { phone, otp } → enlaces de sus negocios
+router.post('/recover/verify-otp', authLimiter, async (req: Request, res: Response): Promise<void> => {
+  const { phone, otp } = req.body as { phone?: string; otp?: string };
+  if (!phone || !otp) {
+    res.status(400).json({ success: false, error: 'Faltan el teléfono y el código.' });
+    return;
+  }
+  // 1) Validar el código PRIMERO: prueba que quien pregunta tiene el teléfono.
+  try {
+    await validateOtp(phone.trim(), otp.trim());
+  } catch (err) {
+    const status = err instanceof OtpRateLimitError ? 429 : 401;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Código inválido',
+    });
+    return;
+  }
+  // 2) ...y solo entonces revelar los negocios. No hay enumeración posible:
+  // esta información llega únicamente a quien recibió el SMS.
+  const negocios = await findBusinessesByPhone(phone);
+  res.json({
+    success: true,
+    data: {
+      businesses: negocios.map((b) => ({
+        id: b.id,
+        name: b.name,
+        category: b.category,
+        isOpen: b.isOpen,
+        portalUrl: `${PORTAL_BASE_URL}/negocio/${b.token}`,
+      })),
+    },
+  });
 });
 
 // ─── Portal access: verify token and get business info ───────────────────────
