@@ -19,6 +19,8 @@ import FinancePanel from './FinancePanel'
 import AnalyticsPanel from './AnalyticsPanel'
 import VehiclesManager from './VehiclesManager'
 import DocumentsManager from './DocumentsManager'
+import MembersManager from './MembersManager'
+import ProfileForm from './ProfileForm'
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ??
@@ -80,6 +82,16 @@ function relTime(iso: string | null): string {
 
 function formatCOP(value: number): string {
   return `$${Math.round(value).toLocaleString('es-CO')}`
+}
+
+/** Atajo del caso real: liquidar el mes que acaba de cerrar. */
+function mesPasado(): { desde: string; hasta: string } {
+  const hoy = new Date()
+  const primero = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)
+  const ultimo = new Date(hoy.getFullYear(), hoy.getMonth(), 0)
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { desde: iso(primero), hasta: iso(ultimo) }
 }
 
 const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
@@ -283,6 +295,9 @@ function Dashboard({ token, operator, onLogout }: {
   const [teamVersion, setTeamVersion] = useState(0)
   // Sección activa de la torre de control (sidebar / chips móviles).
   const [section, setSection] = useState('torre')
+  // Rango de liquidación. Vacío = todo, que es el comportamiento de siempre.
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
   const expired = useRef(false)
 
   const api = useMemo(
@@ -290,13 +305,19 @@ function Dashboard({ token, operator, onLogout }: {
     [token, onLogout],
   )
 
+  // Se arma aparte para que la descarga del CSV use exactamente el mismo rango
+  // que la tabla: un reporte que no cuadra con lo que se ve en pantalla es peor
+  // que no tener reporte.
+  const rangoQuery =
+    (desde ? `&from=${desde}` : '') + (hasta ? `&to=${hasta}` : '')
+
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true)
     try {
       const [fleetData, profile, tripsData] = await Promise.all([
         api<FleetPos[]>('/operator/fleet'),
         api<{ _count?: { vehicles: number; drivers: number } }>('/operator/profile'),
-        api<TripsResult>('/operator/trips?limit=20'),
+        api<TripsResult>(`/operator/trips?limit=100${rangoQuery}`),
       ])
       setFleet(Array.isArray(fleetData) ? fleetData : [])
       if (profile?._count) setCounts({ vehicles: profile._count.vehicles, drivers: profile._count.drivers })
@@ -311,7 +332,7 @@ function Dashboard({ token, operator, onLogout }: {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [api])
+  }, [api, rangoQuery])
 
   useEffect(() => {
     void load()
@@ -322,7 +343,7 @@ function Dashboard({ token, operator, onLogout }: {
   async function downloadCsv() {
     setDownloading(true)
     try {
-      const res = await fetch(`${BACKEND_URL}/operator/trips/export.csv`, {
+      const res = await fetch(`${BACKEND_URL}/operator/trips/export.csv${rangoQuery ? '?' + rangoQuery.slice(1) : ''}`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: 'no-store',
       })
@@ -331,7 +352,7 @@ function Dashboard({ token, operator, onLogout }: {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'nexum-viajes.csv'
+      a.download = `zipa-viajes${desde || hasta ? `-${desde || 'inicio'}_${hasta || 'hoy'}` : ''}.csv`
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -368,7 +389,7 @@ function Dashboard({ token, operator, onLogout }: {
   const nav = [
     { key: 'torre', label: 'Torre de control', icon: LayoutDashboard, show: true },
     { key: 'equipo', label: 'Equipo y vehículos', icon: UserCog, show: true },
-    { key: 'documentos', label: 'Habilitación', icon: FileText, show: true },
+    { key: 'documentos', label: 'Mi empresa', icon: FileText, show: true },
     { key: 'viajes', label: 'Viajes y liquidación', icon: Route, show: true },
     { key: 'rendimiento', label: 'Rendimiento', icon: Trophy, show: true },
     { key: 'finanzas', label: 'Finanzas', icon: TrendingUp, show: true },
@@ -520,13 +541,15 @@ function Dashboard({ token, operator, onLogout }: {
               <h1 className="font-bold text-slate-900 text-lg">Equipo y vehículos</h1>
               <DriversManager api={api} onChanged={() => { setTeamVersion((v) => v + 1); void load() }} />
               <VehiclesManager api={api} token={token} refreshKey={teamVersion} />
+              <MembersManager api={api} />
             </>
           )}
 
           {/* ══ HABILITACIÓN (documentos legales) ══ */}
           {section === 'documentos' && (
             <>
-              <h1 className="font-bold text-slate-900 text-lg">Habilitación</h1>
+              <h1 className="font-bold text-slate-900 text-lg">Mi empresa</h1>
+              <ProfileForm api={api} />
               <DocumentsManager api={api} token={token} />
             </>
           )}
@@ -547,6 +570,46 @@ function Dashboard({ token, operator, onLogout }: {
                   >
                     {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                     Exportar CSV
+                  </button>
+                )}
+              </div>
+
+              {/* Rango de liquidación. Vacío = todo, como siempre. El CSV
+                  descarga exactamente lo que se ve: un reporte que no cuadra
+                  con la pantalla es peor que no tener reporte. */}
+              <div className="bg-white border border-slate-200 rounded-xl p-3 mb-3 flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Desde</label>
+                  <input
+                    type="date"
+                    value={desde}
+                    max={hasta || undefined}
+                    onChange={(e) => setDesde(e.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Hasta</label>
+                  <input
+                    type="date"
+                    value={hasta}
+                    min={desde || undefined}
+                    onChange={(e) => setHasta(e.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={() => { setDesde(mesPasado().desde); setHasta(mesPasado().hasta) }}
+                  className="py-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700"
+                >
+                  Mes pasado
+                </button>
+                {(desde || hasta) && (
+                  <button
+                    onClick={() => { setDesde(''); setHasta('') }}
+                    className="py-1.5 px-3 rounded-lg text-slate-400 text-xs font-semibold hover:text-slate-700"
+                  >
+                    Quitar filtro
                   </button>
                 )}
               </div>

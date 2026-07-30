@@ -38,7 +38,13 @@ import {
   removeOperatorRoute,
   listOperatorDocuments,
   uploadOperatorDocument,
+  listOperatorMembers,
+  addOperatorMember,
+  removeOperatorMember,
+  updateOperatorProfile,
+  type UpdateOperatorProfileDTO,
 } from '../services/operator.service';
+import { isValidColombianPhone } from '../services/auth.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
 import {
   listAvailableFreights,
@@ -291,14 +297,20 @@ router.get('/alerts', async (req: Request, res: Response): Promise<void> => {
 
 // GET /operator/trips — viajes sellados con la empresa (trazabilidad + liquidación).
 router.get('/trips', async (req: Request, res: Response): Promise<void> => {
-  const raw = Number((req.query as Record<string, unknown>)['limit']);
+  const q = req.query as Record<string, unknown>;
+  const raw = Number(q['limit']);
   const limit = Number.isFinite(raw) ? Math.min(Math.max(raw, 1), 200) : 50;
-  res.json({ success: true, data: await listOperatorTrips(req.operatorId!, limit) });
+  const from = typeof q['from'] === 'string' ? (q['from'] as string) : undefined;
+  const to = typeof q['to'] === 'string' ? (q['to'] as string) : undefined;
+  res.json({ success: true, data: await listOperatorTrips(req.operatorId!, limit, from, to) });
 });
 
-// GET /operator/trips/export.csv — reporte de liquidación descargable.
+// GET /operator/trips/export.csv?from&to — reporte de liquidación descargable.
 router.get('/trips/export.csv', async (req: Request, res: Response): Promise<void> => {
-  const csv = await exportOperatorTripsCsv(req.operatorId!);
+  const q = req.query as Record<string, unknown>;
+  const from = typeof q['from'] === 'string' ? (q['from'] as string) : undefined;
+  const to = typeof q['to'] === 'string' ? (q['to'] as string) : undefined;
+  const csv = await exportOperatorTripsCsv(req.operatorId!, from, to);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="nexum-viajes.csv"');
   // BOM para que Excel reconozca UTF-8 (acentos en direcciones/nombres).
@@ -385,6 +397,59 @@ router.post(
     }
   },
 );
+
+// ─── Miembros del portal (accesos) ───────────────────────────────────────────
+// Sin esto una flota solo podía tener el usuario del registro: un despachador
+// no tenía forma de entrar, y el login le respondía que su teléfono no estaba
+// asociado a ninguna empresa.
+
+const OPERATOR_ROLES = new Set<string>(['OWNER', 'DISPATCHER', 'VIEWER']);
+
+router.get('/members', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listOperatorMembers(req.operatorId!) });
+});
+
+router.post('/members', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  const { phone, name, role } = req.body as { phone?: string; name?: string; role?: string };
+  if (!phone || !isValidColombianPhone(phone)) {
+    res.status(400).json({ success: false, error: 'Escribe un celular colombiano válido (+57 y 10 dígitos).' });
+    return;
+  }
+  if (!role || !OPERATOR_ROLES.has(role)) {
+    res.status(400).json({ success: false, error: `role requerido (${[...OPERATOR_ROLES].join(', ')})` });
+    return;
+  }
+  try {
+    const member = await addOperatorMember(req.operatorId!, phone, name, role as OperatorRole);
+    res.status(201).json({ success: true, data: member });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo dar el acceso' });
+  }
+});
+
+router.delete('/members/:id', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    await removeOperatorMember(req.operatorId!, req.params['id'] as string);
+    res.json({ success: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'No se pudo quitar el acceso';
+    res.status(msg.includes('no existe') ? 404 : 400).json({ success: false, error: msg });
+  }
+});
+
+// PUT /operator/profile — datos de contacto de la empresa.
+router.put('/profile', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  const dto = req.body as UpdateOperatorProfileDTO;
+  if (dto.contactPhone !== undefined && dto.contactPhone !== '' && !isValidColombianPhone(dto.contactPhone)) {
+    res.status(400).json({ success: false, error: 'El teléfono de contacto no es un celular colombiano válido.' });
+    return;
+  }
+  try {
+    res.json({ success: true, data: await updateOperatorProfile(req.operatorId!, dto) });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo guardar' });
+  }
+});
 
 // GET /operator/documents · POST /operator/documents (multipart)
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {

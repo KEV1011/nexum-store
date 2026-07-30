@@ -2,9 +2,11 @@ import { prisma } from '../lib/prisma';
 import {
   OperatorType,
   OperatorDocType,
+  OperatorRole,
   VehicleType,
 } from '@prisma/client';
 import { isValidColombianPhone, normalizeColombianPhone } from './auth.service';
+import { rangoFechas } from '../lib/date-range';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Empresas de transporte (operadores): registro, perfil, flota, conductores,
@@ -373,10 +375,13 @@ export interface OperatorTripsResult {
 export async function listOperatorTrips(
   operatorId: string,
   limit = 50,
+  from?: string,
+  to?: string,
 ): Promise<OperatorTripsResult> {
+  const rango = rangoFechas(from, to);
   const [rows, intercityRows, errandRows, orderRows, completedAgg, intercityAgg, errandAgg, orderAgg, total, intercityTotal, errandTotal, orderTotal] = await Promise.all([
     prisma.trip.findMany({
-      where: { operatorId },
+      where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -394,7 +399,7 @@ export async function listOperatorTrips(
       },
     }),
     prisma.intercityBooking.findMany({
-      where: { operatorId },
+      where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -414,7 +419,7 @@ export async function listOperatorTrips(
       },
     }),
     prisma.errand.findMany({
-      where: { operatorId },
+      where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -430,7 +435,7 @@ export async function listOperatorTrips(
       },
     }),
     prisma.order.findMany({
-      where: { operatorId },
+      where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -446,29 +451,29 @@ export async function listOperatorTrips(
       },
     }),
     prisma.trip.aggregate({
-      where: { operatorId, status: 'COMPLETED' },
+      where: { operatorId, ...rango, status: 'COMPLETED' },
       _sum: { finalFare: true },
       _count: true,
     }),
     prisma.intercityBooking.aggregate({
-      where: { operatorId, status: 'COMPLETED' },
+      where: { operatorId, ...rango, status: 'COMPLETED' },
       _sum: { finalFare: true },
       _count: true,
     }),
     prisma.errand.aggregate({
-      where: { operatorId, status: 'DELIVERED' },
+      where: { operatorId, ...rango, status: 'DELIVERED' },
       _sum: { serviceFee: true },
       _count: true,
     }),
     prisma.order.aggregate({
-      where: { operatorId, status: 'DELIVERED' },
+      where: { operatorId, ...rango, status: 'DELIVERED' },
       _sum: { deliveryFee: true },
       _count: true,
     }),
-    prisma.trip.count({ where: { operatorId } }),
-    prisma.intercityBooking.count({ where: { operatorId } }),
-    prisma.errand.count({ where: { operatorId } }),
-    prisma.order.count({ where: { operatorId } }),
+    prisma.trip.count({ where: { operatorId, ...rango } }),
+    prisma.intercityBooking.count({ where: { operatorId, ...rango } }),
+    prisma.errand.count({ where: { operatorId, ...rango } }),
+    prisma.order.count({ where: { operatorId, ...rango } }),
   ]);
 
   const urban: OperatorTripDTO[] = rows.map((t) => ({
@@ -575,10 +580,15 @@ function _errandStatusForPortal(status: string): string {
 }
 
 /** Reporte de liquidación: viajes sellados (urbanos + intermunicipales + mandados) en CSV. */
-export async function exportOperatorTripsCsv(operatorId: string): Promise<string> {
+export async function exportOperatorTripsCsv(
+  operatorId: string,
+  from?: string,
+  to?: string,
+): Promise<string> {
+  const rango = rangoFechas(from, to);
   const [rows, intercityRows, errandRows, orderRows] = await Promise.all([
     prisma.trip.findMany({
-      where: { operatorId },
+      where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
       take: 1000,
       select: {
@@ -596,7 +606,7 @@ export async function exportOperatorTripsCsv(operatorId: string): Promise<string
       },
     }),
     prisma.intercityBooking.findMany({
-      where: { operatorId },
+      where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
       take: 1000,
       select: {
@@ -615,7 +625,7 @@ export async function exportOperatorTripsCsv(operatorId: string): Promise<string
       },
     }),
     prisma.errand.findMany({
-      where: { operatorId },
+      where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
       take: 1000,
       select: {
@@ -630,7 +640,7 @@ export async function exportOperatorTripsCsv(operatorId: string): Promise<string
       },
     }),
     prisma.order.findMany({
-      where: { operatorId },
+      where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
       take: 1000,
       select: {
@@ -795,4 +805,108 @@ export async function uploadOperatorDocument(
       expiresAt: expiresAt ? new Date(expiresAt) : null,
     },
   });
+}
+
+// ─── Miembros del portal ──────────────────────────────────────────────────────
+// `OperatorMember` y sus roles existían y `requireOperatorRole` los exigía, pero
+// ninguna ruta creaba miembros: una flota solo podía tener el usuario del
+// registro. Un despachador no tenía forma de entrar.
+
+export interface OperatorMemberDTO {
+  id: string;
+  phone: string;
+  name: string | null;
+  role: string;
+  createdAt: string;
+}
+
+export async function listOperatorMembers(operatorId: string): Promise<OperatorMemberDTO[]> {
+  const rows = await prisma.operatorMember.findMany({
+    where: { operatorId },
+    orderBy: { createdAt: 'asc' },
+  });
+  return rows.map((m) => ({
+    id: m.id,
+    phone: m.phone,
+    name: m.name,
+    role: String(m.role),
+    createdAt: m.createdAt.toISOString(),
+  }));
+}
+
+export async function addOperatorMember(
+  operatorId: string,
+  rawPhone: string,
+  name: string | undefined,
+  role: OperatorRole,
+): Promise<OperatorMemberDTO> {
+  // E.164 obligatorio: el login del portal casa por teléfono exacto, así que un
+  // "300 111 2233" guardado con espacios sería un acceso que nunca funciona.
+  const phone = normalizeColombianPhone(rawPhone);
+  const yaExiste = await prisma.operatorMember.findFirst({ where: { operatorId, phone } });
+  if (yaExiste) throw new Error('Ese teléfono ya tiene acceso a esta empresa.');
+
+  const enOtra = await prisma.operatorMember.findFirst({ where: { phone } });
+  if (enOtra) throw new Error('Ese teléfono ya pertenece a otra empresa.');
+
+  const m = await prisma.operatorMember.create({
+    data: { operatorId, phone, name: name?.trim() || null, role },
+  });
+  return {
+    id: m.id,
+    phone: m.phone,
+    name: m.name,
+    role: String(m.role),
+    createdAt: m.createdAt.toISOString(),
+  };
+}
+
+export async function removeOperatorMember(operatorId: string, memberId: string): Promise<void> {
+  const miembro = await prisma.operatorMember.findFirst({ where: { id: memberId, operatorId } });
+  if (!miembro) throw new Error('Ese acceso no existe.');
+
+  // Sin dueños, la empresa queda sin nadie que pueda administrarla — y no hay
+  // forma de recuperarla desde el portal.
+  if (miembro.role === 'OWNER') {
+    const dueños = await prisma.operatorMember.count({ where: { operatorId, role: 'OWNER' } });
+    if (dueños <= 1) {
+      throw new Error('No puedes quitar al último administrador: la empresa quedaría sin acceso.');
+    }
+  }
+  await prisma.operatorMember.delete({ where: { id: memberId } });
+}
+
+// ─── Perfil de la empresa ─────────────────────────────────────────────────────
+
+export interface UpdateOperatorProfileDTO {
+  tradeName?: string;
+  contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  city?: string;
+}
+
+/**
+ * Datos de contacto de la empresa. `legalName`, `nit` y `type` NO se tocan
+ * aquí: son la identidad legal sobre la que el admin verificó la habilitación,
+ * y cambiarlos por autoservicio dejaría la verificación apuntando a otra cosa.
+ */
+export async function updateOperatorProfile(
+  operatorId: string,
+  dto: UpdateOperatorProfileDTO,
+) {
+  const data: Record<string, string | null> = {};
+  const texto = (v: string | undefined) => (v == null ? undefined : v.trim() || null);
+
+  if (dto.tradeName !== undefined) data['tradeName'] = texto(dto.tradeName) as string | null;
+  if (dto.contactName !== undefined) data['contactName'] = texto(dto.contactName) as string | null;
+  if (dto.contactEmail !== undefined) data['contactEmail'] = texto(dto.contactEmail) as string | null;
+  if (dto.city !== undefined) data['city'] = texto(dto.city) as string | null;
+  if (dto.contactPhone !== undefined) {
+    const p = texto(dto.contactPhone);
+    data['contactPhone'] = p ? normalizeColombianPhone(p) : null;
+  }
+
+  if (Object.keys(data).length === 0) throw new Error('No hay nada que actualizar.');
+  return prisma.operator.update({ where: { id: operatorId }, data });
 }
