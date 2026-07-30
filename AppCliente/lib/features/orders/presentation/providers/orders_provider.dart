@@ -238,6 +238,14 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         // mismo DTO que ve el repartidor y nunca lo trae. Se adopta si llega
         // —caso de reinstalar la app— y si no, se conserva el que ya había.
         deliveryPin: payload['deliveryPin'] as String? ?? order.deliveryPin,
+        // Geografía real: llega en cada sondeo REST (cada 5 s) y es lo que
+        // mueve al repartidor en el mapa. El WS no la trae; se conserva.
+        businessLat: (payload['businessLat'] as num?)?.toDouble() ?? order.businessLat,
+        businessLng: (payload['businessLng'] as num?)?.toDouble() ?? order.businessLng,
+        deliveryLat: (payload['deliveryLat'] as num?)?.toDouble() ?? order.deliveryLat,
+        deliveryLng: (payload['deliveryLng'] as num?)?.toDouble() ?? order.deliveryLng,
+        driverLat: (payload['driverLat'] as num?)?.toDouble() ?? order.driverLat,
+        driverLng: (payload['driverLng'] as num?)?.toDouble() ?? order.driverLng,
         driverName: payload['driverName'] as String? ?? order.driverName,
         driverPhone:
             payload['driverPhone'] as String? ?? order.driverPhone,
@@ -271,6 +279,16 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
   /// Consulta el estado real del pedido cada 5 s cuando no hay WebSocket
   /// disponible; el DTO del backend es el mismo del `order_update` del WS.
+  /// Empieza a seguir un pedido al abrir su pantalla.
+  ///
+  /// Hace falta porque el sondeo solo arrancaba al crear el pedido: si el
+  /// cliente cerraba la app y volvía, se quedaba con la foto vieja y el mapa
+  /// sin la posición del repartidor.
+  void trackOrder(String id) {
+    if (_timers[id]?.isNotEmpty ?? false) return;
+    _startPolling(id);
+  }
+
   void _startPolling(String id) {
     final timer = Timer.periodic(const Duration(seconds: 5), (t) async {
       if (!mounted) {

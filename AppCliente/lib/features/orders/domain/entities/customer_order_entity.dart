@@ -110,6 +110,12 @@ class CustomerOrderEntity {
     this.pickupPhotoPath,
     this.deliveryPhotoPath,
     this.deliveryPin,
+    this.businessLat,
+    this.businessLng,
+    this.deliveryLat,
+    this.deliveryLng,
+    this.driverLat,
+    this.driverLng,
     this.hasSignature = false,
     this.rating,
     this.ratingComment,
@@ -150,6 +156,12 @@ class CustomerOrderEntity {
         pickupPhotoPath: j['pickupPhotoPath'] as String?,
         deliveryPhotoPath: j['deliveryPhotoPath'] as String?,
         deliveryPin: j['deliveryPin'] as String?,
+        businessLat: (j['businessLat'] as num?)?.toDouble(),
+        businessLng: (j['businessLng'] as num?)?.toDouble(),
+        deliveryLat: (j['deliveryLat'] as num?)?.toDouble(),
+        deliveryLng: (j['deliveryLng'] as num?)?.toDouble(),
+        driverLat: (j['driverLat'] as num?)?.toDouble(),
+        driverLng: (j['driverLng'] as num?)?.toDouble(),
         hasSignature: j['hasSignature'] as bool? ?? false,
         rating: j['rating'] as int?,
         ratingComment: j['ratingComment'] as String?,
@@ -198,6 +210,12 @@ class CustomerOrderEntity {
         pickupPhotoPath: j['pickupPhotoUrl'] as String?,
         deliveryPhotoPath: j['deliveryPhotoUrl'] as String?,
         deliveryPin: j['deliveryPin'] as String?,
+        businessLat: (j['businessLat'] as num?)?.toDouble(),
+        businessLng: (j['businessLng'] as num?)?.toDouble(),
+        deliveryLat: (j['deliveryLat'] as num?)?.toDouble(),
+        deliveryLng: (j['deliveryLng'] as num?)?.toDouble(),
+        driverLat: (j['driverLat'] as num?)?.toDouble(),
+        driverLng: (j['driverLng'] as num?)?.toDouble(),
         hasSignature: j['hasSignature'] as bool? ?? false,
       );
 
@@ -215,9 +233,25 @@ class CustomerOrderEntity {
   final String? driverName;
   final String? driverPhone;
 
+  /// ¿Hay datos reales suficientes para dibujar el mapa? Sin esto, antes se
+  /// pintaba un mapa inventado a partir del hash del nombre del negocio.
+  bool get hasRealGeo =>
+      businessLat != null && businessLng != null && deliveryLat != null && deliveryLng != null;
+
   /// PIN de 4 dígitos que el cliente dicta al repartidor para recibir el
   /// pedido. Sin él, el repartidor no puede marcarlo como entregado.
   final String? deliveryPin;
+
+  /// Geografía real del pedido. Nulas cuando el negocio no tiene punto en el
+  /// mapa: la pantalla oculta el mapa en vez de dibujar uno inventado.
+  final double? businessLat;
+  final double? businessLng;
+  final double? deliveryLat;
+  final double? deliveryLng;
+
+  /// Posición viva del repartidor (heartbeat), solo mientras lleva el pedido.
+  final double? driverLat;
+  final double? driverLng;
 
   final int? etaMinutes;
 
@@ -293,6 +327,12 @@ class CustomerOrderEntity {
     String? pickupPhotoPath,
     String? deliveryPhotoPath,
     String? deliveryPin,
+    double? businessLat,
+    double? businessLng,
+    double? deliveryLat,
+    double? deliveryLng,
+    double? driverLat,
+    double? driverLng,
     bool? hasSignature,
     int? rating,
     String? ratingComment,
@@ -324,6 +364,12 @@ class CustomerOrderEntity {
       // primer cambio de estado lo borraba y el cliente se quedaba sin PIN
       // justo cuando iba a necesitarlo.
       deliveryPin: deliveryPin ?? this.deliveryPin,
+      businessLat: businessLat ?? this.businessLat,
+      businessLng: businessLng ?? this.businessLng,
+      deliveryLat: deliveryLat ?? this.deliveryLat,
+      deliveryLng: deliveryLng ?? this.deliveryLng,
+      driverLat: driverLat ?? this.driverLat,
+      driverLng: driverLng ?? this.driverLng,
       hasSignature: hasSignature ?? this.hasSignature,
       rating: rating ?? this.rating,
       ratingComment: ratingComment ?? this.ratingComment,
