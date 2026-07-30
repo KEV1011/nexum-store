@@ -8,6 +8,7 @@ import {
 import { DriverStatus } from '@prisma/client';
 import { ERRAND_SERVICE_FEE, COMMISSION_RATE } from '../config/constants';
 import { prisma } from '../lib/prisma';
+import { cancelSearchRetry } from './matching.service';
 import { generatePin, assertCustodyPin } from '../lib/custody-pin';
 import { maskPhone } from './safe-contact.service';
 import { sendPushToClient, sendPushToDriver } from './push.service';
@@ -231,6 +232,7 @@ export async function updateErrandStatus(
 }
 
 export async function cancelClientErrand(clientId: string, errandId: string): Promise<boolean> {
+  cancelSearchRetry(`errand:${errandId}`);
   const errand = await prisma.errand.findUnique({ where: { id: errandId } });
   if (!errand || errand.userId !== clientId) return false;
 

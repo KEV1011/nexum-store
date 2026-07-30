@@ -12,7 +12,7 @@ import {
   TransportServiceType,
 } from '../types';
 import { prisma } from '../lib/prisma';
-import { startMatchingCycle, startOrderMatchingCycle } from './matching.service';
+import { startMatchingCycle, startOrderMatchingCycle, cancelSearchRetry } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
@@ -382,6 +382,8 @@ export async function rejectOrderByBusiness(
   businessId: string,
   orderId: string,
 ): Promise<ClientOrderSummaryDTO | null> {
+  // Ya no hay pedido que despachar: deja de buscar repartidor.
+  cancelSearchRetry(`order:${orderId}`);
   const existing = await prisma.order.findUnique({ where: { id: orderId } });
   if (!existing || existing.businessId !== businessId) return null;
   // Solo se puede rechazar antes de que un repartidor esté asignado.
@@ -587,6 +589,8 @@ export async function acceptClientOrder(
  * asignado, se le avisa por WS (`order_cancelled`) y se libera (ONLINE).
  */
 export async function cancelClientOrder(clientId: string, orderId: string): Promise<boolean> {
+  // Ya no hay pedido que despachar: deja de buscar repartidor.
+  cancelSearchRetry(`order:${orderId}`);
   const order = await prisma.order.findFirst({ where: { id: orderId, userId: clientId } });
   if (!order) return false;
   const cancellable = ['PENDING', 'CONFIRMED', 'PREPARING', 'DRIVER_TO_PICKUP', 'AT_PICKUP'];
