@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
+import 'package:nexum_client/shared/widgets/map_location_picker.dart';
 
 /// Campo de dirección con autocompletado de Google Places (vía backend).
 ///
@@ -21,6 +22,7 @@ class AddressAutocompleteField extends ConsumerStatefulWidget {
     this.onPlaceSelected,
     this.onManualEdit,
     this.suffixIcon,
+    this.allowMapPicker = true,
     super.key,
   });
 
@@ -38,6 +40,11 @@ class AddressAutocompleteField extends ConsumerStatefulWidget {
 
   /// Icono extra a la derecha (p. ej. "mis direcciones").
   final Widget? suffixIcon;
+
+  /// Ofrece elegir el punto en el mapa además de escribirlo. Es la salida
+  /// cuando la dirección no existe en Google o la persona no sabe escribirla
+  /// ("frente a la cancha"), que en pueblo es la mitad de los casos.
+  final bool allowMapPicker;
 
   @override
   ConsumerState<AddressAutocompleteField> createState() =>
@@ -89,6 +96,20 @@ class _AddressAutocompleteFieldState
     if (details != null) widget.onPlaceSelected?.call(details);
   }
 
+  Future<void> _elegirEnMapa() async {
+    final picked = await MapLocationPicker.show(
+      context,
+      title: widget.label,
+    );
+    if (picked == null || !mounted) return;
+    _lastSelectedText = picked.address;
+    widget.controller.text = picked.address;
+    widget.onPlaceSelected?.call(
+      PlaceDetails(address: picked.address, lat: picked.lat, lng: picked.lng),
+    );
+    setState(() => _suggestions = const []);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -111,7 +132,14 @@ class _AddressAutocompleteFieldState
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   )
-                : widget.suffixIcon,
+                : (widget.suffixIcon ??
+                    (widget.allowMapPicker
+                        ? IconButton(
+                            tooltip: 'Elegir en el mapa',
+                            icon: const Icon(Icons.map_outlined),
+                            onPressed: () => unawaited(_elegirEnMapa()),
+                          )
+                        : null)),
           ),
           validator: widget.requiredField
               ? (v) =>

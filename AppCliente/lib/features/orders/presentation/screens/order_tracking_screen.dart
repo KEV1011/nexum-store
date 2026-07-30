@@ -13,6 +13,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
+import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/map_pin.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
@@ -50,6 +51,11 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
   @override
   void initState() {
     super.initState();
+    // Sondea el pedido mientras esta pantalla esté abierta: es lo que trae la
+    // posición del repartidor y el PIN si la app se reinstaló.
+    Future.microtask(
+      () => ref.read(ordersProvider.notifier).trackOrder(widget.orderId),
+    );
     _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -115,7 +121,7 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
           ],
           // El mapa de seguimiento solo tiene sentido con repartidor asignado
           // (antes se pintaba un repartidor falso mientras el negocio cocinaba).
-          if (order.driverName != null && !order.isDelivered) ...[
+          if (order.driverName != null && !order.isDelivered && order.hasRealGeo) ...[
             _TrackingMap(order: order),
             const SizedBox(height: AppConstants.spacingM),
           ],
@@ -694,69 +700,90 @@ class _SummaryRow extends StatelessWidget {
 
 // ── Mapa de seguimiento ──────────────────────────────────────────────────────
 
-class _TrackingMap extends StatefulWidget {
+/// Dónde está de verdad el repartidor y por qué calles va.
+///
+/// Antes esto era una simulación: las posiciones del negocio y de la entrega
+/// se derivaban del `hashCode` del nombre y de la dirección, y el repartidor
+/// se animaba entre esos dos puntos inventados. Bonito y completamente falso.
+///
+/// Ahora usa las coordenadas reales del pedido y la posición viva del
+/// repartidor (heartbeat). Si el negocio todavía no tiene punto en el mapa, la
+/// pantalla no muestra este widget: mejor sin mapa que con uno mentiroso.
+class _TrackingMap extends ConsumerStatefulWidget {
   const _TrackingMap({required this.order});
 
   final CustomerOrderEntity order;
 
   @override
-  State<_TrackingMap> createState() => _TrackingMapState();
+  ConsumerState<_TrackingMap> createState() => _TrackingMapState();
 }
 
-class _TrackingMapState extends State<_TrackingMap>
+class _TrackingMapState extends ConsumerState<_TrackingMap>
     with SingleTickerProviderStateMixin {
+  /// Desliza el vehículo entre dos fixes GPS en vez de saltar (estilo Uber).
   late final AnimationController _ctrl;
-  late final LatLng _businessPos;
-  late final LatLng _deliveryPos;
-  late final LatLng _mapCenter;
+  LatLng? _desde;
+  LatLng? _hasta;
+  List<LatLng> _ruta = const [];
+  bool _rutaPedida = false;
 
-  static const _pamplonaCenter = LatLng(7.3762, -72.6465);
+  LatLng get _negocio =>
+      LatLng(widget.order.businessLat!, widget.order.businessLng!);
+  LatLng get _entrega =>
+      LatLng(widget.order.deliveryLat!, widget.order.deliveryLng!);
 
-  static const _animDurations = {
-    CustomerOrderStatus.driverToPickup: Duration(seconds: 7),
-    CustomerOrderStatus.inTransit: Duration(seconds: 10),
-  };
+  /// Tramo actual: primero el repartidor va al negocio, luego a la entrega.
+  LatLng get _destinoTramo =>
+      widget.order.status == CustomerOrderStatus.inTransit ? _entrega : _negocio;
 
   @override
   void initState() {
     super.initState();
-    final bh = widget.order.businessName.hashCode.abs();
-    final dh = widget.order.deliveryAddress.hashCode.abs();
-    _businessPos = LatLng(
-      7.3762 + (bh % 100) * 0.00008,
-      -72.6465 - (bh % 137) * 0.00007,
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
     );
-    _deliveryPos = LatLng(
-      7.3820 + (dh % 60) * 0.00008,
-      -72.6512 - (dh % 50) * 0.00006,
-    );
-    _mapCenter = LatLng(
-      (_businessPos.latitude + _deliveryPos.latitude) / 2,
-      (_businessPos.longitude + _deliveryPos.longitude) / 2,
-    );
-    final dur = _animDurations[widget.order.status] ??
-        const Duration(seconds: 10);
-    _ctrl = AnimationController(vsync: this, duration: dur);
-    _startForStatus(widget.order.status);
+    _hasta = _driverFix();
+    _pedirRuta();
   }
 
   @override
   void didUpdateWidget(_TrackingMap old) {
     super.didUpdateWidget(old);
-    final s = widget.order.status;
-    if (s == old.order.status) return;
-    final dur = _animDurations[s];
-    if (dur != null) {
-      _ctrl
-        ..duration = dur
-        ..forward(from: 0);
-    } else {
-      _ctrl.stop();
+    final fix = _driverFix();
+    if (fix != null && fix != _hasta) {
+      _desde = _hasta ?? fix;
+      _hasta = fix;
+      _ctrl.forward(from: 0);
+    }
+    // Cambió el tramo (llegó al negocio y salió hacia el cliente): otra ruta.
+    if (old.order.status != widget.order.status) {
+      _rutaPedida = false;
+      _pedirRuta();
     }
   }
 
-  void _startForStatus(CustomerOrderStatus s) {
-    if (_animDurations.containsKey(s)) _ctrl.forward();
+  LatLng? _driverFix() {
+    final la = widget.order.driverLat;
+    final ln = widget.order.driverLng;
+    return (la != null && ln != null) ? LatLng(la, ln) : null;
+  }
+
+  /// Ruta REAL por las calles. Sin GOOGLE_MAPS_API_KEY en el servidor devuelve
+  /// null y se dibuja la línea directa: el mapa nunca se queda sin trazado.
+  Future<void> _pedirRuta() async {
+    if (_rutaPedida) return;
+    _rutaPedida = true;
+    final origen = _driverFix() ?? _negocio;
+    final destino = _destinoTramo;
+    final pts = await ref.read(geoServiceProvider).routePoints(
+          originLat: origen.latitude,
+          originLng: origen.longitude,
+          destLat: destino.latitude,
+          destLng: destino.longitude,
+        );
+    if (!mounted || pts == null || pts.isEmpty) return;
+    setState(() => _ruta = pts);
   }
 
   @override
@@ -765,73 +792,126 @@ class _TrackingMapState extends State<_TrackingMap>
     super.dispose();
   }
 
-  LatLng _lerp(LatLng a, LatLng b, double t) => LatLng(
-        a.latitude + (b.latitude - a.latitude) * t,
-        a.longitude + (b.longitude - a.longitude) * t,
-      );
+  LatLng _posInterpolada() {
+    final a = _desde;
+    final b = _hasta;
+    if (b == null) return _negocio;
+    if (a == null) return b;
+    final t = _ctrl.value;
+    return LatLng(
+      a.latitude + (b.latitude - a.latitude) * t,
+      a.longitude + (b.longitude - a.longitude) * t,
+    );
+  }
 
-  LatLng _driverPos(double t) => switch (widget.order.status) {
-        CustomerOrderStatus.driverToPickup =>
-          _lerp(_pamplonaCenter, _businessPos, t),
-        CustomerOrderStatus.atPickup => _businessPos,
-        _ => _lerp(_businessPos, _deliveryPos, t),
-      };
+  double _rumbo(LatLng a, LatLng b) {
+    final dLng = b.longitude - a.longitude;
+    return dLng >= 0 ? 90 : 270;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final trazado = _ruta.isNotEmpty ? _ruta : [_negocio, _entrega];
+    final centro = LatLng(
+      (_negocio.latitude + _entrega.latitude) / 2,
+      (_negocio.longitude + _entrega.longitude) / 2,
+    );
+    final fix = _driverFix();
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
       child: SizedBox(
         height: 220,
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: _mapCenter,
-            initialZoom: 15.2,
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
-            ),
-          ),
+        child: Stack(
           children: [
-            const GoogleMapTiles(),
-            AnimatedBuilder(
-              animation: _ctrl,
-              builder: (_, __) => MarkerLayer(
-                markers: [
-                  Marker(
-                    point: _businessPos,
-                    width: MapPin.markerWidth,
-                    height: MapPin.markerHeight,
-                    alignment: Alignment.topCenter,
-                    child: const MapPin(
-                      color: Color(0xFF12A150),
-                      icon: Icons.storefront_rounded,
-                    ),
-                  ),
-                  Marker(
-                    point: _deliveryPos,
-                    width: MapPin.markerWidth,
-                    height: MapPin.markerHeight,
-                    alignment: Alignment.topCenter,
-                    child: const MapPin(
-                      color: AppColors.error,
-                      icon: Icons.flag_rounded,
-                    ),
-                  ),
-                  Marker(
-                    point: _driverPos(_ctrl.value),
-                    width: VehicleGlyph.markerWidth,
-                    height: VehicleGlyph.markerHeight,
-                    child: VehicleGlyph(
-                      kind: VehicleGlyphKind.moto,
-                      headingDegrees:
-                          _deliveryPos.longitude >= _businessPos.longitude
-                              ? 90
-                              : 270,
-                    ),
-                  ),
-                ],
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: centro,
+                initialZoom: 15.2,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+                ),
               ),
+              children: [
+                const GoogleMapTiles(),
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: trazado,
+                      strokeWidth: 4,
+                      color: AppColors.primary.withValues(alpha: 0.85),
+                    ),
+                  ],
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _negocio,
+                      width: MapPin.markerWidth,
+                      height: MapPin.markerHeight,
+                      alignment: Alignment.topCenter,
+                      child: const MapPin(
+                        color: Color(0xFF12A150),
+                        icon: Icons.storefront_rounded,
+                      ),
+                    ),
+                    Marker(
+                      point: _entrega,
+                      width: MapPin.markerWidth,
+                      height: MapPin.markerHeight,
+                      alignment: Alignment.topCenter,
+                      child: const MapPin(
+                        color: AppColors.error,
+                        icon: Icons.flag_rounded,
+                      ),
+                    ),
+                  ],
+                ),
+                // El repartidor solo se pinta cuando el servidor tiene su
+                // posición: nada de vehículos fantasma.
+                if (fix != null)
+                  AnimatedBuilder(
+                    animation: _ctrl,
+                    builder: (_, __) {
+                      final pos = _posInterpolada();
+                      return MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: pos,
+                            width: VehicleGlyph.markerWidth,
+                            height: VehicleGlyph.markerHeight,
+                            child: VehicleGlyph(
+                              kind: VehicleGlyphKind.moto,
+                              headingDegrees: _rumbo(_desde ?? pos, _destinoTramo),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+              ],
             ),
+            if (fix == null)
+              Positioned(
+                left: 8,
+                bottom: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Esperando la ubicación del repartidor',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 11,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

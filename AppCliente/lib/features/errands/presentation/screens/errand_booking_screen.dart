@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/core/services/geo_service.dart';
+import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
@@ -24,6 +26,11 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
   final _descCtrl = TextEditingController();
   final _pickupCtrl = TextEditingController();
   final _dropoffCtrl = TextEditingController();
+
+  /// Coordenadas exactas cuando la dirección se eligió de la lista o del mapa.
+  /// Null si se escribió a mano: el backend seguirá recibiendo solo el texto,
+  /// igual que hasta ahora.
+  PlaceDetails? _pickupPlace;
   final _budgetCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   bool _isSubmitting = false;
@@ -73,7 +80,11 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
     );
 
     try {
-      await ref.read(errandProvider.notifier).createErrand(errand);
+      await ref.read(errandProvider.notifier).createErrand(
+            errand,
+            pickupLat: _pickupPlace?.lat,
+            pickupLng: _pickupPlace?.lng,
+          );
     } catch (_) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
@@ -237,18 +248,22 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           // ── Direcciones ───────────────────────────────────────────────────
           _Label('Recogida y entrega'),
           const SizedBox(height: 8),
-          _AddressField(
+          // Con sugerencias de Google y opción de marcar el punto en el mapa:
+          // "frente a la cancha" no es una dirección que nadie encuentre.
+          AddressAutocompleteField(
             controller: _pickupCtrl,
+            label: 'Recogida',
             hint: 'Dónde se hace el encargo (opcional)',
-            icon: Icons.store_mall_directory_rounded,
-            iconColor: accent,
+            requiredField: false,
+            onPlaceSelected: (p) => _pickupPlace = p,
+            onManualEdit: () => _pickupPlace = null,
           ),
           const SizedBox(height: 8),
-          _AddressField(
+          AddressAutocompleteField(
             controller: _dropoffCtrl,
+            label: 'Entrega',
             hint: 'Tu dirección de entrega',
-            icon: Icons.home_rounded,
-            iconColor: AppColors.primary,
+            requiredField: true,
           ),
           const SizedBox(height: 18),
 

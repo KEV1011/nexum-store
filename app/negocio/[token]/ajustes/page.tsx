@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { PortalTabs } from '../PortalTabs'
+import { LocationPicker } from './LocationPicker'
 import {
   ArrowLeft,
   Loader2,
@@ -62,13 +63,20 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  // Punto del negocio: viene de /info, no de /settings (son datos distintos).
+  const [geo, setGeo] = useState<{ lat?: number; lng?: number } | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const [sRes, stRes] = await Promise.all([
+      const [sRes, stRes, iRes] = await Promise.all([
         fetch(`${BACKEND_URL}/business/${token}/settings`, { cache: 'no-store' }),
         fetch(`${BACKEND_URL}/business/${token}/stats`, { cache: 'no-store' }),
+        fetch(`${BACKEND_URL}/business/${token}/info`, { cache: 'no-store' }),
       ])
+      const iJson = (await iRes.json().catch(() => ({}))) as {
+        data?: { lat?: number; lng?: number }
+      }
+      if (iJson.data) setGeo({ lat: iJson.data.lat, lng: iJson.data.lng })
       if (sRes.status === 404) {
         setError('Este negocio no existe en el servidor. Verifica tu enlace.')
         return
@@ -242,6 +250,12 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                   />
                 </div>
               </div>
+              <LocationPicker
+                token={token}
+                lat={geo?.lat}
+                lng={geo?.lng}
+                onSaved={(la, ln) => setGeo({ lat: la, lng: ln })}
+              />
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Horario (informativo)</label>
                 <input className={INPUT} value={settings.openingHours} onChange={(e) => set({ openingHours: e.target.value })} placeholder="Ej: Lun-Sáb 8am-9pm" maxLength={80} />

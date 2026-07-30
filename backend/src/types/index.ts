@@ -324,6 +324,9 @@ export interface Business {
   imageUrl?: string;       // foto de portada del local (null = sin portada)
   createdAt: Date;
   isActive: boolean;
+  /** Punto del negocio en el mapa (null si aún no se ha fijado). */
+  lat?: number;
+  lng?: number;
 }
 
 export interface RegisterBusinessDTO {
@@ -600,6 +603,11 @@ export interface ClientPlaceOrderDTO {
   businessId: string;
   deliveryAddress: string;
   items: ClientOrderLineDTO[];
+  // Coordenadas de la dirección de entrega, cuando el cliente la eligió de
+  // las sugerencias o la marcó en el mapa. Sin ellas el pedido funciona
+  // igual, pero su seguimiento no puede dibujarse en el mapa.
+  deliveryLat?: number;
+  deliveryLng?: number;
 }
 
 export interface ClientOrderSummaryDTO {
@@ -635,6 +643,18 @@ export interface ClientOrderSummaryDTO {
   prepMinutes?: number;
   acceptedAt?: string;
   readyAt?: string;
+  // Geografía real del pedido, para que el cliente vea DÓNDE va su repartidor
+  // en vez de un dibujo. Antes el mapa de seguimiento inventaba las posiciones
+  // con el hash del nombre del negocio y del texto de la dirección.
+  // Nulos cuando el negocio no tiene coordenadas: la app oculta el mapa en vez
+  // de mostrar uno falso.
+  businessLat?: number;
+  businessLng?: number;
+  deliveryLat?: number;
+  deliveryLng?: number;
+  // Posición viva del repartidor (heartbeat), solo mientras lleva el pedido.
+  driverLat?: number;
+  driverLng?: number;
 }
 
 // ─── Client Trips ─────────────────────────────────────────────────────────────

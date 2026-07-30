@@ -121,6 +121,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       orderId = await ref.read(ordersProvider.notifier).placeOrder(
             cart: cart,
             deliveryAddress: address.fullAddress,
+            // Si la dirección se guardó eligiéndola de la lista o del mapa,
+            // el pedido lleva su punto exacto y el cliente puede seguirlo.
+            deliveryLat: address.lat,
+            deliveryLng: address.lng,
           );
     } catch (_) {
       // El negocio nunca recibió el pedido: informar en lugar de simular.

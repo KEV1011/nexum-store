@@ -18,6 +18,7 @@ import {
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { normalizeColombianPhone } from './auth.service';
+import { geocodeAddress } from './geo.service';
 
 // ─── Order-update notification subscriptions (ephemeral WS session state) ─────
 
@@ -72,6 +73,7 @@ function _dbToBusinessInterface(b: {
   id: string; name: string; ownerName: string | null; phone: string | null;
   address: string; category: string; token: string; whatsapp: string | null;
   createdAt: Date; isOpen: boolean; imageUrl: string | null;
+  lat?: number | null; lng?: number | null;
 }): Business {
   return {
     id: b.id,
@@ -85,6 +87,8 @@ function _dbToBusinessInterface(b: {
     imageUrl: b.imageUrl ?? undefined,
     createdAt: b.createdAt,
     isActive: b.isOpen,
+    lat: b.lat ?? undefined,
+    lng: b.lng ?? undefined,
   };
 }
 
@@ -130,6 +134,12 @@ const service = {
 
   async registerBusiness(dto: RegisterBusinessDTO): Promise<Business> {
     const token = randomUUID().replace(/-/g, '').slice(0, 12);
+    // Coordenadas desde la dirección escrita: sin ellas, el despacho de sus
+    // pedidos se ancla al centro del pueblo y el cliente no ve dónde está el
+    // negocio en el mapa. Best-effort puro: si no hay llave de Google o la
+    // dirección no se resuelve, el registro continúa igual (el dueño puede
+    // fijar el punto después desde Ajustes).
+    const geo = await geocodeAddress(dto.address).catch(() => null);
     const biz = await prisma.business.create({
       data: {
         name: dto.name,
@@ -138,6 +148,8 @@ const service = {
         address: dto.address,
         category: CATEGORY_TO_PRISMA[dto.category] ?? 'OTHER',
         whatsapp: dto.whatsapp ?? null,
+        lat: geo?.lat ?? null,
+        lng: geo?.lng ?? null,
         token,
         isOpen: true,
       },
@@ -836,4 +848,23 @@ export async function findBusinessesByPhone(rawPhone: string): Promise<BusinessL
       category: String(b.category),
       isOpen: b.isOpen,
     }));
+}
+
+/**
+ * Fija a mano el punto del negocio en el mapa.
+ *
+ * Los negocios registrados antes de la geocodificación automática no tienen
+ * coordenadas, y hay direcciones que Google no resuelve. Sin esta vía, esos
+ * negocios se quedarían para siempre anclados al centro del pueblo.
+ */
+export async function updateBusinessLocation(
+  businessId: string,
+  lat: number,
+  lng: number,
+): Promise<{ lat: number; lng: number }> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    throw new Error('Coordenadas inválidas.');
+  }
+  await prisma.business.update({ where: { id: businessId }, data: { lat, lng } });
+  return { lat, lng };
 }

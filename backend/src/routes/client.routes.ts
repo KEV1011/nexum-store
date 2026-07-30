@@ -248,7 +248,15 @@ router.get('/businesses/:id', async (req, res) => {
 router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
   const clientId = req.clientId!;
   const clientPhone = req.clientPhone!;
-  const dto = req.body as { businessId?: string; deliveryAddress?: string; items?: unknown[] };
+  const dto = req.body as {
+    businessId?: string;
+    deliveryAddress?: string;
+    items?: unknown[];
+    // Opcionales: llegan cuando el cliente eligió la dirección de las
+    // sugerencias o la marcó en el mapa. Sin ellas el pedido se crea igual.
+    deliveryLat?: number;
+    deliveryLng?: number;
+  };
 
   if (!dto.businessId || !dto.deliveryAddress || !Array.isArray(dto.items) || dto.items.length === 0) {
     res.status(400).json({ success: false, error: 'businessId, deliveryAddress and items are required' });
@@ -259,6 +267,8 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
     const order = await placeClientOrder(clientId, clientPhone, {
       businessId: dto.businessId,
       deliveryAddress: dto.deliveryAddress,
+      deliveryLat: typeof dto.deliveryLat === 'number' ? dto.deliveryLat : undefined,
+      deliveryLng: typeof dto.deliveryLng === 'number' ? dto.deliveryLng : undefined,
       items: dto.items as Array<{ productId: string; quantity: number; unitPrice: number }>,
     });
     res.status(201).json({ success: true, data: order });

@@ -42,13 +42,20 @@ class AddressesNotifier extends StateNotifier<List<AddressEntity>> {
     );
   }
 
-  void add({required String alias, required String fullAddress}) {
+  void add({
+    required String alias,
+    required String fullAddress,
+    double? lat,
+    double? lng,
+  }) {
     final id = 'addr-${DateTime.now().millisecondsSinceEpoch}';
     final newAddress = AddressEntity(
       id: id,
       alias: alias.trim(),
       fullAddress: fullAddress.trim(),
       isDefault: state.isEmpty,
+      lat: lat,
+      lng: lng,
     );
     final updated = [...state, newAddress];
     state = updated;

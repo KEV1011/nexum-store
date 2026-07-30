@@ -249,6 +249,8 @@ export async function placeClientOrder(
       userId: clientId,
       businessId: dto.businessId,
       deliveryAddress: dto.deliveryAddress,
+      deliveryLat: Number.isFinite(dto.deliveryLat) ? dto.deliveryLat : null,
+      deliveryLng: Number.isFinite(dto.deliveryLng) ? dto.deliveryLng : null,
       // El pedido nace PENDING: espera que el restaurante lo acepte y fije el
       // tiempo de preparación. El despacho al repartidor ya NO es inmediato — se
       // dispara cuando el negocio acepta (así el conductor no espera en la puerta).
@@ -458,13 +460,18 @@ export type ClientOrderWithPinDTO = ClientOrderSummaryDTO & { deliveryPin?: stri
 export async function getClientOrders(clientId: string): Promise<ClientOrderWithPinDTO[]> {
   const orders = await prisma.order.findMany({
     where: { userId: clientId },
-    include: { lines: true, business: { select: { name: true } } },
+    include: { lines: true, business: { select: { name: true, lat: true, lng: true } } },
     orderBy: { createdAt: 'desc' },
   });
-  return orders.map((o) => ({
-    ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines),
-    deliveryPin: o.deliveryPin ?? undefined,
-  }));
+  return Promise.all(
+    orders.map((o) =>
+      _withOrderGeo(
+        { ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines), deliveryPin: o.deliveryPin ?? undefined },
+        o,
+        o.business,
+      ),
+    ),
+  );
 }
 
 export async function getClientOrderById(
@@ -473,13 +480,14 @@ export async function getClientOrderById(
 ): Promise<ClientOrderWithPinDTO | null> {
   const o = await prisma.order.findFirst({
     where: { id: orderId, userId: clientId },
-    include: { lines: true, business: { select: { name: true } } },
+    include: { lines: true, business: { select: { name: true, lat: true, lng: true } } },
   });
   if (!o) return null;
-  return {
-    ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines),
-    deliveryPin: o.deliveryPin ?? undefined,
-  };
+  return _withOrderGeo(
+    { ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines), deliveryPin: o.deliveryPin ?? undefined },
+    o,
+    o.business,
+  );
 }
 
 /**
@@ -962,6 +970,7 @@ type PrismaOrder = {
   createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
   driverName: string | null; driverPhone: string | null; customerName: string | null;
   prepMinutes: number | null; acceptedAt: Date | null; readyAt: Date | null;
+  deliveryLat?: number | null; deliveryLng?: number | null;
 };
 
 type PrismaOrderLine = {
@@ -1006,7 +1015,42 @@ function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine
     prepMinutes: o.prepMinutes ?? undefined,
     acceptedAt: o.acceptedAt?.toISOString(),
     readyAt: o.readyAt?.toISOString(),
+    deliveryLat: o.deliveryLat ?? undefined,
+    deliveryLng: o.deliveryLng ?? undefined,
   };
+}
+
+/**
+ * Añade al pedido la geografía que el cliente necesita para seguirlo de
+ * verdad: dónde está el negocio y dónde va su repartidor ahora mismo.
+ *
+ * Antes el mapa de seguimiento inventaba esas posiciones con el hash del
+ * nombre del negocio y del texto de la dirección — un dibujo bonito que no
+ * decía nada. Si el negocio no tiene coordenadas (los registrados por
+ * autoservicio no las capturaban), se devuelve sin ellas y la app oculta el
+ * mapa: mejor nada que algo falso.
+ */
+async function _withOrderGeo(
+  dto: ClientOrderWithPinDTO,
+  o: { businessId: string; driverId: string | null; status: string },
+  businessGeo?: { lat: number | null; lng: number | null } | null,
+): Promise<ClientOrderWithPinDTO> {
+  if (businessGeo?.lat != null && businessGeo.lng != null) {
+    dto.businessLat = businessGeo.lat;
+    dto.businessLng = businessGeo.lng;
+  }
+  const enCurso = o.status === 'DRIVER_TO_PICKUP' || o.status === 'AT_PICKUP' || o.status === 'IN_TRANSIT';
+  if (o.driverId && enCurso) {
+    const d = await prisma.driver.findUnique({
+      where: { id: o.driverId },
+      select: { lastLat: true, lastLng: true },
+    });
+    if (d?.lastLat != null && d.lastLng != null) {
+      dto.driverLat = d.lastLat;
+      dto.driverLng = d.lastLng;
+    }
+  }
+  return dto;
 }
 
 type PrismaTrip = {

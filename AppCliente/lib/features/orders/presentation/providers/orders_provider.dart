@@ -133,11 +133,17 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
   Future<String> placeOrder({
     required CartState cart,
     required String deliveryAddress,
+    double? deliveryLat,
+    double? deliveryLng,
   }) async {
     final business = cart.business!;
 
     String id;
     String orderRef;
+    // PIN que el cliente le dicta al repartidor al recibir. Solo viaja en la
+    // respuesta del POST y en GET /client/orders*: las actualizaciones en vivo
+    // usan el mismo DTO que ve el repartidor y JAMÁS lo incluyen.
+    String? deliveryPin;
 
     try {
       final res = await _dio.post<Map<String, dynamic>>(
@@ -145,6 +151,8 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         data: {
           'businessId': business.id,
           'deliveryAddress': deliveryAddress,
+          if (deliveryLat != null) 'deliveryLat': deliveryLat,
+          if (deliveryLng != null) 'deliveryLng': deliveryLng,
           'items': cart.items
               .map(
                 (item) => {
@@ -162,6 +170,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       final data = res.data!['data'] as Map<String, dynamic>;
       id = data['id'] as String;
       orderRef = data['orderRef'] as String;
+      deliveryPin = data['deliveryPin'] as String?;
     } catch (_) {
       throw Exception('No se pudo enviar el pedido. Revisa tu conexión.');
     }
@@ -189,6 +198,9 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       deliveryFee: business.deliveryFee,
       createdAt: DateTime.now(),
       etaMinutes: business.etaMinutes,
+      deliveryPin: deliveryPin,
+      deliveryLat: deliveryLat,
+      deliveryLng: deliveryLng,
     );
 
     final newOrders = [order, ...state.orders];
@@ -228,6 +240,18 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
       return order.copyWith(
         status: status,
+        // El PIN solo viene por REST (GET /client/orders/:id); el WS usa el
+        // mismo DTO que ve el repartidor y nunca lo trae. Se adopta si llega
+        // —caso de reinstalar la app— y si no, se conserva el que ya había.
+        deliveryPin: payload['deliveryPin'] as String? ?? order.deliveryPin,
+        // Geografía real: llega en cada sondeo REST (cada 5 s) y es lo que
+        // mueve al repartidor en el mapa. El WS no la trae; se conserva.
+        businessLat: (payload['businessLat'] as num?)?.toDouble() ?? order.businessLat,
+        businessLng: (payload['businessLng'] as num?)?.toDouble() ?? order.businessLng,
+        deliveryLat: (payload['deliveryLat'] as num?)?.toDouble() ?? order.deliveryLat,
+        deliveryLng: (payload['deliveryLng'] as num?)?.toDouble() ?? order.deliveryLng,
+        driverLat: (payload['driverLat'] as num?)?.toDouble() ?? order.driverLat,
+        driverLng: (payload['driverLng'] as num?)?.toDouble() ?? order.driverLng,
         driverName: payload['driverName'] as String? ?? order.driverName,
         driverPhone:
             payload['driverPhone'] as String? ?? order.driverPhone,
@@ -261,6 +285,16 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
   /// Consulta el estado real del pedido cada 5 s cuando no hay WebSocket
   /// disponible; el DTO del backend es el mismo del `order_update` del WS.
+  /// Empieza a seguir un pedido al abrir su pantalla.
+  ///
+  /// Hace falta porque el sondeo solo arrancaba al crear el pedido: si el
+  /// cliente cerraba la app y volvía, se quedaba con la foto vieja y el mapa
+  /// sin la posición del repartidor.
+  void trackOrder(String id) {
+    if (_timers[id]?.isNotEmpty ?? false) return;
+    _startPolling(id);
+  }
+
   void _startPolling(String id) {
     final timer = Timer.periodic(const Duration(seconds: 5), (t) async {
       if (!mounted) {
