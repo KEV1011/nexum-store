@@ -292,6 +292,7 @@ class CustomerOrderEntity {
     DateTime? deliveredAt,
     String? pickupPhotoPath,
     String? deliveryPhotoPath,
+    String? deliveryPin,
     bool? hasSignature,
     int? rating,
     String? ratingComment,
@@ -318,6 +319,11 @@ class CustomerOrderEntity {
       deliveredAt: deliveredAt ?? this.deliveredAt,
       pickupPhotoPath: pickupPhotoPath ?? this.pickupPhotoPath,
       deliveryPhotoPath: deliveryPhotoPath ?? this.deliveryPhotoPath,
+      // El PIN faltaba en copyWith: como las actualizaciones en vivo NO lo
+      // traen (el repartidor recibe el mismo DTO y jamás debe verlo), el
+      // primer cambio de estado lo borraba y el cliente se quedaba sin PIN
+      // justo cuando iba a necesitarlo.
+      deliveryPin: deliveryPin ?? this.deliveryPin,
       hasSignature: hasSignature ?? this.hasSignature,
       rating: rating ?? this.rating,
       ratingComment: ratingComment ?? this.ratingComment,

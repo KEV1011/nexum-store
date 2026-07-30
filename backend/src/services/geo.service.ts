@@ -301,6 +301,41 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
   return (results[0]?.['formatted_address'] as string | undefined) ?? null;
 }
 
+/**
+ * Dirección en texto → coordenadas. Se usa al registrar un negocio, para que
+ * el despacho de sus pedidos se ancle a su puerta y no al centro del pueblo.
+ *
+ * Devuelve null si no se puede resolver (o si no hay llave configurada): quien
+ * llama debe seguir adelante sin coordenadas, nunca fallar por esto.
+ */
+export async function geocodeAddress(
+  address: string,
+  city?: string,
+): Promise<{ lat: number; lng: number } | null> {
+  if (!isGeoConfigured() || !address.trim()) return null;
+  const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+  // La ciudad y el país acotan la búsqueda: "Cra 6 #5-20" existe en media
+  // Colombia, y sin contexto Google devuelve cualquiera.
+  url.searchParams.set('address', city ? `${address}, ${city}, Colombia` : `${address}, Colombia`);
+  url.searchParams.set('language', 'es');
+  url.searchParams.set('region', 'co');
+  url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = (await res.json()) as Record<string, unknown>;
+    if (json['status'] !== 'OK') return null;
+    const results = json['results'] as Array<Record<string, unknown>>;
+    const loc = (results[0]?.['geometry'] as Record<string, unknown> | undefined)?.['location'] as
+      | { lat: number; lng: number }
+      | undefined;
+    return loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng) ? loc : null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Routes API (ruta + ETA real) ─────────────────────────────────────────────
 
 export interface RouteInfo {

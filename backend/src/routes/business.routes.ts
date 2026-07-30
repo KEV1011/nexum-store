@@ -17,6 +17,7 @@ import {
   updateBusinessSettings,
   getBusinessStats,
   findBusinessesByPhone,
+  updateBusinessLocation,
 } from '../services/business.service';
 import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
 import { isSmsConfigured } from '../services/sms.service';
@@ -153,6 +154,8 @@ router.get('/:token/info', async (req: Request, res: Response): Promise<void> =>
         category: business.category,
         address: business.address,
         imageUrl: business.imageUrl,
+        lat: business.lat,
+        lng: business.lng,
       },
     });
   } catch (err) {
@@ -186,6 +189,23 @@ router.put('/:token/settings', async (req: Request, res: Response): Promise<void
     res.status(200).json({ success: true, data: settings });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudieron guardar los ajustes';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// PUT /business/:token/location { lat, lng } — el dueño fija su punto en el mapa.
+// Los negocios registrados antes de la geocodificación automática no tienen
+// coordenadas, y hay direcciones que Google no resuelve: sin esta vía se
+// quedarían anclados al centro del pueblo para siempre.
+router.put('/:token/location', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { lat, lng } = req.body as { lat?: number; lng?: number };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await updateBusinessLocation(business.id, Number(lat), Number(lng));
+    res.json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo guardar la ubicación';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });

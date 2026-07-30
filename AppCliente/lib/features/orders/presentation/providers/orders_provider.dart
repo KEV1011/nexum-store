@@ -138,6 +138,10 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
     String id;
     String orderRef;
+    // PIN que el cliente le dicta al repartidor al recibir. Solo viaja en la
+    // respuesta del POST y en GET /client/orders*: las actualizaciones en vivo
+    // usan el mismo DTO que ve el repartidor y JAMÁS lo incluyen.
+    String? deliveryPin;
 
     try {
       final res = await _dio.post<Map<String, dynamic>>(
@@ -162,6 +166,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       final data = res.data!['data'] as Map<String, dynamic>;
       id = data['id'] as String;
       orderRef = data['orderRef'] as String;
+      deliveryPin = data['deliveryPin'] as String?;
     } catch (_) {
       throw Exception('No se pudo enviar el pedido. Revisa tu conexión.');
     }
@@ -189,6 +194,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       deliveryFee: business.deliveryFee,
       createdAt: DateTime.now(),
       etaMinutes: business.etaMinutes,
+      deliveryPin: deliveryPin,
     );
 
     final newOrders = [order, ...state.orders];
@@ -228,6 +234,10 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
       return order.copyWith(
         status: status,
+        // El PIN solo viene por REST (GET /client/orders/:id); el WS usa el
+        // mismo DTO que ve el repartidor y nunca lo trae. Se adopta si llega
+        // —caso de reinstalar la app— y si no, se conserva el que ya había.
+        deliveryPin: payload['deliveryPin'] as String? ?? order.deliveryPin,
         driverName: payload['driverName'] as String? ?? order.driverName,
         driverPhone:
             payload['driverPhone'] as String? ?? order.driverPhone,
