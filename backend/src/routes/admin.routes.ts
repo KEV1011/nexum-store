@@ -17,6 +17,7 @@ import {
   OtpConfigError,
 } from '../services/otp.service';
 import { probeUploads } from '../lib/upload';
+import { PORTAL_BASE_URL } from '../config/constants';
 import { probeSms } from '../services/sms.service';
 import {
   getAdminMetrics,
@@ -31,6 +32,8 @@ import {
   releaseDriver,
   diagnoseMatching,
   listClientsForKyc,
+  listBusinessesForAdmin,
+  setBusinessActive,
 } from '../services/admin.service';
 import { setClientKycStatus, ClientKycError } from '../services/client-kyc.service';
 import { OperatorStatus } from '@prisma/client';
@@ -110,7 +113,7 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/alerts', '/takedowns', '/promos', '/payouts', '/operators', '/routes', '/matching', '/support'], requireAdmin);
+router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/alerts', '/takedowns', '/promos', '/payouts', '/operators', '/businesses', '/routes', '/matching', '/support'], requireAdmin);
 
 // GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
 // por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.
@@ -334,6 +337,33 @@ router.post('/clients/:id/kyc', async (req: Request, res: Response): Promise<voi
   } catch (err) {
     const st = err instanceof ClientKycError ? 404 : 500;
     res.status(st).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Negocios (comercios) ─────────────────────────────────────────────────────
+
+// GET /admin/businesses?q=texto
+router.get('/businesses', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const q = typeof req.query['q'] === 'string' ? (req.query['q'] as string) : undefined;
+    res.json({ success: true, data: await listBusinessesForAdmin(q) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// POST /admin/businesses/:id/activate · /deactivate
+router.post('/businesses/:id/:action', async (req: Request, res: Response): Promise<void> => {
+  const action = req.params['action'];
+  if (action !== 'activate' && action !== 'deactivate') {
+    res.status(400).json({ success: false, error: 'Acción inválida' });
+    return;
+  }
+  try {
+    await setBusinessActive(req.params['id']!, action === 'activate');
+    res.json({ success: true });
+  } catch {
+    res.status(404).json({ success: false, error: 'Negocio no encontrado' });
   }
 });
 
@@ -615,6 +645,7 @@ const PANEL_HTML = `<!DOCTYPE html>
       <button data-tab="drivers" onclick="show('drivers')">Conductores</button>
       <button data-tab="clients" onclick="show('clients')">Clientes</button>
       <button data-tab="operators" onclick="show('operators')">Empresas</button>
+      <button data-tab="businesses" onclick="show('businesses')">Negocios</button>
       <button data-tab="sos" onclick="show('sos')">SOS</button>
       <button data-tab="promos" onclick="show('promos')">Promos</button>
       <button data-tab="payouts" onclick="show('payouts')">Retiros</button>
@@ -664,6 +695,20 @@ const PANEL_HTML = `<!DOCTYPE html>
       <p style="font-size:.78rem;color:#64748b;margin-bottom:10px">Verificación de identidad de pasajeros (anti-robo). Aprueba tras revisar la selfie.</p>
       <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Selfie</th><th>Estado KYC</th><th>Registrado</th><th>Acciones</th></tr></thead>
       <tbody id="clients-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+
+    <section id="tab-businesses" style="display:none">
+      <p style="font-size:.78rem;color:#64748b;margin-bottom:10px">
+        Comercios registrados por autoservicio. El portal del dueño es un enlace sin contraseña:
+        si lo pierde, «Abrir portal» es el enlace que hay que reenviarle (también puede recuperarlo
+        solo desde /negocio con su teléfono).
+      </p>
+      <form class="inline" onsubmit="searchBusinesses(event)">
+        <div><label>Buscar por nombre, dueño, teléfono o dirección</label><input id="biz-q" placeholder="Ej: Sabor, 3001112233…" /></div>
+        <div><button type="submit" style="width:auto">Buscar</button></div>
+      </form>
+      <table><thead><tr><th>Negocio</th><th>Categoría</th><th>Dueño</th><th>Teléfono</th><th>Prod./Ped.</th><th>Vitrina</th><th>Estado</th><th>Registrado</th><th>Acciones</th></tr></thead>
+      <tbody id="businesses-body"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-operators" style="display:none">
@@ -813,7 +858,7 @@ function show(tab) {
   for (const s of document.querySelectorAll('section[id^="tab-"]')) s.style.display = 'none';
   document.getElementById('tab-' + tab).style.display = 'block';
   for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
-  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperators, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab]();
+  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperators, businesses: loadBusinesses, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab]();
 }
 
 const money = (v) => '$' + Number(v || 0).toLocaleString('es-CO');
@@ -991,6 +1036,36 @@ function runDiag(ev) {
 function setDriverVerified(id, action) {
   api('/admin/drivers/' + id + '/' + action, { method: 'POST' })
     .then(() => { showMsg(action === 'verify' ? 'Conductor verificado.' : 'Verificación retirada.', false); loadDrivers(); })
+    .catch((e) => showMsg(e.message, true));
+}
+
+var BIZ_CATEGORY = { RESTAURANT: 'Restaurante', SUPERMARKET: 'Supermercado', PHARMACY: 'Farmacia', OTHER: 'Otro' };
+var PORTAL_URL = '${PORTAL_BASE_URL}';
+
+function searchBusinesses(ev) { ev.preventDefault(); loadBusinesses(); }
+
+function loadBusinesses() {
+  var q = (document.getElementById('biz-q') || {}).value || '';
+  api('/admin/businesses' + (q ? '?q=' + encodeURIComponent(q) : '')).then((rows) => {
+    const tb = document.getElementById('businesses-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">' + (q ? 'Ningún negocio coincide.' : 'Aún no hay negocios registrados.') + '</td></tr>'; return; }
+    tb.innerHTML = rows.map((b) => '<tr><td><strong>' + esc(b.name) + '</strong><div style="font-size:.72rem;color:#777">' + esc(b.address) + '</div></td><td>' +
+      esc(BIZ_CATEGORY[b.category] || b.category) + '</td><td>' + esc(b.ownerName || '—') + '</td><td>' + esc(b.phone || '—') +
+      '</td><td>' + b.products + ' / ' + b.orders +
+      '</td><td>' + (b.acceptingOrders ? '<span class="badge badge-ok">Abierta</span>' : '<span class="badge badge-PENDING">Pausada</span>') +
+      '</td><td>' + (b.isOpen ? '<span class="badge badge-ok">Activo</span>' : '<span class="badge badge-REJECTED">Inactivo</span>') +
+      '</td><td>' + when(b.createdAt) + '</td><td>' +
+      '<a class="btn-sm" style="background:#e0f2f1;color:#00695c;text-decoration:none" href="' + PORTAL_URL + esc(b.portalPath) + '" target="_blank" rel="noopener">Abrir portal</a> ' +
+      (b.isOpen
+        ? '<button class="btn-sm btn-reject" onclick="setBusiness(\\'' + b.id + '\\', \\'deactivate\\')">Desactivar</button>'
+        : '<button class="btn-sm btn-approve" onclick="setBusiness(\\'' + b.id + '\\', \\'activate\\')">Activar</button>') +
+      '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function setBusiness(id, action) {
+  api('/admin/businesses/' + id + '/' + action, { method: 'POST' })
+    .then(() => { showMsg(action === 'activate' ? 'Negocio activado.' : 'Negocio desactivado.', false); loadBusinesses(); })
     .catch((e) => showMsg(e.message, true));
 }
 

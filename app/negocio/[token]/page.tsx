@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useCallback, useRef } from 'react'
 import { ZipaLogo, ZipaLoading } from '../../ZipaLogo'
+import { useOrderAlert } from './useOrderAlert'
 import Link from 'next/link'
 import {
   Package,
@@ -436,6 +437,12 @@ export default function PortalDashboard({
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Pedidos que todavía esperan una decisión del negocio. Mientras haya alguno
+  // el título de la pestaña parpadea: el aviso no se pierde aunque el dueño se
+  // haya alejado del computador justo cuando sonó.
+  const pendientesCount = clientOrders.filter((o) => o.status === 'pending').length
+  const { avisarPedido, sonidoBloqueado, activarSonido } = useOrderAlert(pendientesCount)
+
   // ── REST fetch ──────────────────────────────────────────────────────────────
 
   const fetchOrders = useCallback(async (isManual = false) => {
@@ -501,6 +508,10 @@ export default function PortalDashboard({
             setClientOrders((prev) => [order, ...prev.filter((o) => o.id !== order.id)])
             setToast(order)
             setActiveTab('online')
+            avisarPedido(
+              '¡Pedido nuevo!',
+              `${order.items?.length ?? 0} producto(s) · ${formatCOP(order.total)}`,
+            )
           } else if (msg['type'] === 'business_auth_error') {
             ws.close()
           }
@@ -521,7 +532,7 @@ export default function PortalDashboard({
     } catch {
       // ignore connection errors — onclose will trigger reconnect
     }
-  }, [token])
+  }, [token, avisarPedido])
 
   useEffect(() => {
     fetchOrders()
@@ -538,7 +549,7 @@ export default function PortalDashboard({
   // ─── Derived ────────────────────────────────────────────────────────────────
 
   const activeDeliveryCount = data?.orders.filter((o) => o.status !== 'delivered').length ?? 0
-  const newOnlineCount = clientOrders.filter((o) => o.status === 'pending').length
+  const newOnlineCount = pendientesCount
   const preparingCount = clientOrders.filter((o) => ['pending', 'preparing', 'driverToPickup'].includes(o.status)).length
 
   // La marca dibujándose mientras llega el pedido del día: la misma entrada
@@ -554,8 +565,14 @@ export default function PortalDashboard({
           </div>
           <h1 className="font-bold text-slate-900 text-lg mb-2">Acceso no disponible</h1>
           <p className="text-slate-500 text-sm leading-relaxed">{error}</p>
-          <a href="/negocio/registro"
+          {/* Un enlace viejo o mal copiado no puede ser un callejón sin salida:
+              con el teléfono del registro se recupera el enlace correcto. */}
+          <a href="/negocio"
             className="mt-6 block w-full py-2.5 px-4 bg-teal-700 text-white rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors">
+            Recuperar mi enlace
+          </a>
+          <a href="/negocio/registro"
+            className="mt-2 block w-full py-2.5 px-4 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
             Registrar mi negocio
           </a>
           <button onClick={() => fetchOrders(true)}
@@ -630,6 +647,26 @@ export default function PortalDashboard({
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+
+        {/* El navegador no deja sonar hasta que el usuario toca la página. Sin
+            este aviso, el dueño creería que el portal avisa cuando en realidad
+            está mudo. */}
+        {sonidoBloqueado && (
+          <button
+            onClick={() => void activarSonido()}
+            className="w-full flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left hover:bg-amber-100 transition-colors"
+          >
+            <span className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+              <Bell className="w-4.5 h-4.5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-bold text-amber-900 text-sm">Activar el sonido de pedidos</span>
+              <span className="block text-xs text-amber-800/80">
+                Tócalo una vez y sonará una campana cada vez que entre un pedido, aunque tengas otra pestaña abierta.
+              </span>
+            </span>
+          </button>
+        )}
 
         {/* Stats */}
         <section>

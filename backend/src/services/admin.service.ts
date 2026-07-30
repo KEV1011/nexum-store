@@ -439,3 +439,63 @@ export async function setOperatorRouteAuthorized(routeId: string, authorized: bo
   await prisma.operatorRoute.update({ where: { id: routeId }, data: { authorized } });
   return true;
 }
+
+// ─── Negocios (comercios) ─────────────────────────────────────────────────────
+// El registro de negocios es autoservicio y su portal es un enlace mágico. Sin
+// esta vista el admin no tenía forma de ver quién se registró, ni de ayudar a
+// un dueño que perdió su enlace, ni de dar de baja un negocio.
+
+export interface AdminBusinessRow {
+  id: string;
+  name: string;
+  ownerName: string | null;
+  category: string;
+  address: string;
+  phone: string | null;
+  isOpen: boolean;
+  acceptingOrders: boolean;
+  products: number;
+  orders: number;
+  portalPath: string;
+  createdAt: string;
+}
+
+export async function listBusinessesForAdmin(query?: string): Promise<AdminBusinessRow[]> {
+  const q = query?.trim();
+  const rows = await prisma.business.findMany({
+    where: q
+      ? {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { ownerName: { contains: q, mode: 'insensitive' } },
+            { phone: { contains: q } },
+            { address: { contains: q, mode: 'insensitive' } },
+          ],
+        }
+      : undefined,
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+    include: { _count: { select: { products: true, orders: true } } },
+  });
+  return rows.map((b) => ({
+    id: b.id,
+    name: b.name,
+    ownerName: b.ownerName,
+    category: String(b.category),
+    address: b.address,
+    phone: b.phone,
+    isOpen: b.isOpen,
+    acceptingOrders: b.acceptingOrders,
+    products: b._count.products,
+    orders: b._count.orders,
+    // Ruta relativa: el panel la abre contra el portal configurado. Es lo que
+    // el admin le reenvía al dueño que perdió su enlace.
+    portalPath: `/negocio/${b.token}`,
+    createdAt: b.createdAt.toISOString(),
+  }));
+}
+
+/** Activa o desactiva la cuenta del negocio (isOpen = gate de acceso al portal). */
+export async function setBusinessActive(id: string, active: boolean): Promise<void> {
+  await prisma.business.update({ where: { id }, data: { isOpen: active } });
+}
