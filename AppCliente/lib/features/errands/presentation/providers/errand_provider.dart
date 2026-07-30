@@ -111,13 +111,25 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
 
   // ── Public API ───────────────────────────────────────────────────────────────
 
-  Future<void> createErrand(ErrandEntity errand) async {
+  /// [pickupLat]/[pickupLng] vienen de la dirección que el cliente eligió en
+  /// la lista o en el mapa. Mandan sobre el GPS del teléfono: la recogida
+  /// suele ser en otro sitio (una tienda, la casa de alguien), y anclar el
+  /// despacho a donde está parado el cliente mandaba al mensajero al lugar
+  /// equivocado.
+  Future<void> createErrand(
+    ErrandEntity errand, {
+    double? pickupLat,
+    double? pickupLng,
+  }) async {
     state = state.copyWith(active: errand, isLoading: true);
 
     try {
       // Ubicación del cliente (mejor esfuerzo) para anclar el matching del
       // mandado a conductores cercanos. Si no hay GPS, el backend usa el centro.
-      final coords = await _currentCoords();
+      final elegidas = (pickupLat != null && pickupLng != null)
+          ? (pickupLat, pickupLng)
+          : null;
+      final coords = elegidas ?? await _currentCoords();
       final res = await _dio.post<Map<String, dynamic>>(
         '/client/errands/request',
         data: {

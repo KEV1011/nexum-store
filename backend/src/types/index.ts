@@ -603,6 +603,11 @@ export interface ClientPlaceOrderDTO {
   businessId: string;
   deliveryAddress: string;
   items: ClientOrderLineDTO[];
+  // Coordenadas de la dirección de entrega, cuando el cliente la eligió de
+  // las sugerencias o la marcó en el mapa. Sin ellas el pedido funciona
+  // igual, pero su seguimiento no puede dibujarse en el mapa.
+  deliveryLat?: number;
+  deliveryLng?: number;
 }
 
 export interface ClientOrderSummaryDTO {

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/core/services/geo_service.dart';
+import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
@@ -177,6 +179,10 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
   final _aliasCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
 
+  /// Coordenadas exactas si se eligió de la lista o del mapa; null si se
+  /// escribió a mano (se guarda solo el texto, como hasta ahora).
+  PlaceDetails? _place;
+
   @override
   void dispose() {
     _aliasCtrl.dispose();
@@ -191,6 +197,10 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
     ref.read(addressesProvider.notifier).add(
           alias: alias,
           fullAddress: address,
+          // Solo si la dirección se eligió de la lista o del mapa: escrita a
+          // mano no hay coordenadas fiables que guardar.
+          lat: _place?.address == address ? _place?.lat : null,
+          lng: _place?.address == address ? _place?.lng : null,
         );
     Navigator.of(context).pop();
   }
@@ -227,13 +237,15 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
             textCapitalization: TextCapitalization.words,
           ),
           const SizedBox(height: AppConstants.spacingS),
-          TextField(
+          // Con sugerencias de Google y el mapa como salida: una dirección
+          // guardada mal escrita se paga en CADA pedido que se haga con ella.
+          AddressAutocompleteField(
             controller: _addressCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Dirección',
-              hintText: 'Calle, número, barrio',
-            ),
-            textCapitalization: TextCapitalization.sentences,
+            label: 'Dirección',
+            hint: 'Calle, número, barrio',
+            requiredField: true,
+            onPlaceSelected: (p) => _place = p,
+            onManualEdit: () => _place = null,
           ),
           const SizedBox(height: AppConstants.spacingM),
           ElevatedButton(

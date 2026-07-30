@@ -4,6 +4,8 @@ class AddressEntity {
     required this.alias,
     required this.fullAddress,
     this.isDefault = false,
+    this.lat,
+    this.lng,
   });
 
   factory AddressEntity.fromJson(Map<String, dynamic> json) => AddressEntity(
@@ -11,6 +13,8 @@ class AddressEntity {
         alias: json['alias'] as String,
         fullAddress: json['fullAddress'] as String,
         isDefault: json['isDefault'] as bool? ?? false,
+        lat: (json['lat'] as num?)?.toDouble(),
+        lng: (json['lng'] as num?)?.toDouble(),
       );
 
   final String id;
@@ -18,16 +22,26 @@ class AddressEntity {
   final String fullAddress;
   final bool isDefault;
 
+  /// Punto exacto cuando la dirección se eligió de las sugerencias o del mapa.
+  /// Null si se escribió a mano: el pedido se crea igual, pero su seguimiento
+  /// no se puede dibujar en el mapa.
+  final double? lat;
+  final double? lng;
+
   AddressEntity copyWith({
     String? id,
     String? alias,
     String? fullAddress,
     bool? isDefault,
+    double? lat,
+    double? lng,
   }) {
     return AddressEntity(
       id: id ?? this.id,
       alias: alias ?? this.alias,
       fullAddress: fullAddress ?? this.fullAddress,
+      lat: lat ?? this.lat,
+      lng: lng ?? this.lng,
       isDefault: isDefault ?? this.isDefault,
     );
   }
@@ -37,5 +51,7 @@ class AddressEntity {
         'alias': alias,
         'fullAddress': fullAddress,
         'isDefault': isDefault,
+        if (lat != null) 'lat': lat,
+        if (lng != null) 'lng': lng,
       };
 }

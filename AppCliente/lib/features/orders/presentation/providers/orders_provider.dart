@@ -133,6 +133,8 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
   Future<String> placeOrder({
     required CartState cart,
     required String deliveryAddress,
+    double? deliveryLat,
+    double? deliveryLng,
   }) async {
     final business = cart.business!;
 
@@ -149,6 +151,8 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         data: {
           'businessId': business.id,
           'deliveryAddress': deliveryAddress,
+          if (deliveryLat != null) 'deliveryLat': deliveryLat,
+          if (deliveryLng != null) 'deliveryLng': deliveryLng,
           'items': cart.items
               .map(
                 (item) => {
@@ -195,6 +199,8 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       createdAt: DateTime.now(),
       etaMinutes: business.etaMinutes,
       deliveryPin: deliveryPin,
+      deliveryLat: deliveryLat,
+      deliveryLng: deliveryLng,
     );
 
     final newOrders = [order, ...state.orders];

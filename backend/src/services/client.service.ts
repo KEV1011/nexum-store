@@ -249,6 +249,8 @@ export async function placeClientOrder(
       userId: clientId,
       businessId: dto.businessId,
       deliveryAddress: dto.deliveryAddress,
+      deliveryLat: Number.isFinite(dto.deliveryLat) ? dto.deliveryLat : null,
+      deliveryLng: Number.isFinite(dto.deliveryLng) ? dto.deliveryLng : null,
       // El pedido nace PENDING: espera que el restaurante lo acepte y fije el
       // tiempo de preparación. El despacho al repartidor ya NO es inmediato — se
       // dispara cuando el negocio acepta (así el conductor no espera en la puerta).

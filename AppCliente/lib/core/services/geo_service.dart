@@ -105,6 +105,24 @@ class GeoService {
     }
   }
 
+  /// Coordenadas → dirección legible. Lo usa el selector en mapa para que la
+  /// persona reconozca el punto que acaba de marcar.
+  ///
+  /// Devuelve null sin llave de Google o si no hay resultado: quien llama debe
+  /// seguir adelante con las coordenadas, que es el dato que de verdad importa.
+  Future<String?> reverseGeocode(double lat, double lng) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/geo/reverse',
+        queryParameters: {'lat': lat, 'lng': lng},
+      );
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      return data?['address'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Ruta en carro entre origen y destino (distancia/ETA reales).
   Future<RouteInfo?> directions({
     required double originLat,

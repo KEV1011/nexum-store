@@ -8,6 +8,7 @@ import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
+import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 
 /// Fletes y acarreos con camiones (turbo / camión / mula).
 ///
@@ -234,9 +235,21 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
           ),
           const SizedBox(height: 12),
 
-          _field(_origin, 'Dirección de recogida', Icons.trip_origin),
+          // Las direcciones del flete van con sugerencias y con mapa: un
+          // camión que llega a la cuadra equivocada cuesta horas, no minutos.
+          AddressAutocompleteField(
+            controller: _origin,
+            label: 'Recogida',
+            hint: 'Dirección de recogida',
+            requiredField: true,
+          ),
           const SizedBox(height: 10),
-          _field(_dest, 'Dirección de entrega', Icons.place_outlined),
+          AddressAutocompleteField(
+            controller: _dest,
+            label: 'Entrega',
+            hint: 'Dirección de entrega',
+            requiredField: true,
+          ),
           const SizedBox(height: 10),
           Row(
             children: [
