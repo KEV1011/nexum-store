@@ -39,6 +39,7 @@ import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -2181,9 +2182,12 @@ class _AppDrawer extends ConsumerWidget {
                     label: 'Cerrar sesión',
                     iconColor: AppColors.error,
                     isAccent: true,
-                    onTap: () {
+                    onTap: () async {
+                      // Solo navegaba: la sesión seguía viva en el secure
+                      // storage y el router devolvía al home. Hay que borrarla.
                       Navigator.of(context).pop();
-                      context.go('/login');
+                      await ref.read(authProvider.notifier).logout();
+                      if (context.mounted) context.go('/login');
                     },
                   ),
                 ],

@@ -171,6 +171,16 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       id = data['id'] as String;
       orderRef = data['orderRef'] as String;
       deliveryPin = data['deliveryPin'] as String?;
+    } on DioException catch (e) {
+      // El backend explica POR QUÉ rechazó el pedido (producto agotado, negocio
+      // cerrado, límite de solicitudes…). Tragarse ese mensaje y culpar a la
+      // conexión mandaba al cliente a revisar su wifi cuando el problema era
+      // otro, y a nosotros a adivinar.
+      final data = e.response?.data;
+      final motivo = data is Map<String, dynamic> ? data['error'] as String? : null;
+      throw Exception(
+        motivo ?? 'No se pudo enviar el pedido. Revisa tu conexión.',
+      );
     } catch (_) {
       throw Exception('No se pudo enviar el pedido. Revisa tu conexión.');
     }
