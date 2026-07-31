@@ -15,6 +15,7 @@
 // consultar la BD en cada heartbeat de 4 s.
 
 import { prisma } from '../lib/prisma';
+import { sendPushToDriver } from './push.service';
 import { sendPushToClient } from './push.service';
 import { INTERCITY_CITY_COORDS } from '../config/constants';
 
@@ -30,7 +31,12 @@ const LOOKUP_TTL_MS = 30_000;
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
-export type SafetyAlertKind = 'geofence' | 'stall' | 'deviation';
+export type SafetyAlertKind =
+  | 'geofence'
+  | 'stall'
+  | 'deviation'
+  /** Conductor sin señal mientras lleva un servicio en curso (posible robo). */
+  | 'offline';
 
 export interface SafetyAlert {
   id: number;
@@ -266,4 +272,133 @@ export function pruneSafetyState(): void {
   for (const [k, v] of _lastMove) {
     if (now - v.at > 60 * 60_000) _lastMove.delete(k);
   }
+}
+
+// ── Vigilante: conductor desaparecido con mercancía ──────────────────────────
+//
+// El robo típico del reparto: el conductor recoge el paquete y en el camino
+// cierra la app o apaga los datos. Todas las alertas anteriores dependen del
+// heartbeat, así que justo en ese escenario NINGUNA se dispara: el problema no
+// es un evento raro, es la AUSENCIA de eventos.
+//
+// Por eso hace falta un barrido: cada minuto busca servicios en curso cuyo
+// conductor lleva demasiado tiempo sin dar señal. Es la única alerta que no
+// puede nacer del heartbeat.
+
+/** Minutos sin señal con un servicio en curso antes de levantar la alerta. */
+const OFFLINE_ALERT_MIN = Number(process.env['SAFETY_OFFLINE_MIN'] ?? 6);
+
+/** Servicios que llevan mercancía ajena: es donde el silencio importa. */
+async function _serviciosEnCursoConConductor(): Promise<
+  Array<{
+    serviceKind: string;
+    serviceId: string;
+    driverId: string;
+    driverName: string;
+    operatorId: string | null;
+    lastSeenAt: Date | null;
+    detalle: string;
+  }>
+> {
+  // Solo `Trip` tiene relación con el conductor; mandado, pedido y flete lo
+  // guardan denormalizado. Así que se leen los servicios en curso y luego se
+  // consultan los conductores en una sola query, cruzando en memoria.
+  const [trips, errands, orders, freights] = await Promise.all([
+    prisma.trip.findMany({
+      where: { status: 'IN_PROGRESS', driverId: { not: null } },
+      select: { id: true, driverId: true, operatorId: true, serviceType: true, destAddress: true },
+      take: 100,
+    }),
+    prisma.errand.findMany({
+      where: { status: { in: ['SHOPPING', 'ON_THE_WAY'] }, driverId: { not: null } },
+      select: { id: true, driverId: true, operatorId: true, dropoffAddress: true },
+      take: 100,
+    }),
+    prisma.order.findMany({
+      where: { status: { in: ['AT_PICKUP', 'IN_TRANSIT'] }, driverId: { not: null } },
+      select: { id: true, driverId: true, operatorId: true, deliveryAddress: true },
+      take: 100,
+    }),
+    prisma.freightRequest.findMany({
+      where: { status: 'IN_PROGRESS', driverId: { not: null } },
+      select: { id: true, driverId: true, operatorId: true, destAddress: true },
+      take: 100,
+    }),
+  ]);
+
+  type Fila = { id: string; driverId: string | null; operatorId: string | null };
+  const filas: Array<{ kind: string; r: Fila; detalle: string }> = [
+    ...trips.map((t) => ({
+      kind: 'trip',
+      r: t as Fila,
+      detalle: `${t.serviceType === 'ENVIOS' ? 'Envío' : 'Viaje'} hacia ${t.destAddress}`,
+    })),
+    ...errands.map((e) => ({ kind: 'errand', r: e as Fila, detalle: `Mandado hacia ${e.dropoffAddress}` })),
+    ...orders.map((o) => ({ kind: 'order', r: o as Fila, detalle: `Pedido hacia ${o.deliveryAddress}` })),
+    ...freights.map((f) => ({ kind: 'freight', r: f as Fila, detalle: `Flete hacia ${f.destAddress}` })),
+  ];
+  if (filas.length === 0) return [];
+
+  const corte = new Date(Date.now() - OFFLINE_ALERT_MIN * 60_000);
+  const ids = [...new Set(filas.map((f) => f.r.driverId!).filter(Boolean))];
+  const mudos = await prisma.driver.findMany({
+    where: {
+      id: { in: ids },
+      // `null` = nunca dio señal; también cuenta como desaparecido.
+      OR: [{ lastSeenAt: { lt: corte } }, { lastSeenAt: null }],
+    },
+    select: { id: true, name: true, lastSeenAt: true },
+  });
+  const porId = new Map(mudos.map((d) => [d.id, d]));
+
+  return filas
+    .filter((f) => porId.has(f.r.driverId!))
+    .map((f) => {
+      const d = porId.get(f.r.driverId!)!;
+      return {
+        serviceKind: f.kind,
+        serviceId: f.r.id,
+        driverId: d.id,
+        driverName: d.name,
+        operatorId: f.r.operatorId,
+        lastSeenAt: d.lastSeenAt,
+        detalle: f.detalle,
+      };
+    });
+}
+
+/**
+ * Un barrido. Devuelve cuántas alertas nuevas levantó (útil para pruebas).
+ * Best-effort: cualquier fallo se traga, esto no puede tumbar el servidor.
+ */
+export async function sweepOfflineDrivers(): Promise<number> {
+  let nuevas = 0;
+  try {
+    for (const s of await _serviciosEnCursoConConductor()) {
+      if (!_once(s.serviceId, 'offline')) continue;
+      const minutos = s.lastSeenAt
+        ? Math.round((Date.now() - s.lastSeenAt.getTime()) / 60_000)
+        : OFFLINE_ALERT_MIN;
+      _pushAlert({
+        kind: 'offline',
+        driverId: s.driverId,
+        driverName: s.driverName,
+        operatorId: s.operatorId,
+        serviceKind: s.serviceKind,
+        serviceId: s.serviceId,
+        detail: `Sin señal hace ${minutos} min con un servicio en curso · ${s.detalle}`,
+      });
+      nuevas++;
+      // Al conductor: la mayoría de las veces es batería o cobertura, no robo.
+      // Un aviso a tiempo resuelve el caso honesto y presiona al deshonesto.
+      void sendPushToDriver(s.driverId, {
+        title: 'Reconéctate: tienes un servicio en curso',
+        body: 'Perdimos tu señal. Abre ZIPA para que el cliente pueda seguir su entrega.',
+        data: { type: 'offline_with_service', serviceId: s.serviceId },
+      });
+    }
+  } catch {
+    // Silencio deliberado: es un barrido de fondo.
+  }
+  return nuevas;
 }
