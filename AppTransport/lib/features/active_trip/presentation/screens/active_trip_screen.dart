@@ -968,8 +968,12 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
     // Cadena de custodia: quien recibe dicta su PIN de 4 dígitos. Se pide antes
     // de cerrar el servicio; si el conductor cancela, la entrega no se marca.
+    // Los ENVÍOS también: es mercancía que cambia de manos, y era el único
+    // servicio de reparto sin prueba de entrega verificable.
     final necesitaPin = tripBeforeFinish != null &&
-        (tripBeforeFinish.request.isOrder || workMode.isErrand);
+        (tripBeforeFinish.request.isOrder ||
+            tripBeforeFinish.request.isEnvios ||
+            workMode.isErrand);
     String? pin;
     if (necesitaPin) {
       pin = await showCustodyPinDialog(context, phase: CustodyPinPhase.delivery);
@@ -997,7 +1001,11 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             pin: pin,
           );
         } else {
-          DriverWsService().sendTripStatus(tripBeforeFinish.request.id, 'completed');
+          DriverWsService().sendTripStatus(
+            tripBeforeFinish.request.id,
+            'completed',
+            pin: pin,
+          );
         }
       }
 

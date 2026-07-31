@@ -778,7 +778,23 @@ function onMessage(ws: WebSocket, raw: string): void {
           sendTo(ws, { type: 'error', message: 'Ese viaje no está asignado a ti' });
           return;
         }
-        const updated = await updateClientTripStatus(tripId, status as import('../types').ClientTripStatus);
+        // El PIN del envío viaja en el mismo mensaje; si no coincide, el
+        // servicio lanza y el conductor recibe el motivo en vez de un cierre
+        // silencioso.
+        let updated;
+        try {
+          updated = await updateClientTripStatus(
+            tripId,
+            status as import('../types').ClientTripStatus,
+            typeof msg['pin'] === 'string' ? (msg['pin'] as string) : undefined,
+          );
+        } catch (err) {
+          sendTo(ws, {
+            type: 'error',
+            message: err instanceof Error ? err.message : 'No se pudo actualizar el viaje',
+          });
+          return;
+        }
         if (updated) {
           const clientWs = clientSockets.get(raw.clientId);
           if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });

@@ -698,6 +698,9 @@ export interface ClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
+  /** PIN que dicta quien RECIBE el envío. Solo lo ve el cliente, nunca el
+   *  repartidor: es lo que prueba que el paquete llegó a su destinatario. */
+  deliveryPin?: string;
 }
 
 export interface RequestClientTripDTO {

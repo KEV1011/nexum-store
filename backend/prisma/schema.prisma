@@ -613,6 +613,11 @@ model Trip {
   @@index([status])
   @@index([operatorId])
   @@map("trips")
+  // Custodia del ENVÍO: el PIN lo dicta quien RECIBE el paquete. Sin él, el
+  // repartidor no puede cerrar la entrega. Solo se genera para serviceType
+  // ENVIOS: un pasajero no necesita PIN para bajarse del carro.
+  deliveryPin        String?
+  deliveryPinAt      DateTime?
 }
 
 enum TransportType {

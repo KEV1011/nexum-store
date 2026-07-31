@@ -308,8 +308,14 @@ class DriverWsService {
   /// is updated in real-time.
   ///
   /// [status] must be one of: `'arriving'`, `'arrived'`, `'in_progress'`, `'completed'`.
-  void sendTripStatus(String tripId, String status) =>
-      _send({'type': 'trip_status', 'tripId': tripId, 'status': status});
+  /// [pin] solo aplica a los ENVÍOS: quien recibe el paquete lo dicta y sin él
+  /// el backend no cierra la entrega.
+  void sendTripStatus(String tripId, String status, {String? pin}) => _send({
+        'type': 'trip_status',
+        'tripId': tripId,
+        'status': status,
+        if (pin != null) 'pin': pin,
+      });
 
   /// Accept a business-order delivery offer.
   void sendAcceptOrder(String orderId) =>
