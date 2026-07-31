@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { prisma } from '../lib/prisma';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';
 import { verifyClientToken } from '../services/client.service';
@@ -38,6 +39,31 @@ function isValidAnyToken(token: string): boolean {
   }
 }
 
+// El portal del negocio no usa JWT sino su token de enlace mágico, así que no
+// pasaba la validación de arriba y sus tiles morían en 401: el mapa salía gris.
+// Una panorámica son decenas de tiles, así que el token validado se recuerda un
+// rato en memoria en vez de consultar la base por cada imagen.
+const businessTokenCache = new Map<string, number>();
+const BUSINESS_TOKEN_TTL_MS = 10 * 60_000;
+
+async function isValidBusinessToken(token: string): Promise<boolean> {
+  const visto = businessTokenCache.get(token);
+  if (visto != null && visto > Date.now()) return true;
+  const biz = await prisma.business.findUnique({
+    where: { token },
+    select: { isOpen: true },
+  });
+  if (!biz?.isOpen) return false;
+  if (businessTokenCache.size > 500) {
+    const ahora = Date.now();
+    for (const [k, exp] of businessTokenCache) {
+      if (exp <= ahora) businessTokenCache.delete(k);
+    }
+  }
+  businessTokenCache.set(token, Date.now() + BUSINESS_TOKEN_TTL_MS);
+  return true;
+}
+
 function handleGeoError(res: Response, err: unknown): void {
   if (err instanceof GeoError) {
     res.status(err.statusCode).json({ success: false, error: err.message });
@@ -56,7 +82,7 @@ router.get('/tile/:z/:x/:y', async (req: Request, res: Response) => {
   const token =
     (req.query['t'] as string | undefined) ??
     (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined);
-  if (!token || !isValidAnyToken(token)) {
+  if (!token || (!isValidAnyToken(token) && !(await isValidBusinessToken(token)))) {
     res.status(401).json({ success: false, error: 'Invalid or expired token' });
     return;
   }
