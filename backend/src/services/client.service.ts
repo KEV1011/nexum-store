@@ -18,7 +18,7 @@ import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
 import { normalizeColombianPhone } from './auth.service';
 import { calcFare } from '../lib/fare';
-import { generateCustodyPins, assertCustodyPin } from '../lib/custody-pin';
+import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
 import { recordCompletedTrip } from './earnings.service';
 import { sendPushToClient } from './push.service';
 
@@ -725,6 +725,10 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       passengerId: clientId,
       serviceType,
       status: 'SEARCHING',
+      // Solo los ENVÍOS llevan PIN: es mercancía que cambia de manos y hay que
+      // poder probar que llegó a quien debía. Un pasajero no necesita PIN para
+      // bajarse del carro.
+      deliveryPin: serviceType === 'ENVIOS' ? generatePin() : null,
       originAddress: dto.originAddress,
       originLat,
       originLng,
@@ -759,7 +763,11 @@ export async function updateClientTripLocation(tripId: string, _lat: number, _ln
   return trip.passengerId;
 }
 
-export async function updateClientTripStatus(tripId: string, status: ClientTripStatus): Promise<ClientTripDTO | null> {
+export async function updateClientTripStatus(
+  tripId: string,
+  status: ClientTripStatus,
+  pin?: string,
+): Promise<ClientTripDTO | null> {
   const prismaStatus = status.toUpperCase() as 'SEARCHING' | 'ACCEPTED' | 'ARRIVING' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
   // Al COMPLETAR se liquida el viaje real: se calcula la tarifa, se persisten
@@ -769,8 +777,17 @@ export async function updateClientTripStatus(tripId: string, status: ClientTripS
   if (status === 'completed') {
     const trip = await prisma.trip.findUnique({
       where: { id: tripId },
-      select: { distanceKm: true, etaMinutes: true, driverId: true, originAddress: true, destAddress: true, finalFare: true },
+      select: {
+        distanceKm: true, etaMinutes: true, driverId: true, originAddress: true,
+        destAddress: true, finalFare: true, serviceType: true, deliveryPin: true,
+      },
     });
+    // Envío = mercancía que cambia de manos. Sin el PIN de quien recibe no se
+    // cierra: es lo único que prueba que el paquete llegó a su destinatario y
+    // no al bolsillo del repartidor. Lanza si no coincide.
+    if (trip?.serviceType === 'ENVIOS') {
+      assertCustodyPin(trip.deliveryPin, pin, 'entrega');
+    }
     const distanceKm = trip?.distanceKm ?? 0;
     const minutes = trip?.etaMinutes ?? Math.max(1, Math.round(distanceKm * 3));
     const { grossFare, commission, netEarning } = calcFare(distanceKm, minutes);
@@ -1060,6 +1077,7 @@ type PrismaTrip = {
   distanceKm: number | null; etaMinutes: number | null;
   createdAt: Date; acceptedAt: Date | null; completedAt: Date | null;
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
+  deliveryPin?: string | null;
 };
 
 function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string, driverPhone?: string, driverVehicle?: string, driverVehicleType?: string): ClientTripDTO {
@@ -1091,5 +1109,6 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     recipientName: trip.recipientName ?? undefined,
     recipientPhone: trip.recipientPhone ?? undefined,
     packageDescription: trip.packageDescription ?? undefined,
+    deliveryPin: trip.deliveryPin ?? undefined,
   };
 }

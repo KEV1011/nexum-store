@@ -12,7 +12,7 @@ import type { OperatorApi } from './api'
 interface SafetyAlert {
   id: number
   at: string
-  kind: 'geofence' | 'stall' | 'deviation'
+  kind: 'geofence' | 'stall' | 'deviation' | 'offline'
   driverName: string
   serviceKind: string
   serviceId: string
@@ -23,6 +23,8 @@ const KIND_META: Record<SafetyAlert['kind'], { label: string; cls: string }> = {
   geofence: { label: '📍 Llegando a destino', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   stall: { label: '⏸ Detención prolongada', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   deviation: { label: '↪ Desvío de ruta', cls: 'bg-red-50 text-red-700 border-red-200' },
+  // La más grave: el conductor lleva mercancía y dejó de dar señal.
+  offline: { label: '🚨 Sin señal con carga', cls: 'bg-red-100 text-red-800 border-red-300 font-bold' },
 }
 
 const SERVICE_LABEL: Record<string, string> = {

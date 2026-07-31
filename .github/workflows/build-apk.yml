@@ -145,6 +145,39 @@ jobs:
             echo "    Revisa los secrets ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD."
           fi
 
+      # ── 8c. Repartir a los probadores (Firebase App Distribution) ────────────
+      # Sin esto, cada versión nueva significaba escribirle el enlace a cada
+      # conductor y negocio por WhatsApp. Con esto les llega una notificación y
+      # actualizan con un toque.
+      #
+      # Requiere dos secrets; sin ellos el paso se salta y el build sigue igual:
+      #   FIREBASE_SERVICE_ACCOUNT_JSON  → cuenta de servicio con el rol
+      #                                    "Firebase App Distribution Admin"
+      #   FIREBASE_APP_ID_DRIVER        → App ID de la app conductor (1:123…:android:abc…)
+      - name: Distribute to testers
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID_DRIVER }}
+          TESTER_GROUPS: ${{ vars.FIREBASE_TESTER_GROUPS || 'pilotos' }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ] || [ -z "$FIREBASE_APP_ID" ]; then
+            echo "Sin secrets de Firebase — no se reparte (el APK queda como artefacto)."
+            exit 0
+          fi
+          echo "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/fb-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/fb-sa.json"
+          npm install -g firebase-tools@13
+          # El mensaje de la versión es el título del commit: el probador ve
+          # QUÉ cambió, no un número de build sin significado.
+          NOTAS="build ${{ github.run_number }} · ${{ github.event.head_commit.message }}"
+          firebase appdistribution:distribute \
+            AppTransport/build/app/outputs/flutter-apk/app-release.apk \
+            --app "$FIREBASE_APP_ID" \
+            --groups "$TESTER_GROUPS" \
+            --release-notes "$NOTAS"
+          echo "✅ Repartido al grupo $TESTER_GROUPS"
+          rm -f "$RUNNER_TEMP/fb-sa.json"
+
       # ── 9. Upload artifacts ──────────────────────────────────────────────────
       - name: Upload APK
         uses: actions/upload-artifact@v4

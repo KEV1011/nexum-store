@@ -109,6 +109,7 @@ class TransportRequestEntity {
     required this.id,
     required this.requestRef,
     required this.serviceType,
+    this.deliveryPin,
     required this.originAddress,
     required this.destinationAddress,
     required this.estimatedFare,
@@ -143,6 +144,7 @@ class TransportRequestEntity {
         requestRef: json['requestRef'] as String,
         // Parsing defensivo: el backend usa 'taxi'/'particular' para el
         // servicio que la app llama 'transporte', y 'mandado' viaja como envío.
+        deliveryPin: json['deliveryPin'] as String?,
         serviceType: TransportServiceType.values.firstWhere(
           (e) => e.name == json['serviceType'],
           orElse: () => switch (json['serviceType']) {
@@ -192,6 +194,11 @@ class TransportRequestEntity {
   final String id;
   final String requestRef;
   final TransportServiceType serviceType;
+
+  /// PIN que dicta quien RECIBE el envío. Solo lo genera el backend para
+  /// ENVIOS: sin él el repartidor no puede cerrar la entrega, y es lo que
+  /// prueba que el paquete llegó a su destinatario.
+  final String? deliveryPin;
   final String originAddress;
   final String destinationAddress;
   final double estimatedFare;
@@ -234,6 +241,7 @@ class TransportRequestEntity {
     String? id,
     String? requestRef,
     TransportServiceType? serviceType,
+    String? deliveryPin,
     String? originAddress,
     String? destinationAddress,
     double? estimatedFare,
@@ -265,6 +273,7 @@ class TransportRequestEntity {
       id: id ?? this.id,
       requestRef: requestRef ?? this.requestRef,
       serviceType: serviceType ?? this.serviceType,
+      deliveryPin: deliveryPin ?? this.deliveryPin,
       originAddress: originAddress ?? this.originAddress,
       destinationAddress: destinationAddress ?? this.destinationAddress,
       estimatedFare: estimatedFare ?? this.estimatedFare,

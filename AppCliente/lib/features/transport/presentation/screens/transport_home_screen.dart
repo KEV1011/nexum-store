@@ -19,6 +19,7 @@ import 'package:nexum_client/features/transport/domain/entities/transport_reques
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
+import 'package:nexum_client/features/shell/presentation/providers/shell_provider.dart';
 
 // Centro de Pamplona, Norte de Santander (misma referencia que el backend).
 const _pamplona = LatLng(7.3754, -72.6486);
@@ -290,7 +291,12 @@ class _MyLocationDot extends StatelessWidget {
 class _LocationChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // Era un adorno: parecía un selector (con su flecha hacia abajo) pero no
+    // tenía onTap y al tocarlo no pasaba nada. Ahora lleva a las direcciones.
+    return GestureDetector(
+      onTap: () => context.push(AppRoutes.addresses),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -318,16 +324,22 @@ class _LocationChip extends StatelessWidget {
               size: 17, color: AppColors.textSecondary),
         ],
       ),
+      ),
     );
   }
 }
 
 // ── Botón perfil (top right) ──────────────────────────────────────────────────
 
-class _ProfileButton extends StatelessWidget {
+class _ProfileButton extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
-    return Container(
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Mismo caso que el chip: tenía aspecto de botón y no hacía nada. La cuenta
+    // es una pestaña del shell, no una ruta: se cambia el índice.
+    return GestureDetector(
+      onTap: () => ref.read(shellTabProvider.notifier).state = 3,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
       width: 40,
       height: 40,
       decoration: const BoxDecoration(
@@ -339,6 +351,7 @@ class _ProfileButton extends StatelessWidget {
       ),
       child: const Icon(Icons.person_rounded,
           size: 21, color: AppColors.textSecondary),
+      ),
     );
   }
 }

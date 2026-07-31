@@ -21,6 +21,7 @@ import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/map_pin.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
+import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,16 @@ class TransportTrackingScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           if (request.driverName != null) ...[
             _DriverCard(request: request),
+            const SizedBox(height: 16),
+          ],
+          // PIN del ENVÍO: se lo dicta al repartidor quien recibe el paquete.
+          // Sin él no se puede cerrar la entrega — es lo que impide que la
+          // mercancía se pierda por el camino.
+          if (request.serviceType == TransportServiceType.envios &&
+              request.deliveryPin != null &&
+              request.status != TransportRequestStatus.completed &&
+              request.status != TransportRequestStatus.cancelled) ...[
+            CustodyPinCard(pin: request.deliveryPin!),
             const SizedBox(height: 16),
           ],
           _StatusTimeline(request: request),

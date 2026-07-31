@@ -96,8 +96,38 @@ class _TripChatScreenState extends State<TripChatScreen> {
 
   bool _uploading = false;
 
+  /// Deja elegir entre la cámara y la galería.
+  ///
+  /// Antes abría la galería directamente: para mandar la foto de algo que está
+  /// pasando ahora —el paquete, la fachada, un daño— había que salir de la app,
+  /// tomar la foto y volver.
+  Future<ImageSource?> _elegirOrigenFoto() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Tomar foto'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Elegir de la galería'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _sendPhoto() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final origen = await _elegirOrigenFoto();
+    if (origen == null || !mounted) return;
+    final picked = await ImagePicker().pickImage(source: origen, imageQuality: 80);
     if (picked == null || !mounted) return;
     setState(() => _uploading = true);
     try {

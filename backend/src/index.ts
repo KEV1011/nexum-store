@@ -17,7 +17,7 @@ import { prisma } from './lib/prisma';
 import { otpMode } from './services/otp.service';
 import { kycProviderName, kycEnforced, pilotSkipVerification } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
-import { pruneSafetyState } from './services/safety-alerts.service';
+import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
 import { ocrProviderName } from './services/ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
@@ -193,6 +193,10 @@ server.listen(PORT, () => {
   // Purga periódica del mapa en memoria del rate-limit por cliente (antifraude).
   setInterval(pruneRateLimits, 5 * 60 * 1000).unref();
   setInterval(pruneSafetyState, 10 * 60 * 1000).unref();
+  // Conductor que desaparece con mercancía en curso. Es la ÚNICA alerta que no
+  // puede nacer del heartbeat: aquí el problema es que el heartbeat dejó de
+  // llegar, así que hace falta ir a buscarlo.
+  setInterval(() => void sweepOfflineDrivers(), 60 * 1000).unref();
 });
 
 export default app;

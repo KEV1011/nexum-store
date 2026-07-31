@@ -126,13 +126,21 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             deliveryLat: address.lat,
             deliveryLng: address.lng,
           );
-    } catch (_) {
-      // El negocio nunca recibió el pedido: informar en lugar de simular.
+    } catch (e) {
+      // El negocio nunca recibió el pedido: informar en lugar de simular. Y
+      // decir el motivo REAL que dio el servidor —producto agotado, negocio
+      // cerrado, demasiadas solicitudes—: culpar siempre a la conexión mandaba
+      // al cliente a revisar su wifi cuando el problema era otro.
       if (!mounted) return;
       setState(() => _placing = false);
+      final motivo = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : '';
       AppSnackbar.showError(
         context,
-        'No se pudo enviar el pedido. Revisa tu conexión e inténtalo de nuevo.',
+        motivo.isEmpty
+            ? 'No se pudo enviar el pedido. Revisa tu conexión e inténtalo de nuevo.'
+            : motivo,
       );
       return;
     }

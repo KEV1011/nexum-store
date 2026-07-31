@@ -1225,7 +1225,7 @@ function setOperator(id, action, habilitacionOk) {
     .catch((e) => showMsg(e.message, true));
 }
 
-var ALERT_LABEL = { geofence: '📍 Llegando', stall: '⏸ Detención', deviation: '↪ Desvío' };
+var ALERT_LABEL = { geofence: '📍 Llegando', stall: '⏸ Detención', deviation: '↪ Desvío', offline: '🚨 SIN SEÑAL' };
 function loadAlerts() {
   api('/admin/alerts').then((rows) => {
     const tb = document.getElementById('alerts-body');
