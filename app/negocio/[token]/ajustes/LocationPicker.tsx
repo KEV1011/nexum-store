@@ -87,18 +87,26 @@ export function LocationPicker({
           [centroRef.current.lat, centroRef.current.lng],
           16,
         )
-        L.tileLayer(`${BACKEND_URL}/geo/tile/{z}/{x}/{y}`, {
-          maxZoom: 20,
-          // Si el backend no tiene llave de Google, el proxy responde con
-          // OpenStreetMap: el mapa nunca queda en blanco.
-          attribution: '© Google · © OpenStreetMap',
+        // Dos capas: OpenStreetMap de base y encima los tiles de Google que
+        // sirve el proxy. Si Google falla —sin llave, sin cuota, token
+        // rechazado— la imagen de arriba simplemente no se dibuja y se ve la
+        // de abajo. El mapa nunca queda gris, que es como estaba.
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap',
         }).addTo(m)
+        L.tileLayer(
+          // El token del enlace del portal autoriza el proxy: sin él, cada
+          // tile respondía 401 y el mapa salía en blanco.
+          `${BACKEND_URL}/geo/tile/{z}/{x}/{y}?t=${encodeURIComponent(token)}`,
+          { maxZoom: 20, attribution: '© Google' },
+        ).addTo(m)
         m.on('move', () => { centroRef.current = m.getCenter() })
         mapRef.current = m
       })
       .catch(() => setError('No se pudo cargar el mapa. Revisa tu conexión.'))
     return () => { cancelado = true }
-  }, [abierto])
+  }, [abierto, token])
 
   useEffect(() => () => { mapRef.current?.remove(); mapRef.current = null }, [])
 
