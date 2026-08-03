@@ -7,6 +7,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
+import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 
 // Color de identidad del módulo intermunicipal
 const _kInterColor = AppColors.intercityBrand;
@@ -175,6 +176,10 @@ class _IntercityBookingScreenState
 
   @override
   Widget build(BuildContext context) {
+    // La lista de municipios llega del backend: al observarla, los desplegables
+    // se redibujan solos cuando termina de cargar. Antes eran siete escritos
+    // dentro de la app y agregar un pueblo exigía repartir un APK nuevo.
+    ref.watch(municipalitiesProvider);
     final route = _route;
 
     return Scaffold(

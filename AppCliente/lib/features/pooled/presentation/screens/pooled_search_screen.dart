@@ -10,6 +10,7 @@ import 'package:nexum_client/features/intercity/domain/entities/intercity_entity
     show IntercityCity;
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
+import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -64,6 +65,8 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Municipios desde el backend (ver intercity_booking_screen).
+    ref.watch(municipalitiesProvider);
     final state = ref.watch(pooledProvider);
 
     return Scaffold(
