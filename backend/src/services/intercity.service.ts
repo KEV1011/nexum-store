@@ -47,6 +47,7 @@ const SEATS_FROM_PRISMA: Record<string, IntercitySeats> = {
 
 const STATUS_FROM_PRISMA: Record<string, IntercityStatus> = {
   SEARCHING: 'searching', DRIVER_FOUND: 'driver_found', CONFIRMED: 'confirmed',
+  DRIVER_TO_PICKUP: 'driver_to_pickup', AT_PICKUP: 'at_pickup',
   IN_PROGRESS: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled',
 };
 
@@ -78,6 +79,8 @@ type DbBooking = {
   stops?: unknown;
   createdAt: Date; confirmedAt: Date | null;
   rating?: number | null; ratingComment?: string | null;
+  enRouteAt?: Date | null;
+  arrivedAt?: Date | null;
 };
 
 function _toDTO(b: DbBooking): IntercityBookingDTO {
@@ -105,6 +108,8 @@ function _toDTO(b: DbBooking): IntercityBookingDTO {
     confirmedAt: b.confirmedAt?.toISOString(),
     rating: b.rating ?? undefined,
     ratingComment: b.ratingComment ?? undefined,
+    enRouteAt: b.enRouteAt?.toISOString(),
+    arrivedAt: b.arrivedAt?.toISOString(),
   };
 }
 
@@ -521,7 +526,11 @@ export async function driverStartIntercity(
       where: { id: bookingId },
       select: { status: true, driverId: true },
     });
-    if (!current || current.driverId !== driverId || current.status !== 'CONFIRMED') return null;
+    // Se puede arrancar desde cualquier punto previo: hay conductores que
+    // recogen y arrancan sin tocar los estados intermedios, y eso no debe
+    // bloquear el viaje.
+    const previos: string[] = ['CONFIRMED', 'DRIVER_TO_PICKUP', 'AT_PICKUP'];
+    if (!current || current.driverId !== driverId || !previos.includes(current.status)) return null;
     return tx.intercityBooking.update({
       where: { id: bookingId },
       data: { status: 'IN_PROGRESS' },
@@ -532,6 +541,55 @@ export async function driverStartIntercity(
   const dto = _toDTO(updated as DbBooking);
   _notify(bookingId, dto);
   console.log(`[Intercity] Driver ${driverId} started booking ${bookingId}`);
+  return dto;
+}
+
+/**
+ * Etapas intermedias del intermunicipal: «voy en camino» y «llegué».
+ *
+ * Sin ellas el pasajero veía "confirmado" durante una hora y de golpe "en
+ * viaje" — justo los dos momentos en que más quiere saber algo eran los que no
+ * existían. Los otros servicios sí los tenían desde el principio.
+ */
+export async function driverIntercityStage(
+  driverId: string,
+  bookingId: string,
+  stage: 'en_route' | 'arrived',
+): Promise<IntercityBookingDTO | null> {
+  const destino = stage === 'en_route' ? 'DRIVER_TO_PICKUP' : 'AT_PICKUP';
+  // Solo se avanza; nunca se retrocede (un toque doble no debe devolver el
+  // viaje a un estado anterior ni reescribir la hora ya registrada).
+  const desde: string[] =
+    stage === 'en_route' ? ['CONFIRMED'] : ['CONFIRMED', 'DRIVER_TO_PICKUP'];
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const current = await tx.intercityBooking.findUnique({
+      where: { id: bookingId },
+      select: { status: true, driverId: true },
+    });
+    if (!current || current.driverId !== driverId || !desde.includes(current.status)) return null;
+    return tx.intercityBooking.update({
+      where: { id: bookingId },
+      data: {
+        status: destino,
+        ...(stage === 'en_route' ? { enRouteAt: new Date() } : { arrivedAt: new Date() }),
+      },
+    });
+  });
+  if (!updated) return null;
+
+  const dto = await _withDriverPosition(_toDTO(updated as DbBooking), updated);
+  _notify(bookingId, dto);
+  if (updated.userId) {
+    void sendPushToClient(updated.userId, {
+      title: stage === 'en_route' ? 'Tu conductor va en camino' : 'Tu conductor ya llegó',
+      body: stage === 'en_route'
+        ? 'Va hacia el punto de recogida. Ve alistando tu equipaje.'
+        : 'Está esperándote en el punto de recogida.',
+      data: { type: 'intercity_update', bookingId },
+    });
+  }
+  console.log(`[Intercity] Driver ${driverId} → ${destino} en ${bookingId}`);
   return dto;
 }
 

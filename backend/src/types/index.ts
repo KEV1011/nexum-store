@@ -245,6 +245,8 @@ export type WsMessageType =
   | 'intercity_reject' // driver → server: rechaza la oferta
   | 'intercity_accept_ok' // server → driver: aceptación registrada
   | 'intercity_cancelled' // server → driver: el cliente canceló la reserva
+  | 'intercity_stage' // driver → server: voy en camino / llegué a recoger
+  | 'intercity_stage_ok'
   | 'intercity_start' // driver → server: inicia el viaje confirmado
   | 'intercity_start_ok' // server → driver: inicio registrado (IN_PROGRESS)
   | 'intercity_complete' // driver → server: finaliza el viaje
@@ -804,6 +806,8 @@ export type IntercityStatus =
   | 'searching'
   | 'driver_found'
   | 'confirmed'
+  | 'driver_to_pickup'
+  | 'at_pickup'
   | 'in_progress'
   | 'completed'
   | 'cancelled';
@@ -860,6 +864,9 @@ export interface IntercityBookingDTO {
    *  viaje está CONFIRMED/IN_PROGRESS — para el mapa de seguimiento. */
   driverLat?: number;
   driverLng?: number;
+  /** Marcas de la trazabilidad: alimentan la línea de tiempo del pasajero. */
+  enRouteAt?: string;
+  arrivedAt?: string;
 }
 
 // ─── Shared Pooled Rides (Modelo A: conductor publica → pasajero reserva) ───────

@@ -820,6 +820,9 @@ model IntercityBooking {
   @@index([status])
   @@index([operatorId])
   @@map("intercity_bookings")
+  // Marcas de la trazabilidad: alimentan la línea de tiempo del pasajero.
+  enRouteAt      DateTime?
+  arrivedAt      DateTime?
 }
 
 enum IntercityCity {
@@ -843,6 +846,11 @@ enum IntercityStatus {
   SEARCHING
   DRIVER_FOUND
   CONFIRMED
+  // El pasajero espera en su casa: estos dos estados son los que más le
+  // importan y eran justamente los que faltaban. Sin ellos solo veía
+  // "confirmado" durante una hora y luego "en viaje".
+  DRIVER_TO_PICKUP
+  AT_PICKUP
   IN_PROGRESS
   COMPLETED
   CANCELLED

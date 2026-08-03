@@ -431,6 +431,12 @@ class DriverWsService {
   void startIntercity(String bookingId) =>
       _send({'type': 'intercity_start', 'bookingId': bookingId});
 
+  /// Etapas intermedias del intermunicipal: «voy en camino» y «llegué».
+  /// Sin ellas el pasajero pasaba de "confirmado" a "en viaje" sin nada en
+  /// medio, que es justo cuando más quiere saber algo.
+  void sendIntercityStage(String bookingId, String stage) =>
+      _send({'type': 'intercity_stage', 'bookingId': bookingId, 'stage': stage});
+
   void completeIntercity(String bookingId) =>
       _send({'type': 'intercity_complete', 'bookingId': bookingId});
 
@@ -558,6 +564,7 @@ class DriverWsService {
           if (bId != null) _intercityCancelCtrl.add(bId);
 
         case 'intercity_accept_ok':
+        case 'intercity_stage_ok':
         case 'intercity_start_ok':
         case 'intercity_complete_ok':
         case 'intercity_update':

@@ -158,6 +158,8 @@ class _IntercityRequestsScreenState
           if (state.active != null) ...[
             _ActiveTripCard(
               trip: state.active!,
+              onEnRoute: notifier.goEnRoute,
+              onArrived: notifier.markArrived,
               onStart: notifier.startTrip,
               onComplete: notifier.completeTrip,
               onDismiss: notifier.dismissCompleted,
@@ -229,12 +231,16 @@ class _IntercityRequestsScreenState
 class _ActiveTripCard extends StatelessWidget {
   const _ActiveTripCard({
     required this.trip,
+    required this.onEnRoute,
+    required this.onArrived,
     required this.onStart,
     required this.onComplete,
     required this.onDismiss,
   });
 
   final IntercityActiveTrip trip;
+  final VoidCallback onEnRoute;
+  final VoidCallback onArrived;
   final VoidCallback onStart;
   final VoidCallback onComplete;
   final VoidCallback onDismiss;
@@ -385,7 +391,58 @@ class _ActiveTripCard extends StatelessWidget {
                     color: context.textSecondaryColor,
                   ),
                 ),
-              IntercityTripPhase.confirmed => SizedBox(
+              // Tres botones en vez de uno: cada toque le dice algo al
+              // pasajero, que antes pasaba de "confirmado" a "en viaje" sin
+              // saber nada en el medio.
+              IntercityTripPhase.confirmed => Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: onEnRoute,
+                        icon: const Icon(Icons.directions_car_rounded),
+                        label: const Text('Voy en camino a recogerlo'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: onStart,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _kIntercityColor,
+                        ),
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('Iniciar viaje'),
+                      ),
+                    ),
+                  ],
+                ),
+              IntercityTripPhase.driverToPickup => Column(
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: onArrived,
+                        icon: const Icon(Icons.location_on_rounded),
+                        label: const Text('Llegué al punto'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: onStart,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _kIntercityColor,
+                        ),
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('Iniciar viaje'),
+                      ),
+                    ),
+                  ],
+                ),
+              IntercityTripPhase.atPickup => SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
                     onPressed: onStart,

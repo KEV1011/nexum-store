@@ -241,6 +241,10 @@ enum IntercityStatus {
   searching,
   driverFound,
   confirmed,
+  /// El conductor salió hacia el punto de recogida.
+  driverToPickup,
+  /// El conductor ya está esperando en el punto.
+  atPickup,
   inProgress,
   completed,
   cancelled;
@@ -249,7 +253,9 @@ enum IntercityStatus {
         IntercityStatus.searching => 'Buscando conductor...',
         IntercityStatus.driverFound => 'Conductor disponible',
         IntercityStatus.confirmed => 'Viaje confirmado',
-        IntercityStatus.inProgress => 'En camino',
+        IntercityStatus.driverToPickup => 'Tu conductor va en camino',
+        IntercityStatus.atPickup => 'Tu conductor ya llegó',
+        IntercityStatus.inProgress => 'En camino a tu destino',
         IntercityStatus.completed => 'Completado',
         IntercityStatus.cancelled => 'Cancelado',
       };
@@ -258,6 +264,8 @@ enum IntercityStatus {
         IntercityStatus.searching => AppColors.warning,
         IntercityStatus.driverFound => AppColors.info,
         IntercityStatus.confirmed => AppColors.primary,
+        IntercityStatus.driverToPickup => AppColors.info,
+        IntercityStatus.atPickup => AppColors.warning,
         IntercityStatus.inProgress => AppColors.secondary,
         IntercityStatus.completed => AppColors.success,
         IntercityStatus.cancelled => AppColors.error,
@@ -341,6 +349,8 @@ class IntercityRequestEntity {
     final status = switch (json['status'] as String?) {
       'driver_found' => IntercityStatus.driverFound,
       'confirmed' => IntercityStatus.confirmed,
+      'driver_to_pickup' => IntercityStatus.driverToPickup,
+      'at_pickup' => IntercityStatus.atPickup,
       'in_progress' => IntercityStatus.inProgress,
       'completed' => IntercityStatus.completed,
       'cancelled' => IntercityStatus.cancelled,
