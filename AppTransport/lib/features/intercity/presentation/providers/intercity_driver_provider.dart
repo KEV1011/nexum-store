@@ -19,6 +19,12 @@ enum IntercityTripPhase {
   /// Reserva confirmada: listo para iniciar (CONFIRMED).
   confirmed,
 
+  /// Salió hacia el punto de recogida (DRIVER_TO_PICKUP).
+  driverToPickup,
+
+  /// Esperando al pasajero en el punto (AT_PICKUP).
+  atPickup,
+
   /// Viaje en curso (IN_PROGRESS).
   inProgress,
 
@@ -143,6 +149,15 @@ class IntercityDriverNotifier extends StateNotifier<IntercityDriverState> {
           // El pasajero canceló o rechazó la contraoferta.
           state = state.copyWith(clearActive: true);
         }
+      case 'stage_ok':
+        // El backend confirma la etapa; la UI la refleja con su propio botón.
+        state = state.copyWith(
+          active: active.copyWith(
+            phase: event.status == 'at_pickup'
+                ? IntercityTripPhase.atPickup
+                : IntercityTripPhase.driverToPickup,
+          ),
+        );
       case 'start_ok':
         state = state.copyWith(
           active: active.copyWith(phase: IntercityTripPhase.inProgress),
@@ -228,9 +243,29 @@ class IntercityDriverNotifier extends StateNotifier<IntercityDriverState> {
 
   // ── Ciclo del viaje activo ──────────────────────────────────────────────────
 
+  /// Avisa al pasajero que va en camino. Cada toque es información que antes
+  /// no existía: el pasajero pasaba de "confirmado" a "en viaje" a ciegas.
+  void goEnRoute() => _stage('en_route');
+
+  /// Avisa que ya está esperando en el punto de recogida.
+  void markArrived() => _stage('arrived');
+
+  void _stage(String stage) {
+    final active = state.active;
+    if (active == null) return;
+    _ws.sendIntercityStage(active.request.bookingId, stage);
+  }
+
   void startTrip() {
     final active = state.active;
-    if (active == null || active.phase != IntercityTripPhase.confirmed) return;
+    // También desde las etapas intermedias: hay conductores que recogen y
+    // arrancan sin tocar los botones de en camino / llegué.
+    const listos = [
+      IntercityTripPhase.confirmed,
+      IntercityTripPhase.driverToPickup,
+      IntercityTripPhase.atPickup,
+    ];
+    if (active == null || !listos.contains(active.phase)) return;
     _ws.startIntercity(active.request.bookingId);
   }
 

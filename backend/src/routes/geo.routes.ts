@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
+import { listMunicipalities } from '../services/municipality.service';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';
 import { verifyClientToken } from '../services/client.service';
@@ -21,6 +22,18 @@ const router = Router();
 router.get('/health', async (_req: Request, res: Response) => {
   const health = await geoHealth();
   res.status(health.upstreamOk ? 200 : 503).json({ success: health.upstreamOk, data: health });
+});
+
+// GET /geo/municipios?q=texto — municipios a los que se puede viajar.
+// Público y sin datos personales: la app lo usa para el buscador de origen y
+// destino del intermunicipal, que antes era una lista fija de siete.
+router.get('/municipios', async (req: Request, res: Response) => {
+  const q = typeof req.query['q'] === 'string' ? (req.query['q'] as string) : undefined;
+  try {
+    res.json({ success: true, data: await listMunicipalities(q) });
+  } catch (err) {
+    handleGeoError(res, err);
+  }
 });
 
 // Verifica un token de cliente O de conductor: ambos usan los servicios geo.

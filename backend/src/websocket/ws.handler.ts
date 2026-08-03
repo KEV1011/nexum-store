@@ -39,6 +39,7 @@ import {
   driverAcceptIntercity,
   driverRejectIntercity,
   driverStartIntercity,
+  driverIntercityStage,
   driverCompleteIntercity,
 } from '../services/intercity.service';
 import {
@@ -1003,6 +1004,28 @@ function onMessage(ws: WebSocket, raw: string): void {
       break;
     }
     // ── Intercity: inicio y fin del viaje por el conductor asignado ──────────
+    // Etapas intermedias: son las que le faltaban al pasajero para saber qué
+    // está pasando entre "confirmado" y "en viaje".
+    case 'intercity_stage': {
+      const driverId = driverIdByWs.get(ws);
+      if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
+      const bookingId = msg['bookingId'];
+      const stage = msg['stage'];
+      if (typeof bookingId !== 'string' || (stage !== 'en_route' && stage !== 'arrived')) {
+        sendTo(ws, { type: 'error', message: 'bookingId y stage (en_route|arrived) requeridos' });
+        return;
+      }
+      void (async () => {
+        const booking = await driverIntercityStage(driverId, bookingId, stage);
+        if (booking) {
+          sendTo(ws, { type: 'intercity_stage_ok', bookingId, stage, booking });
+        } else {
+          sendTo(ws, { type: 'error', message: 'No se pudo actualizar el viaje' });
+        }
+      })();
+      return;
+    }
+
     case 'intercity_start': {
       const driverId = driverIdByWs.get(ws);
       if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }

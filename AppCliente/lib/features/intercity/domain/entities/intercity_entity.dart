@@ -6,39 +6,83 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 
 // ── Ciudades disponibles ──────────────────────────────────────────────────────
 
-enum IntercityCity {
-  pamplona,
-  cucuta,
-  bucaramanga,
-  chitaga,
-  malaga,
-  ocana,
-  bogota;
+/// Municipio de origen o destino.
+///
+/// Era un `enum` de siete valores: las empresas de transporte mueven a TODOS
+/// los pueblos y el sistema solo conocía siete. Ahora la lista viene del
+/// backend (`GET /geo/municipios`) y esto es una clase con la misma forma que
+/// tenía el enum —`name`, `displayName`, `department`, `values`— para que el
+/// resto de la app siga funcionando igual.
+///
+/// Los siete de siempre quedan como constantes: son el respaldo si la app
+/// arranca sin red, y evitan que la pantalla se quede vacía.
+class IntercityCity {
+  const IntercityCity(this.name, this.displayName, this.department);
 
-  String get displayName => switch (this) {
-        IntercityCity.pamplona => 'Pamplona',
-        IntercityCity.cucuta => 'Cúcuta',
-        IntercityCity.bucaramanga => 'Bucaramanga',
-        IntercityCity.chitaga => 'Chitagá',
-        IntercityCity.malaga => 'Málaga',
-        IntercityCity.ocana => 'Ocaña',
-        IntercityCity.bogota => 'Bogotá',
-      };
+  /// Identificador estable ('pamplona', 'villa-del-rosario'). Es lo que viaja
+  /// al backend, y se llama `name` para conservar la interfaz del enum.
+  final String name;
+  final String displayName;
+  final String department;
 
-  String get department => switch (this) {
-        IntercityCity.pamplona => 'Norte de Santander',
-        IntercityCity.cucuta => 'Norte de Santander',
-        IntercityCity.bucaramanga => 'Santander',
-        IntercityCity.chitaga => 'Norte de Santander',
-        IntercityCity.malaga => 'Santander',
-        IntercityCity.ocana => 'Norte de Santander',
-        IntercityCity.bogota => 'Cundinamarca',
-      };
+  static const pamplona =
+      IntercityCity('pamplona', 'Pamplona', 'Norte de Santander');
+  static const cucuta = IntercityCity('cucuta', 'Cúcuta', 'Norte de Santander');
+  static const bucaramanga =
+      IntercityCity('bucaramanga', 'Bucaramanga', 'Santander');
+  static const chitaga =
+      IntercityCity('chitaga', 'Chitagá', 'Norte de Santander');
+  static const malaga = IntercityCity('malaga', 'Málaga', 'Santander');
+  static const ocana = IntercityCity('ocana', 'Ocaña', 'Norte de Santander');
+  static const bogota = IntercityCity('bogota', 'Bogotá', 'Cundinamarca');
 
-  IconData get icon => switch (this) {
-        IntercityCity.bogota => Icons.location_city_rounded,
-        _ => Icons.place_rounded,
-      };
+  static const _respaldo = <IntercityCity>[
+    pamplona, cucuta, bucaramanga, chitaga, malaga, ocana, bogota,
+  ];
+
+  static List<IntercityCity> _todos = _respaldo;
+
+  /// Municipios disponibles. Se reemplaza con los del backend al abrir la app.
+  static List<IntercityCity> get values => _todos;
+
+  /// Sustituye la lista con la que llega del servidor. Si llega vacía se
+  /// conserva el respaldo: mejor siete municipios que ninguno.
+  static void replaceAll(List<IntercityCity> nuevos) {
+    if (nuevos.isNotEmpty) _todos = nuevos;
+  }
+
+  /// Busca por identificador. Si no está en la lista —una reserva vieja de un
+  /// municipio desactivado— devuelve uno construido con el propio slug, para
+  /// no perder el dato ni reventar la pantalla.
+  static IntercityCity bySlug(String slug) {
+    for (final c in _todos) {
+      if (c.name == slug) return c;
+    }
+    for (final c in _respaldo) {
+      if (c.name == slug) return c;
+    }
+    return IntercityCity(slug, _titulo(slug), '');
+  }
+
+  static String _titulo(String slug) => slug
+      .split('-')
+      .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+      .join(' ');
+
+  IconData get icon =>
+      name == 'bogota' ? Icons.location_city_rounded : Icons.place_rounded;
+
+  // Igualdad por identificador: los desplegables comparan valores, y dos
+  // instancias del mismo municipio deben ser la misma opción.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || (other is IntercityCity && other.name == name);
+
+  @override
+  int get hashCode => name.hashCode;
+
+  @override
+  String toString() => displayName;
 }
 
 // ── Rutas con datos reales ────────────────────────────────────────────────────
@@ -241,6 +285,10 @@ enum IntercityStatus {
   searching,
   driverFound,
   confirmed,
+  /// El conductor salió hacia el punto de recogida.
+  driverToPickup,
+  /// El conductor ya está esperando en el punto.
+  atPickup,
   inProgress,
   completed,
   cancelled;
@@ -249,7 +297,9 @@ enum IntercityStatus {
         IntercityStatus.searching => 'Buscando conductor...',
         IntercityStatus.driverFound => 'Conductor disponible',
         IntercityStatus.confirmed => 'Viaje confirmado',
-        IntercityStatus.inProgress => 'En camino',
+        IntercityStatus.driverToPickup => 'Tu conductor va en camino',
+        IntercityStatus.atPickup => 'Tu conductor ya llegó',
+        IntercityStatus.inProgress => 'En camino a tu destino',
         IntercityStatus.completed => 'Completado',
         IntercityStatus.cancelled => 'Cancelado',
       };
@@ -258,6 +308,8 @@ enum IntercityStatus {
         IntercityStatus.searching => AppColors.warning,
         IntercityStatus.driverFound => AppColors.info,
         IntercityStatus.confirmed => AppColors.primary,
+        IntercityStatus.driverToPickup => AppColors.info,
+        IntercityStatus.atPickup => AppColors.warning,
         IntercityStatus.inProgress => AppColors.secondary,
         IntercityStatus.completed => AppColors.success,
         IntercityStatus.cancelled => AppColors.error,
@@ -326,12 +378,10 @@ class IntercityRequestEntity {
 
   /// Parses the backend `IntercityBookingDTO` JSON shape.
   factory IntercityRequestEntity.fromApi(Map<String, dynamic> json) {
-    IntercityCity city(String? raw, IntercityCity fallback) {
-      for (final c in IntercityCity.values) {
-        if (c.name == raw) return c;
-      }
-      return fallback;
-    }
+    // bySlug nunca falla: si el municipio no está en la lista cargada, lo
+    // construye con su propio identificador en vez de perder el dato.
+    IntercityCity city(String? raw, IntercityCity fallback) =>
+        raw == null || raw.isEmpty ? fallback : IntercityCity.bySlug(raw);
 
     final seatsRaw = json['seats'] as String?;
     final seats = IntercitySeats.values.firstWhere(
@@ -341,6 +391,8 @@ class IntercityRequestEntity {
     final status = switch (json['status'] as String?) {
       'driver_found' => IntercityStatus.driverFound,
       'confirmed' => IntercityStatus.confirmed,
+      'driver_to_pickup' => IntercityStatus.driverToPickup,
+      'at_pickup' => IntercityStatus.atPickup,
       'in_progress' => IntercityStatus.inProgress,
       'completed' => IntercityStatus.completed,
       'cancelled' => IntercityStatus.cancelled,

@@ -282,8 +282,32 @@ const SUGGESTED_FARE_PER_KM = 220;
 const TRUNK_DISTANCE_KM = 150;
 
 /** Synthesise route metadata from city centroids for pairs with no explicit row. */
+// Resolver de coordenadas inyectado por municipality.service. No se importa
+// directo porque ese servicio importa esta configuración: sería un ciclo.
+let _coordsResolver: ((slug: string) => { lat: number; lng: number } | null) | null = null;
+
+export function registerMunicipalityCoords(
+  fn: (slug: string) => { lat: number; lng: number } | null,
+): void {
+  _coordsResolver = fn;
+}
+
+function _coordsPara(slug: string): { lat: number; lng: number } | null {
+  return (
+    _coordsResolver?.(slug) ??
+    (INTERCITY_CITY_COORDS as Record<string, { lat: number; lng: number }>)[slug] ??
+    null
+  );
+}
+
 function _synthesizeRoute(origin: IntercityCity, dest: IntercityCity): IntercityRouteInfo {
-  const straight = _haversineKm(INTERCITY_CITY_COORDS[origin], INTERCITY_CITY_COORDS[dest]);
+  // Coordenadas desde la tabla de municipios (con la lista fija de respaldo):
+  // así una ruta entre dos pueblos recién agregados también calcula distancia
+  // y precio sugerido, sin que nadie tenga que escribirlos a mano.
+  const co = _coordsPara(origin);
+  const cd = _coordsPara(dest);
+  if (!co || !cd) return { distanceKm: 0, durationMinutes: 0, suggestedFarePerSeat: 0, suggestedFareFleet: 0 };
+  const straight = _haversineKm(co, cd);
   const distanceKm = Math.max(10, Math.round((straight * ROAD_FACTOR) / 5) * 5);
   const durationMinutes = Math.round((distanceKm / AVG_ROAD_SPEED_KMH) * 60);
   const suggestedFarePerSeat = Math.round((distanceKm * SUGGESTED_FARE_PER_KM) / 1000) * 1000;

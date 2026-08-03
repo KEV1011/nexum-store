@@ -18,6 +18,7 @@ import { otpMode } from './services/otp.service';
 import { kycProviderName, kycEnforced, pilotSkipVerification } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
+import { warmMunicipalities } from './services/municipality.service';
 import { ocrProviderName } from './services/ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
@@ -190,6 +191,8 @@ server.listen(PORT, () => {
     'ZIPA API + WebSocket escuchando',
   );
   scheduleDocumentExpiryChecks();
+  // Carga la tabla de municipios para que el cálculo de rutas no arranque frío.
+  void warmMunicipalities();
   // Purga periódica del mapa en memoria del rate-limit por cliente (antifraude).
   setInterval(pruneRateLimits, 5 * 60 * 1000).unref();
   setInterval(pruneSafetyState, 10 * 60 * 1000).unref();
