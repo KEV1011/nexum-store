@@ -788,8 +788,9 @@ model IntercityBooking {
   requestRef     String          @unique
   userId         String
   driverId       String?
-  origin         IntercityCity
-  destination    IntercityCity
+  // Slug del municipio (ver model Municipality). Era un enum de 7 valores.
+  origin         String
+  destination    String
   departureTime  DateTime
   seats          IntercitySeats
   offeredFare    Float
@@ -825,16 +826,6 @@ model IntercityBooking {
   arrivedAt      DateTime?
 }
 
-enum IntercityCity {
-  PAMPLONA
-  CUCUTA
-  BUCARAMANGA
-  CHITAGA
-  MALAGA
-  OCANA
-  BOGOTA
-}
-
 enum IntercitySeats {
   ONE
   TWO
@@ -865,8 +856,9 @@ model PooledTrip {
   driverName         String
   driverPhone        String
   vehicleDescription String
-  origin             IntercityCity
-  destination        IntercityCity
+  // Slug del municipio (ver model Municipality).
+  origin             String
+  destination        String
   departureTime      DateTime
   totalSeats         Int
   farePerSeat        Float
@@ -1325,4 +1317,27 @@ model TakedownRequest {
 
   @@index([status])
   @@map("takedown_requests")
+}
+
+/// Municipios a los que se puede viajar.
+///
+/// Antes eran un `enum` con siete valores escritos a mano: cada pueblo nuevo
+/// exigía una migración y un despliegue, y las empresas de transporte mueven a
+/// TODOS los pueblos. Como tabla, agregar uno es insertar una fila.
+model Municipality {
+  /// Identificador estable en minúscula y sin tildes: 'pamplona', 'villa-del-rosario'.
+  slug       String  @id
+  name       String
+  department String
+  /// Código DANE, cuando se conoce. Útil para cruzar con fuentes oficiales.
+  daneCode   String?
+  /// Centroide del casco urbano. Ancla el matching y el mapa.
+  lat        Float
+  lng        Float
+  /// Permite ocultar un municipio sin borrarlo (y sin perder los viajes viejos).
+  isActive   Boolean @default(true)
+
+  @@index([department])
+  @@index([name])
+  @@map("municipalities")
 }

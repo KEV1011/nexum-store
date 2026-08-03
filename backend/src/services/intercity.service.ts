@@ -51,10 +51,12 @@ const STATUS_FROM_PRISMA: Record<string, IntercityStatus> = {
   IN_PROGRESS: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled',
 };
 
-const CITY_TO_PRISMA: Record<IntercityCity, 'PAMPLONA' | 'CUCUTA' | 'BUCARAMANGA' | 'CHITAGA' | 'MALAGA' | 'OCANA' | 'BOGOTA'> = {
-  pamplona: 'PAMPLONA', cucuta: 'CUCUTA', bucaramanga: 'BUCARAMANGA',
-  chitaga: 'CHITAGA', malaga: 'MALAGA', ocana: 'OCANA', bogota: 'BOGOTA',
-};
+// La columna ya guarda el slug del municipio, así que no hay conversión que
+// hacer. Se mantienen los nombres antiguos para no tocar 22 sitios de golpe, y
+// el mapa cubre las reservas creadas cuando aún era un enum en MAYÚSCULAS.
+const CITY_TO_PRISMA = new Proxy({} as Record<string, string>, {
+  get: (_t, slug: string) => slug,
+});
 
 const CITY_FROM_PRISMA: Record<string, IntercityCity> = {
   PAMPLONA: 'pamplona', CUCUTA: 'cucuta', BUCARAMANGA: 'bucaramanga',

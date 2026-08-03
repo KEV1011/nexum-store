@@ -791,14 +791,14 @@ export interface ErrandRequestDTO {
 
 // ─── Intercity Bookings ───────────────────────────────────────────────────────
 
-export type IntercityCity =
-  | 'pamplona'
-  | 'cucuta'
-  | 'bucaramanga'
-  | 'chitaga'
-  | 'malaga'
-  | 'ocana'
-  | 'bogota';
+/**
+ * Municipio de origen/destino, por su slug ('pamplona', 'villa-del-rosario').
+ *
+ * Era una lista cerrada de siete valores: cada pueblo nuevo exigía tocar el
+ * código y desplegar. Ahora los municipios viven en la tabla `municipalities`
+ * y esto es simplemente su identificador.
+ */
+export type IntercityCity = string;
 
 export type IntercitySeats = 'one' | 'two' | 'three' | 'fleet';
 
