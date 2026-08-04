@@ -314,11 +314,15 @@ class TransportRequestEntity {
         'etaMinutes': etaMinutes,
         'status': status.name,
         'createdAt': createdAt.toIso8601String(),
+        // Sin esto el PIN del envío se perdía al cerrar la app: se guardaba el
+        // viaje pero no el dato que permite cerrar la entrega.
+        if (deliveryPin != null) 'deliveryPin': deliveryPin,
         if (driverName != null) 'driverName': driverName,
         if (driverPhone != null) 'driverPhone': driverPhone,
         if (maskedPhone != null) 'maskedPhone': maskedPhone,
         if (contactChannel != null) 'contactChannel': contactChannel,
         if (driverVehicle != null) 'driverVehicle': driverVehicle,
+        if (driverVehicleType != null) 'driverVehicleType': driverVehicleType,
         if (acceptedAt != null) 'acceptedAt': acceptedAt!.toIso8601String(),
         if (completedAt != null) 'completedAt': completedAt!.toIso8601String(),
         if (recipientName != null) 'recipientName': recipientName,

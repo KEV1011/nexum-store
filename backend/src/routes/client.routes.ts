@@ -400,7 +400,9 @@ router.get('/trips/:id', clientAuthMiddleware, async (req, res) => {
     res.status(404).json({ success: false, error: 'Viaje no encontrado' });
     return;
   }
-  res.json({ success: true, data: await getClientTripSnapshot(tripId) });
+  // Propiedad ya verificada arriba: aquí el PIN del envío sí se entrega (es la
+  // vía por la que el cliente lo recupera si perdió el estado local).
+  res.json({ success: true, data: await getClientTripSnapshot(tripId, true) });
 });
 
 router.post('/trips/:id/cancel', clientAuthMiddleware, async (req, res) => {

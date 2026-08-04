@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # También las ramas de trabajo: el CI en rojo hay que verlo ANTES
+    # de mergear, no después.
+    branches: [main, 'claude/**']
   pull_request:
     branches: [main]
 

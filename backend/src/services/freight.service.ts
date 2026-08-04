@@ -10,6 +10,7 @@ import { FreightStatus, VehicleType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateCustodyPins, assertCustodyPin } from '../lib/custody-pin';
 import { COMMISSION_RATE, INTERCITY_CITY_COORDS } from '../config/constants';
+import { coordsOfSync } from './municipality.service';
 import { recordCompletedTrip } from './earnings.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
@@ -29,9 +30,13 @@ const _PAMPLONA = INTERCITY_CITY_COORDS.pamplona;
 function _cityCoords(city: string | null | undefined): { lat: number; lng: number } {
   if (!city) return _PAMPLONA;
   const key = city.trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // quita tildes
-  const coords = (INTERCITY_CITY_COORDS as Record<string, { lat: number; lng: number }>)[key];
-  return coords ?? _PAMPLONA;
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quita tildes
+    .replace(/\s+/g, '-');
+  // Tabla de municipios primero: con el mapa fijo de siete, un flete
+  // Oca\u00f1a \u2192 \u00c1brego dibujaba Pamplona \u2192 Pamplona.
+  return coordsOfSync(key)
+    ?? (INTERCITY_CITY_COORDS as Record<string, { lat: number; lng: number }>)[key]
+    ?? _PAMPLONA;
 }
 
 // Inyectado por ws.handler al arrancar — avisa en tiempo real a los portales

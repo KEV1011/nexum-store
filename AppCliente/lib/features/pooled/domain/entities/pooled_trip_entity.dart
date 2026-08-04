@@ -43,10 +43,12 @@ enum PooledTripStatus {
       this == PooledTripStatus.departed;
 }
 
-IntercityCity _cityFromApi(String? s) => IntercityCity.values.firstWhere(
-      (c) => c.name == s,
-      orElse: () => IntercityCity.pamplona,
-    );
+/// Municipio de una salida publicada. `bySlug` construye uno con el propio
+/// identificador si no está en la lista cargada: antes caía a Pamplona, así
+/// que una salida desde cualquier pueblo nuevo se mostraba con la ciudad
+/// equivocada.
+IntercityCity _cityFromApi(String? s) =>
+    s == null || s.isEmpty ? IntercityCity.pamplona : IntercityCity.bySlug(s);
 
 /// La reserva del propio pasajero dentro de un viaje compartido.
 class SeatBookingEntity {

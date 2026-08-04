@@ -11,6 +11,7 @@ import 'package:nexum_client/features/intercity/domain/entities/intercity_entity
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
+import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -157,24 +158,34 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
     );
   }
 
+  /// Abre el buscador de municipios (antes era un desplegable: con cuarenta y
+  /// cinco municipios había que recorrerlo a dedo).
   Widget _cityDropdown(IntercityCity value, ValueChanged<IntercityCity> onChanged) {
-    return DropdownButtonHideUnderline(
-      child: DropdownButton<IntercityCity>(
-        value: value,
-        isExpanded: true,
-        icon: const Icon(Icons.arrow_drop_down, color: _kPooledColor),
-        style: TextStyle(
-          color: context.textPrimaryColor,
-          fontWeight: FontWeight.w600,
-          fontSize: 15,
-        ),
-        items: [
-          for (final c in IntercityCity.values)
-            DropdownMenuItem(value: c, child: Text(c.displayName)),
+    return InkWell(
+      onTap: () async {
+        final elegido = await showCitySearchSheet(
+          context,
+          titulo: 'Buscar municipio',
+          seleccionado: value,
+        );
+        if (elegido != null) onChanged(elegido);
+      },
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              value.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: context.textPrimaryColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+          ),
+          const Icon(Icons.search_rounded, size: 18, color: _kPooledColor),
         ],
-        onChanged: (c) {
-          if (c != null) onChanged(c);
-        },
       ),
     );
   }

@@ -220,14 +220,17 @@ class _PooledTripCard extends StatelessWidget {
           const SizedBox(height: 12),
 
           // Ruta del trayecto en el mapa (paridad con intermunicipal/flete):
-          // el conductor ve por dónde va la salida de un vistazo.
-          FreightRouteMap(
-            originLat: trip.origin.coords.lat,
-            originLng: trip.origin.coords.lng,
-            destLat: trip.destination.coords.lat,
-            destLng: trip.destination.coords.lng,
-            height: 140,
-          ),
+          // el conductor ve por dónde va la salida de un vistazo. Si alguno de
+          // los municipios llegó sin coordenadas, no se dibuja nada: mejor sin
+          // mapa que con un trayecto inventado.
+          if (trip.origin.coords != null && trip.destination.coords != null)
+            FreightRouteMap(
+              originLat: trip.origin.coords!.lat,
+              originLng: trip.origin.coords!.lng,
+              destLat: trip.destination.coords!.lat,
+              destLng: trip.destination.coords!.lng,
+              height: 140,
+            ),
           // Lugares por donde pasa la salida (paradas publicadas).
           if (trip.stops.isNotEmpty)
             Padding(

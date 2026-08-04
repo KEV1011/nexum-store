@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
+import { prisma } from '../lib/prisma';
 import { verifyToken } from '../services/auth.service';
 import { verifyOperatorToken } from '../middleware/operator-auth.middleware';
 import { registerNotifyFleetsNewFreight } from '../services/freight.service';
@@ -367,6 +368,62 @@ function handleClientAuth(ws: WebSocket, token: string): void {
   }
 }
 
+/**
+ * ¿Este socket participa en el servicio al que se quiere suscribir?
+ *
+ * Antes las cuatro suscripciones (`subscribe_trip`, `_order`, `_errand`,
+ * `_intercity`) no comprobaban NADA: cualquier socket —incluso uno sin
+ * autenticar— podía pedir un id y recibir el DTO completo del servicio ajeno
+ * (direcciones, nombre y teléfono del conductor, estado en vivo). Ahora solo
+ * pasan el cliente dueño y el conductor asignado.
+ */
+async function _puedeSuscribirse(
+  ws: WebSocket,
+  tipo: 'trip' | 'order' | 'errand' | 'intercity',
+  id: string,
+): Promise<boolean> {
+  const clientId = clientIdByWs.get(ws);
+  const driverId = driverIdByWs.get(ws);
+  if (!clientId && !driverId) return false;
+
+  const dueños = await (async (): Promise<{ clientId: string | null; driverId: string | null } | null> => {
+    switch (tipo) {
+      case 'trip': {
+        const t = await prisma.trip.findUnique({
+          where: { id }, select: { passengerId: true, driverId: true },
+        });
+        return t ? { clientId: t.passengerId, driverId: t.driverId } : null;
+      }
+      case 'order': {
+        const o = await prisma.order.findUnique({
+          where: { id }, select: { userId: true, driverId: true },
+        });
+        return o ? { clientId: o.userId, driverId: o.driverId } : null;
+      }
+      case 'errand': {
+        const e = await prisma.errand.findUnique({
+          where: { id }, select: { userId: true, driverId: true },
+        });
+        return e ? { clientId: e.userId, driverId: e.driverId } : null;
+      }
+      case 'intercity': {
+        const b = await prisma.intercityBooking.findUnique({
+          where: { id }, select: { userId: true, driverId: true },
+        });
+        return b ? { clientId: b.userId, driverId: b.driverId } : null;
+      }
+    }
+  })();
+
+  if (!dueños) return false;
+  if (clientId && dueños.clientId === clientId) return true;
+  // El conductor puede seguir el servicio que le asignaron; mientras nadie lo
+  // haya tomado, cualquier conductor autenticado puede seguirlo (le acaban de
+  // ofrecer ese id por WS y necesita el detalle para decidir).
+  if (driverId && (dueños.driverId === driverId || dueños.driverId === null)) return true;
+  return false;
+}
+
 function handleSubscribeOrder(ws: WebSocket, orderId: string): void {
   const snapshot = getClientOrderSnapshot(orderId);
   if (snapshot) sendTo(ws, { type: 'order_update', orderId, ...snapshot });
@@ -378,8 +435,10 @@ function handleSubscribeOrder(ws: WebSocket, orderId: string): void {
   clientSubscriptions.set(ws, [...existing, unsubscribe]);
 }
 
-function handleSubscribeTrip(ws: WebSocket, tripId: string): void {
-  const snapshot = getClientTripSnapshot(tripId);
+async function handleSubscribeTrip(ws: WebSocket, tripId: string): Promise<void> {
+  // Faltaba el `await`: se enviaba la promesa, que al serializar quedaba en
+  // `trip: {}` — el snapshot inicial de la suscripción llegaba vacío.
+  const snapshot = await getClientTripSnapshot(tripId);
   if (snapshot) sendTo(ws, { type: 'trip_update', tripId, trip: snapshot });
 
   const unsubscribe = subscribeClientTrip(tripId, (_id, trip) => {
@@ -930,7 +989,13 @@ function onMessage(ws: WebSocket, raw: string): void {
     case 'subscribe_order': {
       const orderId = msg['orderId'];
       if (typeof orderId !== 'string') { sendTo(ws, { type: 'error', message: 'orderId required' }); return; }
-      handleSubscribeOrder(ws, orderId);
+      void (async () => {
+        if (!(await _puedeSuscribirse(ws, 'order', orderId))) {
+          sendTo(ws, { type: 'error', message: 'Ese pedido no es tuyo' });
+          return;
+        }
+        handleSubscribeOrder(ws, orderId);
+      })();
       break;
     }
     case 'unsubscribe_order':
@@ -939,7 +1004,13 @@ function onMessage(ws: WebSocket, raw: string): void {
     case 'subscribe_trip': {
       const tripId = msg['tripId'];
       if (typeof tripId !== 'string') { sendTo(ws, { type: 'error', message: 'tripId required' }); return; }
-      handleSubscribeTrip(ws, tripId);
+      void (async () => {
+        if (!(await _puedeSuscribirse(ws, 'trip', tripId))) {
+          sendTo(ws, { type: 'error', message: 'Ese viaje no es tuyo' });
+          return;
+        }
+        await handleSubscribeTrip(ws, tripId);
+      })();
       break;
     }
     case 'unsubscribe_trip': {
@@ -953,7 +1024,13 @@ function onMessage(ws: WebSocket, raw: string): void {
     case 'subscribe_errand': {
       const errandId = msg['errandId'];
       if (typeof errandId !== 'string') { sendTo(ws, { type: 'error', message: 'errandId required' }); return; }
-      void handleSubscribeErrand(ws, errandId);
+      void (async () => {
+        if (!(await _puedeSuscribirse(ws, 'errand', errandId))) {
+          sendTo(ws, { type: 'error', message: 'Ese mandado no es tuyo' });
+          return;
+        }
+        await handleSubscribeErrand(ws, errandId);
+      })();
       break;
     }
     case 'unsubscribe_errand': {
@@ -967,7 +1044,13 @@ function onMessage(ws: WebSocket, raw: string): void {
     case 'subscribe_intercity': {
       const bookingId = msg['bookingId'];
       if (typeof bookingId !== 'string') { sendTo(ws, { type: 'error', message: 'bookingId required' }); return; }
-      void handleSubscribeIntercity(ws, bookingId);
+      void (async () => {
+        if (!(await _puedeSuscribirse(ws, 'intercity', bookingId))) {
+          sendTo(ws, { type: 'error', message: 'Esa reserva no es tuya' });
+          return;
+        }
+        await handleSubscribeIntercity(ws, bookingId);
+      })();
       break;
     }
     case 'unsubscribe_intercity': {

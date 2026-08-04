@@ -107,13 +107,19 @@ class IntercityStatusScreen extends ConsumerWidget {
               ),
 
             // ── Driver confirmed ───────────────────────────────────────────
-            if (request.status == IntercityStatus.confirmed &&
-                request.hasDriver)
+            // También en camino y esperando en el punto: son fases del mismo
+            // viaje confirmado y la tarjeta del conductor debe seguir visible.
+            if (request.hasDriver &&
+                (request.status == IntercityStatus.confirmed ||
+                    request.status == IntercityStatus.driverToPickup ||
+                    request.status == IntercityStatus.atPickup))
               _DriverConfirmedCard(request: request),
 
             // ── Mapa EN VIVO (paridad con el viaje urbano): conductor
             // moviéndose sobre la ruta origen→destino ──────────────────────
             if (request.status == IntercityStatus.confirmed ||
+                request.status == IntercityStatus.driverToPickup ||
+                request.status == IntercityStatus.atPickup ||
                 request.status == IntercityStatus.inProgress) ...[
               const SizedBox(height: 12),
               _LiveTripMap(request: request),
@@ -331,6 +337,13 @@ class _StatusHeader extends StatelessWidget {
           'Revisa la oferta del conductor y confirma',
         IntercityStatus.confirmed =>
           '${r.driverName ?? 'Conductor'} te recogerá a la hora acordada',
+        // Las dos fases intermedias faltaban: el enum ganó `driverToPickup` y
+        // `atPickup` y este `switch` se quedó sin ellas, así que el APK no
+        // compilaba (un switch de expresión sobre un enum debe ser exhaustivo).
+        IntercityStatus.driverToPickup =>
+          '${r.driverName ?? 'Tu conductor'} va en camino a recogerte',
+        IntercityStatus.atPickup =>
+          '${r.driverName ?? 'Tu conductor'} te está esperando en el punto',
         IntercityStatus.inProgress => 'En camino hacia el destino',
         IntercityStatus.completed => 'Viaje finalizado · ¡Buen viaje!',
         IntercityStatus.cancelled => 'Solicitud cancelada',
@@ -974,8 +987,10 @@ class _LiveTripMapState extends ConsumerState<_LiveTripMap>
       vsync: this,
       duration: const Duration(milliseconds: 1800),
     )..repeat();
+    // Sin coordenadas del municipio no hay ruta que pedir (ni mapa que pintar).
     final o = IntercityRoute.coordsOf(widget.request.origin);
     final d = IntercityRoute.coordsOf(widget.request.destination);
+    if (o == null || d == null) return;
     ref
         .read(geoServiceProvider)
         .routePoints(
@@ -1013,6 +1028,9 @@ class _LiveTripMapState extends ConsumerState<_LiveTripMap>
     final r = widget.request;
     final o = IntercityRoute.coordsOf(r.origin);
     final d = IntercityRoute.coordsOf(r.destination);
+    // Municipio sin centroide: se omite el mapa en vez de dibujar un trayecto
+    // inventado o reventar con un `!`.
+    if (o == null || d == null) return const SizedBox.shrink();
     final origin = LatLng(o.lat, o.lng);
     final destination = LatLng(d.lat, d.lng);
     final driver = (r.driverLat != null && r.driverLng != null)

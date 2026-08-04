@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { isValidColombianPhone, normalizeColombianPhone } from './auth.service';
 import { rangoFechas } from '../lib/date-range';
+import { getMunicipality } from './municipality.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Empresas de transporte (operadores): registro, perfil, flota, conductores,
@@ -737,11 +738,6 @@ export async function exportOperatorTripsCsv(
 // tras verificar la habilitación. El matching intermunicipal (Option B) solo
 // despacha troncales a flotas con la ruta autorizada. Ver intercity.service.ts.
 
-export const INTERCITY_CITY_CODES = [
-  'PAMPLONA', 'CUCUTA', 'BUCARAMANGA', 'CHITAGA', 'MALAGA', 'OCANA', 'BOGOTA',
-] as const;
-const INTERCITY_CITY_SET = new Set<string>(INTERCITY_CITY_CODES);
-
 export async function listOperatorRoutes(operatorId: string) {
   return prisma.operatorRoute.findMany({
     where: { operatorId },
@@ -750,9 +746,12 @@ export async function listOperatorRoutes(operatorId: string) {
 }
 
 export async function addOperatorRoute(operatorId: string, originCity: string, destCity: string) {
-  const o = originCity.trim().toUpperCase();
-  const d = destCity.trim().toUpperCase();
-  if (!INTERCITY_CITY_SET.has(o) || !INTERCITY_CITY_SET.has(d)) {
+  // Slug del municipio, igual que en las reservas. Antes se guardaba en
+  // MAYÚSCULAS mientras el matching comparaba el slug en minúsculas: con
+  // INTERCITY_DUAL_MODEL activo NINGUNA ruta habría casado nunca.
+  const o = originCity.trim().toLowerCase();
+  const d = destCity.trim().toLowerCase();
+  if (!(await getMunicipality(o)) || !(await getMunicipality(d))) {
     throw new Error('Ciudad de origen o destino no válida.');
   }
   if (o === d) throw new Error('El origen y el destino deben ser diferentes.');

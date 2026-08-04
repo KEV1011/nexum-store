@@ -83,8 +83,8 @@ class TransportTrackingScreen extends ConsumerWidget {
           // mercancía se pierda por el camino.
           if (request.serviceType == TransportServiceType.envios &&
               request.deliveryPin != null &&
-              request.status != TransportRequestStatus.completed &&
-              request.status != TransportRequestStatus.cancelled) ...[
+              request.status != TransportStatus.completed &&
+              request.status != TransportStatus.cancelled) ...[
             CustodyPinCard(pin: request.deliveryPin!),
             const SizedBox(height: 16),
           ],

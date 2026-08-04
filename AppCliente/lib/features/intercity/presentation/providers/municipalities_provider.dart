@@ -39,6 +39,9 @@ class MunicipalitiesNotifier extends StateNotifier<List<IntercityCity>> {
               m['slug'] as String,
               m['name'] as String,
               m['department'] as String? ?? '',
+              // Centroide del backend: es lo que dibuja la ruta en el mapa.
+              (m['lat'] as num?)?.toDouble(),
+              (m['lng'] as num?)?.toDouble(),
             );
           })
           .toList();

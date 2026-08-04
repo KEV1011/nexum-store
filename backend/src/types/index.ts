@@ -700,9 +700,9 @@ export interface ClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
-  /** PIN que dicta quien RECIBE el envío. Solo lo ve el cliente, nunca el
-   *  repartidor: es lo que prueba que el paquete llegó a su destinatario. */
-  deliveryPin?: string;
+  // El PIN de entrega NO vive aquí a propósito: este DTO viaja al conductor
+  // (`trip_accepted`) y a los suscriptores del WS. Lo expone únicamente
+  // `ClientTripWithPinDTO`, en las vistas propias del cliente.
 }
 
 export interface RequestClientTripDTO {

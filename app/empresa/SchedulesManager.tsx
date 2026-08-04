@@ -3,19 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CalendarClock, Plus, XCircle, Loader2, Users, Bus } from 'lucide-react'
 import type { OperatorApi } from './api'
-
-// Ciudades (enum IntercityCity del backend). El motor pooled espera los
-// códigos en minúscula (claves de INTERCITY_ROUTES).
-const CITIES: { code: string; label: string }[] = [
-  { code: 'pamplona', label: 'Pamplona' },
-  { code: 'cucuta', label: 'Cúcuta' },
-  { code: 'bucaramanga', label: 'Bucaramanga' },
-  { code: 'chitaga', label: 'Chitagá' },
-  { code: 'malaga', label: 'Málaga' },
-  { code: 'ocana', label: 'Ocaña' },
-  { code: 'bogota', label: 'Bogotá' },
-]
-const CITY_LABEL: Record<string, string> = Object.fromEntries(CITIES.map((c) => [c.code, c.label]))
+import { useMunicipios } from './useMunicipios'
+import CityInput from './CityInput'
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   open: { label: 'Abierta', cls: 'bg-emerald-100 text-emerald-700' },
@@ -83,6 +72,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
 
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [driverId, setDriverId] = useState('')
+  const { municipios, etiqueta } = useMunicipios()
   const [origin, setOrigin] = useState('pamplona')
   const [dest, setDest] = useState('cucuta')
   const [departure, setDeparture] = useState('')
@@ -188,20 +178,8 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           <input type="datetime-local" value={departure} onChange={(e) => setDeparture(e.target.value)}
             className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white" />
         </label>
-        <label className="block">
-          <span className="block text-[11px] font-semibold text-slate-500 mb-1">Origen</span>
-          <select value={origin} onChange={(e) => setOrigin(e.target.value)}
-            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
-            {CITIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-          </select>
-        </label>
-        <label className="block">
-          <span className="block text-[11px] font-semibold text-slate-500 mb-1">Destino</span>
-          <select value={dest} onChange={(e) => setDest(e.target.value)}
-            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
-            {CITIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-          </select>
-        </label>
+        <CityInput label="Origen" value={origin} onChange={setOrigin} municipios={municipios} />
+        <CityInput label="Destino" value={dest} onChange={setDest} municipios={municipios} />
         <label className="block">
           <span className="block text-[11px] font-semibold text-slate-500 mb-1">Puestos</span>
           <input type="number" min={1} max={20} value={seats} onChange={(e) => setSeats(e.target.value)}
@@ -290,7 +268,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                   <Bus className="w-4 h-4 text-slate-400 shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-slate-800 truncate">
-                      {CITY_LABEL[t.origin] ?? t.origin} → {CITY_LABEL[t.destination] ?? t.destination}
+                      {etiqueta(t.origin)} → {etiqueta(t.destination)}
                       <span className="text-slate-400 font-normal"> · {formatWhen(t.departureTime)}</span>
                     </p>
                     <p className="text-[11px] text-slate-400 truncate">

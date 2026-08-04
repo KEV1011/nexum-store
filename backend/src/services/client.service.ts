@@ -708,7 +708,7 @@ export async function updateOrderStatusByDriver(
 
 // ─── Client Trips ─────────────────────────────────────────────────────────────
 
-export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripDTO> {
+export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripWithPinDTO> {
   const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;
   // 'transporte' es el nombre que usa la app cliente para el servicio de carro
   // particular/taxi — se acepta como alias para no romper el contrato REST.
@@ -750,7 +750,9 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   // Kick off geo-matching asynchronously — does not block the REST response.
   void startMatchingCycle(trip.id, trip.originLat, trip.originLng);
 
-  return _toTripDTO(trip, clientId);
+  // El PIN va SOLO en esta respuesta (y en las vistas propias del cliente):
+  // es quien recibe el paquete el que debe conocerlo.
+  return _conPin(_toTripDTO(trip, clientId), trip.deliveryPin);
 }
 
 // (acceptClientTrip + _startTripSimulation eliminados: eran restos del flujo
@@ -872,14 +874,16 @@ export async function handleNoDriversFound(tripId: string): Promise<void> {
   _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
 }
 
-export async function getActiveClientTrip(clientId: string): Promise<ClientTripDTO | null> {
+export async function getActiveClientTrip(clientId: string): Promise<ClientTripWithPinDTO | null> {
   const active = ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'];
   const trip = await prisma.trip.findFirst({
     where: { passengerId: clientId, status: { in: active as never[] } },
     orderBy: { createdAt: 'desc' },
   });
   if (!trip) return null;
-  return _toTripDTO(trip, clientId);
+  // Vista propia del cliente: aquí sí va el PIN (así lo recupera si reinstala
+  // la app o pierde el estado local con un envío en curso).
+  return _conPin(_toTripDTO(trip, clientId), trip.deliveryPin);
 }
 
 /** Viajes finalizados (completados o cancelados) del cliente, más reciente primero. */
@@ -934,7 +938,17 @@ export function subscribeClientTrip(tripId: string, cb: TripCallback): () => voi
   return () => tripListeners.get(tripId)?.delete(cb);
 }
 
-export async function getClientTripSnapshot(tripId: string): Promise<ClientTripDTO | null> {
+/**
+ * Snapshot del viaje. Por defecto SIN el PIN: este mismo objeto se emite por WS
+ * a los suscriptores y se le devuelve al conductor en `trip_accepted`.
+ *
+ * `incluirPin` solo lo activa la ruta REST del cliente, que ya comprobó que el
+ * viaje es suyo.
+ */
+export async function getClientTripSnapshot(
+  tripId: string,
+  incluirPin = false,
+): Promise<ClientTripWithPinDTO | null> {
   // Incluye la identidad del conductor asignado para que el fallback por
   // polling REST pinte lo mismo que el WS (nombre, vehículo y su TIPO real).
   const trip = await prisma.trip.findUnique({
@@ -946,10 +960,11 @@ export async function getClientTripSnapshot(tripId: string): Promise<ClientTripD
   if (!trip) return null;
   const v = trip.driver?.vehicles[0];
   const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
-  return _toTripDTO(
+  const dto = _toTripDTO(
     trip, trip.passengerId ?? '',
     trip.driver?.name, trip.driver?.phone, driverVehicle, v?.type,
   );
+  return incluirPin ? _conPin(dto, trip.deliveryPin) : dto;
 }
 
 function _notifyTripListeners(tripId: string, _passengerId: string, dto: ClientTripDTO): void {
@@ -1080,6 +1095,20 @@ type PrismaTrip = {
   deliveryPin?: string | null;
 };
 
+/**
+ * Viaje visto por SU cliente: incluye el PIN de custodia del envío.
+ *
+ * `_toTripDTO` nunca lo añade (seguro por defecto: ese mismo DTO viaja al
+ * conductor en `trip_accepted` y a todos los suscriptores del WS). Solo estas
+ * vistas del cliente, con propiedad ya verificada, lo exponen. Mismo patrón que
+ * `ClientOrderWithPinDTO` y `ClientErrandWithPinsDTO`.
+ */
+export type ClientTripWithPinDTO = ClientTripDTO & { deliveryPin?: string };
+
+function _conPin(dto: ClientTripDTO, pin: string | null | undefined): ClientTripWithPinDTO {
+  return pin ? { ...dto, deliveryPin: pin } : dto;
+}
+
 function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string, driverPhone?: string, driverVehicle?: string, driverVehicleType?: string): ClientTripDTO {
   const statusMap: Record<string, ClientTripStatus> = {
     SEARCHING: 'searching', ACCEPTED: 'accepted', ARRIVING: 'arriving',
@@ -1109,6 +1138,5 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     recipientName: trip.recipientName ?? undefined,
     recipientPhone: trip.recipientPhone ?? undefined,
     packageDescription: trip.packageDescription ?? undefined,
-    deliveryPin: trip.deliveryPin ?? undefined,
   };
 }

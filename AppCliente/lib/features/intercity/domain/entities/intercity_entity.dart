@@ -17,7 +17,8 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 /// Los siete de siempre quedan como constantes: son el respaldo si la app
 /// arranca sin red, y evitan que la pantalla se quede vacía.
 class IntercityCity {
-  const IntercityCity(this.name, this.displayName, this.department);
+  const IntercityCity(this.name, this.displayName, this.department,
+      [this.lat, this.lng]);
 
   /// Identificador estable ('pamplona', 'villa-del-rosario'). Es lo que viaja
   /// al backend, y se llama `name` para conservar la interfaz del enum.
@@ -25,16 +26,24 @@ class IntercityCity {
   final String displayName;
   final String department;
 
+  /// Centroide del municipio, para los mapas. Llega del backend junto con el
+  /// nombre; `null` si el municipio vino sin coordenadas.
+  final double? lat;
+  final double? lng;
+
+  ({double lat, double lng})? get coords =>
+      lat == null || lng == null ? null : (lat: lat!, lng: lng!);
+
   static const pamplona =
-      IntercityCity('pamplona', 'Pamplona', 'Norte de Santander');
-  static const cucuta = IntercityCity('cucuta', 'Cúcuta', 'Norte de Santander');
+      IntercityCity('pamplona', 'Pamplona', 'Norte de Santander', 7.3754, -72.6486);
+  static const cucuta = IntercityCity('cucuta', 'Cúcuta', 'Norte de Santander', 7.8939, -72.5078);
   static const bucaramanga =
-      IntercityCity('bucaramanga', 'Bucaramanga', 'Santander');
+      IntercityCity('bucaramanga', 'Bucaramanga', 'Santander', 7.1193, -73.1227);
   static const chitaga =
-      IntercityCity('chitaga', 'Chitagá', 'Norte de Santander');
-  static const malaga = IntercityCity('malaga', 'Málaga', 'Santander');
-  static const ocana = IntercityCity('ocana', 'Ocaña', 'Norte de Santander');
-  static const bogota = IntercityCity('bogota', 'Bogotá', 'Cundinamarca');
+      IntercityCity('chitaga', 'Chitagá', 'Norte de Santander', 7.1364, -72.6667);
+  static const malaga = IntercityCity('malaga', 'Málaga', 'Santander', 6.6983, -72.7333);
+  static const ocana = IntercityCity('ocana', 'Ocaña', 'Norte de Santander', 8.2375, -73.3561);
+  static const bogota = IntercityCity('bogota', 'Bogotá', 'Cundinamarca', 4.711, -74.0721);
 
   static const _respaldo = <IntercityCity>[
     pamplona, cucuta, bucaramanga, chitaga, malaga, ocana, bogota,
@@ -150,18 +159,15 @@ class IntercityRoute {
 
   // ── Coordinate-based fallback (parity with backend) ──────────────────────────
 
-  static const Map<IntercityCity, ({double lat, double lng})> _cityCoords = {
-    IntercityCity.pamplona: (lat: 7.3754, lng: -72.6486),
-    IntercityCity.cucuta: (lat: 7.8939, lng: -72.5078),
-    IntercityCity.bucaramanga: (lat: 7.1193, lng: -73.1227),
-    IntercityCity.chitaga: (lat: 6.9000, lng: -72.6660),
-    IntercityCity.malaga: (lat: 6.6983, lng: -72.7333),
-    IntercityCity.ocana: (lat: 8.2375, lng: -73.3561),
-    IntercityCity.bogota: (lat: 4.7110, lng: -74.0721),
-  };
-
-  /// Centroide de la ciudad para el mapa de seguimiento en vivo.
-  static ({double lat, double lng}) coordsOf(IntercityCity c) => _cityCoords[c]!;
+  /// Centroide del municipio para el mapa de seguimiento.
+  ///
+  /// Antes era un `Map` constante con los siete de siempre y se leía con `!`:
+  /// desde que los municipios vienen del backend, ese mapa dejó de compilar
+  /// (una clase con `==` propio no puede ser clave constante) y el `!` habría
+  /// reventado con cualquier municipio nuevo. Ahora cada municipio trae sus
+  /// coordenadas y esto solo las devuelve.
+  static ({double lat, double lng})? coordsOf(IntercityCity c) =>
+      c.coords ?? IntercityCity.bySlug(c.name).coords;
 
   static const double _roadFactor = 1.4;
   static const double _avgSpeedKmh = 55;
@@ -183,7 +189,23 @@ class IntercityRoute {
   }
 
   static IntercityRoute _synthesize(IntercityCity a, IntercityCity b) {
-    final straight = _haversineKm(_cityCoords[a]!, _cityCoords[b]!);
+    // Coordenadas del propio municipio (las trae `/geo/municipios`). Si alguna
+    // falta no se puede estimar distancia: se devuelve una ruta en cero y la
+    // pantalla muestra la tarifa que escriba el pasajero, en vez de reventar.
+    final ca = coordsOf(a);
+    final cb = coordsOf(b);
+    if (ca == null || cb == null) {
+      return IntercityRoute(
+        origin: a,
+        destination: b,
+        distanceKm: 0,
+        durationMinutes: 0,
+        farePerSeat: 0,
+        fleetFare: 0,
+        isEstimated: true,
+      );
+    }
+    final straight = _haversineKm(ca, cb);
     final distanceKm = math.max(10, (straight * _roadFactor / 5).round() * 5);
     final durationMinutes = (distanceKm / _avgSpeedKmh * 60).round();
     final farePerSeat = (distanceKm * _farePerKm / 1000).round() * 1000;
