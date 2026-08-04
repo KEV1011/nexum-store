@@ -63,7 +63,7 @@ class _ManifestsScreenState extends ConsumerState<ManifestsScreen> {
         title: const Text('Remitos de mercancía'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => safeBack(context, '/home'),
+          onPressed: () => safeBack(context),
         ),
       ),
       body: RefreshIndicator(
@@ -477,7 +477,7 @@ class _FilaBulto extends StatelessWidget {
     return showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('¿Cuánto llegó?'),
+        title: const Text('¿Cuánto llegó?'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
