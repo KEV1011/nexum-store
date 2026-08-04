@@ -268,6 +268,14 @@ class _ActiveTripCard extends StatelessWidget {
           'Esperando al pasajero'
         ),
       IntercityTripPhase.confirmed => (_kIntercityColor, 'Confirmado'),
+      // Las dos fases intermedias faltaban: el enum ganó `driverToPickup` y
+      // `atPickup` y este `switch` se quedó sin ellas, así que el APK no
+      // compilaba (un switch de expresión sobre un enum debe ser exhaustivo).
+      IntercityTripPhase.driverToPickup => (
+          _kIntercityColor,
+          'En camino a recoger'
+        ),
+      IntercityTripPhase.atPickup => (AppColors.warning, 'En el punto'),
       IntercityTripPhase.inProgress => (AppColors.success, 'En viaje'),
       IntercityTripPhase.completed => (AppColors.success, 'Finalizado'),
     };
