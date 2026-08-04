@@ -189,7 +189,23 @@ class IntercityRoute {
   }
 
   static IntercityRoute _synthesize(IntercityCity a, IntercityCity b) {
-    final straight = _haversineKm(_cityCoords[a]!, _cityCoords[b]!);
+    // Coordenadas del propio municipio (las trae `/geo/municipios`). Si alguna
+    // falta no se puede estimar distancia: se devuelve una ruta en cero y la
+    // pantalla muestra la tarifa que escriba el pasajero, en vez de reventar.
+    final ca = coordsOf(a);
+    final cb = coordsOf(b);
+    if (ca == null || cb == null) {
+      return IntercityRoute(
+        origin: a,
+        destination: b,
+        distanceKm: 0,
+        durationMinutes: 0,
+        farePerSeat: 0,
+        fleetFare: 0,
+        isEstimated: true,
+      );
+    }
+    final straight = _haversineKm(ca, cb);
     final distanceKm = math.max(10, (straight * _roadFactor / 5).round() * 5);
     final durationMinutes = (distanceKm / _avgSpeedKmh * 60).round();
     final farePerSeat = (distanceKm * _farePerKm / 1000).round() * 1000;
