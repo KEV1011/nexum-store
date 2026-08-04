@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CalendarClock, Plus, XCircle, Loader2, Users, Bus } from 'lucide-react'
 import type { OperatorApi } from './api'
 import { useMunicipios } from './useMunicipios'
+import CityInput from './CityInput'
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   open: { label: 'Abierta', cls: 'bg-emerald-100 text-emerald-700' },
@@ -177,20 +178,8 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           <input type="datetime-local" value={departure} onChange={(e) => setDeparture(e.target.value)}
             className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white" />
         </label>
-        <label className="block">
-          <span className="block text-[11px] font-semibold text-slate-500 mb-1">Origen</span>
-          <select value={origin} onChange={(e) => setOrigin(e.target.value)}
-            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
-            {municipios.map((m) => <option key={m.slug} value={m.slug}>{m.name}</option>)}
-          </select>
-        </label>
-        <label className="block">
-          <span className="block text-[11px] font-semibold text-slate-500 mb-1">Destino</span>
-          <select value={dest} onChange={(e) => setDest(e.target.value)}
-            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
-            {municipios.map((m) => <option key={m.slug} value={m.slug}>{m.name}</option>)}
-          </select>
-        </label>
+        <CityInput label="Origen" value={origin} onChange={setOrigin} municipios={municipios} />
+        <CityInput label="Destino" value={dest} onChange={setDest} municipios={municipios} />
         <label className="block">
           <span className="block text-[11px] font-semibold text-slate-500 mb-1">Puestos</span>
           <input type="number" min={1} max={20} value={seats} onChange={(e) => setSeats(e.target.value)}

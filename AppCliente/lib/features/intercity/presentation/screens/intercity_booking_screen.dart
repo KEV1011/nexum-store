@@ -6,6 +6,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
+import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 
@@ -726,45 +727,44 @@ class _CityDropdown extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 4),
-        DropdownButtonFormField<IntercityCity>(
-          value: value,
-          isExpanded: true,
-          dropdownColor: AppColors.intercitySurface,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-          decoration: InputDecoration(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            filled: true,
-            fillColor: AppColors.intercityBg,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppColors.intercityOutline),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppColors.intercityOutline),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide:
-                  const BorderSide(color: _kInterColor, width: 1.5),
-            ),
-          ),
-          items: IntercityCity.values
-              .map(
-                (c) => DropdownMenuItem(
-                  value: c,
-                  child: Text(c.displayName),
-                ),
-              )
-              .toList(),
-          onChanged: (v) {
-            if (v != null) onChanged(v);
+        // Abre el buscador en vez de un desplegable: con cuarenta y cinco
+        // municipios, recorrer una lista a dedo no es una opción.
+        InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () async {
+            final elegido = await showCitySearchSheet(
+              context,
+              titulo: label,
+              seleccionado: value,
+            );
+            if (elegido != null) onChanged(elegido);
           },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.intercityBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.intercityOutline),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.search_rounded,
+                    size: 18, color: AppColors.intercityTextMuted),
+              ],
+            ),
+          ),
         ),
       ],
     );

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Route as RouteIcon, Plus, Trash2, ShieldCheck, Clock, Loader2 } from 'lucide-react'
 import type { OperatorApi } from './api'
 import { useMunicipios } from './useMunicipios'
+import CityInput from './CityInput'
 
 interface OperatorRoute {
   id: string
@@ -70,9 +71,9 @@ export default function RoutesManager({ api }: { api: OperatorApi }) {
 
       <div className="bg-white border border-slate-200 rounded-xl p-3.5 mb-3">
         <div className="flex flex-wrap items-end gap-2">
-          <CitySelect label="Origen" value={origin} onChange={setOrigin} municipios={municipios} />
+          <CityInput label="Origen" value={origin} onChange={setOrigin} municipios={municipios} />
           <span className="text-slate-400 pb-2.5">→</span>
-          <CitySelect label="Destino" value={dest} onChange={setDest} municipios={municipios} />
+          <CityInput label="Destino" value={dest} onChange={setDest} municipios={municipios} />
           <button
             onClick={addRoute}
             disabled={saving}
@@ -121,27 +122,5 @@ export default function RoutesManager({ api }: { api: OperatorApi }) {
         </div>
       )}
     </section>
-  )
-}
-
-function CitySelect({
-  label, value, onChange, municipios,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  municipios: { slug: string; name: string }[]
-}) {
-  return (
-    <div>
-      <label className="block text-[11px] font-semibold text-slate-500 mb-1">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
-      >
-        {municipios.map((m) => <option key={m.slug} value={m.slug}>{m.name}</option>)}
-      </select>
-    </div>
   )
 }

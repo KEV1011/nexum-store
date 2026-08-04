@@ -9,6 +9,7 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/municipalities_provider.dart';
+import 'package:nexum_driver/features/pooled/presentation/widgets/city_search_sheet.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -339,26 +340,42 @@ class _PublishPooledTripScreenState
 
   Widget _cityDropdown(PooledCity value, ValueChanged<PooledCity> onChanged) {
     // La lista viene del backend (con los siete de siempre como respaldo): la
-    // empresa mueve a todos los pueblos, no a siete.
-    final municipios = ref.watch(municipalitiesProvider);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: context.surfaceColor,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.outlineColor),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<PooledCity>(
-          value: value,
-          isExpanded: true,
-          items: [
-            for (final c in municipios)
-              DropdownMenuItem(value: c, child: Text(c.displayName)),
+    // empresa mueve a todos los pueblos, no a siete. Y se busca escribiendo,
+    // porque con cuarenta y cinco municipios un desplegable no sirve.
+    ref.watch(municipalitiesProvider);
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () async {
+        final elegido = await showCitySearchSheet(
+          context,
+          titulo: 'Buscar municipio',
+          seleccionado: value,
+        );
+        if (elegido != null) onChanged(elegido);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        decoration: BoxDecoration(
+          color: context.surfaceColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: context.outlineColor),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                value.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: context.textPrimaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Icon(Icons.search_rounded,
+                size: 18, color: context.textSecondaryColor),
           ],
-          onChanged: (c) {
-            if (c != null) onChanged(c);
-          },
         ),
       ),
     );
