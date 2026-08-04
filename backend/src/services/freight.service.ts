@@ -14,6 +14,14 @@ import { coordsOfSync } from './municipality.service';
 import { recordCompletedTrip } from './earnings.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
+import { getServiceTrack, realKmByService, type ServiceTrack } from './track.service';
+import {
+  EVENT_LABEL_ES, FREIGHT_EVENT_TYPES, costBreakdown, isFreightEventType, requiresAmount,
+  type CostBreakdown, type FreightEventType,
+} from '../lib/freight-costs';
+import { freightTimes, onTimeStats, type OnTimeStats } from '../lib/freight-times';
+import { fuelEfficiency, type VehicleEfficiency } from '../lib/fuel-efficiency';
+import { directions } from './geo.service';
 
 export class FreightError extends Error {}
 
@@ -62,6 +70,8 @@ export interface CreateFreightDTO {
   vehicleType: string;
   offeredPrice: number;
   scheduledFor?: string; // ISO — futuro = acarreo/flete programado
+  /** Fecha comprometida de entrega. Sin ella no hay cumplimiento medible. */
+  promisedAt?: string;
 }
 
 function _toDTO(f: {
@@ -72,6 +82,7 @@ function _toDTO(f: {
   driverId: string | null; vehicleId: string | null; finalPrice: number | null;
   commission: number | null; netEarning: number | null; createdAt: Date;
   acceptedAt: Date | null; completedAt: Date | null;
+  startedAt?: Date | null; promisedAt?: Date | null;
   originLat?: number | null; originLng?: number | null;
   destLat?: number | null; destLng?: number | null;
 }, driverPos?: { lat: number | null; lng: number | null } | null) {
@@ -101,7 +112,18 @@ function _toDTO(f: {
     netEarning: f.netEarning ?? undefined,
     createdAt: f.createdAt.toISOString(),
     acceptedAt: f.acceptedAt?.toISOString(),
+    startedAt: f.startedAt?.toISOString(),
     completedAt: f.completedAt?.toISOString(),
+    promisedAt: f.promisedAt?.toISOString(),
+    // Duraciones derivadas (nunca se guardan): un flete viejo sin startedAt
+    // devuelve null en vez de un número inventado.
+    times: freightTimes({
+      createdAt: f.createdAt,
+      acceptedAt: f.acceptedAt,
+      startedAt: f.startedAt ?? null,
+      completedAt: f.completedAt,
+      promisedAt: f.promisedAt ?? null,
+    }),
     // Posición en vivo del conductor asignado (heartbeat GPS) — solo se llena
     // en fletes ACCEPTED/IN_PROGRESS, para el mapa de seguimiento.
     driverLat: driverPos?.lat ?? undefined,
@@ -164,6 +186,18 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
     scheduledFor = d;
   }
 
+  let promisedAt: Date | null = null;
+  if (dto.promisedAt) {
+    const d = new Date(dto.promisedAt);
+    if (Number.isNaN(d.getTime())) throw new FreightError('La fecha de entrega comprometida no es válida.');
+    promisedAt = d;
+  }
+  // Prometer la entrega antes de la salida programada no describe nada real y
+  // dejaría el flete marcado como tarde desde el primer minuto.
+  if (promisedAt && scheduledFor && promisedAt < scheduledFor) {
+    throw new FreightError('La entrega comprometida no puede ser anterior a la salida programada.');
+  }
+
   const user = await prisma.user.findUnique({ where: { id: clientId }, select: { name: true, phone: true } });
 
   // Trayectoria para el mapa: centroide de cada ciudad (fallback Pamplona).
@@ -184,6 +218,7 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
       vehicleType: vType,
       offeredPrice: dto.offeredPrice,
       scheduledFor,
+      promisedAt,
       originLat: oc.lat,
       originLng: oc.lng,
       destLat: dc.lat,
@@ -423,7 +458,9 @@ async function _applyFreightStatus(
   if (status === 'in_progress') {
     const res = await prisma.freightRequest.updateMany({
       where: { id: freightId, status: 'ACCEPTED' },
-      data: { status: 'IN_PROGRESS', ...pinStamp },
+      // startedAt es la salida REAL: sin ella, la espera en bodega queda
+      // escondida dentro del tiempo de viaje y nadie puede reclamarla.
+      data: { status: 'IN_PROGRESS', startedAt: new Date(), ...pinStamp },
     });
     if (res.count === 0) throw new FreightError('Solo un flete aceptado puede iniciar ruta.');
     const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
@@ -441,7 +478,12 @@ async function _applyFreightStatus(
     const res = await prisma.freightRequest.updateMany({
       where: { id: freightId, status: { in: ['ACCEPTED', 'IN_PROGRESS'] } },
       // Vuelve al tablero para que otra flota pueda tomarlo.
-      data: { status: 'REQUESTED', operatorId: null, driverId: null, vehicleId: null, acceptedAt: null },
+      // startedAt se limpia con el resto: el flete vuelve al tablero sin
+      // historia de ejecución, y el próximo transportador arranca su reloj.
+      data: {
+        status: 'REQUESTED', operatorId: null, driverId: null, vehicleId: null,
+        acceptedAt: null, startedAt: null,
+      },
     });
     if (res.count === 0) throw new FreightError('El flete ya fue completado o cancelado.');
     const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
@@ -491,11 +533,28 @@ export interface FleetFinanceSummary {
   to: string;
   totalGross: number;
   totalCommission: number;
+  /** Lo que le queda a la flota tras la comisión, ANTES de sus gastos. */
   totalNet: number;
   totalServices: number;
+  /**
+   * Gastos de ruta registrados por los conductores en los fletes del período
+   * (combustible, peajes, viáticos, mantenimiento). Solo la carga los lleva:
+   * es la única operación con bitácora de gastos.
+   */
+  costs: CostBreakdown;
+  /** totalNet − costs.total. Este es el número que el dueño llama "ganancia". */
+  totalMargin: number;
+  /** Kilómetros reales recorridos en los fletes del período (rastro GPS). */
+  realKm: number;
+  /** Costo por kilómetro recorrido, 0 si aún no hay rastro. */
+  costPerKm: number;
+  /** Cumplimiento de las entregas con fecha comprometida. */
+  onTime: OnTimeStats;
+  /** Rendimiento km/galón por camión, calculado con los tanqueos del período. */
+  efficiency: VehicleEfficiency[];
   byService: Record<string, { count: number; gross: number }>;
-  byDriver: { name: string; count: number; gross: number }[];
-  byVehicle: { plate: string; count: number; gross: number }[];
+  byDriver: { name: string; count: number; gross: number; cost: number }[];
+  byVehicle: { plate: string; count: number; gross: number; cost: number }[];
 }
 
 /** Consolidado financiero de TODOS los servicios sellados a la flota. */
@@ -525,11 +584,41 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     prisma.freightRequest.findMany({
       where: { operatorId, status: 'COMPLETED', completedAt: range },
       select: {
-        finalPrice: true, commission: true, netEarning: true,
+        id: true, finalPrice: true, commission: true, netEarning: true,
         driverId: true, vehicleId: true,
+        createdAt: true, acceptedAt: true, startedAt: true,
+        completedAt: true, promisedAt: true,
       },
     }),
   ]);
+
+  // Gastos de ruta y kilómetros reales de esos mismos fletes. Sin esto el panel
+  // solo dice cuánto facturó la flota, que no es lo que el dueño pregunta.
+  const freightIds = freights.map((f) => f.id);
+  const [expenseRows, kmByFreight] = await Promise.all([
+    freightIds.length
+      ? prisma.freightEvent.findMany({
+          where: { freightId: { in: freightIds } },
+          select: {
+            freightId: true, type: true, amountCop: true,
+            gallons: true, odometerKm: true, createdAt: true,
+          },
+        })
+      : Promise.resolve([] as {
+          freightId: string; type: string; amountCop: number | null;
+          gallons: number | null; odometerKm: number | null; createdAt: Date;
+        }[]),
+    realKmByService('freight', freightIds),
+  ]);
+
+  const costs = costBreakdown(expenseRows);
+  const costByFreight = new Map<string, number>();
+  for (const e of expenseRows) {
+    const monto = e.amountCop ?? 0;
+    if (!(monto > 0) || !requiresAmount(e.type)) continue;
+    costByFreight.set(e.freightId, (costByFreight.get(e.freightId) ?? 0) + monto);
+  }
+  const realKm = [...kmByFreight.values()].reduce((s, v) => s + v, 0);
 
   // Nombres de conductor/placa para los fletes (guardan ids, no nombres).
   const drvIds = [...new Set(freights.map((x) => x.driverId).filter((v): v is string => !!v))];
@@ -541,13 +630,35 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   const drvName = new Map(drvRows.map((d) => [d.id, d.name]));
   const vehPlate = new Map(vehRows.map((v) => [v.id, v.plate]));
 
+  // Rendimiento km/galón: el tanqueo cuelga del flete y la placa cuelga del
+  // flete, así que hay que dar ese salto para atribuir los galones a un camión.
+  const plateByFreight = new Map<string, string>();
+  for (const f of freights) {
+    const plate = f.vehicleId ? vehPlate.get(f.vehicleId) : undefined;
+    if (plate) plateByFreight.set(f.id, plate);
+  }
+  const efficiency = fuelEfficiency(
+    expenseRows
+      .filter((e) => e.type === 'FUEL')
+      .map((e) => ({
+        vehicle: plateByFreight.get(e.freightId) ?? '',
+        odometerKm: e.odometerKm,
+        gallons: e.gallons,
+        amountCop: e.amountCop,
+        at: e.createdAt,
+      })),
+  );
+
   const byService: Record<string, { count: number; gross: number }> = {};
-  const byDriverMap = new Map<string, { count: number; gross: number }>();
-  const byVehicleMap = new Map<string, { count: number; gross: number }>();
+  const byDriverMap = new Map<string, { count: number; gross: number; cost: number }>();
+  const byVehicleMap = new Map<string, { count: number; gross: number; cost: number }>();
   let totalGross = 0;
   let totalCommission = 0;
 
-  const add = (service: string, gross: number, commission: number, driverName?: string | null, plate?: string | null) => {
+  const add = (
+    service: string, gross: number, commission: number,
+    driverName?: string | null, plate?: string | null, cost = 0,
+  ) => {
     totalGross += gross;
     totalCommission += commission;
     byService[service] = {
@@ -555,12 +666,12 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
       gross: (byService[service]?.gross ?? 0) + gross,
     };
     if (driverName) {
-      const cur = byDriverMap.get(driverName) ?? { count: 0, gross: 0 };
-      byDriverMap.set(driverName, { count: cur.count + 1, gross: cur.gross + gross });
+      const cur = byDriverMap.get(driverName) ?? { count: 0, gross: 0, cost: 0 };
+      byDriverMap.set(driverName, { count: cur.count + 1, gross: cur.gross + gross, cost: cur.cost + cost });
     }
     if (plate) {
-      const cur = byVehicleMap.get(plate) ?? { count: 0, gross: 0 };
-      byVehicleMap.set(plate, { count: cur.count + 1, gross: cur.gross + gross });
+      const cur = byVehicleMap.get(plate) ?? { count: 0, gross: 0, cost: 0 };
+      byVehicleMap.set(plate, { count: cur.count + 1, gross: cur.gross + gross, cost: cur.cost + cost });
     }
   };
 
@@ -581,6 +692,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
       f.commission ?? Math.round((f.finalPrice ?? 0) * COMMISSION_RATE),
       f.driverId ? drvName.get(f.driverId) : undefined,
       f.vehicleId ? vehPlate.get(f.vehicleId) : undefined,
+      costByFreight.get(f.id) ?? 0,
     );
   }
 
@@ -591,13 +703,21 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     .map(([plate, v]) => ({ plate, ...v }))
     .sort((a, b) => b.gross - a.gross);
 
+  const totalNet = totalGross - totalCommission;
+
   return {
     from: from.toISOString(),
     to: to.toISOString(),
     totalGross,
     totalCommission,
-    totalNet: totalGross - totalCommission,
+    totalNet,
     totalServices: Object.values(byService).reduce((s, x) => s + x.count, 0),
+    costs,
+    totalMargin: totalNet - costs.total,
+    realKm: Math.round(realKm * 100) / 100,
+    costPerKm: realKm > 0 ? Math.round(costs.total / realKm) : 0,
+    onTime: onTimeStats(freights),
+    efficiency,
     byService,
     byDriver,
     byVehicle,
@@ -743,7 +863,7 @@ export async function takeDriverFreight(
 // El conductor registra cada evento (dónde echó gasolina, dónde paró) y la
 // empresa lo ve como línea de tiempo del flete — control total del trayecto.
 
-export type FreightEventType = 'FUEL' | 'STOP' | 'NOTE';
+export type { FreightEventType };
 
 export interface FreightEventDTO {
   id: string;
@@ -802,8 +922,10 @@ export async function addFreightEvent(
   input: AddFreightEventInput,
 ): Promise<FreightEventDTO> {
   const type = String(input.type ?? '').toUpperCase();
-  if (!['FUEL', 'STOP', 'NOTE'].includes(type)) {
-    throw new FreightError('El tipo de evento debe ser FUEL, STOP o NOTE.');
+  if (!isFreightEventType(type)) {
+    throw new FreightError(
+      `El tipo de evento debe ser uno de: ${FREIGHT_EVENT_TYPES.join(', ')}.`,
+    );
   }
   const f = await prisma.freightRequest.findUnique({
     where: { id: freightId },
@@ -815,8 +937,11 @@ export async function addFreightEvent(
   if (f.status !== 'ACCEPTED' && f.status !== 'IN_PROGRESS') {
     throw new FreightError('Solo puedes registrar eventos con el flete aceptado o en ruta.');
   }
-  if (type === 'FUEL' && !(typeof input.amountCop === 'number' && input.amountCop > 0)) {
-    throw new FreightError('Un tanqueo necesita el monto en pesos (amountCop).');
+  // Un gasto sin monto haría cuadrar mal el margen sin que nadie lo note.
+  if (requiresAmount(type) && !(typeof input.amountCop === 'number' && input.amountCop > 0)) {
+    throw new FreightError(
+      `Un ${EVENT_LABEL_ES[type].toLowerCase()} necesita el monto en pesos (amountCop).`,
+    );
   }
   const created = await prisma.freightEvent.create({
     data: {
@@ -857,7 +982,7 @@ export async function listFreightEventsForDriver(
 export async function listFreightEventsForOperator(
   operatorId: string,
   freightId: string,
-): Promise<{ events: FreightEventDTO[]; fuelTotalCop: number } | null> {
+): Promise<{ events: FreightEventDTO[]; fuelTotalCop: number; costs: CostBreakdown } | null> {
   const f = await prisma.freightRequest.findUnique({
     where: { id: freightId },
     select: { operatorId: true },
@@ -867,8 +992,71 @@ export async function listFreightEventsForOperator(
     where: { freightId },
     orderBy: { createdAt: 'asc' },
   });
-  const fuelTotalCop = rows
-    .filter((r) => r.type === 'FUEL')
-    .reduce((sum, r) => sum + (r.amountCop ?? 0), 0);
-  return { events: rows.map(_eventToDTO), fuelTotalCop };
+  const costs = costBreakdown(rows);
+  // `fuelTotalCop` se mantiene por compatibilidad con el portal ya desplegado:
+  // si solo se actualiza el backend, la bitácora vieja sigue mostrando el
+  // combustible en vez de quedarse en blanco.
+  return { events: rows.map(_eventToDTO), fuelTotalCop: costs.fuel, costs };
+}
+
+/**
+ * Recorrido real del flete (rastro GPS) para el portal de la empresa. Devuelve
+ * null si el flete no es de esa flota — misma regla que la bitácora.
+ */
+export async function getFreightTrackForOperator(
+  operatorId: string,
+  freightId: string,
+): Promise<(ServiceTrack & { eta: FreightEta | null }) | null> {
+  const f = await prisma.freightRequest.findUnique({
+    where: { id: freightId },
+    select: { operatorId: true, status: true, driverId: true, destLat: true, destLng: true },
+  });
+  if (!f || f.operatorId !== operatorId) return null;
+
+  const track = await getServiceTrack('freight', freightId);
+  return { ...track, eta: await _freightEta(f) };
+}
+
+export interface FreightEta {
+  /** Minutos estimados hasta el destino según la ruta real por calles. */
+  minutes: number;
+  /** Kilómetros que faltan. */
+  km: number;
+  /** Hora estimada de llegada, ISO. */
+  arrivesAt: string;
+}
+
+/**
+ * Tiempo estimado de llegada del camión que va EN RUTA. Se calcula a demanda
+ * (al abrir el recorrido de un flete), no para la lista entera: sería una
+ * llamada a Google por cada fila.
+ *
+ * Sin `GOOGLE_MAPS_API_KEY` la llamada falla y se devuelve null — el portal
+ * simplemente no muestra el ETA, igual que el resto de mapas degradan a OSM.
+ */
+async function _freightEta(f: {
+  status: FreightStatus;
+  driverId: string | null;
+  destLat: number | null;
+  destLng: number | null;
+}): Promise<FreightEta | null> {
+  if (f.status !== 'IN_PROGRESS' || !f.driverId || f.destLat == null || f.destLng == null) {
+    return null;
+  }
+  const d = await prisma.driver.findUnique({
+    where: { id: f.driverId },
+    select: { lastLat: true, lastLng: true },
+  });
+  if (d?.lastLat == null || d.lastLng == null) return null;
+
+  try {
+    const route = await directions(d.lastLat, d.lastLng, f.destLat, f.destLng);
+    return {
+      minutes: route.durationMinutes,
+      km: Math.round(route.distanceKm * 10) / 10,
+      arrivesAt: new Date(Date.now() + route.durationMinutes * 60_000).toISOString(),
+    };
+  } catch {
+    return null; // sin llave de Google o red caída: el portal omite el ETA
+  }
 }

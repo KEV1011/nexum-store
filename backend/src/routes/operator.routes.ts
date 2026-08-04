@@ -67,6 +67,7 @@ import {
   getFleetAnalytics,
   FreightError,
   listFreightEventsForOperator,
+  getFreightTrackForOperator,
 } from '../services/freight.service';
 
 const router = Router();
@@ -536,6 +537,18 @@ router.post('/freight/:id/accept', requireOperatorRole('OWNER', 'DISPATCHER'), a
 // y notas registrados por el conductor en ruta + total de combustible.
 router.get('/freight/:id/events', async (req: Request, res: Response): Promise<void> => {
   const data = await listFreightEventsForOperator(req.operatorId!, req.params['id']!);
+  if (!data) {
+    res.status(404).json({ success: false, error: 'Ese flete no pertenece a tu empresa.' });
+    return;
+  }
+  res.json({ success: true, data });
+});
+
+// GET /operator/freight/:id/track — recorrido REAL del camión (rastro GPS) con
+// kilómetros, duración y tiempo detenido. Es lo que se le muestra al cliente
+// cuando reclama: por dónde pasó y dónde estuvo parado.
+router.get('/freight/:id/track', async (req: Request, res: Response): Promise<void> => {
+  const data = await getFreightTrackForOperator(req.operatorId!, req.params['id']!);
   if (!data) {
     res.status(404).json({ success: false, error: 'Ese flete no pertenece a tu empresa.' });
     return;

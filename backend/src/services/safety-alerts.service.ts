@@ -18,6 +18,7 @@ import { prisma } from '../lib/prisma';
 import { sendPushToDriver } from './push.service';
 import { sendPushToClient } from './push.service';
 import { coordsOfSync } from './municipality.service';
+import { recordTrackPoint } from './track.service';
 
 // ── Umbrales (env con defaults razonables) ────────────────────────────────────
 
@@ -214,6 +215,13 @@ export async function onDriverHeartbeat(driverId: string, lat: number, lng: numb
 
     const svc = await _activeServiceFor(driverId);
     if (!svc) return;
+
+    // 0) Rastro histórico. Se engancha aquí porque el servicio activo ya está
+    // resuelto y cacheado: grabar el recorrido no cuesta una consulta extra.
+    // El propio track.service decide si este fix merece una fila.
+    void recordTrackPoint(driverId, lat, lng, {
+      kind: svc.kind, id: svc.id, operatorId: svc.operatorId,
+    });
 
     // 1) Geofence del destino → aviso al cliente + Torre.
     if (svc.destLat != null && svc.destLng != null) {

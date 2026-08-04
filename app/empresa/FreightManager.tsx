@@ -3,6 +3,46 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Truck, Loader2, PackageSearch, Wifi } from 'lucide-react'
 import type { OperatorApi } from './api'
+import TrackMap, { type TrackPoint } from './TrackMap'
+
+// Recorrido real del flete (rastro GPS): resumen + traza.
+interface TrackSummary {
+  points: number
+  distanceKm: number
+  startedAt: string | null
+  endedAt: string | null
+  durationMin: number
+  stoppedMin: number
+  avgKmh: number
+}
+interface ServiceTrack {
+  summary: TrackSummary
+  points: TrackPoint[]
+  eta?: { minutes: number; km: number; arrivesAt: string } | null
+}
+
+// Duraciones derivadas por el backend. Null = no medible todavía (por ejemplo
+// un flete anterior a esta versión, sin hora de salida registrada).
+interface FreightTimes {
+  toAcceptMin: number | null
+  waitMin: number | null
+  transitMin: number | null
+  totalMin: number | null
+  onTime: boolean | null
+  lateMin: number | null
+}
+const EMPTY_SUMMARY: TrackSummary = {
+  points: 0, distanceKm: 0, startedAt: null, endedAt: null,
+  durationMin: 0, stoppedMin: 0, avgKmh: 0,
+}
+
+/** "1 h 45 min" — los minutos sueltos no se leen bien en trayectos largos. */
+function duracion(min: number): string {
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
 
 // Tablero de fletes de carga: los clientes publican (peso, tipo de camión,
 // precio) y la flota los toma asignando conductor + vehículo. Cancelar un
@@ -26,6 +66,9 @@ interface Freight {
   vehicleId?: string
   finalPrice?: number
   netEarning?: number
+  promisedAt?: string
+  startedAt?: string
+  times?: FreightTimes
 }
 
 interface DriverOption { id: string; name: string; phone: string }
@@ -70,7 +113,7 @@ const WS_URL = (() => {
 
 interface FreightEventRow {
   id: string
-  type: 'FUEL' | 'STOP' | 'NOTE'
+  type: 'FUEL' | 'TOLL' | 'PERDIEM' | 'MAINTENANCE' | 'STOP' | 'NOTE'
   lat?: number
   lng?: number
   amountCop?: number
@@ -83,8 +126,20 @@ interface FreightEventRow {
 
 const EVENT_LABEL: Record<string, string> = {
   FUEL: 'Tanqueo',
+  TOLL: 'Peaje',
+  PERDIEM: 'Viático',
+  MAINTENANCE: 'Mantenimiento',
   STOP: 'Parada',
   NOTE: 'Nota',
+}
+
+// Desglose de gastos del flete (mismo contrato que el backend).
+interface CostBreakdown {
+  fuel: number
+  toll: number
+  perdiem: number
+  maintenance: number
+  total: number
 }
 
 export default function FreightManager({ api, token }: { api: OperatorApi; token: string }) {
@@ -102,19 +157,36 @@ export default function FreightManager({ api, token }: { api: OperatorApi; token
   const [assign, setAssign] = useState<Record<string, { driverId: string; vehicleId: string }>>({})
   // Trazabilidad: bitácora expandida por flete (tanqueos/paradas del conductor).
   const [traceId, setTraceId] = useState<string | null>(null)
-  const [trace, setTrace] = useState<{ events: FreightEventRow[]; fuelTotalCop: number } | null>(null)
+  const [trace, setTrace] = useState<{ events: FreightEventRow[]; fuelTotalCop: number; costs?: CostBreakdown } | null>(null)
   const [traceLoading, setTraceLoading] = useState(false)
+
+  // Recorrido: rastro GPS expandido por flete (por dónde pasó de verdad).
+  const [trackId, setTrackId] = useState<string | null>(null)
+  const [track, setTrack] = useState<ServiceTrack | null>(null)
+  const [trackLoading, setTrackLoading] = useState(false)
 
   async function toggleTrace(id: string) {
     if (traceId === id) { setTraceId(null); setTrace(null); return }
     setTraceId(id); setTrace(null); setTraceLoading(true)
     try {
-      const data = await api<{ events: FreightEventRow[]; fuelTotalCop: number }>(`/operator/freight/${id}/events`)
+      const data = await api<{ events: FreightEventRow[]; fuelTotalCop: number; costs?: CostBreakdown }>(`/operator/freight/${id}/events`)
       setTrace(data)
     } catch {
       setTrace({ events: [], fuelTotalCop: 0 })
     } finally {
       setTraceLoading(false)
+    }
+  }
+
+  async function toggleTrack(id: string) {
+    if (trackId === id) { setTrackId(null); setTrack(null); return }
+    setTrackId(id); setTrack(null); setTrackLoading(true)
+    try {
+      setTrack(await api<ServiceTrack>(`/operator/freight/${id}/track`))
+    } catch {
+      setTrack({ summary: EMPTY_SUMMARY, points: [] })
+    } finally {
+      setTrackLoading(false)
     }
   }
 
@@ -321,11 +393,55 @@ export default function FreightManager({ api, token }: { api: OperatorApi; token
                   Soltar
                 </button>
               </div>
+              <FreightTimeline f={f} />
+
               {/* Trazabilidad en ruta: bitácora del conductor (tanqueos/paradas). */}
-              <button onClick={() => void toggleTrace(f.id)}
-                className="text-[11px] font-semibold text-amber-700 hover:text-amber-900">
-                {traceId === f.id ? 'Ocultar trazabilidad' : 'Ver trazabilidad (tanqueos y paradas)'}
-              </button>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <button onClick={() => void toggleTrace(f.id)}
+                  className="text-[11px] font-semibold text-amber-700 hover:text-amber-900">
+                  {traceId === f.id ? 'Ocultar trazabilidad' : 'Ver trazabilidad (tanqueos y paradas)'}
+                </button>
+                <button onClick={() => void toggleTrack(f.id)}
+                  className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900">
+                  {trackId === f.id ? 'Ocultar recorrido' : 'Ver recorrido (por dónde pasó)'}
+                </button>
+              </div>
+
+              {trackId === f.id && (
+                <div className="border-t border-slate-100 pt-2 space-y-2">
+                  {trackLoading ? (
+                    <p className="text-[11px] text-slate-400">Cargando recorrido…</p>
+                  ) : !track || track.points.length === 0 ? (
+                    <p className="text-[11px] text-slate-400">
+                      Sin rastro para este flete. Se graba mientras el viaje está en curso,
+                      así que los fletes anteriores a esta versión no lo tienen.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <TrackStat label="Recorrido real" value={`${track.summary.distanceKm} km`} />
+                        <TrackStat label="Duración" value={duracion(track.summary.durationMin)} />
+                        <TrackStat label="Detenido" value={duracion(track.summary.stoppedMin)} />
+                        <TrackStat label="Promedio" value={`${track.summary.avgKmh} km/h`} />
+                      </div>
+                      {track.eta && (
+                        <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1.5">
+                          <p className="text-[11px] text-emerald-800">
+                            <span className="font-semibold">Llega en {duracion(track.eta.minutes)}</span>
+                            {' '}· faltan {track.eta.km} km · estimado{' '}
+                            {new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(new Date(track.eta.arrivesAt))}
+                          </p>
+                        </div>
+                      )}
+                      <TrackMap points={track.points} token={token} backendUrl={HTTP_BASE} />
+                      <p className="text-[10px] text-slate-400">
+                        {track.summary.points} puntos GPS · A = salida, B = último reporte.
+                        El promedio se calcula sobre el tiempo en movimiento.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
               {traceId === f.id && (
                 <div className="border-t border-slate-100 pt-2">
                   {traceLoading ? (
@@ -335,7 +451,12 @@ export default function FreightManager({ api, token }: { api: OperatorApi; token
                   ) : (
                     <>
                       <p className="text-[11px] font-semibold text-slate-600 mb-1.5">
-                        Combustible total: {cop(trace.fuelTotalCop)}
+                        Gasto total: {cop(trace.costs?.total ?? trace.fuelTotalCop)}
+                        {trace.costs && trace.costs.total > trace.costs.fuel && (
+                          <span className="font-normal text-slate-400">
+                            {' '}(combustible {cop(trace.costs.fuel)})
+                          </span>
+                        )}
                       </p>
                       <ul className="space-y-1">
                         {trace.events.map((e) => (
@@ -380,5 +501,52 @@ export default function FreightManager({ api, token }: { api: OperatorApi; token
         </div>
       )}
     </section>
+  )
+}
+
+/** Cifra del recorrido: número grande y etiqueta, en tono neutro. */
+function TrackStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+      <p className="text-sm font-bold text-slate-900 leading-tight">{value}</p>
+      <p className="text-[10px] text-slate-500">{label}</p>
+    </div>
+  )
+}
+
+/**
+ * Tiempos del flete: espera en bodega, ruta y total, más el veredicto de
+ * cumplimiento cuando hay fecha comprometida. Se omite por completo si no hay
+ * nada medible — una fila de guiones no le sirve a nadie.
+ */
+function FreightTimeline({ f }: { f: Freight }) {
+  const t = f.times
+  if (!t) return null
+  const tramos: string[] = []
+  if (t.toAcceptMin != null) tramos.push(`tomado en ${duracion(t.toAcceptMin)}`)
+  if (t.waitMin != null) tramos.push(`bodega ${duracion(t.waitMin)}`)
+  if (t.transitMin != null) tramos.push(`ruta ${duracion(t.transitMin)}`)
+  if (t.totalMin != null) tramos.push(`total ${duracion(t.totalMin)}`)
+  if (tramos.length === 0 && t.onTime == null) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+      {tramos.length > 0 && <span className="text-slate-500">{tramos.join(' · ')}</span>}
+      {t.onTime === true && (
+        <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">
+          A tiempo
+        </span>
+      )}
+      {t.onTime === false && (
+        <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 font-semibold">
+          Tarde {duracion(t.lateMin ?? 0)}
+        </span>
+      )}
+      {f.promisedAt && f.times?.onTime == null && (
+        <span className="text-slate-400">
+          comprometido {new Intl.DateTimeFormat('es-CO', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(f.promisedAt))}
+        </span>
+      )}
+    </div>
   )
 }

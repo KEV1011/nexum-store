@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { isValidColombianPhone, normalizeColombianPhone } from './auth.service';
 import { rangoFechas } from '../lib/date-range';
+import { requiresAmount } from '../lib/freight-costs';
 import { getMunicipality } from './municipality.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,7 +381,7 @@ export async function listOperatorTrips(
   to?: string,
 ): Promise<OperatorTripsResult> {
   const rango = rangoFechas(from, to);
-  const [rows, intercityRows, errandRows, orderRows, completedAgg, intercityAgg, errandAgg, orderAgg, total, intercityTotal, errandTotal, orderTotal] = await Promise.all([
+  const [rows, intercityRows, errandRows, orderRows, freightRows, completedAgg, intercityAgg, errandAgg, orderAgg, freightAgg, total, intercityTotal, errandTotal, orderTotal, freightTotal] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
@@ -451,6 +452,24 @@ export async function listOperatorTrips(
         business: { select: { name: true } },
       },
     }),
+    // Fletes de carga: para una empresa de carga es SU negocio, y quedaba
+    // fuera del reporte con el que cierra el mes.
+    prisma.freightRequest.findMany({
+      where: { operatorId, ...rango },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        originAddress: true,
+        destAddress: true,
+        offeredPrice: true,
+        finalPrice: true,
+        driverId: true,
+        createdAt: true,
+        completedAt: true,
+      },
+    }),
     prisma.trip.aggregate({
       where: { operatorId, ...rango, status: 'COMPLETED' },
       _sum: { finalFare: true },
@@ -471,10 +490,16 @@ export async function listOperatorTrips(
       _sum: { deliveryFee: true },
       _count: true,
     }),
+    prisma.freightRequest.aggregate({
+      where: { operatorId, ...rango, status: 'COMPLETED' },
+      _sum: { finalPrice: true },
+      _count: true,
+    }),
     prisma.trip.count({ where: { operatorId, ...rango } }),
     prisma.intercityBooking.count({ where: { operatorId, ...rango } }),
     prisma.errand.count({ where: { operatorId, ...rango } }),
     prisma.order.count({ where: { operatorId, ...rango } }),
+    prisma.freightRequest.count({ where: { operatorId, ...rango } }),
   ]);
 
   const urban: OperatorTripDTO[] = rows.map((t) => ({
@@ -536,22 +561,52 @@ export async function listOperatorTrips(
     completedAt: o.deliveredAt?.toISOString() ?? null,
   }));
 
-  // Fusión urbano + intermunicipal + mandados + pedidos, más recientes primero.
-  const trips = [...urban, ...intercity, ...errands, ...orders]
+  // Fletes: el conductor se guarda por id, así que el nombre se resuelve
+  // aparte (una sola consulta para todo el lote).
+  const freightDriverIds = [...new Set(freightRows.map((f) => f.driverId).filter((v): v is string => !!v))];
+  const freightDriverName = new Map<string, string>();
+  if (freightDriverIds.length > 0) {
+    const ds = await prisma.driver.findMany({
+      where: { id: { in: freightDriverIds } },
+      select: { id: true, name: true },
+    });
+    for (const d of ds) freightDriverName.set(d.id, d.name);
+  }
+
+  const freights: OperatorTripDTO[] = freightRows.map((f) => ({
+    id: f.id,
+    // FreightStatus ya usa el mismo vocabulario del portal (REQUESTED,
+    // ACCEPTED, IN_PROGRESS, COMPLETED, CANCELLED): no hay que normalizarlo.
+    status: f.status,
+    serviceType: 'FLETE',
+    originAddress: f.originAddress,
+    destAddress: f.destAddress,
+    fare: f.finalPrice ?? f.offeredPrice,
+    distanceKm: null,
+    driverId: f.driverId,
+    driverName: f.driverId ? freightDriverName.get(f.driverId) ?? null : null,
+    createdAt: f.createdAt.toISOString(),
+    completedAt: f.completedAt?.toISOString() ?? null,
+  }));
+
+  // Fusión urbano + intermunicipal + mandados + pedidos + fletes, recientes primero.
+  const trips = [...urban, ...intercity, ...errands, ...orders, ...freights]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit);
 
   return {
     trips,
     summary: {
-      total: total + intercityTotal + errandTotal + orderTotal,
+      total: total + intercityTotal + errandTotal + orderTotal + freightTotal,
       completed:
-        completedAgg._count + intercityAgg._count + errandAgg._count + orderAgg._count,
+        completedAgg._count + intercityAgg._count + errandAgg._count + orderAgg._count +
+        freightAgg._count,
       grossFare:
         (completedAgg._sum.finalFare ?? 0) +
         (intercityAgg._sum.finalFare ?? 0) +
         (errandAgg._sum.serviceFee ?? 0) +
-        (orderAgg._sum.deliveryFee ?? 0),
+        (orderAgg._sum.deliveryFee ?? 0) +
+        (freightAgg._sum.finalPrice ?? 0),
     },
   };
 }
@@ -587,7 +642,7 @@ export async function exportOperatorTripsCsv(
   to?: string,
 ): Promise<string> {
   const rango = rangoFechas(from, to);
-  const [rows, intercityRows, errandRows, orderRows] = await Promise.all([
+  const [rows, intercityRows, errandRows, orderRows, freightRows] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
@@ -655,7 +710,47 @@ export async function exportOperatorTripsCsv(
         business: { select: { name: true } },
       },
     }),
+    // Fletes de carga: sin ellos el CSV con el que se cierra el mes deja fuera
+    // el negocio entero de una empresa de carga.
+    prisma.freightRequest.findMany({
+      where: { operatorId, ...rango },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      select: {
+        id: true,
+        status: true,
+        originAddress: true,
+        destAddress: true,
+        offeredPrice: true,
+        finalPrice: true,
+        driverId: true,
+        createdAt: true,
+        completedAt: true,
+      },
+    }),
   ]);
+
+  // Nombre del conductor y gastos de ruta de esos fletes (una consulta por lote).
+  const fDriverIds = [...new Set(freightRows.map((f) => f.driverId).filter((v): v is string => !!v))];
+  const fIds = freightRows.map((f) => f.id);
+  const [fDrivers, fEvents] = await Promise.all([
+    fDriverIds.length
+      ? prisma.driver.findMany({ where: { id: { in: fDriverIds } }, select: { id: true, name: true } })
+      : Promise.resolve([] as { id: string; name: string }[]),
+    fIds.length
+      ? prisma.freightEvent.findMany({
+          where: { freightId: { in: fIds } },
+          select: { freightId: true, type: true, amountCop: true },
+        })
+      : Promise.resolve([] as { freightId: string; type: string; amountCop: number | null }[]),
+  ]);
+  const fDriverName = new Map(fDrivers.map((d) => [d.id, d.name]));
+  const fCost = new Map<string, number>();
+  for (const e of fEvents) {
+    const monto = e.amountCop ?? 0;
+    if (!(monto > 0) || !requiresAmount(e.type)) continue;
+    fCost.set(e.freightId, (fCost.get(e.freightId) ?? 0) + monto);
+  }
 
   type CsvRow = { createdAt: Date; cols: string[] };
   const urban: CsvRow[] = rows.map((t) => ({
@@ -669,6 +764,7 @@ export async function exportOperatorTripsCsv(
       t.driver?.name ?? '',
       t.distanceKm != null ? t.distanceKm.toFixed(2) : '',
       String(Math.round(t.finalFare ?? t.estimatedFare)),
+      '',
       t.createdAt.toISOString(),
       t.completedAt?.toISOString() ?? '',
     ],
@@ -684,6 +780,7 @@ export async function exportOperatorTripsCsv(
       b.driverName ?? '',
       '',
       String(Math.round(b.finalFare ?? b.counterFare ?? b.offeredFare)),
+      '',
       b.createdAt.toISOString(),
       b.completedAt?.toISOString() ?? '',
     ],
@@ -700,6 +797,7 @@ export async function exportOperatorTripsCsv(
       e.driverName ?? '',
       '',
       String(Math.round(e.serviceFee)),
+      '',
       e.createdAt.toISOString(),
       e.deliveredAt?.toISOString() ?? '',
     ],
@@ -716,16 +814,35 @@ export async function exportOperatorTripsCsv(
       o.driverName ?? '',
       '',
       String(Math.round(o.deliveryFee)),
+      '',
       o.createdAt.toISOString(),
       o.deliveredAt?.toISOString() ?? '',
     ],
   }));
 
+  const freights: CsvRow[] = freightRows.map((f) => ({
+    createdAt: f.createdAt,
+    cols: [
+      // FreightRequest no tiene requestRef; el id es su referencia.
+      f.id,
+      f.status,
+      'FLETE',
+      f.originAddress,
+      f.destAddress,
+      f.driverId ? fDriverName.get(f.driverId) ?? '' : '',
+      '',
+      String(Math.round(f.finalPrice ?? f.offeredPrice)),
+      String(Math.round(fCost.get(f.id) ?? 0)),
+      f.createdAt.toISOString(),
+      f.completedAt?.toISOString() ?? '',
+    ],
+  }));
+
   const header = [
     'Referencia', 'Estado', 'Servicio', 'Origen', 'Destino',
-    'Conductor', 'Distancia_km', 'Tarifa_COP', 'Creado', 'Completado',
+    'Conductor', 'Distancia_km', 'Tarifa_COP', 'Gastos_COP', 'Creado', 'Completado',
   ];
-  const lines = [...urban, ...intercity, ...errands, ...orders]
+  const lines = [...urban, ...intercity, ...errands, ...orders, ...freights]
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map((r) => r.cols);
 

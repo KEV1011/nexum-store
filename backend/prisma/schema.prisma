@@ -1169,8 +1169,15 @@ model FreightRequest {
   originLng        Float?
   destLat          Float?
   destLng          Float?
+  // Fecha comprometida de entrega. Sin ella no se puede medir cumplimiento:
+  // "llegó tarde" es una opinión hasta que hay una hora contra la cual medir.
+  promisedAt       DateTime?
   createdAt        DateTime      @default(now())
   acceptedAt       DateTime?
+  // Salida real (paso a IN_PROGRESS). Separa "aceptado pero sin salir de
+  // bodega" de "en ruta" — es justo la demora que discute el cliente, y con
+  // solo acceptedAt/completedAt quedaba escondida dentro del viaje.
+  startedAt        DateTime?
   completedAt      DateTime?
 
   events           FreightEvent[]
@@ -1205,6 +1212,40 @@ model FreightEvent {
   @@index([freightId])
   @@index([driverId])
   @@map("freight_events")
+}
+
+// ─── Rastro GPS histórico ─────────────────────────────────────────────────────
+//
+// `Driver.lastLat/lastLng` es UN punto que cada heartbeat sobreescribe: sirve
+// para saber dónde está el conductor ahora, pero no por dónde pasó. Sin rastro
+// no hay recorrido que mostrar en un reclamo, ni kilómetros reales recorridos
+// (el flete solo conoce origen y destino), ni tiempos por tramo.
+//
+// Se graba SOLO con un servicio EN CURSO: un punto sin dueño no le sirve a
+// nadie y multiplicaría el volumen por cada conductor conectado sin viaje. El
+// heartbeat llega cada 4 s, así que además se filtra por tiempo y distancia
+// mínimos (TRACK_MIN_INTERVAL_S / TRACK_MIN_DIST_M) y se purga por retención
+// (TRACK_RETENTION_DAYS) — ver track.service.ts.
+model DriverTrackPoint {
+  id             String   @id @default(cuid())
+  driverId       String
+  lat            Float
+  lng            Float
+  // Servicio al que pertenece el punto: 'trip' | 'intercity' | 'freight'.
+  serviceKind    String
+  serviceId      String
+  // Se copia para poder filtrar por flota sin recorrer el servicio.
+  operatorId     String?
+  // Metros desde el punto anterior del mismo servicio. Permite sumar la
+  // distancia real recorrida sin recalcular toda la traza en cada consulta.
+  metersFromPrev Float?
+  at             DateTime @default(now())
+
+  @@index([serviceKind, serviceId, at])
+  @@index([driverId, at])
+  @@index([operatorId, at])
+  @@index([at])
+  @@map("driver_track_points")
 }
 
 // ─── Remito de salida de mercancía ────────────────────────────────────────────
