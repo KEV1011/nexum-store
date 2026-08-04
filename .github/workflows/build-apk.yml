@@ -2,7 +2,9 @@ name: Build Nexum Driver APK
 
 on:
   push:
-    branches: [main, claude/driver-app-maas-pamplona-LYIfo]
+    # También las ramas de trabajo: dos tandas se mergearon con el APK roto
+    # porque el build solo corría DESPUÉS del merge a main.
+    branches: [main, 'claude/**']
     paths:
       - 'AppTransport/**'
   pull_request:
