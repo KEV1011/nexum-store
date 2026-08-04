@@ -3,19 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Route as RouteIcon, Plus, Trash2, ShieldCheck, Clock, Loader2 } from 'lucide-react'
 import type { OperatorApi } from './api'
-
-// Ciudades intermunicipales soportadas (coinciden con el enum IntercityCity del
-// backend). El código se guarda en mayúsculas; se muestra el label legible.
-const CITIES: { code: string; label: string }[] = [
-  { code: 'PAMPLONA', label: 'Pamplona' },
-  { code: 'CUCUTA', label: 'Cúcuta' },
-  { code: 'BUCARAMANGA', label: 'Bucaramanga' },
-  { code: 'CHITAGA', label: 'Chitagá' },
-  { code: 'MALAGA', label: 'Málaga' },
-  { code: 'OCANA', label: 'Ocaña' },
-  { code: 'BOGOTA', label: 'Bogotá' },
-]
-const CITY_LABEL: Record<string, string> = Object.fromEntries(CITIES.map((c) => [c.code, c.label]))
+import { useMunicipios } from './useMunicipios'
 
 interface OperatorRoute {
   id: string
@@ -27,8 +15,9 @@ interface OperatorRoute {
 export default function RoutesManager({ api }: { api: OperatorApi }) {
   const [routes, setRoutes] = useState<OperatorRoute[]>([])
   const [loading, setLoading] = useState(true)
-  const [origin, setOrigin] = useState('PAMPLONA')
-  const [dest, setDest] = useState('CUCUTA')
+  const { municipios, etiqueta } = useMunicipios()
+  const [origin, setOrigin] = useState('pamplona')
+  const [dest, setDest] = useState('cucuta')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -81,9 +70,9 @@ export default function RoutesManager({ api }: { api: OperatorApi }) {
 
       <div className="bg-white border border-slate-200 rounded-xl p-3.5 mb-3">
         <div className="flex flex-wrap items-end gap-2">
-          <CitySelect label="Origen" value={origin} onChange={setOrigin} />
+          <CitySelect label="Origen" value={origin} onChange={setOrigin} municipios={municipios} />
           <span className="text-slate-400 pb-2.5">→</span>
-          <CitySelect label="Destino" value={dest} onChange={setDest} />
+          <CitySelect label="Destino" value={dest} onChange={setDest} municipios={municipios} />
           <button
             onClick={addRoute}
             disabled={saving}
@@ -108,7 +97,7 @@ export default function RoutesManager({ api }: { api: OperatorApi }) {
             <div key={r.id} className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-slate-900 text-sm">
-                  {CITY_LABEL[r.originCity] ?? r.originCity} <span className="text-slate-400">→</span> {CITY_LABEL[r.destCity] ?? r.destCity}
+                  {etiqueta(r.originCity)} <span className="text-slate-400">→</span> {etiqueta(r.destCity)}
                 </p>
               </div>
               {r.authorized ? (
@@ -135,7 +124,14 @@ export default function RoutesManager({ api }: { api: OperatorApi }) {
   )
 }
 
-function CitySelect({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function CitySelect({
+  label, value, onChange, municipios,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  municipios: { slug: string; name: string }[]
+}) {
   return (
     <div>
       <label className="block text-[11px] font-semibold text-slate-500 mb-1">{label}</label>
@@ -144,7 +140,7 @@ function CitySelect({ label, value, onChange }: { label: string; value: string; 
         onChange={(e) => onChange(e.target.value)}
         className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
       >
-        {CITIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+        {municipios.map((m) => <option key={m.slug} value={m.slug}>{m.name}</option>)}
       </select>
     </div>
   )

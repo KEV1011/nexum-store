@@ -8,6 +8,7 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
+import 'package:nexum_driver/features/pooled/presentation/providers/municipalities_provider.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -337,6 +338,9 @@ class _PublishPooledTripScreenState
   }
 
   Widget _cityDropdown(PooledCity value, ValueChanged<PooledCity> onChanged) {
+    // La lista viene del backend (con los siete de siempre como respaldo): la
+    // empresa mueve a todos los pueblos, no a siete.
+    final municipios = ref.watch(municipalitiesProvider);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
@@ -349,7 +353,7 @@ class _PublishPooledTripScreenState
           value: value,
           isExpanded: true,
           items: [
-            for (final c in PooledCity.values)
+            for (final c in municipios)
               DropdownMenuItem(value: c, child: Text(c.displayName)),
           ],
           onChanged: (c) {

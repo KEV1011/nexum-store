@@ -83,6 +83,23 @@ class TransportNotifier extends StateNotifier<TransportState> {
   ) async {
     final active = requests.where((r) => r.isActive).toList();
     if (active.isEmpty) return;
+
+    // Una lectura REST por viaje activo antes de suscribirse: es la única vía
+    // que devuelve el PIN del envío (el WS nunca lo manda, porque ese mismo
+    // mensaje lo ve el repartidor). Sin esto, quien reinstala la app con un
+    // envío en curso se queda sin el PIN y no puede cerrar la entrega.
+    for (final r in active) {
+      try {
+        final res = await _dio.get<Map<String, dynamic>>('/client/trips/${r.id}');
+        final trip = res.data?['data'] as Map<String, dynamic>?;
+        if (trip == null || !mounted) continue;
+        _applyTripUpdate(TripUpdateEvent(tripId: r.id, payload: {'trip': trip}));
+      } catch (_) {
+        // Sin red: se sigue con lo guardado en el teléfono.
+      }
+    }
+    if (!mounted) return;
+
     final wsOk = await _wsService.connect();
     if (!wsOk || !mounted) return;
     for (final r in active) {
@@ -120,6 +137,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
 
     String id;
     String ref;
+    String? deliveryPin;
 
     try {
       final res = await _dio.post<Map<String, dynamic>>(
@@ -143,6 +161,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
       final data = res.data!['data'] as Map<String, dynamic>;
       id = data['id'] as String;
       ref = data['requestRef'] as String;
+      // PIN de entrega del ENVÍO: el backend lo genera al crear el viaje y esta
+      // respuesta es la ÚNICA que lo trae (nunca viaja en las actualizaciones,
+      // que las ve también el repartidor). Si se descarta aquí, el cliente no
+      // tiene qué dictar y la entrega no se puede cerrar nunca.
+      deliveryPin = data['deliveryPin'] as String?;
     } catch (_) {
       // Sin backend no hay viaje real que despachar: se propaga el error para
       // que la pantalla lo muestre (nada de ids locales inventados).
@@ -152,6 +175,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
     final req = TransportRequestEntity(
       id: id,
       requestRef: ref,
+      deliveryPin: deliveryPin,
       serviceType: serviceType,
       originAddress: origin,
       destinationAddress: destination,
@@ -210,6 +234,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
 
       return r.copyWith(
         status: status,
+        // El PIN solo llega por las vistas propias del cliente (creación y
+        // `GET /client/trips/:id`); si el mensaje no lo trae, se conserva.
+        deliveryPin: payload['deliveryPin'] as String? ?? r.deliveryPin,
         driverName: payload['driverName'] as String? ?? r.driverName,
         driverPhone: payload['driverPhone'] as String? ?? r.driverPhone,
         maskedPhone: payload['maskedPhone'] as String? ?? r.maskedPhone,

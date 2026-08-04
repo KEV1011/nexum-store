@@ -23,6 +23,7 @@ import {
 } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
 import { scheduleSearchRetry, cancelSearchRetry } from './matching.service';
+import { coordsOf, getMunicipality } from './municipality.service';
 
 export class IntercityError extends Error {
   constructor(message: string) {
@@ -63,6 +64,18 @@ const CITY_FROM_PRISMA: Record<string, IntercityCity> = {
   CHITAGA: 'chitaga', MALAGA: 'malaga', OCANA: 'ocana', BOGOTA: 'bogota',
 };
 
+/**
+ * Slug del municipio guardado en la reserva.
+ *
+ * El mapa de arriba solo cubre los siete valores del enum viejo (MAYÚSCULAS).
+ * Desde que los municipios son una tabla, la columna guarda el slug tal cual,
+ * así que hay que caer a él: con un `?? 'pamplona'` cualquiera de los treinta y
+ * ocho municipios nuevos buscaba conductores en Pamplona.
+ */
+function _slugCiudad(valor: string): IntercityCity {
+  return (CITY_FROM_PRISMA[valor] ?? valor.toLowerCase()) as IntercityCity;
+}
+
 // ─── Mock driver pool for simulation (solo con INTERCITY_SIMULATE=true) ──────
 const MOCK_INTERCITY_DRIVERS = [
   { name: 'Hernán Castellanos', phone: '+57 311 789 0123', vehicle: 'Toyota Fortuner Gris 2022 • TJK 451' },
@@ -89,8 +102,8 @@ function _toDTO(b: DbBooking): IntercityBookingDTO {
   return {
     id: b.id,
     requestRef: b.requestRef,
-    origin: (CITY_FROM_PRISMA[b.origin] ?? b.origin.toLowerCase()) as IntercityCity,
-    destination: (CITY_FROM_PRISMA[b.destination] ?? b.destination.toLowerCase()) as IntercityCity,
+    origin: _slugCiudad(b.origin),
+    destination: _slugCiudad(b.destination),
     departureTime: b.departureTime.toISOString(),
     seats: (SEATS_FROM_PRISMA[b.seats] ?? 'one') as IntercitySeats,
     offeredFare: b.offeredFare,
@@ -233,7 +246,10 @@ async function _findIntercityDrivers(
   exclude: Set<string>,
   requireLicensed: boolean,
 ): Promise<string[]> {
-  const c = INTERCITY_CITY_COORDS[origin];
+  // Centroide desde la TABLA de municipios (la lista fija de siete solo sirve
+  // de respaldo): con `INTERCITY_CITY_COORDS[origin]` un municipio nuevo daba
+  // `undefined` y la consulta reventaba al leer `c.lng`.
+  const c = (await coordsOf(origin)) ?? INTERCITY_CITY_COORDS.pamplona;
 
   // Ruta troncal (Option B): solo conductores afiliados a una empresa INTERCITY
   // o MIXTA habilitada (ACTIVE + verificada) que tenga AUTORIZADA esa ruta
@@ -252,8 +268,8 @@ async function _findIntercityDrivers(
       AND EXISTS (
         SELECT 1 FROM "operator_routes" r
         WHERE r."operatorId" = d."operatorId"
-          AND r."originCity" = ${CITY_TO_PRISMA[origin]}
-          AND r."destCity" = ${CITY_TO_PRISMA[dest]}
+          AND lower(r."originCity") = ${CITY_TO_PRISMA[origin]}
+          AND lower(r."destCity") = ${CITY_TO_PRISMA[dest]}
           AND r."authorized" = true
       )`
     : Prisma.empty;
@@ -304,8 +320,8 @@ export async function startIntercityMatching(bookingId: string, attempt = 0): Pr
     return;
   }
 
-  const origin = (CITY_FROM_PRISMA[b.origin] ?? 'pamplona') as IntercityCity;
-  const dest = (CITY_FROM_PRISMA[b.destination] ?? 'cucuta') as IntercityCity;
+  const origin = _slugCiudad(b.origin);
+  const dest = _slugCiudad(b.destination);
   // En el modelo dual, las rutas troncales solo se ofrecen a flotas habilitadas.
   const requireLicensed = INTERCITY_DUAL_MODEL && routeRequiresLicensedOperator(origin, dest);
   const declined = intercityDeclined.get(bookingId) ?? new Set<string>();
@@ -658,6 +674,17 @@ export async function requestIntercityBooking(
     throw new IntercityError('El origen y el destino deben ser diferentes.');
   }
 
+  // El municipio tiene que existir en la tabla: sin esto, un slug mal escrito
+  // creaba una reserva que jamás iba a encontrar conductor (el matching busca
+  // alrededor de un centroide que no existe) y el cliente se quedaba esperando.
+  const [mo, md] = await Promise.all([
+    getMunicipality(dto.origin),
+    getMunicipality(dto.destination),
+  ]);
+  if (!mo || !md) {
+    throw new IntercityError('El municipio de origen o el de destino no está disponible.');
+  }
+
   // Option B (dual model): las rutas troncales requieren empresa habilitada. En
   // vez de bloquearlas, se despachan EXCLUSIVAMENTE a conductores afiliados a un
   // operador INTERCITY/MIXTO verificado con esa ruta autorizada (ver el filtro en
@@ -666,8 +693,10 @@ export async function requestIntercityBooking(
   if (INTERCITY_DUAL_MODEL && routeRequiresLicensedOperator(dto.origin, dto.destination)) {
     const licensed = await prisma.operatorRoute.count({
       where: {
-        originCity: CITY_TO_PRISMA[dto.origin],
-        destCity: CITY_TO_PRISMA[dto.destination],
+        // `insensitive`: las rutas declaradas antes de la tabla de municipios
+        // se guardaron en MAYÚSCULAS y deben seguir contando.
+        originCity: { equals: CITY_TO_PRISMA[dto.origin], mode: 'insensitive' },
+        destCity: { equals: CITY_TO_PRISMA[dto.destination], mode: 'insensitive' },
         authorized: true,
         operator: { status: 'ACTIVE', isVerified: true, type: { in: ['INTERCITY', 'MIXED'] } },
       },

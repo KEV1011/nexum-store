@@ -17,7 +17,7 @@
 import { prisma } from '../lib/prisma';
 import { sendPushToDriver } from './push.service';
 import { sendPushToClient } from './push.service';
-import { INTERCITY_CITY_COORDS } from '../config/constants';
+import { coordsOfSync } from './municipality.service';
 
 // ── Umbrales (env con defaults razonables) ────────────────────────────────────
 
@@ -151,8 +151,10 @@ async function _activeServiceFor(driverId: string): Promise<ActiveService | null
       select: { id: true, userId: true, operatorId: true, origin: true, destination: true },
     });
     if (b) {
-      const o = INTERCITY_CITY_COORDS[b.origin.toLowerCase() as keyof typeof INTERCITY_CITY_COORDS];
-      const d = INTERCITY_CITY_COORDS[b.destination.toLowerCase() as keyof typeof INTERCITY_CITY_COORDS];
+      // Centroide desde la tabla de municipios: con el mapa fijo de siete, un
+      // viaje a cualquier pueblo nuevo se quedaba sin geocerca ni alerta de desvío.
+      const o = coordsOfSync(b.origin.toLowerCase());
+      const d = coordsOfSync(b.destination.toLowerCase());
       const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { name: true } });
       svc = {
         kind: 'intercity', id: b.id, clientId: b.userId, operatorId: b.operatorId,

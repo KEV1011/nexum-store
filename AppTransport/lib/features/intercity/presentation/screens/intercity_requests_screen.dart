@@ -9,6 +9,7 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
+import 'package:nexum_driver/features/pooled/presentation/providers/municipalities_provider.dart';
 
 const _kIntercityColor = AppColors.intercityBrand;
 
@@ -103,6 +104,9 @@ class _IntercityRequestsScreenState
 
   @override
   Widget build(BuildContext context) {
+    // Carga la lista de municipios: sin ella, una oferta desde cualquier
+    // pueblo fuera de los siete de respaldo se mostraría con el slug crudo.
+    ref.watch(municipalitiesProvider);
     final state = ref.watch(intercityDriverProvider);
     final notifier = ref.read(intercityDriverProvider.notifier);
 
@@ -362,13 +366,14 @@ class _ActiveTripCard extends StatelessWidget {
             // Ruta del viaje en el mapa (paridad con el flete): el conductor ve
             // el trayecto completo origen→destino de un vistazo.
             const SizedBox(height: 10),
-            FreightRouteMap(
-              originLat: req.origin.coords.lat,
-              originLng: req.origin.coords.lng,
-              destLat: req.destination.coords.lat,
-              destLng: req.destination.coords.lng,
-              height: 140,
-            ),
+            if (req.origin.coords != null && req.destination.coords != null)
+              FreightRouteMap(
+                originLat: req.origin.coords!.lat,
+                originLng: req.origin.coords!.lng,
+                destLat: req.destination.coords!.lat,
+                destLng: req.destination.coords!.lng,
+                height: 140,
+              ),
             // Lugares por donde pasa el trayecto (paradas acordadas).
             if (req.stops.isNotEmpty)
               Padding(
