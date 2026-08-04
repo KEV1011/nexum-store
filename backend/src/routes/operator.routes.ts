@@ -47,6 +47,18 @@ import {
 import { isValidColombianPhone } from '../services/auth.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
 import {
+  ManifestError,
+  createManifest,
+  listManifests,
+  getManifest,
+  updateManifest,
+  setManifestItems,
+  dispatchManifest,
+  cancelManifest,
+  type CreateManifestDTO,
+  type ManifestItemInput,
+} from '../services/manifest.service';
+import {
   listAvailableFreights,
   listOperatorFreights,
   acceptFreight,
@@ -658,6 +670,119 @@ router.post(
       return;
     }
     res.json({ success: true, data: trip });
+  },
+);
+
+// ─── Remitos de salida de mercancía ──────────────────────────────────────────
+// Reemplazo digital del formato en papel "SALIDA DE MERCANCÍA": la flota arma
+// el remito con la lista de bultos, lo despacha con conductor y vehículo, y el
+// conductor lo concilia al entregar.
+
+function _errorRemito(res: Response, err: unknown): void {
+  const status = err instanceof ManifestError ? 400 : 500;
+  res.status(status).json({
+    success: false,
+    error: err instanceof Error ? err.message : 'No se pudo procesar el remito',
+  });
+}
+
+// GET /operator/manifests?status=DRAFT
+router.get('/manifests', async (req: Request, res: Response): Promise<void> => {
+  const status = typeof req.query['status'] === 'string' ? req.query['status'] : undefined;
+  res.json({ success: true, data: await listManifests(req.operatorId!, status) });
+});
+
+// GET /operator/manifests/:id
+router.get('/manifests/:id', async (req: Request, res: Response): Promise<void> => {
+  const m = await getManifest(req.operatorId!, req.params['id']!);
+  if (!m) {
+    res.status(404).json({ success: false, error: 'Remito no encontrado' });
+    return;
+  }
+  res.json({ success: true, data: m });
+});
+
+// POST /operator/manifests — crea el remito (borrador).
+router.post(
+  '/manifests',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const m = await createManifest(req.operatorId!, req.body as CreateManifestDTO);
+      res.status(201).json({ success: true, data: m });
+    } catch (err) {
+      _errorRemito(res, err);
+    }
+  },
+);
+
+// PATCH /operator/manifests/:id — encabezado del remito (solo borrador).
+router.patch(
+  '/manifests/:id',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const m = await updateManifest(req.operatorId!, req.params['id']!, req.body as CreateManifestDTO);
+      res.json({ success: true, data: m });
+    } catch (err) {
+      _errorRemito(res, err);
+    }
+  },
+);
+
+// PUT /operator/manifests/:id/items — reemplaza la lista de bultos.
+router.put(
+  '/manifests/:id/items',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    const { items } = req.body as { items?: ManifestItemInput[] };
+    if (!Array.isArray(items)) {
+      res.status(400).json({ success: false, error: 'items (lista) es requerido' });
+      return;
+    }
+    try {
+      const m = await setManifestItems(req.operatorId!, req.params['id']!, items);
+      res.json({ success: true, data: m });
+    } catch (err) {
+      _errorRemito(res, err);
+    }
+  },
+);
+
+// POST /operator/manifests/:id/dispatch { driverId, vehicleId?, freightId? }
+router.post(
+  '/manifests/:id/dispatch',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    const { driverId, vehicleId, freightId } = req.body as {
+      driverId?: string; vehicleId?: string; freightId?: string;
+    };
+    if (!driverId) {
+      res.status(400).json({ success: false, error: 'driverId es requerido' });
+      return;
+    }
+    try {
+      const m = await dispatchManifest(req.operatorId!, req.params['id']!, {
+        driverId, vehicleId, freightId,
+      });
+      res.json({ success: true, data: m });
+    } catch (err) {
+      _errorRemito(res, err);
+    }
+  },
+);
+
+// POST /operator/manifests/:id/cancel
+router.post(
+  '/manifests/:id/cancel',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const m = await cancelManifest(req.operatorId!, req.params['id']!);
+      res.json({ success: true, data: m });
+    } catch (err) {
+      _errorRemito(res, err);
+    }
   },
 );
 

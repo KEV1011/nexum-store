@@ -1999,6 +1999,15 @@ class _AppDrawer extends ConsumerWidget {
                     },
                   ),
                   _DrawerItem(
+                    icon: Icons.assignment_outlined,
+                    label: 'Remitos de mercancía',
+                    iconColor: const Color(0xFF0EA5E9),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/remitos');
+                    },
+                  ),
+                  _DrawerItem(
                     icon: Icons.star_rounded,
                     label: 'Calificaciones',
                     iconColor: AppColors.star,

@@ -26,6 +26,14 @@ import {
   DriverDocumentType,
 } from '../types';
 import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
+import {
+  ManifestError,
+  listDriverManifests,
+  getDriverManifest,
+  receiveManifest,
+  setManifestReceiptPhoto,
+  type ReceiveManifestDTO,
+} from '../services/manifest.service';
 import { CustodyPinError } from '../lib/custody-pin';
 import { prisma } from '../lib/prisma';
 import { registerDriverFcmToken } from '../services/push.service';
@@ -961,6 +969,72 @@ router.post('/support/tickets/:id/messages', async (req: Request, res: Response)
     const status = err instanceof SupportError ? 400 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
+});
+
+// ─── Remitos de salida de mercancía ──────────────────────────────────────────
+// El conductor ve los remitos que le despachó su flota y los concilia bulto por
+// bulto al entregar: ahí es donde un faltante deja de ser la palabra de uno
+// contra la del otro.
+
+// GET /driver/manifests
+router.get('/manifests', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listDriverManifests(req.driverId!) });
+});
+
+// GET /driver/manifests/:id
+router.get('/manifests/:id', async (req: Request, res: Response): Promise<void> => {
+  const m = await getDriverManifest(req.driverId!, req.params['id']!);
+  if (!m) {
+    res.status(404).json({ success: false, error: 'Remito no encontrado' });
+    return;
+  }
+  res.json({ success: true, data: m });
+});
+
+// POST /driver/manifests/:id/receive — conciliación de la entrega.
+router.post('/manifests/:id/receive', async (req: Request, res: Response): Promise<void> => {
+  const body = req.body as ReceiveManifestDTO;
+  if (!body?.receivedByName) {
+    res.status(400).json({ success: false, error: 'receivedByName es requerido' });
+    return;
+  }
+  try {
+    const m = await receiveManifest(req.driverId!, req.params['id']!, {
+      ...body,
+      items: Array.isArray(body.items) ? body.items : [],
+    });
+    res.json({ success: true, data: m });
+  } catch (err) {
+    const status = err instanceof ManifestError ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo registrar la entrega',
+    });
+  }
+});
+
+// POST /driver/manifests/:id/receipt-photo — foto del acta/firma (multipart).
+router.post('/manifests/:id/receipt-photo', (req: Request, res: Response): void => {
+  documentUpload.single('file')(req, res, (err) => {
+    void (async () => {
+      if (err || !req.file) {
+        res.status(400).json({ success: false, error: 'Archivo requerido' });
+        return;
+      }
+      if (!req.file.mimetype?.startsWith('image/')) {
+        res.status(400).json({ success: false, error: 'El archivo debe ser una imagen' });
+        return;
+      }
+      const ok = await setManifestReceiptPhoto(
+        req.driverId!, req.params['id']!, fileToUrl(req.file),
+      );
+      if (!ok) {
+        res.status(404).json({ success: false, error: 'Remito no encontrado' });
+        return;
+      }
+      res.status(201).json({ success: true, data: { url: fileToUrl(req.file) } });
+    })();
+  });
 });
 
 export default router;

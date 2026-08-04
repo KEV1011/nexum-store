@@ -1207,6 +1207,117 @@ model FreightEvent {
   @@map("freight_events")
 }
 
+// ─── Remito de salida de mercancía ────────────────────────────────────────────
+//
+// Reemplaza el formato en papel "SALIDA DE MERCANCÍA": la flota lo arma en el
+// portal, el conductor lo confirma bulto por bulto al recoger y al entregar, y
+// el destinatario firma la recepción.
+//
+// El papel solo dice "se recibe a satisfacción": si faltaba un bulto, nadie
+// podía probarlo. Aquí cada bulto tiene su medida declarada y su medida
+// recibida, así que un faltante o una avería quedan registrados con foto en el
+// momento, no en el reclamo.
+//
+// Las unidades son configurables (rollo/metros para tela, caja/kg para otra
+// carga): el formato del cliente es de rollos de tela, pero el modelo no se
+// casa con ese negocio.
+model FreightManifest {
+  id             String   @id @default(cuid())
+  operatorId     String
+  // Consecutivo legible del remito, único por empresa (REM-0001).
+  code           String
+  // Referencia del lote — en el formato del cliente, "Cross Plus Black".
+  reference      String?
+  // Bodega o punto de salida ("BODEGA CÚCUTA").
+  warehouse      String?
+
+  // Destinatario
+  clientName     String
+  clientAddress  String?
+  clientCity     String?
+
+  // Transporte. Se copian del conductor y vehículo al despachar: el remito es
+  // un documento y no puede cambiar si mañana el conductor edita su perfil.
+  freightId      String?
+  driverId       String?
+  driverName     String?
+  driverIdNumber String?
+  vehiclePlate   String?
+
+  // Unidades del negocio: qué es cada renglón y en qué se mide.
+  unitLabel      String   @default("bulto")
+  measureLabel   String   @default("unidades")
+
+  status         ManifestStatus @default(DRAFT)
+
+  // Totales sellados al despachar (el papel los suma a mano; aquí quedan fijos
+  // como constancia de lo que salió).
+  totalItems     Int?
+  totalMeasure   Float?
+
+  authorizedBy   String?
+  notes          String?
+
+  // Recepción
+  receivedByName     String?
+  receivedByIdNumber String?
+  receivedAt         DateTime?
+  receiptPhotoUrl    String?
+  // Diferencias detectadas al recibir (faltantes + averiados).
+  discrepancyCount   Int      @default(0)
+
+  createdAt      DateTime @default(now())
+  dispatchedAt   DateTime?
+
+  items          FreightManifestItem[]
+
+  @@unique([operatorId, code])
+  @@index([operatorId])
+  @@index([freightId])
+  @@index([status])
+  @@map("freight_manifests")
+}
+
+enum ManifestStatus {
+  DRAFT       // se está armando en el portal
+  DISPATCHED  // salió de bodega; el conductor lo lleva
+  RECEIVED    // entregado y conciliado
+  CANCELLED
+}
+
+// Un renglón del remito: en el formato del cliente, un rollo de tela con su
+// metraje. `position` es el número impreso en la tabla (1..100).
+model FreightManifestItem {
+  id             String   @id @default(cuid())
+  manifestId     String
+  position       Int
+  // Medida declarada al despachar (metros, kilos, unidades…).
+  measure        Float
+  // Identificador del bulto si la bodega lo maneja (lote, serie, código).
+  code           String?
+  note           String?
+
+  // Conciliación en la entrega. `receivedMeasure` null = aún no conciliado.
+  receivedMeasure Float?
+  itemStatus      ManifestItemStatus @default(PENDING)
+  receivedNote    String?
+  photoUrl        String?
+
+  manifest       FreightManifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+
+  @@unique([manifestId, position])
+  @@index([manifestId])
+  @@map("freight_manifest_items")
+}
+
+enum ManifestItemStatus {
+  PENDING   // despachado, sin conciliar
+  OK        // recibido conforme
+  SHORT     // llegó con menos medida de la declarada
+  MISSING   // no llegó
+  DAMAGED   // llegó averiado
+}
+
 
 // ─── Chat de viaje (pasajero ↔ conductor) ──────────────────────────────────────
 // Mensajería persistente atada a un Trip. senderRole: 'client' | 'driver'.
