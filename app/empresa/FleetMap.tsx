@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import {
+  type LMap, type LMarker, type LStatic,
+  PAMPLONA, addTiles, escapeHtml, leaflet, loadLeaflet,
+} from './leaflet'
 
-// Mapa de flota con Leaflet cargado desde CDN en tiempo de ejecución. No añadimos
-// dependencia npm para no alterar el build de Vercel; tipamos solo la porción de
-// la API de Leaflet que usamos (sin `any`).
+// Mapa de la flota en vivo. El cargador de Leaflet, la capa de tiles y los tipos
+// viven en `./leaflet`, compartidos con el mapa de recorrido histórico.
 
 export interface FleetMapPoint {
   id: string
@@ -15,57 +18,6 @@ export interface FleetMapPoint {
   online: boolean
   plate: string | null
   lastSeen: string
-}
-
-interface LMap {
-  setView(center: [number, number], zoom: number): LMap
-  fitBounds(bounds: [number, number][], opts?: Record<string, unknown>): void
-  invalidateSize(): void
-  remove(): void
-}
-interface LLayer {
-  addTo(map: LMap): LLayer
-  on(event: string, handler: () => void): LLayer
-  remove(): void
-}
-interface LMarker {
-  addTo(map: LMap): LMarker
-  bindPopup(html: string): LMarker
-  setLatLng(latlng: [number, number]): LMarker
-  setIcon(icon: unknown): LMarker
-  remove(): void
-}
-interface LStatic {
-  map(el: HTMLElement, opts?: Record<string, unknown>): LMap
-  tileLayer(url: string, opts?: Record<string, unknown>): LLayer
-  marker(latlng: [number, number], opts?: Record<string, unknown>): LMarker
-  divIcon(opts: Record<string, unknown>): unknown
-}
-
-const PAMPLONA: [number, number] = [7.3754, -72.6486]
-const LEAFLET_VERSION = '1.9.4'
-
-let loader: Promise<void> | null = null
-function loadLeaflet(): Promise<void> {
-  if (typeof window === 'undefined') return Promise.resolve()
-  if ((window as unknown as { L?: LStatic }).L) return Promise.resolve()
-  if (loader) return loader
-  loader = new Promise<void>((resolve, reject) => {
-    if (!document.querySelector('link[data-leaflet]')) {
-      const link = document.createElement('link')
-      link.rel = 'stylesheet'
-      link.href = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.css`
-      link.setAttribute('data-leaflet', '1')
-      document.head.appendChild(link)
-    }
-    const s = document.createElement('script')
-    s.src = `https://unpkg.com/leaflet@${LEAFLET_VERSION}/dist/leaflet.js`
-    s.async = true
-    s.onload = () => resolve()
-    s.onerror = () => reject(new Error('No se pudo cargar Leaflet'))
-    document.body.appendChild(s)
-  })
-  return loader
 }
 
 function colorFor(p: FleetMapPoint): string {
@@ -84,41 +36,7 @@ function dotIcon(L: LStatic, color: string): unknown {
   })
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => {
-    const map: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
-    return map[c] ?? c
-  })
-}
 
-const OSM_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-
-// Capa de tiles: mapa REAL de Google proxeado por el backend (`/geo/tile`, key
-// server-side) cuando hay token; si un tile falla (Render sin desplegar/dormido,
-// Map Tiles API sin habilitar) cae a OpenStreetMap para no dejar el mapa en gris.
-function addTiles(
-  L: LStatic,
-  map: LMap,
-  token: string | null | undefined,
-  backendUrl: string | undefined,
-): void {
-  if (!token || !backendUrl) {
-    L.tileLayer(OSM_URL, { maxZoom: 19 }).addTo(map)
-    return
-  }
-  const google = L.tileLayer(
-    `${backendUrl}/geo/tile/{z}/{x}/{y}?t=${encodeURIComponent(token)}`,
-    { maxZoom: 19 },
-  )
-  let fellBack = false
-  google.on('tileerror', () => {
-    if (fellBack) return
-    fellBack = true
-    google.remove()
-    L.tileLayer(OSM_URL, { maxZoom: 19 }).addTo(map)
-  })
-  google.addTo(map)
-}
 
 export default function FleetMap({
   points,
@@ -142,7 +60,8 @@ export default function FleetMap({
     loadLeaflet()
       .then(() => {
         if (cancelled || !containerRef.current || mapRef.current) return
-        const L = (window as unknown as { L: LStatic }).L
+        const L = leaflet()
+        if (!L) return
         const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false })
         map.setView(PAMPLONA, 13)
         addTiles(L, map, token, backendUrl)
@@ -163,7 +82,7 @@ export default function FleetMap({
   // Sincroniza los marcadores cada vez que cambian las posiciones.
   useEffect(() => {
     if (!ready || !mapRef.current) return
-    const L = (window as unknown as { L?: LStatic }).L
+    const L = leaflet()
     if (!L) return
     const map = mapRef.current
     const valid = points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))

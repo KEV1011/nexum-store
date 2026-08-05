@@ -9,6 +9,30 @@ import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/shared/widgets/custody_pin_dialog.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 
+/// Tipos de la bitácora del flete. Los cuatro primeros son GASTO (suman al
+/// costo del viaje y exigen monto); parada y nota solo dejan constancia.
+/// Debe coincidir con `backend/src/lib/freight-costs.ts`.
+const kFreightExpenseTypes = <String>['FUEL', 'TOLL', 'PERDIEM', 'MAINTENANCE'];
+const kFreightEventTypes = <String>[...kFreightExpenseTypes, 'STOP', 'NOTE'];
+
+const kFreightEventLabel = <String, String>{
+  'FUEL': 'Tanqueo',
+  'TOLL': 'Peaje',
+  'PERDIEM': 'Viático',
+  'MAINTENANCE': 'Mantenimiento',
+  'STOP': 'Parada',
+  'NOTE': 'Nota',
+};
+
+IconData _eventIcon(String type) => switch (type) {
+      'FUEL' => Icons.local_gas_station_rounded,
+      'TOLL' => Icons.toll_rounded,
+      'PERDIEM' => Icons.restaurant_rounded,
+      'MAINTENANCE' => Icons.build_rounded,
+      'STOP' => Icons.pause_circle_outline_rounded,
+      _ => Icons.sticky_note_2_outlined,
+    };
+
 /// Fletes de carga del conductor: los que puede TOMAR (abiertos, para su flota
 /// y sus camiones) y los que ya tiene ASIGNADOS.
 ///
@@ -426,7 +450,7 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
                   child: OutlinedButton.icon(
                     onPressed: () => _openEventSheet(f),
                     icon: const Icon(Icons.local_gas_station_rounded, size: 17),
-                    label: const Text('Tanqueo / parada'),
+                    label: const Text('Registrar gasto'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -485,17 +509,12 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
                     final type = e['type'] as String? ?? '';
                     final when = DateTime.tryParse(
                         e['createdAt'] as String? ?? '');
-                    final icon = switch (type) {
-                      'FUEL' => Icons.local_gas_station_rounded,
-                      'STOP' => Icons.pause_circle_outline_rounded,
-                      _ => Icons.sticky_note_2_outlined,
-                    };
-                    final title = switch (type) {
-                      'FUEL' =>
-                        'Tanqueo · \$${((e['amountCop'] as num?) ?? 0).toStringAsFixed(0)}',
-                      'STOP' => 'Parada',
-                      _ => 'Nota',
-                    };
+                    final icon = _eventIcon(type);
+                    final etiqueta = kFreightEventLabel[type] ?? 'Nota';
+                    // Los gastos muestran el monto; parada y nota no lo llevan.
+                    final title = kFreightExpenseTypes.contains(type)
+                        ? '$etiqueta · \$${((e['amountCop'] as num?) ?? 0).toStringAsFixed(0)}'
+                        : etiqueta;
                     final parts = <String>[
                       if (when != null)
                         '${when.toLocal().hour.toString().padLeft(2, '0')}:${when.toLocal().minute.toString().padLeft(2, '0')}',
@@ -567,8 +586,12 @@ class _FreightEventSheetState extends State<_FreightEventSheet> {
   }
 
   Future<void> _save() async {
-    if (_type == 'FUEL' && double.tryParse(_amountCtrl.text.trim()) == null) {
-      setState(() => _error = 'Escribe el monto del tanqueo en pesos.');
+    // Un gasto sin monto no suma al costo del flete y descuadra el margen sin
+    // que nadie lo note; el backend lo rechaza igual.
+    if (kFreightExpenseTypes.contains(_type) &&
+        double.tryParse(_amountCtrl.text.trim()) == null) {
+      final etiqueta = (kFreightEventLabel[_type] ?? 'gasto').toLowerCase();
+      setState(() => _error = 'Escribe el monto del $etiqueta en pesos.');
       return;
     }
     setState(() {
@@ -629,6 +652,7 @@ class _FreightEventSheetState extends State<_FreightEventSheet> {
   @override
   Widget build(BuildContext context) {
     final isFuel = _type == 'FUEL';
+    final isExpense = kFreightExpenseTypes.contains(_type);
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
@@ -643,35 +667,37 @@ class _FreightEventSheetState extends State<_FreightEventSheet> {
           const Text('Registrar en la bitácora',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           const SizedBox(height: 12),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(
-                  value: 'FUEL',
-                  label: Text('Tanqueo'),
-                  icon: Icon(Icons.local_gas_station_rounded, size: 16)),
-              ButtonSegment(
-                  value: 'STOP',
-                  label: Text('Parada'),
-                  icon: Icon(Icons.pause_circle_outline_rounded, size: 16)),
-              ButtonSegment(
-                  value: 'NOTE',
-                  label: Text('Nota'),
-                  icon: Icon(Icons.sticky_note_2_outlined, size: 16)),
+          // Seis tipos no caben en un SegmentedButton: en un teléfono se
+          // aplastan hasta ser ilegibles. Chips que fluyen en varias filas.
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final t in kFreightEventTypes)
+                ChoiceChip(
+                  selected: _type == t,
+                  onSelected: (_) => setState(() => _type = t),
+                  avatar: Icon(_eventIcon(t), size: 16),
+                  label: Text(kFreightEventLabel[t] ?? t),
+                ),
             ],
-            selected: {_type},
-            onSelectionChanged: (s) => setState(() => _type = s.first),
           ),
           const SizedBox(height: 12),
-          if (isFuel) ...[
+          if (isExpense) ...[
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Monto (COP) *',
                 prefixText: r'$ ',
+                helperText: isFuel
+                    ? 'Los galones y el odómetro permiten calcular el rendimiento del camión.'
+                    : null,
               ),
             ),
             const SizedBox(height: 8),
+          ],
+          if (isFuel) ...[
             Row(
               children: [
                 Expanded(

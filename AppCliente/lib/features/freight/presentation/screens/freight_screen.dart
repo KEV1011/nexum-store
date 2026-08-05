@@ -33,6 +33,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
 
   String _vehicleType = 'TURBO';
   DateTime? _scheduledFor;
+  DateTime? _promisedAt;
   bool _sending = false;
   bool _loading = true;
   List<Map<String, dynamic>> _mine = const [];
@@ -121,13 +122,17 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
         'vehicleType': _vehicleType,
         'offeredPrice': price,
         if (_scheduledFor != null) 'scheduledFor': _scheduledFor!.toUtc().toIso8601String(),
+        if (_promisedAt != null) 'promisedAt': _promisedAt!.toUtc().toIso8601String(),
       });
       _origin.clear();
       _dest.clear();
       _description.clear();
       _weight.clear();
       _price.clear();
-      setState(() => _scheduledFor = null);
+      setState(() {
+        _scheduledFor = null;
+        _promisedAt = null;
+      });
       _snack('Flete publicado. Las flotas de carga ya pueden tomarlo.', error: false);
       await _loadMine();
     } on DioException catch (e) {
@@ -150,7 +155,9 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
     }
   }
 
-  Future<void> _pickSchedule() async {
+  /// Selector de fecha+hora compartido por la salida programada y la entrega
+  /// comprometida. Devuelve null si el usuario cancela en cualquier paso.
+  Future<DateTime?> _pickDateTime({required TimeOfDay inicial}) async {
     final now = DateTime.now();
     final date = await showDatePicker(
       context: context,
@@ -158,16 +165,31 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
       lastDate: now.add(const Duration(days: 60)),
       initialDate: now,
     );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: const TimeOfDay(hour: 8, minute: 0),
-    );
-    if (time == null) return;
-    setState(() {
-      _scheduledFor = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    });
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(context: context, initialTime: inicial);
+    if (time == null) return null;
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
+
+  Future<void> _pickSchedule() async {
+    final d = await _pickDateTime(inicial: const TimeOfDay(hour: 8, minute: 0));
+    if (d != null) setState(() => _scheduledFor = d);
+  }
+
+  Future<void> _pickPromised() async {
+    final d = await _pickDateTime(inicial: const TimeOfDay(hour: 18, minute: 0));
+    if (d == null) return;
+    // El backend rechaza prometer antes de salir; avisar aquí evita el viaje
+    // de ida y vuelta y explica el porqué.
+    if (_scheduledFor != null && d.isBefore(_scheduledFor!)) {
+      _snack('La entrega comprometida no puede ser antes de la salida programada.');
+      return;
+    }
+    setState(() => _promisedAt = d);
+  }
+
+  String _fmt(DateTime d) =>
+      '${d.day}/${d.month} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   void _snack(String msg, {bool error = true}) {
     if (!mounted) return;
@@ -288,8 +310,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
                     child: Text(
                       _scheduledFor == null
                           ? 'Lo antes posible (toca para programar)'
-                          : 'Programado: ${_scheduledFor!.day}/${_scheduledFor!.month} '
-                              '${_scheduledFor!.hour.toString().padLeft(2, '0')}:${_scheduledFor!.minute.toString().padLeft(2, '0')}',
+                          : 'Programado: ${_fmt(_scheduledFor!)}',
                       style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                     ),
                   ),
@@ -297,6 +318,40 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
                     IconButton(
                       icon: const Icon(Icons.close_rounded, size: 18),
                       onPressed: () => setState(() => _scheduledFor = null),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // ── Entrega comprometida (opcional) ──
+          // Sin una hora contra la cual medir, "llegó tarde" es una opinión.
+          InkWell(
+            onTap: _pickPromised,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule_rounded, size: 20, color: Colors.grey.shade600),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _promisedAt == null
+                          ? '¿Para cuándo la necesitas? (opcional)'
+                          : 'Entrega comprometida: ${_fmt(_promisedAt!)}',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                    ),
+                  ),
+                  if (_promisedAt != null)
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      onPressed: () => setState(() => _promisedAt = null),
                     ),
                 ],
               ),
