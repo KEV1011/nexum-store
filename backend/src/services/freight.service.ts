@@ -60,6 +60,13 @@ export function registerNotifyFleetsNewFreight(
 
 const CARGO_TYPES: VehicleType[] = ['TURBO', 'CAMION', 'MULA'];
 
+/**
+ * Antigüedad máxima del fix GPS para dar un ETA. Más generosa que la frescura
+ * del matching (120 s) porque un camión en carretera pierde señal a ratos, pero
+ * acotada: con media hora sin reportar, el ETA ya no describe nada.
+ */
+const ETA_MAX_FIX_AGE_S = Number(process.env['ETA_MAX_FIX_AGE_S'] ?? 1800);
+
 export interface CreateFreightDTO {
   originAddress: string;
   destAddress: string;
@@ -1045,9 +1052,16 @@ async function _freightEta(f: {
   }
   const d = await prisma.driver.findUnique({
     where: { id: f.driverId },
-    select: { lastLat: true, lastLng: true },
+    select: { lastLat: true, lastLng: true, lastSeenAt: true },
   });
   if (d?.lastLat == null || d.lastLng == null) return null;
+
+  // Un ETA calculado desde una posición vieja se ve igual de convincente que
+  // uno bueno, y es peor que no mostrar nada: si el teléfono del conductor
+  // lleva horas sin reportar, el camión ya no está donde dice el último fix.
+  // Sin dato fresco se omite el ETA (el recorrido sí se sigue mostrando).
+  const edadS = d.lastSeenAt ? (Date.now() - d.lastSeenAt.getTime()) / 1000 : Infinity;
+  if (edadS > ETA_MAX_FIX_AGE_S) return null;
 
   try {
     const route = await directions(d.lastLat, d.lastLng, f.destLat, f.destLng);
