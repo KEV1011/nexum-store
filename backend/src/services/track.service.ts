@@ -38,7 +38,7 @@ const RETENTION_DAYS = Number(process.env['TRACK_RETENTION_DAYS'] ?? 90);
 /** Distancia bajo la cual se considera que el vehículo estuvo detenido. */
 const STOPPED_DIST_M = 100;
 
-export type TrackServiceKind = 'trip' | 'intercity' | 'freight';
+export type TrackServiceKind = 'trip' | 'intercity' | 'freight' | 'cargo';
 
 // ── Estado en memoria: último punto GRABADO por conductor ─────────────────────
 

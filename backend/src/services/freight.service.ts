@@ -350,6 +350,108 @@ export async function listOperatorFreights(operatorId: string): Promise<FreightD
   return rows.map((r) => _toDTO(r));
 }
 
+/**
+ * Crea (si no existe) el viaje de carga de una solicitud del marketplace y lo
+ * enlaza. Idempotente: `cargoTripId` es único y se comprueba antes, así que dos
+ * aceptaciones concurrentes no dejan dos viajes.
+ *
+ * La mercancía descrita en la solicitud entra como la primera línea del viaje:
+ * un flete del marketplace es un viaje con un solo destinatario, y así comparte
+ * exactamente el mismo documento que un despacho propio de la flota.
+ */
+/**
+ * Refleja el estado del flete en su viaje de carga. Best-effort y silencioso:
+ * un flete anterior a la unificación no tiene viaje y no pasa nada.
+ */
+async function _syncCargoTrip(
+  freightId: string,
+  status: 'DISPATCHED' | 'COMPLETED' | 'CANCELLED',
+): Promise<void> {
+  try {
+    const f = await prisma.freightRequest.findUnique({
+      where: { id: freightId }, select: { cargoTripId: true },
+    });
+    if (!f?.cargoTripId) return;
+    const ahora = new Date();
+    await prisma.cargoTrip.update({
+      where: { id: f.cargoTripId },
+      data: {
+        status,
+        ...(status === 'DISPATCHED' ? { dispatchedAt: ahora, startedAt: ahora } : {}),
+        ...(status === 'COMPLETED' ? { completedAt: ahora } : {}),
+      },
+    });
+  } catch (e) {
+    console.warn('[Carga] no se pudo sincronizar el viaje:', (e as Error).message);
+  }
+}
+
+async function _ensureCargoTripForFreight(
+  freightId: string,
+  operatorId: string,
+  driverId: string,
+  vehicleId: string,
+): Promise<string | null> {
+  try {
+    const f = await prisma.freightRequest.findUnique({
+      where: { id: freightId },
+      select: {
+        cargoTripId: true, originCity: true, destCity: true, originAddress: true,
+        destAddress: true, weightKg: true, offeredPrice: true, promisedAt: true,
+        cargoDescription: true, clientName: true, scheduledFor: true,
+      },
+    });
+    if (!f || f.cargoTripId) return f?.cargoTripId ?? null;
+
+    const ultimo = await prisma.cargoTrip.findFirst({
+      where: { operatorId }, orderBy: { number: 'desc' }, select: { number: true },
+    });
+
+    const trip = await prisma.cargoTrip.create({
+      data: {
+        operatorId,
+        number: (ultimo?.number ?? 0) + 1,
+        originCity: f.originCity ?? f.originAddress,
+        originPlace: f.originCity ? f.originAddress : null,
+        destCity: f.destCity ?? f.destAddress,
+        weightKg: f.weightKg,
+        freightAmount: f.offeredPrice,
+        promisedAt: f.promisedAt,
+        scheduledAt: f.scheduledFor,
+        driverId,
+        vehicleId,
+        status: 'DRAFT',
+        manifests: {
+          create: {
+            operatorId,
+            code: `REM-F${Date.now().toString().slice(-8)}`,
+            reference: f.cargoDescription.slice(0, 80),
+            warehouse: f.originAddress,
+            clientName: f.clientName ?? 'Cliente',
+            clientCity: f.destCity ?? f.destAddress,
+            unitLabel: 'bulto',
+            measureLabel: 'kg',
+            // El marketplace declara el peso, no una lista de bultos: se
+            // registra como un solo renglón con el peso como medida.
+            items: { create: [{ position: 1, measure: f.weightKg }] },
+          },
+        },
+      },
+      select: { id: true },
+    });
+
+    await prisma.freightRequest.update({
+      where: { id: freightId },
+      data: { cargoTripId: trip.id },
+    });
+    return trip.id;
+  } catch (e) {
+    // Best-effort: si falla, el flete sigue aceptado y operable como siempre.
+    console.warn('[Carga] no se pudo crear el viaje del flete:', (e as Error).message);
+    return null;
+  }
+}
+
 export async function acceptFreight(
   operatorId: string,
   freightId: string,
@@ -393,6 +495,13 @@ export async function acceptFreight(
     data: { status: 'ACCEPTED', operatorId, driverId, vehicleId, acceptedAt: new Date() },
   });
   if (taken.count === 0) throw new FreightError('Otro transportador ya tomó este flete.');
+
+  // Unificación: aceptar la solicitud CREA el viaje de carga, que es la unidad
+  // operativa única. Ahí cuelgan el rastro, los gastos, los tiempos, el remito
+  // de la mercancía y el cobro — antes la mitad de eso vivía en el flete y la
+  // otra mitad en un viaje aparte que no se conocían.
+  await _ensureCargoTripForFreight(freightId, operatorId, driverId, vehicleId);
+
   const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
 
   // Push FCM: al conductor asignado (cuando lo asigna la flota) y al cliente.
@@ -470,6 +579,9 @@ async function _applyFreightStatus(
       data: { status: 'IN_PROGRESS', startedAt: new Date(), ...pinStamp },
     });
     if (res.count === 0) throw new FreightError('Solo un flete aceptado puede iniciar ruta.');
+    // El viaje es la unidad operativa: al salir el flete, sale su viaje (y con
+    // él arrancan el rastro GPS y las alertas de ruta).
+    await _syncCargoTrip(freightId, 'DISPATCHED');
     const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
     void sendPushToClient(f.clientId, {
       title: 'Tu carga va en camino',
@@ -493,6 +605,7 @@ async function _applyFreightStatus(
       },
     });
     if (res.count === 0) throw new FreightError('El flete ya fue completado o cancelado.');
+    await _syncCargoTrip(freightId, 'CANCELLED');
     const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
     void sendPushToClient(f.clientId, {
       title: 'Tu flete volvió a publicarse',
@@ -511,6 +624,7 @@ async function _applyFreightStatus(
     data: { status: 'COMPLETED', finalPrice, commission, netEarning, completedAt: new Date(), ...pinStamp },
   });
   if (res.count === 0) throw new FreightError('El flete no está en ruta.');
+  await _syncCargoTrip(freightId, 'COMPLETED');
   const upd = await prisma.freightRequest.findUniqueOrThrow({ where: { id: freightId } });
   if (f.driverId) {
     recordCompletedTrip(
@@ -589,7 +703,9 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
       select: { deliveryFee: true, driverName: true },
     }),
     prisma.freightRequest.findMany({
-      where: { operatorId, status: 'COMPLETED', completedAt: range },
+      // Un flete con viaje se contabiliza COMO VIAJE: contarlo también aquí
+      // duplicaría la misma plata en el panel.
+      where: { operatorId, status: 'COMPLETED', completedAt: range, cargoTripId: null },
       select: {
         id: true, finalPrice: true, commission: true, netEarning: true,
         driverId: true, vehicleId: true,
@@ -599,23 +715,37 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     }),
   ]);
 
+  // Viajes de carga completados del período: desde la unificación son la
+  // unidad operativa, y traen su propio valor, sus gastos y su rastro.
+  const cargoTrips = await prisma.cargoTrip.findMany({
+    where: { operatorId, status: 'COMPLETED', completedAt: range },
+    select: {
+      id: true, freightAmount: true, driverId: true, vehicleId: true,
+      createdAt: true, dispatchedAt: true, startedAt: true,
+      completedAt: true, promisedAt: true,
+    },
+  });
+
   // Gastos de ruta y kilómetros reales de esos mismos fletes. Sin esto el panel
   // solo dice cuánto facturó la flota, que no es lo que el dueño pregunta.
   const freightIds = freights.map((f) => f.id);
-  const [expenseRows, kmByFreight] = await Promise.all([
-    freightIds.length
+  const cargoIds = cargoTrips.map((t) => t.id);
+  const [expenseRows, kmByFreight, kmByCargo] = await Promise.all([
+    freightIds.length || cargoIds.length
       ? prisma.freightEvent.findMany({
-          where: { freightId: { in: freightIds } },
+          where: { OR: [{ freightId: { in: freightIds } }, { cargoTripId: { in: cargoIds } }] },
           select: {
-            freightId: true, type: true, amountCop: true,
+            freightId: true, cargoTripId: true, type: true, amountCop: true,
             gallons: true, odometerKm: true, createdAt: true,
           },
         })
       : Promise.resolve([] as {
-          freightId: string; type: string; amountCop: number | null;
-          gallons: number | null; odometerKm: number | null; createdAt: Date;
+          freightId: string | null; cargoTripId: string | null; type: string;
+          amountCop: number | null; gallons: number | null; odometerKm: number | null;
+          createdAt: Date;
         }[]),
     realKmByService('freight', freightIds),
+    realKmByService('cargo', cargoIds),
   ]);
 
   const costs = costBreakdown(expenseRows);
@@ -623,9 +753,13 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   for (const e of expenseRows) {
     const monto = e.amountCop ?? 0;
     if (!(monto > 0) || !requiresAmount(e.type)) continue;
-    costByFreight.set(e.freightId, (costByFreight.get(e.freightId) ?? 0) + monto);
+    const clave = e.cargoTripId ?? e.freightId;
+    if (!clave) continue;
+    costByFreight.set(clave, (costByFreight.get(clave) ?? 0) + monto);
   }
-  const realKm = [...kmByFreight.values()].reduce((s, v) => s + v, 0);
+  const realKm =
+    [...kmByFreight.values()].reduce((s, v) => s + v, 0) +
+    [...kmByCargo.values()].reduce((s, v) => s + v, 0);
 
   // Nombres de conductor/placa para los fletes (guardan ids, no nombres).
   const drvIds = [...new Set(freights.map((x) => x.driverId).filter((v): v is string => !!v))];
@@ -644,11 +778,32 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     const plate = f.vehicleId ? vehPlate.get(f.vehicleId) : undefined;
     if (plate) plateByFreight.set(f.id, plate);
   }
+  const cargoDrvIds = [...new Set(cargoTrips.map((t) => t.driverId).filter((v): v is string => !!v))];
+  const cargoVehIds = [...new Set(cargoTrips.map((t) => t.vehicleId).filter((v): v is string => !!v))];
+  const [cDrv, cVeh] = await Promise.all([
+    cargoDrvIds.length ? prisma.driver.findMany({ where: { id: { in: cargoDrvIds } }, select: { id: true, name: true } }) : [],
+    cargoVehIds.length ? prisma.vehicle.findMany({ where: { id: { in: cargoVehIds } }, select: { id: true, plate: true } }) : [],
+  ]);
+  const cDrvName = new Map(cDrv.map((d) => [d.id, d.name]));
+  const cVehPlate = new Map(cVeh.map((v) => [v.id, v.plate]));
+
+  // La placa del tanqueo sale de su flete o de su viaje: sin este salto, los
+  // galones de los viajes de carga no se atribuirían a ningún camión y el
+  // rendimiento saldría vacío justo para la operación que más lo necesita.
+  const plateByCargo = new Map<string, string>();
+  for (const t of cargoTrips) {
+    const plate = t.vehicleId ? cVehPlate.get(t.vehicleId) : undefined;
+    if (plate) plateByCargo.set(t.id, plate);
+  }
+
   const efficiency = fuelEfficiency(
     expenseRows
       .filter((e) => e.type === 'FUEL')
       .map((e) => ({
-        vehicle: plateByFreight.get(e.freightId) ?? '',
+        vehicle:
+          (e.cargoTripId ? plateByCargo.get(e.cargoTripId) : undefined) ??
+          (e.freightId ? plateByFreight.get(e.freightId) : undefined) ??
+          '',
         odometerKm: e.odometerKm,
         gallons: e.gallons,
         amountCop: e.amountCop,
@@ -703,6 +858,20 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     );
   }
 
+  // Los viajes de carga entran como servicio CARGA: mismo tratamiento que
+  // cualquier otro, con su valor, su conductor y su vehículo.
+  for (const t of cargoTrips) {
+    const bruto = t.freightAmount ?? 0;
+    add(
+      'CARGA',
+      bruto,
+      Math.round(bruto * COMMISSION_RATE),
+      t.driverId ? cDrvName.get(t.driverId) : undefined,
+      t.vehicleId ? cVehPlate.get(t.vehicleId) : undefined,
+      costByFreight.get(t.id) ?? 0,
+    );
+  }
+
   const byDriver = [...byDriverMap.entries()]
     .map(([name, v]) => ({ name, ...v }))
     .sort((a, b) => b.gross - a.gross);
@@ -723,7 +892,13 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     totalMargin: totalNet - costs.total,
     realKm: Math.round(realKm * 100) / 100,
     costPerKm: realKm > 0 ? Math.round(costs.total / realKm) : 0,
-    onTime: onTimeStats(freights),
+    onTime: onTimeStats([
+      ...freights,
+      ...cargoTrips.map((t) => ({
+        createdAt: t.createdAt, acceptedAt: t.dispatchedAt, startedAt: t.startedAt,
+        completedAt: t.completedAt, promisedAt: t.promisedAt,
+      })),
+    ]),
     efficiency,
     byService,
     byDriver,
@@ -875,6 +1050,7 @@ export type { FreightEventType };
 export interface FreightEventDTO {
   id: string;
   freightId: string;
+  cargoTripId?: string;
   type: FreightEventType;
   lat?: number;
   lng?: number;
@@ -888,15 +1064,16 @@ export interface FreightEventDTO {
 }
 
 type DbFreightEvent = {
-  id: string; freightId: string; type: string; lat: number | null; lng: number | null;
+  id: string; freightId: string | null; cargoTripId?: string | null; type: string; lat: number | null; lng: number | null;
   address: string | null; amountCop: number | null; gallons: number | null;
   odometerKm: number | null; note: string | null; photoUrl: string | null; createdAt: Date;
 };
 
-function _eventToDTO(e: DbFreightEvent): FreightEventDTO {
+export function _eventToDTO(e: DbFreightEvent): FreightEventDTO {
   return {
     id: e.id,
-    freightId: e.freightId,
+    freightId: e.freightId ?? '',
+    cargoTripId: e.cargoTripId ?? undefined,
     type: e.type as FreightEventType,
     lat: e.lat ?? undefined,
     lng: e.lng ?? undefined,
@@ -950,9 +1127,16 @@ export async function addFreightEvent(
       `Un ${EVENT_LABEL_ES[type].toLowerCase()} necesita el monto en pesos (amountCop).`,
     );
   }
+  // La bitácora cuelga del viaje cuando el flete ya tiene uno (unificación);
+  // los fletes anteriores siguen guardando contra el flete y se leen igual.
+  const conViaje = await prisma.freightRequest.findUnique({
+    where: { id: freightId }, select: { cargoTripId: true },
+  });
+
   const created = await prisma.freightEvent.create({
     data: {
       freightId,
+      cargoTripId: conViaje?.cargoTripId ?? null,
       driverId,
       type,
       lat: typeof input.lat === 'number' ? input.lat : null,
@@ -995,8 +1179,13 @@ export async function listFreightEventsForOperator(
     select: { operatorId: true },
   });
   if (!f || f.operatorId !== operatorId) return null;
+  const conViaje = await prisma.freightRequest.findUnique({
+    where: { id: freightId }, select: { cargoTripId: true },
+  });
   const rows = await prisma.freightEvent.findMany({
-    where: { freightId },
+    where: conViaje?.cargoTripId
+      ? { OR: [{ freightId }, { cargoTripId: conViaje.cargoTripId }] }
+      : { freightId },
     orderBy: { createdAt: 'asc' },
   });
   const costs = costBreakdown(rows);

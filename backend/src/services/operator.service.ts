@@ -742,13 +742,13 @@ export async function exportOperatorTripsCsv(
           where: { freightId: { in: fIds } },
           select: { freightId: true, type: true, amountCop: true },
         })
-      : Promise.resolve([] as { freightId: string; type: string; amountCop: number | null }[]),
+      : Promise.resolve([] as { freightId: string | null; type: string; amountCop: number | null }[]),
   ]);
   const fDriverName = new Map(fDrivers.map((d) => [d.id, d.name]));
   const fCost = new Map<string, number>();
   for (const e of fEvents) {
     const monto = e.amountCop ?? 0;
-    if (!(monto > 0) || !requiresAmount(e.type)) continue;
+    if (!(monto > 0) || !requiresAmount(e.type) || !e.freightId) continue;
     fCost.set(e.freightId, (fCost.get(e.freightId) ?? 0) + monto);
   }
 

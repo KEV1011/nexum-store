@@ -665,11 +665,19 @@ function Dashboard({ token, operator, onLogout }: {
           {/* ══ CARGA ══ */}
           {section === 'carga' && isCargo && (
             <>
-              <h1 className="font-bold text-slate-900 text-lg">Fletes de carga</h1>
+              <h1 className="font-bold text-slate-900 text-lg">Carga</h1>
+              {/* El viaje es la unidad: cada uno abre su informe con mercancía,
+                  recorrido, gastos, tiempos y cobro. Las cuentas son de período,
+                  no de viaje, así que van aparte. El tablero del marketplace y
+                  los remitos sueltos quedan al final, plegados. */}
               <CargoTripsManager api={api} />
               <CobrosManager api={api} token={token ?? ''} />
-              <FreightManager api={api} token={token ?? ''} />
-              <ManifestsManager api={api} />
+              <Plegable titulo="Tablero de fletes del marketplace">
+                <FreightManager api={api} token={token ?? ''} />
+              </Plegable>
+              <Plegable titulo="Remitos sueltos (sin viaje asignado)">
+                <ManifestsManager api={api} />
+              </Plegable>
             </>
           )}
 
@@ -688,6 +696,26 @@ function Dashboard({ token, operator, onLogout }: {
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Sección plegable. Tras unificar la carga en el viaje, el tablero del
+ * marketplace y los remitos sueltos siguen siendo útiles pero dejan de competir
+ * por la atención: el viaje es lo primero que se mira.
+ */
+function Plegable({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  const [abierto, setAbierto] = useState(false)
+  return (
+    <section className="border-t border-slate-200 pt-3">
+      <button
+        onClick={() => setAbierto((v) => !v)}
+        className="text-xs font-semibold text-slate-500 hover:text-slate-800"
+      >
+        {abierto ? '▾' : '▸'} {titulo}
+      </button>
+      {abierto && <div className="mt-3">{children}</div>}
+    </section>
   )
 }
 

@@ -71,7 +71,7 @@ import {
 } from '../services/freight.service';
 import {
   CargoTripError, createCargoTrip, listCargoTrips, getCargoTrip, updateCargoTrip,
-  addTripLine, detachTripLine, attachTripLine, setCargoTripStatus,
+  addTripLine, detachTripLine, attachTripLine, setCargoTripStatus, getCargoTripReport,
   type CreateCargoTripDTO, type AddTripLineDTO,
 } from '../services/cargo-trip.service';
 import {
@@ -968,6 +968,14 @@ router.delete('/cobros/:id/payments/:paymentId', requireOperatorRole('OWNER'), a
       data: await voidCobroPayment(req.operatorId!, req.params['id']!, req.params['paymentId']!),
     });
   } catch (err) { _errorCobro(res, err); }
+});
+
+// Informe final del viaje: mercancía, recorrido, gastos, tiempos y cobro en un
+// solo documento. Es lo que se revisa al cerrar cada viaje y entrega.
+router.get('/cargo-trips/:id/report', async (req: Request, res: Response): Promise<void> => {
+  const r = await getCargoTripReport(req.operatorId!, req.params['id']!);
+  if (!r) { res.status(404).json({ success: false, error: 'Ese viaje no pertenece a tu empresa.' }); return; }
+  res.json({ success: true, data: r });
 });
 
 export default router;

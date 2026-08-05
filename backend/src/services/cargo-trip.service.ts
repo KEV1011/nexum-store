@@ -12,6 +12,10 @@
 import { CargoTripStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { createManifest, toManifestDTO, type CreateManifestDTO } from './manifest.service';
+import { getServiceTrack, type ServiceTrack } from './track.service';
+import { costBreakdown, type CostBreakdown } from '../lib/freight-costs';
+import { freightTimes, type FreightTimes } from '../lib/freight-times';
+import { _eventToDTO, type FreightEventDTO } from './freight.service';
 
 export class CargoTripError extends Error {}
 
@@ -53,6 +57,7 @@ export function toCargoTripDTO(t: TripConLineas) {
     number: t.number,
     originCity: t.originCity,
     originPlace: t.originPlace ?? undefined,
+    destCity: t.destCity ?? undefined,
     weightKg: t.weightKg ?? undefined,
     freightAmount: t.freightAmount ?? undefined,
     isUrban: t.isUrban,
@@ -64,6 +69,8 @@ export function toCargoTripDTO(t: TripConLineas) {
     notes: t.notes ?? undefined,
     scheduledAt: t.scheduledAt?.toISOString(),
     dispatchedAt: t.dispatchedAt?.toISOString(),
+    startedAt: t.startedAt?.toISOString(),
+    promisedAt: t.promisedAt?.toISOString(),
     completedAt: t.completedAt?.toISOString(),
     createdAt: t.createdAt.toISOString(),
     cobroId: t.cobroId ?? undefined,
@@ -330,4 +337,98 @@ export async function setCargoTripStatus(
   }
 
   return (await getCargoTrip(operatorId, tripId))!;
+}
+
+// ─── Informe final del viaje ──────────────────────────────────────────────────
+//
+// Lo que se entrega al cerrar un viaje: qué mercancía llevaba y de quién, por
+// dónde pasó, cuánto se gastó en ruta, cuánto tardó contra lo prometido y en
+// qué cuenta se cobró. Antes esto estaba repartido entre cuatro pantallas que
+// no se conocían; ahora sale de un solo sitio porque el viaje es la unidad.
+
+export interface CargoTripReport {
+  trip: CargoTripDTO;
+  /** Recorrido REAL con kilómetros, duración y tiempo detenido. */
+  track: ServiceTrack;
+  /** Bitácora de ruta y su desglose de gastos. */
+  events: FreightEventDTO[];
+  costs: CostBreakdown;
+  /** Duraciones derivadas y cumplimiento contra la fecha comprometida. */
+  times: FreightTimes;
+  /** Conciliación de la mercancía: declarado vs recibido, con novedades. */
+  delivery: {
+    lines: number;
+    declaredItems: number;
+    declaredMeasure: number;
+    receivedMeasure: number;
+    discrepancies: number;
+    reconciled: number;
+  };
+  /** Cuenta de cobro donde se facturó, si ya está. */
+  cobro: { id: string; number: string; status: string } | null;
+  /** Costo por kilómetro realmente recorrido. */
+  costPerKm: number;
+  /** Valor del flete menos los gastos de ruta. */
+  margin: number;
+}
+
+export async function getCargoTripReport(
+  operatorId: string,
+  id: string,
+): Promise<CargoTripReport | null> {
+  const t = await prisma.cargoTrip.findUnique({ where: { id }, include: _incluirLineas });
+  if (!t || t.operatorId !== operatorId) return null;
+
+  const trip = toCargoTripDTO(t);
+
+  const [track, rows, cobro] = await Promise.all([
+    getServiceTrack('cargo', id),
+    prisma.freightEvent.findMany({ where: { cargoTripId: id }, orderBy: { createdAt: 'asc' } }),
+    t.cobroId
+      ? prisma.cobroAccount.findUnique({
+          where: { id: t.cobroId }, select: { id: true, number: true, status: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  const costs = costBreakdown(rows);
+
+  // Conciliación: la línea trae medida declarada y medida recibida. Solo se
+  // cuentan como conciliadas las que ya pasaron por la entrega.
+  const lineas = t.manifests.filter((m) => m.status !== 'CANCELLED');
+  const declaredMeasure = lineas.reduce(
+    (s, m) => s + (m.totalMeasure ?? m.items.reduce((a, i) => a + i.measure, 0)), 0,
+  );
+  const receivedMeasure = lineas.reduce(
+    (s, m) => s + m.items.reduce((a, i) => a + (i.receivedMeasure ?? 0), 0), 0,
+  );
+
+  const times = freightTimes({
+    createdAt: t.createdAt,
+    acceptedAt: t.dispatchedAt,
+    startedAt: t.startedAt,
+    completedAt: t.completedAt,
+    promisedAt: t.promisedAt,
+  });
+
+  const km = track.summary.distanceKm;
+
+  return {
+    trip,
+    track,
+    events: rows.map(_eventToDTO),
+    costs,
+    times,
+    delivery: {
+      lines: lineas.length,
+      declaredItems: trip.totalItems,
+      declaredMeasure: Math.round(declaredMeasure * 10) / 10,
+      receivedMeasure: Math.round(receivedMeasure * 10) / 10,
+      discrepancies: lineas.reduce((s, m) => s + m.discrepancyCount, 0),
+      reconciled: lineas.filter((m) => m.status === 'RECEIVED').length,
+    },
+    cobro: cobro ?? null,
+    costPerKm: km > 0 ? Math.round(costs.total / km) : 0,
+    margin: Math.round((t.freightAmount ?? 0) - costs.total),
+  };
 }

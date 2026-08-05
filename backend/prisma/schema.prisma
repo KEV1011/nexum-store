@@ -1181,6 +1181,10 @@ model FreightRequest {
   completedAt      DateTime?
 
   events           FreightEvent[]
+  // Viaje de carga creado al aceptar la solicitud: ahí vive toda la
+  // trazabilidad (rastro, gastos, tiempos, remitos y cobro).
+  cargoTripId      String?       @unique
+  cargoTrip        CargoTrip?    @relation(fields: [cargoTripId], references: [id])
 
   @@index([status])
   @@index([operatorId])
@@ -1190,10 +1194,14 @@ model FreightRequest {
 
 // Trazabilidad del flete: eventos que el conductor registra en ruta
 // (tanqueos de combustible, paradas, notas) para control total de la empresa.
+// La bitácora cuelga del VIAJE de carga (unidad operativa) o, para los fletes
+// del marketplace anteriores a la unificación, directamente del flete. Los dos
+// enlaces son opcionales y se lee por cualquiera de ellos.
 model FreightEvent {
-  id         String   @id @default(cuid())
-  freightId  String
-  driverId   String
+  id          String   @id @default(cuid())
+  freightId   String?
+  cargoTripId String?
+  driverId    String
   // FUEL | STOP | NOTE
   type       String
   lat        Float?
@@ -1207,9 +1215,11 @@ model FreightEvent {
   photoUrl   String?
   createdAt  DateTime @default(now())
 
-  freight    FreightRequest @relation(fields: [freightId], references: [id])
+  freight     FreightRequest? @relation(fields: [freightId], references: [id])
+  cargoTrip   CargoTrip?      @relation(fields: [cargoTripId], references: [id])
 
   @@index([freightId])
+  @@index([cargoTripId])
   @@index([driverId])
   @@map("freight_events")
 }
@@ -1376,10 +1386,20 @@ model CargoTrip {
   // el total esté respaldado por su detalle y se pueda auditar viaje por viaje.
   freightAmount Float?
 
+  // Destino principal del viaje. Las líneas llevan cada una su destinatario y
+  // su ciudad; este es el punto contra el que se miden geocerca y desvío.
+  destCity     String?
+
   status       CargoTripStatus @default(DRAFT)
   notes        String?
   scheduledAt  DateTime?
   dispatchedAt DateTime?
+  // Salida real: separa la espera en bodega del tiempo en ruta, igual que en
+  // el flete. Sin ella la demora de cargue queda escondida dentro del viaje.
+  startedAt    DateTime?
+  // Entrega comprometida: sin una hora contra la cual medir, "llegó tarde" es
+  // una opinión.
+  promisedAt   DateTime?
   completedAt  DateTime?
   createdAt    DateTime        @default(now())
 
@@ -1388,6 +1408,11 @@ model CargoTrip {
   cobro        CobroAccount?   @relation(fields: [cobroId], references: [id])
 
   manifests    FreightManifest[]
+  // Bitácora de ruta del viaje: tanqueos, peajes, viáticos, paradas y notas.
+  events       FreightEvent[]
+  // Solicitud del marketplace que originó este viaje (null = despacho propio
+  // de la flota). Es el puente que unifica los dos caminos.
+  freight      FreightRequest?
 
   @@unique([operatorId, number])
   @@index([operatorId, createdAt])

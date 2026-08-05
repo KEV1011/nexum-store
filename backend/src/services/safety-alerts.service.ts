@@ -46,14 +46,14 @@ export interface SafetyAlert {
   driverId: string;
   driverName: string;
   operatorId: string | null;
-  /** 'trip' | 'intercity' | 'freight' */
+  /** 'trip' | 'intercity' | 'freight' | 'cargo' */
   serviceKind: string;
   serviceId: string;
   detail: string;
 }
 
 interface ActiveService {
-  kind: 'trip' | 'intercity' | 'freight';
+  kind: 'trip' | 'intercity' | 'freight' | 'cargo';
   id: string;
   clientId: string | null;
   operatorId: string | null;
@@ -183,6 +183,27 @@ async function _activeServiceFor(driverId: string): Promise<ActiveService | null
         originLat: f.originLat, originLng: f.originLng,
         destLat: f.destLat, destLng: f.destLng,
         destLabel: f.destAddress, geofenceM: GEOFENCE_LONG_M,
+      };
+    }
+  }
+
+  if (!svc) {
+    // Viaje de carga propio de la flota: desde la unificación es un servicio
+    // activo de pleno derecho, así que deja rastro y genera alertas igual que
+    // un flete del marketplace.
+    const ct = await prisma.cargoTrip.findFirst({
+      where: { driverId, status: 'DISPATCHED' },
+      select: { id: true, operatorId: true, originCity: true, destCity: true, driverName: true },
+    });
+    if (ct) {
+      const o = coordsOfSync(ct.originCity.toLowerCase());
+      const d = ct.destCity ? coordsOfSync(ct.destCity.toLowerCase()) : null;
+      svc = {
+        kind: 'cargo', id: ct.id, clientId: null, operatorId: ct.operatorId,
+        driverName: ct.driverName ?? 'Conductor',
+        originLat: o?.lat ?? null, originLng: o?.lng ?? null,
+        destLat: d?.lat ?? null, destLng: d?.lng ?? null,
+        destLabel: ct.destCity ?? 'destino', geofenceM: GEOFENCE_LONG_M,
       };
     }
   }

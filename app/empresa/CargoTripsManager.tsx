@@ -33,8 +33,13 @@ export interface CargoTrip {
   vehicleId?: string
   driverName?: string
   vehiclePlate?: string
+  destCity?: string
   status: string
   scheduledAt?: string
+  startedAt?: string
+  promisedAt?: string
+  dispatchedAt?: string
+  completedAt?: string
   cobroId?: string
   totalItems: number
   totalMeasure: number
@@ -322,6 +327,17 @@ function FilaViaje({
           </button>
         )}
       </div>
+
+      {(t.status === 'DISPATCHED' || t.status === 'COMPLETED') && (
+        <a
+          href={`/empresa/viaje/${t.id}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-block text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline"
+        >
+          Ver informe del viaje (recorrido, gastos, tiempos y cobro)
+        </a>
+      )}
 
       {abierto && (
         <NuevaLinea
