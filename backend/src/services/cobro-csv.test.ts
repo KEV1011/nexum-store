@@ -24,8 +24,23 @@ function viaje(
     unknown as CobroDTO['trips'][number];
 }
 
-function cuenta(trips: CobroDTO['trips']): CobroDTO {
-  return { number: '066', trips } as unknown as CobroDTO;
+function cuenta(trips: CobroDTO['trips'], balance?: Partial<CobroDTO['balance']>): CobroDTO {
+  const total = trips.reduce((s, t) => s + (t.freightAmount ?? 0), 0);
+  return {
+    number: '066',
+    trips,
+    balance: {
+      total, paid: 0, balance: total, advance: 0, payments: 0,
+      status: 'SIN_PAGOS', pct: 0, ...balance,
+    },
+  } as unknown as CobroDTO;
+}
+
+/** Las filas de detalle: sin encabezado y sin el pie de saldos. */
+function detalle(csv: string): string[][] {
+  const filas = csv.split('\r\n');
+  const finPie = filas.findIndex((f) => f.startsWith('"TOTAL FACTURADO"'));
+  return filas.slice(1, finPie - 1).map(celdas);
 }
 
 /** Parte una línea CSV entrecomillada en sus celdas. */
@@ -38,7 +53,7 @@ describe('cobroToCsv', () => {
     const csv = cobroToCsv(cuenta([]));
     expect(celdas(csv.split('\r\n')[0]!)).toEqual([
       'Viaje', 'Origen', 'Referencia', 'Rollos', 'Metros', 'Peso_kg',
-      'Fecha_entrega', 'Cliente', 'Destino',
+      'Fecha_entrega', 'Cliente', 'Destino', 'Valor_flete_COP',
     ]);
   });
 
@@ -49,10 +64,10 @@ describe('cobroToCsv', () => {
         linea('706001 BLACK', 79, 7026, 'BERNARDO SERNA', 'MEDELLIN', '2026-07-31T00:00:00.000Z'),
       ]),
     ]));
-    const f = celdas(csv.split('\r\n')[1]!);
+    const f = detalle(csv)[0]!;
     expect(f).toEqual([
       '9', 'CUCUTA DON LUIS', '706001 BLACK', '79', '7026', '6000',
-      '2026-07-31', 'BERNARDO SERNA', 'MEDELLIN',
+      '2026-07-31', 'BERNARDO SERNA', 'MEDELLIN', '',
     ]);
   });
 
@@ -65,7 +80,7 @@ describe('cobroToCsv', () => {
         linea(undefined, 35, 3049.1, 'CARLOS CASTRO', 'BOGOTA'),
       ]),
     ]));
-    const [, f1, f2, f3] = csv.split('\r\n').map(celdas);
+    const [f1, f2, f3] = detalle(csv);
     expect(f1![0]).toBe('8');
     expect(f1![1]).toBe('CUCUTA DON LUIS');
     // Las siguientes repiten cliente y destino, pero no el viaje: es lo que
@@ -87,7 +102,7 @@ describe('cobroToCsv', () => {
         linea('C', 35, 3049.1, 'CARLOS CASTRO', 'BOGOTA'),
       ]),
     ]));
-    const [, f1, f2, f3] = csv.split('\r\n').map(celdas);
+    const [f1, f2, f3] = detalle(csv);
     expect(f1![5]).toBe('');
     expect(f2![5]).toBe('');
     expect(f3![5]).toBe('10000');
@@ -98,7 +113,7 @@ describe('cobroToCsv', () => {
     const csv = cobroToCsv(cuenta([
       viaje(3, 'BOGOTA', 'MADRID', undefined, [], true),
     ]));
-    const f = celdas(csv.split('\r\n')[1]!);
+    const f = detalle(csv)[0]!;
     expect(f[0]).toBe('3');
     expect(f[2]).toBe('URBANO');
     expect(f[3]).toBe('');
@@ -115,7 +130,7 @@ describe('cobroToCsv', () => {
         linea('404001', 6, 573, 'LUIS IZQUIERDO', 'BARRANQUILLA'),
       ]),
     ]));
-    const filas = csv.split('\r\n').slice(1).map(celdas);
+    const filas = detalle(csv);
     expect(filas).toHaveLength(5);
     expect(filas.map((f) => f[2])).toEqual(['318101', 'LONA RIGIDA', '403101', '406301', '404001']);
     // Los 103 rollos del papel.
@@ -130,6 +145,6 @@ describe('cobroToCsv', () => {
       ]),
     ]));
     expect(csv).toContain('""A""');
-    expect(csv.split('\r\n')).toHaveLength(2);
+    expect(detalle(csv)).toHaveLength(1);
   });
 });

@@ -15,6 +15,46 @@ export interface CobroTotals {
   items: number
   measure: number
   weightKg: number
+  amount: number
+}
+
+export interface CobroBalance {
+  total: number
+  paid: number
+  balance: number
+  advance: number
+  payments: number
+  status: 'SIN_PAGOS' | 'PARCIAL' | 'PAGADA' | 'SOBREPAGADA'
+  pct: number
+}
+
+export interface Payment {
+  id: string
+  amount: number
+  kind: 'ANTICIPO' | 'ABONO' | 'SALDO'
+  method?: string
+  reference?: string
+  notes?: string
+  paidAt: string
+  voidedAt?: string
+}
+
+const PAY_LABEL: Record<string, string> = {
+  ANTICIPO: 'Anticipo', ABONO: 'Abono', SALDO: 'Saldo',
+}
+
+const BALANCE_TONE: Record<string, string> = {
+  SIN_PAGOS: 'bg-slate-100 text-slate-600',
+  PARCIAL: 'bg-amber-100 text-amber-700',
+  PAGADA: 'bg-emerald-100 text-emerald-700',
+  SOBREPAGADA: 'bg-blue-100 text-blue-700',
+}
+const BALANCE_LABEL: Record<string, string> = {
+  SIN_PAGOS: 'Sin pagos', PARCIAL: 'Pago parcial', PAGADA: 'Pagada', SOBREPAGADA: 'Pagada de más',
+}
+
+function cop(n: number): string {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
 
 export interface Cobro {
@@ -28,6 +68,8 @@ export interface Cobro {
   signedBy?: string
   notes?: string
   totals: CobroTotals
+  balance: CobroBalance
+  payments: Payment[]
   trips?: CargoTrip[]
 }
 
@@ -158,10 +200,17 @@ export default function CobrosManager({ api, token }: { api: OperatorApi; token:
                     {c.totals.weightKg > 0 ? ` · ${num(c.totals.weightKg)} kg` : ''}
                   </p>
                 </div>
-                <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${STATUS_TONE[c.status] ?? ''}`}>
-                  {STATUS_LABEL[c.status] ?? c.status}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${BALANCE_TONE[c.balance.status] ?? ''}`}>
+                    {BALANCE_LABEL[c.balance.status] ?? c.balance.status}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${STATUS_TONE[c.status] ?? ''}`}>
+                    {STATUS_LABEL[c.status] ?? c.status}
+                  </span>
+                </div>
               </div>
+
+              <SaldoCuenta c={c} onAccion={accion} api={api} />
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1">
                 {c.status === 'DRAFT' && (
@@ -217,6 +266,201 @@ export default function CobrosManager({ api, token }: { api: OperatorApi; token:
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * Estado de pago de la cuenta: cuánto se facturó, cuánto entró y qué queda
+ * debiendo, con la lista de pagos y el alta de uno nuevo. El saldo lo calcula
+ * el backend a partir de los viajes y los pagos, nunca se guarda.
+ */
+function SaldoCuenta({
+  c, onAccion, api,
+}: {
+  c: Cobro
+  onAccion: (fn: () => Promise<unknown>) => Promise<void>
+  api: OperatorApi
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const b = c.balance
+  const vigentes = c.payments.filter((p) => !p.voidedAt)
+
+  return (
+    <div className="border-t border-slate-100 pt-2 space-y-2">
+      <div className="grid grid-cols-3 gap-2">
+        <Cifra label="Facturado" valor={cop(b.total)} />
+        <Cifra label="Pagado" valor={cop(b.paid)} tono="emerald" />
+        <Cifra
+          label={b.balance < 0 ? 'A favor del cliente' : 'Saldo'}
+          valor={cop(Math.abs(b.balance))}
+          tono={b.balance > 0 ? 'amber' : 'slate'}
+        />
+      </div>
+
+      {b.total > 0 && (
+        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+          <div
+            className={`h-full ${b.status === 'PAGADA' || b.status === 'SOBREPAGADA' ? 'bg-emerald-500' : 'bg-amber-500'}`}
+            style={{ width: `${b.pct}%` }}
+          />
+        </div>
+      )}
+
+      {b.total === 0 && (
+        <p className="text-[11px] text-amber-700">
+          Los viajes de esta cuenta todavía no tienen valor. Ponles precio para poder registrar pagos.
+        </p>
+      )}
+
+      {vigentes.length > 0 && (
+        <ul className="space-y-1">
+          {vigentes.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-slate-600 truncate">
+                <span className="font-semibold text-slate-800">{PAY_LABEL[p.kind] ?? p.kind}</span>
+                {' · '}{cop(p.amount)}
+                {' · '}{fecha(p.paidAt)}
+                {p.method ? ` · ${p.method}` : ''}
+                {p.reference ? ` · ${p.reference}` : ''}
+              </span>
+              <button
+                title="Anular pago"
+                onClick={() => {
+                  if (!window.confirm('¿Anular este pago? Queda la constancia de que existió.')) return
+                  void onAccion(() => api(`/operator/cobros/${c.id}/payments/${p.id}`, { method: 'DELETE' }))
+                }}
+                className="text-slate-300 hover:text-red-600 shrink-0"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {c.status !== 'VOID' && b.total > 0 && (
+        <>
+          <button
+            onClick={() => setAbierto((v) => !v)}
+            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900"
+          >
+            {abierto ? 'Cerrar' : 'Registrar pago'}
+          </button>
+          {abierto && (
+            <NuevoPago
+              saldo={b.balance}
+              onPagar={async (dto) => {
+                await onAccion(() => api(`/operator/cobros/${c.id}/payments`, {
+                  method: 'POST', body: JSON.stringify(dto),
+                }))
+                setAbierto(false)
+              }}
+            />
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function Cifra({ label, valor, tono = 'slate' }: { label: string; valor: string; tono?: string }) {
+  const color = tono === 'emerald' ? 'text-emerald-700' : tono === 'amber' ? 'text-amber-700' : 'text-slate-900'
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+      <p className={`text-sm font-bold leading-tight ${color}`}>{valor}</p>
+      <p className="text-[10px] text-slate-500">{label}</p>
+    </div>
+  )
+}
+
+function NuevoPago({
+  saldo, onPagar,
+}: {
+  saldo: number
+  onPagar: (dto: Record<string, unknown>) => Promise<void>
+}) {
+  const [amount, setAmount] = useState('')
+  const [kind, setKind] = useState('ANTICIPO')
+  const [method, setMethod] = useState('')
+  const [reference, setReference] = useState('')
+  const [paidAt, setPaidAt] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  const monto = Number(amount)
+  const excede = Number.isFinite(monto) && monto > saldo
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-2">
+      <div className="grid sm:grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Monto (COP) *</label>
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+            placeholder={String(Math.max(0, saldo))}
+            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Tipo</label>
+          <select value={kind} onChange={(e) => setKind(e.target.value)}
+            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500">
+            <option value="ANTICIPO">Anticipo</option>
+            <option value="ABONO">Abono parcial</option>
+            <option value="SALDO">Saldo (cierra la cuenta)</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Medio</label>
+          <input value={method} onChange={(e) => setMethod(e.target.value)} placeholder="Transferencia"
+            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Comprobante</label>
+          <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="N° de consignación"
+            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500" />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Fecha del pago</label>
+          <input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)}
+            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500" />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setAmount(String(Math.max(0, saldo)))}
+          className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 underline"
+        >
+          Pagar el saldo completo ({cop(Math.max(0, saldo))})
+        </button>
+      </div>
+
+      {excede && (
+        <p className="text-[11px] text-amber-700">
+          El monto supera el saldo pendiente. Si el cliente está adelantando para la
+          próxima cuenta, márcalo abajo; si no, revisa la cifra.
+        </p>
+      )}
+
+      <button
+        disabled={guardando || !(monto > 0)}
+        onClick={async () => {
+          setGuardando(true)
+          try {
+            await onPagar({
+              amount: monto,
+              kind,
+              method: method.trim() || undefined,
+              reference: reference.trim() || undefined,
+              paidAt: paidAt ? new Date(`${paidAt}T12:00:00`).toISOString() : undefined,
+              allowOverpay: excede,
+            })
+          } finally { setGuardando(false) }
+        }}
+        className="py-2 px-4 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60"
+      >
+        {guardando ? 'Registrando…' : 'Registrar pago'}
+      </button>
+    </div>
   )
 }
 

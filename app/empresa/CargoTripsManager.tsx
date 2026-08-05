@@ -27,6 +27,7 @@ export interface CargoTrip {
   originCity: string
   originPlace?: string
   weightKg?: number
+  freightAmount?: number
   isUrban: boolean
   driverId?: string
   vehicleId?: string
@@ -51,6 +52,10 @@ const STATUS_TONE: Record<string, string> = {
   DISPATCHED: 'bg-amber-100 text-amber-700',
   COMPLETED: 'bg-emerald-100 text-emerald-700',
   CANCELLED: 'bg-red-100 text-red-700',
+}
+
+function cop(n: number): string {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
 
 function num(n: number): string {
@@ -169,6 +174,7 @@ function NuevoViaje({
   const [originCity, setOriginCity] = useState('')
   const [originPlace, setOriginPlace] = useState('')
   const [weightKg, setWeightKg] = useState('')
+  const [freightAmount, setFreightAmount] = useState('')
   const [isUrban, setIsUrban] = useState(false)
   const [driverId, setDriverId] = useState('')
   const [vehicleId, setVehicleId] = useState('')
@@ -180,6 +186,7 @@ function NuevoViaje({
         <Campo label="Ciudad de origen *" value={originCity} onChange={setOriginCity} placeholder="BOGOTA" />
         <Campo label="Bodega / punto de salida" value={originPlace} onChange={setOriginPlace} placeholder="MADRID" />
         <Campo label="Peso total del camión (kg)" value={weightKg} onChange={setWeightKg} placeholder="11000" tipo="number" />
+        <Campo label="Valor del flete (COP)" value={freightAmount} onChange={setFreightAmount} placeholder="2500000" tipo="number" />
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">Conductor</label>
           <select value={driverId} onChange={(e) => setDriverId(e.target.value)}
@@ -212,6 +219,7 @@ function NuevoViaje({
               originCity: originCity.trim(),
               originPlace: originPlace.trim() || undefined,
               weightKg: weightKg ? Number(weightKg) : undefined,
+              freightAmount: freightAmount ? Number(freightAmount) : undefined,
               isUrban,
               driverId: driverId || undefined,
               vehicleId: vehicleId || undefined,
@@ -250,6 +258,7 @@ function FilaViaje({
             {t.lines.length} {t.lines.length === 1 ? 'línea' : 'líneas'} ·{' '}
             {num(t.totalItems)} bultos · {num(t.totalMeasure)} medida
             {t.weightKg ? ` · ${num(t.weightKg)} kg` : ''}
+            {t.freightAmount ? ` · ${cop(t.freightAmount)}` : ''}
             {t.driverName ? ` · ${t.driverName}` : ''}
             {t.vehiclePlate ? ` (${t.vehiclePlate})` : ''}
           </p>

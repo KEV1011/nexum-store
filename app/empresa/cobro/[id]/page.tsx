@@ -24,6 +24,11 @@ function num(n: number | undefined): string {
   return n.toLocaleString('es-CO', { maximumFractionDigits: 1 })
 }
 
+function cop(n: number | undefined): string {
+  if (!n) return ''
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
+}
+
 function fecha(iso?: string): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -105,7 +110,7 @@ export default function CuentaCobroImprimible() {
       <table className="w-full border-collapse text-[10px]">
         <thead>
           <tr>
-            {['VIAJE', 'ORIGEN', 'REFERENCIA', 'ROLLOS', 'METROS', 'PESO', 'FECHA DE ENTREGA', 'CLIENTE', 'DESTINO'].map((h) => (
+            {['VIAJE', 'ORIGEN', 'REFERENCIA', 'ROLLOS', 'METROS', 'PESO', 'FECHA DE ENTREGA', 'CLIENTE', 'DESTINO', 'VALOR'].map((h) => (
               <th key={h} className="border border-black px-1 py-1 font-bold text-center align-middle">
                 {h}
               </th>
@@ -133,6 +138,7 @@ export default function CuentaCobroImprimible() {
                   <td className="border border-black px-1 py-1" />
                   <td className="border border-black px-1 py-1" />
                   <td className="border border-black px-1 py-1" />
+                  <td className="border border-black px-1 py-1 text-right">{cop(viaje.freightAmount)}</td>
                 </tr>
               )
             }
@@ -157,6 +163,10 @@ export default function CuentaCobroImprimible() {
                 <td className="border border-black px-1 py-1 text-center">{fecha(l.deliveredOn)}</td>
                 <td className="border border-black px-1 py-1 text-center">{l.clientName}</td>
                 <td className="border border-black px-1 py-1 text-center">{l.clientCity ?? ''}</td>
+                {/* El valor es del viaje, igual que el peso: una sola vez. */}
+                <td className="border border-black px-1 py-1 text-right">
+                  {i === viaje.lines.length - 1 ? cop(viaje.freightAmount) : ''}
+                </td>
               </tr>
             ))
           })}
@@ -169,9 +179,43 @@ export default function CuentaCobroImprimible() {
             <td className="border border-black px-1 py-1 text-center">{num(t.measure)}</td>
             <td className="border border-black px-1 py-1 text-center">{num(t.weightKg)}</td>
             <td className="border border-black px-1 py-1" colSpan={3} />
+            <td className="border border-black px-1 py-1 text-right">{cop(t.amount)}</td>
           </tr>
         </tbody>
       </table>
+
+      {/* Estado de pago: el cliente necesita ver en el mismo documento qué
+          anticipó y cuánto queda debiendo. */}
+      {c.balance.total > 0 && (
+        <section className="mt-4 text-[11px]">
+          <table className="border-collapse ml-auto">
+            <tbody>
+              <tr>
+                <td className="border border-black px-2 py-1 font-bold">TOTAL</td>
+                <td className="border border-black px-2 py-1 text-right">{cop(c.balance.total)}</td>
+              </tr>
+              {c.payments.filter((p) => !p.voidedAt).map((p) => (
+                <tr key={p.id}>
+                  <td className="border border-black px-2 py-1">
+                    {p.kind === 'ANTICIPO' ? 'Anticipo' : p.kind === 'SALDO' ? 'Saldo' : 'Abono'}
+                    {' · '}{fecha(p.paidAt)}
+                    {p.reference ? ` · ${p.reference}` : ''}
+                  </td>
+                  <td className="border border-black px-2 py-1 text-right">− {cop(p.amount)}</td>
+                </tr>
+              ))}
+              <tr className="font-bold">
+                <td className="border border-black px-2 py-1">
+                  {c.balance.balance < 0 ? 'SALDO A FAVOR' : 'SALDO PENDIENTE'}
+                </td>
+                <td className="border border-black px-2 py-1 text-right">
+                  {cop(Math.abs(c.balance.balance)) || '$0'}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <footer className="mt-10 text-[11px]">
         <p>Atentamente,</p>

@@ -77,7 +77,8 @@ import {
 import {
   CobroError, createCobro, listCobros, getCobro, fillCobroFromPeriod,
   addTripToCobro, removeTripFromCobro, issueCobro, voidCobro, cobroToCsv,
-  type CreateCobroDTO,
+  addCobroPayment, voidCobroPayment,
+  type CreateCobroDTO, type AddPaymentDTO,
 } from '../services/cobro.service';
 
 const router = Router();
@@ -946,6 +947,26 @@ router.post('/cobros/:id/issue', requireOperatorRole('OWNER'), async (req: Reque
 router.post('/cobros/:id/void', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
   try {
     res.json({ success: true, data: await voidCobro(req.operatorId!, req.params['id']!) });
+  } catch (err) { _errorCobro(res, err); }
+});
+
+// Pagos de la cuenta: anticipo, abono parcial o saldo.
+router.post('/cobros/:id/payments', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(201).json({
+      success: true,
+      data: await addCobroPayment(req.operatorId!, req.params['id']!, req.body as AddPaymentDTO),
+    });
+  } catch (err) { _errorCobro(res, err); }
+});
+
+// Un pago no se borra: se anula y queda la constancia.
+router.delete('/cobros/:id/payments/:paymentId', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({
+      success: true,
+      data: await voidCobroPayment(req.operatorId!, req.params['id']!, req.params['paymentId']!),
+    });
   } catch (err) { _errorCobro(res, err); }
 });
 

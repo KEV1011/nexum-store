@@ -1371,6 +1371,11 @@ model CargoTrip {
   driverName   String?
   vehiclePlate String?
 
+  // Valor del flete de ESTE viaje: es lo que se cobra por moverlo, y la suma
+  // de los viajes es el total de la cuenta. Va aquí y no en la cuenta para que
+  // el total esté respaldado por su detalle y se pueda auditar viaje por viaje.
+  freightAmount Float?
+
   status       CargoTripStatus @default(DRAFT)
   notes        String?
   scheduledAt  DateTime?
@@ -1424,6 +1429,7 @@ model CobroAccount {
   createdAt  DateTime    @default(now())
 
   trips      CargoTrip[]
+  payments   CobroPayment[]
 
   @@unique([operatorId, number])
   @@index([operatorId, createdAt])
@@ -1434,6 +1440,42 @@ enum CobroStatus {
   DRAFT   // se está armando; se pueden añadir y quitar viajes
   ISSUED  // emitida y sellada
   VOID    // anulada
+}
+
+// ─── Pagos de la cuenta de cobro ──────────────────────────────────────────────
+//
+// El cliente rara vez paga de una sola vez: lo normal es un anticipo al
+// despachar —con el que el transportador cubre combustible y peajes— y el saldo
+// contra entrega. Cada pago es una fila; el saldo se DERIVA (total de la cuenta
+// menos lo abonado) y nunca se guarda, para que no puedan quedar en desacuerdo.
+//
+// Un pago registrado no se edita: se anula y se vuelve a cargar. Un recibo que
+// cambia de monto después de entregado no prueba nada.
+model CobroPayment {
+  id        String       @id @default(cuid())
+  cobroId   String
+  cobro     CobroAccount @relation(fields: [cobroId], references: [id], onDelete: Cascade)
+  amount    Float
+  kind      PaymentKind  @default(ABONO)
+  // Efectivo, transferencia, cheque… texto libre: cada empresa usa los suyos.
+  method    String?
+  // Número de consignación, comprobante o cheque.
+  reference String?
+  notes     String?
+  // Soporte escaneado del pago.
+  receiptUrl String?
+  paidAt    DateTime     @default(now())
+  voidedAt  DateTime?
+  createdAt DateTime     @default(now())
+
+  @@index([cobroId, paidAt])
+  @@map("cobro_payments")
+}
+
+enum PaymentKind {
+  ANTICIPO // adelanto antes o al despachar
+  ABONO    // pago parcial durante el período
+  SALDO    // cierre de la cuenta
 }
 
 // Un renglón del remito: en el formato del cliente, un rollo de tela con su

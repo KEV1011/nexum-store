@@ -15,10 +15,15 @@
 
 import { prisma } from '../lib/prisma';
 import { toCargoTripDTO, type CargoTripDTO } from './cargo-trip.service';
+import {
+  assertPaymentAmount, cobroBalance, PaymentAmountError,
+  type CobroPaymentKind,
+} from '../lib/cobro-balance';
 
 export class CobroError extends Error {}
 
 const _incluirViajes = {
+  payments: { orderBy: { paidAt: 'asc' } },
   trips: {
     orderBy: { number: 'asc' },
     include: {
@@ -45,6 +50,8 @@ export interface CobroTotals {
   items: number;
   measure: number;
   weightKg: number;
+  /** Suma del flete de los viajes: el valor que se le cobra al cliente. */
+  amount: number;
 }
 
 function _fecha(iso: string, campo: string): Date {
@@ -62,6 +69,7 @@ function _totales(trips: CargoTripDTO[]): CobroTotals {
     // Solo los viajes que traen peso: sumar ceros por los que no lo anotaron
     // daría un total que no corresponde a nada pesado de verdad.
     weightKg: trips.reduce((s, t) => s + (t.weightKg ?? 0), 0),
+    amount: Math.round(trips.reduce((s, t) => s + (t.freightAmount ?? 0), 0)),
   };
 }
 
@@ -69,8 +77,46 @@ type CobroConViajes = Awaited<ReturnType<typeof prisma.cobroAccount.findUnique>>
   ? never
   : NonNullable<Awaited<ReturnType<typeof prisma.cobroAccount.findUnique>>>;
 
-function _toDTO(c: CobroConViajes & { trips: Parameters<typeof toCargoTripDTO>[0][] }) {
+export interface PaymentDTO {
+  id: string;
+  amount: number;
+  kind: CobroPaymentKind;
+  method?: string;
+  reference?: string;
+  notes?: string;
+  receiptUrl?: string;
+  paidAt: string;
+  voidedAt?: string;
+}
+
+interface DbPayment {
+  id: string; amount: number; kind: string; method: string | null;
+  reference: string | null; notes: string | null; receiptUrl: string | null;
+  paidAt: Date; voidedAt: Date | null;
+}
+
+function _pagoToDTO(p: DbPayment): PaymentDTO {
+  return {
+    id: p.id,
+    amount: p.amount,
+    kind: p.kind as CobroPaymentKind,
+    method: p.method ?? undefined,
+    reference: p.reference ?? undefined,
+    notes: p.notes ?? undefined,
+    receiptUrl: p.receiptUrl ?? undefined,
+    paidAt: p.paidAt.toISOString(),
+    voidedAt: p.voidedAt?.toISOString(),
+  };
+}
+
+function _toDTO(
+  c: CobroConViajes & {
+    trips: Parameters<typeof toCargoTripDTO>[0][];
+    payments?: DbPayment[];
+  },
+) {
   const trips = c.trips.map(toCargoTripDTO);
+  const pagos = c.payments ?? [];
   return {
     id: c.id,
     number: c.number,
@@ -84,6 +130,10 @@ function _toDTO(c: CobroConViajes & { trips: Parameters<typeof toCargoTripDTO>[0
     createdAt: c.createdAt.toISOString(),
     trips,
     totals: _totales(trips),
+    payments: pagos.map(_pagoToDTO),
+    // El saldo se deriva SIEMPRE de los viajes y los pagos: nunca se guarda,
+    // para que no puedan quedar en desacuerdo.
+    balance: cobroBalance(_totales(trips).amount, pagos),
   };
 }
 
@@ -241,11 +291,106 @@ export async function voidCobro(operatorId: string, id: string): Promise<CobroDT
   return (await getCobro(operatorId, id))!;
 }
 
+
+// ─── Pagos ────────────────────────────────────────────────────────────────────
+
+export interface AddPaymentDTO {
+  amount: number;
+  kind?: string;
+  method?: string;
+  reference?: string;
+  notes?: string;
+  receiptUrl?: string;
+  paidAt?: string;
+  /** El cliente adelanta más de lo que debe: hay que pedirlo a propósito. */
+  allowOverpay?: boolean;
+}
+
+const _KINDS: CobroPaymentKind[] = ['ANTICIPO', 'ABONO', 'SALDO'];
+
+/**
+ * Registra un pago contra la cuenta: un anticipo, un abono parcial o el saldo.
+ *
+ * Se admite sobre una cuenta en BORRADOR además de emitida, porque el anticipo
+ * normalmente se cobra AL DESPACHAR, antes de que exista el documento final.
+ * Sobre una cuenta anulada no: sus viajes ya volvieron al tablero.
+ */
+export async function addCobroPayment(
+  operatorId: string,
+  id: string,
+  dto: AddPaymentDTO,
+): Promise<CobroDTO> {
+  const c = await _mia(operatorId, id);
+  if (c.status === 'VOID') throw new CobroError('La cuenta está anulada.');
+
+  const kind = String(dto.kind ?? 'ABONO').toUpperCase() as CobroPaymentKind;
+  if (!_KINDS.includes(kind)) {
+    throw new CobroError(`El tipo de pago debe ser uno de: ${_KINDS.join(', ')}.`);
+  }
+
+  const actual = await getCobro(operatorId, id);
+  if (!actual) throw new CobroError('Esa cuenta no pertenece a tu empresa.');
+  // Sin valor facturado no hay contra qué abonar: el anticipo quedaría colgado
+  // y el saldo saldría negativo desde el primer peso.
+  if (actual.totals.amount <= 0) {
+    throw new CobroError(
+      'La cuenta todavía no tiene valor. Ponle precio a los viajes antes de registrar pagos.',
+    );
+  }
+
+  try {
+    assertPaymentAmount(dto.amount, actual.balance.balance, dto.allowOverpay === true);
+  } catch (e) {
+    if (e instanceof PaymentAmountError) throw new CobroError(e.message);
+    throw e;
+  }
+
+  let paidAt: Date | undefined;
+  if (dto.paidAt) {
+    const d = new Date(dto.paidAt);
+    if (Number.isNaN(d.getTime())) throw new CobroError('La fecha del pago no es válida.');
+    paidAt = d;
+  }
+
+  await prisma.cobroPayment.create({
+    data: {
+      cobroId: id,
+      amount: Math.round(dto.amount),
+      kind,
+      method: dto.method?.trim() || null,
+      reference: dto.reference?.trim() || null,
+      notes: dto.notes?.trim() || null,
+      receiptUrl: dto.receiptUrl?.trim() || null,
+      ...(paidAt ? { paidAt } : {}),
+    },
+  });
+  return (await getCobro(operatorId, id))!;
+}
+
+/**
+ * Anula un pago mal cargado. No se borra ni se edita: un recibo que cambia de
+ * monto después de entregado no prueba nada, así que queda la constancia de
+ * que existió y de que se anuló.
+ */
+export async function voidCobroPayment(
+  operatorId: string,
+  id: string,
+  paymentId: string,
+): Promise<CobroDTO> {
+  await _mia(operatorId, id);
+  const res = await prisma.cobroPayment.updateMany({
+    where: { id: paymentId, cobroId: id, voidedAt: null },
+    data: { voidedAt: new Date() },
+  });
+  if (res.count === 0) throw new CobroError('Ese pago no existe en esta cuenta o ya está anulado.');
+  return (await getCobro(operatorId, id))!;
+}
+
 /** CSV con el mismo detalle del documento impreso. */
 export function cobroToCsv(c: CobroDTO): string {
   const header = [
     'Viaje', 'Origen', 'Referencia', 'Rollos', 'Metros', 'Peso_kg',
-    'Fecha_entrega', 'Cliente', 'Destino',
+    'Fecha_entrega', 'Cliente', 'Destino', 'Valor_flete_COP',
   ];
   const filas: string[][] = [];
 
@@ -256,6 +401,7 @@ export function cobroToCsv(c: CobroDTO): string {
       filas.push([
         String(t.number), origen, t.isUrban ? 'URBANO' : '', '', '',
         t.weightKg ? String(t.weightKg) : '', '', '', '',
+        t.freightAmount ? String(Math.round(t.freightAmount)) : '',
       ]);
       continue;
     }
@@ -272,9 +418,19 @@ export function cobroToCsv(c: CobroDTO): string {
         l.deliveredOn ? l.deliveredOn.slice(0, 10) : '',
         l.clientName,
         l.clientCity ?? '',
+        // El valor es del viaje: como el peso, se anota una sola vez.
+        i === t.lines.length - 1 && t.freightAmount ? String(Math.round(t.freightAmount)) : '',
       ]);
     });
   }
+
+  // Pie con el estado de pago: quien abre el CSV para conciliar necesita ver
+  // cuánto se facturó, cuánto entró y qué queda debiendo.
+  const b = c.balance;
+  filas.push([]);
+  filas.push(['TOTAL FACTURADO', '', '', '', '', '', '', '', '', String(b.total)]);
+  filas.push(['PAGADO', '', '', '', '', '', '', '', '', String(b.paid)]);
+  filas.push(['SALDO', '', '', '', '', '', '', '', '', String(b.balance)]);
 
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   return [header, ...filas].map((cols) => cols.map((x) => esc(String(x))).join(',')).join('\r\n');

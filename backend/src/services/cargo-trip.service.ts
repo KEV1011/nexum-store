@@ -28,6 +28,8 @@ export interface CreateCargoTripDTO {
   originCity: string;
   originPlace?: string;
   weightKg?: number;
+  /** Valor del flete de este viaje: lo que se le cobra al cliente. */
+  freightAmount?: number;
   isUrban?: boolean;
   driverId?: string;
   vehicleId?: string;
@@ -52,6 +54,7 @@ export function toCargoTripDTO(t: TripConLineas) {
     originCity: t.originCity,
     originPlace: t.originPlace ?? undefined,
     weightKg: t.weightKg ?? undefined,
+    freightAmount: t.freightAmount ?? undefined,
     isUrban: t.isUrban,
     driverId: t.driverId ?? undefined,
     vehicleId: t.vehicleId ?? undefined,
@@ -102,6 +105,9 @@ export async function createCargoTrip(
   if (dto.weightKg != null && !(dto.weightKg > 0)) {
     throw new CargoTripError('El peso del viaje debe ser mayor a cero.');
   }
+  if (dto.freightAmount != null && !(dto.freightAmount > 0)) {
+    throw new CargoTripError('El valor del flete debe ser mayor a cero.');
+  }
 
   const t = await prisma.cargoTrip.create({
     data: {
@@ -110,6 +116,7 @@ export async function createCargoTrip(
       originCity: dto.originCity.trim(),
       originPlace: dto.originPlace?.trim() || null,
       weightKg: dto.weightKg ?? null,
+      freightAmount: dto.freightAmount ?? null,
       isUrban: dto.isUrban ?? false,
       driverId: dto.driverId || null,
       vehicleId: dto.vehicleId || null,
@@ -184,6 +191,9 @@ export async function updateCargoTrip(
   if (dto.weightKg != null && !(dto.weightKg > 0)) {
     throw new CargoTripError('El peso del viaje debe ser mayor a cero.');
   }
+  if (dto.freightAmount != null && !(dto.freightAmount > 0)) {
+    throw new CargoTripError('El valor del flete debe ser mayor a cero.');
+  }
 
   await prisma.cargoTrip.update({
     where: { id },
@@ -191,6 +201,7 @@ export async function updateCargoTrip(
       ...(dto.originCity !== undefined ? { originCity: dto.originCity.trim() } : {}),
       ...(dto.originPlace !== undefined ? { originPlace: dto.originPlace?.trim() || null } : {}),
       ...(dto.weightKg !== undefined ? { weightKg: dto.weightKg ?? null } : {}),
+      ...(dto.freightAmount !== undefined ? { freightAmount: dto.freightAmount ?? null } : {}),
       ...(dto.isUrban !== undefined ? { isUrban: dto.isUrban } : {}),
       ...(dto.driverId !== undefined ? { driverId: dto.driverId || null } : {}),
       ...(dto.vehicleId !== undefined ? { vehicleId: dto.vehicleId || null } : {}),
