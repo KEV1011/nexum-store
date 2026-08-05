@@ -16,6 +16,8 @@ import SchedulesManager from './SchedulesManager'
 import DriversManager from './DriversManager'
 import FreightManager from './FreightManager'
 import ManifestsManager from './ManifestsManager'
+import CargoTripsManager from './CargoTripsManager'
+import CobrosManager from './CobrosManager'
 import FinancePanel from './FinancePanel'
 import AnalyticsPanel from './AnalyticsPanel'
 import VehiclesManager from './VehiclesManager'
@@ -664,6 +666,8 @@ function Dashboard({ token, operator, onLogout }: {
           {section === 'carga' && isCargo && (
             <>
               <h1 className="font-bold text-slate-900 text-lg">Fletes de carga</h1>
+              <CargoTripsManager api={api} />
+              <CobrosManager api={api} token={token ?? ''} />
               <FreightManager api={api} token={token ?? ''} />
               <ManifestsManager api={api} />
             </>

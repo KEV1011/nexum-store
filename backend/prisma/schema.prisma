@@ -1312,9 +1312,20 @@ model FreightManifest {
 
   items          FreightManifestItem[]
 
+  // Viaje al que pertenece esta línea. Un remito puede colgar de un flete del
+  // marketplace (`freightId`) o de un viaje propio de la flota (`cargoTripId`),
+  // que es como opera una empresa que despacha para un cliente recurrente.
+  cargoTripId    String?
+  cargoTrip      CargoTrip? @relation(fields: [cargoTripId], references: [id])
+  // Fecha de entrega que va en la cuenta de cobro. Normalmente la sella la
+  // conciliación (`receivedAt`), pero se puede fijar a mano al cargar
+  // despachos ya entregados en papel.
+  deliveredOn    DateTime?
+
   @@unique([operatorId, code])
   @@index([operatorId])
   @@index([freightId])
+  @@index([cargoTripId])
   @@index([status])
   @@map("freight_manifests")
 }
@@ -1324,6 +1335,105 @@ enum ManifestStatus {
   DISPATCHED  // salió de bodega; el conductor lo lleva
   RECEIVED    // entregado y conciliado
   CANCELLED
+}
+
+// ─── Viaje de carga ───────────────────────────────────────────────────────────
+//
+// Un camión sale con mercancía de VARIOS clientes, cada uno con su referencia,
+// su destino y su fecha de entrega. El modelo de fletes no podía representarlo:
+// `FreightRequest` es un cliente, un origen y un destino.
+//
+// El viaje agrupa remitos: cada `FreightManifest` es una línea del despacho
+// (referencia, destinatario, ciudad de destino, bultos y medida), y el viaje
+// aporta lo que es común al camión — de dónde salió, quién lo condujo y el
+// peso total de la carga.
+//
+// El peso va aquí y no en la línea: en el formato del cliente se anota una sola
+// vez por viaje, y la aritmética lo confirma (69–78 kg por rollo en todos los
+// viajes que lo traen; por línea daría cifras imposibles).
+model CargoTrip {
+  id           String          @id @default(cuid())
+  operatorId   String
+  // Consecutivo legible por empresa (1, 2, 3…), como el talonario de papel.
+  number       Int
+  // "BOGOTA" + "MADRID", "CUCUTA" + "DON LUIS": ciudad y punto de salida.
+  originCity   String
+  originPlace  String?
+  // Peso total del camión en kg.
+  weightKg     Int?
+  // Acarreo urbano: se cobra el viaje, sin rollos ni metros que listar.
+  isUrban      Boolean         @default(false)
+
+  driverId     String?
+  vehicleId    String?
+  // Copiados al despachar: un documento no puede cambiar si mañana el
+  // conductor edita su perfil (mismo criterio que el remito).
+  driverName   String?
+  vehiclePlate String?
+
+  status       CargoTripStatus @default(DRAFT)
+  notes        String?
+  scheduledAt  DateTime?
+  dispatchedAt DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime        @default(now())
+
+  // Cuenta de cobro en la que se facturó (null = todavía sin facturar).
+  cobroId      String?
+  cobro        CobroAccount?   @relation(fields: [cobroId], references: [id])
+
+  manifests    FreightManifest[]
+
+  @@unique([operatorId, number])
+  @@index([operatorId, createdAt])
+  @@index([cobroId])
+  @@map("cargo_trips")
+}
+
+enum CargoTripStatus {
+  DRAFT       // se está armando
+  DISPATCHED  // salió de bodega
+  COMPLETED   // entregado
+  CANCELLED
+}
+
+// ─── Cuenta de cobro ──────────────────────────────────────────────────────────
+//
+// El documento con el que la empresa le factura a su cliente un período:
+// «DETALLE DE ENTREGA CUENTA DE COBRO 066». Agrupa los viajes del período y
+// lista, viaje por viaje, cada línea con sus rollos, metros, destinatario y
+// fecha de entrega.
+//
+// Al emitirla queda sellada y sus viajes no pueden reasignarse a otra cuenta:
+// si se pudiera, dos cuentas podrían cobrar el mismo viaje y la conciliación
+// con el cliente dejaría de probar nada.
+model CobroAccount {
+  id         String      @id @default(cuid())
+  operatorId String
+  // Número del talonario ("066"): texto, porque el cliente usa ceros a la izquierda.
+  number     String
+  // A quién se le cobra.
+  clientName String
+  fromDate   DateTime
+  toDate     DateTime
+  status     CobroStatus @default(DRAFT)
+  issuedAt   DateTime?
+  // Quien firma el documento.
+  signedBy   String?
+  notes      String?
+  createdAt  DateTime    @default(now())
+
+  trips      CargoTrip[]
+
+  @@unique([operatorId, number])
+  @@index([operatorId, createdAt])
+  @@map("cobro_accounts")
+}
+
+enum CobroStatus {
+  DRAFT   // se está armando; se pueden añadir y quitar viajes
+  ISSUED  // emitida y sellada
+  VOID    // anulada
 }
 
 // Un renglón del remito: en el formato del cliente, un rollo de tela con su
