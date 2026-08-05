@@ -127,6 +127,11 @@ export function toManifestDTO(m: ManifestConItems) {
     receiptPhotoUrl: m.receiptPhotoUrl ?? undefined,
     createdAt: m.createdAt.toISOString(),
     dispatchedAt: m.dispatchedAt?.toISOString(),
+    cargoTripId: m.cargoTripId ?? undefined,
+    // Fecha de entrega para la cuenta de cobro: manda la sellada al conciliar,
+    // y si no la hay se usa la que se cargó a mano (despachos ya entregados
+    // que se están pasando del papel al sistema).
+    deliveredOn: (m.receivedAt ?? m.deliveredOn)?.toISOString(),
     items: m.items.map((it) => ({
       id: it.id,
       position: it.position,

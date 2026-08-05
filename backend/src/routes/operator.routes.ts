@@ -69,6 +69,16 @@ import {
   listFreightEventsForOperator,
   getFreightTrackForOperator,
 } from '../services/freight.service';
+import {
+  CargoTripError, createCargoTrip, listCargoTrips, getCargoTrip, updateCargoTrip,
+  addTripLine, detachTripLine, attachTripLine, setCargoTripStatus,
+  type CreateCargoTripDTO, type AddTripLineDTO,
+} from '../services/cargo-trip.service';
+import {
+  CobroError, createCobro, listCobros, getCobro, fillCobroFromPeriod,
+  addTripToCobro, removeTripFromCobro, issueCobro, voidCobro, cobroToCsv,
+  type CreateCobroDTO,
+} from '../services/cobro.service';
 
 const router = Router();
 
@@ -798,5 +808,145 @@ router.post(
     }
   },
 );
+
+// ─── Viajes de carga ──────────────────────────────────────────────────────────
+//
+// Un camión con mercancía de varios clientes: el viaje agrupa remitos, y cada
+// remito es una línea (referencia, destinatario, rollos y metros).
+
+function _errorViaje(res: Response, err: unknown): void {
+  const status = err instanceof CargoTripError ? 400 : 500;
+  res.status(status).json({
+    success: false,
+    error: err instanceof Error ? err.message : 'No se pudo procesar el viaje',
+  });
+}
+
+router.get('/cargo-trips', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await listCargoTrips(req.operatorId!, {
+      from: req.query['from'] as string | undefined,
+      to: req.query['to'] as string | undefined,
+      sinFacturar: req.query['sinFacturar'] === 'true',
+    });
+    res.json({ success: true, data });
+  } catch (err) { _errorViaje(res, err); }
+});
+
+router.get('/cargo-trips/:id', async (req: Request, res: Response): Promise<void> => {
+  const t = await getCargoTrip(req.operatorId!, req.params['id']!);
+  if (!t) { res.status(404).json({ success: false, error: 'Ese viaje no pertenece a tu empresa.' }); return; }
+  res.json({ success: true, data: t });
+});
+
+router.post('/cargo-trips', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(201).json({ success: true, data: await createCargoTrip(req.operatorId!, req.body as CreateCargoTripDTO) });
+  } catch (err) { _errorViaje(res, err); }
+});
+
+router.patch('/cargo-trips/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await updateCargoTrip(req.operatorId!, req.params['id']!, req.body as CreateCargoTripDTO) });
+  } catch (err) { _errorViaje(res, err); }
+});
+
+// Añade una línea de mercancía (crea el remito y lo cuelga del viaje).
+router.post('/cargo-trips/:id/lines', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(201).json({ success: true, data: await addTripLine(req.operatorId!, req.params['id']!, req.body as AddTripLineDTO) });
+  } catch (err) { _errorViaje(res, err); }
+});
+
+router.delete('/cargo-trips/:id/lines/:manifestId', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await detachTripLine(req.operatorId!, req.params['id']!, req.params['manifestId']!) });
+  } catch (err) { _errorViaje(res, err); }
+});
+
+// Cuelga un remito ya existente (creado suelto) de este viaje.
+router.post('/cargo-trips/:id/lines/:manifestId', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await attachTripLine(req.operatorId!, req.params['id']!, req.params['manifestId']!) });
+  } catch (err) { _errorViaje(res, err); }
+});
+
+router.post('/cargo-trips/:id/status', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const { status } = req.body as { status?: string };
+  if (status !== 'dispatched' && status !== 'completed' && status !== 'cancelled') {
+    res.status(400).json({ success: false, error: "status debe ser 'dispatched', 'completed' o 'cancelled'" });
+    return;
+  }
+  try {
+    res.json({ success: true, data: await setCargoTripStatus(req.operatorId!, req.params['id']!, status) });
+  } catch (err) { _errorViaje(res, err); }
+});
+
+// ─── Cuentas de cobro ─────────────────────────────────────────────────────────
+
+function _errorCobro(res: Response, err: unknown): void {
+  const status = err instanceof CobroError ? 400 : 500;
+  res.status(status).json({
+    success: false,
+    error: err instanceof Error ? err.message : 'No se pudo procesar la cuenta de cobro',
+  });
+}
+
+router.get('/cobros', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listCobros(req.operatorId!) });
+});
+
+router.get('/cobros/:id', async (req: Request, res: Response): Promise<void> => {
+  const c = await getCobro(req.operatorId!, req.params['id']!);
+  if (!c) { res.status(404).json({ success: false, error: 'Esa cuenta no pertenece a tu empresa.' }); return; }
+  res.json({ success: true, data: c });
+});
+
+// CSV con el mismo detalle del documento impreso.
+router.get('/cobros/:id/export.csv', async (req: Request, res: Response): Promise<void> => {
+  const c = await getCobro(req.operatorId!, req.params['id']!);
+  if (!c) { res.status(404).json({ success: false, error: 'Esa cuenta no pertenece a tu empresa.' }); return; }
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="cuenta-cobro-${c.number}.csv"`);
+  res.send(cobroToCsv(c));
+});
+
+router.post('/cobros', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(201).json({ success: true, data: await createCobro(req.operatorId!, req.body as CreateCobroDTO) });
+  } catch (err) { _errorCobro(res, err); }
+});
+
+// Mete todos los viajes completados del período que aún no estén facturados.
+router.post('/cobros/:id/fill', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await fillCobroFromPeriod(req.operatorId!, req.params['id']!) });
+  } catch (err) { _errorCobro(res, err); }
+});
+
+router.post('/cobros/:id/trips/:tripId', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await addTripToCobro(req.operatorId!, req.params['id']!, req.params['tripId']!) });
+  } catch (err) { _errorCobro(res, err); }
+});
+
+router.delete('/cobros/:id/trips/:tripId', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await removeTripFromCobro(req.operatorId!, req.params['id']!, req.params['tripId']!) });
+  } catch (err) { _errorCobro(res, err); }
+});
+
+router.post('/cobros/:id/issue', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { signedBy } = req.body as { signedBy?: string };
+    res.json({ success: true, data: await issueCobro(req.operatorId!, req.params['id']!, signedBy) });
+  } catch (err) { _errorCobro(res, err); }
+});
+
+router.post('/cobros/:id/void', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await voidCobro(req.operatorId!, req.params['id']!) });
+  } catch (err) { _errorCobro(res, err); }
+});
 
 export default router;
