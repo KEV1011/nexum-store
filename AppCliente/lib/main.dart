@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:nexum_client/app/app.dart';
 import 'package:nexum_client/core/config/api_config.dart';
+import 'package:nexum_client/core/observability/crash_reporting.dart';
 import 'package:nexum_client/core/services/push_notification_service.dart';
 
 /// Despierta el backend apenas abre la app. Render (plan free) duerme tras
@@ -29,7 +30,9 @@ Future<void> _warmUpBackend() async {
   }
 }
 
-Future<void> main() async {
+Future<void> main() => runWithCrashReporting(_arrancar);
+
+Future<void> _arrancar() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es_CO');
 

@@ -10,6 +10,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:nexum_driver/app/app.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
+import 'package:nexum_driver/core/observability/crash_reporting.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 
 /// Despierta el backend apenas abre la app. Render (plan free) duerme tras
@@ -29,7 +30,9 @@ Future<void> _warmUpBackend() async {
   }
 }
 
-void main() async {
+Future<void> main() => runWithCrashReporting(_arrancar);
+
+Future<void> _arrancar() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Carga los datos de localización es_CO usados por DateFormatter y

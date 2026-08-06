@@ -54,7 +54,23 @@ base de datos PostgreSQL) y el `Dockerfile` (que en cada despliegue corre
 |---|---|
 | `S3_BUCKET` (+ `S3_*`) | Guardar los documentos de conductores en S3/R2. **Sin esto el disco de Render es efímero y los documentos se pierden en cada redeploy.** |
 | `GOOGLE_MAPS_API_KEY` | Autocompletado de direcciones, ETA y rutas reales (ver sección 1). |
-| `SENTRY_DSN` | Reporte de errores. |
+| `SENTRY_DSN` | Reporte de errores **del backend**. Para las apps van aparte, ver abajo. |
+
+> **Fallos de las apps.** El backend reportaba a Sentry desde hace tiempo, pero
+> cuando la app reventaba en el teléfono de alguien no se enteraba nadie — y la
+> mitad de los fallos que importan pasan ahí. Crea en Sentry **un proyecto
+> Flutter por app** y guarda sus DSN como secretos de GitHub:
+>
+> | Secreto | App |
+> |---|---|
+> | `SENTRY_DSN_CLIENTE` | ZIPA Cliente (`AppCliente`) |
+> | `SENTRY_DSN_DRIVER` | ZIPA Conductor (`AppTransport`) |
+>
+> Los workflows de APK, AAB, iOS y web los pasan por `--dart-define`. **Sin los
+> secretos configurados el build funciona igual** y las apps arrancan sin
+> reporte: nada se rompe, simplemente no se entera nadie de los fallos. No se
+> adjuntan capturas de pantalla ni jerarquía de widgets ni IP — un informe de
+> fallo no es sitio para direcciones de casa ni teléfonos.
 | `FIREBASE_SERVICE_ACCOUNT` | Push notifications reales (ver sección 2). |
 | `WOMPI_*` | Pagos con tarjeta/PSE/Nequi. |
 

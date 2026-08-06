@@ -48,11 +48,13 @@ jobs:
         env:
           API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
           WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN_CLIENTE }}
         run: |
           flutter build web --release --no-tree-shake-icons \
             --base-href /nexum-store/cliente/ \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
-            --dart-define=WS_BASE_URL=${WS_BASE_URL}
+            --dart-define=WS_BASE_URL=${WS_BASE_URL} \
+            --dart-define=SENTRY_DSN=${SENTRY_DSN}
 
       # ── Post-build patches ────────────────────────────────────────────────────
 

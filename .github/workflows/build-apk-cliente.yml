@@ -103,12 +103,14 @@ jobs:
         env:
           API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
           WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN_CLIENTE }}
         run: |
           flutter build apk --release \
             --build-number=${{ github.run_number }} \
             --dart-define=BUILD_TAG=${{ github.run_number }} \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
-            --dart-define=WS_BASE_URL=${WS_BASE_URL}
+            --dart-define=WS_BASE_URL=${WS_BASE_URL} \
+            --dart-define=SENTRY_DSN=${SENTRY_DSN}
 
       # ── 8. Build App Bundle (para Play Store) ────────────────────────────────
       - name: Build App Bundle (AAB)
@@ -116,11 +118,13 @@ jobs:
         env:
           API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
           WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN_CLIENTE }}
         run: |
           flutter build appbundle --release \
             --build-number=${{ github.run_number }} \
             --dart-define=API_BASE_URL=${API_BASE_URL} \
-            --dart-define=WS_BASE_URL=${WS_BASE_URL}
+            --dart-define=WS_BASE_URL=${WS_BASE_URL} \
+            --dart-define=SENTRY_DSN=${SENTRY_DSN}
 
       # ── 8b. Verificar la firma REAL del APK ──────────────────────────────────
       # El paso de configuración solo dice que escribió key.properties; esto

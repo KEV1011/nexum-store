@@ -27,6 +27,9 @@ dependencies:
   # HTTP client
   dio: ^5.7.0
 
+  # Reporte de fallos (solo activo si se compila con --dart-define=SENTRY_DSN)
+  sentry_flutter: ^9.26.0
+
   # Llamadas a emergencias (tel:123) y enlaces externos
   url_launcher: ^6.3.0
 
