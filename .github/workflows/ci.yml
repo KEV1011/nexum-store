@@ -7,6 +7,10 @@ on:
     branches: [main, 'claude/**']
   pull_request:
     branches: [main]
+  # Permite relanzar el CI a mano desde la pestaña Actions. Sin esto, la única
+  # forma de reintentar cuando GitHub deja un run colgado en cola era hacer un
+  # commit vacío solo para provocar un push.
+  workflow_dispatch:
 
 jobs:
   backend:
