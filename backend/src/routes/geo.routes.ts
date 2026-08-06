@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { listMunicipalities } from '../services/municipality.service';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';
+import { emitirTilePase, verificarTilePase, TILE_TICKET_TTL_S } from '../lib/tile-ticket';
 import { verifyClientToken } from '../services/client.service';
 import {
   autocomplete,
@@ -85,18 +86,46 @@ function handleGeoError(res: Response, err: unknown): void {
   res.status(502).json({ success: false, error: 'Geo service error' });
 }
 
+// GET /geo/tile-ticket — cambia una sesión (cliente, conductor o portal del
+// negocio) por un pase de dos horas que SOLO sirve para pedir tiles.
+//
+// Existe porque una capa de tiles no puede poner cabeceras: el permiso viaja en
+// la URL de cada imagen, y una panorámica son decenas. Antes ahí iba el JWT de
+// sesión de 30 días, que acaba en los logs de Render, en cualquier proxy y en
+// el historial. El pase, si se filtra, solo sirve para mirar mapas.
+router.get('/tile-ticket', async (req: Request, res: Response) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const bizToken = req.headers['x-business-token'];
+  const bizOk = typeof bizToken === 'string' && (await isValidBusinessToken(bizToken));
+
+  if (!bizOk && (!token || !isValidAnyToken(token))) {
+    res.status(401).json({ success: false, error: 'Sesión inválida o expirada' });
+    return;
+  }
+  res.json({
+    success: true,
+    data: { ticket: emitirTilePase(JWT_SECRET), expiresIn: TILE_TICKET_TTL_S },
+  });
+});
+
 // GET /geo/tile/:z/:x/:y — imagen REAL del mapa de Google (Map Tiles API),
-// proxeada con la key server-side. flutter_map pide esta URL como capa de
-// tiles. El token va por query (`?t=`) porque una capa de tiles no siempre
-// puede añadir el header Authorization; se acepta también por header.
+// proxeada con la key server-side. Acepta el pase por query (`?t=`) —la única
+// vía para una capa de tiles— o una sesión completa por cabecera, para quien sí
+// pueda mandarla. Lo que ya NO se acepta es la sesión por query: era filtrar el
+// token de 30 días en cada imagen.
 // Se declara ANTES del middleware de header porque hace su propia validación.
 router.get('/tile/:z/:x/:y', async (req: Request, res: Response) => {
   const authHeader = req.headers['authorization'];
-  const token =
-    (req.query['t'] as string | undefined) ??
-    (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined);
-  if (!token || (!isValidAnyToken(token) && !(await isValidBusinessToken(token)))) {
-    res.status(401).json({ success: false, error: 'Invalid or expired token' });
+  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const pase = req.query['t'] as string | undefined;
+
+  const autorizado =
+    verificarTilePase(JWT_SECRET, pase) ||
+    (!!headerToken && (isValidAnyToken(headerToken) || (await isValidBusinessToken(headerToken))));
+
+  if (!autorizado) {
+    res.status(401).json({ success: false, error: 'Pase de mapa inválido o expirado' });
     return;
   }
   const z = parseInt(req.params['z'] as string, 10);

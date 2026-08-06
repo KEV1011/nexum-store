@@ -62,7 +62,21 @@ app.use(
 // portales sirven imágenes de /uploads desde otros orígenes.
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: CORS_ORIGIN }));
-app.use(express.json());
+// Límite explícito de cuerpo. Sin él express.json() acepta 100 kB por defecto:
+// nadie lo había notado, pero el número tiene que ser una decisión y no una
+// casualidad de la librería. Ningún endpoint JSON de esta API necesita más de
+// unos pocos kB — las fotos van por multipart con su propio límite (upload.ts).
+//
+// La excepción es la carga masiva del catálogo: el CSV viaja como texto dentro
+// del JSON y un supermercado con miles de productos pasa del megabyte. Se le da
+// su propio límite en vez de subir el de toda la API, que es lo que convierte
+// un límite en un adorno.
+const CSV_CATALOGO = /^\/business\/[^/]+\/products\/csv-(preview|import)$/;
+const jsonNormal = express.json({ limit: process.env['JSON_BODY_LIMIT'] ?? '64kb' });
+const jsonCatalogo = express.json({ limit: process.env['JSON_CSV_LIMIT'] ?? '4mb' });
+app.use((req, res, next) =>
+  (CSV_CATALOGO.test(req.path) ? jsonCatalogo : jsonNormal)(req, res, next),
+);
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 // Registrado antes de los limitadores para que el health-check nunca se limite.
@@ -190,7 +204,10 @@ process.on('uncaughtException', (err) => {
 // ─── HTTP + WebSocket Server ──────────────────────────────────────────────────
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+// maxPayload: ningún mensaje legítimo de esta API pasa de unos pocos kB (el
+// mayor es un fix GPS con metadatos). Sin tope, `ws` acepta 100 MB por trama y
+// una sola conexión podría reservar esa memoria antes de que nadie la valide.
+const wss = new WebSocketServer({ server, maxPayload: 32 * 1024 });
 setupWebSocket(wss);
 
 server.listen(PORT, () => {

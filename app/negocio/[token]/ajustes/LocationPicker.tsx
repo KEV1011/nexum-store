@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapPin, Loader2, Check, Crosshair } from 'lucide-react'
+import { tilePase } from '@/app/empresa/leaflet'
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ??
@@ -95,12 +96,18 @@ export function LocationPicker({
           maxZoom: 19,
           attribution: '© OpenStreetMap',
         }).addTo(m)
-        L.tileLayer(
-          // El token del enlace del portal autoriza el proxy: sin él, cada
-          // tile respondía 401 y el mapa salía en blanco.
-          `${BACKEND_URL}/geo/tile/{z}/{x}/{y}?t=${encodeURIComponent(token)}`,
-          { maxZoom: 20, attribution: '© Google' },
-        ).addTo(m)
+        // El proxy se autoriza con un pase de dos horas, no con el token del
+        // enlace del portal: ese token es la llave permanente del negocio y
+        // ponerlo en la URL de cada tile lo dejaba escrito en los registros del
+        // servidor y en el historial. Mientras el pase llega —o si no llega—
+        // se ve la capa de OpenStreetMap de abajo.
+        void tilePase(BACKEND_URL, { businessToken: token }).then((pase) => {
+          if (cancelado || !pase || !mapRef.current) return
+          L.tileLayer(
+            `${BACKEND_URL}/geo/tile/{z}/{x}/{y}?t=${encodeURIComponent(pase)}`,
+            { maxZoom: 20, attribution: '© Google' },
+          ).addTo(mapRef.current)
+        })
         m.on('move', () => { centroRef.current = m.getCenter() })
         mapRef.current = m
       })

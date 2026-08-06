@@ -70,33 +70,69 @@ export function leaflet(): LStatic | null {
 }
 
 /**
- * Capa de tiles: mapa REAL de Google proxeado por el backend (`/geo/tile`, key
- * server-side) cuando hay token; si un tile falla (Render sin desplegar o
- * dormido, Map Tiles API sin habilitar) cae a OpenStreetMap para no dejar el
- * mapa en gris.
+ * Cambia una sesión por un pase de dos horas que solo sirve para pedir tiles.
+ *
+ * El permiso de una capa de tiles viaja en la URL de cada imagen —Leaflet monta
+ * `<img src>`, no puede poner cabeceras— y una panorámica son decenas. Metiendo
+ * ahí el token de sesión, este acababa en los registros del servidor, en
+ * cualquier proxy y en el historial del navegador. El pase, si se filtra, solo
+ * sirve para mirar mapas.
+ *
+ * `auth` distingue las dos sesiones del sistema: el JWT del portal de empresas
+ * y el token del enlace mágico del portal de negocios.
+ */
+export async function tilePase(
+  backendUrl: string,
+  auth: { bearer?: string | null; businessToken?: string | null },
+): Promise<string | null> {
+  try {
+    const headers: Record<string, string> = {}
+    if (auth.bearer) headers['Authorization'] = `Bearer ${auth.bearer}`
+    if (auth.businessToken) headers['X-Business-Token'] = auth.businessToken
+    const res = await fetch(`${backendUrl}/geo/tile-ticket`, { headers })
+    if (!res.ok) return null
+    const body = (await res.json()) as { data?: { ticket?: string } }
+    return body.data?.ticket ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Capa de tiles: OpenStreetMap de entrada y, en cuanto llega el pase, encima el
+ * mapa REAL de Google proxeado por el backend (`/geo/tile`, key server-side).
+ * Empezar por OSM en vez de esperar mantiene el mapa útil desde el primer
+ * instante; si Google falla —sin llave, sin cuota, pase vencido— la capa de
+ * arriba se retira y abajo sigue estando el mapa de siempre, nunca gris.
  */
 export function addTiles(
   L: LStatic,
   map: LMap,
   token: string | null | undefined,
   backendUrl: string | undefined,
+  auth: 'bearer' | 'business' = 'bearer',
 ): void {
-  if (!token || !backendUrl) {
-    L.tileLayer(OSM_URL, { maxZoom: 19 }).addTo(map)
-    return
-  }
-  const google = L.tileLayer(
-    `${backendUrl}/geo/tile/{z}/{x}/{y}?t=${encodeURIComponent(token)}`,
-    { maxZoom: 19 },
-  )
-  let fellBack = false
-  google.on('tileerror', () => {
-    if (fellBack) return
-    fellBack = true
-    google.remove()
-    L.tileLayer(OSM_URL, { maxZoom: 19 }).addTo(map)
+  const osm = L.tileLayer(OSM_URL, { maxZoom: 19 })
+  osm.addTo(map)
+  if (!token || !backendUrl) return
+
+  void tilePase(
+    backendUrl,
+    auth === 'business' ? { businessToken: token } : { bearer: token },
+  ).then((pase) => {
+    if (!pase) return
+    const google = L.tileLayer(
+      `${backendUrl}/geo/tile/{z}/{x}/{y}?t=${encodeURIComponent(pase)}`,
+      { maxZoom: 19 },
+    )
+    let cayo = false
+    google.on('tileerror', () => {
+      if (cayo) return
+      cayo = true
+      google.remove()
+    })
+    google.addTo(map)
   })
-  google.addTo(map)
 }
 
 export function escapeHtml(s: string): string {

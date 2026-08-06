@@ -1,6 +1,13 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { prisma } from '../lib/prisma';
+import {
+  AUTENTICACIONES,
+  CuotaSocket,
+  MS_PARA_AUTENTICARSE,
+  nuevaCuota,
+  registrarMensaje,
+} from './ws-throttle';
 import { verifyToken } from '../services/auth.service';
 import { verifyOperatorToken } from '../middleware/operator-auth.middleware';
 import { registerNotifyFleetsNewFreight } from '../services/freight.service';
@@ -766,6 +773,17 @@ async function handleTripChatSend(ws: WebSocket, tripId: string, text: string): 
 
 // ─── Message dispatcher ───────────────────────────────────────────────────────
 
+/** Cuota de mensajes por socket (se descarta sola al cerrarse la conexión). */
+const cuotas = new WeakMap<WebSocket, CuotaSocket>();
+
+/** Relojes de "identifícate o te cierro" por socket. */
+const relojesAuth = new WeakMap<WebSocket, NodeJS.Timeout>();
+
+function cancelarRelojAuth(ws: WebSocket): void {
+  const t = relojesAuth.get(ws);
+  if (t) { clearTimeout(t); relojesAuth.delete(ws); }
+}
+
 function onMessage(ws: WebSocket, raw: string): void {
   let msg: WsMessage;
   try {
@@ -774,6 +792,20 @@ function onMessage(ws: WebSocket, raw: string): void {
     sendTo(ws, { type: 'error', message: 'Invalid JSON' });
     return;
   }
+
+  // Cuota por socket antes de tocar la base: cada mensaje de aquí abajo abre
+  // una consulta, así que el freno tiene que estar delante, no dentro.
+  let cuota = cuotas.get(ws);
+  if (!cuota) { cuota = nuevaCuota(); cuotas.set(ws, cuota); }
+  const veredicto = registrarMensaje(cuota, String(msg['type'] ?? ''));
+  if (!veredicto.permitido) {
+    sendTo(ws, { type: 'error', message: veredicto.motivo });
+    if (veredicto.cortar) ws.close(1008, 'rate limit');
+    return;
+  }
+
+  // Un socket que se identifica ya no está en el reloj de los 30 segundos.
+  if (AUTENTICACIONES.has(String(msg['type'] ?? ''))) cancelarRelojAuth(ws);
 
   switch (msg['type']) {
 
@@ -1442,8 +1474,25 @@ export function setupWebSocket(wss: WebSocketServer): void {
 
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
     console.log('[WS] New connection');
+    // Un socket que no se identifica no sirve para nada. Sin este reloj, abrir
+    // conexiones mudas es gratis: no cuestan una consulta, no dejan rastro y
+    // se acumulan hasta agotar los descriptores del proceso.
+    relojesAuth.set(
+      ws,
+      setTimeout(() => {
+        if (ws.readyState === ws.OPEN) {
+          sendTo(ws, { type: 'error', message: 'Conexión sin identificar' });
+          ws.close(1008, 'auth timeout');
+        }
+        relojesAuth.delete(ws);
+      }, MS_PARA_AUTENTICARSE),
+    );
     ws.on('message', (data) => onMessage(ws, data.toString()));
-    ws.on('close', () => onClose(ws));
-    ws.on('error', (err) => { console.error('[WS] Error:', err.message); onClose(ws); });
+    ws.on('close', () => { cancelarRelojAuth(ws); onClose(ws); });
+    ws.on('error', (err) => {
+      console.error('[WS] Error:', err.message);
+      cancelarRelojAuth(ws);
+      onClose(ws);
+    });
   });
 }
