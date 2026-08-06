@@ -97,6 +97,14 @@ services:
       # URL pública del backend — Wompi redirige al usuario a /payment/result.
       - key: APP_URL
         value: https://nexum-api-trxr.onrender.com
+      # ── Piloto sin verificación ──────────────────────────────────────────
+      # En true los conductores reciben viajes sin documentos aprobados. Es un
+      # permiso, no un interruptor: exige fecha de fin (sin ella el servicio no
+      # arranca) y vencida la fecha la verificación vuelve a exigirse sola.
+      - key: PILOT_SKIP_VERIFICATION
+        value: "false"
+      - key: PILOT_SKIP_VERIFICATION_UNTIL
+        sync: false
 
 databases:
   - name: nexum-db

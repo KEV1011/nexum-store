@@ -11,6 +11,8 @@
 
 import { KycStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { NODE_ENV } from '../config/constants';
+import { evaluarPiloto } from '../lib/pilot-window';
 import { checkDriverBackground } from './background-check.service';
 
 export class KycError extends Error {}
@@ -32,9 +34,31 @@ export function kycEnforced(): boolean {
  * probar toda la cadena de despacho (viajes, pon-tu-precio, intermunicipal) en
  * el arranque, cuando aún no hay quién apruebe. APAGADO por defecto → en
  * producción se exige verificación como siempre.
+ *
+ * CADUCA: exige `PILOT_SKIP_VERIFICATION_UNTIL` (el arranque lo valida en
+ * config/constants.ts). Pasada esa fecha esta función vuelve a devolver false
+ * sola, sin que nadie tenga que acordarse del interruptor.
  */
 export function pilotSkipVerification(): boolean {
-  return (process.env['PILOT_SKIP_VERIFICATION'] ?? 'false').toLowerCase() === 'true';
+  return estadoPiloto().activo;
+}
+
+/** Estado completo del piloto, para /health y el panel. */
+export function estadoPiloto(): {
+  activo: boolean;
+  vencido: boolean;
+  hasta: string | null;
+  diasRestantes: number | null;
+} {
+  const v = evaluarPiloto({
+    production: NODE_ENV === 'production',
+    encendido: (process.env['PILOT_SKIP_VERIFICATION'] ?? 'false').toLowerCase() === 'true',
+    hasta: process.env['PILOT_SKIP_VERIFICATION_UNTIL'],
+    ahora: new Date(),
+  });
+  if ('abortar' in v) return { activo: false, vencido: false, hasta: null, diasRestantes: null };
+  if (!v.activo) return { activo: false, vencido: v.vencido, hasta: v.hasta, diasRestantes: null };
+  return { activo: true, vencido: false, hasta: v.hasta, diasRestantes: v.diasRestantes };
 }
 
 export interface KycStatusDTO {

@@ -198,10 +198,25 @@ viajes sin que le revises cédula, licencia, SOAT ni tarjeta** — se salta incl
 el KYC. Es útil para arrancar con conductores que conoces; es un riesgo legal y
 de seguridad con público abierto.
 
-**Antes de apagarlo**, aprueba desde `/admin` los documentos de tus conductores
-reales, o se quedarán sin recibir servicios.
+**Este permiso caduca solo.** Encenderlo obliga a decir hasta cuándo:
 
-**Comprobar:** `/health` → `"pilotSkipVerification":false`.
+```
+PILOT_SKIP_VERIFICATION=true
+PILOT_SKIP_VERIFICATION_UNTIL=2026-09-05      # YYYY-MM-DD, hasta el final de ese día
+```
+
+Sin la fecha, **el servicio no arranca** (un permiso así no puede quedarse
+encendido por olvido). Llegada la fecha, la verificación vuelve a exigirse sola
+y el servicio sigue corriendo — falla del lado seguro, no se cae.
+
+**Antes de que caduque**, aprueba desde `/admin` los documentos de tus
+conductores reales, o se quedarán sin recibir servicios. El panel te lo
+recuerda: la pestaña Métricas muestra en rojo cuántos conductores están en
+línea o en viaje **sin documentos revisados** y cuántos días quedan.
+
+**Comprobar:** `/health` → `"pilotSkipVerification":false`
+(mientras esté activo trae también `pilotSkipVerificationUntil` y
+`pilotSkipVerificationDaysLeft`).
 
 ### 7b. Otros interruptores a considerar
 

@@ -2,6 +2,7 @@ import { OperatorStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
+import { estadoPiloto } from './kyc.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin service — métricas operativas y listados para el panel /admin.
@@ -27,6 +28,20 @@ export interface AdminMetrics {
     verified: number;
     onlineNow: number;
     pendingDocuments: number;
+    /**
+     * Conductores conectados AHORA sin verificar. Fuera del piloto es siempre 0
+     * (el matching los excluye); con el piloto encendido es el número exacto de
+     * personas transportando pasajeros sin que nadie revisara sus papeles —
+     * el dato que convierte "el interruptor está en true" en una decisión.
+     */
+    unverifiedOperatingNow: number;
+  };
+  /** Estado del piloto sin verificación, para el aviso del panel. */
+  pilot: {
+    active: boolean;
+    expired: boolean;
+    until: string | null;
+    daysLeft: number | null;
   };
   users: {
     total: number;
@@ -64,6 +79,7 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     usersTotal,
     usersToday,
     sosLast24h,
+    unverifiedOperatingNow,
   ] = await Promise.all([
     prisma.trip.count({ where: { createdAt: { gte: today } } }),
     prisma.trip.aggregate({
@@ -85,7 +101,12 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     prisma.user.count(),
     prisma.user.count({ where: { createdAt: { gte: today } } }),
     prisma.emergencyEvent.count({ where: { createdAt: { gte: last24h } } }),
+    prisma.driver.count({
+      where: { isVerified: false, status: { in: ['ONLINE', 'ON_TRIP'] } },
+    }),
   ]);
+
+  const piloto = estadoPiloto();
 
   return {
     trips: {
@@ -105,9 +126,16 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
       verified: driversVerified,
       onlineNow: driversOnline,
       pendingDocuments: pendingDocs,
+      unverifiedOperatingNow,
     },
     users: { total: usersTotal, newToday: usersToday },
     safety: { sosLast24h },
+    pilot: {
+      active: piloto.activo,
+      expired: piloto.vencido,
+      until: piloto.hasta,
+      daysLeft: piloto.diasRestantes,
+    },
   };
 }
 

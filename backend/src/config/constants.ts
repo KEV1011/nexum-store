@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { Driver, Passenger, Location } from '../types';
 import { evaluarOtp, sanearCodigo } from '../lib/otp-guard';
+import { evaluarPiloto } from '../lib/pilot-window';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -71,6 +72,37 @@ if (_veredictoOtp.riesgo) {
     '\n══════════════════════════════════════════════════════════════════\n' +
       '  ⚠  ' + _veredictoOtp.aviso + '\n' +
       '══════════════════════════════════════════════════════════════════\n',
+  );
+}
+
+// ─── Piloto sin verificación: un permiso, no un interruptor ──────────────────
+//
+// PILOT_SKIP_VERIFICATION deja despachar a conductores sin cédula, licencia ni
+// SOAT aprobados. Encenderlo exige decir hasta cuándo: la regla y el porqué
+// están en lib/pilot-window.ts. Aquí solo se aborta si la configuración es
+// inválida — una fecha ya pasada no aborta, simplemente apaga el piloto.
+
+const _veredictoPiloto = evaluarPiloto({
+  production: NODE_ENV === 'production',
+  encendido: (process.env['PILOT_SKIP_VERIFICATION'] ?? 'false').toLowerCase() === 'true',
+  hasta: process.env['PILOT_SKIP_VERIFICATION_UNTIL'],
+  ahora: new Date(),
+});
+
+if ('abortar' in _veredictoPiloto) throw new Error(_veredictoPiloto.abortar);
+if (_veredictoPiloto.activo) {
+  console.warn(
+    `\n══════════════════════════════════════════════════════════════════\n` +
+      `  ⚠  PILOTO SIN VERIFICACIÓN ACTIVO — caduca en ` +
+      `${_veredictoPiloto.diasRestantes} día(s) (${_veredictoPiloto.hasta.slice(0, 10)}).\n` +
+      `     Los conductores reciben viajes sin documentos aprobados.\n` +
+      `══════════════════════════════════════════════════════════════════\n`,
+  );
+} else if (_veredictoPiloto.vencido) {
+  console.warn(
+    `[Piloto] PILOT_SKIP_VERIFICATION venció el ${_veredictoPiloto.hasta?.slice(0, 10)}: ` +
+      'la verificación de conductores vuelve a exigirse. Aprueba sus documentos ' +
+      'en /admin o quedarán sin recibir servicios.',
   );
 }
 

@@ -15,7 +15,7 @@ import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
 import { otpMode, otpEnRiesgo } from './services/otp.service';
-import { kycProviderName, kycEnforced, pilotSkipVerification } from './services/kyc.service';
+import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
 import { purgeOldTrackPoints, pruneTrackState } from './services/track.service';
@@ -92,6 +92,7 @@ app.get('/health', async (_req, res) => {
   // (¿qué build corre Render? ¿qué código de login espera?). No expone secretos:
   // solo el MODO, nunca el valor del código.
   const modes = otpMode();
+  const piloto = estadoPiloto();
   res.status(200).json({
     status: 'ok',
     db,
@@ -116,8 +117,11 @@ app.get('/health', async (_req, res) => {
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),
     // Clickwrap legal: 'activo' = el registro exige aceptar términos.
     legalConsent: legalConsentEnforced() ? 'activo' : 'apagado',
-    // Piloto: si está activo, el despacho ignora la verificación (probar arranque).
-    pilotSkipVerification: pilotSkipVerification(),
+    // Piloto: si está activo, el despacho ignora la verificación. Caduca solo
+    // — la fecha y los días restantes van aquí para que no se olvide encendido.
+    pilotSkipVerification: piloto.activo,
+    pilotSkipVerificationUntil: piloto.hasta,
+    pilotSkipVerificationDaysLeft: piloto.diasRestantes,
   });
 });
 

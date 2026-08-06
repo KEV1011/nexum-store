@@ -683,6 +683,7 @@ const PANEL_HTML = `<!DOCTYPE html>
     </nav>
 
     <section id="tab-metrics">
+      <div id="pilot-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #7f1d1d;background:#450a0a;border-radius:10px;color:#fecaca;font-size:.85rem;line-height:1.5"></div>
       <div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div>
       <h3 style="margin:22px 0 10px">Estado de las integraciones</h3>
       <p style="color:#94a3b8;font-size:13px;margin:0 0 10px">
@@ -946,7 +947,34 @@ function loadMetrics() {
       [m.users.total + ' (+' + m.users.newToday + ' hoy)', 'Usuarios'],
       [m.safety.sosLast24h, 'SOS últimas 24 h'],
     ].map(([v, l]) => '<div class="metric"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('');
+    pintarPiloto(m);
   }).catch((e) => showMsg(e.message, true));
+}
+
+// El piloto sin verificación, con cara y números. "PILOT_SKIP_VERIFICATION
+// está en true" no le dice nada a nadie; "9 conductores transportando
+// pasajeros ahora mismo sin documentos revisados, caduca en 4 días" sí.
+function pintarPiloto(m) {
+  const box = document.getElementById('pilot-warn');
+  const p = m.pilot || {};
+  const sinVerificar = m.drivers.unverifiedOperatingNow || 0;
+  if (!p.active && !p.expired) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  if (p.expired) {
+    box.style.borderColor = '#78350f'; box.style.background = '#451a03'; box.style.color = '#fed7aa';
+    box.innerHTML = '<strong>El piloto sin verificación venció</strong> el ' +
+      esc(String(p.until || '').slice(0, 10)) + '. La verificación vuelve a exigirse: los ' +
+      'conductores sin documentos aprobados ya no reciben servicios. Apruébalos en la ' +
+      'pestaña Verificaciones o quita PILOT_SKIP_VERIFICATION en Render.';
+    return;
+  }
+  box.style.borderColor = '#7f1d1d'; box.style.background = '#450a0a'; box.style.color = '#fecaca';
+  box.innerHTML = '<strong>⚠ Piloto sin verificación ACTIVO</strong> — caduca el ' +
+    esc(String(p.until || '').slice(0, 10)) +
+    (typeof p.daysLeft === 'number' ? ' (en ' + p.daysLeft + ' día' + (p.daysLeft === 1 ? '' : 's') + ')' : '') +
+    '.<div style="margin-top:6px">Ahora mismo hay <strong>' + sinVerificar + '</strong> conductor' +
+    (sinVerificar === 1 ? '' : 'es') + ' en línea o en viaje <strong>sin documentos revisados</strong>. ' +
+    'Aprueba sus papeles en Verificaciones antes de que caduque, o se quedarán sin recibir servicios.</div>';
 }
 
 // Diagnóstico real de integraciones (fotos y SMS). Sin argumentos en el
