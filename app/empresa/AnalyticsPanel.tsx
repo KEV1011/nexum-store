@@ -22,6 +22,7 @@ interface Analytics {
 
 const SERVICE_LABEL: Record<string, string> = {
   VIAJE: 'Viajes', INTERMUNICIPAL: 'Intermunicipal', MANDADO: 'Mandados', PEDIDO: 'Pedidos', FLETE: 'Fletes',
+  CARGA: 'Carga',
 }
 const TYPE_LABEL: Record<string, string> = {
   TAXI: 'Taxi', PARTICULAR: 'Particular', MOTO: 'Moto', TURBO: 'Turbo', CAMION: 'Camión', MULA: 'Mula',

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Users, UserPlus, ShieldCheck, Clock, Star, Loader2, UserMinus } from 'lucide-react'
+import { Users, UserPlus, ShieldCheck, Clock, Star, Loader2, UserMinus, AlertTriangle, Route } from 'lucide-react'
 import type { OperatorApi } from './api'
 
 interface OperatorDriver {
@@ -13,6 +13,11 @@ interface OperatorDriver {
   rating: number
   totalTrips: number
   employmentType: string | null // OWN | AFFILIATED
+  // Por qué no le llega trabajo: sin esto la empresa veía "verificado, en línea"
+  // y ninguna pista de que el kill-switch documental lo sacó del despacho.
+  complianceStatus?: string | null // CLEAR | EXPIRING | BLOCKED
+  blockedReason?: string | null
+  intercityEnabled?: boolean
 }
 
 const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
@@ -151,13 +156,35 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
                     )}
                   </p>
                 </div>
-                {d.isVerified ? (
+                {d.complianceStatus === 'BLOCKED' ? (
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 shrink-0"
+                    title={d.blockedReason || 'Tiene documentos vencidos: no recibe servicios hasta renovarlos en la app.'}
+                  >
+                    <AlertTriangle className="w-3 h-3" /> Docs vencidos
+                  </span>
+                ) : d.complianceStatus === 'EXPIRING' ? (
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 shrink-0"
+                    title="Algún documento está por vencer. Renuévalo antes de que deje de recibir servicios."
+                  >
+                    <Clock className="w-3 h-3" /> Por vencer
+                  </span>
+                ) : d.isVerified ? (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shrink-0">
                     <ShieldCheck className="w-3 h-3" /> Verificado
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 shrink-0" title="Debe completar sus documentos en la app para poder operar">
                     <Clock className="w-3 h-3" /> Docs pendientes
+                  </span>
+                )}
+                {d.intercityEnabled && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 shrink-0"
+                    title="Recibe viajes intermunicipales"
+                  >
+                    <Route className="w-3 h-3" /> Intermunicipal
                   </span>
                 )}
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 ${st.cls}`}>{st.label}</span>

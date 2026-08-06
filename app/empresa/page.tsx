@@ -105,7 +105,7 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
 
 const SERVICE_LABEL: Record<string, string> = {
   TAXI: 'Taxi', MOTO: 'Moto', PARTICULAR: 'Particular', ENVIOS: 'Envío', MANDADO: 'Mandado',
-  PEDIDO: 'Pedido', INTERCITY: 'Intermunicipal', FLETE: 'Flete',
+  PEDIDO: 'Pedido', INTERCITY: 'Intermunicipal', FLETE: 'Flete', CARGA: 'Viaje de carga',
 }
 
 const TRIP_STATUS_STYLE: Record<string, { label: string; cls: string }> = {
@@ -113,9 +113,12 @@ const TRIP_STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   CANCELLED: { label: 'Cancelado', cls: 'bg-rose-100 text-rose-600' },
   SEARCHING: { label: 'Buscando', cls: 'bg-amber-100 text-amber-700' },
   DRIVER_FOUND: { label: 'Contraoferta', cls: 'bg-amber-100 text-amber-700' },
+  // Viajes de carga: nacen en borrador y salen al despacharse.
+  DRAFT: { label: 'Borrador', cls: 'bg-slate-100 text-slate-500' },
 }
 const TRIP_IN_PROGRESS: Record<string, true> = {
   ACCEPTED: true, ARRIVING: true, ARRIVED: true, IN_PROGRESS: true, CONFIRMED: true,
+  DISPATCHED: true,
 }
 function tripStatusStyle(status: string): { label: string; cls: string } {
   const known = TRIP_STATUS_STYLE[status]

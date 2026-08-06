@@ -53,7 +53,7 @@ interface VehicleEfficiency {
 
 const SERVICE_LABEL: Record<string, string> = {
   VIAJE: 'Viajes', INTERMUNICIPAL: 'Intermunicipal', MANDADO: 'Mandados',
-  PEDIDO: 'Pedidos', FLETE: 'Fletes',
+  PEDIDO: 'Pedidos', FLETE: 'Fletes', CARGA: 'Carga',
 }
 
 function cop(n: number) {

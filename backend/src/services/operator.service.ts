@@ -233,6 +233,13 @@ export async function listOperatorDrivers(operatorId: string) {
       rating: true,
       totalTrips: true,
       employmentType: true,
+      // Por qué un conductor no recibe servicios. Sin estos tres campos la
+      // empresa veía "verificado, en línea" y ninguna pista: con los documentos
+      // vencidos el kill-switch lo saca del matching sin que el portal lo diga,
+      // y sin intermunicipal habilitado no le llega ninguna troncal.
+      complianceStatus: true,
+      blockedReason: true,
+      intercityEnabled: true,
     },
   });
 }
@@ -455,7 +462,8 @@ export async function listOperatorTrips(
     // Fletes de carga: para una empresa de carga es SU negocio, y quedaba
     // fuera del reporte con el que cierra el mes.
     prisma.freightRequest.findMany({
-      where: { operatorId, ...rango },
+      // Un flete con viaje se lista COMO VIAJE: aparecería dos veces si no.
+      where: { operatorId, ...rango, cargoTripId: null },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -491,7 +499,7 @@ export async function listOperatorTrips(
       _count: true,
     }),
     prisma.freightRequest.aggregate({
-      where: { operatorId, ...rango, status: 'COMPLETED' },
+      where: { operatorId, ...rango, status: 'COMPLETED', cargoTripId: null },
       _sum: { finalPrice: true },
       _count: true,
     }),
@@ -499,7 +507,32 @@ export async function listOperatorTrips(
     prisma.intercityBooking.count({ where: { operatorId, ...rango } }),
     prisma.errand.count({ where: { operatorId, ...rango } }),
     prisma.order.count({ where: { operatorId, ...rango } }),
-    prisma.freightRequest.count({ where: { operatorId, ...rango } }),
+    prisma.freightRequest.count({ where: { operatorId, ...rango, cargoTripId: null } }),
+  ]);
+
+  // Viajes de carga: desde la unificación son la unidad de trabajo de una
+  // empresa de carga, y el que se crea a mano en el portal (el flujo del
+  // documento en papel) no nace de ningún flete. Sin esto, una flota cerraba
+  // el mes con su negocio entero fuera del reporte y del CSV.
+  const [cargoRows, cargoAgg, cargoTotal] = await Promise.all([
+    prisma.cargoTrip.findMany({
+      where: { operatorId, ...rango },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true, number: true, status: true, isUrban: true,
+        originCity: true, originPlace: true, destCity: true,
+        freightAmount: true, driverId: true, driverName: true,
+        createdAt: true, completedAt: true,
+        manifests: { where: { status: { not: 'CANCELLED' } }, select: { clientCity: true }, take: 1 },
+      },
+    }),
+    prisma.cargoTrip.aggregate({
+      where: { operatorId, ...rango, status: 'COMPLETED' },
+      _sum: { freightAmount: true },
+      _count: true,
+    }),
+    prisma.cargoTrip.count({ where: { operatorId, ...rango } }),
   ]);
 
   const urban: OperatorTripDTO[] = rows.map((t) => ({
@@ -589,24 +622,42 @@ export async function listOperatorTrips(
     completedAt: f.completedAt?.toISOString() ?? null,
   }));
 
-  // Fusión urbano + intermunicipal + mandados + pedidos + fletes, recientes primero.
-  const trips = [...urban, ...intercity, ...errands, ...orders, ...freights]
+  const cargo: OperatorTripDTO[] = cargoRows.map((t) => ({
+    id: t.id,
+    status: t.status,
+    serviceType: 'CARGA',
+    originAddress: [t.originCity, t.originPlace].filter(Boolean).join(' · '),
+    // El destino del viaje: el declarado manda y, si no lo hay, la ciudad de la
+    // primera línea de mercancía — que es a donde va el camión.
+    destAddress: t.destCity ?? t.manifests[0]?.clientCity ?? (t.isUrban ? 'Acarreo urbano' : ''),
+    fare: t.freightAmount ?? 0,
+    distanceKm: null,
+    driverId: t.driverId,
+    driverName: t.driverName,
+    createdAt: t.createdAt.toISOString(),
+    completedAt: t.completedAt?.toISOString() ?? null,
+  }));
+
+  // Fusión urbano + intermunicipal + mandados + pedidos + fletes + carga,
+  // recientes primero.
+  const trips = [...urban, ...intercity, ...errands, ...orders, ...freights, ...cargo]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit);
 
   return {
     trips,
     summary: {
-      total: total + intercityTotal + errandTotal + orderTotal + freightTotal,
+      total: total + intercityTotal + errandTotal + orderTotal + freightTotal + cargoTotal,
       completed:
         completedAgg._count + intercityAgg._count + errandAgg._count + orderAgg._count +
-        freightAgg._count,
+        freightAgg._count + cargoAgg._count,
       grossFare:
         (completedAgg._sum.finalFare ?? 0) +
         (intercityAgg._sum.finalFare ?? 0) +
         (errandAgg._sum.serviceFee ?? 0) +
         (orderAgg._sum.deliveryFee ?? 0) +
-        (freightAgg._sum.finalPrice ?? 0),
+        (freightAgg._sum.finalPrice ?? 0) +
+        (cargoAgg._sum.freightAmount ?? 0),
     },
   };
 }
@@ -642,7 +693,7 @@ export async function exportOperatorTripsCsv(
   to?: string,
 ): Promise<string> {
   const rango = rangoFechas(from, to);
-  const [rows, intercityRows, errandRows, orderRows, freightRows] = await Promise.all([
+  const [rows, intercityRows, errandRows, orderRows, freightRows, cargoRows] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId, ...rango },
       orderBy: { createdAt: 'desc' },
@@ -711,9 +762,10 @@ export async function exportOperatorTripsCsv(
       },
     }),
     // Fletes de carga: sin ellos el CSV con el que se cierra el mes deja fuera
-    // el negocio entero de una empresa de carga.
+    // el negocio entero de una empresa de carga. Los que ya tienen viaje se
+    // exportan COMO VIAJE (abajo): contarlos aquí también duplicaría la plata.
     prisma.freightRequest.findMany({
-      where: { operatorId, ...rango },
+      where: { operatorId, ...rango, cargoTripId: null },
       orderBy: { createdAt: 'desc' },
       take: 1000,
       select: {
@@ -728,28 +780,50 @@ export async function exportOperatorTripsCsv(
         completedAt: true,
       },
     }),
+    // Viajes de carga (los del portal, que no nacen de ningún flete).
+    prisma.cargoTrip.findMany({
+      where: { operatorId, ...rango },
+      orderBy: { createdAt: 'desc' },
+      take: 1000,
+      select: {
+        id: true, number: true, status: true, isUrban: true,
+        originCity: true, originPlace: true, destCity: true,
+        freightAmount: true, driverName: true,
+        createdAt: true, completedAt: true,
+        manifests: { where: { status: { not: 'CANCELLED' } }, select: { clientCity: true }, take: 1 },
+      },
+    }),
   ]);
 
   // Nombre del conductor y gastos de ruta de esos fletes (una consulta por lote).
   const fDriverIds = [...new Set(freightRows.map((f) => f.driverId).filter((v): v is string => !!v))];
   const fIds = freightRows.map((f) => f.id);
+  const cIds = cargoRows.map((t) => t.id);
   const [fDrivers, fEvents] = await Promise.all([
     fDriverIds.length
       ? prisma.driver.findMany({ where: { id: { in: fDriverIds } }, select: { id: true, name: true } })
       : Promise.resolve([] as { id: string; name: string }[]),
-    fIds.length
+    fIds.length || cIds.length
       ? prisma.freightEvent.findMany({
-          where: { freightId: { in: fIds } },
-          select: { freightId: true, type: true, amountCop: true },
+          where: { OR: [{ freightId: { in: fIds } }, { cargoTripId: { in: cIds } }] },
+          select: { freightId: true, cargoTripId: true, type: true, amountCop: true },
         })
-      : Promise.resolve([] as { freightId: string | null; type: string; amountCop: number | null }[]),
+      : Promise.resolve(
+          [] as {
+            freightId: string | null; cargoTripId: string | null;
+            type: string; amountCop: number | null;
+          }[],
+        ),
   ]);
   const fDriverName = new Map(fDrivers.map((d) => [d.id, d.name]));
+  // Un gasto cuelga del viaje o del flete: se indexa por el que traiga, y el
+  // viaje manda cuando trae los dos (es la unidad desde la unificación).
   const fCost = new Map<string, number>();
   for (const e of fEvents) {
     const monto = e.amountCop ?? 0;
-    if (!(monto > 0) || !requiresAmount(e.type) || !e.freightId) continue;
-    fCost.set(e.freightId, (fCost.get(e.freightId) ?? 0) + monto);
+    const clave = e.cargoTripId ?? e.freightId;
+    if (!(monto > 0) || !requiresAmount(e.type) || !clave) continue;
+    fCost.set(clave, (fCost.get(clave) ?? 0) + monto);
   }
 
   type CsvRow = { createdAt: Date; cols: string[] };
@@ -838,11 +912,29 @@ export async function exportOperatorTripsCsv(
     ],
   }));
 
+  const cargo: CsvRow[] = cargoRows.map((t) => ({
+    createdAt: t.createdAt,
+    cols: [
+      // La referencia del viaje es su consecutivo, como en el papel.
+      `Viaje ${t.number}`,
+      t.status,
+      'CARGA',
+      [t.originCity, t.originPlace].filter(Boolean).join(' · '),
+      t.destCity ?? t.manifests[0]?.clientCity ?? (t.isUrban ? 'Acarreo urbano' : ''),
+      t.driverName ?? '',
+      '',
+      String(Math.round(t.freightAmount ?? 0)),
+      String(Math.round(fCost.get(t.id) ?? 0)),
+      t.createdAt.toISOString(),
+      t.completedAt?.toISOString() ?? '',
+    ],
+  }));
+
   const header = [
     'Referencia', 'Estado', 'Servicio', 'Origen', 'Destino',
     'Conductor', 'Distancia_km', 'Tarifa_COP', 'Gastos_COP', 'Creado', 'Completado',
   ];
-  const lines = [...urban, ...intercity, ...errands, ...orders, ...freights]
+  const lines = [...urban, ...intercity, ...errands, ...orders, ...freights, ...cargo]
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map((r) => r.cols);
 

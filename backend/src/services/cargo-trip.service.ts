@@ -31,6 +31,8 @@ type TripConLineas = Prisma.CargoTripGetPayload<{ include: typeof _incluirLineas
 export interface CreateCargoTripDTO {
   originCity: string;
   originPlace?: string;
+  /** A dónde va el camión. Sin esto el reporte y el CSV salen sin destino. */
+  destCity?: string;
   weightKg?: number;
   /** Valor del flete de este viaje: lo que se le cobra al cliente. */
   freightAmount?: number;
@@ -38,6 +40,12 @@ export interface CreateCargoTripDTO {
   driverId?: string;
   vehicleId?: string;
   scheduledAt?: string;
+  /**
+   * Fecha comprometida de entrega. "Llegó tarde" es una opinión hasta que hay
+   * una hora contra la cual medir: sin esto el cumplimiento de un viaje creado
+   * en el portal no se puede calcular nunca.
+   */
+  promisedAt?: string;
   notes?: string;
 }
 
@@ -122,12 +130,14 @@ export async function createCargoTrip(
       number: await _siguienteNumero(operatorId),
       originCity: dto.originCity.trim(),
       originPlace: dto.originPlace?.trim() || null,
+      destCity: dto.destCity?.trim() || null,
       weightKg: dto.weightKg ?? null,
       freightAmount: dto.freightAmount ?? null,
       isUrban: dto.isUrban ?? false,
       driverId: dto.driverId || null,
       vehicleId: dto.vehicleId || null,
       scheduledAt: _fecha(dto.scheduledAt, 'fecha programada'),
+      promisedAt: _fecha(dto.promisedAt, 'fecha comprometida'),
       notes: dto.notes?.trim() || null,
     },
     include: _incluirLineas,
@@ -207,12 +217,14 @@ export async function updateCargoTrip(
     data: {
       ...(dto.originCity !== undefined ? { originCity: dto.originCity.trim() } : {}),
       ...(dto.originPlace !== undefined ? { originPlace: dto.originPlace?.trim() || null } : {}),
+      ...(dto.destCity !== undefined ? { destCity: dto.destCity?.trim() || null } : {}),
       ...(dto.weightKg !== undefined ? { weightKg: dto.weightKg ?? null } : {}),
       ...(dto.freightAmount !== undefined ? { freightAmount: dto.freightAmount ?? null } : {}),
       ...(dto.isUrban !== undefined ? { isUrban: dto.isUrban } : {}),
       ...(dto.driverId !== undefined ? { driverId: dto.driverId || null } : {}),
       ...(dto.vehicleId !== undefined ? { vehicleId: dto.vehicleId || null } : {}),
       ...(dto.scheduledAt !== undefined ? { scheduledAt: _fecha(dto.scheduledAt, 'fecha programada') } : {}),
+      ...(dto.promisedAt !== undefined ? { promisedAt: _fecha(dto.promisedAt, 'fecha comprometida') } : {}),
       ...(dto.notes !== undefined ? { notes: dto.notes?.trim() || null } : {}),
     },
   });
@@ -318,6 +330,11 @@ export async function setCargoTripStatus(
       data: {
         status: 'DISPATCHED',
         dispatchedAt: new Date(),
+        // Despachar ES la salida cuando el viaje se crea en el portal: no hay
+        // un "aceptar" previo como en el flete del marketplace. Sin sellarla,
+        // la espera y el tiempo en ruta salían siempre en blanco en el informe.
+        // Se respeta la que ya traiga (un flete que arrancó por su ciclo).
+        startedAt: t.startedAt ?? new Date(),
         driverName: d?.name ?? t.driverName,
         vehiclePlate: v?.plate ?? t.vehiclePlate,
       },

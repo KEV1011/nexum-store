@@ -178,6 +178,8 @@ function NuevoViaje({
 }) {
   const [originCity, setOriginCity] = useState('')
   const [originPlace, setOriginPlace] = useState('')
+  const [destCity, setDestCity] = useState('')
+  const [promisedAt, setPromisedAt] = useState('')
   const [weightKg, setWeightKg] = useState('')
   const [freightAmount, setFreightAmount] = useState('')
   const [isUrban, setIsUrban] = useState(false)
@@ -190,6 +192,21 @@ function NuevoViaje({
       <div className="grid sm:grid-cols-2 gap-2.5">
         <Campo label="Ciudad de origen *" value={originCity} onChange={setOriginCity} placeholder="BOGOTA" />
         <Campo label="Bodega / punto de salida" value={originPlace} onChange={setOriginPlace} placeholder="MADRID" />
+        <Campo label="Ciudad de destino" value={destCity} onChange={setDestCity} placeholder="CUCUTA" />
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+            Entrega comprometida
+          </label>
+          <input
+            type="datetime-local"
+            value={promisedAt}
+            onChange={(e) => setPromisedAt(e.target.value)}
+            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"
+          />
+          {/* Sin fecha comprometida el informe no puede decir si llegó a tiempo:
+              "se demoró" queda en opinión de cada parte. */}
+          <p className="text-[10px] text-slate-400 mt-0.5">Opcional. Es contra lo que se mide el cumplimiento.</p>
+        </div>
         <Campo label="Peso total del camión (kg)" value={weightKg} onChange={setWeightKg} placeholder="11000" tipo="number" />
         <Campo label="Valor del flete (COP)" value={freightAmount} onChange={setFreightAmount} placeholder="2500000" tipo="number" />
         <div>
@@ -223,6 +240,8 @@ function NuevoViaje({
             await onCrear({
               originCity: originCity.trim(),
               originPlace: originPlace.trim() || undefined,
+              destCity: destCity.trim() || undefined,
+              promisedAt: promisedAt ? new Date(promisedAt).toISOString() : undefined,
               weightKg: weightKg ? Number(weightKg) : undefined,
               freightAmount: freightAmount ? Number(freightAmount) : undefined,
               isUrban,
