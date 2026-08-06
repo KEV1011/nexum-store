@@ -125,7 +125,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         title: const Text('Eliminar mi cuenta'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => safeBack(context, '/home'),
+          onPressed: () => safeBack(context),
         ),
       ),
       body: _cargando
