@@ -683,6 +683,7 @@ const PANEL_HTML = `<!DOCTYPE html>
     </nav>
 
     <section id="tab-metrics">
+      <div id="stuck-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #78350f;background:#451a03;border-radius:10px;color:#fed7aa;font-size:.85rem;line-height:1.5"></div>
       <div id="pilot-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #7f1d1d;background:#450a0a;border-radius:10px;color:#fecaca;font-size:.85rem;line-height:1.5"></div>
       <div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div>
       <h3 style="margin:22px 0 10px">Estado de las integraciones</h3>
@@ -948,7 +949,30 @@ function loadMetrics() {
       [m.safety.sosLast24h, 'SOS últimas 24 h'],
     ].map(([v, l]) => '<div class="metric"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('');
     pintarPiloto(m);
+    pintarAtascados(m);
   }).catch((e) => showMsg(e.message, true));
+}
+
+// Servicios que llevan demasiado tiempo pidiendo conductor. Lo normal es cero:
+// el despacho insiste diez minutos y luego avisa a las partes. Un número aquí
+// es alguien esperando de quien nadie se ha enterado — y hasta ahora la única
+// forma de saberlo era que llamara enfadado.
+function pintarAtascados(m) {
+  const box = document.getElementById('stuck-warn');
+  const s = m.stuck || {};
+  if (!s.total) { box.style.display = 'none'; return; }
+  const partes = [];
+  if (s.viaje) partes.push(s.viaje + ' viaje' + (s.viaje === 1 ? '' : 's'));
+  if (s.mandado) partes.push(s.mandado + ' mandado' + (s.mandado === 1 ? '' : 's'));
+  if (s.pedido) partes.push(s.pedido + ' pedido' + (s.pedido === 1 ? '' : 's'));
+  if (s.intermunicipal) partes.push(s.intermunicipal + ' intermunicipal' + (s.intermunicipal === 1 ? '' : 'es'));
+  box.style.display = 'block';
+  box.innerHTML = '<strong>⏳ El despacho tiene ' + s.total + ' servicio' +
+    (s.total === 1 ? '' : 's') + ' sin conductor</strong> desde hace más de ' +
+    esc(String(s.desdeMin)) + ' minutos: ' + esc(partes.join(' · ')) +
+    '.<div style="margin-top:6px">Alguien está esperando. Mira si hay conductores en línea en la zona ' +
+    '(pestaña Conductores → Diagnóstico de despacho); el sistema reintenta solo, ' +
+    'pero si no hay nadie conectado no va a aparecer de la nada.</div>';
 }
 
 // El piloto sin verificación, con cara y números. "PILOT_SKIP_VERIFICATION

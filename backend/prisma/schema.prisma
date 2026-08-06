@@ -743,6 +743,12 @@ model Errand {
   description      String
   pickupAddress    String
   dropoffAddress   String
+  // Punto de recogida. Antes viajaba solo en la petición y se usaba en memoria
+  // para lanzar la búsqueda: en cuanto el ciclo moría (un redeploy), no había
+  // forma de reanudarlo donde tocaba y el mandado se habría ofrecido al centro
+  // del pueblo. Guardarlo también permite pintar el mapa y medir el recorrido.
+  pickupLat        Float?
+  pickupLng        Float?
   serviceFee       Float         @default(6000)
   purchaseBudget   Float?
   actualCost       Float?

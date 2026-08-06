@@ -749,6 +749,9 @@ export interface RequestClientErrandDTO {
   description: string;
   pickupAddress: string;
   dropoffAddress: string;
+  /** Punto de recogida: se persiste para poder reanudar la búsqueda. */
+  pickupLat?: number;
+  pickupLng?: number;
   purchaseBudget?: number;
   notes?: string;
 }

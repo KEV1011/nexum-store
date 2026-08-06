@@ -107,6 +107,9 @@ export async function requestClientErrand(
       description: dto.description,
       pickupAddress: dto.pickupAddress,
       dropoffAddress: dto.dropoffAddress,
+      // Se persisten para poder reanudar la búsqueda si el ciclo se pierde.
+      pickupLat: dto.pickupLat ?? null,
+      pickupLng: dto.pickupLng ?? null,
       serviceFee: ERRAND_SERVICE_FEE,
       purchaseBudget: dto.purchaseBudget ?? null,
       notes: dto.notes ?? null,

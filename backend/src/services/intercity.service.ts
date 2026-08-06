@@ -350,6 +350,16 @@ function _retryOrSurrenderIntercity(bookingId: string, attempt: number): void {
   if (!sigue) void _notifyIntercityNoDriver(bookingId);
 }
 
+/**
+ * Cierra la búsqueda de una reserva sin ofrecérsela a nadie más. Exportada para
+ * la recuperación del arranque: una reserva colgada desde hace horas se cierra
+ * avisando, no se reanuda.
+ */
+export function rendirBusquedaIntercity(bookingId: string): void {
+  cancelSearchRetry(`intercity:${bookingId}`);
+  void _notifyIntercityNoDriver(bookingId);
+}
+
 async function _notifyIntercityNoDriver(bookingId: string): Promise<void> {
   console.log(`[Intercity] Sin conductor para la reserva ${bookingId} tras agotar los reintentos`);
   const b = await prisma.intercityBooking.findUnique({

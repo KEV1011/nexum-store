@@ -507,6 +507,7 @@ router.post('/errands/request', clientAuthMiddleware, clientRequestRateLimit, as
     const errand = await requestClientErrand(req.clientId!, {
       category: dto.category, description: dto.description,
       pickupAddress: dto.pickupAddress, dropoffAddress: dto.dropoffAddress,
+      pickupLat: dto.pickupLat, pickupLng: dto.pickupLng,
       purchaseBudget: dto.purchaseBudget, notes: dto.notes,
     });
     res.status(201).json({ success: true, data: errand });

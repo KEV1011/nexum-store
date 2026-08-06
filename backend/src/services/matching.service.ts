@@ -503,6 +503,23 @@ export async function startErrandMatchingCycle(
   await _offerErrandToCandidate(errandId, candidates, 0, { pickupLat, pickupLng, attempt });
 }
 
+/**
+ * Cierra la búsqueda de un servicio sin ofrecérselo a nadie más: avisa a las
+ * partes por el mismo camino que cuando se agotan los reintentos.
+ *
+ * Lo usa la recuperación del arranque con los servicios que llevan demasiado
+ * tiempo colgados. Reanudarles el ciclo sería peor que no hacer nada: mandarle
+ * un conductor a alguien que pidió el viaje hace tres horas y ya se fue.
+ */
+export function rendirBusqueda(kind: 'trip' | 'errand' | 'order', id: string): void {
+  cancelSearchRetry(`${kind}:${id}`);
+  switch (kind) {
+    case 'trip': _onNoDrivers?.(id); break;
+    case 'errand': void _notifyErrandNoDriver(id); break;
+    case 'order': void _notifyOrderNoDriver(id); break;
+  }
+}
+
 /** Insiste con el mandado y, agotados los intentos, se lo dice al cliente. */
 function _retryOrSurrenderErrand(
   errandId: string,

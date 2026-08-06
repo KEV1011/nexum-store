@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { estadoPiloto } from './kyc.service';
+import { contarDespachoAtascado } from './dispatch-recovery.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin service — métricas operativas y listados para el panel /admin.
@@ -35,6 +36,19 @@ export interface AdminMetrics {
      * el dato que convierte "el interruptor está en true" en una decisión.
      */
     unverifiedOperatingNow: number;
+  };
+  /**
+   * Servicios que llevan demasiado tiempo pidiendo conductor sin encontrarlo.
+   * Lo normal es 0: el despacho insiste diez minutos y luego avisa. Un número
+   * aquí significa que alguien está esperando y nadie se ha enterado.
+   */
+  stuck: {
+    total: number;
+    viaje: number;
+    mandado: number;
+    pedido: number;
+    intermunicipal: number;
+    desdeMin: number;
   };
   /** Estado del piloto sin verificación, para el aviso del panel. */
   pilot: {
@@ -107,6 +121,7 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   ]);
 
   const piloto = estadoPiloto();
+  const atascado = await contarDespachoAtascado();
 
   return {
     trips: {
@@ -130,6 +145,7 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     },
     users: { total: usersTotal, newToday: usersToday },
     safety: { sosLast24h },
+    stuck: atascado,
     pilot: {
       active: piloto.activo,
       expired: piloto.vencido,

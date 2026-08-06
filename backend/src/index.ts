@@ -20,6 +20,7 @@ import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.servi
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
 import { purgeOldTrackPoints, pruneTrackState } from './services/track.service';
+import { rescatarDespacho, BARRIDO_MS } from './services/dispatch-recovery.service';
 import { warmMunicipalities } from './services/municipality.service';
 import { ocrProviderName } from './services/ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
@@ -238,6 +239,52 @@ server.listen(PORT, () => {
   // puede nacer del heartbeat: aquí el problema es que el heartbeat dejó de
   // llegar, así que hace falta ir a buscarlo.
   setInterval(() => void sweepOfflineDrivers(), 60 * 1000).unref();
+  // Rescate del despacho: los ciclos de oferta viven en memoria, así que un
+  // redeploy los deja huérfanos y el cliente se queda mirando "buscando
+  // conductor" para siempre. Se revisa al arrancar y se repite periódicamente
+  // por si un ciclo se pierde sin que el proceso llegue a morir.
+  void rescatarDespacho();
+  setInterval(() => void rescatarDespacho(), BARRIDO_MS).unref();
 });
+
+// ─── Apagado ordenado ─────────────────────────────────────────────────────────
+//
+// Render manda SIGTERM y espera un poco antes de matar el proceso. Sin
+// atenderlo, ese margen se desperdicia: las peticiones en vuelo se cortan a
+// media respuesta y los sockets mueren sin decir nada — un `trip_status` que
+// viajaba en ese instante se pierde y el viaje queda desincronizado.
+//
+// Aquí se aprovecha: se avisa a los sockets para que reconecten cuando vuelva
+// el servicio, se deja terminar lo que ya estaba en curso y se suelta la base.
+
+let apagando = false;
+
+async function apagarOrdenadamente(senal: string): Promise<void> {
+  if (apagando) return; // SIGTERM y SIGINT pueden llegar juntos.
+  apagando = true;
+  logger.info({ senal }, 'Apagando ordenadamente');
+
+  // 1. Dejar de aceptar conexiones nuevas, sin cortar las que ya se atienden.
+  server.close(() => logger.info('HTTP cerrado'));
+
+  // 2. Avisar a los clientes conectados. Un cierre limpio con motivo hace que
+  //    las apps reconecten enseguida en vez de esperar a que expire el socket.
+  for (const ws of wss.clients) {
+    try {
+      ws.send(JSON.stringify({ type: 'server_restarting' }));
+      ws.close(1012, 'server restart'); // 1012 = Service Restart
+    } catch {
+      /* el socket ya estaba roto */
+    }
+  }
+
+  // 3. Margen para que salgan las respuestas en curso, y soltar la base.
+  setTimeout(() => {
+    void prisma.$disconnect().finally(() => process.exit(0));
+  }, Number(process.env['SHUTDOWN_GRACE_MS'] ?? 5000)).unref();
+}
+
+process.on('SIGTERM', () => void apagarOrdenadamente('SIGTERM'));
+process.on('SIGINT', () => void apagarOrdenadamente('SIGINT'));
 
 export default app;
