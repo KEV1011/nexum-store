@@ -12,7 +12,7 @@
 import { CargoTripStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { createManifest, toManifestDTO, type CreateManifestDTO } from './manifest.service';
-import { getServiceTrack, type ServiceTrack } from './track.service';
+import { getTrackForAny, type ServiceTrack } from './track.service';
 import { costBreakdown, type CostBreakdown } from '../lib/freight-costs';
 import { freightTimes, type FreightTimes } from '../lib/freight-times';
 import { _eventToDTO, type FreightEventDTO } from './freight.service';
@@ -381,9 +381,25 @@ export async function getCargoTripReport(
 
   const trip = toCargoTripDTO(t);
 
+  // El flete de origen, si lo hay: su rastro y sus gastos cuelgan de él cuando
+  // se aceptó antes de la unificación. El informe final del viaje tiene que
+  // enseñar el recorrido completo, no el trozo que quedó del lado nuevo.
+  const fleteOrigen = await prisma.freightRequest.findFirst({
+    where: { cargoTripId: id },
+    select: { id: true },
+  });
+
   const [track, rows, cobro] = await Promise.all([
-    getServiceTrack('cargo', id),
-    prisma.freightEvent.findMany({ where: { cargoTripId: id }, orderBy: { createdAt: 'asc' } }),
+    getTrackForAny([
+      { kind: 'cargo', id },
+      ...(fleteOrigen ? [{ kind: 'freight' as const, id: fleteOrigen.id }] : []),
+    ]),
+    prisma.freightEvent.findMany({
+      where: fleteOrigen
+        ? { OR: [{ cargoTripId: id }, { freightId: fleteOrigen.id }] }
+        : { cargoTripId: id },
+      orderBy: { createdAt: 'asc' },
+    }),
     t.cobroId
       ? prisma.cobroAccount.findUnique({
           where: { id: t.cobroId }, select: { id: true, number: true, status: true },

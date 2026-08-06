@@ -14,7 +14,7 @@ import { coordsOfSync } from './municipality.service';
 import { recordCompletedTrip } from './earnings.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
-import { getServiceTrack, realKmByService, type ServiceTrack } from './track.service';
+import { getTrackForAny, realKmByService, type ServiceTrack } from './track.service';
 import {
   EVENT_LABEL_ES, FREIGHT_EVENT_TYPES, costBreakdown, isFreightEventType, requiresAmount,
   type CostBreakdown, type FreightEventType,
@@ -730,10 +730,21 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   // solo dice cuánto facturó la flota, que no es lo que el dueño pregunta.
   const freightIds = freights.map((f) => f.id);
   const cargoIds = cargoTrips.map((t) => t.id);
+  // Los fletes de esos viajes están excluidos de `freights` (para no contar el
+  // dinero dos veces), pero su rastro y sus gastos siguen colgando de ellos si
+  // se aceptaron antes de la unificación. Sin este puente, los kilómetros
+  // reales del panel salían en cero y con ellos el costo por km.
+  const fletesDeViajes = cargoIds.length
+    ? await prisma.freightRequest.findMany({
+        where: { cargoTripId: { in: cargoIds } },
+        select: { id: true },
+      })
+    : [];
+  const idsRastro = [...freightIds, ...fletesDeViajes.map((f) => f.id)];
   const [expenseRows, kmByFreight, kmByCargo] = await Promise.all([
-    freightIds.length || cargoIds.length
+    idsRastro.length || cargoIds.length
       ? prisma.freightEvent.findMany({
-          where: { OR: [{ freightId: { in: freightIds } }, { cargoTripId: { in: cargoIds } }] },
+          where: { OR: [{ freightId: { in: idsRastro } }, { cargoTripId: { in: cargoIds } }] },
           select: {
             freightId: true, cargoTripId: true, type: true, amountCop: true,
             gallons: true, odometerKm: true, createdAt: true,
@@ -744,7 +755,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
           amountCop: number | null; gallons: number | null; odometerKm: number | null;
           createdAt: Date;
         }[]),
-    realKmByService('freight', freightIds),
+    realKmByService('freight', idsRastro),
     realKmByService('cargo', cargoIds),
   ]);
 
@@ -1205,11 +1216,19 @@ export async function getFreightTrackForOperator(
 ): Promise<(ServiceTrack & { eta: FreightEta | null }) | null> {
   const f = await prisma.freightRequest.findUnique({
     where: { id: freightId },
-    select: { operatorId: true, status: true, driverId: true, destLat: true, destLng: true },
+    select: {
+      operatorId: true, status: true, driverId: true,
+      destLat: true, destLng: true, cargoTripId: true,
+    },
   });
   if (!f || f.operatorId !== operatorId) return null;
 
-  const track = await getServiceTrack('freight', freightId);
+  // El rastro puede colgar del flete (aceptado antes de la unificación) o de su
+  // viaje de carga (después). Se leen los dos o el recorrido sale a medias.
+  const track = await getTrackForAny([
+    { kind: 'freight', id: freightId },
+    ...(f.cargoTripId ? [{ kind: 'cargo' as const, id: f.cargoTripId }] : []),
+  ]);
   return { ...track, eta: await _freightEta(f) };
 }
 

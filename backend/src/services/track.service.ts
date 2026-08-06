@@ -242,6 +242,55 @@ export async function getServiceTrack(kind: TrackServiceKind, serviceId: string)
 }
 
 /**
+ * Recorrido de un servicio que puede estar grabado bajo DOS identidades.
+ *
+ * Desde la unificación, un flete del marketplace y su viaje de carga son la
+ * misma operación con dos ids. El rastro de un flete aceptado antes del cambio
+ * cuelga del flete; el de uno posterior, del viaje. Leer solo por uno de los
+ * dos hacía desaparecer los kilómetros —y con ellos el costo por km— según
+ * cuándo se hubiera aceptado el flete, que es la peor clase de dato: correcto
+ * a veces.
+ *
+ * Los puntos se ordenan por hora entre ambas fuentes, así que el recorrido sale
+ * continuo aunque la operación cambiara de identidad a mitad de camino.
+ */
+export async function getTrackForAny(
+  claves: { kind: TrackServiceKind; id: string }[],
+): Promise<ServiceTrack> {
+  const reales = claves.filter((c) => c.id);
+  if (reales.length === 0) return { summary: summarizeTrack([]), points: [] };
+
+  const rows = await prisma.driverTrackPoint.findMany({
+    where: { OR: reales.map((c) => ({ serviceKind: c.kind, serviceId: c.id })) },
+    orderBy: { at: 'asc' },
+    select: { lat: true, lng: true, at: true, metersFromPrev: true },
+  });
+
+  // El primer punto de la SEGUNDA identidad trae `metersFromPrev` propio, pero
+  // el salto entre fuentes se recalcula solo: summarizeTrack cae a la distancia
+  // entre coordenadas cuando no hay tramo previo fiable.
+  return {
+    summary: summarizeTrack(rows),
+    points: rows.map((r) => ({
+      lat: r.lat, lng: r.lng, at: r.at.toISOString(), metersFromPrev: r.metersFromPrev,
+    })),
+  };
+}
+
+/** Kilómetros reales de un servicio que puede estar bajo dos identidades. */
+export async function realKmForAny(
+  claves: { kind: TrackServiceKind; id: string }[],
+): Promise<number> {
+  const reales = claves.filter((c) => c.id);
+  if (reales.length === 0) return 0;
+  const agg = await prisma.driverTrackPoint.aggregate({
+    where: { OR: reales.map((c) => ({ serviceKind: c.kind, serviceId: c.id })) },
+    _sum: { metersFromPrev: true },
+  });
+  return Math.round(((agg._sum.metersFromPrev ?? 0) / 1000) * 100) / 100;
+}
+
+/**
  * Kilómetros reales por servicio, en lote. Lo usa el panel financiero para dar
  * costo por kilómetro sin traerse la traza completa de cada flete.
  */

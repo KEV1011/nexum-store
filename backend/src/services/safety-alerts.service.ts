@@ -171,14 +171,24 @@ async function _activeServiceFor(driverId: string): Promise<ActiveService | null
     const f = await prisma.freightRequest.findFirst({
       where: { driverId, status: 'IN_PROGRESS' },
       select: {
-        id: true, clientId: true, operatorId: true,
+        id: true, clientId: true, operatorId: true, cargoTripId: true,
         originLat: true, originLng: true, destLat: true, destLng: true, destAddress: true,
       },
     });
     if (f) {
       const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { name: true } });
+      // Si el flete ya tiene viaje de carga, el rastro y las alertas cuelgan
+      // del VIAJE: es la unidad operativa desde la unificación, y es donde el
+      // informe final y el panel financiero los buscan. Grabar contra el flete
+      // dejaba sus kilómetros fuera del consolidado — el flete queda excluido
+      // de las finanzas justamente para no contar el dinero dos veces.
+      //
+      // Las coordenadas se toman igualmente del flete: son las reales del
+      // encargo, mejores que el centroide de la ciudad del viaje.
       svc = {
-        kind: 'freight', id: f.id, clientId: f.clientId, operatorId: f.operatorId,
+        kind: f.cargoTripId ? 'cargo' : 'freight',
+        id: f.cargoTripId ?? f.id,
+        clientId: f.clientId, operatorId: f.operatorId,
         driverName: driver?.name ?? 'Conductor',
         originLat: f.originLat, originLng: f.originLng,
         destLat: f.destLat, destLng: f.destLng,
