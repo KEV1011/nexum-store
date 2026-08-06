@@ -154,7 +154,7 @@ export async function placeClientOrder(
   clientId: string,
   _clientPhone: string,
   dto: ClientPlaceOrderDTO,
-): Promise<ClientOrderSummaryDTO> {
+): Promise<ClientOrderWithPinDTO> {
   const { getBusinessPublicById } = await import('./business.service');
   const biz = await getBusinessPublicById(dto.businessId);
   // El negocio debe estar recibiendo pedidos (vitrina abierta).
@@ -272,6 +272,8 @@ export async function placeClientOrder(
 
   const summary = _toSummary(order, biz.name, order.lines);
   // Aviso al portal del negocio (WS new_order) para que acepte y ponga el prep.
+  // Se le manda el resumen SIN el PIN de entrega: ese es del cliente y el
+  // negocio no tiene por qué conocerlo.
   for (const cb of businessOrderListeners.get(dto.businessId) ?? []) cb(summary);
 
   // Salvaguarda: si el restaurante no responde, el pedido se auto-cancela.
@@ -282,7 +284,12 @@ export async function placeClientOrder(
   if (typeof timer.unref === 'function') timer.unref();
   pendingOrderTimers.set(order.id, timer);
 
-  return summary;
+  // El PIN de entrega viaja en la respuesta de creación, igual que en viajes y
+  // envíos. Antes solo se obtenía consultando el pedido después: la app tenía
+  // que ir a buscarlo por su cuenta y, si ese sondeo fallaba o cambiaba, el
+  // cliente se quedaba sin el número que el repartidor le va a pedir en la
+  // puerta. Esa asimetría entre servicios ya provocó el fallo una vez.
+  return { ...summary, deliveryPin: order.deliveryPin ?? undefined };
 }
 
 /**

@@ -93,6 +93,7 @@ type DbBooking = {
   pickupAddress: string | null; dropoffAddress: string | null; notes: string | null;
   stops?: unknown;
   createdAt: Date; confirmedAt: Date | null;
+  finalFare?: number | null; completedAt?: Date | null;
   rating?: number | null; ratingComment?: string | null;
   enRouteAt?: Date | null;
   arrivedAt?: Date | null;
@@ -121,6 +122,9 @@ function _toDTO(b: DbBooking): IntercityBookingDTO {
     stops: stopsFromDb(b.stops),
     createdAt: b.createdAt.toISOString(),
     confirmedAt: b.confirmedAt?.toISOString(),
+    // Importe REAL cobrado al completar, no el ofrecido ni el contraofertado.
+    finalFare: b.finalFare ?? undefined,
+    completedAt: b.completedAt?.toISOString(),
     rating: b.rating ?? undefined,
     ratingComment: b.ratingComment ?? undefined,
     enRouteAt: b.enRouteAt?.toISOString(),

@@ -860,6 +860,15 @@ export interface IntercityBookingDTO {
   stops?: TripStopDTO[];
   createdAt: string;
   confirmedAt?: string;
+  /**
+   * Lo que finalmente se cobró, sellado al completar el viaje. Es el importe
+   * real —el que se liquidó al conductor y el que cuadra la contabilidad—, no
+   * el que se ofreció ni el de la contraoferta. Sin él, la app tenía que
+   * deducirlo de `counterFare ?? offeredFare`: un número derivado en lugar del
+   * verdadero, que además falla en cuanto la tarifa se ajuste por otro motivo.
+   */
+  finalFare?: number;
+  completedAt?: string;
   /** Calificación del pasajero al viaje completado (1-5). */
   rating?: number;
   ratingComment?: string;
