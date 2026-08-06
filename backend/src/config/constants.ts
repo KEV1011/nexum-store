@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { Driver, Passenger, Location } from '../types';
+import { evaluarOtp, sanearCodigo } from '../lib/otp-guard';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -31,6 +32,53 @@ if (
 }
 export const JWT_SECRET = _jwtSecret ?? _PUBLIC_FALLBACK_SECRET;
 export const JWT_EXPIRES_IN = '30d';
+
+// ─── OTP: código fijo vs. SMS real ────────────────────────────────────────────
+//
+// Sin Twilio, el login se resuelve con UN código fijo que vale para CUALQUIER
+// teléfono. Eso no es un OTP: es una llave maestra. Quien la conozca entra como
+// cualquier usuario, conductor o empresa — y con ADMIN_PHONES, al panel.
+//
+// Por eso producción sin Twilio ya no arranca sola. Hay un escape explícito
+// (ALLOW_FIXED_OTP=true) para el piloto controlado, pero exige además un
+// OTP_FALLBACK_CODE propio y no trivial: con el escape puesto y sin código, el
+// servicio caería al 123456 que está documentado en este repositorio público.
+//
+// La regla vive en lib/otp-guard.ts (pura y probada); aquí solo se le pasa el
+// entorno y se actúa. Se leen las variables directamente en vez de importar
+// sms.service porque el cuerpo de un módulo importado corre ANTES que el
+// `dotenv.config()` de este archivo: leería el entorno antes de que exista.
+
+const _twilioListo = Boolean(
+  process.env['TWILIO_ACCOUNT_SID'] &&
+    process.env['TWILIO_AUTH_TOKEN'] &&
+    process.env['TWILIO_VERIFY_SID'],
+);
+
+/** Escape consciente para el piloto: acepta operar con código fijo. */
+export const ALLOW_FIXED_OTP = (process.env['ALLOW_FIXED_OTP'] ?? 'false') === 'true';
+
+const _veredictoOtp = evaluarOtp({
+  production: NODE_ENV === 'production',
+  twilio: _twilioListo,
+  allowFixedOtp: ALLOW_FIXED_OTP,
+  codigoFijo: sanearCodigo(process.env['OTP_FALLBACK_CODE']),
+});
+
+if (!_veredictoOtp.arranca) throw new Error(_veredictoOtp.motivo);
+if (_veredictoOtp.riesgo) {
+  console.warn(
+    '\n══════════════════════════════════════════════════════════════════\n' +
+      '  ⚠  ' + _veredictoOtp.aviso + '\n' +
+      '══════════════════════════════════════════════════════════════════\n',
+  );
+}
+
+/** Twilio Verify activo (SMS real). Falso ⇒ el OTP es un código fijo. */
+export const SMS_OTP_CONFIGURED = _twilioListo;
+
+/** Producción operando con llave maestra: se muestra en /health y en el panel. */
+export const OTP_RIESGO_LLAVE_MAESTRA = _veredictoOtp.arranca && _veredictoOtp.riesgo;
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 

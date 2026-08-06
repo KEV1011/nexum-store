@@ -63,15 +63,18 @@ services:
       - key: FIREBASE_SERVICE_ACCOUNT
         sync: false
       # ── SMS OTP (Twilio Verify) ──────────────────────────────────────────
-      # Con las tres definidas el OTP llega por SMS real. Sin ellas, el login
-      # en producción queda cerrado salvo que definas OTP_FALLBACK_CODE
-      # (código fijo, solo para pilotos controlados).
+      # Con las tres definidas el OTP llega por SMS real. SIN ELLAS EL SERVICIO
+      # NO ARRANCA: un código fijo abre la sesión de cualquier teléfono (y del
+      # panel admin). Para un piloto controlado hacen falta ALLOW_FIXED_OTP=true
+      # y un OTP_FALLBACK_CODE propio de 6 dígitos; /health lo marca en rojo.
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
         sync: false
       - key: TWILIO_VERIFY_SID
         sync: false
+      - key: ALLOW_FIXED_OTP
+        value: "false"
       - key: OTP_FALLBACK_CODE
         sync: false
       # SMS transaccionales (SOS) — Messaging Service SID o número Twilio.

@@ -27,9 +27,26 @@ base de datos PostgreSQL) y el `Dockerfile` (que en cada despliegue corre
 
 | Variable | Por qué es crítica |
 |---|---|
-| **OTP**: `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_VERIFY_SID` | Sin Twilio (ni el fallback de abajo) **el login queda cerrado**: el código OTP no se entrega por ningún canal. |
-| `OTP_FALLBACK_CODE` | Alternativa a Twilio para un **piloto controlado**: código fijo (ej. `123456`) que sirve para todos. Define ESTE *o* Twilio, no ambos. |
+| **OTP**: `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_VERIFY_SID` | Sin Twilio **el servicio no arranca** (ver recuadro). Con Twilio, cada usuario recibe su propio código por SMS. |
 | `ADMIN_PHONES` | Teléfonos (coma-separados) con acceso a `/admin`. Vacío = **panel cerrado** en producción. Ej: `+573001112233`. |
+
+> **⚠ Sin Twilio el OTP es una llave maestra, no un segundo factor.**
+> Un único código fijo abre la sesión de **cualquier** teléfono: cliente,
+> conductor, empresa — y si ese número está en `ADMIN_PHONES`, el panel de
+> operación. Por eso producción sin Twilio **aborta el arranque** con un
+> mensaje que explica qué configurar.
+>
+> Para un **piloto controlado**, y asumiéndolo a conciencia, hacen falta las dos:
+>
+> ```
+> ALLOW_FIXED_OTP=true
+> OTP_FALLBACK_CODE=<6 dígitos al azar que solo tú conozcas>
+> ```
+>
+> El arranque rechaza códigos obvios (`123456`, `000000`, `111111`…). Mientras
+> el modo esté encendido, `GET /health` responde `"otpRiesgo": true` y el login
+> del panel `/admin` muestra el aviso en rojo. **Es un estado temporal**: antes
+> de abrir a usuarios reales, configura Twilio Verify y quita `ALLOW_FIXED_OTP`.
 
 ### Variables recomendadas (opcionales)
 
@@ -180,6 +197,7 @@ Y usar el SDK admin con la `serviceAccountKey.json` (descargable desde Firebase 
 - [x] Panel de operación `/admin` (verificaciones, retiros, métricas, SOS, promos)
 - [x] Blueprint de Render (`render.yaml`) + Dockerfile con migraciones automáticas
 - [x] CI/CD configurado (APK + análisis automáticos)
-- [ ] Definir en Render: OTP (Twilio u `OTP_FALLBACK_CODE`) y `ADMIN_PHONES`
+- [ ] Definir en Render: Twilio Verify y `ADMIN_PHONES` (sin Twilio el servicio
+      no arranca; para el piloto, `ALLOW_FIXED_OTP=true` + `OTP_FALLBACK_CODE`)
 - [ ] (Recomendado) `S3_BUCKET` para documentos persistentes
 - [ ] (Opcional) `GOOGLE_MAPS_API_KEY`, Firebase, Wompi

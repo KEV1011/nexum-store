@@ -1,6 +1,6 @@
-import { timingSafeEqual } from 'crypto';
+import { randomInt, timingSafeEqual } from 'crypto';
 import { prisma } from '../lib/prisma';
-import { NODE_ENV } from '../config/constants';
+import { NODE_ENV, OTP_RIESGO_LLAVE_MAESTRA } from '../config/constants';
 import { isSmsConfigured, sendSmsVerification, checkSmsVerification } from './sms.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,17 +106,16 @@ function _recordVerifyFail(phone: string): void {
 function _localCode(): string {
   if (NODE_ENV !== 'production') return OTP_DEV_CODE;
   if (OTP_FALLBACK_CODE) return OTP_FALLBACK_CODE;
-  // Producción SIN Twilio y SIN OTP_FALLBACK_CODE: antes se generaba un código
-  // aleatorio que no se entregaba por ningún canal → login imposible (nadie
-  // puede saber el código). Para un piloto sin SMS es mucho más útil un código
-  // fijo conocido. Se emite una advertencia FUERTE: esto NO es seguro para
-  // producción con usuarios reales — ahí se debe configurar Twilio Verify.
-  console.warn(
-    '[OTP] ⚠️  Sin Twilio ni OTP_FALLBACK_CODE en producción: usando el código ' +
-    'de piloto 123456. Configura Twilio Verify (o OTP_FALLBACK_CODE) antes de ' +
-    'abrir a usuarios reales.',
+  // Inalcanzable: el guard de constants.ts aborta el arranque en producción sin
+  // Twilio y sin un OTP_FALLBACK_CODE propio. Si alguien lo esquiva, esto NO
+  // cae al 123456 publicado en el repositorio — emite un código aleatorio que
+  // no se entrega por ningún canal, así el login queda cerrado en vez de
+  // abierto de par en par.
+  console.error(
+    '[OTP] Producción sin Twilio y sin OTP_FALLBACK_CODE: login cerrado ' +
+    '(código aleatorio no entregable). Configura Twilio Verify.',
   );
-  return OTP_DEV_CODE; // 123456
+  return randomInt(100000, 1000000).toString();
 }
 
 // ── Diagnóstico ───────────────────────────────────────────────────────────────
@@ -129,8 +128,15 @@ function _localCode(): string {
 export function otpMode(): { users: string; admin: string } {
   if (isSmsConfigured()) return { users: 'twilio-sms', admin: 'twilio-sms' };
   if (NODE_ENV !== 'production') return { users: 'dev-123456', admin: 'dev-123456' };
-  if (OTP_FALLBACK_CODE) return { users: 'codigo-fijo-propio', admin: 'codigo-fijo-propio' };
-  return { users: 'piloto-123456', admin: 'cerrado' };
+  // En producción sin SMS el modo se nombra por lo que ES —una llave maestra—
+  // y no por su comodidad, para que una captura de /health delate el riesgo.
+  if (OTP_FALLBACK_CODE) return { users: 'llave-maestra-piloto', admin: 'llave-maestra-piloto' };
+  return { users: 'cerrado', admin: 'cerrado' };
+}
+
+/** True si el login de producción depende de un único código fijo. */
+export function otpEnRiesgo(): boolean {
+  return OTP_RIESGO_LLAVE_MAESTRA;
 }
 
 // ── Admin (panel de operación) ────────────────────────────────────────────────

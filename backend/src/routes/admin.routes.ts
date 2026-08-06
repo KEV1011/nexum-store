@@ -657,6 +657,7 @@ const PANEL_HTML = `<!DOCTYPE html>
     <button onclick="verifyOtp()">Entrar</button>
   </div>
   <p id="login-err" style="color:#c00;font-size:.8rem;margin-top:8px;"></p>
+  <div id="riesgos" style="display:none;margin-top:14px;padding:10px 12px;border:1px solid #7f1d1d;background:#450a0a;border-radius:8px;color:#fecaca;font-size:.72rem;line-height:1.45;text-align:left"></div>
   <p id="diag" style="color:#94a3b8;font-size:.7rem;margin-top:14px;"></p>
 </div>
 
@@ -843,7 +844,31 @@ fetch('/health').then((r) => r.json()).then((h) => {
     'build ' + (h.commit || '?') + ' · OTP usuarios: ' + (h.otp || '?') +
     ' · OTP admin: ' + (h.otpAdmin || '?') + ' · BD: ' + (h.db ? 'ok' : 'sin conexión') +
     ' · fotos: ' + (h.uploads || '?') + ' · push: ' + (h.push || '?');
+  window.NX_HEALTH = h;
+  pintarRiesgos(h);
 }).catch(() => {});
+
+// Riesgos de operación en la propia pantalla de acceso: si el login depende de
+// un código fijo, o el piloto sin verificación sigue encendido, quien abre el
+// panel lo ve antes de entrar. Un riesgo que solo vive en una variable de
+// entorno se olvida; en rojo sobre el login, no.
+function pintarRiesgos(h) {
+  const avisos = [];
+  if (h.otpRiesgo) {
+    avisos.push('El login usa un CÓDIGO FIJO: una sola clave abre la sesión de cualquier ' +
+      'teléfono. Configura Twilio Verify antes de abrir a usuarios reales.');
+  }
+  if (h.pilotSkipVerification) {
+    const d = h.pilotSkipVerificationDaysLeft;
+    avisos.push('Piloto sin verificación ACTIVO: los conductores despachan sin documentos ' +
+      'aprobados' + (typeof d === 'number' ? ' (caduca en ' + d + ' día' + (d === 1 ? '' : 's') + ')' : '') + '.');
+  }
+  if (!avisos.length) return;
+  const box = document.getElementById('riesgos');
+  if (!box) return;
+  box.style.display = 'block';
+  box.innerHTML = avisos.map((t) => '<div>⚠ ' + esc(t) + '</div>').join('');
+}
 
 function api(path, opts = {}) {
   return fetch(path, {

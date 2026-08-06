@@ -14,7 +14,7 @@ import { logger } from './lib/logger';
 import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
-import { otpMode } from './services/otp.service';
+import { otpMode, otpEnRiesgo } from './services/otp.service';
 import { kycProviderName, kycEnforced, pilotSkipVerification } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
@@ -99,6 +99,9 @@ app.get('/health', async (_req, res) => {
     commit: (process.env['RENDER_GIT_COMMIT'] ?? '').slice(0, 7) || 'desconocido',
     otp: modes.users,
     otpAdmin: modes.admin,
+    // true = el login de producción depende de UN código fijo que vale para
+    // cualquier teléfono (modo piloto autorizado con ALLOW_FIXED_OTP).
+    otpRiesgo: otpEnRiesgo(),
     // Diagnóstico de infraestructura: una mirada dice si las fotos sobreviven
     // al redeploy y si los push llegan con la app cerrada.
     uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',
