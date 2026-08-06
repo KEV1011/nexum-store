@@ -2,7 +2,6 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import { prisma } from '../lib/prisma';
 import {
-  AUTENTICACIONES,
   CuotaSocket,
   MS_PARA_AUTENTICARSE,
   nuevaCuota,
@@ -165,6 +164,7 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
     driverSocket = ws;
     driverWorkMode = workMode;
     driverIdByWs.set(ws, payload.driverId);
+    marcarIdentificado(ws);
     // Register in driverConnections so matching can reach this driver via sendToDriverById.
     driverConnections.set(payload.driverId, { ws, driverId: payload.driverId, workMode });
     // OFFLINE→ONLINE condicional: reconectar a mitad de viaje no pisa ON_TRIP.
@@ -367,6 +367,7 @@ function handleClientAuth(ws: WebSocket, token: string): void {
     if (old && old !== ws && old.readyState === WebSocket.OPEN) old.close();
     clientSockets.set(payload.clientId, ws);
     clientIdByWs.set(ws, payload.clientId);
+    marcarIdentificado(ws);
     sendTo(ws, { type: 'client_auth_ok', clientId: payload.clientId });
     console.log(`[WS] Client ${payload.clientId} authenticated`);
   } catch {
@@ -498,6 +499,7 @@ async function handleBusinessAuth(ws: WebSocket, token: string): Promise<void> {
     const old = businessSockets.get(business.id);
     if (old && old !== ws && old.readyState === WebSocket.OPEN) old.close();
     businessSockets.set(business.id, ws);
+    marcarIdentificado(ws);
     sendTo(ws, { type: 'business_auth_ok', businessId: business.id, businessName: business.name });
 
     const unsubscribe = onNewClientOrderForBusiness(business.id, (order) => {
@@ -779,6 +781,22 @@ const cuotas = new WeakMap<WebSocket, CuotaSocket>();
 /** Relojes de "identifícate o te cierro" por socket. */
 const relojesAuth = new WeakMap<WebSocket, NodeJS.Timeout>();
 
+/**
+ * Sockets que se identificaron DE VERDAD.
+ *
+ * El reloj no puede cancelarse por ver un mensaje de tipo `auth`: entonces
+ * bastaría mandar un token basura para quedarse conectado indefinidamente, que
+ * es justo lo que el reloj existe para impedir. Cada handler apunta aquí solo
+ * cuando la autenticación tuvo éxito.
+ */
+const socketsIdentificados = new WeakSet<WebSocket>();
+
+/** Marca el socket como identificado y para su reloj. Llamar SOLO tras validar. */
+function marcarIdentificado(ws: WebSocket): void {
+  socketsIdentificados.add(ws);
+  cancelarRelojAuth(ws);
+}
+
 function cancelarRelojAuth(ws: WebSocket): void {
   const t = relojesAuth.get(ws);
   if (t) { clearTimeout(t); relojesAuth.delete(ws); }
@@ -803,9 +821,6 @@ function onMessage(ws: WebSocket, raw: string): void {
     if (veredicto.cortar) ws.close(1008, 'rate limit');
     return;
   }
-
-  // Un socket que se identifica ya no está en el reloj de los 30 segundos.
-  if (AUTENTICACIONES.has(String(msg['type'] ?? ''))) cancelarRelojAuth(ws);
 
   switch (msg['type']) {
 
@@ -1218,6 +1233,7 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (!set) {
         set = new Set();
         operatorSockets.set(payload.operatorId, set);
+        marcarIdentificado(ws);
       }
       set.add(ws);
       ws.on('close', () => {
@@ -1480,6 +1496,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
     relojesAuth.set(
       ws,
       setTimeout(() => {
+        if (socketsIdentificados.has(ws)) { relojesAuth.delete(ws); return; }
         if (ws.readyState === ws.OPEN) {
           sendTo(ws, { type: 'error', message: 'Conexión sin identificar' });
           ws.close(1008, 'auth timeout');

@@ -38,10 +38,10 @@ const ESCRITURAS = new Set([
   'location_update', 'ride_location', 'driver_mode',
 ]);
 
-/** Mensajes con los que un socket se identifica. */
-export const AUTENTICACIONES = new Set([
-  'auth', 'client_auth', 'operator_auth', 'business_auth', 'driver_register',
-]);
+// Nota: el reloj de "identifícate o te cierro" NO mira el tipo del mensaje.
+// Se para cuando la autenticación tuvo ÉXITO (marcarIdentificado en
+// ws.handler): si bastara con mandar un `auth` de token basura, el reloj no
+// serviría para nada — es justo el caso que existe para impedir.
 
 export interface CuotaSocket {
   sellos: number[];
