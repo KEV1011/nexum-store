@@ -15,6 +15,7 @@ import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
 import { pagoEnLineaDisponible } from './services/payment.service';
+import { isSmsSenderConfigured } from './services/sms.service';
 import { otpMode, otpEnRiesgo, demoRevisionActiva } from './services/otp.service';
 import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
@@ -125,6 +126,10 @@ app.get('/health', async (_req, res) => {
     // 'wompi' = el pago en línea cobra de verdad; 'apagado' = las apps solo
     // ofrecen efectivo (un botón que no cobra es motivo de rechazo).
     pagos: pagoEnLineaDisponible() ? 'wompi' : 'apagado',
+    // SOS: 'sms' = el botón de pánico avisa de verdad al contacto de confianza.
+    // 'sin-canal' = solo se registra el evento y le queda el 123. Es el
+    // diagnóstico que hay que mirar ANTES de que alguien lo necesite.
+    sos: isSmsSenderConfigured() ? 'sms' : 'sin-canal',
     // Diagnóstico de infraestructura: una mirada dice si las fotos sobreviven
     // al redeploy y si los push llegan con la app cerrada.
     uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',

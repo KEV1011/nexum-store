@@ -16,10 +16,18 @@ class TrustedContact {
 }
 
 class SosResult {
-  const SosResult({required this.eventId, required this.trustedContactNotified});
+  const SosResult({
+    required this.eventId,
+    required this.trustedContactNotified,
+    this.contactStatus = 'sin_contacto',
+  });
 
   final String eventId;
   final bool trustedContactNotified;
+
+  /// Por qué NO se avisó, cuando no se avisó: 'enviado' | 'sin_contacto' |
+  /// 'sin_canal' | 'fallo'.
+  final String contactStatus;
 }
 
 /// Thin wrapper over the `/safety/*` backend endpoints for the driver app.
@@ -45,6 +53,7 @@ class SafetyApi {
     return SosResult(
       eventId: d['eventId'] as String? ?? '',
       trustedContactNotified: d['trustedContactNotified'] as bool? ?? false,
+      contactStatus: d['trustedContactStatus'] as String? ?? 'sin_contacto',
     );
   }
 

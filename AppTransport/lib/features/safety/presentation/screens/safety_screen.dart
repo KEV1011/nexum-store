@@ -13,6 +13,31 @@ import 'package:url_launcher/url_launcher.dart';
 /// Línea única de emergencias en Colombia (no es 911).
 const String kEmergencyNumber = '123';
 
+/// Lo que se le dice al conductor tras pulsar el botón de pánico.
+///
+/// Nunca puede afirmar que se avisó a alguien si no se avisó: antes decía
+/// "tu ubicación fue compartida con tu contacto" también cuando el servidor no
+/// tenía forma de mandar el SMS. Cuando el aviso no sale, lo que toca es
+/// empujar al número de emergencias, no tranquilizar.
+String _mensajeSos(SosResult? result) {
+  if (result == null) {
+    return 'No pudimos registrar el evento. Llama al $kEmergencyNumber ahora mismo.';
+  }
+  if (result.trustedContactNotified) {
+    return 'Avisamos a tu contacto de confianza con tu ubicación.';
+  }
+  switch (result.contactStatus) {
+    case 'sin_contacto':
+      return 'Evento registrado. No tienes contacto de confianza configurado: '
+          'llama al $kEmergencyNumber si estás en peligro.';
+    case 'sin_canal':
+    case 'fallo':
+    default:
+      return 'Evento registrado, pero NO pudimos avisar a tu contacto. '
+          'Llama al $kEmergencyNumber ahora mismo.';
+  }
+}
+
 class SafetyScreen extends StatefulWidget {
   const SafetyScreen({super.key});
 
@@ -189,12 +214,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              result == null
-                  ? 'No pudimos registrar el evento, pero puedes llamar al $kEmergencyNumber.'
-                  : result.trustedContactNotified
-                      ? 'Tu ubicación fue compartida con tu contacto de confianza.'
-                      : 'Evento registrado. Configura un contacto de confianza '
-                          'para avisarle automáticamente.',
+              _mensajeSos(result),
               style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
             ),
             const SizedBox(height: 20),

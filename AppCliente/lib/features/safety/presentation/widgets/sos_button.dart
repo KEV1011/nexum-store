@@ -108,12 +108,7 @@ class SosButton extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              result == null
-                  ? 'No pudimos registrar el evento, pero puedes llamar al 123.'
-                  : result.trustedContactNotified
-                      ? 'Tu ubicación fue compartida con tu contacto de confianza.'
-                      : 'Evento registrado. Configura un contacto de confianza '
-                          'para avisarle automáticamente.',
+              _mensajeSos(result),
               style: TextStyle(
                   fontSize: 13, color: context.textSecondaryColor),
             ),

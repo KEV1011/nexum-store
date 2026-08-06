@@ -31,10 +31,32 @@ export interface TrustedContact {
   phone: string | null;
 }
 
+/**
+ * Qué pasó de verdad con el aviso al contacto de confianza.
+ *
+ * Existe porque el booleano solo no bastaba: devolvía `true` cuando no había
+ * proveedor de SMS —es decir, cuando NADIE había sido avisado— y la app lo
+ * traducía a "tu ubicación fue compartida con tu contacto". Alguien asustado,
+ * pulsando un botón de pánico, leyendo que viene ayuda que no viene. De todos
+ * los fallos posibles de esta plataforma, mentir en esta pantalla es el peor.
+ */
+export type SosContactoEstado =
+  /** El SMS salió de verdad hacia el contacto. */
+  | 'enviado'
+  /** El titular no tiene contacto de confianza configurado. */
+  | 'sin_contacto'
+  /** No hay proveedor de SMS: nadie fue avisado. Solo queda el 123. */
+  | 'sin_canal'
+  /** Había proveedor y rechazó el envío. Tampoco fue avisado nadie. */
+  | 'fallo';
+
 export interface RecordSosResult {
   eventId: string;
   createdAt: string;
+  /** true SOLO si el aviso salió de verdad. */
   trustedContactNotified: boolean;
+  /** El motivo exacto, para que la app diga la verdad y no una plantilla. */
+  trustedContactStatus: SosContactoEstado;
   emergencyNumber: '123';
 }
 
@@ -96,21 +118,27 @@ export async function recordEmergencyEvent(params: {
 
   // If a trusted contact is configured, prepare and dispatch (stub) the alert.
   const contact = await getTrustedContact(role, actorId);
-  let trustedContactNotified = false;
-  if (contact.phone) {
-    trustedContactNotified = await notifyTrustedContact({
-      to: contact.phone,
-      contactName: contact.name ?? 'tu contacto',
-      lat,
-      lng,
-      tripId,
-    });
+  const estado: SosContactoEstado = !contact.phone
+    ? 'sin_contacto'
+    : await notifyTrustedContact({
+        to: contact.phone,
+        contactName: contact.name ?? 'tu contacto',
+        lat,
+        lng,
+        tripId,
+      });
+
+  if (estado !== 'enviado') {
+    // Queda en el log del servidor con el motivo, porque un SOS que no llegó a
+    // nadie es exactamente lo que hay que poder auditar después.
+    console.error(`[SOS] evento ${event.id}: el contacto NO fue avisado (${estado})`);
   }
 
   return {
     eventId: event.id,
     createdAt: event.createdAt.toISOString(),
-    trustedContactNotified,
+    trustedContactNotified: estado === 'enviado',
+    trustedContactStatus: estado,
     emergencyNumber: '123',
   };
 }
@@ -126,7 +154,7 @@ async function notifyTrustedContact(payload: {
   lat: number;
   lng: number;
   tripId?: string;
-}): Promise<boolean> {
+}): Promise<SosContactoEstado> {
   const mapLink = `https://maps.google.com/?q=${payload.lat},${payload.lng}`;
 
   let trackLink = '';
@@ -143,15 +171,18 @@ async function notifyTrustedContact(payload: {
     ` · Si no logras comunicarte, llama al 123.`;
 
   if (!isSmsSenderConfigured()) {
+    // Sin proveedor no se avisó a NADIE. Se deja constancia, pero jamás se
+    // devuelve "enviado": quien lea esto arriba tiene que poder decírselo al
+    // usuario en vez de tranquilizarlo con algo que no ocurrió.
     // eslint-disable-next-line no-console
-    console.log(`[SOS:mock → ${maskPhone(payload.to)}] ${body}`);
-    return true; // queued en modo dev
+    console.error(`[SOS:SIN CANAL → ${maskPhone(payload.to)}] no se envió nada. ${body}`);
+    return 'sin_canal';
   }
 
   const sent = await sendSms(payload.to, body);
   // eslint-disable-next-line no-console
   console.log(`[SOS → ${maskPhone(payload.to)}] SMS ${sent ? 'enviado' : 'FALLÓ'}`);
-  return sent;
+  return sent ? 'enviado' : 'fallo';
 }
 
 // ─── Trip sharing ─────────────────────────────────────────────────────────────

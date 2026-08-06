@@ -19,10 +19,19 @@ class TrustedContact {
 
 /// Result of a POST /safety/sos call.
 class SosResult {
-  const SosResult({required this.eventId, required this.trustedContactNotified});
+  const SosResult({
+    required this.eventId,
+    required this.trustedContactNotified,
+    this.contactStatus = 'sin_contacto',
+  });
 
   final String eventId;
   final bool trustedContactNotified;
+
+  /// Por qué NO se avisó, cuando no se avisó: 'enviado' | 'sin_contacto' |
+  /// 'sin_canal' | 'fallo'. La pantalla no puede limitarse a decir "configura
+  /// un contacto" cuando el contacto existe y lo que falla es el envío.
+  final String contactStatus;
 }
 
 class SafetyService {
@@ -47,6 +56,7 @@ class SafetyService {
     return SosResult(
       eventId: d['eventId'] as String? ?? '',
       trustedContactNotified: d['trustedContactNotified'] as bool? ?? false,
+      contactStatus: d['trustedContactStatus'] as String? ?? 'sin_contacto',
     );
   }
 
