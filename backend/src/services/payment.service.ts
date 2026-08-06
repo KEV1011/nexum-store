@@ -28,6 +28,21 @@ export interface PaymentRecord {
   paymentUrl: string;
 }
 
+/**
+ * ¿Hay pasarela de verdad detrás del botón "Pagar en línea"?
+ *
+ * Sin llaves de Wompi, `createPaymentLink` sigue devolviendo una URL —a la
+ * página de resultado propia— y el cobro nunca ocurre. Eso, en una app de
+ * tienda, es exactamente lo que Apple y Google llaman funcionalidad rota: el
+ * usuario elige pagar, no pasa nada y el conductor cobra en efectivo igual.
+ *
+ * Las apps consultan esto para no ofrecer el pago en línea cuando no existe.
+ * Ofrecer un botón que no cobra es peor que no ofrecerlo.
+ */
+export function pagoEnLineaDisponible(): boolean {
+  return Boolean(WOMPI_PUBLIC_KEY && WOMPI_PRIVATE_KEY);
+}
+
 /** API base según el ambiente de las llaves (test → sandbox). */
 function _wompiApiBase(): string {
   const isTest = WOMPI_PRIVATE_KEY.startsWith('prv_test_') || WOMPI_PUBLIC_KEY.startsWith('pub_test_');

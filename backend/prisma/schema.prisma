@@ -26,6 +26,12 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   isActive    Boolean   @default(true)
+  // Cuenta borrada a petición del titular (App Store / Play exigen poder
+  // hacerlo desde la app). NO se borra la fila: sus viajes liquidados son la
+  // contabilidad del conductor y de la empresa, y desaparecerían con ella. Se
+  // anonimiza — teléfono a un valor lápida, nombre/email/foto fuera — y esta
+  // fecha deja constancia de cuándo y de que fue el titular quien lo pidió.
+  deletedAt   DateTime?
 
   // Verificación de identidad del pasajero (anti-fraude/anti-robo). Mismo modelo
   // env-gated que el KYC del conductor. El conductor ve "cliente verificado".
@@ -196,6 +202,10 @@ model Driver {
   employmentType    EmploymentType?
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
+  // Cuenta borrada a petición del titular. Ver el comentario en User.deletedAt:
+  // se anonimiza en vez de borrarse porque sus viajes liquidados sostienen la
+  // liquidación de la empresa, las cuentas de cobro y los remitos firmados.
+  deletedAt         DateTime?
 
   // Trusted contact for the SOS / share-trip safety features.
   trustedContactName  String?

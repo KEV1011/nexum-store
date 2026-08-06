@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nexum_client/core/config/app_config_provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
@@ -630,15 +631,19 @@ enum _PayChoice { online, cash }
 
 /// Selector de método de pago del viaje. El pago en línea (Wompi + sondeo) lo
 /// corre el llamador con `showPaymentCheckout`; en efectivo se paga al conductor.
-class _PaymentSheet extends StatelessWidget {
+class _PaymentSheet extends ConsumerWidget {
   const _PaymentSheet({required this.fare, required this.serviceType});
 
   final double fare;
   final TransportServiceType serviceType;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final color = _colorOf(serviceType);
+    // Sin pasarela configurada no se ofrece pagar en línea: ese botón abría un
+    // checkout que no cobraba nada y el conductor cobraba en efectivo igual.
+    final pagoEnLinea =
+        ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ?? false;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -678,41 +683,61 @@ class _PaymentSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF00B4D8),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          if (pagoEnLinea) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF00B4D8),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: () => Navigator.of(context).pop(_PayChoice.online),
+                icon: const Icon(Icons.credit_card_rounded),
+                label: const Text(
+                  'Pagar en línea (tarjeta, Nequi, PSE)',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                 ),
               ),
-              onPressed: () => Navigator.of(context).pop(_PayChoice.online),
-              icon: const Icon(Icons.credit_card_rounded),
-              label: const Text(
-                'Pagar en línea (tarjeta, Nequi, PSE)',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
             ),
-          ),
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
+          ],
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () => Navigator.of(context).pop(_PayChoice.cash),
-              icon: const Icon(Icons.payments_outlined),
-              label: const Text(
-                'Pagar en efectivo al conductor',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ),
+            child: pagoEnLinea
+                ? OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(_PayChoice.cash),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text(
+                      'Pagar en efectivo al conductor',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  )
+                // Único método disponible: se presenta como la acción
+                // principal, no como el plan B de algo que no existe.
+                : FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: color,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(_PayChoice.cash),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text(
+                      'Continuar · pago en efectivo',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                  ),
           ),
           const SizedBox(height: 8),
         ],

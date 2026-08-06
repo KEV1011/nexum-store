@@ -118,6 +118,39 @@ function _localCode(): string {
   return randomInt(100000, 1000000).toString();
 }
 
+// ── Cuenta de demostración para la revisión de las tiendas ───────────────────
+//
+// El login de esta plataforma es solo con OTP por SMS. Quien revisa la app en
+// App Store o Play está en otro país, no tiene un número colombiano y no puede
+// recibir ese SMS: sin una forma de entrar, la revisión rechaza la ficha sin
+// llegar a ver el producto. Apple lo pide explícitamente (Guideline 2.1) y
+// Google también.
+//
+// Se habilita con DOS variables, y solo funciona para ESE número:
+//
+//   REVIEW_DEMO_PHONE=+573000000000
+//   REVIEW_DEMO_CODE=<6 dígitos>
+//
+// El resto de teléfonos sigue el flujo normal. Sin las variables no existe.
+// A diferencia del código fijo del piloto, esto NO es una llave maestra: abre
+// una sola cuenta, la que se prepara para la revisión.
+
+const REVIEW_DEMO_PHONE = (process.env['REVIEW_DEMO_PHONE'] ?? '').trim().replace(/[\s-]/g, '');
+const REVIEW_DEMO_CODE = (process.env['REVIEW_DEMO_CODE'] ?? '')
+  .trim()
+  .replace(/^["']|["']$/g, '');
+
+/** ¿Este teléfono es la cuenta de demostración de la revisión? */
+export function esTelefonoDemo(phone: string): boolean {
+  if (!REVIEW_DEMO_PHONE || !REVIEW_DEMO_CODE) return false;
+  return phone.replace(/[\s-]/g, '') === REVIEW_DEMO_PHONE;
+}
+
+/** ¿Hay cuenta de demostración configurada? Se muestra en /health. */
+export function demoRevisionActiva(): boolean {
+  return Boolean(REVIEW_DEMO_PHONE && REVIEW_DEMO_CODE);
+}
+
 // ── Diagnóstico ───────────────────────────────────────────────────────────────
 
 /**
@@ -214,6 +247,13 @@ export async function validateAdminOtp(phone: string, otp: string): Promise<void
 export async function requestOtp(phone: string, driverId?: string): Promise<void> {
   _assertRateLimit(phone);
 
+  // Cuenta de revisión: no hay SMS que mandar, el revisor ya tiene el código en
+  // las notas de la ficha. Nunca llega a Twilio, así que tampoco gasta saldo.
+  if (esTelefonoDemo(phone)) {
+    await _guardarCodigoLocal(phone, REVIEW_DEMO_CODE, driverId);
+    return;
+  }
+
   if (isSmsConfigured()) {
     await sendSmsVerification(phone);
     return;
@@ -227,7 +267,15 @@ export async function requestOtp(phone: string, driverId?: string): Promise<void
     );
   }
 
-  const code = _localCode();
+  await _guardarCodigoLocal(phone, _localCode(), driverId);
+}
+
+/** Invalida los códigos anteriores de ese teléfono y guarda el nuevo. */
+async function _guardarCodigoLocal(
+  phone: string,
+  code: string,
+  driverId?: string,
+): Promise<void> {
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
   await prisma.otpSession.updateMany({
     where: { phone, used: false },
@@ -244,7 +292,9 @@ export async function requestOtp(phone: string, driverId?: string): Promise<void
 export async function validateOtp(phone: string, otp: string): Promise<void> {
   _assertVerifyLimit(phone);
 
-  if (isSmsConfigured()) {
+  // La cuenta de revisión valida contra su sesión local (abajo), nunca contra
+  // Twilio: el revisor no recibió ningún SMS que Twilio pudiera reconocer.
+  if (!esTelefonoDemo(phone) && isSmsConfigured()) {
     const ok = await checkSmsVerification(phone, otp);
     if (!ok) {
       _recordVerifyFail(phone);

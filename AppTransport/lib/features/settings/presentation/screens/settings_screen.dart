@@ -9,6 +9,7 @@ import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
+import 'package:nexum_driver/features/settings/presentation/screens/delete_account_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/privacy_screen.dart';
 
 enum _MapApp { googleMaps, waze, mapsDotMe, system }
@@ -202,6 +203,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: AppColors.error),
                 minimumSize: const Size.fromHeight(AppConstants.minTouchTarget),
+              ),
+            ),
+          ),
+          // Eliminar la cuenta tiene que estar EN la app, no en un correo a
+          // soporte: App Store y Play lo exigen así.
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppConstants.spacingM,
+            ),
+            child: TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DeleteAccountScreen(),
+                ),
+              ),
+              style: TextButton.styleFrom(
+                minimumSize: const Size.fromHeight(AppConstants.minTouchTarget),
+              ),
+              child: Text(
+                'Eliminar mi cuenta',
+                style: TextStyle(color: context.textSecondaryColor),
               ),
             ),
           ),

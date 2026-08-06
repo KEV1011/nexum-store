@@ -14,7 +14,8 @@ import { logger } from './lib/logger';
 import { initSentry, captureError } from './lib/sentry';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
-import { otpMode, otpEnRiesgo } from './services/otp.service';
+import { pagoEnLineaDisponible } from './services/payment.service';
+import { otpMode, otpEnRiesgo, demoRevisionActiva } from './services/otp.service';
 import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
@@ -117,6 +118,12 @@ app.get('/health', async (_req, res) => {
     // true = el login de producción depende de UN código fijo que vale para
     // cualquier teléfono (modo piloto autorizado con ALLOW_FIXED_OTP).
     otpRiesgo: otpEnRiesgo(),
+    // Cuenta de demostración para la revisión de App Store / Play: sin ella el
+    // revisor no puede entrar (login solo por SMS a un número colombiano).
+    demoRevision: demoRevisionActiva(),
+    // 'wompi' = el pago en línea cobra de verdad; 'apagado' = las apps solo
+    // ofrecen efectivo (un botón que no cobra es motivo de rechazo).
+    pagos: pagoEnLineaDisponible() ? 'wompi' : 'apagado',
     // Diagnóstico de infraestructura: una mirada dice si las fotos sobreviven
     // al redeploy y si los push llegan con la app cerrada.
     uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',

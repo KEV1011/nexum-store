@@ -25,6 +25,11 @@ import {
 } from '../services/client.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
 import {
+  AccountDeletionError,
+  borrarCuentaCliente,
+  motivoBloqueoCliente,
+} from '../services/account-deletion.service';
+import {
   createFreightRequest,
   listClientFreights,
   cancelClientFreight,
@@ -72,7 +77,12 @@ import {
   INTERCITY_DUAL_MODEL,
   INTERCITY_CITY_COORDS,
 } from '../config/constants';
-import { createPaymentLink, getPaymentByReference, reconcilePayment } from '../services/payment.service';
+import {
+  createPaymentLink,
+  getPaymentByReference,
+  pagoEnLineaDisponible,
+  reconcilePayment,
+} from '../services/payment.service';
 import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
 import {
   getClientPromoOverview,
@@ -151,6 +161,23 @@ router.post('/auth/verify-otp', async (req, res) => {
 
 // ─── Perfil ───────────────────────────────────────────────────────────────────
 
+// GET /client/config — qué puede ofrecer la app hoy. Público: no hay nada
+// sensible y la app lo consulta antes de pintar el selector de pago.
+//
+// Existe por el pago en línea: sin llaves de Wompi el botón "Pagar en línea"
+// llevaba a un checkout que no cobra nada. Un botón que no hace lo que dice es
+// motivo de rechazo en la revisión de las tiendas, y una mentira al usuario.
+router.get('/config', (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      pagoEnLinea: pagoEnLineaDisponible(),
+      // Métodos que la app debe mostrar, en orden. El efectivo siempre está.
+      metodosPago: pagoEnLineaDisponible() ? ['efectivo', 'en_linea'] : ['efectivo'],
+    },
+  });
+});
+
 router.get('/profile', clientAuthMiddleware, async (req, res) => {
   try {
     res.json({ success: true, data: await getClientProfile(req.clientId!) });
@@ -165,6 +192,37 @@ router.put('/profile', clientAuthMiddleware, async (req, res) => {
     res.json({ success: true, data: await updateClientProfile(req.clientId!, { name, email }) });
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'No se pudo actualizar el perfil' });
+  }
+});
+
+// ── Eliminar la cuenta ────────────────────────────────────────────────────────
+// Exigido por App Store y Play: quien crea una cuenta desde la app tiene que
+// poder borrarla desde la app. Ver account-deletion.service.ts para por qué se
+// anonimiza en vez de borrarse (los viajes liquidados son contabilidad de
+// terceros).
+
+// GET /client/account/deletion — qué va a pasar y si se puede ahora mismo.
+// La app lo consulta ANTES de mostrar el botón: enterarse de que no se puede
+// después de teclear "ELIMINAR" es la peor forma de descubrirlo.
+router.get('/account/deletion', clientAuthMiddleware, async (req, res) => {
+  try {
+    const bloqueo = await motivoBloqueoCliente(req.clientId!);
+    res.json({ success: true, data: { puedeEliminar: bloqueo === null, motivo: bloqueo } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// DELETE /client/account — anonimiza la cuenta. Irreversible.
+router.delete('/account', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await borrarCuentaCliente(req.clientId!) });
+  } catch (err) {
+    const status = err instanceof AccountDeletionError ? 409 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo eliminar la cuenta',
+    });
   }
 });
 

@@ -21,6 +21,7 @@ import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
 import 'package:nexum_client/features/support/presentation/screens/support_tickets_screen.dart';
 import 'package:nexum_client/features/account/presentation/screens/client_verification_screen.dart';
 import 'package:nexum_client/features/account/presentation/screens/payment_methods_screen.dart';
+import 'package:nexum_client/features/account/presentation/screens/delete_account_screen.dart';
 import 'package:nexum_client/features/account/presentation/screens/privacy_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 
@@ -132,6 +133,18 @@ class AccountScreen extends ConsumerWidget {
             children: [
               _LogoutTile(
                 onTap: () => _confirmLogout(context, ref),
+              ),
+              // Eliminar la cuenta tiene que estar EN la app, no en un correo
+              // a soporte: App Store y Play lo exigen así.
+              _SettingTile(
+                icon: Icons.delete_forever_outlined,
+                title: 'Eliminar mi cuenta',
+                subtitle: 'Borra tus datos de ZIPA de forma permanente',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const DeleteAccountScreen(),
+                  ),
+                ),
               ),
             ],
           ),

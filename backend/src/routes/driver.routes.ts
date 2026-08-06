@@ -69,6 +69,11 @@ import {
 } from '../services/freight.service';
 import { getTripChat, postTripChatPhoto, TripChatError } from '../services/trip-chat.service';
 import {
+  AccountDeletionError,
+  borrarCuentaConductor,
+  motivoBloqueoConductor,
+} from '../services/account-deletion.service';
+import {
   createTicket,
   listTicketsFor,
   getTicketDetail,
@@ -101,6 +106,36 @@ router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to update profile';
     res.status(400).json({ success: false, error: message });
+  }
+});
+
+// ── Eliminar la cuenta ────────────────────────────────────────────────────────
+// Exigido por App Store y Play. Se anonimiza en vez de borrarse porque los
+// viajes liquidados del conductor sostienen la liquidación de su empresa, las
+// cuentas de cobro y los remitos firmados: no son solo datos suyos.
+
+// GET /driver/account/deletion — si se puede eliminar ahora, y si no, por qué.
+router.get('/account/deletion', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  try {
+    const bloqueo = await motivoBloqueoConductor(driverId);
+    res.json({ success: true, data: { puedeEliminar: bloqueo === null, motivo: bloqueo } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// DELETE /driver/account — anonimiza la cuenta. Irreversible.
+router.delete('/account', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  try {
+    res.json({ success: true, data: await borrarCuentaConductor(driverId) });
+  } catch (err) {
+    const status = err instanceof AccountDeletionError ? 409 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo eliminar la cuenta',
+    });
   }
 });
 

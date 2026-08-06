@@ -97,6 +97,12 @@ services:
       # URL pública del backend — Wompi redirige al usuario a /payment/result.
       - key: APP_URL
         value: https://nexum-api-trxr.onrender.com
+      # Cuenta de demostración para la revisión de las tiendas: ese teléfono
+      # entra con ese código, sin SMS. Ver docs/REVISION_TIENDAS.md.
+      - key: REVIEW_DEMO_PHONE
+        sync: false
+      - key: REVIEW_DEMO_CODE
+        sync: false
       # ── Piloto sin verificación ──────────────────────────────────────────
       # En true los conductores reciben viajes sin documentos aprobados. Es un
       # permiso, no un interruptor: exige fecha de fin (sin ella el servicio no
