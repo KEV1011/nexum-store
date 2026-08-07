@@ -74,7 +74,10 @@ no esté habilitada.)
    permitida.
 
 ### 2b. Activar
-Render → `nexum-api` → añade las tres variables:
+
+Son **dos cosas distintas** y mucha gente configura solo la primera:
+
+**Los códigos de acceso (OTP)** — Twilio *Verify*:
 
 | Variable | Dónde sale |
 |---|---|
@@ -82,15 +85,34 @@ Render → `nexum-api` → añade las tres variables:
 | `TWILIO_AUTH_TOKEN` | Home de la consola (botón *Show*) |
 | `TWILIO_VERIFY_SID` | Verify → Services → tu servicio (`VA...`) |
 
-**Comprobar:** `/health` debe decir `"otp":"twilio-sms"`, y al entrar al panel
-te debe llegar un **SMS real**.
+**Las alertas de pánico (SOS)** — SMS normales, que Verify **no** sabe mandar.
+Añade **una** de estas dos:
 
-> 🔙 **Cómo salir si algo falla:** borra esas 3 variables en Render. Vuelves al
+| Variable | Dónde sale |
+|---|---|
+| `TWILIO_FROM_NUMBER` | un número tuyo de Twilio (`+1...` o `+57...`) |
+| `TWILIO_MESSAGING_SERVICE_SID` | Messaging → Services (`MG...`) — preferible si tienes varios números |
+
+> ⚠️ Sin una de esas dos, el botón de pánico **no avisa a nadie** aunque el
+> login por SMS funcione perfectamente. Verify es solo para códigos.
+
+**Comprobar en `/health`:** `"otp":"twilio-sms"` (códigos) **y** `"sos":"sms"`
+(pánico). Si ves `"sos":"sin-canal"`, te falta el número emisor.
+
+> 🚨 **El interruptor es de todo o nada, y puede dejarte fuera de tu panel.**
+> En cuanto existan las tres variables de Verify, **`OTP_FALLBACK_CODE` deja de
+> funcionar en todas las superficies, `/admin` incluido**: no hay mezcla. Si tu
+> cuenta sigue en *trial* y tu número de admin no está en *Verified Caller IDs*,
+> no podrás entrar. **Verifica tu número ANTES de poner las variables.**
+
+> 🔙 **Cómo salir si algo falla:** borra esas variables en Render. Vuelves al
 > instante a tu `OTP_FALLBACK_CODE` y además se reinicia el proceso, lo que
 > limpia el contador que provoca el error *429 Too Many Requests*.
 
 > ⚠️ **Para usuarios reales tienes que salir de trial** (cargar saldo). En trial
-> solo funcionan números verificados uno a uno: inviable para clientes.
+> solo funcionan números verificados uno a uno: inviable para clientes. La
+> cuenta de demostración (`REVIEW_DEMO_PHONE`) es la única excepción — nunca
+> pasa por Twilio, así que sigue entrando con su código en cualquier caso.
 
 ---
 
