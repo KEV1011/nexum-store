@@ -15,6 +15,30 @@ const String kEmergencyNumber = '123';
 const double _kFallbackLat = 7.3754;
 const double _kFallbackLng = -72.6486;
 
+/// Qué se le dice a alguien que acaba de pulsar el botón de pánico.
+///
+/// Solo se promete el aviso cuando el backend confirma que SALIÓ. Si no salió,
+/// el texto empuja al 123 en vez de tranquilizar: decirle "avisamos a tu
+/// contacto" a quien está en peligro y no fue avisado es peor que no decir nada.
+String _mensajeSos(SosResult? result) {
+  if (result == null) {
+    return 'No pudimos registrar el evento. Llama al $kEmergencyNumber ahora mismo.';
+  }
+  if (result.trustedContactNotified) {
+    return 'Avisamos a tu contacto de confianza con tu ubicación.';
+  }
+  switch (result.contactStatus) {
+    case 'sin_contacto':
+      return 'Evento registrado. No tienes contacto de confianza configurado: '
+          'llama al $kEmergencyNumber si estás en peligro.';
+    case 'sin_canal':
+    case 'fallo':
+    default:
+      return 'Evento registrado, pero NO pudimos avisar a tu contacto. '
+          'Llama al $kEmergencyNumber ahora mismo.';
+  }
+}
+
 /// SOS button shown during an active trip. Confirms, posts the location to
 /// `/safety/sos`, then offers to call 123 and share the trip with the trusted
 /// contact.
