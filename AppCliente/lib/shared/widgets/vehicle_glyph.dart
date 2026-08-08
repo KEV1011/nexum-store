@@ -100,6 +100,16 @@ class VehicleGlyph extends StatelessWidget {
   }
 }
 
+/// El mismo ícono del marcador, para usarlo fuera del mapa (p. ej. la
+/// miniatura del vehículo en la ficha del conductor cuando la empresa no subió
+/// una foto real). Una sola fuente: si cambia el ícono del mapa, cambia el de
+/// la ficha.
+IconData vehicleGlyphIcon(VehicleGlyphKind kind) => switch (kind) {
+      VehicleGlyphKind.car => Icons.directions_car,
+      VehicleGlyphKind.moto => Icons.two_wheeler,
+      VehicleGlyphKind.truck => Icons.local_shipping,
+    };
+
 /// Traduce el tipo REAL del vehículo del backend (PARTICULAR|TAXI|MOTO|TURBO|
 /// CAMION|MULA) al glifo del mapa. [fallback] cubre datos faltantes
 /// (histórico/APK viejo) — nunca rompe un mapa por dato faltante.

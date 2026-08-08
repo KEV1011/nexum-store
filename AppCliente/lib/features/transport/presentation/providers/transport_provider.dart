@@ -244,6 +244,10 @@ class TransportNotifier extends StateNotifier<TransportState> {
         driverVehicle: payload['driverVehicle'] as String? ?? r.driverVehicle,
         driverVehicleType:
             payload['driverVehicleType'] as String? ?? r.driverVehicleType,
+        // `fromJson` devuelve null cuando el mensaje no trae ficha, así que la
+        // que ya teníamos se conserva en vez de borrarse en la primera
+        // actualización de posición — que es lo que le pasó al PIN.
+        driverCard: DriverCardInfo.fromJson(payload) ?? r.driverCard,
         etaMinutes: payload['etaMinutes'] as int? ?? r.etaMinutes,
         acceptedAt: acceptedAtStr != null
             ? DateTime.tryParse(acceptedAtStr)
