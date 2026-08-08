@@ -9,7 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
-import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
@@ -23,6 +22,7 @@ import 'package:nexum_client/shared/widgets/map_pin.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
+import 'package:nexum_client/shared/widgets/driver_info_card.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
@@ -365,100 +365,37 @@ class _DriverCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ficha = request.driverCard;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.outlineColor),
-        boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              _DriverAvatar(
-                photoUrl: ficha?.photoUrl,
-                name: request.driverName,
-                rating: ficha?.rating,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      request.driverName ?? 'Conductor',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    // Por qué puede confiar: verificación primero, y de fondo
-                    // desde cuándo conduce. Solo se afirma lo que llegó.
-                    if (ficha?.verified ?? false)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.verified_user_rounded,
-                              size: 13, color: AppColors.primary),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Identidad verificada',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: context.textSecondaryColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    if (ficha?.since != null)
-                      Text(
-                        'Conductor desde ${ficha!.since!.year}',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: context.textTertiaryColor,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              _ChatButton(
-                tripId: request.id,
-                peerName: request.driverName ?? 'Conductor',
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primaryContainer,
-                  foregroundColor: AppColors.primary,
-                ),
-                tooltip: 'Contacto seguro',
-                icon: const Icon(Icons.shield_outlined),
-                onPressed: () => _showSafeContactSheet(context),
-              ),
-            ],
+    return DriverInfoCard(
+      name: request.driverName,
+      photoUrl: ficha?.photoUrl,
+      rating: ficha?.rating,
+      since: ficha?.since,
+      verified: ficha?.verified ?? false,
+      // Respaldo para viajes guardados antes de la ficha estructurada: se
+      // enseña la cadena vieja como descripción, sin placa suelta.
+      vehicleDescription: ficha?.vehicleDescription ?? request.driverVehicle,
+      plate: ficha?.plate,
+      vehiclePhotoUrl: ficha?.vehiclePhotoUrl,
+      vehicleType: request.driverVehicleType,
+      fallbackGlyph: request.serviceType == TransportServiceType.moto
+          ? VehicleGlyphKind.moto
+          : VehicleGlyphKind.car,
+      actions: [
+        _ChatButton(
+          tripId: request.id,
+          peerName: request.driverName ?? 'Conductor',
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          style: IconButton.styleFrom(
+            backgroundColor: AppColors.primaryContainer,
+            foregroundColor: AppColors.primary,
           ),
-          // Bloque del vehículo: lo que el pasajero compara con el carro que
-          // tiene delante antes de abrir la puerta.
-          if (ficha != null && (ficha.plate != null || ficha.vehicleDescription != null)) ...[
-            const SizedBox(height: 14),
-            Divider(height: 1, color: context.outlineColor),
-            const SizedBox(height: 14),
-            _VehicleRow(ficha: ficha, request: request),
-          ] else if (request.driverVehicle != null) ...[
-            // Respaldo para viajes guardados antes de la ficha estructurada.
-            const SizedBox(height: 10),
-            Text(
-              request.driverVehicle!,
-              style: TextStyle(fontSize: 12.5, color: context.textSecondaryColor),
-            ),
-          ],
-        ],
-      ),
+          tooltip: 'Contacto seguro',
+          icon: const Icon(Icons.shield_outlined),
+          onPressed: () => _showSafeContactSheet(context),
+        ),
+      ],
     );
   }
 
@@ -513,192 +450,6 @@ class _DriverCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Foto del conductor con su calificación en una insignia sobre la esquina.
-///
-/// Sin foto no se pone un icono genérico de persona: se ponen sus iniciales,
-/// que al menos son suyas. Y la estrella solo aparece si hay calificación —
-/// un "5.0" por defecto en un conductor recién llegado sería mentira.
-class _DriverAvatar extends StatelessWidget {
-  const _DriverAvatar({this.photoUrl, this.name, this.rating});
-
-  final String? photoUrl;
-  final String? name;
-  final double? rating;
-
-  String get _iniciales {
-    final partes = (name ?? '')
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((p) => p.isNotEmpty)
-        .toList();
-    if (partes.isEmpty) return '?';
-    if (partes.length == 1) return partes.first.substring(0, 1).toUpperCase();
-    return (partes.first.substring(0, 1) + partes[1].substring(0, 1))
-        .toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final url = photoUrl == null ? null : ApiConfig.resolveUrl(photoUrl!);
-    return SizedBox(
-      width: 56,
-      height: 60,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: AppColors.primaryContainer,
-              shape: BoxShape.circle,
-              image: url != null
-                  ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover)
-                  : null,
-            ),
-            alignment: Alignment.center,
-            child: url != null
-                ? null
-                : Text(
-                    _iniciales,
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 19,
-                    ),
-                  ),
-          ),
-          if (rating != null)
-            Positioned(
-              left: 0,
-              bottom: 0,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(color: AppColors.shadow, blurRadius: 4),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.star_rounded,
-                        size: 12, color: AppColors.starText),
-                    const SizedBox(width: 2),
-                    Text(
-                      rating!.toStringAsFixed(1),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// El vehículo: su foto, "Blanco Toyota Corolla" y la placa en un recuadro
-/// aparte, grande y con las letras separadas.
-///
-/// La placa se lee de lejos y bajo presión —el carro ya está parado delante—,
-/// así que no puede ir dentro de un renglón de texto en gris. La foto es la
-/// que la empresa subió al registrar el vehículo cuando existe; si no, el
-/// dibujo del tipo de vehículo.
-class _VehicleRow extends StatelessWidget {
-  const _VehicleRow({required this.ficha, required this.request});
-
-  final DriverCardInfo ficha;
-  final TransportRequestEntity request;
-
-  @override
-  Widget build(BuildContext context) {
-    final foto = ficha.vehiclePhotoUrl;
-    return Row(
-      children: [
-        Container(
-          width: 76,
-          height: 52,
-          decoration: BoxDecoration(
-            color: context.surfaceVariantColor,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: foto != null
-              ? Image.network(
-                  ApiConfig.resolveUrl(foto),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _dibujo(),
-                )
-              : _dibujo(),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (ficha.vehicleDescription != null)
-                Text(
-                  ficha.vehicleDescription!,
-                  style: const TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              if (ficha.plate != null) ...[
-                const SizedBox(height: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: context.textPrimaryColor,
-                      width: 1.6,
-                    ),
-                  ),
-                  child: Text(
-                    ficha.plate!.toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2.5,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _dibujo() => Center(
-        child: Icon(
-          vehicleGlyphIcon(
-            vehicleGlyphKindFor(
-              request.driverVehicleType,
-              fallback: request.serviceType == TransportServiceType.moto
-                  ? VehicleGlyphKind.moto
-                  : VehicleGlyphKind.car,
-            ),
-          ),
-          size: 26,
-          color: AppColors.textTertiary,
-        ),
-      );
 }
 
 // ── Map (hero) ──────────────────────────────────────────────────────────────
