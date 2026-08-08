@@ -49,70 +49,165 @@ class TransportTrackingScreen extends ConsumerWidget {
       );
     }
 
+    // El mapa es la pantalla y la ficha flota encima, como en cualquier app de
+    // transporte: antes el mapa era una tarjeta de 290 px dentro de un scroll,
+    // y el momento de "¿por dónde va mi conductor?" quedaba del tamaño de un
+    // recorte mientras el sitio lo ocupaba una lista de tarjetas.
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Seguimiento ${request.requestRef}'),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => context.go(AppRoutes.home),
-        ),
-        actions: [
-          if (request.status.isActive)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: SosButton(
-                tripId: request.id,
-                lat: request.driverLat,
-                lng: request.driverLng,
+      body: Stack(
+        children: [
+          Positioned.fill(child: _TripMap(request: request, expand: true)),
+          // Controles flotantes sobre el mapa (ya no hay barra superior).
+          Positioned(
+            left: 12,
+            right: 12,
+            top: MediaQuery.of(context).padding.top + 8,
+            child: Row(
+              children: [
+                _MapCircleButton(
+                  icon: Icons.close_rounded,
+                  tooltip: 'Cerrar seguimiento',
+                  onPressed: () => context.go(AppRoutes.home),
+                ),
+                const Spacer(),
+                if (request.status.isActive)
+                  SosButton(
+                    tripId: request.id,
+                    lat: request.driverLat,
+                    lng: request.driverLng,
+                  ),
+              ],
+            ),
+          ),
+          DraggableScrollableSheet(
+            initialChildSize: 0.52,
+            minChildSize: 0.30,
+            maxChildSize: 0.92,
+            snap: true,
+            builder: (context, scrollController) => Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: const [
+                  BoxShadow(color: AppColors.shadow, blurRadius: 20),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: context.outlineColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // El estado va ARRIBA del todo: es lo único que se ve con el
+                  // panel plegado, y es la pregunta que trae aquí al pasajero.
+                  _StatusTimeline(request: request),
+                  const SizedBox(height: 16),
+                  if (request.driverName != null) ...[
+                    _DriverCard(request: request),
+                    const SizedBox(height: 16),
+                  ],
+                  // PIN del ENVÍO: se lo dicta al repartidor quien recibe el
+                  // paquete. Sin él no se puede cerrar la entrega — es lo que
+                  // impide que la mercancía se pierda por el camino.
+                  if (request.serviceType == TransportServiceType.envios &&
+                      request.deliveryPin != null &&
+                      request.status != TransportStatus.completed &&
+                      request.status != TransportStatus.cancelled) ...[
+                    CustodyPinCard(pin: request.deliveryPin!),
+                    const SizedBox(height: 16),
+                  ],
+                  _StatusCard(request: request),
+                  const SizedBox(height: 16),
+                  _TripDetails(request: request),
+                  if (request.status.canCancel) ...[
+                    const SizedBox(height: 16),
+                    _CancelButton(
+                      onCancel: () => ref
+                          .read(transportProvider.notifier)
+                          .cancelRequest(requestId),
+                    ),
+                  ],
+                  if (request.isCompleted && !request.isRated) ...[
+                    const SizedBox(height: 16),
+                    _RatingSection(requestId: requestId),
+                  ],
+                  if (request.isCompleted && request.isRated) ...[
+                    const SizedBox(height: 16),
+                    _RatingDisplay(rating: request.rating!),
+                  ],
+                  if (request.isCompleted && request.driverName != null) ...[
+                    const SizedBox(height: 16),
+                    _TipSection(requestId: requestId),
+                  ],
+                ],
               ),
             ),
+          ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _TripMap(request: request),
-          const SizedBox(height: 16),
-          _StatusCard(request: request),
-          const SizedBox(height: 16),
-          if (request.driverName != null) ...[
-            _DriverCard(request: request),
-            const SizedBox(height: 16),
-          ],
-          // PIN del ENVÍO: se lo dicta al repartidor quien recibe el paquete.
-          // Sin él no se puede cerrar la entrega — es lo que impide que la
-          // mercancía se pierda por el camino.
-          if (request.serviceType == TransportServiceType.envios &&
-              request.deliveryPin != null &&
-              request.status != TransportStatus.completed &&
-              request.status != TransportStatus.cancelled) ...[
-            CustodyPinCard(pin: request.deliveryPin!),
-            const SizedBox(height: 16),
-          ],
-          _StatusTimeline(request: request),
-          const SizedBox(height: 16),
-          _TripDetails(request: request),
-          if (request.status.canCancel) ...[
-            const SizedBox(height: 16),
-            _CancelButton(
-              onCancel: () =>
-                  ref.read(transportProvider.notifier).cancelRequest(requestId),
-            ),
-          ],
-          if (request.isCompleted && !request.isRated) ...[
-            const SizedBox(height: 16),
-            _RatingSection(requestId: requestId),
-          ],
-          if (request.isCompleted && request.isRated) ...[
-            const SizedBox(height: 16),
-            _RatingDisplay(rating: request.rating!),
-          ],
-          if (request.isCompleted && request.driverName != null) ...[
-            const SizedBox(height: 16),
-            _TipSection(requestId: requestId),
-          ],
-          const SizedBox(height: 24),
-        ],
+    );
+  }
+}
+
+/// Punto de recogida: círculo oscuro sólido con anillo blanco, el mismo
+/// lenguaje que usan los mapas de navegación para "aquí empezó".
+class _OriginDot extends StatelessWidget {
+  const _OriginDot();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 16,
+        height: 16,
+        decoration: BoxDecoration(
+          color: AppColors.textPrimary,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 3),
+          boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 4)],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón circular blanco sobre el mapa. Sustituye a la barra superior, que
+/// ocupaba una franja entera para repetir un número de referencia que el
+/// pasajero no necesita mientras mira por dónde viene su conductor.
+class _MapCircleButton extends StatelessWidget {
+  const _MapCircleButton({
+    required this.icon,
+    required this.onPressed,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      shape: const CircleBorder(),
+      elevation: 3,
+      shadowColor: AppColors.shadow,
+      child: IconButton(
+        icon: Icon(icon),
+        tooltip: tooltip,
+        color: context.textPrimaryColor,
+        onPressed: onPressed,
       ),
     );
   }
@@ -613,9 +708,14 @@ class _VehicleRow extends StatelessWidget {
 // status + ETA overlay.
 
 class _TripMap extends ConsumerStatefulWidget {
-  const _TripMap({required this.request});
+  const _TripMap({required this.request, this.expand = false});
 
   final TransportRequestEntity request;
+
+  /// El mapa ocupa toda la pantalla y la ficha flota encima (seguimiento en
+  /// vivo). En false conserva la tarjeta recortada de 290 px, que es lo que
+  /// necesitan las pantallas donde el mapa es un detalle más.
+  final bool expand;
 
   @override
   ConsumerState<_TripMap> createState() => _TripMapState();
@@ -747,12 +847,8 @@ class _TripMapState extends ConsumerState<_TripMap>
       (origin.longitude + destination.longitude) / 2,
     );
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: SizedBox(
-        height: 290,
-        child: Stack(
-          children: [
+    final mapa = Stack(
+      children: [
             Positioned.fill(
               child: FlutterMap(
                 options: MapOptions(
@@ -783,21 +879,26 @@ class _TripMapState extends ConsumerState<_TripMap>
                         points: _route ??
                             [origin, if (driver != null) driver, destination],
                         color: AppColors.routeColor,
-                        strokeWidth: 4,
+                        // Gruesa y con extremos redondeados: una línea de 4 px
+                        // con esquinas en pico se ve como un trazo técnico, no
+                        // como una ruta.
+                        strokeWidth: 6.5,
+                        strokeCap: StrokeCap.round,
+                        strokeJoin: StrokeJoin.round,
                       ),
                     ],
                   ),
                   MarkerLayer(
                     markers: [
+                      // Origen: punto sólido, no una gota. El pin con punta se
+                      // reserva para el destino, que es a donde hay que llegar;
+                      // el origen ya ocurrió y solo ancla el principio del
+                      // trazo.
                       Marker(
                         point: origin,
-                        width: MapPin.markerWidth,
-                        height: MapPin.markerHeight,
-                        alignment: Alignment.topCenter,
-                        child: const MapPin(
-                          color: AppColors.pickupMarker,
-                          icon: Icons.trip_origin,
-                        ),
+                        width: 22,
+                        height: 22,
+                        child: const _OriginDot(),
                       ),
                       Marker(
                         point: destination,
@@ -834,20 +935,25 @@ class _TripMapState extends ConsumerState<_TripMap>
                 ],
               ),
             ),
-            // Floating live status + ETA overlay.
-            Positioned(
-              left: 12,
-              top: 12,
-              right: 12,
-              child: _MapLiveOverlay(
-                request: request,
-                color: color,
-                live: live,
-              ),
-            ),
-          ],
+        // Floating live status + ETA overlay.
+        Positioned(
+          left: 12,
+          // Bajo los botones flotantes, respetando la muesca del teléfono.
+          top: widget.expand ? MediaQuery.of(context).padding.top + 64 : 12,
+          right: 12,
+          child: _MapLiveOverlay(
+            request: request,
+            color: color,
+            live: live,
+          ),
         ),
-      ),
+      ],
+    );
+
+    if (widget.expand) return mapa;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: SizedBox(height: 290, child: mapa),
     );
   }
 }
