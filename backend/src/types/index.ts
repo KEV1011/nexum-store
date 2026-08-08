@@ -688,10 +688,32 @@ export interface ClientTripDTO {
   driverPhone?: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
+  /**
+   * Descripción legible "Marca Modelo • PLACA". Se mantiene por las apps ya
+   * instaladas, pero la ficha NUEVA usa los campos sueltos de abajo: una app no
+   * puede maquetar una placa en su recuadro ni el color del carro a partir de
+   * una cadena concatenada en el servidor.
+   */
   driverVehicle?: string;
   /** Tipo REAL del vehículo asignado (PARTICULAR|TAXI|MOTO|TURBO|CAMION|MULA) —
    *  la app elige el ícono del mapa con esto, no con el tipo de servicio. */
   driverVehicleType?: string;
+  // ── Ficha del conductor y su vehículo ──────────────────────────────────────
+  // Es lo que el pasajero mira para decidir si se sube al carro correcto: la
+  // placa grande, el color, la cara del conductor y por qué puede confiar.
+  driverPhotoUrl?: string;
+  driverRating?: number;
+  driverTotalTrips?: number;
+  /** Alta del conductor en la plataforma (ISO) → "Conductor desde 2026". */
+  driverSince?: string;
+  /** Identidad comprobada por el administrador (documentos aprobados). */
+  driverVerified?: boolean;
+  vehicleBrand?: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
+  vehiclePlate?: string;
+  /** Foto REAL del vehículo, si la flota la subió al registrarlo. */
+  vehiclePhotoUrl?: string;
   driverLat?: number;
   driverLng?: number;
   createdAt: string;

@@ -905,11 +905,12 @@ export async function getClientTripHistory(clientId: string, limit = 50): Promis
       },
     },
   });
-  return trips.map((trip) => {
-    const v = trip.driver?.vehicles[0];
-    const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
-    return _toTripDTO(trip, clientId, trip.driver?.name, trip.driver?.phone, driverVehicle, v?.type);
-  });
+  return trips.map((trip) =>
+    _toTripDTO(trip, clientId, {
+      driver: trip.driver,
+      vehicle: trip.driver?.vehicles[0],
+    }),
+  );
 }
 
 export async function getClientTripRaw(
@@ -965,12 +966,10 @@ export async function getClientTripSnapshot(
     },
   });
   if (!trip) return null;
-  const v = trip.driver?.vehicles[0];
-  const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
-  const dto = _toTripDTO(
-    trip, trip.passengerId ?? '',
-    trip.driver?.name, trip.driver?.phone, driverVehicle, v?.type,
-  );
+  const dto = _toTripDTO(trip, trip.passengerId ?? '', {
+    driver: trip.driver,
+    vehicle: trip.driver?.vehicles[0],
+  });
   return incluirPin ? _conPin(dto, trip.deliveryPin) : dto;
 }
 
@@ -994,9 +993,10 @@ export async function notifyClientTripUpdateById(tripId: string): Promise<void> 
     },
   });
   if (!trip || !trip.passengerId) return;
-  const v = trip.driver?.vehicles[0];
-  const driverVehicle = v ? `${v.brand} ${v.model} • ${v.plate}` : undefined;
-  const dto = _toTripDTO(trip, trip.passengerId, trip.driver?.name, trip.driver?.phone, driverVehicle, v?.type);
+  const dto = _toTripDTO(trip, trip.passengerId, {
+    driver: trip.driver,
+    vehicle: trip.driver?.vehicles[0],
+  });
   _notifyTripListeners(tripId, trip.passengerId, dto);
 }
 
@@ -1116,7 +1116,52 @@ function _conPin(dto: ClientTripDTO, pin: string | null | undefined): ClientTrip
   return pin ? { ...dto, deliveryPin: pin } : dto;
 }
 
-function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string, driverPhone?: string, driverVehicle?: string, driverVehicleType?: string): ClientTripDTO {
+/**
+ * Ficha del conductor y su vehículo tal como la pinta el pasajero.
+ *
+ * Antes solo viajaba `"Marca Modelo • PLACA"` concatenado aquí: la app recibía
+ * una cadena y no podía hacer nada con ella salvo imprimirla en gris. La placa
+ * en su recuadro, el color del carro y la cara del conductor —lo que de verdad
+ * mira alguien antes de subirse— son campos distintos, así que se mandan
+ * distintos y que sea la app quien decida cómo maquetarlos.
+ */
+interface FichaConductor {
+  driver?: {
+    name: string; phone: string; avatarUrl: string | null;
+    rating: number; totalTrips: number; isVerified: boolean; createdAt: Date;
+  } | null;
+  vehicle?: {
+    brand: string; model: string; color: string; plate: string;
+    type: string; photoUrl: string | null;
+  } | null;
+}
+
+function _fichaToDTO(f: FichaConductor): Partial<ClientTripDTO> {
+  const d = f.driver;
+  const v = f.vehicle;
+  return {
+    driverName: d?.name,
+    // Privacidad: el pasajero ve una referencia enmascarada, no el número real.
+    driverPhone: maskPhone(d?.phone),
+    contactChannel: 'in_app_chat',
+    maskedPhone: maskPhone(d?.phone),
+    // Se mantiene para las apps ya instaladas.
+    driverVehicle: v ? `${v.brand} ${v.model} • ${v.plate}` : undefined,
+    driverVehicleType: v?.type,
+    driverPhotoUrl: d?.avatarUrl ?? undefined,
+    driverRating: d?.rating,
+    driverTotalTrips: d?.totalTrips,
+    driverSince: d?.createdAt.toISOString(),
+    driverVerified: d?.isVerified,
+    vehicleBrand: v?.brand,
+    vehicleModel: v?.model,
+    vehicleColor: v?.color,
+    vehiclePlate: v?.plate,
+    vehiclePhotoUrl: v?.photoUrl ?? undefined,
+  };
+}
+
+function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConductor): ClientTripDTO {
   const statusMap: Record<string, ClientTripStatus> = {
     SEARCHING: 'searching', ACCEPTED: 'accepted', ARRIVING: 'arriving',
     ARRIVED: 'arrived', IN_PROGRESS: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled',
@@ -1132,13 +1177,7 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, driverName?: string,
     distanceKm: trip.distanceKm ?? 0,
     etaMinutes: trip.etaMinutes ?? 0,
     status: statusMap[trip.status] ?? 'searching',
-    driverName,
-    // Privacy: the passenger sees a masked reference, not the real number.
-    driverPhone: maskPhone(driverPhone),
-    contactChannel: 'in_app_chat',
-    maskedPhone: maskPhone(driverPhone),
-    driverVehicle,
-    driverVehicleType,
+    ...(ficha ? _fichaToDTO(ficha) : {}),
     createdAt: trip.createdAt.toISOString(),
     acceptedAt: trip.acceptedAt?.toISOString(),
     completedAt: trip.completedAt?.toISOString(),
