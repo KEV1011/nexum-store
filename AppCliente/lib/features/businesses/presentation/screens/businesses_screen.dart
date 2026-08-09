@@ -70,13 +70,16 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              SliverToBoxAdapter(
-                child: _PromoTeaser(
-                  onTap: () {},
-                ),
-              ),
+              // Aquí había un "ZIPA Fest 🎉 · Domicilios desde $0 · Solo este
+              // mes" con un botón "Ver promos" que no llevaba a ninguna parte.
+              // No es solo un botón muerto: promete al cliente un descuento
+              // que no existe. Fuera hasta que haya promociones de verdad.
               SliverToBoxAdapter(
                 child: _ServiceHighlights(
+                  onRestaurantesTap: () => setState(() {
+                    _filter = BusinessCategory.restaurant;
+                    _favoritesSelected = false;
+                  }),
                   onMobilidadTap: () =>
                       ref.read(shellTabProvider.notifier).state = 2,
                 ),
@@ -382,77 +385,16 @@ class _PinnedSearchBarDelegate extends SliverPersistentHeaderDelegate {
 
 // ── Promo teaser ──────────────────────────────────────────────────────────────
 
-class _PromoTeaser extends StatelessWidget {
-  const _PromoTeaser({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'ZIPA Fest 🎉',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primary,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Domicilios desde \$0 · Solo este mes',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: context.textSecondaryColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: onTap,
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 4,
-              ),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Ver promos',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-                SizedBox(width: 2),
-                Icon(Icons.arrow_forward_ios_rounded, size: 11),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Service highlights ────────────────────────────────────────────────────────
 
 class _ServiceHighlights extends StatelessWidget {
-  const _ServiceHighlights({required this.onMobilidadTap, super.key});
+  const _ServiceHighlights({
+    required this.onMobilidadTap,
+    required this.onRestaurantesTap,
+  });
 
   final VoidCallback onMobilidadTap;
+  final VoidCallback onRestaurantesTap;
 
   @override
   Widget build(BuildContext context) {
@@ -467,7 +409,7 @@ class _ServiceHighlights extends StatelessWidget {
               subtitle: 'Domicilio en 30 min',
               gradient: const [Color(0xFFFF7043), Color(0xFFBF360C)],
               shadowColor: const Color(0x40FF7043),
-              onTap: () {},
+              onTap: onRestaurantesTap,
             ),
           ),
           const SizedBox(width: 12),

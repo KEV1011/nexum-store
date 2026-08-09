@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
+import 'package:nexum_client/shared/widgets/driver_info_card.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -435,75 +437,87 @@ class _MessengerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.surfaceColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.outlineColor),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppColors.secondaryContainer,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.person_rounded,
-                color: AppColors.secondary, size: 26),
+    final ficha = errand.driverCard;
+    return DriverInfoCard(
+      name: errand.messengerName,
+      photoUrl: ficha?.photoUrl,
+      // La calificación del mandadero ya viajaba aparte; la ficha manda cuando
+      // llega. Antes se pintaba un guión donde no había nota: ahora sin
+      // calificación no hay estrella, igual que en el resto de la app.
+      rating: ficha?.rating ?? errand.messengerRating,
+      since: ficha?.since,
+      verified: ficha?.verified ?? false,
+      subtitle: 'Tu mensajero ZIPA',
+      vehicleDescription: ficha?.vehicleDescription,
+      plate: ficha?.plate,
+      vehiclePhotoUrl: ficha?.vehiclePhotoUrl,
+      vehicleType: ficha?.vehicleType,
+      fallbackGlyph: VehicleGlyphKind.moto,
+      actions: [
+        // Antes: un icono de teléfono con `onTap: () {}` que no llamaba a
+        // nadie. El número real no se expone, así que el botón explica el
+        // contacto protegido en vez de fingir una llamada.
+        IconButton(
+          style: IconButton.styleFrom(
+            backgroundColor: AppColors.primaryContainer,
+            foregroundColor: AppColors.primary,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          tooltip: 'Contacto seguro',
+          icon: const Icon(Icons.shield_outlined),
+          onPressed: () => _contactoProtegido(context),
+        ),
+      ],
+    );
+  }
+
+  void _contactoProtegido(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
               children: [
+                Icon(Icons.lock_outline_rounded,
+                    color: AppColors.primary, size: 22),
+                SizedBox(width: 10),
                 Text(
-                  errand.messengerName ?? 'Mensajero',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: context.textPrimaryColor,
-                  ),
-                ),
-                Row(
-                  children: [
-                    const Icon(Icons.star_rounded,
-                        size: 14, color: AppColors.star),
-                    const SizedBox(width: 3),
-                    Text(
-                      errand.messengerRating?.toStringAsFixed(1) ?? '—',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: context.textSecondaryColor,
-                      ),
-                    ),
-                    Text(
-                      '  ·  Tu mensajero ZIPA',
-                      style: TextStyle(
-                          fontSize: 12, color: context.textSecondaryColor),
-                    ),
-                  ],
+                  'Contacto protegido',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                 ),
               ],
             ),
-          ),
-          if (errand.messengerPhone != null)
-            GestureDetector(
-              onTap: () {},
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryContainer,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.phone_rounded,
-                    color: AppColors.primary, size: 20),
-              ),
+            const SizedBox(height: 12),
+            Text(
+              'Por tu seguridad y la del mensajero, el número real se mantiene '
+              'privado. Si necesitas coordinar algo, escríbenos desde Ayuda y '
+              'soporte y te ponemos en contacto.',
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
             ),
-        ],
+            if (errand.messengerPhone != null) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.phone_outlined,
+                      size: 18, color: context.textTertiaryColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Referencia: ${errand.messengerPhone}',
+                    style: TextStyle(
+                      fontSize: 13, color: context.textTertiaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

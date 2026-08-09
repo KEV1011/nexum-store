@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:nexum_client/shared/widgets/driver_info_card.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -503,63 +504,38 @@ class _DriverCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _Card(
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: AppColors.primaryContainer,
-            child: Text(
-              order.driverName!.substring(0, 1),
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryDim,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppConstants.spacingM),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  order.driverName!,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  'Tu repartidor',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                    color: context.textSecondaryColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _CircleAction(
-            icon: Icons.call_rounded,
-            onTap: () {
-              // Llamada REAL al repartidor (marcador del teléfono).
-              final phone = order.driverPhone;
-              if (phone == null || phone.isEmpty) {
-                AppSnackbar.showInfo(
-                  context,
-                  'El teléfono estará disponible cuando el repartidor acepte.',
-                );
-                return;
-              }
-              launchUrl(Uri.parse('tel:$phone'));
-            },
-          ),
-        ],
-      ),
+    final ficha = order.driverCard;
+    return DriverInfoCard(
+      name: order.driverName,
+      photoUrl: ficha?.photoUrl,
+      rating: ficha?.rating,
+      since: ficha?.since,
+      verified: ficha?.verified ?? false,
+      subtitle: 'Tu repartidor',
+      vehicleDescription: ficha?.vehicleDescription,
+      plate: ficha?.plate,
+      vehiclePhotoUrl: ficha?.vehiclePhotoUrl,
+      vehicleType: ficha?.vehicleType,
+      // Un domicilio suele ir en moto: es el respaldo razonable cuando el
+      // vehículo asignado no llegó.
+      fallbackGlyph: VehicleGlyphKind.moto,
+      actions: [
+        _CircleAction(
+          icon: Icons.call_rounded,
+          onTap: () {
+            // Llamada REAL al repartidor (marcador del teléfono).
+            final phone = order.driverPhone;
+            if (phone == null || phone.isEmpty) {
+              AppSnackbar.showInfo(
+                context,
+                'El teléfono estará disponible cuando el repartidor acepte.',
+              );
+              return;
+            }
+            launchUrl(Uri.parse('tel:$phone'));
+          },
+        ),
+      ],
     );
   }
 }

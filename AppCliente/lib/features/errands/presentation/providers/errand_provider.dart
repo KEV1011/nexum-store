@@ -1,3 +1,4 @@
+import 'package:nexum_client/shared/models/driver_card_info.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -73,6 +74,11 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
       status: status,
       messengerName: (dto['driverName'] as String?) ?? current.messengerName,
       messengerPhone: (dto['driverPhone'] as String?) ?? current.messengerPhone,
+      // fromJson devuelve null si el aviso no trae ficha: se conserva la que
+      // ya había en vez de borrarla en la primera actualización.
+      driverCard: DriverCardInfo.fromJson(dto) ?? current.driverCard,
+      messengerRating:
+          (dto['driverRating'] as num?)?.toDouble() ?? current.messengerRating,
       actualPurchaseCost:
           (dto['actualPurchaseCost'] as num?)?.toDouble() ??
           current.actualPurchaseCost,

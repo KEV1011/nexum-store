@@ -1,3 +1,4 @@
+import 'package:nexum_client/shared/models/driver_card_info.dart';
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 
@@ -159,6 +160,7 @@ class ErrandEntity {
     this.actualPurchaseCost,
     this.rating,
     this.deliveryPin,
+    this.driverCard,
   });
 
   final String id;
@@ -192,6 +194,10 @@ class ErrandEntity {
   /// tendrían forma de dar un PIN.
   final String? deliveryPin;
 
+  /// Foto, calificación, verificación y placa del mandadero asignado.
+  /// Null mientras el mandado no tiene quién lo haga.
+  final DriverCardInfo? driverCard;
+
   bool get hasMessenger => messengerName != null;
   bool get isActive => status.isActive;
   bool get isRated => rating != null;
@@ -220,6 +226,7 @@ class ErrandEntity {
     double? actualPurchaseCost,
     int? rating,
     String? deliveryPin,
+    DriverCardInfo? driverCard,
   }) =>
       ErrandEntity(
         id: id ?? this.id,
@@ -238,5 +245,6 @@ class ErrandEntity {
         actualPurchaseCost: actualPurchaseCost ?? this.actualPurchaseCost,
         rating: rating ?? this.rating,
         deliveryPin: deliveryPin ?? this.deliveryPin,
+        driverCard: driverCard ?? this.driverCard,
       );
 }

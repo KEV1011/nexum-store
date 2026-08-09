@@ -2515,6 +2515,8 @@ class _TripRequestModal extends StatelessWidget {
 
     return Positioned.fill(
       child: GestureDetector(
+        // A propósito vacío: absorbe los toques para que no atraviesen la
+        // oferta y lleguen al mapa de detrás. No es un botón sin cablear.
         onTap: () {},
         child: ColoredBox(
           color: AppColors.overlay,

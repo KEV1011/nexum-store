@@ -17,6 +17,7 @@ class DriverCardInfo {
     this.color,
     this.plate,
     this.vehiclePhotoUrl,
+    this.vehicleType,
   });
 
   /// Devuelve `null` cuando el viaje todavía no tiene conductor: así la interfaz
@@ -35,6 +36,7 @@ class DriverCardInfo {
       color: json['vehicleColor'] as String?,
       plate: json['vehiclePlate'] as String?,
       vehiclePhotoUrl: json['vehiclePhotoUrl'] as String?,
+      vehicleType: json['driverVehicleType'] as String?,
     );
     return ficha.isEmpty ? null : ficha;
   }
@@ -49,6 +51,10 @@ class DriverCardInfo {
   final String? color;
   final String? plate;
   final String? vehiclePhotoUrl;
+
+  /// Tipo REAL del backend (PARTICULAR|TAXI|MOTO|TURBO|CAMION|MULA): decide el
+  /// dibujo cuando no hay foto del vehículo.
+  final String? vehicleType;
 
   bool get isEmpty =>
       photoUrl == null &&
@@ -78,5 +84,6 @@ class DriverCardInfo {
         if (color != null) 'vehicleColor': color,
         if (plate != null) 'vehiclePlate': plate,
         if (vehiclePhotoUrl != null) 'vehiclePhotoUrl': vehiclePhotoUrl,
+        if (vehicleType != null) 'driverVehicleType': vehicleType,
       };
 }

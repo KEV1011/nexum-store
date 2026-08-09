@@ -1,3 +1,4 @@
+import 'package:nexum_client/shared/models/driver_card_info.dart';
 /// Estado de un pedido desde la perspectiva del cliente.
 ///
 /// Refleja el mismo ciclo que ve el negocio y el conductor, garantizando
@@ -101,6 +102,7 @@ class CustomerOrderEntity {
     required this.createdAt,
     this.driverName,
     this.driverPhone,
+    this.driverCard,
     this.etaMinutes,
     this.prepMinutes,
     this.acceptedAt,
@@ -139,6 +141,7 @@ class CustomerOrderEntity {
         createdAt: DateTime.parse(j['createdAt'] as String),
         driverName: j['driverName'] as String?,
         driverPhone: j['driverPhone'] as String?,
+        driverCard: DriverCardInfo.fromJson(j),
         etaMinutes: j['etaMinutes'] as int?,
         prepMinutes: j['prepMinutes'] as int?,
         acceptedAt: j['acceptedAt'] != null
@@ -193,6 +196,7 @@ class CustomerOrderEntity {
             DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
         driverName: j['driverName'] as String?,
         driverPhone: j['driverPhone'] as String?,
+        driverCard: DriverCardInfo.fromJson(j),
         etaMinutes: (j['etaMinutes'] as num?)?.toInt(),
         prepMinutes: (j['prepMinutes'] as num?)?.toInt(),
         acceptedAt: j['acceptedAt'] != null
@@ -232,6 +236,10 @@ class CustomerOrderEntity {
 
   final String? driverName;
   final String? driverPhone;
+
+  /// Foto, calificación, verificación y placa del repartidor asignado.
+  /// Null mientras el pedido no tiene repartidor.
+  final DriverCardInfo? driverCard;
 
   /// ¿Hay datos reales suficientes para dibujar el mapa? Sin esto, antes se
   /// pintaba un mapa inventado a partir del hash del nombre del negocio.
@@ -318,6 +326,7 @@ class CustomerOrderEntity {
     CustomerOrderStatus? status,
     String? driverName,
     String? driverPhone,
+    DriverCardInfo? driverCard,
     int? etaMinutes,
     int? prepMinutes,
     DateTime? acceptedAt,
@@ -350,6 +359,8 @@ class CustomerOrderEntity {
       deliveryFee: deliveryFee,
       createdAt: createdAt,
       driverName: driverName ?? this.driverName,
+      // Igual que el PIN: la ficha se conserva si la actualización no la trae.
+      driverCard: driverCard ?? this.driverCard,
       driverPhone: driverPhone ?? this.driverPhone,
       etaMinutes: etaMinutes ?? this.etaMinutes,
       prepMinutes: prepMinutes ?? this.prepMinutes,
@@ -390,6 +401,9 @@ class CustomerOrderEntity {
         'createdAt': createdAt.toIso8601String(),
         'driverName': driverName,
         'driverPhone': driverPhone,
+        // Aplanada en las MISMAS claves del backend: fromJson la reconstruye
+        // igual venga de la API o del disco.
+        if (driverCard != null) ...driverCard!.toJson(),
         'etaMinutes': etaMinutes,
         'prepMinutes': prepMinutes,
         'acceptedAt': acceptedAt?.toIso8601String(),
