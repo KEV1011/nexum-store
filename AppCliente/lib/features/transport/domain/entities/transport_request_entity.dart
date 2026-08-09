@@ -1,3 +1,7 @@
+// `export` re-expone la clase a quien importe este archivo, pero NO la trae
+// a este ámbito: hace falta el import además del export.
+import 'package:nexum_client/shared/models/driver_card_info.dart';
+
 export 'package:nexum_client/shared/models/driver_card_info.dart';
 
 /// Respuesta del endpoint GET /client/trips/estimate.
