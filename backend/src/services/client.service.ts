@@ -20,6 +20,10 @@ import { normalizeColombianPhone } from './auth.service';
 import { calcFare } from '../lib/fare';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
 import { recordCompletedTrip } from './earnings.service';
+import {
+  fichaFromDriver, fichaPorConductor, fichasPorConductores,
+  type DriverCardFields,
+} from '../lib/driver-card';
 import { sendPushToClient } from './push.service';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
@@ -470,10 +474,17 @@ export async function getClientOrders(clientId: string): Promise<ClientOrderWith
     include: { lines: true, business: { select: { name: true, lat: true, lng: true } } },
     orderBy: { createdAt: 'desc' },
   });
+  const fichas = await fichasPorConductores(orders.map((o) => o.driverId));
   return Promise.all(
     orders.map((o) =>
       _withOrderGeo(
-        { ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines), deliveryPin: o.deliveryPin ?? undefined },
+        {
+          ..._toSummary(
+            o, o.business?.name ?? 'Negocio', o.lines,
+            o.driverId ? fichas.get(o.driverId) ?? {} : {},
+          ),
+          deliveryPin: o.deliveryPin ?? undefined,
+        },
         o,
         o.business,
       ),
@@ -491,7 +502,13 @@ export async function getClientOrderById(
   });
   if (!o) return null;
   return _withOrderGeo(
-    { ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines), deliveryPin: o.deliveryPin ?? undefined },
+    {
+      ..._toSummary(
+        o, o.business?.name ?? 'Negocio', o.lines,
+        await fichaPorConductor(o.driverId),
+      ),
+      deliveryPin: o.deliveryPin ?? undefined,
+    },
     o,
     o.business,
   );
@@ -538,7 +555,10 @@ export async function getClientOrderSnapshot(orderId: string): Promise<ClientOrd
     include: { lines: true, business: { select: { name: true } } },
   });
   if (!o) return null;
-  return _toSummary(o, o.business?.name ?? 'Negocio', o.lines);
+  return _toSummary(
+    o, o.business?.name ?? 'Negocio', o.lines,
+    await fichaPorConductor(o.driverId),
+  );
 }
 
 // ─── Despacho real de pedidos (repartidores) ─────────────────────────────────
@@ -1017,7 +1037,12 @@ type PrismaOrderLine = {
   optionsSummary?: string | null;
 };
 
-function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine[]): ClientOrderSummaryDTO {
+function _toSummary(
+  o: PrismaOrder,
+  businessName: string,
+  lines: PrismaOrderLine[],
+  ficha: DriverCardFields = {},
+): ClientOrderSummaryDTO {
   const statusMap: Record<string, string> = {
     PENDING: 'pending',
     CONFIRMED: 'confirmed',
@@ -1045,6 +1070,9 @@ function _toSummary(o: PrismaOrder, businessName: string, lines: PrismaOrderLine
     driverPhone: maskPhone(o.driverPhone),
     contactChannel: 'in_app_chat',
     maskedPhone: maskPhone(o.driverPhone),
+    // Foto, calificación y placa del repartidor: el pedido solo guarda su
+    // nombre desnormalizado, así que la ficha la resuelve quien llama.
+    ...ficha,
     pickupPhotoUrl: o.pickupPhotoUrl ?? undefined,
     deliveryPhotoUrl: o.deliveryPhotoUrl ?? undefined,
     hasSignature: o.hasSignature,
@@ -1137,27 +1165,13 @@ interface FichaConductor {
 }
 
 function _fichaToDTO(f: FichaConductor): Partial<ClientTripDTO> {
-  const d = f.driver;
-  const v = f.vehicle;
   return {
-    driverName: d?.name,
+    driverName: f.driver?.name,
     // Privacidad: el pasajero ve una referencia enmascarada, no el número real.
-    driverPhone: maskPhone(d?.phone),
+    driverPhone: maskPhone(f.driver?.phone),
     contactChannel: 'in_app_chat',
-    maskedPhone: maskPhone(d?.phone),
-    // Se mantiene para las apps ya instaladas.
-    driverVehicle: v ? `${v.brand} ${v.model} • ${v.plate}` : undefined,
-    driverVehicleType: v?.type,
-    driverPhotoUrl: d?.avatarUrl ?? undefined,
-    driverRating: d?.rating,
-    driverTotalTrips: d?.totalTrips,
-    driverSince: d?.createdAt.toISOString(),
-    driverVerified: d?.isVerified,
-    vehicleBrand: v?.brand,
-    vehicleModel: v?.model,
-    vehicleColor: v?.color,
-    vehiclePlate: v?.plate,
-    vehiclePhotoUrl: v?.photoUrl ?? undefined,
+    maskedPhone: maskPhone(f.driver?.phone),
+    ...fichaFromDriver(f.driver, f.vehicle),
   };
 }
 

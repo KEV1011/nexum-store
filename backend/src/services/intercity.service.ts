@@ -1,5 +1,8 @@
 import { sanitizeStops, stopsFromDb } from '../lib/trip-stops';
 import {
+  fichaFromDriver, DRIVER_CARD_SELECT, VEHICLE_CARD_SELECT,
+} from '../lib/driver-card';
+import {
   IntercityCity,
   IntercitySeats,
   IntercityStatus,
@@ -152,16 +155,21 @@ async function _withDriverPosition(
     select: {
       lastLat: true,
       lastLng: true,
-      vehicles: { where: { isActive: true }, take: 1, select: { type: true } },
+      ...DRIVER_CARD_SELECT,
+      vehicles: {
+        where: { isActive: true }, take: 1,
+        select: VEHICLE_CARD_SELECT,
+      },
     },
   });
   if (d?.lastLat != null && d.lastLng != null) {
     dto.driverLat = d.lastLat;
     dto.driverLng = d.lastLng;
   }
-  // Tipo REAL del vehículo activo del conductor → la app elige el ícono del mapa.
-  const vType = d?.vehicles[0]?.type;
-  if (vType) dto.driverVehicleType = vType;
+  // Misma ficha que en el viaje urbano (foto, calificación, verificación,
+  // placa y color): esta consulta ya estaba aquí, solo traía menos campos.
+  // `driverVehicleType` sale de ella y decide el ícono del mapa.
+  Object.assign(dto, fichaFromDriver(d, d?.vehicles[0]));
   return dto;
 }
 

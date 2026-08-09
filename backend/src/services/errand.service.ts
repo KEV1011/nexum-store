@@ -6,6 +6,7 @@ import {
   ErrandRequestDTO,
 } from '../types';
 import { DriverStatus } from '@prisma/client';
+import { fichaPorConductor, type DriverCardFields } from '../lib/driver-card';
 import { ERRAND_SERVICE_FEE, COMMISSION_RATE } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { cancelSearchRetry } from './matching.service';
@@ -56,12 +57,13 @@ type DbErrand = {
   pickupAddress: string; dropoffAddress: string; serviceFee: number;
   purchaseBudget: number | null; actualCost: number | null; notes: string | null;
   status: string; driverName: string | null; driverPhone: string | null;
+  driverId?: string | null;
   createdAt: Date; acceptedAt: Date | null; deliveredAt: Date | null;
   userId: string;
   proofPhotoUrl: string | null; deliveryPhotoUrl: string | null;
 };
 
-function _toDTO(e: DbErrand): ClientErrandDTO {
+function _toDTO(e: DbErrand, ficha: DriverCardFields = {}): ClientErrandDTO {
   return {
     id: e.id,
     requestRef: e.requestRef,
@@ -79,6 +81,9 @@ function _toDTO(e: DbErrand): ClientErrandDTO {
     driverPhone: maskPhone(e.driverPhone),
     contactChannel: 'in_app_chat',
     maskedPhone: maskPhone(e.driverPhone),
+    // Foto, calificación y placa del mandadero: el mandado guarda su nombre
+    // desnormalizado, así que la ficha la resuelve quien llama.
+    ...ficha,
     createdAt: e.createdAt.toISOString(),
     acceptedAt: e.acceptedAt?.toISOString(),
     deliveredAt: e.deliveredAt?.toISOString(),
@@ -163,7 +168,7 @@ export async function acceptClientErrand(
     });
   }
 
-  const dto = _toDTO(updated);
+  const dto = _toDTO(updated, await fichaPorConductor(updated.driverId));
   _notify(errandId, dto);
 
   // Push FCM en paralelo al WS: el cliente se entera aunque tenga la app cerrada.
@@ -205,7 +210,7 @@ export async function updateErrandStatus(
       ...(status === 'delivered' && { deliveredAt: new Date(), deliveryPinAt: new Date() }),
     },
   });
-  const dto = _toDTO(updated);
+  const dto = _toDTO(updated, await fichaPorConductor(updated.driverId));
   _notify(errandId, dto);
 
   if (status === 'delivered') {
@@ -248,7 +253,7 @@ export async function cancelClientErrand(clientId: string, errandId: string): Pr
   if (res.count === 0) return false;
 
   const updated = await prisma.errand.findUniqueOrThrow({ where: { id: errandId } });
-  _notify(errandId, _toDTO(updated));
+  _notify(errandId, _toDTO(updated, await fichaPorConductor(updated.driverId)));
 
   // Si ya había mandadero asignado: se le avisa (WS + push, la app ya escucha
   // `errand_cancelled`) y se libera — estaba ON_TRIP desde que aceptó y sin
@@ -289,7 +294,10 @@ export async function getActiveClientErrand(
     orderBy: { createdAt: 'desc' },
   });
   if (!errand) return null;
-  return { ..._toDTO(errand), deliveryPin: errand.deliveryPin ?? undefined };
+  return {
+    ..._toDTO(errand, await fichaPorConductor(errand.driverId)),
+    deliveryPin: errand.deliveryPin ?? undefined,
+  };
 }
 
 export async function getClientErrandById(
@@ -298,7 +306,10 @@ export async function getClientErrandById(
 ): Promise<ClientErrandWithPinsDTO | null> {
   const errand = await prisma.errand.findUnique({ where: { id: errandId } });
   if (!errand || errand.userId !== clientId) return null;
-  return { ..._toDTO(errand), deliveryPin: errand.deliveryPin ?? undefined };
+  return {
+    ..._toDTO(errand, await fichaPorConductor(errand.driverId)),
+    deliveryPin: errand.deliveryPin ?? undefined,
+  };
 }
 
 export async function getClientErrandRaw(
@@ -320,7 +331,7 @@ export function subscribeClientErrand(errandId: string, cb: ErrandCallback): () 
 
 export async function getClientErrandSnapshot(errandId: string): Promise<ClientErrandDTO | null> {
   const errand = await prisma.errand.findUnique({ where: { id: errandId } });
-  return errand ? _toDTO(errand) : null;
+  return errand ? _toDTO(errand, await fichaPorConductor(errand.driverId)) : null;
 }
 
 export function toErrandRequestDTO(errand: { id: string; category: string; description: string; pickupAddress: string; dropoffAddress: string; serviceFee: number; purchaseBudget: number | null; notes: string | null }): ErrandRequestDTO {

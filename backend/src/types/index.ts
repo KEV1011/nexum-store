@@ -1,3 +1,5 @@
+import type { DriverCardFields } from '../lib/driver-card';
+
 // ─── Location ────────────────────────────────────────────────────────────────
 
 export interface Location {
@@ -612,7 +614,7 @@ export interface ClientPlaceOrderDTO {
   deliveryLng?: number;
 }
 
-export interface ClientOrderSummaryDTO {
+export interface ClientOrderSummaryDTO extends DriverCardFields {
   id: string;
   orderRef: string;
   businessId: string;
@@ -778,7 +780,7 @@ export interface RequestClientErrandDTO {
   notes?: string;
 }
 
-export interface ClientErrandDTO {
+export interface ClientErrandDTO extends DriverCardFields {
   id: string;
   requestRef: string;
   category: ErrandCategory;
@@ -858,7 +860,7 @@ export interface RequestIntercityDTO {
   stops?: TripStopDTO[];
 }
 
-export interface IntercityBookingDTO {
+export interface IntercityBookingDTO extends DriverCardFields {
   id: string;
   requestRef: string;
   origin: IntercityCity;
