@@ -4,6 +4,54 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 
+/// Los colores que necesita la ficha. Se pasan juntos y no sueltos para que
+/// una pantalla no pueda vestirla a medias (fondo oscuro con texto oscuro).
+class DriverCardPalette {
+  const DriverCardPalette({
+    required this.surface,
+    required this.outline,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.textDim,
+    required this.accent,
+    required this.avatarBg,
+    required this.thumbBg,
+  });
+
+  /// La paleta normal de la app.
+  factory DriverCardPalette.deTema(BuildContext context) => DriverCardPalette(
+        surface: Theme.of(context).colorScheme.surface,
+        outline: context.outlineColor,
+        textPrimary: context.textPrimaryColor,
+        textSecondary: context.textSecondaryColor,
+        textDim: context.textTertiaryColor,
+        accent: AppColors.primary,
+        avatarBg: AppColors.primaryContainer,
+        thumbBg: context.surfaceVariantColor,
+      );
+
+  /// El tema nocturno del intermunicipal.
+  factory DriverCardPalette.intercity() => DriverCardPalette(
+        surface: AppColors.intercitySurface,
+        outline: AppColors.primary.withValues(alpha: 0.3),
+        textPrimary: Colors.white,
+        textSecondary: AppColors.intercityTextDim,
+        textDim: AppColors.intercityTextDim,
+        accent: AppColors.primary,
+        avatarBg: AppColors.primary.withValues(alpha: 0.15),
+        thumbBg: AppColors.primary.withValues(alpha: 0.10),
+      );
+
+  final Color surface;
+  final Color outline;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color textDim;
+  final Color accent;
+  final Color avatarBg;
+  final Color thumbBg;
+}
+
 /// La ficha de quien viene a recogerte: foto, calificación, verificación y el
 /// vehículo con su placa.
 ///
@@ -30,7 +78,14 @@ class DriverInfoCard extends StatelessWidget {
     this.fallbackGlyph = VehicleGlyphKind.car,
     this.subtitle,
     this.actions = const [],
+    this.palette,
   });
+
+  /// Colores propios cuando la pantalla no sigue el tema de la app. El
+  /// intermunicipal tiene su tema nocturno hecho a mano: en vez de arrancarlo
+  /// —es una decisión de marca, no un descuido— la tarjeta aprende a vestirse
+  /// de oscuro y el resto de la pantalla se queda como está.
+  final DriverCardPalette? palette;
 
   final String? name;
   final String? photoUrl;
@@ -59,12 +114,13 @@ class DriverInfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette ?? DriverCardPalette.deTema(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: p.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.outlineColor),
+        border: Border.all(color: p.outline),
         boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 8)],
       ),
       child: Column(
@@ -72,7 +128,9 @@ class DriverInfoCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              DriverAvatar(photoUrl: photoUrl, name: name, rating: rating),
+              DriverAvatar(
+                photoUrl: photoUrl, name: name, rating: rating, palette: p,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -80,7 +138,8 @@ class DriverInfoCard extends StatelessWidget {
                   children: [
                     Text(
                       name ?? 'Conductor',
-                      style: const TextStyle(
+                      style: TextStyle(
+                        color: p.textPrimary,
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
                       ),
@@ -92,15 +151,15 @@ class DriverInfoCard extends StatelessWidget {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.verified_user_rounded,
-                              size: 13, color: AppColors.primary),
+                          Icon(Icons.verified_user_rounded,
+                              size: 13, color: p.accent),
                           const SizedBox(width: 4),
                           Text(
                             'Identidad verificada',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: context.textSecondaryColor,
+                              color: p.textSecondary,
                             ),
                           ),
                         ],
@@ -108,18 +167,12 @@ class DriverInfoCard extends StatelessWidget {
                     if (since != null)
                       Text(
                         'Conductor desde ${since!.year}',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: context.textTertiaryColor,
-                        ),
+                        style: TextStyle(fontSize: 11.5, color: p.textDim),
                       ),
                     if (!verified && since == null && subtitle != null)
                       Text(
                         subtitle!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.textSecondaryColor,
-                        ),
+                        style: TextStyle(fontSize: 12, color: p.textSecondary),
                       ),
                   ],
                 ),
@@ -129,7 +182,7 @@ class DriverInfoCard extends StatelessWidget {
           ),
           if (_hasVehicle) ...[
             const SizedBox(height: 14),
-            Divider(height: 1, color: context.outlineColor),
+            Divider(height: 1, color: p.outline),
             const SizedBox(height: 14),
             VehicleRow(
               description: vehicleDescription,
@@ -137,6 +190,7 @@ class DriverInfoCard extends StatelessWidget {
               photoUrl: vehiclePhotoUrl,
               vehicleType: vehicleType,
               fallbackGlyph: fallbackGlyph,
+              palette: p,
             ),
           ],
         ],
@@ -151,11 +205,14 @@ class DriverInfoCard extends StatelessWidget {
 /// son suyas. La estrella solo aparece si hay calificación — un "5.0" por
 /// defecto en alguien recién llegado sería mentira.
 class DriverAvatar extends StatelessWidget {
-  const DriverAvatar({super.key, this.photoUrl, this.name, this.rating});
+  const DriverAvatar({
+    super.key, this.photoUrl, this.name, this.rating, this.palette,
+  });
 
   final String? photoUrl;
   final String? name;
   final double? rating;
+  final DriverCardPalette? palette;
 
   String get _iniciales {
     final partes = (name ?? '')
@@ -171,6 +228,7 @@ class DriverAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette ?? DriverCardPalette.deTema(context);
     final url = photoUrl == null ? null : ApiConfig.resolveUrl(photoUrl!);
     return SizedBox(
       width: 56,
@@ -182,7 +240,7 @@ class DriverAvatar extends StatelessWidget {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: AppColors.primaryContainer,
+              color: p.avatarBg,
               shape: BoxShape.circle,
               image: url != null
                   ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover)
@@ -193,8 +251,8 @@ class DriverAvatar extends StatelessWidget {
                 ? null
                 : Text(
                     _iniciales,
-                    style: const TextStyle(
-                      color: AppColors.primary,
+                    style: TextStyle(
+                      color: p.accent,
                       fontWeight: FontWeight.w800,
                       fontSize: 19,
                     ),
@@ -249,8 +307,10 @@ class VehicleRow extends StatelessWidget {
     this.photoUrl,
     this.vehicleType,
     this.fallbackGlyph = VehicleGlyphKind.car,
+    this.palette,
   });
 
+  final DriverCardPalette? palette;
   final String? description;
   final String? plate;
   final String? photoUrl;
@@ -259,13 +319,14 @@ class VehicleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = palette ?? DriverCardPalette.deTema(context);
     return Row(
       children: [
         Container(
           width: 76,
           height: 52,
           decoration: BoxDecoration(
-            color: context.surfaceVariantColor,
+            color: p.thumbBg,
             borderRadius: BorderRadius.circular(10),
           ),
           clipBehavior: Clip.antiAlias,
@@ -273,9 +334,9 @@ class VehicleRow extends StatelessWidget {
               ? Image.network(
                   ApiConfig.resolveUrl(photoUrl!),
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _dibujo(),
+                  errorBuilder: (_, __, ___) => _dibujo(p),
                 )
-              : _dibujo(),
+              : _dibujo(p),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -286,7 +347,8 @@ class VehicleRow extends StatelessWidget {
               if (description != null)
                 Text(
                   description!,
-                  style: const TextStyle(
+                  style: TextStyle(
+                    color: p.textPrimary,
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -295,7 +357,7 @@ class VehicleRow extends StatelessWidget {
                 ),
               if (plate != null) ...[
                 const SizedBox(height: 6),
-                PlateBox(plate: plate!),
+                PlateBox(plate: plate!, color: p.textPrimary),
               ],
             ],
           ),
@@ -304,34 +366,37 @@ class VehicleRow extends StatelessWidget {
     );
   }
 
-  Widget _dibujo() => Center(
+  Widget _dibujo(DriverCardPalette p) => Center(
         child: Icon(
           vehicleGlyphIcon(
             vehicleGlyphKindFor(vehicleType, fallback: fallbackGlyph),
           ),
           size: 26,
-          color: AppColors.textTertiary,
+          color: p.textDim,
         ),
       );
 }
 
 /// La placa en su recuadro, como en la vida real.
 class PlateBox extends StatelessWidget {
-  const PlateBox({required this.plate, super.key});
+  const PlateBox({required this.plate, this.color, super.key});
 
   final String plate;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final c = color ?? context.textPrimaryColor;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.textPrimaryColor, width: 1.6),
+        border: Border.all(color: c, width: 1.6),
       ),
       child: Text(
         plate.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
+          color: c,
           fontSize: 17,
           fontWeight: FontWeight.w800,
           letterSpacing: 2.5,

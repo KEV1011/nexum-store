@@ -1,3 +1,4 @@
+import 'package:nexum_client/shared/models/driver_card_info.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -390,6 +391,7 @@ class IntercityRequestEntity {
     this.driverPhone,
     this.driverVehicle,
     this.driverVehicleType,
+    this.driverCard,
     this.stops = const [],
     this.driverRating,
     this.counterFare,
@@ -439,6 +441,7 @@ class IntercityRequestEntity {
       driverPhone: json['maskedPhone'] as String?,
       driverVehicle: json['driverVehicle'] as String?,
       driverVehicleType: json['driverVehicleType'] as String?,
+      driverCard: DriverCardInfo.fromJson(json),
       stops: [
         for (final st in (json['stops'] as List<dynamic>? ?? const []))
           if (st is Map<String, dynamic> && st['name'] is String)
@@ -468,6 +471,10 @@ class IntercityRequestEntity {
 
   /// Tipo REAL del vehículo asignado — decide el ícono del mapa.
   final String? driverVehicleType;
+
+  /// Foto, calificación, verificación y placa del conductor asignado.
+  /// Null mientras la reserva sigue buscando.
+  final DriverCardInfo? driverCard;
 
   /// Paradas intermedias del trayecto ("pasa por"), en orden.
   final List<String> stops;
@@ -503,6 +510,7 @@ class IntercityRequestEntity {
     String? driverPhone,
     String? driverVehicle,
     String? driverVehicleType,
+    DriverCardInfo? driverCard,
     List<String>? stops,
     double? driverRating,
     double? counterFare,
@@ -525,6 +533,7 @@ class IntercityRequestEntity {
         driverName: driverName ?? this.driverName,
         driverPhone: driverPhone ?? this.driverPhone,
         driverVehicle: driverVehicle ?? this.driverVehicle,
+        driverCard: driverCard ?? this.driverCard,
         driverVehicleType: driverVehicleType ?? this.driverVehicleType,
         stops: stops ?? this.stops,
         driverRating: driverRating ?? this.driverRating,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/shared/widgets/driver_info_card.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -691,63 +693,38 @@ class _DriverConfirmedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ficha = request.driverCard;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.intercitySurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
+          DriverInfoCard(
+            palette: DriverCardPalette.intercity(),
+            name: request.driverName,
+            photoUrl: ficha?.photoUrl,
+            rating: ficha?.rating,
+            since: ficha?.since,
+            verified: ficha?.verified ?? false,
+            vehicleDescription:
+                ficha?.vehicleDescription ?? request.driverVehicle,
+            plate: ficha?.plate,
+            vehiclePhotoUrl: ficha?.vehiclePhotoUrl,
+            vehicleType: request.driverVehicleType,
+            subtitle: 'Conductor confirmado',
+            actions: [
+              // Antes había aquí un icono de teléfono con `onTap: () {}` — no
+              // llamaba a nadie. El número real nunca se expone (como en el
+              // resto de la app), así que el botón explica el contacto
+              // protegido en vez de fingir una llamada.
+              IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                  foregroundColor: AppColors.primary,
                 ),
-                child: const Icon(Icons.check_rounded,
-                    color: AppColors.primary, size: 26),
+                tooltip: 'Contacto seguro',
+                icon: const Icon(Icons.shield_outlined),
+                onPressed: () => _contactoProtegido(context),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      request.driverName ?? 'Conductor',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
-                    ),
-                    Text(
-                      request.driverVehicle ?? '',
-                      style: const TextStyle(
-                          color: AppColors.intercityTextDim, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              if (request.driverPhone != null)
-                GestureDetector(
-                  onTap: () {},
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.phone_rounded,
-                        color: AppColors.primary, size: 20),
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -774,6 +751,59 @@ class _DriverConfirmedCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _contactoProtegido(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.lock_outline_rounded,
+                    color: AppColors.primary, size: 22),
+                SizedBox(width: 10),
+                Text(
+                  'Contacto protegido',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Por tu seguridad y la del conductor, el número real se mantiene '
+              'privado. Si necesitas coordinar algo, escríbenos desde Ayuda y '
+              'soporte y te ponemos en contacto.',
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+            ),
+            if (request.driverPhone != null) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.phone_outlined,
+                      size: 18, color: context.textTertiaryColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Referencia: ${request.driverPhone}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: context.textTertiaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
