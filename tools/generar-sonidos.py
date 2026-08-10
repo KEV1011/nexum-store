@@ -1,12 +1,24 @@
-"""Genera dos sonidos de solicitud ORIGINALES para la app del conductor.
+"""Genera los sonidos de solicitud de la app del conductor.
 
 Sin numpy ni librerías de audio: síntesis a mano sobre el módulo `wave` de la
-biblioteca estándar. Al ser generados desde cero no hay grabación de nadie de
-por medio y no hay licencia que respetar.
+biblioteca estándar. Al generarse desde cero no hay grabación de nadie de por
+medio y no hay licencia que respetar — importa, porque el sonido de una app de
+transporte se parece inevitablemente al de la competencia y conviene que el
+parecido sea de carácter, no de archivo.
 
-Los dos tienen que cumplir lo mismo: oírse en la calle con ruido, distinguirse
-de una notificación de WhatsApp, y repetirse en bucle sin cansar —el conductor
-lo escucha varias veces al día y suena en bucle mientras decide—.
+QUÉ HACE QUE UN AVISO SUENE "NEUTRO" Y NO CHILLE
+------------------------------------------------
+1. **Armónicos enteros, no inarmónicos.** Una campana de verdad tiene parciales
+   a 1,41×, 2,83×… de la fundamental: por eso suena a metal y "raspa". Un
+   timbre neutro (marimba, madera, voz) usa múltiplos enteros: 2×, 3×, 4×. Ese
+   es el cambio que más se nota.
+2. **Registro medio.** Por encima de ~1,5 kHz el oído humano es más sensible
+   (curva de Fletcher-Munson) y lo percibe como agresivo. Un aviso entre 400 y
+   800 Hz se oye igual de bien y no fatiga tras la décima vez del día.
+3. **Armónicos que caen rápido.** El brillo se va antes que el cuerpo: el 3.º y
+   4.º armónico se apagan en un tercio del tiempo que la fundamental.
+4. **Ataque suave.** 5 ms es un golpe seco; 12–18 ms se oye igual de puntual
+   pero sin el "clic" del arranque.
 """
 import math
 import struct
@@ -14,38 +26,36 @@ import wave
 
 SR = 44100
 
-
-def _envelope(i, n, ataque=0.005, caida=0.35):
-    """Ataque rápido y caída exponencial: así suena una campana, no un pitido."""
-    t = i / SR
-    dur = n / SR
-    if t < ataque:
-        return t / ataque
-    # Caída exponencial hasta el final; el último 8 % se apaga en rampa para
-    # que el bucle no produzca un chasquido al empalmar.
-    e = math.exp(-(t - ataque) / caida)
-    restante = (dur - t) / dur
-    if restante < 0.08:
-        e *= restante / 0.08
-    return e
+# Armónicos: (múltiplo entero, peso, cuánto más rápido se apaga que la
+# fundamental). Todos enteros a propósito — ver nota 1 de arriba.
+VOZ_CALIDA = [(1.0, 1.00, 1.0), (2.0, 0.32, 2.2), (3.0, 0.12, 3.5), (4.0, 0.05, 5.0)]
 
 
-def campana(freq, n, i, brillo=2.0):
-    """Timbre de campana por FM: una portadora modulada da los armónicos
-    inarmónicos que hacen que suene a metal y no a flauta."""
-    t = i / SR
-    mod = math.sin(2 * math.pi * freq * 1.41 * t) * brillo * math.exp(-t / 0.18)
-    return math.sin(2 * math.pi * freq * t + mod)
-
-
-def nota(freq, dur_s, brillo=2.0, caida=0.35):
+def nota(freq, dur_s, caida=0.45, ataque=0.014, voz=VOZ_CALIDA):
+    """Una nota de timbre cálido: suma de armónicos enteros, cada uno con su
+    propia caída, y una rampa final que evita el chasquido al repetir en bucle."""
     n = int(SR * dur_s)
-    return [campana(freq, n, i, brillo) * _envelope(i, n, caida=caida)
-            for i in range(n)]
+    out = []
+    for i in range(n):
+        t = i / SR
+        # Envolvente: ataque corto + caída exponencial.
+        env = (t / ataque) if t < ataque else math.exp(-(t - ataque) / caida)
+        # Los últimos 12 % se apagan en rampa: el bucle empalma sin clic.
+        restante = (dur_s - t) / dur_s
+        if restante < 0.12:
+            env *= restante / 0.12
+        v = 0.0
+        for mult, peso, vel in voz:
+            # Cada armónico con su propia caída: el brillo se va antes que el
+            # cuerpo, que es lo que hace que el sonido "se redondee" al decaer.
+            v += peso * math.exp(-(t) / (caida / vel)) * math.sin(
+                2 * math.pi * freq * mult * t
+            )
+        out.append(v * env)
+    return out
 
 
-def mezclar(pistas, total_s):
-    """Suma pistas (desplazamiento en segundos, muestras) en un buffer común."""
+def mezclar(pistas, total_s, pico_objetivo=0.80):
     total = int(SR * total_s)
     buf = [0.0] * total
     for offset_s, muestras in pistas:
@@ -54,9 +64,8 @@ def mezclar(pistas, total_s):
             if off + i < total:
                 buf[off + i] += v
     pico = max(abs(v) for v in buf) or 1.0
-    # Normalizado a -1.5 dB: fuerte pero sin recortar en altavoces baratos.
-    ganancia = 0.84 / pico
-    return [v * ganancia for v in buf]
+    g = pico_objetivo / pico
+    return [v * g for v in buf]
 
 
 def escribir(path, buf):
@@ -70,23 +79,27 @@ def escribir(path, buf):
     print(f'{path}  {len(buf)/SR:.2f} s')
 
 
-# ── Opción A · "Campana doble" ────────────────────────────────────────────────
-# Dos notas ascendentes (La5 → Do#6, una tercera mayor) con cola de campana.
-# Serena y reconocible: el registro clásico de "tienes un viaje".
-A = mezclar([
-    (0.00, nota(880.00, 1.10, brillo=2.2, caida=0.30)),
-    (0.16, nota(1108.73, 1.30, brillo=1.8, caida=0.38)),
-    # Un armónico suave una octava arriba da presencia sin subir el volumen.
-    (0.16, [v * 0.28 for v in nota(2217.46, 0.60, brillo=1.2, caida=0.16)]),
-], 1.70)
-escribir('/tmp/opcion_a_campana.wav', A)
+if __name__ == '__main__':
+    # ── C · "Dos notas cálidas" ───────────────────────────────────────────────
+    # Do5 → Mi5 (523 → 659 Hz). Registro medio, timbre de marimba. Es el que
+    # más se acerca al carácter de las apps grandes sin copiar su grabación.
+    escribir('/tmp/opcion_c_calida.wav', mezclar([
+        (0.00, nota(523.25, 0.85, caida=0.30)),
+        (0.15, nota(659.25, 1.20, caida=0.42)),
+    ], 1.50))
 
-# ── Opción B · "Triple ascendente" ────────────────────────────────────────────
-# Tres notas cortas subiendo (Mi6 → Sol#6 → Si6). Más urgente y más difícil de
-# ignorar con la moto en marcha; el bucle nota antes que hay algo esperando.
-B = mezclar([
-    (0.00, nota(1318.51, 0.30, brillo=1.4, caida=0.10)),
-    (0.13, nota(1661.22, 0.30, brillo=1.4, caida=0.10)),
-    (0.26, nota(1975.53, 0.90, brillo=1.6, caida=0.26)),
-], 1.35)
-escribir('/tmp/opcion_b_triple.wav', B)
+    # ── D · "Grave y serena" ──────────────────────────────────────────────────
+    # Sol4 → Do5 (392 → 523 Hz), una cuarta ascendente. Aún más neutra y con
+    # más cuerpo: se oye bien en el altavoz del teléfono dentro del bolsillo.
+    escribir('/tmp/opcion_d_grave.wav', mezclar([
+        (0.00, nota(392.00, 0.90, caida=0.34)),
+        (0.17, nota(523.25, 1.30, caida=0.48)),
+    ], 1.60))
+
+    # ── E · "Doble pulso" ─────────────────────────────────────────────────────
+    # La misma nota dos veces (Do5). Lo más neutro posible: no hay melodía que
+    # se pegue ni intervalo que canse. El "doo-doo" clásico de aviso.
+    escribir('/tmp/opcion_e_pulso.wav', mezclar([
+        (0.00, nota(523.25, 0.55, caida=0.20)),
+        (0.22, nota(523.25, 1.10, caida=0.40)),
+    ], 1.40))
