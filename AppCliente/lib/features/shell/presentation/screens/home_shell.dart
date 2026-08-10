@@ -119,7 +119,7 @@ class _GlassNavBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.18),
+              color: Colors.black.withValues(alpha: 0.30),
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
@@ -130,18 +130,25 @@ class _GlassNavBar extends StatelessWidget {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
             child: Container(
-              height: 64,
+              height: 66,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.72),
+                // Mismo cristal que la app del conductor: las dos apps son la
+                // misma plataforma y la barra es lo primero que se ve.
+                color: const Color(0xFF1A1D27).withValues(alpha: 0.66),
                 borderRadius: BorderRadius.circular(30),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.55),
+                  color: Colors.white.withValues(alpha: 0.16),
                 ),
               ),
               child: Stack(
                 children: [
-                  // Lupa de vidrio (referencia Rappi/iOS liquid glass): burbuja
-                  // translúcida que se DESLIZA hasta el ítem activo.
+                  // Lupa de vidrio (referencia Rappi/iOS liquid glass) que se
+                  // DESLIZA hasta el ítem activo.
+                  //
+                  // Píldora y no círculo: dentro va el ícono con su etiqueta
+                  // debajo, y en la parte baja de un círculo no cabe una
+                  // palabra como "Movilidad" — se salía por los lados. La
+                  // píldora se ajusta al ancho del ítem y contiene las dos.
                   AnimatedAlign(
                     duration: const Duration(milliseconds: 420),
                     curve: Curves.easeOutBack,
@@ -153,32 +160,30 @@ class _GlassNavBar extends StatelessWidget {
                     ),
                     child: FractionallySizedBox(
                       widthFactor: 1 / items.length,
-                      child: Center(
-                        child: Container(
-                          width: 54,
-                          height: 54,
+                      // Padding + SizedBox.expand en vez de Center+Container
+                      // sin hijo: así el alto y los márgenes son explícitos y
+                      // no dependen de cómo resuelve Container un tamaño sin
+                      // contenido. (66 de barra − 52 de píldora) / 2 = 7.
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+                        child: DecoratedBox(
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
+                            borderRadius: BorderRadius.circular(26),
                             gradient: LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                               colors: [
-                                Colors.white.withValues(alpha: 0.65),
-                                Colors.white.withValues(alpha: 0.18),
+                                Colors.white.withValues(alpha: 0.22),
+                                Colors.white.withValues(alpha: 0.05),
                               ],
                             ),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.75),
+                              color: Colors.white.withValues(alpha: 0.30),
                               width: 1.2,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 10,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
                           ),
+                          child: const SizedBox.expand(),
                         ),
                       ),
                     ),
@@ -201,10 +206,10 @@ class _GlassNavBar extends StatelessWidget {
   Widget _buildItem(BuildContext context, int i) {
     final item = items[i];
     final active = i == index;
-    final color = active ? AppColors.primary : const Color(0xFF64748B);
+    final color = active ? AppColors.primary : const Color(0xFF94A3B8);
 
     Widget icon = Icon(active ? item.activeIcon : item.icon,
-        size: 24, color: color);
+        size: 23, color: color);
     if (item.badge > 0) {
       icon = Badge.count(
         count: item.badge,
@@ -224,10 +229,12 @@ class _GlassNavBar extends StatelessWidget {
           Text(
             item.label,
             style: TextStyle(
-              fontSize: 10.5,
+              fontSize: 10,
               fontWeight: active ? FontWeight.w800 : FontWeight.w600,
               color: color,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

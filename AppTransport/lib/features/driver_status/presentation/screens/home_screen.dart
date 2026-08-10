@@ -1304,12 +1304,16 @@ class _GlassNavBar extends StatelessWidget {
                       ),
                       child: FractionallySizedBox(
                         widthFactor: 1 / cols,
-                        child: Center(
-                          child: Container(
-                            width: 54,
-                            height: 54,
+                        // Píldora y no círculo: dentro va el ícono con su
+                        // etiqueta debajo, y en la parte baja de un círculo no
+                        // cabe una palabra larga — se salía por los lados.
+                        // (66 de barra − 52 de píldora) / 2 = 7.
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 7),
+                          child: DecoratedBox(
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
+                              borderRadius: BorderRadius.circular(26),
                               gradient: LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
@@ -1323,6 +1327,7 @@ class _GlassNavBar extends StatelessWidget {
                                 width: 1.2,
                               ),
                             ),
+                            child: const SizedBox.expand(),
                           ),
                         ),
                       ),
