@@ -8,6 +8,11 @@ class AudioService {
   static final AudioService _instance = AudioService._();
   factory AudioService() => _instance;
 
+  /// El sonido de solicitud entrante. Una sola constante: las dos formas de
+  /// reproducirlo (una vez y en bucle) tienen que sonar igual, y antes había
+  /// que acordarse de cambiar la ruta en los dos sitios.
+  static const String _tripRequestSound = 'sounds/trip_request.mp3';
+
   final AudioPlayer _player = AudioPlayer();
   Timer? _autoStop;
 
@@ -17,7 +22,7 @@ class AudioService {
       _autoStop?.cancel();
       await _player.stop();
       await _player.setReleaseMode(ReleaseMode.release);
-      await _player.play(AssetSource('sounds/trip_request.wav'));
+      await _player.play(AssetSource(_tripRequestSound));
     } catch (_) {}
   }
 
@@ -30,7 +35,7 @@ class AudioService {
       _autoStop?.cancel();
       await _player.stop();
       await _player.setReleaseMode(ReleaseMode.loop);
-      await _player.play(AssetSource('sounds/trip_request.wav'));
+      await _player.play(AssetSource(_tripRequestSound));
       _autoStop = Timer(Duration(seconds: maxSeconds), () {
         _player.stop();
         _player.setReleaseMode(ReleaseMode.release);

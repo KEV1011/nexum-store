@@ -61,7 +61,7 @@ class NotificationService {
 
   // ── Audio feedback ────────────────────────────────────────────────────────
 
-  /// Sonido real de solicitud (assets/sounds/trip_request.wav) + vibración.
+  /// Sonido real de solicitud (assets/sounds/trip_request.mp3) + vibración.
   /// Una sola reproducción (compatibilidad).
   Future<void> playTripRequestSound() async {
     await Future.wait([
