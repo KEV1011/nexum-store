@@ -11,7 +11,7 @@ class AudioService {
   /// El sonido de solicitud entrante. Una sola constante: las dos formas de
   /// reproducirlo (una vez y en bucle) tienen que sonar igual, y antes había
   /// que acordarse de cambiar la ruta en los dos sitios.
-  static const String _tripRequestSound = 'sounds/trip_request.mp3';
+  static const String _tripRequestSound = 'sounds/trip_request.wav';
 
   final AudioPlayer _player = AudioPlayer();
   Timer? _autoStop;
