@@ -183,6 +183,9 @@ export type WsMessageType =
   | 'auth'
   | 'auth_ok'
   | 'auth_error'
+  // El servidor rechaza ponerlo EN LÍNEA (identidad sin verificar o documentos
+  // vencidos). Trae `code` y `error`, igual que la respuesta REST.
+  | 'driver_blocked'
   | 'client_auth'
   | 'client_auth_ok'
   | 'client_auth_error'

@@ -146,6 +146,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   StreamSubscription<Map<String, dynamic>>? _wsErrandSub;
   StreamSubscription<Map<String, dynamic>>? _wsOrderSub;
   StreamSubscription<String>? _wsCancelSub;
+  StreamSubscription<String>? _wsBlockedSub;
   StreamSubscription<String>? _wsErrandCancelSub;
   StreamSubscription<String>? _wsOrderCancelSub;
 
@@ -188,6 +189,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _wsErrandSub?.cancel();
     _wsOrderSub?.cancel();
     _wsCancelSub?.cancel();
+    _wsBlockedSub?.cancel();
     _wsErrandCancelSub?.cancel();
     _wsOrderCancelSub?.cancel();
     _mapController.dispose();
@@ -248,6 +250,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _wsErrandSub?.cancel();
       _wsOrderSub?.cancel();
       _wsCancelSub?.cancel();
+      _wsBlockedSub?.cancel();
       _wsErrandCancelSub?.cancel();
       _wsOrderCancelSub?.cancel();
       LocationService().stopTracking();
@@ -322,6 +325,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     // Clear the pending request if the server cancels the trip (timeout).
+    // El servidor puede rechazar la conexión EN LÍNEA aunque la app haya
+    // dejado pulsar (perfil en caché, documentos vencidos mientras tanto).
+    // Manda: si dice que no, se vuelve a desconectado y se explica por qué.
+    _wsBlockedSub = DriverWsService().blockedReasons.listen((motivo) {
+      if (!mounted) return;
+      setState(() => _state = _state.copyWith(isOnline: false));
+      LocationService().stopTracking();
+      DriverWsService().disconnect();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(motivo),
+          backgroundColor: const Color(0xFFC62828),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'Verificar',
+            textColor: Colors.white,
+            onPressed: () => context.push(AppRoutes.verification),
+          ),
+        ),
+      );
+      // El perfil en memoria estaba desactualizado: se refresca para que el
+      // banner del panel también lo refleje.
+      unawaited(ref.read(driverProfileProvider.notifier).load());
+    });
+
     _wsCancelSub = DriverWsService().tripCancellations.listen((tripId) {
       if (!mounted) return;
       if (_state.pendingRequest?.id == tripId) {

@@ -50,14 +50,9 @@ import {
   getDriverKyc,
   setDriverSelfie,
   submitDriverKyc,
-  isDriverCleared,
-  kycEnforced,
   KycError,
 } from '../services/kyc.service';
-import {
-  docKillSwitchEnforced,
-  getDriverCompliance,
-} from '../services/document-expiry.service';
+import { motivoParaNoConectar } from '../services/driver-online-guard';
 import {
   listDriverFreights,
   updateDriverFreightStatus,
@@ -353,35 +348,12 @@ router.put('/status', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Gating de habilitación: SOLO cuando KYC_ENFORCE=true se bloquea el ponerse
-  // EN LÍNEA a quien no esté "cleared" (documentos aprobados + identidad
-  // VERIFIED). Con KYC_ENFORCE=false el comportamiento es como antes: cualquiera
-  // se conecta y el matching ya filtra a los no verificados (nunca les ofrece
-  // viajes) — así el gate no bloquea de golpe a los conductores existentes.
-  if (
-    status === 'online' &&
-    req.driverId &&
-    kycEnforced() &&
-    !(await isDriverCleared(req.driverId))
-  ) {
-    res.status(403).json({
-      success: false,
-      error: 'Debes completar la verificación de identidad y documentos antes de conectarte.',
-      code: 'driver_not_cleared',
-    });
-    return;
-  }
-
-  // Kill-switch documental: con DOC_KILL_SWITCH_ENFORCE=true, un conductor con
-  // documentos obligatorios VENCIDOS (BLOCKED) no puede ponerse en línea.
-  if (status === 'online' && req.driverId && docKillSwitchEnforced()) {
-    const compliance = await getDriverCompliance(req.driverId);
-    if (compliance.status === 'BLOCKED') {
-      res.status(403).json({
-        success: false,
-        error: `Tu cuenta está suspendida: ${compliance.reason ?? 'documentos vencidos'}. Renueva tus documentos en Verificación para volver a conectarte.`,
-        code: 'documents_expired',
-      });
+  // Puede conectarse o no lo decide `motivoParaNoConectar`, compartido con el
+  // WebSocket — que es por donde el conductor se pone en línea de verdad.
+  if (status === 'online' && req.driverId) {
+    const motivo = await motivoParaNoConectar(req.driverId);
+    if (motivo) {
+      res.status(403).json({ success: false, ...motivo });
       return;
     }
   }

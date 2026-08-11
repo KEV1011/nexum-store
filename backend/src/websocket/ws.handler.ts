@@ -1,4 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
+import { motivoParaNoConectar } from '../services/driver-online-guard';
 import { IncomingMessage } from 'http';
 import { prisma } from '../lib/prisma';
 import {
@@ -167,8 +168,22 @@ function handleDriverAuth(ws: WebSocket, token: string, workMode: WorkMode): voi
     marcarIdentificado(ws);
     // Register in driverConnections so matching can reach this driver via sendToDriverById.
     driverConnections.set(payload.driverId, { ws, driverId: payload.driverId, workMode });
-    // OFFLINE→ONLINE condicional: reconectar a mitad de viaje no pisa ON_TRIP.
-    void getTripService().noteDriverConnected(payload.driverId);
+
+    // Ponerse EN LÍNEA pasa por la misma guarda que `PUT /driver/status`.
+    // Este es el punto donde la transición ocurre de verdad —la app no llama a
+    // esa ruta— así que si la comprobación no está aquí, no está en ninguna
+    // parte: la app puede tener el perfil en caché o no ser la nuestra.
+    void (async () => {
+      const motivo = await motivoParaNoConectar(payload.driverId);
+      if (motivo) {
+        // No se marca ONLINE. Se avisa con el mismo código que la ruta REST
+        // para que la app reaccione igual (abrir Verificación).
+        sendTo(ws, { type: 'driver_blocked', ...motivo });
+        return;
+      }
+      // OFFLINE→ONLINE condicional: reconectar a mitad de viaje no pisa ON_TRIP.
+      await getTripService().noteDriverConnected(payload.driverId);
+    })();
 
     sendTo(ws, { type: 'auth_ok', driverId: payload.driverId, workMode });
 

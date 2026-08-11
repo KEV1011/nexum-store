@@ -74,6 +74,10 @@ class DriverWsService {
   final _orderCancelCtrl = StreamController<String>.broadcast();
   /// Rechazos del PIN de custodia (mensaje en español listo para mostrar).
   final _custodyPinErrorCtrl = StreamController<String>.broadcast();
+
+  /// El servidor rechazó ponerlo EN LÍNEA (identidad sin verificar o documentos
+  /// vencidos). Llega el motivo listo para enseñar.
+  final _blockedCtrl = StreamController<String>.broadcast();
   // Ride negotiation (inDriver-style) + chat.
   final _rideRequestCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _rideUpdateCtrl = StreamController<Map<String, dynamic>>.broadcast();
@@ -114,6 +118,9 @@ class DriverWsService {
 
   /// Emite cuando el backend rechaza el PIN: el servicio no avanzó de estado.
   Stream<String> get custodyPinErrors => _custodyPinErrorCtrl.stream;
+
+  /// Motivo por el que el servidor no lo dejó ponerse en línea.
+  Stream<String> get blockedReasons => _blockedCtrl.stream;
 
   /// Emits the raw `ride` JSON for every new open request (`ride_request_new`).
   Stream<Map<String, dynamic>> get rideRequests => _rideRequestCtrl.stream;
@@ -471,6 +478,14 @@ class DriverWsService {
           if (_authCompleter != null && !_authCompleter!.isCompleted) {
             _authCompleter!.complete(true);
           }
+
+        // El socket queda conectado pero el conductor NO está en línea: el
+        // servidor no lo marcó ONLINE. Se le dice por qué.
+        case 'driver_blocked':
+          _blockedCtrl.add(
+            (msg['error'] as String?) ??
+                'No puedes conectarte todavía. Revisa tu verificación.',
+          );
 
         case 'auth_error':
           if (_authCompleter != null && !_authCompleter!.isCompleted) {
