@@ -243,7 +243,7 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
   Future<String?> cancelErrand() async {
     _clearTimers();
     final current = state.active;
-    if (current == null) return;
+    if (current == null) return null;
 
     final serverId = _activeServerId;
     _activeServerId = null;

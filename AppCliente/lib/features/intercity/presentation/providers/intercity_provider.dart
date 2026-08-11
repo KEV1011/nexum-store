@@ -236,7 +236,7 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
   /// confirmado mientras el conductor nunca se enteraba.
   Future<String?> confirmDriver() async {
     final current = state.active;
-    if (current == null) return;
+    if (current == null) return null;
 
     // Update local state immediately.
     state = state.copyWith(
@@ -304,7 +304,7 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
     _matchTimer?.cancel();
     _stopTracking();
     final current = state.active;
-    if (current == null) return;
+    if (current == null) return null;
 
     final serverId = _activeServerId;
     _activeServerId = null;
