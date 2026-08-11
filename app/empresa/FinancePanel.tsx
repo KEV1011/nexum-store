@@ -62,6 +62,9 @@ function cop(n: number) {
 
 export default function FinancePanel({ api }: { api: OperatorApi }) {
   const [data, setData] = useState<Finance | null>(null)
+  // Sin esto, un fallo dejaba "Cargando finanzas…" indefinidamente: el panel
+  // no distinguía "todavía no llegó" de "no va a llegar".
+  const [fallo, setFallo] = useState(false)
   const [from, setFrom] = useState('') // yyyy-mm-dd
   const [to, setTo] = useState('')
 
@@ -72,8 +75,9 @@ export default function FinancePanel({ api }: { api: OperatorApi }) {
       if (to) qs.set('to', new Date(to + 'T23:59:59').toISOString())
       const d = await api<Finance>(`/operator/finance/summary${qs.size ? `?${qs}` : ''}`)
       setData(d)
+      setFallo(false)
     } catch {
-      /* el panel simplemente no pinta si falla; reintenta el interval */
+      setFallo(true)
     }
   }, [api, from, to])
 
@@ -106,7 +110,15 @@ export default function FinancePanel({ api }: { api: OperatorApi }) {
       <p className="text-xs text-slate-400 mb-3">Sin fechas = el mes en curso. Incluye todos los servicios sellados a tu flota.</p>
 
       {!data ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-400 text-sm">Cargando finanzas…</div>
+        <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-sm">
+          {fallo ? (
+            <span className="text-amber-700">
+              No pudimos cargar las finanzas. Reintentando cada 30 segundos.
+            </span>
+          ) : (
+            <span className="text-slate-400">Cargando finanzas…</span>
+          )}
+        </div>
       ) : (
         <div className="space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">

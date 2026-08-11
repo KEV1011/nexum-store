@@ -35,13 +35,23 @@ const SERVICE_LABEL: Record<string, string> = {
 
 export default function AlertsPanel({ api }: { api: OperatorApi }) {
   const [alerts, setAlerts] = useState<SafetyAlert[]>([])
+  // Tres estados distintos, no dos. Una lista vacía porque la consulta FALLÓ
+  // no es lo mismo que una flota sin novedades, y en un panel de seguridad
+  // decir "todo tranquilo 🎉" cuando ni siquiera pudimos preguntar es la
+  // misma mentira que arreglamos en el botón de pánico.
+  const [cargando, setCargando] = useState(true)
+  const [fallo, setFallo] = useState(false)
 
   const load = useCallback(async () => {
     try {
       const data = await api<SafetyAlert[]>('/operator/alerts')
       setAlerts(Array.isArray(data) ? data : [])
+      setFallo(false)
     } catch {
-      // silencioso: la torre sigue mostrando lo último conocido
+      // Se conserva lo último conocido, pero se DICE que está desactualizado.
+      setFallo(true)
+    } finally {
+      setCargando(false)
     }
   }, [api])
 
@@ -57,11 +67,27 @@ export default function AlertsPanel({ api }: { api: OperatorApi }) {
         <ShieldAlert className="w-4 h-4 text-amber-600" /> Alertas de ruta
         <span className="text-slate-400 font-normal">({alerts.length})</span>
       </h2>
-      {alerts.length === 0 ? (
+      {fallo && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm mb-2 flex items-start gap-2">
+          <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            No pudimos consultar las alertas.{' '}
+            {alerts.length > 0
+              ? 'Lo que ves es lo último que se pudo leer.'
+              : 'Puede haber novedades que no estás viendo.'}{' '}
+            Reintentando cada 15 segundos.
+          </span>
+        </div>
+      )}
+      {cargando ? (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 text-center text-sm text-slate-400">
+          Consultando alertas…
+        </div>
+      ) : alerts.length === 0 && !fallo ? (
         <div className="bg-white border border-slate-200 rounded-xl p-6 text-center text-sm text-slate-400">
           Sin alertas: tu flota va en ruta y sin novedades. 🎉
         </div>
-      ) : (
+      ) : alerts.length === 0 ? null : (
         <div className="space-y-2">
           {alerts.slice(0, 20).map((a) => {
             const meta = KIND_META[a.kind] ?? KIND_META.deviation

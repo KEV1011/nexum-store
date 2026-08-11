@@ -39,6 +39,7 @@ export default function AnalyticsPanel({ api }: { api: OperatorApi }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [loading, setLoading] = useState(true)
+  const [fallo, setFallo] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -47,8 +48,9 @@ export default function AnalyticsPanel({ api }: { api: OperatorApi }) {
       if (to) qs.set('to', new Date(to + 'T23:59:59').toISOString())
       const d = await api<Analytics>(`/operator/fleet/analytics${qs.size ? `?${qs}` : ''}`)
       setData(d)
+      setFallo(false)
     } catch {
-      /* reintenta en el interval */
+      setFallo(true)
     } finally {
       setLoading(false)
     }
@@ -81,6 +83,15 @@ export default function AnalyticsPanel({ api }: { api: OperatorApi }) {
 
       {loading && !data ? (
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-400 text-sm">Cargando rendimiento…</div>
+      ) : !data && fallo ? (
+        // "No hay actividad" y "no pudimos consultarla" son cosas distintas:
+        // decirle a un empresario que no facturó nada cuando en realidad falló
+        // la consulta es darle un dato falso sobre su propio negocio.
+        <div className="bg-white border border-amber-200 rounded-xl p-10 text-center">
+          <TrendingUp className="w-10 h-10 text-amber-300 mx-auto mb-3" />
+          <p className="font-medium text-amber-800">No pudimos cargar el rendimiento</p>
+          <p className="text-slate-400 text-sm mt-1">Reintentando automáticamente. Esto no significa que no hayas tenido actividad.</p>
+        </div>
       ) : !data || data.totalServices === 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
           <TrendingUp className="w-10 h-10 text-slate-300 mx-auto mb-3" />
