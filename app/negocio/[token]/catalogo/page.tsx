@@ -16,6 +16,8 @@ import {
   AlertCircle,
   ImagePlus,
   Pencil,
+  ChevronUp,
+  ChevronDown,
   Check,
   X,
 } from 'lucide-react'
@@ -85,11 +87,71 @@ interface Product {
   category: string
   imageUrl?: string
   isAvailable: boolean
+  /** Posición en la carta. El cliente la ve en este orden. */
+  sortOrder: number
   images: ProductPhoto[]
   optionGroups: OptionGroup[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * El orden de la carta: por `sortOrder` y, a igualdad, por nombre.
+ *
+ * Es el MISMO criterio que aplica el backend al servirle el menú al cliente
+ * (`orderBy: [{ sortOrder }, { name }]`). Si los dos lados ordenaran distinto,
+ * el dueño movería un plato en el portal y en la app seguiría donde estaba.
+ */
+function ordenarCarta(lista: Product[]): Product[] {
+  return [...lista].sort(
+    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name, 'es'),
+  )
+}
+
+/**
+ * Devuelve la carta con un plato movido un puesto dentro de su sección, ya
+ * renumerada. `null` si no hay a dónde moverlo.
+ *
+ * Se renumera ENTERA con paso 10 en vez de intercambiar dos valores: un
+ * catálogo que nunca se ordenó tiene todos los productos en cero, y cambiar
+ * dos ceros por otros dos ceros no movería nada. Renumerar cuesta una sola
+ * petición y deja hueco entre platos para insertar después.
+ *
+ * Se trabaja por secciones, no sobre la lista plana, porque dos platos de la
+ * misma sección pueden tener `sortOrder` no consecutivos (con otra sección en
+ * medio) y entonces "el de al lado" en la lista no es el de al lado en
+ * pantalla. Al aplanar por secciones el orden guardado coincide con el que el
+ * dueño está viendo.
+ */
+function cartaMovida(
+  lista: Product[],
+  productId: string,
+  direccion: -1 | 1,
+): Product[] | null {
+  const ordenada = ordenarCarta(lista)
+  // Secciones en orden de aparición de su primer plato.
+  const secciones: string[] = []
+  const porSeccion = new Map<string, Product[]>()
+  for (const p of ordenada) {
+    if (!porSeccion.has(p.category)) {
+      secciones.push(p.category)
+      porSeccion.set(p.category, [])
+    }
+    porSeccion.get(p.category)!.push(p)
+  }
+
+  const objetivo = ordenada.find((p) => p.id === productId)
+  if (!objetivo) return null
+  const grupo = porSeccion.get(objetivo.category)!
+  const i = grupo.findIndex((p) => p.id === productId)
+  const destino = i + direccion
+  if (destino < 0 || destino >= grupo.length) return null
+  ;[grupo[i], grupo[destino]] = [grupo[destino]!, grupo[i]!]
+
+  return secciones
+    .flatMap((c) => porSeccion.get(c)!)
+    .map((p, k) => ({ ...p, sortOrder: (k + 1) * 10 }))
+}
 
 function formatCOP(n: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
@@ -239,11 +301,17 @@ function ProductCard({
   product,
   onChanged,
   onDeleted,
+  onSubir,
+  onBajar,
 }: {
   token: string
   product: Product
   onChanged: (p: Product) => void
   onDeleted: (id: string) => void
+  /** null cuando ya es el primero de su sección. */
+  onSubir: (() => void) | null
+  /** null cuando ya es el último. */
+  onBajar: (() => void) | null
 }) {
   const [busy, setBusy] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -447,6 +515,25 @@ function ProductCard({
                     }`}
                   >
                     Opciones{optionCount > 0 ? ` (${optionCount})` : ''}
+                  </button>
+                  {/* Orden de la carta: entradas antes que postres. Se mueve
+                      dentro de la sección; el orden entre secciones lo marca
+                      su primer plato. */}
+                  <button
+                    onClick={() => onSubir?.()}
+                    disabled={busy || !onSubir}
+                    className="text-slate-300 hover:text-teal-600 disabled:opacity-30 disabled:hover:text-slate-300 transition-colors p-1"
+                    aria-label="Subir en la carta"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => onBajar?.()}
+                    disabled={busy || !onBajar}
+                    className="text-slate-300 hover:text-teal-600 disabled:opacity-30 disabled:hover:text-slate-300 transition-colors p-1"
+                    aria-label="Bajar en la carta"
+                  >
+                    <ChevronDown className="w-4 h-4" />
                   </button>
                   <button onClick={() => setEditing(true)} disabled={busy} className="text-slate-300 hover:text-teal-600 transition-colors p-1" aria-label="Editar producto">
                     <Pencil className="w-4 h-4" />
@@ -730,6 +817,37 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   const onChanged = (p: Product) => setProducts((prev) => prev.map((x) => (x.id === p.id ? p : x)))
   const onDeleted = (id: string) => setProducts((prev) => prev.filter((x) => x.id !== id))
 
+  /**
+   * Mueve un plato dentro de su sección y guarda el orden nuevo.
+   *
+   * Se renumera la carta ENTERA con paso 10 en vez de intercambiar dos valores:
+   * un catálogo que nunca se ordenó tiene todos los productos en cero, y
+   * cambiar dos ceros por otros dos ceros no movería nada. Renumerar cuesta
+   * una sola petición y deja hueco entre platos para las inserciones futuras.
+   */
+  const mover = async (productId: string, direccion: -1 | 1) => {
+    const nuevo = cartaMovida(products, productId, direccion)
+    if (!nuevo) return
+    const order = nuevo.map((p) => ({ id: p.id, sortOrder: p.sortOrder }))
+    // Optimista: la carta se reordena en pantalla al instante y se revierte si
+    // el servidor dice que no.
+    const antes = products
+    setProducts(nuevo)
+    try {
+      const res = await fetch(`${BACKEND_URL}/business/${token}/products/order`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order }),
+      })
+      const json = (await res.json()) as { success: boolean; data?: Product[] }
+      if (!res.ok || !json.success || !json.data) throw new Error('rechazado')
+      setProducts(json.data)
+    } catch {
+      setProducts(antes)
+      alert('No se pudo guardar el orden. Revisa tu conexión e inténtalo otra vez.')
+    }
+  }
+
   // Secciones = categorías por defecto + las que el dueño ya usó (sin repetir).
   const allCategories = Array.from(
     new Set([...CATEGORIES, ...products.map((p) => p.category)]),
@@ -751,12 +869,15 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   })
   const agotados = products.filter((p) => p.stock === 0 || !p.isAvailable).length
 
-  // Agrupa los productos por sección para mostrarlos como un menú real.
-  const grouped = visibles.reduce<Record<string, Product[]>>((acc, p) => {
+  // Agrupa los productos por sección para mostrarlos como un menú real, en el
+  // MISMO orden en que los verá el cliente.
+  const grouped = ordenarCarta(visibles).reduce<Record<string, Product[]>>((acc, p) => {
     (acc[p.category] ??= []).push(p)
     return acc
   }, {})
-  const sectionNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'es'))
+  // Las secciones salen en el orden en que aparece su primer plato: subir un
+  // plato al principio sube su sección. El dueño ordena una lista, no dos.
+  const sectionNames = Object.keys(grouped)
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -976,13 +1097,17 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
                   <span className="text-xs font-normal text-slate-400">({grouped[section].length})</span>
                 </h2>
                 <div className="space-y-3">
-                  {grouped[section].map((p) => (
+                  {grouped[section].map((p, i) => (
                     <ProductCard
                       key={p.id}
                       token={token}
                       product={p}
                       onChanged={onChanged}
                       onDeleted={onDeleted}
+                      onSubir={i === 0 ? null : () => void mover(p.id, -1)}
+                      onBajar={
+                        i === grouped[section].length - 1 ? null : () => void mover(p.id, 1)
+                      }
                     />
                   ))}
                 </div>

@@ -112,6 +112,11 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                 error: (e, _) => _buildError(),
                 data: (all) => _buildList(all, favorites),
               ),
+              SliverToBoxAdapter(
+                child: _MandadoBanner(
+                  onTap: () => context.push(AppRoutes.errandBooking),
+                ),
+              ),
               const SliverToBoxAdapter(
                 child: SizedBox(height: AppConstants.spacingXL),
               ),
@@ -135,7 +140,10 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
     if (filtered.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: _EmptyState(favoritesMode: _favoritesSelected),
+        child: _EmptyState(
+          favoritesMode: _favoritesSelected,
+          onMandado: () => context.push(AppRoutes.errandBooking),
+        ),
       );
     }
 
@@ -669,9 +677,14 @@ class _CategoryIcon extends StatelessWidget {
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({this.favoritesMode = false});
+  const _EmptyState({this.favoritesMode = false, this.onMandado});
 
   final bool favoritesMode;
+
+  /// Buscar y no encontrar es el momento de mayor intención: el cliente ya
+  /// sabe qué quiere. Ofrecerle el mandado justo ahí es la diferencia entre
+  /// que se vaya y que lo pida igual.
+  final VoidCallback? onMandado;
 
   @override
   Widget build(BuildContext context) {
@@ -682,10 +695,100 @@ class _EmptyState extends StatelessWidget {
         message: 'Toca el corazón en un negocio para guardarlo.',
       );
     }
-    return const EmptyState(
+    return EmptyState(
       icon: Icons.search_off_rounded,
-      title: 'No encontramos negocios con ese filtro',
-      message: 'Prueba con otra categoría o cambia la búsqueda.',
+      title: 'No encontramos ese negocio',
+      message: 'Aunque no esté en la app, podemos ir por ti: dinos qué '
+          'necesitas y de dónde, y un mensajero lo recoge y te lo lleva.',
+      actionLabel: onMandado == null ? null : 'Pedir un mandado',
+      onAction: onMandado,
+    );
+  }
+}
+
+/// Una franja al pie de la lista de negocios: "lo que no está aquí, lo
+/// traemos".
+///
+/// Farmacias, papelerías, la ferretería, el gas — nada de eso tiene catálogo
+/// todavía, y el cliente que entra a Negocios y no lo ve concluye que la app
+/// no lo hace. Sí lo hace: se llama mandado y hasta ahora solo se llegaba a él
+/// desde la pantalla de movilidad, que es el último sitio donde alguien lo
+/// busca cuando quiere una farmacia.
+class _MandadoBanner extends StatelessWidget {
+  const _MandadoBanner({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: context.surfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: context.outlineColor),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.secondary.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.shopping_bag_outlined,
+                    color: AppColors.secondary,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '¿No está el negocio que buscas?',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: context.textPrimaryColor,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Farmacia, papelería, lo que sea: dinos qué necesitas '
+                        'y vamos por ti.',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 12.5,
+                          height: 1.35,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 15,
+                  color: context.textSecondaryColor,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

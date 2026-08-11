@@ -3,6 +3,7 @@ import { csvTemplate, parseProductCsv } from '../lib/product-csv';
 import {
   getBusinessService,
   getManagedProductsForBusiness,
+  reorderBusinessProducts,
   createBusinessProduct,
   findProductByBarcode,
   getBarcodeIndexForBusiness,
@@ -509,6 +510,36 @@ router.get('/:token/products/barcode/:code', async (req: Request, res: Response)
     res.status(200).json({ success: true, data: product });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo buscar el producto';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// PUT /business/:token/products/order { order: [{ id, sortOrder }] } — reordena
+// la carta en UNA petición. Mover un plato de sitio no debe disparar cuarenta
+// llamadas, que en el celular del dueño con mala señal deja el menú a medio
+// reordenar.
+router.put('/:token/products/order', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { order } = req.body as { order?: Array<{ id?: string; sortOrder?: number }> };
+  if (!Array.isArray(order) || order.length === 0) {
+    res.status(400).json({ success: false, error: 'order es requerido' });
+    return;
+  }
+  const limpio = order
+    .filter((o) => typeof o.id === 'string' && Number.isFinite(o.sortOrder))
+    .map((o) => ({ id: o.id as string, sortOrder: Math.trunc(o.sortOrder as number) }));
+  if (limpio.length !== order.length) {
+    res.status(400).json({ success: false, error: 'Cada entrada necesita id y sortOrder.' });
+    return;
+  }
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.status(200).json({
+      success: true,
+      data: await reorderBusinessProducts(business.id, limpio),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo reordenar el catálogo';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });

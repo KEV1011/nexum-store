@@ -359,6 +359,32 @@ export async function getProductsForBusiness(businessId: string): Promise<Produc
   return products.map(_productToDTO);
 }
 
+/**
+ * Reordena la carta. Devuelve el catálogo ya ordenado.
+ *
+ * El `businessId` va en el `where` de cada actualización, no en una
+ * comprobación previa: así un token no puede reordenar —ni tocar— el catálogo
+ * de otro negocio ni aunque acierte con un id ajeno. Los ids que no sean suyos
+ * simplemente no afectan filas.
+ *
+ * Todo en una transacción: media carta reordenada es peor que ninguna, porque
+ * el dueño no sabría qué quedó donde.
+ */
+export async function reorderBusinessProducts(
+  businessId: string,
+  orden: Array<{ id: string; sortOrder: number }>,
+): Promise<ProductDTO[]> {
+  await prisma.$transaction(
+    orden.map((o) =>
+      prisma.product.updateMany({
+        where: { id: o.id, businessId },
+        data: { sortOrder: o.sortOrder },
+      }),
+    ),
+  );
+  return getManagedProductsForBusiness(businessId);
+}
+
 // Catálogo COMPLETO para gestión (incluye no disponibles). Solo para el portal.
 export async function getManagedProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
   const products = await prisma.product.findMany({
