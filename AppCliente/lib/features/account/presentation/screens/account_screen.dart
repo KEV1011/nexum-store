@@ -22,6 +22,7 @@ import 'package:nexum_client/features/support/presentation/screens/support_ticke
 import 'package:nexum_client/features/account/presentation/screens/client_verification_screen.dart';
 import 'package:nexum_client/features/account/presentation/screens/payment_methods_screen.dart';
 import 'package:nexum_client/features/account/presentation/screens/delete_account_screen.dart';
+import 'package:nexum_client/features/account/presentation/screens/legal_doc_screen.dart';
 import 'package:nexum_client/features/account/presentation/screens/privacy_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 
@@ -104,6 +105,19 @@ class AccountScreen extends ConsumerWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const SupportTicketsScreen(basePath: '/client'),
+                  ),
+                ),
+              ),
+              // El documento VIGENTE del servidor, no una copia en la app: es
+              // el mismo texto (y la misma versión) que quedó en la constancia
+              // de aceptación al registrarse.
+              _SettingTile(
+                icon: Icons.description_outlined,
+                title: 'Términos de servicio',
+                subtitle: 'Lo que aceptaste al registrarte',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LegalDocScreen(kind: 'terms'),
                   ),
                 ),
               ),

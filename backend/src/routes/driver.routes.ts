@@ -54,6 +54,11 @@ import {
 } from '../services/kyc.service';
 import { motivoParaNoConectar } from '../services/driver-online-guard';
 import {
+  sanearCostos,
+  SHARED_RIDE_COST_PER_KM,
+  SHARED_RIDE_TOLL_PER_100KM,
+} from '../config/constants';
+import {
   listDriverFreights,
   updateDriverFreightStatus,
   listDriverAvailableFreights,
@@ -504,6 +509,12 @@ router.get('/intercity/pool/fare-cap', (req: Request, res: Response): void => {
   const origin = req.query['origin'] as IntercityCity | undefined;
   const destination = req.query['destination'] as IntercityCity | undefined;
   const seats = Number(req.query['seats'] ?? 4);
+  // El conductor puede declarar SUS costos del trayecto; si no los manda, se
+  // usan los promedios de siempre.
+  const costos = sanearCostos({
+    costPerKm: req.query['costPerKm'],
+    tollTotal: req.query['tollTotal'],
+  });
 
   if (!origin || !destination) {
     res.status(400).json({ success: false, error: 'origin and destination are required' });
@@ -520,10 +531,17 @@ router.get('/intercity/pool/fare-cap', (req: Request, res: Response): void => {
       origin,
       destination,
       seats,
-      maxFarePerSeat: getMaxFarePerSeat(origin, destination, seats),
+      maxFarePerSeat: getMaxFarePerSeat(origin, destination, seats, costos),
       suggestedFarePerSeat: route.suggestedFarePerSeat,
       distanceKm: route.distanceKm,
       durationMinutes: route.durationMinutes,
+      // Se devuelve lo que se usó para el cálculo: así la app puede prellenar
+      // los campos y el conductor ve de dónde sale la cifra.
+      costPerKm: costos.costPerKm ?? SHARED_RIDE_COST_PER_KM,
+      tollTotal: Math.round(
+        costos.tollTotal ?? (route.distanceKm / 100) * SHARED_RIDE_TOLL_PER_100KM,
+      ),
+      costosDeclarados: costos.costPerKm != null || costos.tollTotal != null,
     },
   });
 });

@@ -10,12 +10,22 @@ class FareCapInfo {
     required this.suggestedFarePerSeat,
     required this.distanceKm,
     required this.durationMinutes,
+    this.costPerKm = 0,
+    this.tollTotal = 0,
+    this.costosDeclarados = false,
   });
 
   final double maxFarePerSeat;
   final double suggestedFarePerSeat;
   final double distanceKm;
   final int durationMinutes;
+
+  /// Costos con los que se calculó el sugerido. Si el conductor no declaró los
+  /// suyos, son los promedios del sistema — y se le enseñan para que sepa de
+  /// dónde sale la cifra y pueda corregirla.
+  final double costPerKm;
+  final double tollTotal;
+  final bool costosDeclarados;
 }
 
 class PooledDriverState {
@@ -48,6 +58,8 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
     required PooledCity origin,
     required PooledCity destination,
     required int seats,
+    double? costPerKm,
+    double? tollTotal,
   }) async {
     try {
       final res = await _client.get<Map<String, dynamic>>(
@@ -56,6 +68,8 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
           'origin': origin.name,
           'destination': destination.name,
           'seats': seats,
+          if (costPerKm != null) 'costPerKm': costPerKm,
+          if (tollTotal != null) 'tollTotal': tollTotal,
         },
       );
       final d = res.data?['data'] as Map<String, dynamic>?;
@@ -65,6 +79,9 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
         suggestedFarePerSeat: (d['suggestedFarePerSeat'] as num?)?.toDouble() ?? 0,
         distanceKm: (d['distanceKm'] as num?)?.toDouble() ?? 0,
         durationMinutes: (d['durationMinutes'] as num?)?.toInt() ?? 0,
+        costPerKm: (d['costPerKm'] as num?)?.toDouble() ?? 0,
+        tollTotal: (d['tollTotal'] as num?)?.toDouble() ?? 0,
+        costosDeclarados: d['costosDeclarados'] as bool? ?? false,
       );
     } catch (_) {
       return null;

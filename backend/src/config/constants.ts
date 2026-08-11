@@ -423,15 +423,19 @@ export function getIntercityRoute(origin: IntercityCity, dest: IntercityCity): I
 // and the three configurable options (A default / B dual / C no-cap).
 
 /**
- * Estimated running cost per kilometre in COP (fuel + wear, no profit).
- * TODO(legal/finanzas): confirmar la cifra real 2026 con el operador. El valor
- * por defecto se subió para reflejar el alza de combustible y mantenimiento.
+ * Costo estimado por kilómetro en COP (combustible + desgaste, sin ganancia).
+ *
+ * Es solo el PUNTO DE PARTIDA del formulario: el conductor puede declarar el
+ * suyo para cada viaje (ver `CostosDeclarados`), que es lo correcto porque el
+ * precio del galón cambia de mes y de ciudad.
  */
 export const SHARED_RIDE_COST_PER_KM = parseInt(process.env['SHARED_RIDE_COST_PER_KM'] ?? '950', 10);
 
 /**
- * Estimated toll cost in COP per 100 km of intercity road.
- * TODO(legal/finanzas): confirmar peajes reales 2026 por corredor.
+ * Peaje estimado en COP por cada 100 km de vía intermunicipal.
+ *
+ * Igual que el anterior: punto de partida. Los peajes reales dependen del
+ * corredor, y el conductor puede escribir el total de SU trayecto.
  */
 export const SHARED_RIDE_TOLL_PER_100KM = parseInt(process.env['SHARED_RIDE_TOLL_PER_100KM'] ?? '16000', 10);
 
@@ -464,15 +468,49 @@ export const INTERCITY_SIMULATE = (process.env['INTERCITY_SIMULATE'] ?? 'false')
  * computed cost-share reference value; enforcement is gated by
  * INTERCITY_REMOVE_CAP at the call sites.
  */
+/**
+ * Costos que el CONDUCTOR declara para ESE trayecto concreto.
+ *
+ * Los valores por defecto son promedios nacionales y envejecen mal: el
+ * combustible cambia de mes y los peajes de corredor. Quien va a hacer el
+ * viaje sabe lo que le cuesta, así que puede decirlo y el sugerido se calcula
+ * con SUS números en vez de con una media que no es la suya.
+ */
+export interface CostosDeclarados {
+  /** COP por kilómetro (combustible + desgaste). */
+  costPerKm?: number;
+  /** COP de peajes del trayecto COMPLETO, no por 100 km. */
+  tollTotal?: number;
+}
+
+/** Descarta lo que no sea un número positivo y razonable. */
+function _cifra(v: unknown, max: number): number | undefined {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n > 0 && n <= max ? n : undefined;
+}
+
+export function sanearCostos(raw: unknown): CostosDeclarados {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  return {
+    // Topes de cordura: un cero de más en el precio del galón dispararía el
+    // sugerido y el pasajero pagaría de más sin que nadie lo notara.
+    costPerKm: _cifra(o['costPerKm'], 20_000),
+    tollTotal: _cifra(o['tollTotal'], 2_000_000),
+  };
+}
+
 export function getMaxFarePerSeat(
   origin: IntercityCity,
   dest: IntercityCity,
   totalSeats: number,
+  costos: CostosDeclarados = {},
 ): number {
   const route = getIntercityRoute(origin, dest);
   if (!route || totalSeats < 1) return 0;
-  const fuelCost = route.distanceKm * SHARED_RIDE_COST_PER_KM;
-  const tollCost = (route.distanceKm / 100) * SHARED_RIDE_TOLL_PER_100KM;
+  const porKm = costos.costPerKm ?? SHARED_RIDE_COST_PER_KM;
+  const fuelCost = route.distanceKm * porKm;
+  const tollCost =
+    costos.tollTotal ?? (route.distanceKm / 100) * SHARED_RIDE_TOLL_PER_100KM;
   const totalRunningCost = fuelCost + tollCost;
   // Driver occupies one seat too, so cost is split across all occupants.
   const occupants = totalSeats + 1;

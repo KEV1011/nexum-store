@@ -36,6 +36,10 @@ class _PublishPooledTripScreenState
 
   FareCapInfo? _cap;
   bool _loadingCap = false;
+  // Costos que el conductor declara para ESTE trayecto. Vacíos = se usan los
+  // promedios del sistema, que es lo que pasaba siempre hasta ahora.
+  final _costPerKmCtrl = TextEditingController();
+  final _tollCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -48,6 +52,8 @@ class _PublishPooledTripScreenState
     _fareCtrl.dispose();
     _vehicleCtrl.dispose();
     _notesCtrl.dispose();
+    _costPerKmCtrl.dispose();
+    _tollCtrl.dispose();
     super.dispose();
   }
 
@@ -61,6 +67,8 @@ class _PublishPooledTripScreenState
           origin: _origin,
           destination: _destination,
           seats: _seats,
+          costPerKm: double.tryParse(_costPerKmCtrl.text.trim()),
+          tollTotal: double.tryParse(_tollCtrl.text.trim()),
         );
     if (!mounted) return;
     setState(() {
@@ -235,6 +243,8 @@ class _PublishPooledTripScreenState
           ),
           const SizedBox(height: 8),
           _fareCapBanner(),
+          const SizedBox(height: 10),
+          _costosDeclarados(),
           const SizedBox(height: 16),
 
           SwitchListTile.adaptive(
@@ -330,11 +340,63 @@ class _PublishPooledTripScreenState
                   style: TextStyle(
                       fontSize: 11.5, color: context.textSecondaryColor),
                 ),
+                const SizedBox(height: 2),
+                // De dónde sale la cifra. Sin esto el sugerido es un número
+                // caído del cielo calculado con promedios que envejecen.
+                Text(
+                  cap.costosDeclarados
+                      ? 'Calculado con TUS costos: '
+                          '${CurrencyFormatter.format(cap.costPerKm)}/km · '
+                          'peajes ${CurrencyFormatter.format(cap.tollTotal)}'
+                      : 'Calculado con costos promedio '
+                          '(${CurrencyFormatter.format(cap.costPerKm)}/km · '
+                          'peajes ${CurrencyFormatter.format(cap.tollTotal)}). '
+                          'Ajústalos abajo si los tuyos son otros.',
+                  style: TextStyle(
+                      fontSize: 11, color: context.textTertiaryColor),
+                ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// Los costos reales del conductor. El combustible cambia de mes y los
+  /// peajes de corredor: quien maneja sabe lo que le cuesta, así que el
+  /// sugerido se calcula con sus cifras en cuanto las escribe.
+  Widget _costosDeclarados() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _costPerKmCtrl,
+            keyboardType: TextInputType.number,
+            onChanged: (_) => _refreshCap(),
+            decoration: const InputDecoration(
+              labelText: 'Costo por km',
+              hintText: '950',
+              prefixText: r'$ ',
+              isDense: true,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: TextField(
+            controller: _tollCtrl,
+            keyboardType: TextInputType.number,
+            onChanged: (_) => _refreshCap(),
+            decoration: const InputDecoration(
+              labelText: 'Peajes del trayecto',
+              hintText: '32000',
+              prefixText: r'$ ',
+              isDense: true,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

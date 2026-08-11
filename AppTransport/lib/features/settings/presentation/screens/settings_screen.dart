@@ -10,6 +10,7 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/delete_account_screen.dart';
+import 'package:nexum_driver/features/settings/presentation/screens/legal_doc_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/privacy_screen.dart';
 
 enum _MapApp { googleMaps, waze, mapsDotMe, system }
@@ -169,7 +170,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: 'Términos de servicio',
             trailing: Icon(Icons.chevron_right_rounded,
                 color: context.textSecondaryColor),
-            onTap: () => _showComingSoon('Términos de servicio'),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const LegalDocScreen(kind: 'terms'),
+              ),
+            ),
           ),
           _SettingsTile(
             icon: Icons.shield_outlined,
