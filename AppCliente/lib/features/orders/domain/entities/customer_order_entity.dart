@@ -61,6 +61,7 @@ class OrderLineEntity {
     required this.quantity,
     required this.unitPrice,
     this.optionsSummary,
+    this.notes,
   });
 
   factory OrderLineEntity.fromJson(Map<String, dynamic> j) => OrderLineEntity(
@@ -68,6 +69,7 @@ class OrderLineEntity {
         quantity: j['quantity'] as int,
         unitPrice: (j['unitPrice'] as num).toDouble(),
         optionsSummary: j['optionsSummary'] as String?,
+        notes: j['notes'] as String?,
       );
 
   final String productName;
@@ -75,7 +77,11 @@ class OrderLineEntity {
   final double unitPrice;
 
   /// Opciones elegidas (ej: "Grande · +Queso"). Null si el producto es simple.
+  /// Lo compone el servidor desde el catálogo, no esta app.
   final String? optionsSummary;
+
+  /// Lo que el cliente le dijo a la cocina: "sin cebolla", "bien cocida".
+  final String? notes;
 
   double get subtotal => unitPrice * quantity;
 
@@ -84,6 +90,7 @@ class OrderLineEntity {
         'quantity': quantity,
         'unitPrice': unitPrice,
         if (optionsSummary != null) 'optionsSummary': optionsSummary,
+        if (notes != null) 'notes': notes,
       };
 }
 

@@ -158,10 +158,15 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
                 (item) => {
                   'productId': item.product.id,
                   'quantity': item.quantity,
-                  // Precio unitario CON las opciones (deltas) incluidas.
+                  // El precio va como referencia; el servidor lo recalcula
+                  // desde el catálogo con los ids de abajo y ese es el que
+                  // manda. Se sigue enviando por las versiones del backend
+                  // que aún no resuelven opciones.
                   'unitPrice': item.unitPrice,
+                  'optionIds': item.optionIds,
                   if (item.optionsSummary != null)
                     'optionsSummary': item.optionsSummary,
+                  if (item.notes != null) 'notes': item.notes,
                 },
               )
               .toList(),
@@ -201,6 +206,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               optionsSummary: item.optionsSummary,
+              notes: item.notes,
             ),
           )
           .toList(),

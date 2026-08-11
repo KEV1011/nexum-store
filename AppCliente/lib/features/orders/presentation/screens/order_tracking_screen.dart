@@ -618,6 +618,16 @@ class _OrderSummary extends StatelessWidget {
                               color: context.textSecondaryColor,
                             ),
                           ),
+                        if (line.notes != null)
+                          Text(
+                            '“${line.notes}”',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                              color: context.textSecondaryColor,
+                            ),
+                          ),
                       ],
                     ),
                   ),

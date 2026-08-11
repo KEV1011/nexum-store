@@ -11,6 +11,7 @@ class CartItem {
     required this.product,
     required this.quantity,
     this.selectedOptions = const [],
+    this.notes,
   });
 
   final ProductEntity product;
@@ -19,12 +20,23 @@ class CartItem {
   /// Opciones elegidas (tamaño, adiciones, quitar). Vacío = producto simple.
   final List<ProductOptionEntity> selectedOptions;
 
-  /// Identificador de la línea: para productos sin opciones es el id del
-  /// producto (compatibilidad); con opciones, id + firma de las opciones.
+  /// Nota para la cocina: "sin cebolla", "bien cocida".
+  final String? notes;
+
+  /// Los ids que viajan al servidor. Él recalcula el precio con ellos: lo que
+  /// se cobra sale del catálogo, no de esta pantalla.
+  List<String> get optionIds =>
+      selectedOptions.map((o) => o.id).toList(growable: false);
+
+  /// Identificador de la línea: para productos sin opciones ni nota es el id
+  /// del producto (compatibilidad); si no, id + firma de opciones y nota.
+  ///
+  /// La nota entra en la firma a propósito: dos hamburguesas iguales, una «sin
+  /// cebolla» y otra normal, son dos líneas distintas para la cocina.
   String get lineId {
-    if (selectedOptions.isEmpty) return product.id;
+    if (selectedOptions.isEmpty && notes == null) return product.id;
     final ids = selectedOptions.map((o) => o.id).toList()..sort();
-    return '${product.id}|${ids.join(',')}';
+    return '${product.id}|${ids.join(',')}|${notes ?? ''}';
   }
 
   /// Precio unitario = precio base + suma de los deltas de las opciones.
@@ -44,6 +56,7 @@ class CartItem {
       product: product,
       quantity: quantity ?? this.quantity,
       selectedOptions: selectedOptions,
+      notes: notes,
     );
   }
 }
@@ -91,11 +104,14 @@ class CartNotifier extends StateNotifier<CartState> {
     ProductEntity product,
     BusinessEntity business, {
     List<ProductOptionEntity> selectedOptions = const [],
+    int quantity = 1,
+    String? notes,
   }) {
     final newItem = CartItem(
       product: product,
-      quantity: 1,
+      quantity: quantity,
       selectedOptions: selectedOptions,
+      notes: notes,
     );
 
     // Si el carrito es de otro negocio, empezar de cero.
@@ -112,9 +128,10 @@ class CartNotifier extends StateNotifier<CartState> {
         business: business,
       );
     } else {
+      // La línea ya estaba: se suma la cantidad pedida, no una unidad.
       final updated = [...state.items];
-      updated[index] =
-          updated[index].copyWith(quantity: updated[index].quantity + 1);
+      updated[index] = updated[index]
+          .copyWith(quantity: updated[index].quantity + quantity);
       state = state.copyWith(items: updated, business: business);
     }
   }

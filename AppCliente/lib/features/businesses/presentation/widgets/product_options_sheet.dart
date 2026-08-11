@@ -6,18 +6,37 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 
-/// Abre la hoja para elegir las opciones/variantes de un producto antes de
-/// agregarlo al carrito. Devuelve la lista de opciones elegidas, o `null` si el
-/// cliente cerró sin confirmar.
-Future<List<ProductOptionEntity>?> showProductOptionsSheet(
+/// Lo que el cliente armó en la hoja: qué eligió, cuántos quiere y qué le
+/// quiere decir a la cocina.
+class ProductChoice {
+  const ProductChoice({
+    required this.options,
+    required this.quantity,
+    this.notes,
+  });
+
+  final List<ProductOptionEntity> options;
+  final int quantity;
+
+  /// "Sin cebolla", "bien cocida". Lo que en el mostrador se dice de viva voz.
+  final String? notes;
+}
+
+/// Abre la hoja para armar el producto antes de agregarlo al carrito.
+/// Devuelve `null` si el cliente cerró sin confirmar.
+Future<ProductChoice?> showProductOptionsSheet(
   BuildContext context,
   ProductEntity product,
 ) {
-  return showModalBottomSheet<List<ProductOptionEntity>>(
+  return showModalBottomSheet<ProductChoice>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _ProductOptionsSheet(product: product),
+    // Con el teclado abierto para la nota, la hoja tiene que subir con él.
+    builder: (_) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: _ProductOptionsSheet(product: product),
+    ),
   );
 }
 
@@ -33,6 +52,14 @@ class _ProductOptionsSheet extends StatefulWidget {
 class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
   // Selección por grupo: conjunto de ids de opción elegidos.
   final Map<String, Set<String>> _selected = {};
+  final _nota = TextEditingController();
+  int _cantidad = 1;
+
+  @override
+  void dispose() {
+    _nota.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -74,22 +101,29 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
     return result;
   }
 
-  /// Todos los grupos obligatorios cumplen su mínimo de selecciones.
-  bool get _isValid {
+  /// El primer grupo obligatorio sin cumplir, o null si está todo listo.
+  ///
+  /// Devuelve el grupo y no un booleano a propósito: un botón apagado sin
+  /// decir por qué deja al cliente adivinando, y ese es el momento en que
+  /// abandona el pedido.
+  OptionGroupEntity? get _faltaElegir {
     for (final g in widget.product.optionGroups) {
       final count = (_selected[g.id] ?? const {}).length;
       final min = g.required && g.minSelect < 1 ? 1 : g.minSelect;
-      if (count < min) return false;
+      if (count < min) return g;
     }
-    return true;
+    return null;
   }
 
-  double get _total =>
+  double get _unitario =>
       widget.product.price + _chosen.fold(0.0, (s, o) => s + o.priceDelta);
+
+  double get _total => _unitario * _cantidad;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final falta = _faltaElegir;
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
@@ -146,6 +180,38 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
                     selected: _selected[g.id] ?? const {},
                     onTap: (o) => _toggle(g, o),
                   ),
+                const SizedBox(height: 18),
+                Text(
+                  'Algo para la cocina',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: context.textPrimaryColor,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _nota,
+                  maxLength: 140,
+                  maxLines: 2,
+                  minLines: 1,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: InputDecoration(
+                    hintText: 'Sin cebolla, bien cocida…',
+                    counterText: '',
+                    filled: true,
+                    fillColor: context.surfaceVariantColor,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
               ],
             ),
@@ -154,31 +220,50 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.all(AppConstants.spacingM),
-              child: SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isValid
-                      ? () => Navigator.of(context).pop(_chosen)
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+              child: Row(
+                children: [
+                  _ContadorCantidad(
+                    cantidad: _cantidad,
+                    onCambio: (v) => setState(() => _cantidad = v),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: falta == null
+                            ? () => Navigator.of(context).pop(
+                                  ProductChoice(
+                                    options: _chosen,
+                                    quantity: _cantidad,
+                                    notes: _nota.text.trim().isEmpty
+                                        ? null
+                                        : _nota.text.trim(),
+                                  ),
+                                )
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          // Cuando falta algo, se dice QUÉ falta.
+                          falta == null
+                              ? 'Agregar · ${CurrencyFormatter.format(_total)}'
+                              : 'Elige ${falta.name.toLowerCase()}',
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  child: Text(
-                    _isValid
-                        ? 'Agregar · ${CurrencyFormatter.format(_total)}'
-                        : 'Elige las opciones requeridas',
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
+                ],
               ),
             ),
           ),
@@ -315,6 +400,81 @@ class _OptionRow extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Menos / cantidad / más. Pedir dos hamburguesas iguales con las mismas
+/// opciones era, hasta ahora, armarlas dos veces desde cero.
+class _ContadorCantidad extends StatelessWidget {
+  const _ContadorCantidad({required this.cantidad, required this.onCambio});
+
+  final int cantidad;
+  final ValueChanged<int> onCambio;
+
+  static const _max = 30;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: context.surfaceVariantColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _Boton(
+            icono: Icons.remove_rounded,
+            // Bajar de uno no quita el producto: para eso está cerrar la hoja.
+            onTap: cantidad > 1 ? () => onCambio(cantidad - 1) : null,
+          ),
+          SizedBox(
+            width: 30,
+            child: Text(
+              '$cantidad',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: context.textPrimaryColor,
+              ),
+            ),
+          ),
+          _Boton(
+            icono: Icons.add_rounded,
+            onTap: cantidad < _max ? () => onCambio(cantidad + 1) : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Boton extends StatelessWidget {
+  const _Boton({required this.icono, this.onTap});
+
+  final IconData icono;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        width: 42,
+        height: 52,
+        child: Icon(
+          icono,
+          size: 20,
+          color: onTap == null
+              ? context.textSecondaryColor.withValues(alpha: .35)
+              : context.textPrimaryColor,
         ),
       ),
     );

@@ -53,7 +53,13 @@ interface ClientOrder {
   deliveryFee: number
   total: number
   etaMinutes: number
-  items: Array<{ productName: string; quantity: number; unitPrice: number; subtotal: number }>
+  items: Array<{
+    productName: string; quantity: number; unitPrice: number; subtotal: number
+    // Compuesto por el servidor desde el catálogo: es lo que se cobró.
+    optionsSummary?: string
+    // Lo que el cliente le dijo a la cocina.
+    notes?: string
+  }>
   deliveryAddress: string
   driverName?: string
   driverPhone?: string
@@ -217,6 +223,14 @@ function ClientOrderCard({ order, token, onChanged }: {
           <div key={i} className="flex justify-between items-baseline text-xs">
             <span className="text-slate-600">
               <span className="font-semibold text-slate-800">{item.quantity}×</span> {item.productName}
+              {/* Sin esto la cocina no sabe si la pizza es grande ni que va sin
+                  cebolla: prepararía otro plato. */}
+              {item.optionsSummary && (
+                <span className="block text-slate-500">{item.optionsSummary}</span>
+              )}
+              {item.notes && (
+                <span className="block font-medium text-amber-700">“{item.notes}”</span>
+              )}
             </span>
             <span className="text-slate-500 shrink-0 ml-2">{formatCOP(item.subtotal)}</span>
           </div>

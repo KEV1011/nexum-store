@@ -163,15 +163,18 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                         );
                         return;
                       }
-                      if (product.hasOptions) {
-                        final chosen =
-                            await showProductOptionsSheet(context, product);
-                        if (chosen != null) {
-                          cartNotifier.addProduct(product, business,
-                              selectedOptions: chosen);
-                        }
-                      } else {
-                        cartNotifier.addProduct(product, business);
+                      // La hoja se abre también sin opciones: ahí es donde se
+                      // elige la cantidad y se escribe la nota para la cocina.
+                      final elegido =
+                          await showProductOptionsSheet(context, product);
+                      if (elegido != null) {
+                        cartNotifier.addProduct(
+                          product,
+                          business,
+                          selectedOptions: elegido.options,
+                          quantity: elegido.quantity,
+                          notes: elegido.notes,
+                        );
                       }
                     },
                     onRemove: () => cartNotifier.removeOne(product.id),
