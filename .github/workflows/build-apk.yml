@@ -7,10 +7,12 @@ on:
     branches: [main, 'claude/**']
     paths:
       - 'AppTransport/**'
+      - '.github/workflows/build-apk.yml'
   pull_request:
     branches: [main]
     paths:
       - 'AppTransport/**'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:   # Permite ejecución manual desde GitHub UI
 
 jobs:

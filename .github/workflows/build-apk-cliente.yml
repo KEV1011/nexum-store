@@ -7,10 +7,12 @@ on:
     branches: [main, 'claude/**']
     paths:
       - 'AppCliente/**'
+      - '.github/workflows/build-apk-cliente.yml'
   pull_request:
     branches: [main]
     paths:
       - 'AppCliente/**'
+      - '.github/workflows/build-apk-cliente.yml'
   workflow_dispatch:   # Permite ejecución manual desde GitHub UI
 
 jobs:
