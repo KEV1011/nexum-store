@@ -233,7 +233,14 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
     );
   }
 
-  Future<void> cancelErrand() async {
+  /// Cancela el mandado. Devuelve `null` si el servidor lo aceptó, o el motivo
+  /// si NO se pudo: quien llama tiene que enseñarlo.
+  ///
+  /// Antes esto era fire-and-forget con `catch (_) {}`: el estado local pasaba
+  /// a cancelado y, si la petición fallaba, el mandado seguía vivo en el
+  /// servidor con el mandadero en camino. El cliente lo veía cancelado y ya no
+  /// había forma de reintentar — `_activeServerId` se había puesto a null.
+  Future<String?> cancelErrand() async {
     _clearTimers();
     final current = state.active;
     if (current == null) return;
@@ -248,13 +255,27 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
       past: [cancelled, ...state.past],
     );
 
-    // Fire-and-forget the cancel request to the server.
     if (serverId != null) {
       try {
         await _dio.post<void>('/client/errands/$serverId/cancel');
-      } catch (_) {}
+      } catch (e) {
+        // El servidor NO canceló: se deshace el cambio local para que la
+        // pantalla siga mostrando el mandado activo, que es la verdad.
+        _activeServerId = serverId;
+        state = state.copyWith(
+          active: current,
+          past: state.past.where((x) => x.id != cancelled.id).toList(),
+        );
+        return e is DioException
+            ? (e.response?.data is Map
+                    ? (e.response!.data as Map)['error'] as String?
+                    : null) ??
+                'No pudimos cancelar el mandado. Revisa tu conexión e inténtalo de nuevo.'
+            : 'No pudimos cancelar el mandado. Inténtalo de nuevo.';
+      }
       _wsService.unsubscribeErrand(serverId);
     }
+    return null;
   }
 
   // ── Polling REST (fallback sin WS) ─────────────────────────────────────────

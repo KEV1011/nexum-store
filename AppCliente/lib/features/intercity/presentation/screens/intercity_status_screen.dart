@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/shared/widgets/driver_info_card.dart';
 import 'package:flutter/services.dart';
@@ -98,9 +99,13 @@ class IntercityStatusScreen extends ConsumerWidget {
             if (request.status == IntercityStatus.driverFound)
               _DriverOfferCard(
                 request: request,
-                onAccept: () {
+                onAccept: () async {
                   HapticFeedback.mediumImpact();
-                  ref.read(intercityProvider.notifier).confirmDriver();
+                  final error =
+                      await ref.read(intercityProvider.notifier).confirmDriver();
+                  if (error != null && context.mounted) {
+                    AppSnackbar.showError(context, error);
+                  }
                 },
                 onReject: () {
                   HapticFeedback.selectionClick();
@@ -173,7 +178,12 @@ class IntercityStatusScreen extends ConsumerWidget {
       ),
     );
     if (confirmed == true && context.mounted) {
-      ref.read(intercityProvider.notifier).cancelRequest();
+      final error = await ref.read(intercityProvider.notifier).cancelRequest();
+      if (!context.mounted) return;
+      if (error != null) {
+        AppSnackbar.showError(context, error);
+        return;
+      }
       context.go('/home');
     }
   }

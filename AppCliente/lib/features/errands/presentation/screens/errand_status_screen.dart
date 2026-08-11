@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/driver_info_card.dart';
 import 'package:flutter/services.dart';
@@ -187,7 +188,15 @@ class ErrandStatusScreen extends ConsumerWidget {
       ),
     );
     if (confirmed == true && context.mounted) {
-      ref.read(errandProvider.notifier).cancelErrand();
+      // Solo se sale de la pantalla si el servidor CANCELÓ de verdad: irse a
+      // casa con el mandado todavía vivo deja al mandadero en camino y al
+      // cliente sin forma de volver a intentarlo.
+      final error = await ref.read(errandProvider.notifier).cancelErrand();
+      if (!context.mounted) return;
+      if (error != null) {
+        AppSnackbar.showError(context, error);
+        return;
+      }
       context.go('/home');
     }
   }

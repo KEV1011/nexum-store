@@ -231,7 +231,10 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
     }
   }
 
-  Future<void> confirmDriver() async {
+  /// Confirma al conductor (o su contraoferta). Devuelve `null` si el servidor
+  /// lo registró, o el motivo si no: sin esto el pasajero creía tener el viaje
+  /// confirmado mientras el conductor nunca se enteraba.
+  Future<String?> confirmDriver() async {
     final current = state.active;
     if (current == null) return;
 
@@ -243,15 +246,19 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
       ),
     );
 
-    // Fire-and-forget confirm to server.
     final serverId = _activeServerId;
     if (serverId != null) {
       try {
         await _dio.post<void>('/client/intercity/$serverId/confirm');
-      } catch (_) {}
+      } catch (e) {
+        // Se deshace: el viaje NO está confirmado en el servidor.
+        state = state.copyWith(active: current);
+        return _motivo(e, 'No pudimos confirmar el viaje. Inténtalo de nuevo.');
+      }
     }
     // Con la reserva confirmada arranca el mapa en vivo.
     _startTracking();
+    return null;
   }
 
   Future<void> rejectCounterOffer() async {
@@ -290,7 +297,10 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
     }
   }
 
-  Future<void> cancelRequest() async {
+  /// Cancela la reserva. Devuelve `null` si el servidor la canceló, o el
+  /// motivo si no — con el conductor posiblemente ya en camino, dar por
+  /// cancelado algo que sigue vivo es peor que no cancelar.
+  Future<String?> cancelRequest() async {
     _matchTimer?.cancel();
     _stopTracking();
     final current = state.active;
@@ -306,13 +316,29 @@ class IntercityNotifier extends StateNotifier<IntercityState> {
       past: [cancelled, ...state.past],
     );
 
-    // Fire-and-forget cancel to server.
     if (serverId != null) {
       try {
         await _dio.post<void>('/client/intercity/$serverId/cancel');
-      } catch (_) {}
+      } catch (e) {
+        _activeServerId = serverId;
+        state = state.copyWith(
+          active: current,
+          past: state.past.where((x) => x.id != cancelled.id).toList(),
+        );
+        return _motivo(e, 'No pudimos cancelar la reserva. Inténtalo de nuevo.');
+      }
       _wsService.unsubscribeIntercity(serverId);
     }
+    return null;
+  }
+
+  /// Mensaje del backend si lo hay; si no, uno genérico en español.
+  String _motivo(Object e, String porDefecto) {
+    if (e is DioException && e.response?.data is Map) {
+      final err = (e.response!.data as Map)['error'];
+      if (err is String && err.isNotEmpty) return err;
+    }
+    return porDefecto;
   }
 
   // ── History & rating ─────────────────────────────────────────────────────
