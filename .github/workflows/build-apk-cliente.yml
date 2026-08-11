@@ -144,12 +144,17 @@ jobs:
             | grep -m1 'SHA1:' | sed 's/.*SHA1: *//' | tr -d ' \r')
           echo "Huella SHA-1 del APK: ${FINGERPRINT:-<no se pudo leer>}"
           if [ "$FINGERPRINT" = "$EXPECTED" ]; then
-            echo "✅ Firmado con la llave estable de ZIPA — se instala sobre la versión anterior."
+            echo "✅ Firmado con la llave estable de Nexum — se instala sobre la versión anterior."
           else
-            echo "⚠️  NO coincide con la llave estable (esperada: $EXPECTED)."
-            echo "    Probable firma debug: hay que desinstalar la app antes de instalar,"
-            echo "    y este APK no sirve para Google Play."
-            echo "    Revisa los secrets ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD."
+            # ::warning:: y no un simple echo: esto sale en el panel de
+            # Annotations del run, junto al título. Con solo echo el aviso
+            # quedaba sepultado en el log y el APK parecía correcto — que es
+            # exactamente lo que pasó: dos versiones seguidas se descargaron
+            # creyendo que actualizaban, y el teléfono se quedó con la vieja.
+            echo "::warning title=APK sin la llave estable::Este APK NO se instala encima de la version anterior. Hay que desinstalar la app primero, y no sirve para Google Play. Configura los secrets ANDROID_KEYSTORE_BASE64 y ANDROID_KEYSTORE_PASSWORD."
+            echo "⚠️  NO coincide con la llave estable."
+            echo "    Esperada: $EXPECTED"
+            echo "    Obtenida: ${FINGERPRINT:-<no se pudo leer>}"
           fi
 
       # ── 8c. Repartir a los probadores (Firebase App Distribution) ────────────
@@ -189,14 +194,14 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: nexum-cliente-apk
+          name: nexum-cliente-apk-build${{ github.run_number }}
           path: AppCliente/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
       - name: Upload AAB (Play Store)
         uses: actions/upload-artifact@v7
         with:
-          name: nexum-cliente-aab
+          name: nexum-cliente-aab-build${{ github.run_number }}
           path: AppCliente/build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
 
