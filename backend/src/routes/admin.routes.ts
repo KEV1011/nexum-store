@@ -924,9 +924,15 @@ function boot() {
 
 function show(tab) {
   for (const s of document.querySelectorAll('section[id^="tab-"]')) s.style.display = 'none';
-  document.getElementById('tab-' + tab).style.display = 'block';
+  const sec = document.getElementById('tab-' + tab);
+  if (sec) sec.style.display = 'block';
   for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
-  ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperators, businesses: loadBusinesses, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab]();
+  const cargar = ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperators, businesses: loadBusinesses, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab];
+  // Sin la guarda, añadir una pestaña y olvidar su cargador reventaba show()
+  // ENTERO: no se abría ninguna sección y no aparecía ningún mensaje. Ahora
+  // la pestaña se abre y dice qué falta.
+  if (!cargar) { showMsg('La pestaña "' + tab + '" no tiene cargador de datos.', true); return; }
+  cargar();
 }
 
 const money = (v) => '$' + Number(v || 0).toLocaleString('es-CO');
