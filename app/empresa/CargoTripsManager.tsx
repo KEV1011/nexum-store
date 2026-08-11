@@ -312,7 +312,20 @@ function FilaViaje({
               {!facturado && t.status === 'DRAFT' && (
                 <button
                   title="Quitar del viaje"
-                  onClick={() => void onAccion(() => api(`/operator/cargo-trips/${t.id}/lines/${l.id}`, { method: 'DELETE' }))}
+                  onClick={() => {
+                    // La línea ES el remito: es el registro de qué mercancía
+                    // se le envió a ese cliente y lo que después se factura.
+                    // Borrarla sin preguntar, con la X al lado del texto, es
+                    // demasiado fácil de hacer sin querer.
+                    if (
+                      !confirm(
+                        `¿Quitar del viaje la línea de ${l.clientName}` +
+                          `${l.reference ? ` (${l.reference})` : ''}? ` +
+                          'Se pierde el registro de esa mercancía.',
+                      )
+                    ) return
+                    void onAccion(() => api(`/operator/cargo-trips/${t.id}/lines/${l.id}`, { method: 'DELETE' }))
+                  }}
                   className="text-slate-300 hover:text-red-600 shrink-0"
                 >
                   <X className="w-3.5 h-3.5" />

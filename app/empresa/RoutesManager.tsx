@@ -50,6 +50,14 @@ export default function RoutesManager({ api }: { api: OperatorApi }) {
   }
 
   async function removeRoute(id: string) {
+    // Una ruta autorizada costó la revisión del admin: volver a declararla es
+    // volver a esperar. Y sin ella, con el modelo dual activo, la flota deja
+    // de recibir esa troncal. Demasiado para un clic sin preguntar.
+    const r = routes.find((x) => x.id === id)
+    const aviso = r?.authorized
+      ? `¿Eliminar la ruta ${r.originCity} → ${r.destCity}? Está AUTORIZADA: si la quitas dejarás de recibir viajes de esa troncal y tendrás que declararla y esperar la aprobación otra vez.`
+      : '¿Eliminar esta ruta declarada?'
+    if (!confirm(aviso)) return
     try {
       await api(`/operator/routes/${id}`, { method: 'DELETE' })
       setRoutes((rs) => rs.filter((r) => r.id !== id))
