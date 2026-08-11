@@ -19,7 +19,7 @@ NUNCA empresas — esas entran por `/empresa/registro` + verificación del admin
 | `AppTransport/` | Flutter, paquete `nexum_driver` (misma base) | Igual: CI |
 | Panel admin | HTML embebido en `backend/src/routes/admin.routes.ts` (`PANEL_HTML`), servido en `/admin` | typecheck del backend; el JS del panel es string (revisar escapes `\\'`) |
 
-- **Rama de trabajo:** `claude/bold-newton-nc61uw`. Commit descriptivo en español y push al terminar cada tanda verificada.
+- **Rama de trabajo:** `claude/pr-blocked-duplicate-commits-tztum7`. Commit descriptivo en español y push al terminar cada tanda verificada.
 - **CI (GitHub Actions):** workflows `CI` (backend typecheck+test, `flutter analyze` de ambas apps) + `Build Nexum Driver/Cliente APK`. Para consultarlos: `mcp__github__actions_list` filtrando por `head_sha` — la salida es enorme, se guarda en archivo; parséala con `python3 -c "import json..."`.
 - **Prisma sin DB local:** las migraciones se generan offline: `prisma migrate diff --from-schema-datamodel <backup del schema> --to-schema-datamodel prisma/schema.prisma --script` → `prisma/migrations/YYYYMMDDHHMMSS_nombre/migration.sql`. La columna `Driver.geo` es `Unsupported("geography(Point, 4326)")` (PostGIS), gestionada a mano en la migración `add_postgis` — no la toques con Prisma.
 - **Producción:** Render (render.yaml Blueprint + Dockerfile: `prisma migrate deploy && node dist/index.js`); la web en Vercel (`NEXT_PUBLIC_BACKEND_URL`).

@@ -2,7 +2,7 @@ name: Deploy Cliente Web to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/driver-app-maas-pamplona-LYIfo]
+    branches: [main]
     paths:
       - 'AppCliente/**'
       - '.github/workflows/deploy-web-cliente.yml'

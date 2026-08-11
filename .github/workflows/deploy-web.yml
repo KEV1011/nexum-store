@@ -2,7 +2,7 @@ name: Deploy Web to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/driver-app-maas-pamplona-LYIfo]
+    branches: [main]
     paths:
       - 'AppTransport/**'
       - '.github/workflows/deploy-web.yml'
