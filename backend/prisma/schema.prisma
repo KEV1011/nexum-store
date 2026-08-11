@@ -403,6 +403,11 @@ model Product {
   description  String?
   price        Float
   category     String   @default("General")
+  /// Orden dentro de la carta. Una carta se lee en un orden concreto —
+  /// entradas antes que postres— y por fecha de creación salen mezclados.
+  /// Las secciones se ordenan por el menor sortOrder de sus productos, así
+  /// que ordenar productos ordena también la carta.
+  sortOrder    Int      @default(0)
   // Foto de portada (primera/principal). La galería adicional vive en `photos`.
   imageUrl     String?
   isAvailable  Boolean  @default(true)
@@ -560,7 +565,19 @@ model OrderLine {
   subtotal    Float
   // Resumen legible de las opciones elegidas (ej: "Grande · +Queso · Sin cebolla").
   // El `unitPrice` ya incluye los deltas de esas opciones.
+  //
+  // Lo GENERA el servidor a partir de `optionIds`, nunca la app: si el texto
+  // viniera del teléfono, la cocina leería lo que el cliente dijo haber
+  // elegido y no lo que realmente se cobró.
   optionsSummary String?
+  /// Opciones elegidas, por id. Es el dato; el resumen de arriba es su
+  /// presentación. Con esto el servidor recalcula el precio, rechaza una
+  /// opción que el negocio acaba de agotar, y el restaurante puede saber
+  /// cuántas veces le pidieron extra queso.
+  optionIds   String[]
+  /// Lo que en el mostrador se dice de viva voz: "sin cebolla", "bien cocida".
+  /// Va a la cocina tal cual.
+  notes       String?
 
   order       Order   @relation(fields: [orderId], references: [id])
   product     Product @relation(fields: [productId], references: [id])

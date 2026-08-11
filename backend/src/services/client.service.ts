@@ -19,6 +19,7 @@ import { requestOtp, validateOtp } from './otp.service';
 import { normalizeColombianPhone } from './auth.service';
 import { calcFare } from '../lib/fare';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
+import { resolverOpciones, sanearNota } from '../lib/order-options';
 import { recordCompletedTrip } from './earnings.service';
 import {
   fichaFromDriver, fichaPorConductor, fichasPorConductores,
@@ -173,7 +174,10 @@ export async function placeClientOrder(
   // modificar lo que envía (antes se cobraba `line.unitPrice` tal cual, así
   // que bastaba con mandar unitPrice:1 para llevarse cualquier producto).
   let subtotal = 0;
-  const lines: Array<{ productId: string; productName: string; quantity: number; unitPrice: number; subtotal: number; optionsSummary: string | null }> = [];
+  const lines: Array<{
+    productId: string; productName: string; quantity: number; unitPrice: number;
+    subtotal: number; optionsSummary: string | null; optionIds: string[]; notes: string | null;
+  }> = [];
   // Productos con inventario que habrá que descontar (stock no nulo).
   const aDescontar: Array<{ productId: string; cantidad: number; nombre: string }> = [];
 
@@ -181,7 +185,15 @@ export async function placeClientOrder(
     if (!(line.quantity > 0)) {
       throw new Error('La cantidad de cada producto debe ser mayor a cero.');
     }
-    const producto = await prisma.product.findUnique({ where: { id: line.productId } });
+    const producto = await prisma.product.findUnique({
+      where: { id: line.productId },
+      include: {
+        optionGroups: {
+          orderBy: { sortOrder: 'asc' },
+          include: { options: { orderBy: { sortOrder: 'asc' } } },
+        },
+      },
+    });
     if (!producto || producto.businessId !== dto.businessId) {
       throw new Error('Uno de los productos ya no está disponible en este negocio.');
     }
@@ -200,17 +212,37 @@ export async function placeClientOrder(
       aDescontar.push({ productId: producto.id, cantidad: line.quantity, nombre: producto.name });
     }
 
-    // El precio del catálogo es el SUELO: nunca se cobra menos, así que enviar
-    // unitPrice:1 ya no sirve de nada. Por encima se admite el recargo de las
-    // opciones elegidas (el DTO las trae sumadas en unitPrice), acotado al
-    // triple del precio base para que tampoco se pueda inflar el total.
-    // Mejora futura: que el cliente mande los IDs de opción y el servidor
-    // calcule el recargo exacto, en vez de aceptar un total ya sumado.
-    const enviado = Number(line.unitPrice) || 0;
-    const precioUnitario = Math.min(
-      Math.max(producto.price, enviado),
-      producto.price * 3,
-    );
+    // ── El precio ─────────────────────────────────────────────────────────
+    // Con los ids de las opciones el servidor calcula el recargo EXACTO desde
+    // el catálogo, compone el resumen que leerá la cocina y rechaza cualquier
+    // opción que el negocio acabe de agotar.
+    //
+    // Sin ids se aplica el criterio antiguo (suelo el precio del catálogo,
+    // techo el triple). No es exacto y puede recortar un pedido legítimo con
+    // muchas adiciones, pero hay apps instaladas que todavía mandan solo el
+    // total sumado y dejarlas fuera sería peor. Cuando esas versiones se
+    // hayan renovado, esta rama se retira.
+    let precioUnitario: number;
+    let resumen: string | null;
+    let idsOpciones: string[] = [];
+
+    if (Array.isArray(line.optionIds)) {
+      const resueltas = resolverOpciones(
+        producto.optionGroups,
+        line.optionIds,
+        producto.name,
+      );
+      // El recargo puede ser negativo si el negocio descuenta por quitar algo;
+      // el precio de una línea nunca baja de cero.
+      precioUnitario = Math.max(0, producto.price + resueltas.recargo);
+      resumen = resueltas.resumen;
+      idsOpciones = resueltas.ids;
+    } else {
+      const enviado = Number(line.unitPrice) || 0;
+      precioUnitario = Math.min(Math.max(producto.price, enviado), producto.price * 3);
+      resumen = line.optionsSummary?.trim() || null;
+    }
+
     const sub = line.quantity * precioUnitario;
     subtotal += sub;
     lines.push({
@@ -219,7 +251,9 @@ export async function placeClientOrder(
       quantity: line.quantity,
       unitPrice: precioUnitario,
       subtotal: sub,
-      optionsSummary: line.optionsSummary?.trim() || null,
+      optionsSummary: resumen,
+      optionIds: idsOpciones,
+      notes: sanearNota(line.notes),
     });
   }
 
@@ -1035,6 +1069,7 @@ type PrismaOrder = {
 type PrismaOrderLine = {
   productName: string; quantity: number; unitPrice: number; subtotal: number;
   optionsSummary?: string | null;
+  notes?: string | null;
 };
 
 function _toSummary(
@@ -1063,7 +1098,16 @@ function _toSummary(
     deliveryFee: o.deliveryFee,
     total: o.total,
     etaMinutes: o.etaMinutes ?? 30,
-    items: lines.map((l) => ({ productName: l.productName, quantity: l.quantity, unitPrice: l.unitPrice, subtotal: l.subtotal, optionsSummary: l.optionsSummary ?? undefined })),
+    items: lines.map((l) => ({
+      productName: l.productName,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      subtotal: l.subtotal,
+      optionsSummary: l.optionsSummary ?? undefined,
+      // La nota va en el mismo DTO que ve la cocina y que ve el cliente: el
+      // "sin cebolla" tiene que llegar a quien prepara el plato.
+      notes: l.notes ?? undefined,
+    })),
     deliveryAddress: o.deliveryAddress,
     driverName: o.driverName || undefined,
     // Privacy: never expose the driver's real number to the passenger.

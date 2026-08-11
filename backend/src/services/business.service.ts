@@ -293,6 +293,7 @@ function _productToDTO(p: {
   category: string;
   imageUrl: string | null;
   isAvailable: boolean;
+  sortOrder?: number;
   barcode?: string | null;
   sku?: string | null;
   stock?: number | null;
@@ -317,6 +318,7 @@ function _productToDTO(p: {
     category: p.category,
     imageUrl: p.imageUrl ?? undefined,
     isAvailable: p.isAvailable,
+    sortOrder: p.sortOrder ?? 0,
     barcode: p.barcode ?? undefined,
     sku: p.sku ?? undefined,
     stock: p.stock ?? undefined,
@@ -361,7 +363,9 @@ export async function getProductsForBusiness(businessId: string): Promise<Produc
 export async function getManagedProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
   const products = await prisma.product.findMany({
     where: { businessId },
-    orderBy: { createdAt: 'asc' },
+    // El dueño tiene que ver su carta en el MISMO orden en que la ve el
+    // cliente; si no, ordenarla a ciegas es imposible.
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     include: _photoInclude,
   });
   return products.map(_productToDTO);
@@ -613,6 +617,7 @@ export async function updateBusinessProduct(
       ...(dto.category !== undefined && { category: dto.category.trim() || 'General' }),
       ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
       ...(dto.isAvailable !== undefined && { isAvailable: dto.isAvailable }),
+      ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
       ..._inventarioData(dto),
     },
     include: _photoInclude,
@@ -757,7 +762,15 @@ export async function getBusinessStats(
 export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
   const businesses = await prisma.business.findMany({
     where: { isOpen: true },
-    include: { products: { where: { isAvailable: true }, include: _photoInclude } },
+    include: {
+      products: {
+        where: { isAvailable: true },
+        // La carta se lee en un orden concreto: entradas antes que postres.
+        // Por fecha de creación salían mezcladas.
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        include: _photoInclude,
+      },
+    },
     orderBy: { name: 'asc' },
   });
   return businesses.map((b) => ({
@@ -779,7 +792,15 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
 export async function getBusinessPublicById(id: string): Promise<BusinessPublicDTO> {
   const b = await prisma.business.findUnique({
     where: { id },
-    include: { products: { where: { isAvailable: true }, include: _photoInclude } },
+    include: {
+      products: {
+        where: { isAvailable: true },
+        // La carta se lee en un orden concreto: entradas antes que postres.
+        // Por fecha de creación salían mezcladas.
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        include: _photoInclude,
+      },
+    },
   });
   if (!b) throw new Error(`Business ${id} not found`);
   return {

@@ -327,7 +327,12 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
       deliveryAddress: dto.deliveryAddress,
       deliveryLat: typeof dto.deliveryLat === 'number' ? dto.deliveryLat : undefined,
       deliveryLng: typeof dto.deliveryLng === 'number' ? dto.deliveryLng : undefined,
-      items: dto.items as Array<{ productId: string; quantity: number; unitPrice: number }>,
+      // `optionIds` y `notes` viajan hasta el servicio: con los ids se
+      // recalcula el precio contra el catálogo y se compone la comanda.
+      items: dto.items as Array<{
+        productId: string; quantity: number; unitPrice: number;
+        optionIds?: string[]; optionsSummary?: string; notes?: string;
+      }>,
     });
     res.status(201).json({ success: true, data: order });
 

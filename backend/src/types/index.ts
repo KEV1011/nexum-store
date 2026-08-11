@@ -500,6 +500,8 @@ export interface ProductDTO {
   category: string;
   imageUrl?: string;
   isAvailable: boolean;
+  /** Posición en la carta. El cliente y el portal la ven en este orden. */
+  sortOrder: number;
   // Galería adicional (además de `imageUrl`). Vacía si no hay más fotos.
   images: ProductPhotoDTO[];
   // Variantes/opciones del producto (tamaños, adiciones, quitar). Vacío si no.
@@ -544,6 +546,8 @@ export interface CreateProductDTO {
 
 export interface UpdateProductDTO {
   name?: string;
+  /** Posición en la carta. Menor = más arriba. */
+  sortOrder?: number;
   price?: number;
   description?: string;
   category?: string;
@@ -602,8 +606,22 @@ export interface ClientOrderLineDTO {
   productId: string;
   quantity: number;
   unitPrice: number;
-  // Resumen de las opciones elegidas (el unitPrice ya incluye sus deltas).
+  /**
+   * Opciones elegidas, por id. Es lo que el servidor usa para recalcular el
+   * precio y componer el resumen que lee la cocina.
+   *
+   * Opcional a propósito: hay apps instaladas que no lo mandan y deben seguir
+   * funcionando. Sin ids se aplica la validación antigua (suelo el precio del
+   * catálogo, techo el triple) — menos exacta, pero no deja a nadie fuera.
+   */
+  optionIds?: string[];
+  /**
+   * Resumen de las opciones. Solo se usa cuando la app no manda `optionIds`;
+   * con ids, el servidor lo genera y descarta este.
+   */
   optionsSummary?: string;
+  /** Nota del cliente para la cocina: "sin cebolla", "bien cocida". */
+  notes?: string;
 }
 
 export interface ClientPlaceOrderDTO {
@@ -633,6 +651,8 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
     unitPrice: number;
     subtotal: number;
     optionsSummary?: string;
+    /** Lo que el cliente pidió de palabra: "sin cebolla", "bien cocida". */
+    notes?: string;
   }>;
   deliveryAddress: string;
   driverName?: string;
