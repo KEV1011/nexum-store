@@ -143,10 +143,24 @@ class _TripChatScreenState extends State<TripChatScreen> {
             '/driver/trips/${widget.tripId}/chat/photo',
             data: form,
           );
-    } catch (_) {
+    } on DioException catch (e) {
+      // "No se pudo enviar la foto" a secas era un `catch (_)` mudo: se
+      // perdía el motivo real (autorización, tamaño, tipo de archivo) y no
+      // había forma de diagnosticar el fallo sin acceso al servidor.
+      if (mounted) {
+        final data = e.response?.data;
+        final motivo =
+            data is Map<String, dynamic> ? data['error'] as String? : null;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(motivo ?? 'No se pudo enviar la foto: ${e.message}'),
+          ),
+        );
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo enviar la foto.')),
+          SnackBar(content: Text('No se pudo enviar la foto: $e')),
         );
       }
     } finally {
