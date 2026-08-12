@@ -273,6 +273,39 @@ export async function cancelClientErrand(clientId: string, errandId: string): Pr
 }
 
 /**
+ * Cancela un mandado por decisión del ADMINISTRADOR, sin las restricciones que
+ * sí tiene el cliente.
+ *
+ * `cancelClientErrand` se niega en SHOPPING/ON_THE_WAY, y hace bien: el cliente
+ * no puede echarse atrás cuando el mandadero ya compró. Pero el admin que
+ * desatasca a un conductor desaparecido está en la situación contraria — el
+ * mandado está muerto justamente PORQUE nadie va a entregarlo— y necesita
+ * cerrarlo. Sin esta puerta, un mandado en curso con el conductor sin señal se
+ * quedaba abierto para siempre.
+ */
+export async function cancelErrandByAdmin(errandId: string): Promise<boolean> {
+  cancelSearchRetry(`errand:${errandId}`);
+  const res = await prisma.errand.updateMany({
+    where: { id: errandId, status: { in: ['SEARCHING', 'ACCEPTED', 'SHOPPING', 'ON_THE_WAY'] } },
+    data: { status: 'CANCELLED' },
+  });
+  if (res.count === 0) return false;
+
+  const updated = await prisma.errand.findUniqueOrThrow({ where: { id: errandId } });
+  _notify(errandId, _toDTO(updated, await fichaPorConductor(updated.driverId)));
+
+  if (updated.driverId) {
+    _errandSendToDriver?.(updated.driverId, { type: 'errand_cancelled', errandId });
+    void sendPushToDriver(updated.driverId, {
+      title: 'Mandado cancelado',
+      body: 'Soporte canceló el mandado que tenías asignado.',
+      data: { type: 'errand_cancelled', errandId },
+    });
+  }
+  return true;
+}
+
+/**
  * Mandado visto por SU cliente: incluye los PIN de custodia. `_toDTO` nunca los
  * añade (seguro por defecto: el mismo DTO viaja al mandadero por WS y jamás
  * debe llevar PIN); solo estas vistas del cliente los exponen.

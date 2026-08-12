@@ -181,8 +181,9 @@ router.post('/drivers/:id/unverify', async (req: Request, res: Response): Promis
   res.json({ success: true });
 });
 
-// POST /admin/drivers/:id/release — des-atasca al conductor (cancela su viaje
-// activo y lo devuelve a ONLINE). Libera también al cliente colgado.
+// POST /admin/drivers/:id/release — des-atasca al conductor: cancela TODOS sus
+// servicios activos (viaje, mandado, pedido, intermunicipal), devuelve sus
+// fletes al tablero y lo deja ONLINE. Libera también a los clientes colgados.
 router.post('/drivers/:id/release', async (req: Request, res: Response): Promise<void> => {
   const result = await releaseDriver(req.params['id']!);
   if (!result.ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
@@ -1129,9 +1130,21 @@ function setClientKyc(id, status) {
     .catch((e) => showMsg(e.message, true));
 }
 function releaseDriver(id) {
-  if (!confirm('¿Liberar al conductor? Se cancelará su viaje activo y volverá a ONLINE.')) return;
+  if (!confirm('¿Liberar al conductor? Se cancelarán TODOS sus servicios activos (viajes, mandados, pedidos e intermunicipales), sus fletes vuelven al tablero, y quedará ONLINE.')) return;
   api('/admin/drivers/' + id + '/release', { method: 'POST' })
-    .then((r) => { showMsg('Conductor liberado (' + (r.cancelledTrips || 0) + ' viaje(s) cancelado(s)).', false); loadDrivers(); })
+    .then((r) => {
+      // Se detalla POR TIPO: decir solo "1 viaje" cuando además se cancelaron
+      // dos pedidos y un mandado es justo el error que tenía este botón.
+      var c = r.cancelados || {};
+      var partes = [];
+      if (c.viajes) partes.push(c.viajes + ' viaje(s)');
+      if (c.mandados) partes.push(c.mandados + ' mandado(s)');
+      if (c.pedidos) partes.push(c.pedidos + ' pedido(s)');
+      if (c.intercity) partes.push(c.intercity + ' intermunicipal(es)');
+      if (c.fletes) partes.push(c.fletes + ' flete(s) devuelto(s) al tablero');
+      showMsg('Conductor liberado' + (partes.length ? ': ' + partes.join(', ') + '.' : ' (no tenía servicios activos).'), false);
+      loadDrivers();
+    })
     .catch((e) => showMsg(e.message, true));
 }
 

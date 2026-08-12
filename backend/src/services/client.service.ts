@@ -685,6 +685,45 @@ export async function cancelClientOrder(clientId: string, orderId: string): Prom
   return true;
 }
 
+/**
+ * Cancela un pedido por decisión del ADMINISTRADOR, sin las restricciones del
+ * cliente (que no puede cancelar más allá de AT_PICKUP).
+ *
+ * El admin que desatasca a un repartidor desaparecido necesita cerrar también
+ * los pedidos que lleva IN_TRANSIT: si no, el cliente se queda viendo "en
+ * camino" indefinidamente y el negocio creyendo que el pedido va de salida.
+ *
+ * **No se devuelve el stock cuando el pedido ya salió del local.** La mercancía
+ * salió de verdad; reponerla en el inventario haría que el negocio vendiera algo
+ * que ya no tiene. Solo se restituye en los estados previos a la recogida, que
+ * es lo que hace el camino del cliente.
+ */
+export async function cancelOrderByAdmin(orderId: string): Promise<boolean> {
+  cancelSearchRetry(`order:${orderId}`);
+  clearOrderAcceptTimer(orderId);
+
+  const previo = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true, driverId: true } });
+  if (!previo) return false;
+  const antesDeSalir = ['PENDING', 'CONFIRMED', 'PREPARING', 'DRIVER_TO_PICKUP', 'AT_PICKUP'] as const;
+  if ((antesDeSalir as readonly string[]).includes(previo.status)) await restoreOrderStock(orderId);
+
+  const res = await prisma.order.updateMany({
+    where: { id: orderId, status: { in: [...antesDeSalir, 'IN_TRANSIT' as const] } },
+    data: { status: 'CANCELLED' },
+  });
+  if (res.count === 0) return false;
+
+  const updated = await prisma.order.findUniqueOrThrow({
+    where: { id: orderId },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+  if (previo.driverId) _sendToDriver?.(previo.driverId, { type: 'order_cancelled', orderId });
+
+  const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  return true;
+}
+
 /** Estados que el repartidor puede reportar sobre un pedido. */
 export type DriverOrderStatus = 'at_pickup' | 'in_transit' | 'delivered';
 

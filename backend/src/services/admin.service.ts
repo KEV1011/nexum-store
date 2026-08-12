@@ -4,6 +4,8 @@ import { maskPhone } from './safe-contact.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { estadoPiloto } from './kyc.service';
 import { contarDespachoAtascado } from './dispatch-recovery.service';
+import { cancelOrderByAdmin } from './client.service';
+import { cancelErrandByAdmin } from './errand.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin service — métricas operativas y listados para el panel /admin.
@@ -339,22 +341,92 @@ export async function setDriverVerified(driverId: string, verified: boolean): Pr
  * operación para cuando un viaje queda "colgado" (p. ej. la app se cerró a mitad
  * de camino y el conductor quedó ON_TRIP sin poder recibir ni completar).
  */
-export async function releaseDriver(
-  driverId: string,
-): Promise<{ ok: boolean; cancelledTrips: number }> {
-  const d = await prisma.driver.findUnique({ where: { id: driverId }, select: { id: true } });
-  if (!d) return { ok: false, cancelledTrips: 0 };
+export interface ResumenLiberacion {
+  ok: boolean;
+  /** Se mantiene por compatibilidad con quien ya leía este campo. */
+  cancelledTrips: number;
+  cancelados: { viajes: number; mandados: number; pedidos: number; intercity: number; fletes: number };
+}
 
-  const active = await prisma.trip.updateMany({
-    where: {
-      driverId,
-      status: { in: ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'] },
-    },
-    data: { status: 'CANCELLED', cancelReason: 'Liberado por el administrador', completedAt: new Date() },
+/**
+ * Des-atasca a un conductor: cancela TODO lo que lleva encima y lo devuelve a
+ * ONLINE.
+ *
+ * Antes solo cancelaba `Trip`. Un conductor con un mandado y dos pedidos —el
+ * caso que se vio en producción, con el conductor sin señal 23 horas— quedaba
+ * "liberado" en ONLINE mientras sus tres servicios seguían abiertos para
+ * siempre: el cliente viendo "en camino", el negocio creyendo que el pedido iba
+ * de salida, y la alerta de conductor desaparecido repitiéndose cada minuto sin
+ * que nada la cerrara. El botón decía que desatascaba y desatascaba un quinto.
+ *
+ * Pedidos y mandados se cierran por `cancelOrderByAdmin`/`cancelErrandByAdmin`,
+ * que avisan al cliente, al negocio y al conductor y cortan los temporizadores
+ * de búsqueda. No sirve el camino del cliente: ése se niega en cuanto el
+ * servicio avanzó (no puedes cancelar un mandado ya comprado), que es correcto
+ * para el cliente y justo lo contrario de lo que necesita el admin — el
+ * servicio está muerto PORQUE nadie va a entregarlo.
+ */
+export async function releaseDriver(driverId: string): Promise<ResumenLiberacion> {
+  const vacio = { viajes: 0, mandados: 0, pedidos: 0, intercity: 0, fletes: 0 };
+  const d = await prisma.driver.findUnique({ where: { id: driverId }, select: { id: true } });
+  if (!d) return { ok: false, cancelledTrips: 0, cancelados: vacio };
+
+  const motivo = 'Liberado por el administrador';
+
+  const viajes = await prisma.trip.updateMany({
+    where: { driverId, status: { in: ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'] } },
+    data: { status: 'CANCELLED', cancelReason: motivo, completedAt: new Date() },
   });
 
+  // Pedidos y mandados: por el camino del cliente (stock, avisos, timers).
+  const pedidos = await prisma.order.findMany({
+    where: {
+      driverId,
+      status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'DRIVER_TO_PICKUP', 'AT_PICKUP', 'IN_TRANSIT'] },
+    },
+    select: { id: true },
+  });
+  let pedidosCancelados = 0;
+  for (const o of pedidos) {
+    if (await cancelOrderByAdmin(o.id).catch(() => false)) pedidosCancelados++;
+  }
+
+  const mandados = await prisma.errand.findMany({
+    where: { driverId, status: { in: ['SEARCHING', 'ACCEPTED', 'SHOPPING', 'ON_THE_WAY'] } },
+    select: { id: true },
+  });
+  let mandadosCancelados = 0;
+  for (const e of mandados) {
+    if (await cancelErrandByAdmin(e.id).catch(() => false)) mandadosCancelados++;
+  }
+
+  const intercity = await prisma.intercityBooking.updateMany({
+    where: { driverId, status: { in: ['DRIVER_FOUND', 'CONFIRMED', 'IN_PROGRESS'] } },
+    data: { status: 'CANCELLED' },
+  });
+
+  // El flete vuelve al tablero en vez de morir: la carga sigue existiendo y otra
+  // flota puede tomarla. Cancelarlo obligaría al cliente a publicarlo otra vez
+  // sin que nadie se lo haya dicho.
+  const fletes = await prisma.freightRequest.updateMany({
+    where: { driverId, status: { in: ['ACCEPTED', 'IN_PROGRESS'] } },
+    data: { status: 'REQUESTED', driverId: null, vehicleId: null },
+  });
+
+  // Al final: cancelar pedidos y mandados ya lo deja ONLINE, pero un viaje o un
+  // flete no, y hay que dejarlo utilizable en cualquier caso.
   await prisma.driver.update({ where: { id: driverId }, data: { status: 'ONLINE' } });
-  return { ok: true, cancelledTrips: active.count };
+
+  const cancelados = {
+    viajes: viajes.count,
+    mandados: mandadosCancelados,
+    pedidos: pedidosCancelados,
+    intercity: intercity.count,
+    fletes: fletes.count,
+  };
+  const total = Object.values(cancelados).reduce((a, b) => a + b, 0);
+  console.log(`[Admin] Conductor ${driverId} liberado · ${total} servicio(s):`, cancelados);
+  return { ok: true, cancelledTrips: viajes.count, cancelados };
 }
 
 // ─── Eventos SOS ──────────────────────────────────────────────────────────────
