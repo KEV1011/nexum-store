@@ -316,7 +316,7 @@ router.delete('/vehicles/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async
 // GET /operator/alerts — alertas de seguridad EN VIVO de la flota (geocerca de
 // destino, detención prolongada, desvío de ruta) para la Torre de Control.
 router.get('/alerts', async (req: Request, res: Response): Promise<void> => {
-  res.json({ success: true, data: listSafetyAlerts(req.operatorId!) });
+  res.json({ success: true, data: await listSafetyAlerts(req.operatorId!) });
 });
 
 // GET /operator/trips — viajes sellados con la empresa (trazabilidad + liquidación).

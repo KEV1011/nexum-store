@@ -10,7 +10,7 @@ import { ShieldAlert } from 'lucide-react'
 import type { OperatorApi } from './api'
 
 interface SafetyAlert {
-  id: number
+  id: string
   at: string
   kind: 'geofence' | 'stall' | 'deviation' | 'offline'
   driverName: string

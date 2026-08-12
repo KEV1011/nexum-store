@@ -40,7 +40,8 @@ export type SafetyAlertKind =
   | 'offline';
 
 export interface SafetyAlert {
-  id: number;
+  /** cuid de la fila persistida; `mem-N` mientras solo vive en el anillo. */
+  id: string;
   at: string;
   kind: SafetyAlertKind;
   driverId: string;
@@ -79,15 +80,73 @@ const _notified = new Map<string, Set<SafetyAlertKind>>();
 // driverId → última posición con movimiento real (para detectar detenciones)
 const _lastMove = new Map<string, { lat: number; lng: number; at: number }>();
 
-function _pushAlert(a: Omit<SafetyAlert, 'id' | 'at'>): void {
-  _alerts.unshift({ ...a, id: _alertSeq++, at: new Date().toISOString() });
+/**
+ * Registra una alerta: anillo en memoria (caché rápida) + tabla (fuente de
+ * verdad). Exportada porque otros servicios pueden tener que levantar una
+ * alerta sin pasar por el heartbeat.
+ */
+export function _pushAlert(a: Omit<SafetyAlert, 'id' | 'at'>): void {
+  _alerts.unshift({ ...a, id: `mem-${_alertSeq++}`, at: new Date().toISOString() });
   if (_alerts.length > 200) _alerts.length = 200;
   console.log(`[Seguridad] ${a.kind} · ${a.serviceKind}=${a.serviceId} · driver=${a.driverId}: ${a.detail}`);
+
+  // Persistencia best-effort. El anillo en memoria se queda como caché rápida,
+  // pero la fuente de verdad pasa a ser la tabla: antes cada reinicio de Render
+  // —un despliegue, el plan free durmiéndose— borraba TODAS las alertas, y una
+  // flota que pide control total se quedaba sin el histórico justo cuando iba a
+  // reclamar. Nunca se hace `await`: esto cuelga del heartbeat del conductor y
+  // un fallo de base de datos no puede frenar el GPS ni tumbar la petición.
+  void prisma.safetyAlertLog
+    .create({
+      data: {
+        kind: a.kind,
+        driverId: a.driverId,
+        driverName: a.driverName,
+        operatorId: a.operatorId,
+        serviceKind: a.serviceKind,
+        serviceId: a.serviceId,
+        detail: a.detail,
+      },
+    })
+    .catch((e: unknown) => {
+      console.error('[Seguridad] no se pudo guardar la alerta:', e);
+    });
 }
 
-/** Alertas para la Torre de Control. Sin operatorId = todas (admin). */
-export function listSafetyAlerts(operatorId?: string): SafetyAlert[] {
-  return operatorId ? _alerts.filter((a) => a.operatorId === operatorId) : [..._alerts];
+/**
+ * Alertas para la Torre de Control. Sin operatorId = todas (admin).
+ *
+ * Lee de la tabla, no del anillo en memoria: tras un reinicio el anillo está
+ * vacío y la flota vería "sin alertas" con un camión sin señal desde hace dos
+ * horas. Si la consulta falla se cae al anillo, que al menos tiene lo de esta
+ * sesión — un listado incompleto es mejor que una pantalla rota.
+ */
+export async function listSafetyAlerts(operatorId?: string): Promise<SafetyAlert[]> {
+  try {
+    const filas = await prisma.safetyAlertLog.findMany({
+      where: operatorId ? { operatorId } : undefined,
+      // El barrido de conductores sin señal levanta varias alertas en el mismo
+      // milisegundo; sin desempate el orden sería arbitrario y la lista bailaría
+      // entre recargas. El cuid empieza por marca de tiempo + contador, así que
+      // sirve de segundo criterio.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 200,
+    });
+    return filas.map((f) => ({
+      id: f.id,
+      at: f.createdAt.toISOString(),
+      kind: f.kind as SafetyAlertKind,
+      driverId: f.driverId,
+      driverName: f.driverName,
+      operatorId: f.operatorId,
+      serviceKind: f.serviceKind,
+      serviceId: f.serviceId,
+      detail: f.detail,
+    }));
+  } catch (e) {
+    console.error('[Seguridad] fallo al leer alertas, se usa la memoria:', e);
+    return operatorId ? _alerts.filter((a) => a.operatorId === operatorId) : [..._alerts];
+  }
 }
 
 // ── Geometría ─────────────────────────────────────────────────────────────────
@@ -305,6 +364,10 @@ export async function onDriverHeartbeat(driverId: string, lat: number, lng: numb
 }
 
 /** Purga cachés viejos (llamar en un timer junto a pruneRateLimits). */
+/** Días que se guarda una alerta antes de purgarse. */
+const ALERT_RETENTION_DAYS = Number(process.env['SAFETY_ALERT_RETENTION_DAYS'] ?? 180);
+let _ultimaPurga = 0;
+
 export function pruneSafetyState(): void {
   const now = Date.now();
   for (const [k, v] of _serviceCache) {
@@ -313,6 +376,18 @@ export function pruneSafetyState(): void {
   for (const [k, v] of _lastMove) {
     if (now - v.at > 60 * 60_000) _lastMove.delete(k);
   }
+
+  // La tabla de alertas crece sin techo si nadie la barre. Se purga una vez al
+  // día como mucho, aunque este prune corra cada 10 minutos.
+  if (now - _ultimaPurga < 24 * 60 * 60_000) return;
+  _ultimaPurga = now;
+  const corte = new Date(now - ALERT_RETENTION_DAYS * 24 * 60 * 60_000);
+  void prisma.safetyAlertLog
+    .deleteMany({ where: { createdAt: { lt: corte } } })
+    .then((r) => {
+      if (r.count > 0) console.log(`[Seguridad] purgadas ${r.count} alertas anteriores a ${corte.toISOString()}`);
+    })
+    .catch((e: unknown) => console.error('[Seguridad] fallo al purgar alertas:', e));
 }
 
 // ── Vigilante: conductor desaparecido con mercancía ──────────────────────────

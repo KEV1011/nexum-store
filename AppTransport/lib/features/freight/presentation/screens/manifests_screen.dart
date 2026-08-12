@@ -1,5 +1,7 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
@@ -248,6 +250,12 @@ class _EntregaScreenState extends State<_EntregaScreen> {
   final Map<int, Map<String, dynamic>> _novedades = {};
   bool _enviando = false;
 
+  /// Foto del acta firmada. El endpoint para subirla existía desde hace
+  /// tandas y ninguna pantalla lo llamaba: se conciliaba bulto por bulto pero
+  /// no quedaba imagen del papel firmado, que es la prueba que pide el cliente
+  /// de carga cuando la discusión llega semanas después.
+  XFile? _acta;
+
   @override
   void dispose() {
     _nombreCtrl.dispose();
@@ -279,6 +287,34 @@ class _EntregaScreenState extends State<_EntregaScreen> {
               .toList(),
         },
       );
+      // La foto va DESPUÉS y aparte: la entrega ya quedó registrada, así que
+      // si la subida falla (mala señal en carretera) no se pierde la
+      // conciliación de bultos, que es lo que de verdad cuesta rehacer.
+      if (_acta != null) {
+        try {
+          final bytes = await _acta!.readAsBytes();
+          await DioClient().dio.post<Map<String, dynamic>>(
+                '/driver/manifests/${widget.remito['id']}/receipt-photo',
+                data: FormData.fromMap({
+                  'file': MultipartFile.fromBytes(
+                    bytes,
+                    filename: _acta!.name,
+                    contentType: DioMediaType('image', 'jpeg'),
+                  ),
+                }),
+              );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'La entrega quedó registrada, pero la foto del acta no subió: $e',
+                ),
+              ),
+            );
+          }
+        }
+      }
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -288,6 +324,14 @@ class _EntregaScreenState extends State<_EntregaScreen> {
         SnackBar(content: Text('No se pudo registrar la entrega. $e')),
       );
     }
+  }
+
+  Future<void> _tomarActa() async {
+    final foto = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
+    );
+    if (foto != null && mounted) setState(() => _acta = foto);
   }
 
   @override
@@ -364,6 +408,16 @@ class _EntregaScreenState extends State<_EntregaScreen> {
                     color: Colors.red.shade800, fontWeight: FontWeight.w600),
               ),
             ),
+          OutlinedButton.icon(
+            onPressed: _enviando ? null : _tomarActa,
+            icon: Icon(_acta == null
+                ? Icons.photo_camera_outlined
+                : Icons.check_circle_outline),
+            label: Text(_acta == null
+                ? 'Foto del acta firmada (opcional)'
+                : 'Acta fotografiada · tocar para repetir'),
+          ),
+          const SizedBox(height: 12),
           FilledButton(
             onPressed: _enviando ? null : _enviar,
             child: _enviando

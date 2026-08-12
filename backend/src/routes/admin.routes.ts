@@ -243,8 +243,8 @@ router.post('/drivers/:id/kyc', async (req: Request, res: Response): Promise<voi
 
 // GET /admin/alerts — alertas de seguridad en vivo (geocerca/detención/desvío)
 // de TODA la plataforma, para la pestaña SOS del panel.
-router.get('/alerts', (_req: Request, res: Response): void => {
-  res.json({ success: true, data: listSafetyAlerts() });
+router.get('/alerts', async (_req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listSafetyAlerts() });
 });
 
 // GET /admin/takedowns — solicitudes de retiro DMCA. POST .../:id/resolve

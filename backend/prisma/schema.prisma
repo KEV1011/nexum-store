@@ -1703,3 +1703,27 @@ model Municipality {
   @@index([name])
   @@map("municipalities")
 }
+
+/// Alerta de ruta detectada por el heartbeat: llegada a destino, detención
+/// prolongada, desvío del corredor o pérdida de señal con un servicio en curso.
+///
+/// Vivían en un array en memoria de 200. Cada reinicio de Render las borraba,
+/// así que el "control total" que pide una flota de carga se perdía en cada
+/// despliegue y solo quedaba rastro en los logs del servidor — donde el dueño
+/// de la flota no entra nunca.
+model SafetyAlertLog {
+  id          String   @id @default(cuid())
+  kind        String   // geofence | stall | deviation | offline
+  driverId    String
+  driverName  String
+  /// Empresa dueña del servicio. Null = servicio sin flota (cliente directo).
+  operatorId  String?
+  serviceKind String   // trip | intercity | freight | cargo
+  serviceId   String
+  detail      String
+  createdAt   DateTime @default(now())
+
+  @@index([operatorId, createdAt])
+  @@index([driverId, createdAt])
+  @@map("safety_alerts")
+}
