@@ -456,11 +456,32 @@ export const INTERCITY_REMOVE_CAP = (process.env['INTERCITY_REMOVE_CAP'] ?? 'fal
 export const INTERCITY_DUAL_MODEL = (process.env['INTERCITY_DUAL_MODEL'] ?? 'false') === 'true';
 
 /**
- * Demo-only: simulate the intercity driver response with a mock pool instead
- * of offering the booking to real online drivers. OFF by default — production
- * always uses the real matching cycle.
+ * Solo para demos: responde la reserva intermunicipal con un conductor
+ * inventado en vez de ofrecérsela a los conductores reales conectados.
+ *
+ * En producción NO se puede encender. No es una precaución teórica: con la
+ * variable puesta, un pasajero recibió la contraoferta de «Ramiro Sepúlveda,
+ * Nissan X-Trail Negra 2023 · OPS 876» —una de las tres fichas escritas a mano
+ * en intercity.service— y podía aceptarla. Nadie iba a recogerlo. Un cobro que
+ * no cobra se nota enseguida; un conductor que no existe se nota en la calle,
+ * cuando ya es tarde.
+ *
+ * Si la variable llega encendida en producción se ignora y se avisa, en vez de
+ * abortar el arranque: dejar el servicio caído por una variable de demo sería
+ * un daño mayor que apagarla.
  */
-export const INTERCITY_SIMULATE = (process.env['INTERCITY_SIMULATE'] ?? 'false') === 'true';
+const _simularPedido = (process.env['INTERCITY_SIMULATE'] ?? 'false').toLowerCase() === 'true';
+export const INTERCITY_SIMULATE = _simularPedido && NODE_ENV !== 'production';
+if (_simularPedido && NODE_ENV === 'production') {
+  console.warn(
+    '\n══════════════════════════════════════════════════════════════════\n' +
+      '  ⚠  INTERCITY_SIMULATE=true IGNORADO en producción.\n' +
+      '     Simula conductores intermunicipales que no existen: el pasajero\n' +
+      '     acepta una contraoferta y no lo recoge nadie. Quita la variable\n' +
+      '     en Render para que este aviso desaparezca.\n' +
+      '══════════════════════════════════════════════════════════════════\n',
+  );
+}
 
 /**
  * Maximum legal cost-share per seat for a route, given the number of seats

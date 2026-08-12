@@ -43,6 +43,9 @@ export function pagoEnLineaDisponible(): boolean {
   return Boolean(WOMPI_PUBLIC_KEY && WOMPI_PRIVATE_KEY);
 }
 
+/** Error de negocio del cobro: se responde con su mensaje, en español. */
+export class PaymentError extends Error {}
+
 /** API base según el ambiente de las llaves (test → sandbox). */
 function _wompiApiBase(): string {
   const isTest = WOMPI_PRIVATE_KEY.startsWith('prv_test_') || WOMPI_PUBLIC_KEY.startsWith('pub_test_');
@@ -59,28 +62,35 @@ export async function createPaymentLink(
     customerEmail?: string;
   },
 ): Promise<{ paymentId: string; referenceCode: string; paymentUrl: string; amount: number }> {
+  // Sin llaves NO se genera enlace. Antes había un respaldo con la llave
+  // `pub_test_nexum_demo`, que no es de nadie: Wompi no puede resolver ese
+  // comercio, así que el cliente aterrizaba en una página con la marca de
+  // Bancolombia y el mensaje "No se pudo cargar la información del undefined".
+  // Mandar a alguien a pagar a una pasarela que no existe es peor que decirle
+  // que solo hay efectivo.
+  if (!pagoEnLineaDisponible()) {
+    throw new PaymentError(
+      'El pago en línea no está habilitado todavía. Paga en efectivo al conductor.',
+    );
+  }
+
   const referenceCode = `NX-${Date.now()}-${randomUUID().slice(0, 6).toUpperCase()}`;
   const amountCents = Math.round(params.amount * 100);
 
-  let paymentUrl: string;
-  if (WOMPI_PUBLIC_KEY) {
-    const redirectUrl = encodeURIComponent(`${APP_URL}/payment/result?ref=${referenceCode}`);
-    paymentUrl =
-      `https://checkout.wompi.co/p/` +
-      `?public-key=${WOMPI_PUBLIC_KEY}` +
-      `&currency=COP` +
-      `&amount-in-cents=${amountCents}` +
-      `&reference=${referenceCode}` +
-      `&redirect-url=${redirectUrl}`;
-    if (WOMPI_INTEGRITY_SECRET) {
-      // SHA256(referencia + monto-en-centavos + moneda + secreto de integridad)
-      const integrity = createHash('sha256')
-        .update(`${referenceCode}${amountCents}COP${WOMPI_INTEGRITY_SECRET}`)
-        .digest('hex');
-      paymentUrl += `&signature%3Aintegrity=${integrity}`;
-    }
-  } else {
-    paymentUrl = `https://checkout.wompi.co/p/?public-key=pub_test_nexum_demo&currency=COP&amount-in-cents=${amountCents}&reference=${referenceCode}`;
+  const redirectUrl = encodeURIComponent(`${APP_URL}/payment/result?ref=${referenceCode}`);
+  let paymentUrl =
+    `https://checkout.wompi.co/p/` +
+    `?public-key=${WOMPI_PUBLIC_KEY}` +
+    `&currency=COP` +
+    `&amount-in-cents=${amountCents}` +
+    `&reference=${referenceCode}` +
+    `&redirect-url=${redirectUrl}`;
+  if (WOMPI_INTEGRITY_SECRET) {
+    // SHA256(referencia + monto-en-centavos + moneda + secreto de integridad)
+    const integrity = createHash('sha256')
+      .update(`${referenceCode}${amountCents}COP${WOMPI_INTEGRITY_SECRET}`)
+      .digest('hex');
+    paymentUrl += `&signature%3Aintegrity=${integrity}`;
   }
 
   const payment = await prisma.payment.create({

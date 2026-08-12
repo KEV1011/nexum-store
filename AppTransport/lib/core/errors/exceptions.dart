@@ -71,6 +71,17 @@ class LocationPermissionException extends AppException {
         );
 }
 
+/// Hay permiso, pero el GPS no da una lectura (bajo techo, señal débil, el
+/// servicio tarda). Es distinto de no tener permiso y se resuelve distinto.
+class LocationUnavailableException extends AppException {
+  const LocationUnavailableException()
+      : super(
+          message: 'No pudimos obtener tu ubicación. Sal a cielo abierto o '
+              'revisa que el GPS esté encendido.',
+          code: 'LOCATION_UNAVAILABLE',
+        );
+}
+
 /// Error cuando no se encuentra un recurso
 class NotFoundException extends AppException {
   const NotFoundException({

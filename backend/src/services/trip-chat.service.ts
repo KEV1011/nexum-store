@@ -39,17 +39,50 @@ function _toDTO(m: {
 }
 
 /**
- * Verifica que quien pide sea participante del viaje (pasajero o conductor) y
- * devuelve su rol. Lanza si no pertenece al viaje.
+ * Verifica que quien pide sea participante del servicio (cliente o conductor) y
+ * devuelve su rol. Lanza si no pertenece.
+ *
+ * El chat nació para el viaje urbano y solo miraba la tabla `Trip`. Pero en la
+ * app del conductor el botón de chat sale también en MANDADOS y PEDIDOS, donde
+ * el identificador que se pasa es el del mandado o el del pedido: la consulta
+ * no encontraba nada y todo —abrir el historial, escribir, mandar una foto—
+ * moría en un 403. Y es justo donde más falta hace hablar: el repartidor que
+ * está en la tienda necesita preguntar si la marca sirve, y el que llega a un
+ * portón cerrado necesita avisar.
+ *
+ * `TripMessage.tripId` es una columna de texto sin clave foránea, así que el
+ * mismo hilo sirve para los tres sin tocar el modelo. Se consulta en orden y se
+ * para en cuanto uno responde.
  */
 async function _assertParticipant(tripId: string, requesterId: string): Promise<TripChatRole> {
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     select: { passengerId: true, driverId: true },
   });
-  if (!trip) throw new TripChatError('El viaje no existe.');
-  if (trip.passengerId && trip.passengerId === requesterId) return 'client';
-  if (trip.driverId && trip.driverId === requesterId) return 'driver';
+  if (trip) return _rol(trip.passengerId, trip.driverId, requesterId);
+
+  const errand = await prisma.errand.findUnique({
+    where: { id: tripId },
+    select: { userId: true, driverId: true },
+  });
+  if (errand) return _rol(errand.userId, errand.driverId, requesterId);
+
+  const order = await prisma.order.findUnique({
+    where: { id: tripId },
+    select: { userId: true, driverId: true },
+  });
+  if (order) return _rol(order.userId, order.driverId, requesterId);
+
+  throw new TripChatError('El servicio no existe.');
+}
+
+function _rol(
+  clientId: string | null,
+  driverId: string | null,
+  requesterId: string,
+): TripChatRole {
+  if (clientId && clientId === requesterId) return 'client';
+  if (driverId && driverId === requesterId) return 'driver';
   throw new TripChatError('No autorizado.');
 }
 

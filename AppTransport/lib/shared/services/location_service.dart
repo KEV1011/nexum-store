@@ -26,11 +26,24 @@ class LocationService {
   Position? _lastPosition;
   bool _isTracking = false;
 
-  // Centro de Pamplona — heartbeat de respaldo cuando aún no hay fix de GPS
-  // (p. ej. web con permiso denegado): sin esto el conductor nunca reporta
-  // posición, queda con geo NULL y el matching geoespacial no lo encuentra.
-  static const _fallbackLat = 7.3754;
-  static const _fallbackLng = -72.6486;
+  /// ¿El último latido salió con una posición real? Falso mientras no haya fix.
+  ///
+  /// Aquí vivía un respaldo al centro de Pamplona (7.3754, -72.6486) que se
+  /// enviaba cuando el GPS todavía no había dado una lectura. La intención era
+  /// buena —sin posición el conductor queda con geo nulo y el matching no lo
+  /// encuentra— pero el efecto era peor que el problema: el conductor aparecía
+  /// para todo el mundo parado en el obelisco, el cliente veía un carro que no
+  /// estaba ahí, y PostGIS lo emparejaba con viajes del centro estando quién
+  /// sabe dónde. El pasajero esperaba a alguien que nunca iba a llegar.
+  ///
+  /// Sin fix no se manda nada. El conductor deja de refrescar `lastSeenAt`, el
+  /// filtro de frescura de 120 s lo saca del despacho, y eso es exactamente lo
+  /// correcto: no es localizable, así que no es despachable.
+  bool get hasRealFix => _lastPosition != null;
+
+  /// Se llama cuando el GPS pasa de no tener lectura a tenerla. Lo usa el
+  /// provider para retirar el aviso de "sin ubicación real" en cuanto engancha.
+  void Function(bool tieneFix)? onFixChanged;
 
   // ── Permissions ────────────────────────────────────────────────────────────
 
@@ -57,9 +70,14 @@ class LocationService {
 
   /// Obtiene la posición actual del conductor.
   ///
-  /// Throws [LocationPermissionException] if the user has not granted
-  /// location access.  Falls back to the centre of Pamplona if the GPS
-  /// hardware call fails for any other reason.
+  /// Lanza [LocationPermissionException] si no hay permiso, y
+  /// [LocationUnavailableException] si el GPS no da lectura.
+  ///
+  /// Antes devolvía el centro de Pamplona cuando el GPS fallaba. Quien llamaba
+  /// no podía distinguir "estoy en el parque" de "no sé dónde estoy", así que
+  /// el conductor se conectaba en el obelisco sin enterarse y sin que nada en
+  /// pantalla lo dijera. Una coordenada inventada que se ve igual que una real
+  /// es peor que un error.
   Future<LocationModel> getCurrentLocation() async {
     final hasPermission = await requestPermissions();
     if (!hasPermission) {
@@ -78,12 +96,7 @@ class LocationService {
         address: 'Ubicación actual',
       );
     } catch (_) {
-      // Si falla GPS, retornar posición mock (centro de Pamplona)
-      return const LocationModel(
-        latitude: 7.3754,
-        longitude: -72.6486,
-        address: 'Centro de la ciudad',
-      );
+      throw const LocationUnavailableException();
     }
   }
 
@@ -134,7 +147,14 @@ class LocationService {
     _positionSub = Geolocator.getPositionStream(
       locationSettings: _platformSettings(),
     ).listen(
-      (pos) => _lastPosition = pos,
+      (pos) {
+        final erraBanner = _lastPosition == null;
+        _lastPosition = pos;
+        // Primer fix tras conectarse a ciegas: se avisa para que el banner de
+        // "sin ubicación real" se retire solo. Sin esto quedaba puesto toda la
+        // jornada aunque el GPS hubiera enganchado a los diez segundos.
+        if (erraBanner) onFixChanged?.call(true);
+      },
       onError: (Object _) {},
     );
 
@@ -182,11 +202,11 @@ class LocationService {
     // matching geoespacial cuando el conductor está libre, para no duplicar
     // los `location_update` del viaje.
     if (ws.activeTripId != null) return;
-    // Usa el fix real si existe; si no, el centro de Pamplona como respaldo
-    // (mantiene lastSeenAt fresco y geo no nulo para que el matching lo halle).
-    final lat = _lastPosition?.latitude ?? _fallbackLat;
-    final lng = _lastPosition?.longitude ?? _fallbackLng;
-    ws.sendLocationUpdate(lat, lng);
+    // Sin fix real no se reporta nada: ver `hasRealFix`. Un latido inventado
+    // pone al conductor en el mapa del cliente donde no está.
+    final pos = _lastPosition;
+    if (pos == null) return;
+    ws.sendLocationUpdate(pos.latitude, pos.longitude);
   }
 
   /// Cancels any active timer and releases resources.

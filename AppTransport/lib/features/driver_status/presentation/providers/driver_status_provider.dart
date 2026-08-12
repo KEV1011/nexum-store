@@ -68,17 +68,30 @@ class DriverStatusNotifier extends StateNotifier<DriverStatusEntity> {
       location = await LocationService().getCurrentLocation();
       fallback = false;
     } catch (_) {
-      // Respaldo: centro de Pamplona, Parque Águeda Gallardo.
+      // Sin fix se conecta igual —suele llegar a los pocos segundos, ya con el
+      // seguimiento en marcha— pero queda MARCADO. Estas coordenadas no salen
+      // del teléfono: solo alimentan el estado local de la pantalla. Al backend
+      // la posición llega por el latido del WebSocket, que desde ahora no manda
+      // nada mientras no haya lectura real (ver LocationService.hasRealFix).
       location = const LocationModel(
         latitude: 7.3754,
         longitude: -72.6486,
-        address: 'Centro de la ciudad',
+        address: 'Ubicación desconocida',
       );
       fallback = true;
     }
 
     final updated = await _goOnlineUseCase(location);
     state = updated.copyWith(usingFallbackLocation: fallback);
+
+    // El aviso se retira solo en cuanto el GPS engancha. Antes se ponía al
+    // conectarse y ahí se quedaba toda la jornada, aunque el fix llegara a los
+    // diez segundos: un aviso que no se apaga deja de leerse.
+    LocationService().onFixChanged = (tieneFix) {
+      if (tieneFix && state.usingFallbackLocation) {
+        state = state.copyWith(usingFallbackLocation: false);
+      }
+    };
     LocationService().startTracking();
   }
 
@@ -88,6 +101,7 @@ class DriverStatusNotifier extends StateNotifier<DriverStatusEntity> {
   Future<void> goOffline() async {
     final updated = await _goOfflineUseCase();
     state = updated.copyWith(usingFallbackLocation: false);
+    LocationService().onFixChanged = null;
     LocationService().stopTracking();
   }
 

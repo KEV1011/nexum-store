@@ -909,11 +909,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const SizedBox(height: AppConstants.spacingM),
           ],
 
-          // GPS de respaldo: el conductor está en línea, pero el teléfono no
-          // dio un punto real (sin permiso o GPS apagado) y quedó anclado al
-          // centro de Pamplona. Antes esto se tragaba en silencio; ahora se
-          // avisa, porque un conductor "en línea" en el parque central no
-          // recibe los viajes de su zona y no tenía forma de saber por qué.
+          // El conductor está en línea pero el teléfono aún no da un punto
+          // real. Antes se le enviaba al backend el centro de Pamplona: salía
+          // en el mapa del cliente parado en el obelisco y el matching lo
+          // emparejaba con viajes del centro estando en otro sitio. Ahora no se
+          // reporta nada —y por tanto no entra en el despacho—, así que el
+          // aviso explica el silencio. Se retira solo al enganchar el GPS.
           if (driverStatus.isOnline &&
               driverStatus.usingFallbackLocation) ...[
             _UbicacionRespaldoBanner(
@@ -3033,8 +3034,8 @@ class _UbicacionRespaldoBanner extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Te conectaste sin GPS: puede que no te lleguen viajes '
-                      'de tu zona. Toca para activar la ubicación.',
+                      'Sin GPS no te llegan solicitudes: no podemos saber qué '
+                      'hay cerca de ti. Toca para activar la ubicación.',
                       style: TextStyle(
                         fontSize: 12,
                         color: Color(0xFF8B6A2E),

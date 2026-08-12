@@ -7,7 +7,7 @@ import path from 'path';
 import { WebSocketServer } from 'ws';
 import pinoHttp from 'pino-http';
 
-import { PORT, CORS_ORIGIN } from './config/constants';
+import { PORT, CORS_ORIGIN, INTERCITY_SIMULATE } from './config/constants';
 import { setupWebSocket } from './websocket/ws.handler';
 import { scheduleDocumentExpiryChecks, docKillSwitchEnforced } from './services/document-expiry.service';
 import { logger } from './lib/logger';
@@ -126,6 +126,10 @@ app.get('/health', async (_req, res) => {
     // 'wompi' = el pago en línea cobra de verdad; 'apagado' = las apps solo
     // ofrecen efectivo (un botón que no cobra es motivo de rechazo).
     pagos: pagoEnLineaDisponible() ? 'wompi' : 'apagado',
+    // 'simulado' = las reservas intermunicipales las responde un conductor
+    // inventado, no uno real. En producción es imposible (se ignora la
+    // variable), pero conviene poder verlo de un vistazo.
+    intercity: INTERCITY_SIMULATE ? 'simulado' : 'conductores-reales',
     // SOS: 'sms' = el botón de pánico avisa de verdad al contacto de confianza.
     // 'sin-canal' = solo se registra el evento y le queda el 123. Es el
     // diagnóstico que hay que mirar ANTES de que alguien lo necesite.

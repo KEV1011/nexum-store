@@ -30,12 +30,16 @@ export async function requestTripTip(
   if (!trip.driverId) throw new TipError('Este viaje no tiene conductor asignado');
   if (trip.tipPaid) throw new TipError('Ya registraste una propina para este viaje');
 
-  await prisma.trip.update({ where: { id: tripId }, data: { tipAmount: tip } });
-  return createPaymentLink(clientId, {
+  // El enlace PRIMERO: si el pago en línea no está habilitado, createPaymentLink
+  // lanza, y marcar `tipAmount` antes dejaba el viaje con una propina apuntada
+  // que nadie iba a poder pagar nunca.
+  const pago = await createPaymentLink(clientId, {
     amount: tip,
     description: `Propina · ${trip.requestRef}`,
     tripId,
   });
+  await prisma.trip.update({ where: { id: tripId }, data: { tipAmount: tip } });
+  return pago;
 }
 
 /** Igual que [requestTripTip] pero para un pedido entregado. */
@@ -53,10 +57,11 @@ export async function requestOrderTip(
   if (!order.driverId) throw new TipError('Este pedido no tiene repartidor asignado');
   if (order.tipPaid) throw new TipError('Ya registraste una propina para este pedido');
 
-  await prisma.order.update({ where: { id: orderId }, data: { tipAmount: tip } });
-  return createPaymentLink(clientId, {
+  const pago = await createPaymentLink(clientId, {
     amount: tip,
     description: `Propina · ${order.orderRef}`,
     orderId,
   });
+  await prisma.order.update({ where: { id: orderId }, data: { tipAmount: tip } });
+  return pago;
 }
