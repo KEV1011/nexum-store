@@ -212,6 +212,56 @@ el ingreso es por teléfono + código. Sin esto el rechazo es seguro.
 
 ---
 
+## 4.bis Lo que hace que Play RECHACE, en orden de probabilidad
+
+Ordenado por lo que de verdad tumba una primera publicación.
+
+### 1. El revisor no puede entrar (casi seguro si no se hace)
+
+El acceso es por SMS a un número colombiano: el revisor de Play, que está en
+otro país, no puede recibirlo. **Sin credenciales de prueba el rechazo llega
+siempre.** Ver la sección de la cuenta de demostración.
+
+### 2. Declaración de servicio en primer plano
+
+La app del conductor usa un *foreground service* de tipo `location`. Desde
+Android 14, Play exige declararlo en Play Console →
+*Política* → *Contenido de la app* → **Servicios en primer plano**, explicando
+para qué se usa. La justificación, en una línea:
+
+> Mientras el conductor está conectado, la app comparte su ubicación con una
+> notificación permanente visible para poder asignarle los servicios más
+> cercanos y para que el pasajero vea dónde viene su vehículo.
+
+No confundir con la declaración de **ubicación en segundo plano**: ésa ya no
+aplica, porque el permiso se retiró.
+
+### 3. Seguridad de los datos incoherente con lo que hace la app
+
+Play compara lo declarado con lo que ve en el bundle. Como mínimo hay que
+declarar **ubicación precisa**, **fotos**, **información personal** (nombre,
+teléfono, correo) y, en la app del conductor, **documentos de identidad**. Todo
+como *uso de la app*, sin compartir con terceros y sin publicidad. El inventario
+completo está en `docs/PRIVACIDAD_DATOS.md`.
+
+### 4. Nivel de API objetivo
+
+Play rechaza los bundles que apuntan a un API demasiado antiguo. Lo fija la
+versión de Flutter (3.44), no el repo, así que **no se puede saber hasta que
+Play analiza el bundle**. Si lo rechaza, se pone un número explícito en
+`android/app/build.gradle.kts` (en vez de `flutter.targetSdkVersion`) y se
+vuelve a compilar.
+
+### Lo que NO es un problema, aunque lo parezca
+
+- **Play Billing.** La app cobra viajes, domicilios y fletes: servicios y bienes
+  del mundo real. Están **exentos** de la facturación de Play, así que usar
+  Wompi es correcto y no hay que integrar compras dentro de la aplicación.
+- **La huella que no coincide.** Con Play App Signing, la *clave de firma de la
+  app* nunca coincide con la nuestra. Ver más arriba.
+- **Que la app pida ubicación.** Pedirla no es problema; el problema habría sido
+  pedirla en segundo plano, y eso ya no se pide.
+
 ## 5. Orden recomendado
 
 1. Render despliega `main`; confirmas `/health`.
