@@ -2,9 +2,6 @@ import { DailyEarningsDTO, TripEarningEntry } from '../types';
 import { COMMISSION_RATE } from '../config/constants';
 import { prisma } from '../lib/prisma';
 
-// Session-accumulated completed trips (in-memory fallback for driverId-less callers)
-const sessionTrips: TripEarningEntry[] = [];
-
 function todayStart(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -12,7 +9,8 @@ function todayStart(): Date {
 }
 
 export function recordCompletedTrip(entry: TripEarningEntry, driverId?: string): void {
-  sessionTrips.push(entry);
+  // Ya nadie lee la lista en memoria que se alimentaba aquí: las ganancias
+  // salen siempre de la BD.
   if (!driverId) return;
 
   const date = todayStart();
@@ -58,10 +56,21 @@ export async function creditDriverTip(driverId: string, amount: number): Promise
     });
 }
 
-export async function getDailyEarnings(driverId?: string): Promise<DailyEarningsDTO> {
+/**
+ * Ganancias del día del conductor, leídas de la BD.
+ *
+ * `driverId` es obligatorio a propósito. Antes era opcional y, sin él, caía a
+ * una lista en memoria; su hermana `getWeeklyHistory` caía a una semana
+ * INVENTADA (95.000, 87.000, 112.000… pesos por día). Ninguna de las dos se
+ * alcanzaba —la ruta va detrás de authMiddleware— pero eran un arma cargada:
+ * bastaba mover una ruta por encima del middleware para enseñarle a un
+ * conductor una plata que no existe. Ahora lo impide el compilador, no la
+ * confianza en el orden de los `router.use`.
+ */
+export async function getDailyEarnings(driverId: string): Promise<DailyEarningsDTO> {
   const today = new Date().toISOString().split('T')[0]!;
 
-  if (driverId) {
+  {
     const date = todayStart();
     const [earning, trips] = await Promise.all([
       prisma.driverEarning.findUnique({ where: { driverId_date: { driverId, date } } }),
@@ -90,16 +99,6 @@ export async function getDailyEarnings(driverId?: string): Promise<DailyEarnings
     };
   }
 
-  // Fallback: in-memory session
-  const todayTrips = sessionTrips.filter((t) => t.completedAt.startsWith(today));
-  const totalEarnings = todayTrips.reduce((sum, t) => sum + t.netEarning, 0);
-  return {
-    date: today,
-    totalEarnings,
-    totalTrips: todayTrips.length,
-    averagePerTrip: todayTrips.length > 0 ? Math.round(totalEarnings / todayTrips.length) : 0,
-    trips: todayTrips,
-  };
 }
 
 // ── Historial de viajes completados (alimenta ganancias + historial en la app) ──
@@ -259,10 +258,11 @@ export async function getDriverTripHistory(
   return rows.slice(0, take);
 }
 
-export async function getWeeklyHistory(driverId?: string): Promise<DailyEarningsDTO[]> {
+/** Los últimos siete días, reales. Ver la nota de getDailyEarnings. */
+export async function getWeeklyHistory(driverId: string): Promise<DailyEarningsDTO[]> {
   const result: DailyEarningsDTO[] = [];
 
-  if (driverId) {
+  {
     const sevenDaysAgo = todayStart();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
 
@@ -286,29 +286,6 @@ export async function getWeeklyHistory(driverId?: string): Promise<DailyEarnings
     }
     return result;
   }
-
-  // Fallback: in-memory + mock history for past days
-  const mockBase = [95_000, 87_000, 112_000, 78_000, 103_000, 138_000, 121_000];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0]!;
-    const isToday = i === 0;
-
-    if (isToday) {
-      result.push(await getDailyEarnings());
-    } else {
-      const gross = mockBase[6 - i] ?? 90_000;
-      const net = Math.round(gross * (1 - COMMISSION_RATE));
-      const trips = Math.round(gross / 18_000);
-      result.push({
-        date: dateStr,
-        totalEarnings: net,
-        totalTrips: trips,
-        averagePerTrip: Math.round(net / trips),
-        trips: [],
-      });
-    }
-  }
-  return result;
 }
+
+

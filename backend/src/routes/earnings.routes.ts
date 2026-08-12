@@ -8,12 +8,14 @@ router.use(authMiddleware);
 
 // GET /earnings/daily
 router.get('/daily', async (req: Request, res: Response): Promise<void> => {
+  if (!req.driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
   const data = await getDailyEarnings(req.driverId);
   res.status(200).json({ success: true, data });
 });
 
 // GET /earnings/weekly
 router.get('/weekly', async (req: Request, res: Response): Promise<void> => {
+  if (!req.driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
   const data = await getWeeklyHistory(req.driverId);
   res.status(200).json({ success: true, data });
 });

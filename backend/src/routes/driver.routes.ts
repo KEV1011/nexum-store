@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { DocumentType } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { MOCK_DRIVER, getMaxFarePerSeat, getIntercityRoute } from '../config/constants';
+import { getMaxFarePerSeat, getIntercityRoute } from '../config/constants';
 import { getTripService } from '../services/trip.service';
 import {
   publishPooledTrip,
@@ -83,9 +83,25 @@ const router = Router();
 
 router.use(authMiddleware);
 
+// Cinturón sobre el tirante. `authMiddleware` ya responde 401 sin token válido,
+// así que `req.driverId` está siempre puesto de aquí para abajo y por eso las
+// rutas usan `req.driverId!`.
+//
+// Antes escribían `req.driverId ?? MOCK_DRIVER.id`, y MOCK_DRIVER.id es un
+// conductor REAL de los datos de prueba: si alguna ruta acababa quedando fuera
+// del middleware, no fallaba — operaba sobre la cuenta de ese conductor. Un
+// respaldo silencioso que cruza cuentas es peor que un error.
+router.use((req: Request, res: Response, next) => {
+  if (!req.driverId) {
+    res.status(401).json({ success: false, error: 'No autenticado' });
+    return;
+  }
+  next();
+});
+
 // GET /driver/profile — real profile with documents + verification status
 router.get('/profile', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   try {
     res.status(200).json({ success: true, data: await getDriverProfile(driverId) });
   } catch (err) {
@@ -96,7 +112,7 @@ router.get('/profile', async (req: Request, res: Response): Promise<void> => {
 
 // PATCH /driver/profile — edit bio/name/photo/vehicle
 router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   const { fullName, bio, photoUrl, vehicleDescription } = req.body as Record<string, string>;
   try {
     const updated = await updateDriverProfile(driverId, { fullName, bio, photoUrl, vehicleDescription });
@@ -114,7 +130,7 @@ router.patch('/profile', async (req: Request, res: Response): Promise<void> => {
 
 // GET /driver/account/deletion — si se puede eliminar ahora, y si no, por qué.
 router.get('/account/deletion', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   try {
     const bloqueo = await motivoBloqueoConductor(driverId);
     res.json({ success: true, data: { puedeEliminar: bloqueo === null, motivo: bloqueo } });
@@ -125,7 +141,7 @@ router.get('/account/deletion', async (req: Request, res: Response): Promise<voi
 
 // DELETE /driver/account — anonimiza la cuenta. Irreversible.
 router.delete('/account', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   try {
     res.json({ success: true, data: await borrarCuentaConductor(driverId) });
   } catch (err) {
@@ -150,7 +166,7 @@ router.post(
     });
   },
   async (req: Request, res: Response): Promise<void> => {
-    const driverId = req.driverId ?? MOCK_DRIVER.id;
+    const driverId = req.driverId!;
     if (!req.file) {
       res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
       return;
@@ -221,7 +237,7 @@ router.post('/kyc/submit', async (req: Request, res: Response): Promise<void> =>
 
 // GET /driver/documents — list all documents for the authenticated driver
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   try {
     const profile = await getDriverProfile(driverId);
     res.status(200).json({ success: true, data: profile.documents });
@@ -245,7 +261,7 @@ router.post(
     });
   },
   async (req: Request, res: Response): Promise<void> => {
-    const driverId = req.driverId ?? MOCK_DRIVER.id;
+    const driverId = req.driverId!;
     const { type, expiresAt } = req.body as { type?: string; expiresAt?: string };
 
     if (!type || !ALLOWED_TYPES.includes(type as DocumentType)) {
@@ -278,7 +294,7 @@ router.post(
 
 // PUT /driver/documents — legacy JSON upload (fileUrl provided by caller)
 router.put('/documents', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   const dto = req.body as Partial<UpsertDriverDocumentDTO>;
   if (!dto.type || !dto.fileUrl) {
     res.status(400).json({ success: false, error: 'type and fileUrl are required' });
@@ -312,7 +328,7 @@ router.put('/documents', async (req: Request, res: Response): Promise<void> => {
 
 // GET /driver/rides/active — the driver's matched ride, if any
 router.get('/rides/active', (req: Request, res: Response): void => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   res.status(200).json({ success: true, data: getActiveDriverRide(driverId) });
 });
 
@@ -323,7 +339,7 @@ router.get('/rides/:id/chat', (req: Request, res: Response): void => {
 
 // GET /driver/status
 router.get('/status', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   const svc = getTripService();
   const [dailyTrips, dailyEarnings] = await Promise.all([
     svc.getDailyTrips(driverId),
@@ -338,7 +354,7 @@ router.get('/status', async (req: Request, res: Response): Promise<void> => {
 // PUT /driver/status  – only allows online/offline
 router.put('/status', async (req: Request, res: Response): Promise<void> => {
   const { status } = req.body as { status?: string };
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
 
   if (!status || (status !== 'online' && status !== 'offline')) {
     res.status(400).json({ success: false, error: 'status must be "online" or "offline"' });
@@ -722,19 +738,19 @@ router.post('/payouts', async (req: Request, res: Response): Promise<void> => {
 
 // GET /driver/freights — fletes de carga asignados por la flota a este conductor
 router.get('/freights', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   res.json({ success: true, data: await listDriverFreights(driverId) });
 });
 
 // GET /driver/freight/available — fletes abiertos que puede tomar (su flota)
 router.get('/freight/available', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   res.json({ success: true, data: await listDriverAvailableFreights(driverId) });
 });
 
 // POST /driver/freight/:id/take { vehicleId } — el conductor toma el flete
 router.post('/freight/:id/take', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   const { vehicleId } = req.body as { vehicleId?: string };
   if (!vehicleId) { res.status(400).json({ success: false, error: 'vehicleId es requerido' }); return; }
   try {
@@ -750,7 +766,7 @@ router.post('/freight/:id/take', async (req: Request, res: Response): Promise<vo
 // el conductor asignado inicia la ruta o confirma la entrega desde su app
 // (misma liquidación y avisos que el portal de la flota).
 router.post('/freight/:id/status', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   const { status, pin } = req.body as { status?: string; pin?: string };
   if (status !== 'in_progress' && status !== 'completed') {
     res.status(400).json({ success: false, error: "status debe ser 'in_progress' o 'completed'" });
@@ -818,7 +834,7 @@ router.post(
 
 // GET /driver/freight/:id/events — línea de tiempo del flete del conductor
 router.get('/freight/:id/events', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
+  const driverId = req.driverId!;
   res.json({ success: true, data: await listFreightEventsForDriver(driverId, req.params['id']!) });
 });
 
