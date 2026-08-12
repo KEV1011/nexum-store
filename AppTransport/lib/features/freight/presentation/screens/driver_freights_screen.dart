@@ -484,13 +484,23 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
 
   Future<void> _showEventLog(Map<String, dynamic> f) async {
     List<Map<String, dynamic>> events = const [];
+    // "No pude cargarla" y "no hay nada anotado" se veían igual: el catch mudo
+    // dejaba la lista vacía y el diálogo decía que no había tanqueos. El
+    // conductor concluía que su registro se perdió.
+    String? fallo;
     try {
       final res = await DioClient().get<Map<String, dynamic>>(
         '/driver/freight/${f['id']}/events',
       );
       events = ((res.data?['data'] as List<dynamic>?) ?? const [])
           .cast<Map<String, dynamic>>();
-    } catch (_) {}
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      fallo = (data is Map<String, dynamic> ? data['error'] as String? : null) ??
+          'No se pudo cargar la bitácora. Revisa tu conexión.';
+    } catch (_) {
+      fallo = 'No se pudo cargar la bitácora.';
+    }
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -498,7 +508,9 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
         title: const Text('Bitácora del flete'),
         content: SizedBox(
           width: double.maxFinite,
-          child: events.isEmpty
+          child: fallo != null
+              ? Text(fallo, style: const TextStyle(color: Color(0xFFB91C1C)))
+              : events.isEmpty
               ? const Text(
                   'Aún no has registrado tanqueos ni paradas en este flete.')
               : ListView.builder(
