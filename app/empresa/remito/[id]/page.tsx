@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import type { Manifest } from '../../ManifestsManager'
+import { leerToken } from '../../session'
 
 /**
  * Remito imprimible — misma estructura que el formato en papel del cliente.
@@ -31,7 +32,7 @@ export default function RemitoImprimible() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const token = sessionStorage.getItem('nx_operator_token')
+    const token = leerToken()
     if (!token) {
       setError('Abre el portal e inicia sesión para ver el remito.')
       return

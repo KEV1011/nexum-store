@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import TrackMap, { type TrackPoint } from '../../TrackMap'
 import type { CargoTrip } from '../../CargoTripsManager'
+import { leerToken } from '../../session'
 
 /**
  * Informe final del viaje — lo que se revisa al cerrar cada viaje y entrega.
@@ -78,7 +79,7 @@ export default function InformeViaje() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const t = sessionStorage.getItem('nx_operator_token')
+    const t = leerToken()
     if (!t) { setError('Abre el portal e inicia sesión para ver el informe.'); return }
     setToken(t)
     void (async () => {

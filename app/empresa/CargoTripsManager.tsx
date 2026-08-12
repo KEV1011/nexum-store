@@ -358,6 +358,38 @@ function FilaViaje({
             Marcar entregado
           </button>
         )}
+        {/* El valor del flete solo se podía escribir al CREAR el viaje. Un
+            viaje creado sin precio quedaba atrapado: la cuenta de cobro pedía
+            "ponles precio" y no había dónde. El PATCH ya existía en el
+            backend; lo que faltaba era el botón. Un viaje ya facturado no se
+            toca — su importe respalda un documento emitido. */}
+        {!facturado && (
+          <button
+            onClick={() => {
+              const actual = t.freightAmount ? String(t.freightAmount) : ''
+              const v = prompt(
+                `Valor del flete de este viaje en pesos (solo números).\n` +
+                  `Es el importe que se le factura al cliente por ESTE viaje.`,
+                actual,
+              )
+              if (v === null) return
+              const monto = Number(v.replace(/[^\d]/g, ''))
+              if (!(monto > 0)) {
+                alert('Escribe un valor mayor a cero.')
+                return
+              }
+              void onAccion(() =>
+                api(`/operator/cargo-trips/${t.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ freightAmount: monto }),
+                }),
+              )
+            }}
+            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900"
+          >
+            {t.freightAmount ? 'Cambiar valor' : 'Ponerle valor'}
+          </button>
+        )}
       </div>
 
       {(t.status === 'DISPATCHED' || t.status === 'COMPLETED') && (

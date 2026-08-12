@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import type { Cobro } from '../../CobrosManager'
+import { leerToken } from '../../session'
 
 /**
  * Cuenta de cobro imprimible — reproduce el formato en papel del cliente:
@@ -43,7 +44,7 @@ export default function CuentaCobroImprimible() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const token = sessionStorage.getItem('nx_operator_token')
+    const token = leerToken()
     if (!token) {
       setError('Abre el portal e inicia sesión para ver la cuenta de cobro.')
       return

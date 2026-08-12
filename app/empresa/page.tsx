@@ -24,6 +24,7 @@ import VehiclesManager from './VehiclesManager'
 import DocumentsManager from './DocumentsManager'
 import MembersManager from './MembersManager'
 import ProfileForm from './ProfileForm'
+import { leerToken, leerInfo, guardarSesion, borrarSesion } from './session'
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ??
@@ -134,22 +135,20 @@ export default function OperatorPortal() {
   const [operator, setOperator] = useState<OperatorInfo | null>(null)
 
   useEffect(() => {
-    const t = sessionStorage.getItem('nx_operator_token')
-    const o = sessionStorage.getItem('nx_operator_info')
+    const t = leerToken()
+    const o = leerInfo()
     if (t) setToken(t)
     if (o) { try { setOperator(JSON.parse(o) as OperatorInfo) } catch { /* ignore */ } }
   }, [])
 
   function onLogin(t: string, o: OperatorInfo) {
-    sessionStorage.setItem('nx_operator_token', t)
-    sessionStorage.setItem('nx_operator_info', JSON.stringify(o))
+    guardarSesion(t, JSON.stringify(o))
     setToken(t)
     setOperator(o)
   }
 
   function logout() {
-    sessionStorage.removeItem('nx_operator_token')
-    sessionStorage.removeItem('nx_operator_info')
+    borrarSesion()
     setToken(null)
     setOperator(null)
   }
