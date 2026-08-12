@@ -160,6 +160,14 @@ jobs:
           FINGERPRINT=$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null \
             | grep -m1 -i 'SHA-1 digest' | sed 's/.*: *//' | tr -d ' \r' | tr 'A-Z' 'a-z')
           echo "Huella SHA-1 del APK: ${FINGERPRINT:-<no se pudo leer>}"
+
+          # SHA-256 además del SHA-1: es la huella que enseña Play Console (y la
+          # que pide Firebase, Google Sign-In y los enlaces de app). Sin ella
+          # había que comparar peras con manzanas.
+          SHA256=$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null \
+            | grep -m1 -i 'SHA-256 digest' | sed 's/.*: *//' | tr -d ' \r' | tr 'A-Z' 'a-z')
+          echo "Huella SHA-256 del APK: ${SHA256:-<no se pudo leer>}"
+
           echo "Esquemas de firma:"
           "$APKSIGNER" verify --verbose "$APK" 2>/dev/null | grep -i 'scheme v[0-9]' || true
 
@@ -187,7 +195,13 @@ jobs:
           if [ -f "$AAB" ]; then
             AABFP=$(keytool -printcert -jarfile "$AAB" 2>/dev/null \
               | grep -m1 'SHA1:' | sed 's/.*SHA1: *//' | tr -d ' \r')
+            AABFP256=$(keytool -printcert -jarfile "$AAB" 2>/dev/null \
+              | grep -m1 'SHA256:' | sed 's/.*SHA256: *//' | tr -d ' \r')
             echo "Huella SHA-1 del AAB (lo que se sube a Play): ${AABFP:-<no se pudo leer>}"
+            echo "Huella SHA-256 del AAB: ${AABFP256:-<no se pudo leer>}"
+            echo "   ^ ésta es la que hay que comparar con la 'clave de carga' de"
+            echo "     Play Console. La 'clave de firma de la app' que muestra Play"
+            echo "     es OTRA (la genera Google al firmar de nuevo) y NO coincide."
             if [ "$AABFP" = "$EXPECTED" ]; then
               echo "✅ El bundle va firmado con la llave estable: se puede subir a Play."
             else

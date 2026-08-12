@@ -42,17 +42,40 @@ la huella real del APK** dejando la evidencia en el log:
 SHA-1 BE:43:56:0E:CB:21:B4:2D:99:A7:5A:3C:B5:6F:B0:FA:05:B5:21:76
 ```
 
-El paso *Verify APK signature* imprime dos líneas que hay que mirar:
+El paso *Verify APK signature* imprime las huellas del APK y del AAB, en SHA-1
+y en SHA-256:
 
 ```
 Huella SHA-1 del APK: ...
+Huella SHA-256 del APK: ...
 Huella SHA-1 del AAB (lo que se sube a Play): ...
+Huella SHA-256 del AAB: ...
 ```
 
 Si la del **AAB** coincide con la de arriba, se puede subir. Si no, el bundle
 quedó firmado en debug y **Play lo rechaza**; el paso deja además un aviso
 amarillo en el run. No falla el build a propósito (sin secretos, la firma debug
 es legítima para instalar a mano), así que hay que mirarlo.
+
+### Las DOS huellas de Play Console, que no son la misma
+
+Esto confunde a todo el mundo la primera vez. Con **Play App Signing** —activado
+por defecto en cualquier app nueva— hay dos certificados distintos:
+
+| En Play Console | Qué es | ¿Coincide con nuestro build? |
+|---|---|---|
+| **Clave de carga** (*upload key*) | Con la que TÚ firmas el AAB antes de subirlo | **Sí.** Es la del log. |
+| **Clave de firma de la app** (*app signing key*) | Con la que **Google vuelve a firmar** lo que se instala en los teléfonos | **No, y es correcto.** La genera Google; nosotros nunca la vemos ni la tenemos. |
+
+Así que si comparas la huella del log con la *clave de firma de la app* no van a
+coincidir **nunca**, y no hay nada que arreglar. La que tiene que coincidir es la
+**clave de carga**.
+
+La de la *clave de firma de la app* es la que necesitas para otras cosas: Firebase
+(para que el push siga funcionando en la versión de Play), Google Sign-In y los
+enlaces de aplicación. Cópiala de Play Console y añádela en la consola de Firebase
+como huella SHA-256 de la app — si no, los push dejan de llegar en la versión
+descargada de Play aunque funcionen en el APK que instalas a mano.
 
 > Hasta el 12/08/2026 esta comprobación **no comprobaba nada**: usaba
 > `keytool -printcert -jarfile`, que solo lee la firma v1, y un APK de release
