@@ -28,6 +28,7 @@ import {
   deleteOperatorVehicle,
   setOperatorVehiclePhoto,
   listOperatorDrivers,
+  getDriverTrackForOperator,
   affiliateDriver,
   unaffiliateDriver,
   getFleetPositions,
@@ -370,6 +371,24 @@ router.delete('/routes/:id', requireOperatorRole('OWNER', 'DISPATCHER'), async (
 // GET /operator/drivers · POST /operator/drivers/invite
 router.get('/drivers', async (req: Request, res: Response): Promise<void> => {
   res.json({ success: true, data: await listOperatorDrivers(req.operatorId!) });
+});
+
+// GET /operator/drivers/:id/track?from&to — por dónde anduvo el conductor.
+// Cubre TODOS los servicios (urbano, intermunicipal, flete, viaje de carga):
+// hasta ahora el recorrido solo se podía ver flete por flete.
+router.get('/drivers/:id/track', async (req: Request, res: Response): Promise<void> => {
+  const from = new Date(String(req.query['from'] ?? ''));
+  const to = new Date(String(req.query['to'] ?? ''));
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
+    res.status(400).json({ success: false, error: 'from y to (fechas ISO) son requeridos, y from debe ser anterior a to.' });
+    return;
+  }
+  const data = await getDriverTrackForOperator(req.operatorId!, req.params['id']!, from, to);
+  if (!data) {
+    res.status(404).json({ success: false, error: 'Ese conductor no está afiliado a tu empresa.' });
+    return;
+  }
+  res.json({ success: true, data });
 });
 
 router.post('/drivers/invite', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {

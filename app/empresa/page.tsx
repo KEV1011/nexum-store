@@ -544,7 +544,7 @@ function Dashboard({ token, operator, onLogout }: {
           {section === 'equipo' && (
             <>
               <h1 className="font-bold text-slate-900 text-lg">Equipo y vehículos</h1>
-              <DriversManager api={api} onChanged={() => { setTeamVersion((v) => v + 1); void load() }} />
+              <DriversManager api={api} token={token} onChanged={() => { setTeamVersion((v) => v + 1); void load() }} />
               <VehiclesManager api={api} token={token} refreshKey={teamVersion} />
               <MembersManager api={api} />
             </>

@@ -314,6 +314,113 @@ export async function realKmByService(
 
 // ── Retención ─────────────────────────────────────────────────────────────────
 
+// ── Rastro por conductor (la jornada, no un servicio suelto) ─────────────────
+
+/** Un tramo del día: qué servicio llevaba y cuánto anduvo con él. */
+export interface DriverTrackLeg {
+  kind: TrackServiceKind;
+  serviceId: string;
+  points: number;
+  distanceKm: number;
+  startedAt: string;
+  endedAt: string;
+}
+
+export interface DriverTrack extends ServiceTrack {
+  legs: DriverTrackLeg[];
+  /** Minutos entre puntos consecutivos separados por más de GAP_MIN. */
+  gapMin: number;
+}
+
+/** Un hueco de más de esto entre dos puntos es "no reportó", no "estuvo quieto". */
+const GAP_MIN = 15;
+
+/**
+ * Todo lo que anduvo un conductor en una ventana de tiempo, sin importar el
+ * servicio.
+ *
+ * Hasta ahora el rastro solo se podía consultar por flete o por viaje de carga.
+ * La empresa que pregunta "¿por dónde anduvo Nelson hoy?" —que es la pregunta
+ * que de verdad hace— no tenía dónde mirar, y el recorrido de un intermunicipal
+ * o de un viaje urbano se grababa sin que nada lo mostrara.
+ *
+ * Los kilómetros se suman POR SERVICIO y luego se totalizan: encadenar los
+ * puntos de dos servicios distintos mediría en línea recta el salto entre el
+ * final de uno y el principio del otro —un tramo que existió pero que nadie
+ * grabó— e inflaría el total con un dato inventado.
+ */
+export async function getDriverTrack(driverId: string, from: Date, to: Date): Promise<DriverTrack> {
+  const rows = await prisma.driverTrackPoint.findMany({
+    where: { driverId, at: { gte: from, lte: to } },
+    orderBy: { at: 'asc' },
+    select: { lat: true, lng: true, at: true, metersFromPrev: true, serviceKind: true, serviceId: true },
+  });
+
+  // Tramos: puntos consecutivos del mismo servicio. Si el conductor alterna
+  // entre dos servicios, cada vuelta es su propio tramo (es lo que pasó).
+  const legs: DriverTrackLeg[] = [];
+  const resumenes: TrackSummary[] = [];
+  let bloque: typeof rows = [];
+  const cerrar = (): void => {
+    if (bloque.length === 0) return;
+    const s = summarizeTrack(bloque);
+    resumenes.push(s);
+    legs.push({
+      kind: bloque[0]!.serviceKind as TrackServiceKind,
+      serviceId: bloque[0]!.serviceId,
+      points: s.points,
+      distanceKm: s.distanceKm,
+      startedAt: s.startedAt!,
+      endedAt: s.endedAt!,
+    });
+    bloque = [];
+  };
+  for (const r of rows) {
+    const anterior = bloque[bloque.length - 1];
+    if (anterior && (anterior.serviceKind !== r.serviceKind || anterior.serviceId !== r.serviceId)) cerrar();
+    bloque.push(r);
+  }
+  cerrar();
+
+  // Huecos: el conductor dejó de reportar. Es la respuesta a "¿se desconectó?".
+  let gapMs = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const dt = rows[i]!.at.getTime() - rows[i - 1]!.at.getTime();
+    if (dt > GAP_MIN * 60_000) gapMs += dt;
+  }
+
+  // El resumen del día se agrega desde los tramos, no desde la lista mezclada:
+  // el salto entre el final de un servicio y el principio del siguiente no es
+  // conducción medida y contarlo como tal falsearía tanto los kilómetros como
+  // la velocidad media.
+  const km = legs.reduce((s, l) => s + l.distanceKm, 0);
+  const detenidoMin = resumenes.reduce((s, r) => s + r.stoppedMin, 0);
+  const movimientoMin = resumenes.reduce((s, r) => s + Math.max(0, r.durationMin - r.stoppedMin), 0);
+  const primero = rows[0];
+  const ultimo = rows[rows.length - 1];
+
+  return {
+    summary: {
+      points: rows.length,
+      distanceKm: Math.round(km * 100) / 100,
+      startedAt: primero?.at.toISOString() ?? null,
+      endedAt: ultimo?.at.toISOString() ?? null,
+      durationMin:
+        primero && ultimo ? Math.round((ultimo.at.getTime() - primero.at.getTime()) / 60000) : 0,
+      stoppedMin: detenidoMin,
+      avgKmh: movimientoMin > 0 ? Math.round((km / (movimientoMin / 60)) * 10) / 10 : 0,
+    },
+    points: rows.map((r) => ({
+      lat: r.lat,
+      lng: r.lng,
+      at: r.at.toISOString(),
+      metersFromPrev: r.metersFromPrev,
+    })),
+    legs,
+    gapMin: Math.round(gapMs / 60000),
+  };
+}
+
 /** Borra el rastro más viejo que la retención. Se llama desde el timer. */
 export async function purgeOldTrackPoints(): Promise<number> {
   try {

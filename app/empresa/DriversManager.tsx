@@ -1,8 +1,79 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Users, UserPlus, ShieldCheck, Clock, Star, Loader2, UserMinus, AlertTriangle, Route } from 'lucide-react'
+import {
+  Users, UserPlus, ShieldCheck, Clock, Star, Loader2, UserMinus, AlertTriangle, Route, Navigation,
+} from 'lucide-react'
 import type { OperatorApi } from './api'
+import TrackMap, { type TrackPoint } from './TrackMap'
+
+// Base HTTP del backend: TrackMap la usa para pedir los tiles de Google por proxy.
+const HTTP_BASE =
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  (process.env.NODE_ENV === 'development'
+    ? 'http://localhost:3000'
+    : 'https://nexum-api-trxr.onrender.com')
+
+const SERVICIO: Record<string, string> = {
+  trip: 'Viaje urbano',
+  intercity: 'Intermunicipal',
+  freight: 'Flete',
+  cargo: 'Viaje de carga',
+}
+
+interface TrackLeg {
+  kind: string
+  serviceId: string
+  points: number
+  distanceKm: number
+  startedAt: string
+  endedAt: string
+}
+
+interface DriverTrack {
+  driverName: string
+  summary: {
+    points: number
+    distanceKm: number
+    durationMin: number
+    stoppedMin: number
+    avgKmh: number
+    startedAt: string | null
+    endedAt: string | null
+  }
+  points: TrackPoint[]
+  legs: TrackLeg[]
+  gapMin: number
+}
+
+function hoyISO(): string {
+  const d = new Date()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+/**
+ * El día del operador empieza a medianoche en SU reloj, no en UTC. Se calcula
+ * aquí, en el navegador, y se manda ya resuelto: el servidor no puede adivinar
+ * el huso de quien pregunta.
+ */
+function ventanaDelDia(dia: string): { from: string; to: string } {
+  const [a, m, d] = dia.split('-').map(Number)
+  const desde = new Date(a!, m! - 1, d!, 0, 0, 0, 0)
+  const hasta = new Date(a!, m! - 1, d!, 23, 59, 59, 999)
+  return { from: desde.toISOString(), to: hasta.toISOString() }
+}
+
+function duracion(min: number): string {
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60)
+  return `${h} h ${min % 60} min`
+}
+
+function hora(iso: string): string {
+  return new Intl.DateTimeFormat('es-CO', { timeStyle: 'short' }).format(new Date(iso))
+}
 
 interface OperatorDriver {
   id: string
@@ -26,7 +97,9 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   OFFLINE: { label: 'Desconectado', cls: 'bg-slate-100 text-slate-500' },
 }
 
-export default function DriversManager({ api, onChanged }: { api: OperatorApi; onChanged?: () => void }) {
+export default function DriversManager({
+  api, token, onChanged,
+}: { api: OperatorApi; token?: string; onChanged?: () => void }) {
   const [drivers, setDrivers] = useState<OperatorDriver[]>([])
   const [loading, setLoading] = useState(true)
   const [phone, setPhone] = useState('')
@@ -35,6 +108,11 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [trackId, setTrackId] = useState<string | null>(null)
+  const [trackDay, setTrackDay] = useState(hoyISO())
+  const [track, setTrack] = useState<DriverTrack | null>(null)
+  const [trackLoading, setTrackLoading] = useState(false)
+  const [trackError, setTrackError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -63,6 +141,29 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
     } finally {
       setRemovingId(null)
     }
+  }
+
+  const cargarRecorrido = useCallback(async (driverId: string, dia: string) => {
+    setTrackLoading(true)
+    setTrackError(null)
+    setTrack(null)
+    try {
+      const { from, to } = ventanaDelDia(dia)
+      const data = await api<DriverTrack>(
+        `/operator/drivers/${driverId}/track?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      )
+      setTrack(data)
+    } catch (e) {
+      setTrackError(e instanceof Error ? e.message : 'No se pudo cargar el recorrido.')
+    } finally {
+      setTrackLoading(false)
+    }
+  }, [api])
+
+  function verRecorrido(driverId: string) {
+    if (trackId === driverId) { setTrackId(null); return }
+    setTrackId(driverId)
+    void cargarRecorrido(driverId, trackDay)
   }
 
   async function invite() {
@@ -144,7 +245,8 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
           {drivers.map((d) => {
             const st = STATUS_STYLE[d.status] ?? STATUS_STYLE.OFFLINE
             return (
-              <div key={d.id} className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3">
+              <div key={d.id} className="bg-white border border-slate-200 rounded-xl">
+              <div className="p-3.5 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-slate-900 text-sm truncate">{d.name}</p>
                   <p className="text-xs text-slate-400 truncate">
@@ -189,6 +291,17 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
                 )}
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold shrink-0 ${st.cls}`}>{st.label}</span>
                 <button
+                  onClick={() => verRecorrido(d.id)}
+                  title="Por dónde anduvo (todos los servicios del día)"
+                  className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+                    trackId === d.id
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : 'text-slate-400 hover:text-emerald-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  <Navigation className="w-4 h-4" />
+                </button>
+                <button
                   onClick={() => unaffiliate(d)}
                   disabled={removingId === d.id}
                   title="Desafiliar de la empresa"
@@ -197,10 +310,90 @@ export default function DriversManager({ api, onChanged }: { api: OperatorApi; o
                   {removingId === d.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserMinus className="w-4 h-4" />}
                 </button>
               </div>
+
+              {trackId === d.id && (
+                <div className="border-t border-slate-100 p-3.5 space-y-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-[11px] font-semibold text-slate-500">Día</label>
+                    <input
+                      type="date"
+                      value={trackDay}
+                      max={hoyISO()}
+                      onChange={(e) => {
+                        setTrackDay(e.target.value)
+                        void cargarRecorrido(d.id, e.target.value)
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-900 bg-white"
+                    />
+                  </div>
+
+                  {trackLoading ? (
+                    <p className="text-[11px] text-slate-400">Cargando recorrido…</p>
+                  ) : trackError ? (
+                    <p className="text-[11px] text-red-600">{trackError}</p>
+                  ) : !track || track.points.length === 0 ? (
+                    <p className="text-[11px] text-slate-400">
+                      Sin rastro ese día. El recorrido se graba solo mientras lleva un
+                      servicio en curso — un conductor en línea sin trabajo no deja traza.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <Dato label="Recorrido" value={`${track.summary.distanceKm} km`} />
+                        <Dato label="Jornada" value={duracion(track.summary.durationMin)} />
+                        <Dato label="Detenido" value={duracion(track.summary.stoppedMin)} />
+                        <Dato label="Promedio" value={`${track.summary.avgKmh} km/h`} />
+                      </div>
+
+                      {track.gapMin > 0 && (
+                        <div className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5">
+                          <p className="text-[11px] text-amber-800 flex items-start gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>
+                              <span className="font-semibold">{duracion(track.gapMin)} sin reportar</span>{' '}
+                              con servicio abierto. Puede ser cobertura, batería o la app cerrada.
+                            </span>
+                          </p>
+                        </div>
+                      )}
+
+                      <TrackMap points={track.points} token={token} backendUrl={HTTP_BASE} />
+
+                      <div className="space-y-1">
+                        {track.legs.map((l, i) => (
+                          <p key={`${l.serviceId}-${i}`} className="text-[11px] text-slate-500">
+                            <span className="font-semibold text-slate-700">
+                              {SERVICIO[l.kind] ?? l.kind}
+                            </span>
+                            {' · '}{hora(l.startedAt)}–{hora(l.endedAt)}
+                            {' · '}{l.distanceKm} km
+                          </p>
+                        ))}
+                      </div>
+
+                      <p className="text-[10px] text-slate-400">
+                        {track.summary.points} puntos GPS · A = primer reporte, B = último.
+                        Los kilómetros se suman por servicio: el trayecto entre uno y otro
+                        no se grabó y no se inventa.
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+              </div>
             )
           })}
         </div>
       )}
     </section>
+  )
+}
+
+function Dato({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-slate-50 rounded-lg px-2.5 py-1.5">
+      <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{label}</p>
+      <p className="text-sm font-bold text-slate-900">{value}</p>
+    </div>
   )
 }

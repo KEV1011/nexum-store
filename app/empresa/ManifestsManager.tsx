@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  ClipboardList, Plus, Send, Printer, XCircle, Loader2, AlertTriangle, CheckCircle2,
+  ClipboardList, Plus, Send, Printer, XCircle, Loader2, AlertTriangle, CheckCircle2, Pencil,
 } from 'lucide-react'
 import type { OperatorApi } from './api'
 
@@ -73,6 +73,32 @@ const ITEM_ESTADO: Record<string, { label: string; cls: string }> = {
 
 function fmt(n: number): string {
   return n.toLocaleString('es-CO', { maximumFractionDigits: 1 })
+}
+
+/**
+ * Las medidas se escriben seguidas, como se cantan en bodega con el bulto en la
+ * mano: separadas por espacios, saltos de línea o puntos y comas.
+ *
+ * La coma entre dígitos es DECIMAL, no separador. Antes se partía por comas, así
+ * que quien escribía "124,5" —que es como se escribe un decimal en Colombia—
+ * creaba dos bultos, uno de 124 y otro de 5, y el remito salía de bodega con dos
+ * renglones de más sin que nadie lo notara.
+ *
+ * Lo que no se entiende se devuelve aparte en vez de descartarse en silencio: un
+ * bulto que desaparece del remito es justo el error que este formato existe para
+ * evitar.
+ */
+function parsearMedidas(texto: string): { medidas: number[]; ignorados: string[] } {
+  const medidas: number[] = []
+  const ignorados: string[] = []
+  const normalizado = texto.replace(/(\d),(\d)/g, '$1.$2')
+  for (const t of normalizado.split(/[\s,;]+/)) {
+    if (!t) continue
+    const n = Number(t)
+    if (Number.isFinite(n) && n > 0) medidas.push(n)
+    else ignorados.push(t)
+  }
+  return { medidas, ignorados }
 }
 
 export default function ManifestsManager({ api }: { api: OperatorApi }) {
@@ -187,14 +213,7 @@ function NuevoRemito({
   const [medidas, setMedidas] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const items = useMemo(
-    () =>
-      medidas
-        .split(/[\s,;]+/)
-        .map((t) => Number(t.replace(',', '.')))
-        .filter((n) => Number.isFinite(n) && n > 0),
-    [medidas],
-  )
+  const { medidas: items, ignorados } = useMemo(() => parsearMedidas(medidas), [medidas])
   const total = items.reduce((s, n) => s + n, 0)
 
   async function crear() {
@@ -244,8 +263,9 @@ function NuevoRemito({
         />
         <p className="text-xs text-slate-400 mt-1">
           Escríbelas seguidas, separadas por espacios o saltos de línea — como las
-          cantas en bodega. Se numeran solas.
+          cantas en bodega. Se numeran solas. Los decimales van con coma o con punto.
         </p>
+        <AvisoIgnorados ignorados={ignorados} />
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -265,6 +285,19 @@ function NuevoRemito({
         </button>
       </div>
     </div>
+  )
+}
+
+function AvisoIgnorados({ ignorados }: { ignorados: string[] }) {
+  if (ignorados.length === 0) return null
+  return (
+    <p className="text-xs text-amber-700 mt-1 flex items-start gap-1">
+      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      <span>
+        No se entienden y quedarán fuera del remito:{' '}
+        <span className="font-mono font-semibold">{ignorados.join('  ')}</span>
+      </span>
+    </p>
   )
 }
 
@@ -300,10 +333,17 @@ function FilaRemito({
   const [driverId, setDriverId] = useState('')
   const [vehicleId, setVehicleId] = useState('')
   const [ocupado, setOcupado] = useState(false)
+  // Corregir la lista de bultos sin tirar el remito entero. En bodega se
+  // equivoca una medida al dictarla y hasta ahora la única salida era anular y
+  // volver a escribir los diecisiete renglones.
+  const [editando, setEditando] = useState(false)
+  const [medidas, setMedidas] = useState('')
   const est = ESTADO[m.status]
   const faltante = m.receivedMeasure !== undefined
     ? Math.round((m.totalMeasure - m.receivedMeasure) * 10) / 10
     : 0
+  const editados = useMemo(() => parsearMedidas(medidas).medidas, [medidas])
+  const totalEditado = editados.reduce((s, n) => s + n, 0)
 
   async function accion(path: string, body?: unknown) {
     onError(null)
@@ -313,6 +353,33 @@ function FilaRemito({
       await onCambio()
     } catch (e) {
       onError(e instanceof Error ? e.message : 'No se pudo completar la acción.')
+    } finally {
+      setOcupado(false)
+    }
+  }
+
+  function abrirEdicion() {
+    setMedidas(m.items.map((it) => it.measure).join('  '))
+    setEditando(true)
+  }
+
+  async function guardarBultos() {
+    const { medidas: nuevos } = parsearMedidas(medidas)
+    if (nuevos.length === 0) {
+      onError('Escribe la medida de al menos un bulto.')
+      return
+    }
+    onError(null)
+    setOcupado(true)
+    try {
+      await api(`/operator/manifests/${m.id}/items`, {
+        method: 'PUT',
+        body: JSON.stringify({ items: nuevos.map((measure) => ({ measure })) }),
+      })
+      setEditando(false)
+      await onCambio()
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'No se pudieron guardar los bultos.')
     } finally {
       setOcupado(false)
     }
@@ -364,6 +431,43 @@ function FilaRemito({
               )}
             </p>
           )}
+
+          {/* Corregir bultos (solo en borrador) */}
+          {editando ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-2">
+              <label className="block text-[11px] font-semibold text-slate-500">
+                Medida de cada {m.unitLabel} ({m.measureLabel})
+              </label>
+              <textarea
+                value={medidas}
+                onChange={(e) => setMedidas(e.target.value)}
+                rows={4}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 font-mono focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none bg-white"
+              />
+              <AvisoIgnorados ignorados={parsearMedidas(medidas).ignorados} />
+              <p className="text-xs text-slate-500">
+                Reemplaza la lista completa: quedarán{' '}
+                <span className="font-semibold text-slate-900">{editados.length}</span> {m.unitLabel}s ·{' '}
+                <span className="font-semibold text-slate-900">{fmt(totalEditado)}</span> {m.measureLabel}
+                {' '}(ahora hay {m.totalItems} · {fmt(m.totalMeasure)}).
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void guardarBultos()}
+                  disabled={ocupado}
+                  className="py-2 px-3 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {ocupado ? 'Guardando…' : 'Guardar bultos'}
+                </button>
+                <button
+                  onClick={() => setEditando(false)}
+                  className="py-2 px-3 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-white"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {/* Tabla de bultos */}
           <div className="overflow-x-auto">
@@ -439,6 +543,13 @@ function FilaRemito({
                   className="py-2 px-3 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60 flex items-center gap-1.5"
                 >
                   <Send className="w-4 h-4" /> Despachar
+                </button>
+                <button
+                  onClick={() => (editando ? setEditando(false) : abrirEdicion())}
+                  disabled={ocupado}
+                  className="py-2 px-3 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 flex items-center gap-1.5"
+                >
+                  <Pencil className="w-4 h-4" /> Corregir bultos
                 </button>
               </>
             )}

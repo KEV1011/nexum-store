@@ -9,6 +9,7 @@ import { isValidColombianPhone, normalizeColombianPhone } from './auth.service';
 import { rangoFechas } from '../lib/date-range';
 import { requiresAmount } from '../lib/freight-costs';
 import { getMunicipality } from './municipality.service';
+import { getDriverTrack, type DriverTrack } from './track.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Empresas de transporte (operadores): registro, perfil, flota, conductores,
@@ -219,6 +220,30 @@ export async function deleteOperatorVehicle(operatorId: string, vehicleId: strin
 }
 
 // ─── Flota: conductores ─────────────────────────────────────────────────────────
+
+/**
+ * Recorrido de un conductor de la flota en una ventana de tiempo.
+ *
+ * Devuelve null si el conductor no es de esta empresa: el rastro de una persona
+ * es dato sensible y no puede consultarlo quien no la contrata.
+ *
+ * La ventana la manda el portal ya calculada porque el día del operador empieza
+ * en SU huso, no en UTC; resolverlo aquí obligaría a adivinarlo.
+ */
+export async function getDriverTrackForOperator(
+  operatorId: string,
+  driverId: string,
+  from: Date,
+  to: Date,
+): Promise<(DriverTrack & { driverName: string }) | null> {
+  const d = await prisma.driver.findFirst({
+    where: { id: driverId, operatorId },
+    select: { name: true },
+  });
+  if (!d) return null;
+  const track = await getDriverTrack(driverId, from, to);
+  return { ...track, driverName: d.name };
+}
 
 export async function listOperatorDrivers(operatorId: string) {
   return prisma.driver.findMany({

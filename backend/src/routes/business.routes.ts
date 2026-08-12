@@ -22,7 +22,6 @@ import {
 } from '../services/business.service';
 import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
 import { isSmsConfigured } from '../services/sms.service';
-import { getNotificationService } from '../services/notification.service';
 import {
   getClientOrdersForBusiness,
   acceptOrderByBusiness,
@@ -31,14 +30,11 @@ import {
 } from '../services/client.service';
 import {
   RegisterBusinessDTO,
-  OrderStatusUpdateDTO,
-  CreateDeliveryOrderDTO,
   CreateProductDTO,
   UpdateProductDTO,
   SetProductOptionsDTO,
   BusinessSettingsDTO,
 } from '../types';
-import { authMiddleware } from '../middleware/auth.middleware';
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { documentUpload, fileToUrl } from '../lib/upload';
 import { PORTAL_BASE_URL } from '../config/constants';
@@ -276,73 +272,18 @@ router.get('/:token/orders/:orderId', async (req: Request, res: Response): Promi
   }
 });
 
-// ─── Driver: create order for a business ─────────────────────────────────────
-
-router.post('/orders', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  const dto = req.body as CreateDeliveryOrderDTO;
-  const driverId = req.driverId ?? '';
-
-  if (!dto.businessId || !dto.orderRef || !dto.customerName || !dto.customerAddress) {
-    res.status(400).json({ success: false, error: 'Missing required order fields' });
-    return;
-  }
-
-  try {
-    const order = await getBusinessService().createOrder(dto, driverId);
-    res.status(201).json({ success: true, data: order });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Could not create order';
-    res.status(message.includes('not found') ? 404 : 400).json({
-      success: false,
-      error: message,
-    });
-  }
-});
-
-// ─── Driver: update order status ─────────────────────────────────────────────
-
-router.patch(
-  '/orders/:orderId/status',
-  authMiddleware,
-  async (req: Request, res: Response): Promise<void> => {
-    const { orderId } = req.params as { orderId: string };
-    const dto = req.body as OrderStatusUpdateDTO;
-
-    try {
-      const updated = await getBusinessService().updateOrderStatus(orderId, dto);
-
-      // Fire WhatsApp notification if business has whatsapp configured
-      if (dto.status === 'in_transit' || dto.status === 'delivered') {
-        void (async () => {
-          try {
-            const { prisma } = await import('../lib/prisma');
-            const order = await prisma.order.findUnique({ where: { id: orderId }, select: { businessId: true } });
-            if (!order) return;
-            const biz = await getBusinessService().getBusinessById(order.businessId);
-            if (!biz.whatsapp) return;
-            const notif = getNotificationService();
-            const portalUrl = `${PORTAL_BASE_URL}/negocio/${biz.accessToken}`;
-            if (dto.status === 'in_transit') {
-              void notif.notifyOrderPickedUp(biz.whatsapp, updated);
-            } else {
-              void notif.notifyOrderDelivered(biz.whatsapp, updated, portalUrl);
-            }
-          } catch {
-            // non-critical: notification failure should not fail the request
-          }
-        })();
-      }
-
-      res.status(200).json({ success: true, data: updated });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not update order';
-      res.status(message.includes('not found') ? 404 : 400).json({
-        success: false,
-        error: message,
-      });
-    }
-  },
-);
+// ─── Pedidos del portal del conductor: RUTAS RETIRADAS ───────────────────────
+//
+// `POST /business/orders` y `PATCH /business/orders/:orderId/status` servían al
+// portal de negocios que vivía DENTRO de la app del conductor. Esa pantalla se
+// eliminó hace tandas (el canal real del negocio es la web /negocio) y las
+// rutas se quedaron sin nadie que las llamara.
+//
+// No eran solo código muerto. El PATCH aceptaba cualquier orderId con un JWT
+// de conductor y NO comprobaba que ese pedido fuera suyo: cualquier conductor
+// registrado podía marcar como entregado el pedido de otro —y disparar el
+// WhatsApp de "entregado" al negocio—. El camino vivo
+// (`updateOrderStatusByDriver` en client.service) sí valida la asignación.
 
 // ─── Client orders from AppCliente ───────────────────────────────────────────
 

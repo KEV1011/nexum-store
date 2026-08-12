@@ -2,9 +2,6 @@ import { randomUUID } from 'crypto';
 import {
   Business,
   RegisterBusinessDTO,
-  DeliveryOrder,
-  CreateDeliveryOrderDTO,
-  OrderStatusUpdateDTO,
   DeliveryOrderSummaryDTO,
   ProductDTO,
   CreateProductDTO,
@@ -20,21 +17,6 @@ import { maskPhone } from './safe-contact.service';
 import { normalizeColombianPhone } from './auth.service';
 import { geocodeAddress } from './geo.service';
 
-// ─── Order-update notification subscriptions (ephemeral WS session state) ─────
-
-type OrderUpdateCallback = (orderId: string, update: DeliveryOrderSummaryDTO) => void;
-const orderUpdateListeners = new Map<string, Set<OrderUpdateCallback>>();
-
-export function onOrderUpdate(orderId: string, cb: OrderUpdateCallback): () => void {
-  if (!orderUpdateListeners.has(orderId)) {
-    orderUpdateListeners.set(orderId, new Set());
-  }
-  orderUpdateListeners.get(orderId)!.add(cb);
-  return () => {
-    orderUpdateListeners.get(orderId)?.delete(cb);
-  };
-}
-
 // ─── Enum mappings ─────────────────────────────────────────────────────────────
 
 const CATEGORY_TO_PRISMA: Record<BusinessCategory, 'RESTAURANT' | 'SUPERMARKET' | 'PHARMACY' | 'OTHER'> = {
@@ -49,15 +31,6 @@ const CATEGORY_FROM_PRISMA: Record<string, BusinessCategory> = {
   SUPERMARKET: 'supermarket',
   PHARMACY: 'pharmacy',
   OTHER: 'other',
-};
-
-type PrismaOrderStatus = 'CONFIRMED' | 'DRIVER_TO_PICKUP' | 'AT_PICKUP' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
-
-const DELIVERY_STATUS_TO_PRISMA: Record<string, PrismaOrderStatus> = {
-  pending: 'CONFIRMED',
-  at_pickup: 'AT_PICKUP',
-  in_transit: 'IN_TRANSIT',
-  delivered: 'DELIVERED',
 };
 
 const DELIVERY_STATUS_FROM_PRISMA: Record<string, string> = {
@@ -189,74 +162,6 @@ const service = {
     if (!order) throw new Error(`Order ${orderId} not found`);
     if (order.businessId !== businessId) throw new Error('Order does not belong to this business');
     return _toSummaryDTO(order);
-  },
-
-  async createOrder(dto: CreateDeliveryOrderDTO, driverId: string): Promise<DeliveryOrder> {
-    await this.getBusinessById(dto.businessId); // validates business exists
-    const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { name: true, phone: true } });
-    const orderRef = dto.orderRef;
-    const order = await prisma.order.create({
-      data: {
-        orderRef,
-        businessId: dto.businessId,
-        driverId,
-        status: 'CONFIRMED',
-        deliveryAddress: dto.customerAddress,
-        customerName: dto.customerName,
-        driverName: driver?.name ?? '',
-        driverPhone: driver?.phone ?? '',
-        subtotal: dto.grossFare,
-        deliveryFee: 0,
-        total: dto.grossFare,
-        hasSignature: false,
-      },
-    });
-    return {
-      id: order.id,
-      businessId: order.businessId,
-      orderRef: order.orderRef,
-      customerName: order.customerName ?? '',
-      customerAddress: order.deliveryAddress,
-      driverId: order.driverId ?? '',
-      driverName: order.driverName ?? '',
-      driverPhone: order.driverPhone ?? '',
-      status: 'pending',
-      grossFare: order.total,
-      createdAt: order.createdAt,
-      hasSignature: order.hasSignature,
-    };
-  },
-
-  async updateOrderStatus(orderId: string, dto: OrderStatusUpdateDTO): Promise<DeliveryOrderSummaryDTO> {
-    const existing = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!existing) throw new Error(`Order ${orderId} not found`);
-
-    const newStatus = DELIVERY_STATUS_TO_PRISMA[dto.status] ?? 'CONFIRMED';
-    const updated = await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: newStatus,
-        ...(dto.status === 'in_transit' && {
-          pickedUpAt: new Date(),
-          ...(dto.pickupPhotoUrl && { pickupPhotoUrl: dto.pickupPhotoUrl }),
-        }),
-        ...(dto.status === 'delivered' && {
-          deliveredAt: new Date(),
-          ...(dto.deliveryPhotoUrl && { deliveryPhotoUrl: dto.deliveryPhotoUrl }),
-          ...(dto.hasSignature && { hasSignature: true }),
-        }),
-      },
-    });
-
-    const summary = _toSummaryDTO(updated);
-
-    // Notify subscribed WS clients
-    const listeners = orderUpdateListeners.get(orderId);
-    if (listeners) {
-      for (const cb of listeners) cb(orderId, summary);
-    }
-
-    return summary;
   },
 
   // ── Stats ─────────────────────────────────────────────────────────────────
