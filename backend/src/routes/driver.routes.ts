@@ -16,14 +16,12 @@ import {
   updateDriverProfile,
   upsertDriverDocument,
   uploadDriverDocument,
-  reviewDriverDocument,
 } from '../services/driver-profile.service';
 import { getActiveDriverRide, getChatHistory } from '../services/ride-negotiation.service';
 import {
   PublishPooledTripDTO,
   IntercityCity,
   UpsertDriverDocumentDTO,
-  DriverDocumentType,
 } from '../types';
 import { documentUpload, fileToUrl, ALLOWED_TYPES } from '../lib/upload';
 import {
@@ -299,24 +297,18 @@ router.put('/documents', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// POST /driver/documents/:type/review — demo review action (approve/reject)
-router.post('/documents/:type/review', async (req: Request, res: Response): Promise<void> => {
-  const driverId = req.driverId ?? MOCK_DRIVER.id;
-  const { approve, rejectionReason } = req.body as { approve?: boolean; rejectionReason?: string };
-  try {
-    const updated = await reviewDriverDocument(
-      driverId,
-      req.params['type'] as DriverDocumentType,
-      approve === true,
-      rejectionReason,
-    );
-    if (!updated) { res.status(404).json({ success: false, error: 'Document not found' }); return; }
-    res.status(200).json({ success: true, data: updated });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to review document';
-    res.status(400).json({ success: false, error: message });
-  }
-});
+// RUTA RETIRADA: POST /driver/documents/:type/review
+//
+// Estaba marcada como "demo review action (approve/reject)" y ninguna pantalla
+// la llamaba, pero seguía montada y autenticada con el JWT DEL PROPIO
+// CONDUCTOR: cualquiera podía aprobarse sus propios papeles con
+// {approve: true}. `reviewDriverDocument` marca el documento APPROVED y
+// sincroniza `Driver.isVerified`, así que bastaba una petición para empezar a
+// recibir pasajeros sin que un administrador hubiera visto la licencia ni el
+// SOAT — y de paso desactivaba el kill-switch documental.
+//
+// La revisión vive donde le corresponde: /admin/verifications/:docId/approve
+// y /reject, detrás de requireAdmin.
 
 // GET /driver/rides/active — the driver's matched ride, if any
 router.get('/rides/active', (req: Request, res: Response): void => {
