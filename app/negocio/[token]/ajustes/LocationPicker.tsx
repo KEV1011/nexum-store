@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MapPin, Loader2, Check, Crosshair } from 'lucide-react'
+import { MapPin, Loader2, Check, Crosshair, Search } from 'lucide-react'
 import { tilePase } from '@/app/empresa/leaflet'
 
 const BACKEND_URL =
@@ -32,6 +32,7 @@ interface LeafletMap {
   setView: (c: [number, number], z: number) => LeafletMap
   getCenter: () => { lat: number; lng: number }
   on: (ev: string, cb: () => void) => void
+  invalidateSize: () => void
   remove: () => void
 }
 interface LeafletNS {
@@ -108,6 +109,15 @@ export function LocationPicker({
             { maxZoom: 20, attribution: '© Google' },
           ).addTo(mapRef.current)
         })
+        // Sin esto el mapa mide mal su contenedor —se crea justo cuando el
+        // bloque acaba de aparecer— y su centro interno NO cae donde está el
+        // pin dibujado por CSS: el dueño ponía el pin sobre su puerta y se
+        // guardaba una coordenada de otra cuadra. Los otros mapas del portal ya
+        // lo hacían; éste era el único que faltaba. El segundo pase, tras un
+        // tick, cubre el caso de que el contenedor aún estuviera midiéndose.
+        m.invalidateSize()
+        setTimeout(() => { if (!cancelado) mapRef.current?.invalidateSize() }, 200)
+
         m.on('move', () => { centroRef.current = m.getCenter() })
         mapRef.current = m
       })
@@ -116,6 +126,64 @@ export function LocationPicker({
   }, [abierto, token])
 
   useEffect(() => () => { mapRef.current?.remove(); mapRef.current = null }, [])
+
+  // ── Buscar por dirección ───────────────────────────────────────────────────
+  // Arrastrar el mapa a ciegas es inviable si el punto guardado cayó lejos: el
+  // dueño de un restaurante no tiene por qué reconocer su cuadra vista desde
+  // arriba. Escribir la dirección es como la busca cualquiera.
+  const [consulta, setConsulta] = useState('')
+  const [sugerencias, setSugerencias] = useState<{ placeId: string; description: string }[]>([])
+  const [buscando, setBuscando] = useState(false)
+
+  // Si el buscador no está disponible se DICE. Sin la llave de Google el
+  // backend responde 503 y, callándolo, la caja de búsqueda se quedaba muda:
+  // el dueño escribía su dirección, no salía nada, y no había forma de saber si
+  // era que su dirección no existe o que el buscador no funciona.
+  const [sinBuscador, setSinBuscador] = useState(false)
+
+  const buscar = useCallback(async (texto: string) => {
+    if (texto.trim().length < 3) { setSugerencias([]); return }
+    setBuscando(true)
+    try {
+      const c = centroRef.current
+      const res = await fetch(
+        `${BACKEND_URL}/geo/autocomplete?input=${encodeURIComponent(texto)}&lat=${c.lat}&lng=${c.lng}`,
+        { headers: { 'x-business-token': token } },
+      )
+      if (!res.ok) { setSinBuscador(true); setSugerencias([]); return }
+      const json = (await res.json()) as { data?: { placeId: string; description: string }[] }
+      setSinBuscador(false)
+      setSugerencias(json.data?.slice(0, 5) ?? [])
+    } catch {
+      setSinBuscador(true)
+      setSugerencias([])
+    } finally {
+      setBuscando(false)
+    }
+  }, [token])
+
+  // Antirrebote: cada tecla no puede ser una petición a Google.
+  useEffect(() => {
+    const t = setTimeout(() => { void buscar(consulta) }, 400)
+    return () => clearTimeout(t)
+  }, [consulta, buscar])
+
+  const irA = useCallback(async (placeId: string, descripcion: string) => {
+    setSugerencias([])
+    setConsulta(descripcion)
+    try {
+      const res = await fetch(`${BACKEND_URL}/geo/place/${encodeURIComponent(placeId)}`, {
+        headers: { 'x-business-token': token },
+      })
+      const json = (await res.json()) as { data?: { lat: number; lng: number } }
+      if (json.data) {
+        centroRef.current = { lat: json.data.lat, lng: json.data.lng }
+        mapRef.current?.setView([json.data.lat, json.data.lng], 18)
+      }
+    } catch {
+      setError('No pudimos abrir esa dirección. Mueve el mapa a mano.')
+    }
+  }, [token])
 
   const usarMiUbicacion = useCallback(() => {
     if (!navigator.geolocation) return
@@ -168,7 +236,10 @@ export function LocationPicker({
           <p className="font-semibold text-slate-900 text-sm">Ubicación en el mapa</p>
           <p className="text-xs text-slate-500">
             {yaTiene
-              ? 'Tu negocio ya está ubicado. El repartidor y el cliente lo ven aquí.'
+              // No se dice "ya está ubicado" y punto: si el punto se dedujo de
+              // la dirección escrita, puede haber caído a una cuadra o al otro
+              // barrio, y el dueño lo daba por bueno sin mirarlo.
+              ? 'Tu negocio tiene un punto en el mapa. Ábrelo y comprueba que cae en tu puerta: si se dedujo de la dirección, puede estar desviado.'
               : 'Sin ubicación, los repartidores se buscan desde el centro del pueblo y el cliente no ve tu local en el mapa.'}
           </p>
         </div>
@@ -179,19 +250,55 @@ export function LocationPicker({
           onClick={() => setAbierto(true)}
           className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
-          {yaTiene ? 'Cambiar ubicación' : 'Ubicar mi negocio en el mapa'}
+          {yaTiene ? 'Ver y ajustar en el mapa' : 'Ubicar mi negocio en el mapa'}
         </button>
       ) : (
         <>
-          <div className="relative">
-            <div ref={divRef} className="h-64 w-full rounded-lg overflow-hidden bg-slate-100" />
-            {/* Pin fijo al centro: se mueve el mapa, no el pin. */}
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <MapPin className="w-8 h-8 text-teal-700 drop-shadow" style={{ transform: 'translateY(-14px)' }} />
+          <div>
+            <label className="relative block mb-2">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={consulta}
+                onChange={(e) => setConsulta(e.target.value)}
+                placeholder="Escribe la dirección de tu negocio"
+                className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600 outline-none"
+              />
+              {buscando ? (
+                <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
+              ) : null}
+            </label>
+            {sinBuscador && consulta.trim().length >= 3 ? (
+              <p className="mb-2 text-xs text-amber-700">
+                La búsqueda por dirección no está disponible ahora mismo. Arrastra el
+                mapa hasta tu negocio, o usa «Estoy aquí» si estás en el local.
+              </p>
+            ) : null}
+            {sugerencias.length > 0 && (
+              <ul className="mb-2 rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+                {sugerencias.map((sug) => (
+                  <li key={sug.placeId}>
+                    <button
+                      onClick={() => void irA(sug.placeId, sug.description)}
+                      className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      {sug.description}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {/* El pin va anclado al centro del MAPA, no del bloque: por eso el
+                buscador queda fuera de este contenedor relativo. */}
+            <div className="relative">
+              <div ref={divRef} className="h-64 w-full rounded-lg overflow-hidden bg-slate-100" />
+              {/* Pin fijo al centro: se mueve el mapa, no el pin. */}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <MapPin className="w-8 h-8 text-teal-700 drop-shadow" style={{ transform: 'translateY(-14px)' }} />
+              </div>
             </div>
           </div>
           <p className="text-xs text-slate-500 text-center">
-            Mueve el mapa hasta que el pin quede sobre la puerta de tu negocio.
+            Busca tu dirección arriba o arrastra el mapa hasta que el pin quede sobre la puerta de tu negocio.
           </p>
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}

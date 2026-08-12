@@ -146,21 +146,28 @@ router.get('/tile/:z/:x/:y', async (req: Request, res: Response) => {
   }
 });
 
-// Acepta token de cliente O de conductor por header: ambos usan los servicios geo.
-function anyAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+// Acepta token de cliente, de conductor, o el token de enlace del portal del
+// negocio (por cabecera `x-business-token`, igual que el pase de tiles).
+//
+// El portal del negocio se quedaba fuera, y el resultado se veía en la pantalla
+// de ajustes: el dueño de un restaurante tenía que encontrar su local
+// arrastrando el mapa a ciegas, sin poder escribir su propia dirección, porque
+// el buscador de direcciones respondía 401 a su token.
+async function anyAuthMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ success: false, error: 'Missing or malformed Authorization header' });
+  if (authHeader?.startsWith('Bearer ') && isValidAnyToken(authHeader.slice(7))) {
+    next();
     return;
   }
-  if (isValidAnyToken(authHeader.slice(7))) {
+  const bizToken = req.headers['x-business-token'];
+  if (typeof bizToken === 'string' && (await isValidBusinessToken(bizToken))) {
     next();
     return;
   }
   res.status(401).json({ success: false, error: 'Invalid or expired token' });
 }
 
-router.use(anyAuthMiddleware);
+router.use((req, res, next) => { void anyAuthMiddleware(req, res, next); });
 
 // GET /geo/autocomplete?input=cra+5&lat=&lng=
 router.get('/autocomplete', async (req, res) => {
