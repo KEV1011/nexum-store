@@ -14,6 +14,7 @@ class DriverStatusEntity {
     required this.onlineSince,
     this.currentLatitude,
     this.currentLongitude,
+    this.usingFallbackLocation = false,
   });
 
   final DriverStatus status;
@@ -22,6 +23,11 @@ class DriverStatusEntity {
   final DateTime? onlineSince; // Cuándo se puso en línea hoy
   final double? currentLatitude;
   final double? currentLongitude;
+
+  /// `true` cuando se conectó SIN un punto real de GPS (sin permiso o con el
+  /// GPS apagado) y quedó anclado al centro de Pamplona como respaldo. En ese
+  /// caso el despacho no lo ubica donde de verdad está.
+  final bool usingFallbackLocation;
 
   bool get isOnline => status == DriverStatus.online;
   bool get isOffline => status == DriverStatus.offline;
@@ -40,6 +46,7 @@ class DriverStatusEntity {
     DateTime? onlineSince,
     double? currentLatitude,
     double? currentLongitude,
+    bool? usingFallbackLocation,
   }) {
     return DriverStatusEntity(
       status: status ?? this.status,
@@ -48,6 +55,8 @@ class DriverStatusEntity {
       onlineSince: onlineSince ?? this.onlineSince,
       currentLatitude: currentLatitude ?? this.currentLatitude,
       currentLongitude: currentLongitude ?? this.currentLongitude,
+      usingFallbackLocation:
+          usingFallbackLocation ?? this.usingFallbackLocation,
     );
   }
 

@@ -110,6 +110,24 @@ class _AddressAutocompleteFieldState
     setState(() => _suggestions = const []);
   }
 
+  /// Iconos del extremo derecho: el que aporte la pantalla y, siempre, el del
+  /// mapa. `Row` con `mainAxisSize.min` para que el campo no se estire.
+  Widget? _iconosDerecha() {
+    final mapa = widget.allowMapPicker
+        ? IconButton(
+            tooltip: 'Elegir en el mapa',
+            icon: const Icon(Icons.map_outlined),
+            onPressed: () => unawaited(_elegirEnMapa()),
+          )
+        : null;
+    if (widget.suffixIcon == null) return mapa;
+    if (mapa == null) return widget.suffixIcon;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [widget.suffixIcon!, mapa],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -132,14 +150,11 @@ class _AddressAutocompleteFieldState
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   )
-                : (widget.suffixIcon ??
-                    (widget.allowMapPicker
-                        ? IconButton(
-                            tooltip: 'Elegir en el mapa',
-                            icon: const Icon(Icons.map_outlined),
-                            onPressed: () => unawaited(_elegirEnMapa()),
-                          )
-                        : null)),
+                // Los dos iconos conviven. Antes el del llamador REEMPLAZABA
+                // al del mapa, y por eso en la pantalla de pedir viaje —la
+                // más usada— no había forma de marcar el punto en el mapa:
+                // el botón de "Mis direcciones" lo tapaba.
+                : _iconosDerecha(),
           ),
           validator: widget.requiredField
               ? (v) =>

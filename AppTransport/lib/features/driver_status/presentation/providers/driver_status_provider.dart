@@ -52,25 +52,33 @@ class DriverStatusNotifier extends StateNotifier<DriverStatusEntity> {
   /// Pone al conductor en línea.
   ///
   /// Intenta obtener la ubicación actual del dispositivo a través de
-  /// [LocationService]. Si falla (sin permisos o GPS no disponible),
-  /// usa el centro de Pamplona como fallback.
+  /// [LocationService]. Si falla (sin permisos o GPS apagado) se conecta con
+  /// el centro de Pamplona como respaldo, pero lo DEJA MARCADO en el estado
+  /// (`usingFallbackLocation`): antes esto se tragaba con un `catch (_)`
+  /// mudo, el conductor quedaba "en línea" en el parque principal, no le
+  /// entraban los viajes de su zona, y no había nada en pantalla que lo
+  /// explicara. Se marca en el `state` — no en un campo del notifier — porque
+  /// solo lo que vive en el `state` dispara reconstrucción al observarlo.
   ///
   /// Lanza una excepción si el repositorio falla.
   Future<void> goOnline() async {
     LocationModel location;
+    bool fallback;
     try {
       location = await LocationService().getCurrentLocation();
+      fallback = false;
     } catch (_) {
-      // Fallback: centro de Pamplona, Parque Águeda Gallardo
+      // Respaldo: centro de Pamplona, Parque Águeda Gallardo.
       location = const LocationModel(
         latitude: 7.3754,
         longitude: -72.6486,
         address: 'Centro de la ciudad',
       );
+      fallback = true;
     }
 
     final updated = await _goOnlineUseCase(location);
-    state = updated;
+    state = updated.copyWith(usingFallbackLocation: fallback);
     LocationService().startTracking();
   }
 
@@ -79,7 +87,7 @@ class DriverStatusNotifier extends StateNotifier<DriverStatusEntity> {
   /// Desconecta al conductor de la plataforma.
   Future<void> goOffline() async {
     final updated = await _goOfflineUseCase();
-    state = updated;
+    state = updated.copyWith(usingFallbackLocation: false);
     LocationService().stopTracking();
   }
 

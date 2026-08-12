@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -904,6 +905,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               reason: ref.watch(driverProfileProvider
                   .select((s) => s.profile?.blockedReason)),
               onTap: () => context.push(AppRoutes.verification),
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
+
+          // GPS de respaldo: el conductor está en línea, pero el teléfono no
+          // dio un punto real (sin permiso o GPS apagado) y quedó anclado al
+          // centro de Pamplona. Antes esto se tragaba en silencio; ahora se
+          // avisa, porque un conductor "en línea" en el parque central no
+          // recibe los viajes de su zona y no tenía forma de saber por qué.
+          if (driverStatus.isOnline &&
+              driverStatus.usingFallbackLocation) ...[
+            _UbicacionRespaldoBanner(
+              onTap: () async {
+                await Geolocator.openLocationSettings();
+              },
             ),
             const SizedBox(height: AppConstants.spacingM),
           ],
@@ -2974,6 +2990,69 @@ class _ErrandRequestCard extends StatelessWidget {
 
 /// Aviso rojo cuando el conductor tiene documentos obligatorios VENCIDOS
 /// (complianceStatus == 'BLOCKED'). Tocar lleva a Verificación para renovar.
+/// El conductor está en línea con la posición de RESPALDO (centro de
+/// Pamplona), no con su GPS real. Ámbar, no rojo: sigue recibiendo servicios,
+/// solo que el despacho lo ubica mal.
+class _UbicacionRespaldoBanner extends StatelessWidget {
+  const _UbicacionRespaldoBanner({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFB45309).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFFB45309).withValues(alpha: 0.45),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.location_off_rounded,
+                  color: Color(0xFFB45309), size: 26),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Sin tu ubicación real',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFFB45309),
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Te conectaste sin GPS: puede que no te lleguen viajes '
+                      'de tu zona. Toca para activar la ubicación.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF8B6A2E),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: Color(0xFFB45309), size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ComplianceBlockedBanner extends StatelessWidget {
   const _ComplianceBlockedBanner({required this.reason, required this.onTap});
 
