@@ -14,12 +14,22 @@
     <uses-permission
         android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <!--
-        ACCESS_BACKGROUND_LOCATION es necesario para mostrar el conductor
-        disponible incluso cuando la app está en segundo plano.
-        Requiere justificación adicional en la Play Store.
+        NO se declara ACCESS_BACKGROUND_LOCATION, a propósito.
+
+        La app no lo necesita: el rastreo corre dentro de un foreground service
+        con notificación persistente (ver el <service> de abajo, con
+        foregroundServiceType="location"), y desde Android 10 un servicio de ese
+        tipo puede leer la ubicación mientras está vivo con el permiso "mientras
+        se usa". El conductor arranca el servicio tocando "Conectarse", con la
+        app delante, así que tampoco cae en las restricciones de Android 11+
+        para servicios lanzados desde segundo plano.
+
+        Declararlo sin necesitarlo obliga a pasar el formulario de declaración
+        de permisos de Play y a grabar un video demostrativo, y es de las causas
+        más comunes de rechazo. Si algún día hiciera falta leer la ubicación SIN
+        servicio en primer plano, hay que volver a añadirlo Y añadir la pantalla
+        de divulgación previa que Play exige antes de pedir el permiso.
     -->
-    <uses-permission
-        android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <!-- ─── Permisos de servicio en primer plano ───────────────────────── -->
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE"/>
@@ -40,8 +50,6 @@
         android:name="android.permission.VIBRATE"/>
     <uses-permission
         android:name="android.permission.WAKE_LOCK"/>
-    <uses-permission
-        android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application
         android:label="ZIPA Conductor"
         android:name="${applicationName}"
@@ -102,34 +110,24 @@
                     android:host="app"/>
             </intent-filter>
         </activity>
-        <!-- ─── Servicio de ubicación en primer plano ────────────────────── -->
         <!--
-            Usado por el servicio de tracking activo del conductor.
-            El tipo "location" es obligatorio en Android 10+ para
-            acceder a la ubicación desde un foreground service.
+            NO se declara aquí ningún <service> ni <receiver> propios.
+
+            Había dos: `.LocationForegroundService` y `.BootReceiver`. Ninguna de
+            las dos clases existe — en `android/app/src/main/kotlin/` solo está
+            MainActivity. El servicio era inofensivo (nadie lo arrancaba: el
+            foreground service de ubicación lo pone el plugin geolocator, que lo
+            declara en su propio manifiesto y se fusiona con éste).
+
+            El receiver NO era inofensivo. Escuchaba BOOT_COMPLETED y
+            MY_PACKAGE_REPLACED, así que Android intentaba instanciar
+            com.nexum.driver_app.BootReceiver al encender el teléfono y JUSTO
+            DESPUÉS DE CADA ACTUALIZACIÓN desde Play, y se encontraba con un
+            ClassNotFoundException. Lo primero que habría visto un tester al
+            actualizar es "ZIPA Conductor se detuvo".
+
+            Con el receiver se va RECEIVE_BOOT_COMPLETED, que solo estaba para él.
         -->
-        <service
-            android:name=".LocationForegroundService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="location"
-            android:permission="android.permission.FOREGROUND_SERVICE_LOCATION"/>
-        <!-- ─── Boot receiver ────────────────────────────────────────────── -->
-        <!--
-            Permite reiniciar servicios persistentes tras un reinicio del
-            dispositivo (p. ej., mantener el estado "en línea" del conductor).
-        -->
-        <receiver
-            android:name=".BootReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action
-                    android:name="android.intent.action.BOOT_COMPLETED"/>
-                <action
-                    android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
-            </intent-filter>
-        </receiver>
         <!-- ─── Proveedor de archivos (para capturas/docs) ──────────────── -->
         <provider
             android:name="androidx.core.content.FileProvider"
