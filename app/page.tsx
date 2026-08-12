@@ -102,6 +102,15 @@ export default function HomePage() {
 
       <footer className="border-t border-slate-800 py-6 text-center text-sm text-slate-500 space-y-2">
         <p>© {new Date().getFullYear()} ZIPA · Colombia</p>
+        {/* Play Console pide la URL pública de la política de privacidad y una
+            página de eliminación de cuenta alcanzable sin instalar la app. */}
+        <p className="text-xs">
+          <a href="/legal/privacidad" className="hover:text-slate-300">Privacidad</a>
+          {' · '}
+          <a href="/legal/terminos" className="hover:text-slate-300">Términos</a>
+          {' · '}
+          <a href="/legal/eliminar-cuenta" className="hover:text-slate-300">Eliminar mi cuenta</a>
+        </p>
         {/* Transparencia de IA (FTC/Ley 1581): declaración pública del uso de
             algoritmos en el emparejamiento, rutas y prevención de fraude. */}
         <p className="text-xs text-slate-600 max-w-xl mx-auto px-4">
