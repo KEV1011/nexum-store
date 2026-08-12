@@ -42,10 +42,23 @@ la huella real del APK** dejando la evidencia en el log:
 SHA-1 BE:43:56:0E:CB:21:B4:2D:99:A7:5A:3C:B5:6F:B0:FA:05:B5:21:76
 ```
 
-**[comprobar tú]** Abre el paso *Verify APK signature* del run y confirma que
-sale esa huella. Si sale otra, el build se firmó en modo debug y **Play lo
-rechaza**. Ese paso no falla el build a propósito (sin secretos, la firma debug
-es legítima para pruebas), así que hay que mirarlo.
+El paso *Verify APK signature* imprime dos líneas que hay que mirar:
+
+```
+Huella SHA-1 del APK: ...
+Huella SHA-1 del AAB (lo que se sube a Play): ...
+```
+
+Si la del **AAB** coincide con la de arriba, se puede subir. Si no, el bundle
+quedó firmado en debug y **Play lo rechaza**; el paso deja además un aviso
+amarillo en el run. No falla el build a propósito (sin secretos, la firma debug
+es legítima para instalar a mano), así que hay que mirarlo.
+
+> Hasta el 12/08/2026 esta comprobación **no comprobaba nada**: usaba
+> `keytool -printcert -jarfile`, que solo lee la firma v1, y un APK de release
+> lleva v2/v3 — el log decía `Obtenida: <no se pudo leer>` pasara lo que
+> pasara. Ahora el APK se verifica con `apksigner` y el bundle con `keytool`
+> (un AAB sí va firmado como JAR).
 
 ---
 

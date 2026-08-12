@@ -141,9 +141,31 @@ jobs:
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
           EXPECTED="BE:43:56:0E:CB:21:B4:2D:99:A7:5A:3C:B5:6F:B0:FA:05:B5:21:76"
-          FINGERPRINT=$(keytool -printcert -jarfile "$APK" 2>/dev/null \
-            | grep -m1 'SHA1:' | sed 's/.*SHA1: *//' | tr -d ' \r')
+
+          # apksigner, NO keytool. `keytool -printcert -jarfile` solo sabe leer
+          # la firma v1 (JAR); un APK de release moderno lleva v2/v3, así que
+          # keytool devolvía vacío SIEMPRE y el paso imprimía
+          # "Obtenida: <no se pudo leer>" pasara lo que pasara. Es decir: la
+          # comprobación llevaba tiempo sin comprobar nada, y su "evidencia en
+          # el log" no distinguía un APK firmado bien de uno firmado en debug —
+          # que es justo lo que hay que saber antes de subir a Play.
+          APKSIGNER=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::warning title=No se pudo verificar la firma::apksigner no está en el runner; no se comprobó con qué llave quedó el APK."
+            exit 0
+          fi
+
+          # apksigner imprime el digest en hex minúscula y sin dos puntos.
+          ESPERADA=$(echo "$EXPECTED" | tr -d ':' | tr 'A-Z' 'a-z')
+          FINGERPRINT=$("$APKSIGNER" verify --print-certs "$APK" 2>/dev/null \
+            | grep -m1 -i 'SHA-1 digest' | sed 's/.*: *//' | tr -d ' \r' | tr 'A-Z' 'a-z')
           echo "Huella SHA-1 del APK: ${FINGERPRINT:-<no se pudo leer>}"
+          echo "Esquemas de firma:"
+          "$APKSIGNER" verify --verbose "$APK" 2>/dev/null | grep -i 'scheme v[0-9]' || true
+
+          # La comparación se hace ya normalizada; se reescriben las variables
+          # para que el mensaje de abajo siga mostrando el formato legible.
+          if [ "$FINGERPRINT" = "$ESPERADA" ]; then FINGERPRINT="$EXPECTED"; fi
           if [ "$FINGERPRINT" = "$EXPECTED" ]; then
             echo "✅ Firmado con la llave estable de Nexum — se instala sobre la versión anterior."
           else
@@ -156,6 +178,21 @@ jobs:
             echo "⚠️  NO coincide con la llave estable."
             echo "    Esperada: $EXPECTED"
             echo "    Obtenida: ${FINGERPRINT:-<no se pudo leer>}"
+          fi
+
+          # El AAB es lo que se sube a Play, así que se comprueba aparte. A
+          # diferencia del APK, un bundle SÍ va firmado como JAR, de modo que
+          # aquí keytool es la herramienta correcta.
+          AAB=build/app/outputs/bundle/release/app-release.aab
+          if [ -f "$AAB" ]; then
+            AABFP=$(keytool -printcert -jarfile "$AAB" 2>/dev/null \
+              | grep -m1 'SHA1:' | sed 's/.*SHA1: *//' | tr -d ' \r')
+            echo "Huella SHA-1 del AAB (lo que se sube a Play): ${AABFP:-<no se pudo leer>}"
+            if [ "$AABFP" = "$EXPECTED" ]; then
+              echo "✅ El bundle va firmado con la llave estable: se puede subir a Play."
+            else
+              echo "::warning title=AAB sin la llave estable::El bundle NO está firmado con la llave de ZIPA. Google Play lo rechazará. Revisa los secrets ANDROID_KEYSTORE_BASE64 y ANDROID_KEYSTORE_PASSWORD."
+            fi
           fi
 
       # ── 8c. Repartir a los probadores (Firebase App Distribution) ────────────
