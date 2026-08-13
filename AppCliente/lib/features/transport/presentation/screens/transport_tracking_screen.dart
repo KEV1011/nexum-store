@@ -13,6 +13,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
+import 'package:nexum_client/features/transport/domain/camara_seguimiento.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
@@ -505,6 +506,16 @@ class _TripMapState extends ConsumerState<_TripMap>
   /// null = el proxy no tiene llave → se dibuja la línea recta de siempre.
   List<LatLng>? _route;
 
+  // ── Cámara que sigue al vehículo ───────────────────────────────────────────
+  final MapController _mapa = MapController();
+
+  /// Mientras es verdadero, la cámara persigue al vehículo y aprieta el zoom a
+  /// medida que se acerca. Se apaga en cuanto el pasajero toca el mapa: pelearle
+  /// la cámara a quien está mirando otra cosa es de las cosas más molestas que
+  /// puede hacer una app. Vuelve con el botón de recentrar.
+  bool _seguir = true;
+  double _ultimoZoom = 0;
+
   @override
   void initState() {
     super.initState();
@@ -559,6 +570,33 @@ class _TripMapState extends ConsumerState<_TripMap>
     }
   }
 
+  /// Acerca la cámara según lo cerca que esté el vehículo del punto al que va.
+  void _ajustarCamara(LatLng? conductor, LatLng objetivo) {
+    if (!_seguir || conductor == null) return;
+    final metros = metrosEntre(
+      conductor.latitude, conductor.longitude,
+      objetivo.latitude, objetivo.longitude,
+    );
+    final enc = encuadrePara(metros);
+    if (!enc.seguirVehiculo) return; // lejos: se deja el encuadre del trayecto
+    // `camera` lanza si el controlador aún no está enganchado al mapa (primer
+    // frame). Un encuadre no vale una pantalla en rojo delante del pasajero.
+    try {
+      // Solo se mueve si el zoom cambió de escalón o el vehículo se desplazó:
+      // reajustar sin que nada haya cambiado deja el mapa temblando.
+      final c = _mapa.camera.center;
+      if (_ultimoZoom == enc.zoom &&
+          c.latitude == conductor.latitude &&
+          c.longitude == conductor.longitude) {
+        return;
+      }
+      _ultimoZoom = enc.zoom;
+      _mapa.move(conductor, enc.zoom);
+    } catch (_) {
+      // Mapa aún no listo: se reintenta en el siguiente fix del GPS.
+    }
+  }
+
   @override
   void dispose() {
     _pulse.dispose();
@@ -593,6 +631,15 @@ class _TripMapState extends ConsumerState<_TripMap>
         : _hashLatLng(request.destinationAddress, 0x2B);
     // Posición ANIMADA (se desliza entre fixes GPS) en lugar de la cruda.
     final driver = _displayDriver;
+    // El objetivo es la recogida mientras el conductor viene, y el destino una
+    // vez a bordo: el zoom tiene que apretar cuando se acerca a lo que importa
+    // AHORA, no siempre al final del viaje.
+    final objetivo = widget.request.status == TransportStatus.inProgress
+        ? destination
+        : origin;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _ajustarCamara(driver, objetivo);
+    });
     final center = LatLng(
       (origin.latitude + destination.latitude) / 2,
       (origin.longitude + destination.longitude) / 2,
@@ -602,9 +649,18 @@ class _TripMapState extends ConsumerState<_TripMap>
       children: [
             Positioned.fill(
               child: FlutterMap(
+                mapController: _mapa,
                 options: MapOptions(
                   initialCenter: driver ?? center,
                   initialZoom: 14.5,
+                  // Si el pasajero arrastra o hace zoom, la cámara deja de
+                  // perseguir. `hasGesture` distingue su dedo de los
+                  // movimientos que hace la propia app.
+                  onPositionChanged: (_, hasGesture) {
+                    if (hasGesture && _seguir) {
+                      setState(() => _seguir = false);
+                    }
+                  },
                   // Enmarca TODO el trayecto (origen · conductor · destino) para
                   // que se vea por dónde va el viaje, no un punto congelado.
                   initialCameraFit: CameraFit.coordinates(
@@ -698,6 +754,33 @@ class _TripMapState extends ConsumerState<_TripMap>
             live: live,
           ),
         ),
+
+        // Volver a seguir al vehículo. Solo aparece cuando el pasajero movió el
+        // mapa: si la cámara ya lo está siguiendo, el botón no tendría nada que
+        // hacer y solo taparía calles.
+        if (!_seguir && driver != null)
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () {
+                  setState(() {
+                    _seguir = true;
+                    _ultimoZoom = 0; // fuerza el reencuadre en el próximo frame
+                  });
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Icon(Icons.my_location_rounded, size: 20),
+                ),
+              ),
+            ),
+          ),
       ],
     );
 
