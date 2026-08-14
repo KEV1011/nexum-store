@@ -634,12 +634,22 @@ class _TripMapState extends ConsumerState<_TripMap>
     // El objetivo es la recogida mientras el conductor viene, y el destino una
     // vez a bordo: el zoom tiene que apretar cuando se acerca a lo que importa
     // AHORA, no siempre al final del viaje.
-    final objetivo = widget.request.status == TransportStatus.inProgress
-        ? destination
-        : origin;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _ajustarCamara(driver, objetivo);
-    });
+    final enCurso = widget.request.status == TransportStatus.inProgress;
+    final objetivo = enCurso ? destination : origin;
+    // ...pero SOLO si esa coordenada es real. Cuando el viaje no trae lat/lng,
+    // `_hashLatLng` fabrica un punto a partir del texto de la dirección: seguir
+    // al vehículo contra un destino inventado acercaría la cámara a 18,5 de
+    // zoom sobre una manzana cualquiera, enseñándole al pasajero que su carro
+    // "está llegando" a un sitio que no existe. Sin coordenada de verdad se
+    // deja el encuadre del trayecto, que no afirma nada.
+    final objetivoReal = enCurso
+        ? (request.destLat != null && request.destLng != null)
+        : (request.originLat != null && request.originLng != null);
+    if (objetivoReal) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ajustarCamara(driver, objetivo);
+      });
+    }
     final center = LatLng(
       (origin.latitude + destination.latitude) / 2,
       (origin.longitude + destination.longitude) / 2,

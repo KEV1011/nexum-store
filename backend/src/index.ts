@@ -1,4 +1,8 @@
 import 'dotenv/config';
+// ANTES que cualquier fichero de rutas: parchea el Router para que un handler
+// `async` que lance acabe en el manejador de errores global en vez de dejar la
+// petición sin respuesta. Ver lib/async-routes.ts.
+import './lib/async-routes';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';

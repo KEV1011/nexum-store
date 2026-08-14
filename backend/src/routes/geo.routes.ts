@@ -63,10 +63,20 @@ const BUSINESS_TOKEN_TTL_MS = 10 * 60_000;
 async function isValidBusinessToken(token: string): Promise<boolean> {
   const visto = businessTokenCache.get(token);
   if (visto != null && visto > Date.now()) return true;
-  const biz = await prisma.business.findUnique({
-    where: { token },
-    select: { isOpen: true },
-  });
+  // La consulta va dentro del try: si la base falla, esto devuelve false y el
+  // que llama responde 401. Sin el try, la promesa se rechazaba y —al llamarla
+  // desde un middleware con `void`— la petición se quedaba SIN respuesta, que
+  // en el teléfono se ve como una app congelada, no como un error.
+  let biz: { isOpen: boolean } | null = null;
+  try {
+    biz = await prisma.business.findUnique({
+      where: { token },
+      select: { isOpen: true },
+    });
+  } catch (e) {
+    console.error('[Geo] no se pudo validar el token del negocio:', e);
+    return false;
+  }
   if (!biz?.isOpen) return false;
   if (businessTokenCache.size > 500) {
     const ahora = Date.now();
@@ -167,7 +177,13 @@ async function anyAuthMiddleware(req: Request, res: Response, next: NextFunction
   res.status(401).json({ success: false, error: 'Invalid or expired token' });
 }
 
-router.use((req, res, next) => { void anyAuthMiddleware(req, res, next); });
+router.use((req, res, next) => {
+  anyAuthMiddleware(req, res, next).catch(() => {
+    if (!res.headersSent) {
+      res.status(401).json({ success: false, error: 'Invalid or expired token' });
+    }
+  });
+});
 
 // GET /geo/autocomplete?input=cra+5&lat=&lng=
 router.get('/autocomplete', async (req, res) => {

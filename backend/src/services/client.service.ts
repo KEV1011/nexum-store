@@ -705,13 +705,19 @@ export async function cancelOrderByAdmin(orderId: string): Promise<boolean> {
   const previo = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true, driverId: true } });
   if (!previo) return false;
   const antesDeSalir = ['PENDING', 'CONFIRMED', 'PREPARING', 'DRIVER_TO_PICKUP', 'AT_PICKUP'] as const;
-  if ((antesDeSalir as readonly string[]).includes(previo.status)) await restoreOrderStock(orderId);
 
+  // La cancelación PRIMERO, con su guard de estado, y solo después se repone el
+  // stock. Al revés —que es como estaba— si el pedido pasaba a entregado entre
+  // la lectura y el update, el `updateMany` devolvía 0 y la cancelación no se
+  // aplicaba, pero las existencias ya se habían devuelto: el negocio quedaba
+  // vendiendo mercancía que sí había salido.
   const res = await prisma.order.updateMany({
     where: { id: orderId, status: { in: [...antesDeSalir, 'IN_TRANSIT' as const] } },
     data: { status: 'CANCELLED' },
   });
   if (res.count === 0) return false;
+
+  if ((antesDeSalir as readonly string[]).includes(previo.status)) await restoreOrderStock(orderId);
 
   const updated = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },

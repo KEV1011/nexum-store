@@ -9,8 +9,9 @@
 //  3. DESVÍO — distancia al corredor recto origen→destino mayor al umbral.
 //
 // Todo es BEST-EFFORT y pasivo: jamás bloquea el viaje ni el fix GPS. Las
-// alertas viven en memoria (anillo de 200) y se consultan desde el panel admin
-// y el portal /empresa (filtradas por flota). Umbrales configurables por env.
+// alertas se PERSISTEN (tabla `safety_alerts`) y se consultan desde el panel
+// admin y el portal /empresa (filtradas por flota); el anillo de 200 en memoria
+// queda solo como respaldo si la base falla. Umbrales configurables por env.
 // El lookup del servicio activo se cachea por conductor (TTL 30 s) para no
 // consultar la BD en cada heartbeat de 4 s.
 
@@ -96,21 +97,36 @@ export function _pushAlert(a: Omit<SafetyAlert, 'id' | 'at'>): void {
   // flota que pide control total se quedaba sin el histórico justo cuando iba a
   // reclamar. Nunca se hace `await`: esto cuelga del heartbeat del conductor y
   // un fallo de base de datos no puede frenar el GPS ni tumbar la petición.
-  void prisma.safetyAlertLog
-    .create({
-      data: {
-        kind: a.kind,
-        driverId: a.driverId,
-        driverName: a.driverName,
-        operatorId: a.operatorId,
-        serviceKind: a.serviceKind,
-        serviceId: a.serviceId,
-        detail: a.detail,
-      },
-    })
-    .catch((e: unknown) => {
+  //
+  // Se comprueba que no exista ya la misma alerta para el mismo servicio. El
+  // guard `_once` que evita repetirlas vive en memoria, así que cada reinicio
+  // del proceso lo olvida: sin esta comprobación, un servicio atascado —el
+  // conductor sin señal 23 horas— escribía una alerta idéntica en CADA
+  // despliegue, y la Torre de Control acababa enseñando el mismo incidente
+  // veinte veces. Una alerta por tipo y por servicio es justo lo que se quiso
+  // decir con `_once`; aquí se hace valer también entre reinicios.
+  void (async () => {
+    try {
+      const yaEsta = await prisma.safetyAlertLog.findFirst({
+        where: { kind: a.kind, serviceId: a.serviceId },
+        select: { id: true },
+      });
+      if (yaEsta) return;
+      await prisma.safetyAlertLog.create({
+        data: {
+          kind: a.kind,
+          driverId: a.driverId,
+          driverName: a.driverName,
+          operatorId: a.operatorId,
+          serviceKind: a.serviceKind,
+          serviceId: a.serviceId,
+          detail: a.detail,
+        },
+      });
+    } catch (e) {
       console.error('[Seguridad] no se pudo guardar la alerta:', e);
-    });
+    }
+  })();
 }
 
 /**
