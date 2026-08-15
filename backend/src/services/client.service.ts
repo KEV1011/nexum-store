@@ -20,6 +20,7 @@ import { normalizeColombianPhone } from './auth.service';
 import { calcFare } from '../lib/fare';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
 import { resolverOpciones, sanearNota } from '../lib/order-options';
+import { exigirPuntoRecogida, exigirPuntoDestino } from '../lib/trip-coords';
 import { recordCompletedTrip } from './earnings.service';
 import {
   fichaFromDriver, fichaPorConductor, fichasPorConductores,
@@ -820,8 +821,23 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   // particular/taxi — se acepta como alias para no romper el contrato REST.
   const normalized = dto.serviceType.toLowerCase() === 'transporte' ? 'particular' : dto.serviceType;
   const serviceType = normalized.toUpperCase() as 'TAXI' | 'MOTO' | 'PARTICULAR' | 'ENVIOS';
-  const originLat = dto.originLat ?? 7.3754;
-  const originLng = dto.originLng ?? -72.6486;
+  // Las coordenadas NO se inventan. Antes, si la app no las mandaba (que es lo
+  // que pasa siempre que el autocompletado no tiene llave de Google y la
+  // persona escribe la dirección a mano), aquí se ponía el obelisco de
+  // Pamplona como origen y un punto a 800 m en diagonal como destino. El daño
+  // no era solo que el mapa dibujara un trayecto falso: `startMatchingCycle`
+  // busca conductores alrededor del origen, así que un pasajero de otra ciudad
+  // se emparejaba contra el centro de Pamplona y no aparecía nadie — sin que
+  // ni él ni nosotros supiéramos por qué. Sin punto real no hay viaje que
+  // despachar, y decirlo es mejor que fingir uno.
+  const { lat: originLat, lng: originLng } = exigirPuntoRecogida(
+    dto.originLat,
+    dto.originLng,
+  );
+  const { lat: destLat, lng: destLng } = exigirPuntoDestino(
+    dto.destLat,
+    dto.destLng,
+  );
 
   const { multiplier: surgeMultiplier } = await getSurgeMultiplier(originLat, originLng);
 
@@ -839,10 +855,8 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       originLat,
       originLng,
       destAddress: dto.destinationAddress,
-      // Destino real cuando la app lo resolvió por autocomplete; aproximación
-      // cercana al origen como fallback para texto libre.
-      destLat: dto.destLat ?? (dto.originLat ? originLat + 0.0067 : 7.3821),
-      destLng: dto.destLng ?? (dto.originLng ? originLng - 0.0026 : -72.6512),
+      destLat,
+      destLng,
       estimatedFare: dto.estimatedFare,
       surgeMultiplier,
       distanceKm: dto.distanceKm,

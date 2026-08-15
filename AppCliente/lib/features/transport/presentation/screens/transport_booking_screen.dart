@@ -37,8 +37,11 @@ class _TransportBookingScreenState
   final _packageCtrl = TextEditingController();
   bool _loading = false;
 
-  // Coordenadas resueltas por el autocompletado (null = texto libre; el
-  // backend usa el centro de Pamplona como fallback).
+  // Coordenadas resueltas por el autocompletado, por el mapa o por el GPS.
+  // Null = solo hay texto escrito a mano, y con eso NO se puede pedir el
+  // viaje: el emparejamiento busca conductores alrededor del punto de
+  // recogida, así que sin punto real la solicitud saldría a buscar a otra
+  // parte. El botón queda deshabilitado y se explica qué falta.
   double? _originLat;
   double? _originLng;
   double? _destLat;
@@ -46,6 +49,27 @@ class _TransportBookingScreenState
 
   bool get _isEnvios =>
       widget.serviceType == TransportServiceType.envios;
+
+  /// Qué punto falta por marcar, o null si ya se puede pedir el viaje.
+  /// Escribir la dirección no basta: hace falta la coordenada, que sale del
+  /// autocompletado, del mapa o del GPS.
+  String? get _faltaPunto {
+    final sinOrigen = _originLat == null;
+    final sinDestino = _destLat == null;
+    if (sinOrigen && sinDestino) {
+      return 'Marca en el mapa el punto de recogida y el de destino, o usa tu '
+          'ubicación actual para la recogida.';
+    }
+    if (sinOrigen) {
+      return 'Falta el punto exacto de recogida: toca "Usar mi ubicación '
+          'actual" o elígelo en el mapa.';
+    }
+    if (sinDestino) {
+      return 'Falta el punto exacto del destino: elígelo en el mapa con el '
+          'icono de la derecha del campo.';
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -89,13 +113,18 @@ class _TransportBookingScreenState
               label: 'Origen',
               hint: '¿Desde dónde saldrás?',
               requiredField: true,
-              onPlaceSelected: (place) {
+              // `setState`: el aviso de abajo y el botón dependen de que haya
+              // punto resuelto, así que la pantalla tiene que repintarse.
+              onPlaceSelected: (place) => setState(() {
                 _originLat = place.lat;
                 _originLng = place.lng;
-              },
+              }),
               onManualEdit: () {
-                _originLat = null;
-                _originLng = null;
+                if (_originLat == null) return;
+                setState(() {
+                  _originLat = null;
+                  _originLng = null;
+                });
               },
               suffixIcon: IconButton(
                 icon: const Icon(Icons.bookmarks_outlined, size: 20),
@@ -130,13 +159,16 @@ class _TransportBookingScreenState
               label: 'Destino',
               hint: '¿A dónde vas?',
               requiredField: true,
-              onPlaceSelected: (place) {
+              onPlaceSelected: (place) => setState(() {
                 _destLat = place.lat;
                 _destLng = place.lng;
-              },
+              }),
               onManualEdit: () {
-                _destLat = null;
-                _destLng = null;
+                if (_destLat == null) return;
+                setState(() {
+                  _destLat = null;
+                  _destLng = null;
+                });
               },
               suffixIcon: IconButton(
                 icon: const Icon(Icons.bookmarks_outlined, size: 20),
@@ -182,6 +214,10 @@ class _TransportBookingScreenState
             ],
             const SizedBox(height: 24),
             _FareEstimateCard(serviceType: widget.serviceType),
+            if (_faltaPunto != null) ...[
+              const SizedBox(height: 16),
+              _AvisoPunto(texto: _faltaPunto!),
+            ],
             const SizedBox(height: 28),
             FilledButton(
               style: FilledButton.styleFrom(
@@ -191,7 +227,7 @@ class _TransportBookingScreenState
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: _loading ? null : _submit,
+              onPressed: (_loading || _faltaPunto != null) ? null : _submit,
               child: _loading
                   ? const SizedBox(
                       height: 20,
@@ -319,15 +355,17 @@ class _TransportBookingScreenState
                 : null,
             surgeMultiplier: surgeMultiplier,
           );
-    } catch (_) {
-      // El servidor no recibió el viaje: se informa en lugar de simular.
+    } catch (e) {
+      // El servidor no recibió el viaje: se informa en lugar de simular, y con
+      // el motivo que dio él (el provider ya lo propaga) en vez de suponer que
+      // siempre es la conexión.
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-          'No se pudo solicitar el viaje. Revisa tu conexión e inténtalo de nuevo.',
-        ),
-      ));
+      final motivo = e is Exception
+          ? e.toString().replaceFirst('Exception: ', '')
+          : 'No se pudo solicitar el viaje. Revisa tu conexión e inténtalo de nuevo.';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(motivo)));
       return;
     }
 
@@ -436,6 +474,44 @@ class _SectionTitle extends StatelessWidget {
         fontSize: 14,
         fontWeight: FontWeight.w700,
         color: context.textSecondaryColor,
+      ),
+    );
+  }
+}
+
+/// Explica qué punto falta por marcar mientras el botón está deshabilitado.
+/// Un botón apagado sin motivo se lee como una app rota; con el motivo, se
+/// lee como un paso que falta.
+class _AvisoPunto extends StatelessWidget {
+  const _AvisoPunto({required this.texto});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.warningContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.warning),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.place_outlined, size: 20, color: AppColors.warning),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              texto,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: context.textPrimaryColor,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

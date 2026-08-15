@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/core/config/app_config_provider.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
@@ -147,7 +148,15 @@ class TransportTrackingScreen extends ConsumerWidget {
                     const SizedBox(height: 16),
                     _RatingDisplay(rating: request.rating!),
                   ],
-                  if (request.isCompleted && request.driverName != null) ...[
+                  // La propina se paga por Wompi, así que sin pasarela
+                  // configurada no hay forma de cobrarla. Ofrecerla igual
+                  // llevaba a un error garantizado ("No se pudo iniciar la
+                  // propina") a quien intentaba darle algo al conductor, que
+                  // es el peor momento posible para fallar.
+                  if (request.isCompleted &&
+                      request.driverName != null &&
+                      (ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ??
+                          false)) ...[
                     const SizedBox(height: 16),
                     _TipSection(requestId: requestId),
                   ],
@@ -475,8 +484,6 @@ class _TripMap extends ConsumerStatefulWidget {
 
 class _TripMapState extends ConsumerState<_TripMap>
     with TickerProviderStateMixin {
-  static const _pamplona = LatLng(7.3762, -72.6465);
-
   late final AnimationController _pulse;
 
   // Movimiento fluido del vehículo (estilo Uber/DiDi): en vez de SALTAR entre
@@ -604,13 +611,6 @@ class _TripMapState extends ConsumerState<_TripMap>
     super.dispose();
   }
 
-  LatLng _hashLatLng(String seed, int salt) {
-    final hash = seed.hashCode ^ salt;
-    final dlat = ((hash % 100) - 50) / 8000;
-    final dlng = ((hash ~/ 100 % 100) - 50) / 8000;
-    return LatLng(_pamplona.latitude + dlat, _pamplona.longitude + dlng);
-  }
-
   @override
   Widget build(BuildContext context) {
     final request = widget.request;
@@ -620,15 +620,19 @@ class _TripMapState extends ConsumerState<_TripMap>
     final live = request.isActive && hasDriver;
     final color = _colorOf(request.serviceType);
 
-    // Coordenadas reales del autocompletado cuando existen; si el cliente
-    // escribió texto libre, se cae a una posición aproximada por hash para que
-    // el mapa siga teniendo dónde dibujar los pines.
+    // Coordenadas REALES o nada. Antes, cuando faltaban, se fabricaba un punto
+    // a partir del `hashCode` del texto de la dirección: el mapa dibujaba
+    // origen, destino y trayecto entre dos sitios cualesquiera del centro de
+    // Pamplona, y el pasajero veía su viaje trazado por calles por las que
+    // nadie iba a pasar. El backend ya no acepta viajes sin punto, así que
+    // esto solo puede darse en un viaje viejo guardado en el teléfono: se
+    // muestra el mapa con lo que se sepa de verdad y sin inventar el resto.
     final origin = (request.originLat != null && request.originLng != null)
         ? LatLng(request.originLat!, request.originLng!)
-        : _hashLatLng(request.originAddress, 0x1A);
+        : null;
     final destination = (request.destLat != null && request.destLng != null)
         ? LatLng(request.destLat!, request.destLng!)
-        : _hashLatLng(request.destinationAddress, 0x2B);
+        : null;
     // Posición ANIMADA (se desliza entre fixes GPS) en lugar de la cruda.
     final driver = _displayDriver;
     // El objetivo es la recogida mientras el conductor viene, y el destino una
@@ -636,23 +640,28 @@ class _TripMapState extends ConsumerState<_TripMap>
     // AHORA, no siempre al final del viaje.
     final enCurso = widget.request.status == TransportStatus.inProgress;
     final objetivo = enCurso ? destination : origin;
-    // ...pero SOLO si esa coordenada es real. Cuando el viaje no trae lat/lng,
-    // `_hashLatLng` fabrica un punto a partir del texto de la dirección: seguir
-    // al vehículo contra un destino inventado acercaría la cámara a 18,5 de
-    // zoom sobre una manzana cualquiera, enseñándole al pasajero que su carro
-    // "está llegando" a un sitio que no existe. Sin coordenada de verdad se
-    // deja el encuadre del trayecto, que no afirma nada.
-    final objetivoReal = enCurso
-        ? (request.destLat != null && request.destLng != null)
-        : (request.originLat != null && request.originLng != null);
-    if (objetivoReal) {
+    if (objetivo != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _ajustarCamara(driver, objetivo);
       });
     }
+    // Puntos conocidos, en orden: con lo que haya se encuadra el mapa. Si no
+    // hay ninguno (viaje viejo sin coordenadas y sin conductor asignado
+    // todavía), no hay mapa que enseñar.
+    final puntos = <LatLng>[
+      if (origin != null) origin,
+      if (driver != null) driver,
+      if (destination != null) destination,
+    ];
+    if (puntos.isEmpty) return const SizedBox.shrink();
+    // Recta origen→destino como respaldo de la ruta por calles. Vacía si falta
+    // alguno de los dos extremos: media línea no informa de nada.
+    final recta = (origin != null && destination != null)
+        ? <LatLng>[origin, destination]
+        : const <LatLng>[];
     final center = LatLng(
-      (origin.latitude + destination.latitude) / 2,
-      (origin.longitude + destination.longitude) / 2,
+      puntos.map((p) => p.latitude).reduce((a, b) => a + b) / puntos.length,
+      puntos.map((p) => p.longitude).reduce((a, b) => a + b) / puntos.length,
     );
 
     final mapa = Stack(
@@ -674,7 +683,7 @@ class _TripMapState extends ConsumerState<_TripMap>
                   // Enmarca TODO el trayecto (origen · conductor · destino) para
                   // que se vea por dónde va el viaje, no un punto congelado.
                   initialCameraFit: CameraFit.coordinates(
-                    coordinates: [origin, destination, if (driver != null) driver],
+                    coordinates: puntos,
                     padding: const EdgeInsets.all(48),
                     maxZoom: 19,
                   ),
@@ -691,10 +700,17 @@ class _TripMapState extends ConsumerState<_TripMap>
                   PolylineLayer(
                     polylines: [
                       Polyline(
-                        // Ruta real por las calles cuando el proxy tiene llave;
-                        // recta (pasando por el conductor) como fallback.
-                        points: _route ??
-                            [origin, if (driver != null) driver, destination],
+                        // El trayecto es origen → destino. Ruta real por las
+                        // calles cuando el proxy tiene llave; recta si no.
+                        //
+                        // El conductor NO va dentro de esta línea. Antes se
+                        // metía en medio (`[origen, conductor, destino]`) y
+                        // mientras venía a recoger —que es cuando el pasajero
+                        // más mira el mapa— el trazo salía en V: iba del
+                        // origen hacia atrás hasta el carro y de ahí al
+                        // destino, dibujando un recorrido que nadie iba a
+                        // hacer. Su posición ya se ve en el vehículo.
+                        points: _route ?? recta,
                         color: AppColors.routeColor,
                         // Gruesa y con extremos redondeados: una línea de 4 px
                         // con esquinas en pico se ve como un trazo técnico, no
@@ -711,22 +727,24 @@ class _TripMapState extends ConsumerState<_TripMap>
                       // reserva para el destino, que es a donde hay que llegar;
                       // el origen ya ocurrió y solo ancla el principio del
                       // trazo.
-                      Marker(
-                        point: origin,
-                        width: 22,
-                        height: 22,
-                        child: const _OriginDot(),
-                      ),
-                      Marker(
-                        point: destination,
-                        width: MapPin.markerWidth,
-                        height: MapPin.markerHeight,
-                        alignment: Alignment.topCenter,
-                        child: const MapPin(
-                          color: AppColors.destinationMarker,
-                          icon: Icons.flag_rounded,
+                      if (origin != null)
+                        Marker(
+                          point: origin,
+                          width: 22,
+                          height: 22,
+                          child: const _OriginDot(),
                         ),
-                      ),
+                      if (destination != null)
+                        Marker(
+                          point: destination,
+                          width: MapPin.markerWidth,
+                          height: MapPin.markerHeight,
+                          alignment: Alignment.topCenter,
+                          child: const MapPin(
+                            color: AppColors.destinationMarker,
+                            icon: Icons.flag_rounded,
+                          ),
+                        ),
                       if (driver != null)
                         Marker(
                           point: driver,

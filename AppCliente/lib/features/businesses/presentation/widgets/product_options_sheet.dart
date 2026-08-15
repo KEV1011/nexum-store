@@ -33,8 +33,16 @@ Future<ProductChoice?> showProductOptionsSheet(
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     // Con el teclado abierto para la nota, la hoja tiene que subir con él.
-    builder: (_) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+    //
+    // El contexto tiene que ser el de la HOJA (`ctx`), no el de la pantalla que
+    // la abre. Antes se leía `MediaQuery.of(context)` —el de fuera— y eso hacía
+    // dos cosas mal: se medía una sola vez, con el teclado todavía cerrado
+    // (siempre 0), y como la dependencia quedaba registrada en la pantalla de
+    // abajo, abrir el teclado no repintaba la hoja. El resultado era que la
+    // hoja no subía nunca y el campo de la nota quedaba tapado justo al ir a
+    // escribir en él. `viewInsetsOf` se suscribe solo a los insets.
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
       child: _ProductOptionsSheet(product: product),
     ),
   );
@@ -124,10 +132,14 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final falta = _faltaElegir;
+    // El alto disponible descuenta el teclado: la hoja ya está desplazada
+    // hacia arriba por ese mismo alto, así que medir contra la pantalla
+    // completa la haría más alta que el hueco que le queda y el contenido se
+    // desbordaría por abajo.
+    final media = MediaQuery.of(context);
+    final disponible = media.size.height - media.viewInsets.bottom;
     return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      ),
+      constraints: BoxConstraints(maxHeight: disponible * 0.9),
       decoration: BoxDecoration(
         color: isDark ? AppColors.surfaceDark : context.surfaceColor,
         borderRadius: const BorderRadius.vertical(

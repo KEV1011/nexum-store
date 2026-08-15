@@ -294,14 +294,41 @@ class _SafetyScreenState extends State<SafetyScreen> {
     );
   }
 
+  /// Copia la ubicación REAL del conductor, como enlace de mapa.
+  ///
+  /// Aquí había una coordenada escrita a mano —7.3756° N, 72.6494° O— que se
+  /// copiaba siempre, estuviera el conductor donde estuviera. En una pantalla
+  /// de seguridad eso no es un detalle: alguien en apuros le manda esas
+  /// coordenadas a su familia y las manda a un punto cualquiera del centro de
+  /// Pamplona. Ahora sale del GPS, y si no hay lectura se dice, que es lo
+  /// único honesto: mejor que la persona sepa que no puede contar con esto a
+  /// que crea que ya avisó.
   void _shareLocation() {
-    const coords =
-        '7.3756° N, 72.6494° O — Pamplona, Norte de Santander';
-    Clipboard.setData(const ClipboardData(text: coords));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Ubicación copiada: $coords'),
-        duration: Duration(seconds: 3),
+    final pos = LocationService().lastPosition;
+    final messenger = ScaffoldMessenger.of(context);
+    if (pos == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Todavía no hay señal de GPS. Activa la ubicación y espera unos '
+            'segundos para poder compartirla.',
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+    final lat = pos.latitude.toStringAsFixed(6);
+    final lng = pos.longitude.toStringAsFixed(6);
+    // Enlace de mapa además de los números: quien lo recibe abre y ve dónde
+    // es, sin tener que copiar coordenadas a ninguna parte.
+    final texto = 'Mi ubicación: $lat, $lng\n'
+        'https://maps.google.com/?q=$lat,$lng';
+    Clipboard.setData(ClipboardData(text: texto));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('Ubicación copiada ($lat, $lng). Pégala en tu chat.'),
+        duration: const Duration(seconds: 3),
       ),
     );
   }

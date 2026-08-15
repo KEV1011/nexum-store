@@ -25,6 +25,7 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
+import 'package:nexum_driver/features/driver_status/presentation/providers/demand_zones_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/service_prefs_provider.dart';
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
@@ -94,51 +95,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return 'Buenas noches';
   }
 
-  /// Contextual earning opportunity based on the current hour.
-  static _Opportunity _currentOpportunity() {
-    final h = DateTime.now().hour;
-    if (h >= 6 && h < 9) {
-      return const _Opportunity(
-        icon: Icons.wb_twilight_rounded,
-        title: 'Hora pico matutina',
-        subtitle: 'Alta demanda hacia el centro · +25% tarifa',
-        color: AppColors.warning,
-        badge: '+25%',
-      );
-    }
-    if (h >= 11 && h < 14) {
-      return const _Opportunity(
-        icon: Icons.restaurant_rounded,
-        title: 'Hora del almuerzo',
-        subtitle: 'Más viajes cerca de restaurantes',
-        color: AppColors.serviceTaxi,
-        badge: 'Alta',
-      );
-    }
-    if (h >= 17 && h < 20) {
-      return const _Opportunity(
-        icon: Icons.local_fire_department_rounded,
-        title: 'Hora pico · tarifa dinámica',
-        subtitle: 'Demanda elevada en tu zona · +30%',
-        color: AppColors.error,
-        badge: '+30%',
-      );
-    }
-    if (h >= 20 && h < 23) {
-      return const _Opportunity(
-        icon: Icons.nightlife_rounded,
-        title: 'Demanda nocturna',
-        subtitle: 'Zona universitaria activa ahora',
-        color: AppColors.serviceParticular,
-        badge: 'Media',
-      );
-    }
-    return const _Opportunity(
-      icon: Icons.insights_rounded,
-      title: 'Explora zonas de demanda',
-      subtitle: 'Activa el mapa de calor para ver puntos calientes',
-      color: AppColors.primary,
-      badge: 'Mapa',
+  /// Banner de oportunidad, con la demanda REAL de `GET /driver/demand-zones`.
+  ///
+  /// Antes lo decidía el reloj: entre las 17 y las 20 decía "Demanda elevada
+  /// en tu zona · +30%" con la insignia "+30%", hubiera o no un solo viaje
+  /// buscando conductor. Eso es prometerle dinero a alguien que va a salir a
+  /// trabajar por esa promesa. El endpoint real existía desde hace tiempo
+  /// —compara viajes SEARCHING contra conductores ONLINE por zona— y la app
+  /// no lo llamaba. Sin recargo real no se anuncia ninguno.
+  static _Opportunity? _oportunidadReal(DemandZonesState demanda) {
+    final zona = demanda.masCaliente;
+    if (zona == null) return null;
+    return _Opportunity(
+      icon: Icons.local_fire_department_rounded,
+      title: 'Más demanda en ${zona.name}',
+      subtitle: '${zona.demand} '
+          '${zona.demand == 1 ? 'viaje buscando' : 'viajes buscando'} conductor '
+          '· ${zona.supply} en línea',
+      color: AppColors.error,
+      badge: '+${zona.recargoPct}%',
     );
   }
 
@@ -151,14 +126,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   StreamSubscription<String>? _wsErrandCancelSub;
   StreamSubscription<String>? _wsOrderCancelSub;
 
+  /// Encuadre inicial mientras el GPS todavía no ha dado la primera lectura.
+  /// No es la posición del conductor y no se dibuja ningún vehículo sobre él:
+  /// solo es por dónde empieza mirando el mapa.
   static const _center = LatLng(
     MapConstants.pamplonaCenterLat,
     MapConstants.pamplonaCenterLng,
   );
 
+  /// Posición REAL del conductor. Null mientras el GPS no engancha.
+  ///
+  /// Antes su marcador era una `static const` en el centro de Pamplona: el
+  /// conductor abría su app y se veía en el obelisco estuviera donde estuviera,
+  /// y el mapa jamás lo seguía. El arreglo anterior del GPS afectó al latido
+  /// que se manda al backend, pero este marcador nunca estuvo conectado a
+  /// nada.
+  LatLng? _miPosicion;
+  StreamSubscription<Position>? _posSub;
+
+  /// Se centra el mapa en el conductor una sola vez, con el primer fix: seguir
+  /// moviendo la cámara después le quitaría el mapa de las manos mientras mira
+  /// dónde hay demanda.
+  bool _yaCentrado = false;
+
   @override
   void initState() {
     super.initState();
+    // Si ya había fix (p. ej. se volvió al home desde otra pantalla), se pinta
+    // sin esperar a la siguiente lectura.
+    final ultima = LocationService().lastPosition;
+    if (ultima != null) {
+      _miPosicion = LatLng(ultima.latitude, ultima.longitude);
+    }
+    _posSub = LocationService().positionStream.listen((pos) {
+      if (!mounted) return;
+      setState(() => _miPosicion = LatLng(pos.latitude, pos.longitude));
+      if (!_yaCentrado) {
+        _yaCentrado = true;
+        try {
+          _mapController.move(_miPosicion!, MapConstants.initialZoom);
+        } catch (_) {
+          // Mapa aún no montado: el siguiente fix lo intenta otra vez.
+          _yaCentrado = false;
+        }
+      }
+    });
     // Load driver profile so isVerified is available when toggle is pressed.
     WidgetsBinding.instance.addPostFrameCallback(
       (_) {
@@ -167,6 +179,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(intercityDriverProvider.notifier).loadAvailability();
         // Preferencias de servicio (qué solicitudes recibe).
         ref.read(servicePrefsProvider.notifier).load();
+        // Demanda real por zona: alimenta el banner de oportunidad y la capa
+        // del mapa. Si falla, sencillamente no hay banner.
+        ref.read(demandZonesProvider.notifier).load();
         // Restaurar EN LÍNEA si el socket sigue conectado. Al terminar un viaje
         // se navega al resumen con go(), que DESTRUYE este home; al volver, un
         // home nuevo nacía "desconectado" aunque el conductor seguía en línea
@@ -193,6 +208,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _wsBlockedSub?.cancel();
     _wsErrandCancelSub?.cancel();
     _wsOrderCancelSub?.cancel();
+    _posSub?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -596,78 +612,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  List<CircleMarker> _buildHeatmapCircles() {
+  /// Enciende o apaga la capa de demanda, pidiendo el dato fresco al
+  /// encenderla y diciendo qué pasa cuando no hay nada que pintar: encender
+  /// una capa y no ver ni un círculo se lee como que la app está rota, cuando
+  /// lo normal en una ciudad pequeña es que a media tarde no haya recargo en
+  /// ninguna zona.
+  Future<void> _alternarDemanda() async {
+    final encendiendo = !_showHeatmap;
+    setState(() => _showHeatmap = encendiendo);
+    if (!encendiendo) return;
+    await ref.read(demandZonesProvider.notifier).load();
+    if (!mounted) return;
+    final d = ref.read(demandZonesProvider);
+    final pintables = _circulosDemanda(d.zones).length;
+    if (d.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(d.error!)),
+      );
+    } else if (pintables == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ahora mismo no hay viajes esperando en ninguna zona.'),
+        ),
+      );
+    }
+  }
+
+  /// Círculos de demanda con el dato REAL del backend.
+  ///
+  /// Antes eran siete círculos con coordenadas escritas a mano sobre el centro
+  /// de Pamplona: un mapa de calor que no medía nada y que enviaba al conductor
+  /// a esperar clientes a un sitio elegido por nadie. El color sale del
+  /// multiplicador de verdad y el radio, de cuántos viajes hay buscando.
+  List<CircleMarker> _circulosDemanda(List<DemandZone> zonas) {
     return [
-      CircleMarker(
-        point: const LatLng(7.3752, -72.6479),
-        radius: 200,
-        color: AppColors.error.withValues(alpha: 0.25),
-        borderColor: AppColors.error.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3694, -72.6521),
-        radius: 250,
-        color: AppColors.error.withValues(alpha: 0.25),
-        borderColor: AppColors.error.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3783, -72.6451),
-        radius: 200,
-        color: AppColors.warning.withValues(alpha: 0.25),
-        borderColor: AppColors.warning.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3741, -72.6498),
-        radius: 150,
-        color: AppColors.warning.withValues(alpha: 0.25),
-        borderColor: AppColors.warning.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3758, -72.6472),
-        radius: 150,
-        color: AppColors.warning.withValues(alpha: 0.25),
-        borderColor: AppColors.warning.withValues(alpha: 0.6),
-        borderStrokeWidth: 2,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3715, -72.6543),
-        radius: 150,
-        color: AppColors.primary.withValues(alpha: 0.2),
-        borderColor: AppColors.primary.withValues(alpha: 0.5),
-        borderStrokeWidth: 1,
-        useRadiusInMeter: true,
-      ),
-      CircleMarker(
-        point: const LatLng(7.3769, -72.6505),
-        radius: 150,
-        color: AppColors.primary.withValues(alpha: 0.2),
-        borderColor: AppColors.primary.withValues(alpha: 0.5),
-        borderStrokeWidth: 1,
-        useRadiusInMeter: true,
-      ),
+      for (final z in zonas)
+        if (z.demand > 0 || z.isSurge)
+          CircleMarker(
+            point: LatLng(z.lat, z.lng),
+            // 200 m de base y 40 m por viaje en espera, con tope para que una
+            // zona muy caliente no se coma el mapa entero.
+            radius: (200 + z.demand * 40).clamp(200, 600).toDouble(),
+            color: (z.isSurge ? AppColors.error : AppColors.warning)
+                .withValues(alpha: z.isSurge ? 0.25 : 0.18),
+            borderColor: (z.isSurge ? AppColors.error : AppColors.warning)
+                .withValues(alpha: 0.6),
+            borderStrokeWidth: 2,
+            useRadiusInMeter: true,
+          ),
     ];
   }
 
   // ── Build ──────────────────────────────────────────────────────────────
 
-  static const _driverLatLng = LatLng(
-    MapConstants.pamplonaCenterLat,
-    MapConstants.pamplonaCenterLng,
-  );
-
   @override
   Widget build(BuildContext context) {
     final serviceType = ref.watch(selectedServiceTypeProvider);
     final workMode = ref.watch(selectedWorkModeProvider);
+    final demanda = ref.watch(demandZonesProvider);
+    final oportunidad = _oportunidadReal(demanda);
 
     return Scaffold(
       drawer: _AppDrawer(
@@ -710,12 +713,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: [
               const GoogleMapTiles(),
               if (_showHeatmap)
-                CircleLayer(circles: _buildHeatmapCircles()),
-              if (_state.isOnline)
+                CircleLayer(circles: _circulosDemanda(demanda.zones)),
+              // Sin lectura del GPS no se dibuja el vehículo. Un punto en un
+              // sitio donde el conductor no está es peor que ningún punto: el
+              // banner de "sin ubicación" ya explica el hueco.
+              if (_state.isOnline && _miPosicion != null)
                 MarkerLayer(
                   markers: [
                     Marker(
-                      point: _driverLatLng,
+                      point: _miPosicion!,
                       width: 48,
                       height: 48,
                       child: Container(
@@ -747,7 +753,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Column(
               children: [
                 _buildTopBar(serviceType),
-                if (!_bannerDismissed)
+                // Sin recargo real no hay banner: no se anuncia una demanda
+                // que no existe solo por llenar el hueco.
+                if (!_bannerDismissed && oportunidad != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(
                       AppConstants.spacingM,
@@ -756,7 +764,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       AppConstants.spacingS,
                     ),
                     child: _OpportunityBanner(
-                      opportunity: _currentOpportunity(),
+                      opportunity: oportunidad,
                       onTap: () {
                         HapticFeedback.selectionClick();
                         setState(() => _showHeatmap = true);
@@ -819,8 +827,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: _showHeatmap
                 ? Icons.layers_rounded
                 : Icons.layers_outlined,
-            onTap: () =>
-                setState(() => _showHeatmap = !_showHeatmap),
+            onTap: () => unawaited(_alternarDemanda()),
           ),
           const SizedBox(width: AppConstants.spacingS),
           _NotifBell(onTap: () => context.push('/notifications')),

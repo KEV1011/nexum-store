@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/core/config/app_config_provider.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
@@ -135,7 +136,13 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
             const SizedBox(height: AppConstants.spacingL),
             _RatingCard(order: order),
           ],
-          if (order.isDelivered && order.driverName != null) ...[
+          // Sin pasarela configurada la propina no se puede cobrar: ofrecerla
+          // solo servía para dar un error al final de una entrega que salió
+          // bien.
+          if (order.isDelivered &&
+              order.driverName != null &&
+              (ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ??
+                  false)) ...[
             const SizedBox(height: AppConstants.spacingL),
             _OrderTipSection(orderId: order.id),
           ],

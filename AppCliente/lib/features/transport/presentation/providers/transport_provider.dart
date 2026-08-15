@@ -166,9 +166,17 @@ class TransportNotifier extends StateNotifier<TransportState> {
       // que las ve también el repartidor). Si se descarta aquí, el cliente no
       // tiene qué dictar y la entrega no se puede cerrar nunca.
       deliveryPin = data['deliveryPin'] as String?;
-    } catch (_) {
+    } on DioException catch (e) {
       // Sin backend no hay viaje real que despachar: se propaga el error para
-      // que la pantalla lo muestre (nada de ids locales inventados).
+      // que la pantalla lo muestre (nada de ids locales inventados). El
+      // mensaje del servidor MANDA sobre el genérico: cuando rechaza por falta
+      // del punto de recogida dice exactamente qué hacer, y taparlo con
+      // "revisa tu conexión" manda a la persona a mirar el wifi.
+      final delServidor = (e.response?.data as Map?)?['error'] as String?;
+      throw Exception(
+        delServidor ?? 'No se pudo solicitar el viaje. Revisa tu conexión.',
+      );
+    } catch (_) {
       throw Exception('No se pudo solicitar el viaje. Revisa tu conexión.');
     }
 

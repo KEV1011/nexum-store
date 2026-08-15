@@ -45,6 +45,17 @@ class LocationService {
   /// provider para retirar el aviso de "sin ubicación real" en cuanto engancha.
   void Function(bool tieneFix)? onFixChanged;
 
+  /// Posiciones reales del GPS según van llegando.
+  ///
+  /// El servicio ya escuchaba al GPS para el latido, pero la única forma de
+  /// consultarlo desde fuera era `lastPosition`, que hay que sondear. Por eso
+  /// el mapa del home del conductor dibujaba su carro sobre una constante: no
+  /// tenía a qué suscribirse. Broadcast porque lo miran varias pantallas.
+  final _posiciones = StreamController<Position>.broadcast();
+
+  /// Flujo de posiciones reales. Nunca emite una posición inventada.
+  Stream<Position> get positionStream => _posiciones.stream;
+
   // ── Permissions ────────────────────────────────────────────────────────────
 
   /// Solicita permisos de ubicación al usuario.
@@ -90,6 +101,7 @@ class LocationService {
         timeLimit: const Duration(seconds: 10),
       );
       _lastPosition = position;
+      if (!_posiciones.isClosed) _posiciones.add(position);
       return LocationModel(
         latitude: position.latitude,
         longitude: position.longitude,
@@ -150,6 +162,7 @@ class LocationService {
       (pos) {
         final erraBanner = _lastPosition == null;
         _lastPosition = pos;
+        if (!_posiciones.isClosed) _posiciones.add(pos);
         // Primer fix tras conectarse a ciegas: se avisa para que el banner de
         // "sin ubicación real" se retire solo. Sin esto quedaba puesto toda la
         // jornada aunque el GPS hubiera enganchado a los diez segundos.

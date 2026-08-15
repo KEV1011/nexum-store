@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -57,20 +58,24 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   // Continuous pulse for the live driver marker halo.
   late final AnimationController _pulse;
 
-  // Simulated driver position — starts at Pamplona center
+  // Posición del conductor. Arranca en el centro de la ciudad solo como
+  // encuadre inicial y la sustituye el primer fix del GPS, que en un viaje
+  // activo llega en segundos (el seguimiento ya está en marcha desde que se
+  // puso en línea).
   LatLng _driverPos = const LatLng(
     MapConstants.pamplonaCenterLat,
     MapConstants.pamplonaCenterLng,
   );
+  StreamSubscription<Position>? _posSub;
 
   // Rumbo actual del vehículo (grados) para orientar el marcador.
   double _heading = 0;
 
-  Timer? _movementTimer;
   Timer? _etaTimer;
   int _etaSeconds = 0;
 
-  // Waypoint-based route simulation
+  // Ruta del tramo: dónde empezó y los puntos por los que pasa. Son para
+  // DIBUJAR y para medir el avance; el conductor va donde dice el GPS.
   LatLng _routeStart = const LatLng(
     MapConstants.pamplonaCenterLat,
     MapConstants.pamplonaCenterLng,
@@ -160,14 +165,25 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     _custodyPinSub?.cancel();
     _chatSub?.cancel();
     _pulse.dispose();
-    _movementTimer?.cancel();
+    _posSub?.cancel();
     _etaTimer?.cancel();
     _mapController.dispose();
     super.dispose();
   }
 
-  // ── Simulated driver movement ────────────────────────────────────────────
+  // ── Recorrido del tramo, con la posición REAL del conductor ──────────────
 
+  /// Prepara el tramo actual: traza la ruta y arranca el seguimiento del GPS.
+  ///
+  /// Antes esto se llamaba `_startSimulatedMovement` y hacía honor al nombre:
+  /// un temporizador cada 1,8 s iba moviendo el marcador de un punto al
+  /// siguiente de una ruta generada en forma de L. El conductor veía su carro
+  /// avanzar solo, por una calle inventada, mientras él estaba parado en un
+  /// semáforo — y si el GPS no tenía fix, esa posición simulada se le enviaba
+  /// AL SERVIDOR, así que el pasajero también veía moverse un carro que no se
+  /// movía. Ahora el marcador es el GPS y nada más; la ruta dibujada sigue
+  /// siendo la de Google (o la recta de respaldo) y el avance se mide por lo
+  /// cerca que está el conductor de ella.
   void _startSimulatedMovement(ActiveTripEntity trip) {
     final target = trip.isInProgress
         ? trip.request.destination.latLng
@@ -207,54 +223,91 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       });
     });
 
-    _movementTimer?.cancel();
-    _movementTimer = Timer.periodic(const Duration(milliseconds: 1800), (_) {
+    _seguirGpsReal();
+  }
+
+  /// El marcador del conductor y el avance del tramo salen del GPS.
+  void _seguirGpsReal() {
+    _posSub?.cancel();
+    // Si ya hay una lectura, se coloca sin esperar a la siguiente.
+    final ultima = LocationService().lastPosition;
+    if (ultima != null) {
+      _aplicarPosicionReal(LatLng(ultima.latitude, ultima.longitude));
+    }
+    _posSub = LocationService().positionStream.listen((pos) {
       if (!mounted) return;
-      if (_waypointIndex >= _waypoints.length) return;
+      _aplicarPosicionReal(LatLng(pos.latitude, pos.longitude));
+    });
+  }
 
-      // Near-destination alert at 85% of route
-      final progress = _waypointIndex / _waypoints.length;
-      if (progress >= 0.85 && !_nearDestinationShown) {
-        _nearDestinationShown = true;
-        final current = ref.read(activeTripProvider);
-        if (current != null && mounted) {
-          AppSnackbar.showInfo(
-            context,
-            current.isInProgress
-                ? '¡Llegando al destino!'
-                : '¡El pasajero está cerca!',
-          );
-        }
-      }
+  void _aplicarPosicionReal(LatLng nueva) {
+    // Se llama tanto desde el stream como en seco al entrar (si ya había fix),
+    // así que el guard va aquí y no solo en quien llama.
+    if (!mounted) return;
+    final anterior = _driverPos;
+    setState(() {
+      if (nueva != anterior) _heading = bearingBetween(anterior, nueva);
+      _driverPos = nueva;
+      _waypointIndex = _indiceMasCercano(nueva);
+    });
 
-      final next = _waypoints[_waypointIndex];
-      setState(() {
-        // Rumbo hacia el siguiente punto → orienta el marcador del vehículo.
-        if (next != _driverPos) _heading = bearingBetween(_driverPos, next);
-        _driverPos = next;
-        _waypointIndex++;
-      });
-
-      // Relay GPS to server → forwarded to client tracking map. Usa el GPS real
-      // del dispositivo cuando hay fix; cae a la posición simulada (demo/web o
-      // sin señal) para que el mapa del pasajero no se congele.
+    // Aviso de "ya casi llegas" al 85 % del tramo. Ahora se dispara porque el
+    // conductor recorrió el 85 %, no porque hayan pasado N segundos.
+    if (_waypoints.isNotEmpty && !_nearDestinationShown) {
+      final progreso = _waypointIndex / _waypoints.length;
       final current = ref.read(activeTripProvider);
-      if (current != null) {
-        final realPos = LocationService().lastPosition;
-        DriverWsService().sendLocationUpdate(
-          realPos?.latitude ?? next.latitude,
-          realPos?.longitude ?? next.longitude,
-          tripId: current.request.id,
+      if (progreso >= 0.85 && current != null) {
+        _nearDestinationShown = true;
+        AppSnackbar.showInfo(
+          context,
+          current.isInProgress
+              ? '¡Llegando al destino!'
+              : '¡El pasajero está cerca!',
         );
       }
+    }
 
-      if (_autoFollow) {
-        final zoom = current?.isInProgress == true ? 16.5 : MapConstants.tripZoom;
-        try {
-          _mapController.move(next, zoom);
-        } catch (_) {/* mapa no listo */}
+    // Se reenvía al servidor, que se lo pasa al mapa del pasajero. Solo
+    // posiciones reales: es la misma regla que sigue el latido.
+    final current = ref.read(activeTripProvider);
+    if (current != null) {
+      DriverWsService().sendLocationUpdate(
+        nueva.latitude,
+        nueva.longitude,
+        tripId: current.request.id,
+      );
+    }
+
+    if (_autoFollow) {
+      final zoom =
+          current?.isInProgress == true ? 16.5 : MapConstants.tripZoom;
+      try {
+        _mapController.move(nueva, zoom);
+      } catch (_) {/* mapa no listo */}
+    }
+  }
+
+  /// Índice del punto de la ruta más cercano al conductor = cuánto lleva
+  /// recorrido. Sustituye al contador que subía solo con el reloj.
+  int _indiceMasCercano(LatLng p) {
+    if (_waypoints.isEmpty) return 0;
+    var mejor = 0;
+    var mejorDist = double.infinity;
+    for (var i = 0; i < _waypoints.length; i++) {
+      final w = _waypoints[i];
+      // Distancia al cuadrado en grados: basta para comparar, y evita raíces
+      // y trigonometría en cada fix.
+      final dLat = w.latitude - p.latitude;
+      final dLng = w.longitude - p.longitude;
+      final d = dLat * dLat + dLng * dLng;
+      if (d < mejorDist) {
+        mejorDist = d;
+        mejor = i;
       }
-    });
+    }
+    // Nunca retrocede: si el GPS da un salto hacia atrás, el tramo recorrido
+    // no se "des-recorre" en la barra de progreso.
+    return mejor > _waypointIndex ? mejor : _waypointIndex;
   }
 
   List<LatLng> _generateWaypoints(LatLng from, LatLng to) {
@@ -1054,7 +1107,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   }
 
   void _handleCancelled() {
-    _movementTimer?.cancel();
+    _posSub?.cancel();
     _etaTimer?.cancel();
     ref.read(activeTripProvider.notifier).state = null;
     if (mounted) context.go('/home');
