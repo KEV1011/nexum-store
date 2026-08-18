@@ -18,6 +18,9 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   flutter_map: ^8.3.0
+  # Carpeta de caché de las teselas del mapa. Ya llegaba de forma
+  # transitiva, pero de eso no se puede depender: se declara.
+  path_provider: ^2.1.4
   flutter_riverpod: ^2.5.1
   flutter_secure_storage: ^9.2.2
   geolocator: ^13.0.1

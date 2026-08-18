@@ -13,6 +13,8 @@
 // (Colombia), regionCode=CO.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { LruCache } from '../lib/lru-cache';
+
 const GOOGLE_MAPS_API_KEY = process.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
 // Centro por defecto: Pamplona, Norte de Santander.
@@ -439,8 +441,32 @@ export interface MapTile {
 }
 
 /** Descarga un tile del mapa de Google (proxeado, key server-side). */
+/**
+ * Caché de teselas en memoria.
+ *
+ * Una vista de mapa son 15-25 teselas, y las de un pueblo se repiten muchísimo:
+ * todos los conductores y clientes miran el mismo centro. Sin caché, cada una de
+ * esas peticiones viajaba otra vez hasta Google — el teléfono espera dos saltos
+ * (a Render y de Render a Google) por cada cuadradito de imagen, y por eso el
+ * mapa entra a trozos.
+ *
+ * 1500 teselas son unos 40 MB en el peor caso y cubren Pamplona entera a varios
+ * zooms. La mecánica (tope y expulsión) vive en `lib/lru-cache`, con pruebas:
+ * una caché que no expulsa es una fuga de memoria en la instancia de Render.
+ */
+const _tileCache = new LruCache<MapTile>(1500, 7 * 24 * 60 * 60 * 1000);
+
+/** Diagnóstico: cuántas teselas hay calientes ahora mismo. */
+export function tileCacheSize(): number {
+  return _tileCache.size;
+}
+
 export async function fetchMapTile(z: number, x: number, y: number): Promise<MapTile> {
   if (!isGeoConfigured()) throw new GeoError('Geo service not configured', 503);
+
+  const clave = `${z}/${x}/${y}`;
+  const enCache = _tileCache.get(clave);
+  if (enCache) return enCache;
 
   const doFetch = async (session: string): Promise<globalThis.Response> => {
     const url =
@@ -462,5 +488,7 @@ export async function fetchMapTile(z: number, x: number, y: number): Promise<Map
   }
   const contentType = res.headers.get('content-type') ?? 'image/png';
   const arrayBuf = await res.arrayBuffer();
-  return { body: Buffer.from(arrayBuf), contentType };
+  const tile: MapTile = { body: Buffer.from(arrayBuf), contentType };
+  _tileCache.set(clave, tile);
+  return tile;
 }

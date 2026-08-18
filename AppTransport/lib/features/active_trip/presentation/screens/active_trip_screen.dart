@@ -68,6 +68,11 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   );
   StreamSubscription<Position>? _posSub;
 
+  /// ¿La ruta dibujada se trazó desde una posición REAL del conductor? Mientras
+  /// sea falso no hay ruta en pantalla: es preferible un mapa sin línea que una
+  /// línea que sale de un sitio donde el conductor no está.
+  bool _origenRealDeRuta = false;
+
   // Rumbo actual del vehículo (grados) para orientar el marcador.
   double _heading = 0;
 
@@ -185,6 +190,40 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   /// siendo la de Google (o la recta de respaldo) y el avance se mide por lo
   /// cerca que está el conductor de ella.
   void _startSimulatedMovement(ActiveTripEntity trip) {
+    _nearDestinationShown = false;
+    // La posición REAL primero. Si ya hay lectura del GPS, la ruta se traza
+    // desde donde está el conductor; si no, no se traza nada todavía.
+    final ultima = LocationService().lastPosition;
+    if (ultima != null) {
+      _driverPos = LatLng(ultima.latitude, ultima.longitude);
+      _origenRealDeRuta = true;
+    } else {
+      _origenRealDeRuta = false;
+    }
+    _trazarTramo(trip);
+    _seguirGpsReal();
+  }
+
+  /// Traza la ruta del tramo desde la posición actual del conductor.
+  ///
+  /// Solo dibuja si esa posición es REAL. Aquí estaba el resto del fallo del
+  /// arreglo anterior: se movió el marcador al GPS pero la ruta se seguía
+  /// calculando en `initState`, cuando `_driverPos` todavía valía el centro de
+  /// Pamplona. El conductor veía su carro en su calle y, al lado, un trayecto
+  /// que arrancaba en el obelisco y un "0 % hacia el pasajero" que no bajaba
+  /// nunca, porque el punto de partida del cálculo no era el suyo.
+  void _trazarTramo(ActiveTripEntity trip) {
+    if (!_origenRealDeRuta) {
+      // Sin GPS aún no hay desde dónde trazar. Se limpia para no dejar puesta
+      // la ruta del tramo anterior, y el primer fix la traza.
+      if (_waypoints.isNotEmpty) {
+        setState(() {
+          _waypoints = const [];
+          _waypointIndex = 0;
+        });
+      }
+      return;
+    }
     final target = trip.isInProgress
         ? trip.request.destination.latLng
         : trip.request.origin.latLng;
@@ -192,15 +231,15 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     _routeStart = _driverPos;
     _waypoints = _generateWaypoints(_driverPos, target);
     _waypointIndex = 0;
-    _nearDestinationShown = false;
 
     // Ruta REAL por las calles (Routes API vía el proxy del backend): si el
     // servidor tiene GOOGLE_MAPS_API_KEY, reemplaza la esquina en L simulada.
     // Sin llave/red devuelve null y el trazado actual se mantiene.
     final routeTarget = target;
+    final desde = _driverPos;
     fetchRoutePoints(
-      originLat: _driverPos.latitude,
-      originLng: _driverPos.longitude,
+      originLat: desde.latitude,
+      originLng: desde.longitude,
       destLat: routeTarget.latitude,
       destLng: routeTarget.longitude,
     ).then((points) {
@@ -218,12 +257,11 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         return;
       }
       setState(() {
+        _routeStart = desde;
         _waypoints = points;
         _waypointIndex = 0;
       });
     });
-
-    _seguirGpsReal();
   }
 
   /// El marcador del conductor y el avance del tramo salen del GPS.
@@ -245,6 +283,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     // así que el guard va aquí y no solo en quien llama.
     if (!mounted) return;
     final anterior = _driverPos;
+
+    // Primer fix de la pantalla: la ruta no se pudo trazar al entrar porque no
+    // se sabía desde dónde. Ahora sí, y se traza desde aquí.
+    if (!_origenRealDeRuta) {
+      _driverPos = nueva;
+      _origenRealDeRuta = true;
+      final trip = ref.read(activeTripProvider);
+      if (trip != null) _trazarTramo(trip);
+      setState(() {});
+      return;
+    }
     setState(() {
       if (nueva != anterior) _heading = bearingBetween(anterior, nueva);
       _driverPos = nueva;
@@ -549,11 +598,18 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         width: VehicleGlyph.markerWidth,
         height: VehicleGlyph.markerHeight,
         child: VehicleGlyph(
+          // 1º el vehículo REAL del conductor; 2º el tipo del VIAJE.
+          //
+          // El segundo escalón era `selectedServiceTypeProvider`, que es la
+          // pestaña que el conductor tiene marcada en su pantalla, no lo que
+          // está conduciendo. Un motociclista con "Particular" seleccionado
+          // veía un carro en el mapa durante una carrera en moto. El viaje
+          // trae su propio `serviceType` ('MOTO', 'TAXI'…) y es el dato que
+          // manda cuando el perfil todavía no ha cargado.
           kind: vehicleGlyphKindFor(
-            ref.watch(driverProfileProvider).profile?.vehicleType,
-            fallback: serviceType == ServiceType.moto
-                ? VehicleGlyphKind.moto
-                : VehicleGlyphKind.car,
+            ref.watch(driverProfileProvider).profile?.vehicleType ??
+                trip.request.serviceType,
+            fallback: VehicleGlyphKind.car,
           ),
           headingDegrees: _heading,
           pulse: _pulse,

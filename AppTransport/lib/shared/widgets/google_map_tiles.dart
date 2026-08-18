@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/shared/widgets/tile_disk_cache.dart';
 
 /// Pase de corta duración para los tiles del mapa.
 ///
@@ -56,9 +57,15 @@ class GoogleMapTiles extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ticket = ref.watch(mapTileTicketProvider).valueOrNull;
+    // Teselas guardadas en el teléfono: sin esto cada vez que se abre un
+    // mapa se vuelven a descargar las 15-25 de la vista, aunque sean las
+    // mismas de hace un minuto. En web devuelve null (ya cachea el
+    // navegador) y flutter_map usa su proveedor de siempre.
+    final cache = crearTileDiskCache();
     if (ticket == null || ticket.isEmpty) {
       return TileLayer(
         urlTemplate: _osm,
+        tileProvider: cache,
         // Sin esto las teselas de 256 px se ven BORROSAS en pantallas de alta
         // densidad (el usuario lo describió como "parece un dibujo"): flutter_map
         // pide un zoom más y las escala, así el mapa se ve nítido.
@@ -72,6 +79,7 @@ class GoogleMapTiles extends ConsumerWidget {
     // tile — el mapa NUNCA queda en blanco.
     return TileLayer(
       urlTemplate: '${ApiConfig.baseUrl}/geo/tile/{z}/{x}/{y}?t=$ticket',
+      tileProvider: cache,
       fallbackUrl: _osm,
       retinaMode: RetinaMode.isHighDensity(context),
       userAgentPackageName: 'com.nexum.driver',

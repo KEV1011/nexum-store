@@ -148,8 +148,12 @@ router.get('/tile/:z/:x/:y', async (req: Request, res: Response) => {
   try {
     const tile = await fetchMapTile(z, x, y);
     res.setHeader('Content-Type', tile.contentType);
-    // Los tiles del mapa cambian raramente: se cachean en el cliente/CDN.
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    // La imagen de una calle no cambia de un día para otro. Estaba en 1 día;
+    // 30 y `immutable` para que ni el teléfono ni ningún proxy intermedio la
+    // vuelvan a pedir. Es la mitad barata del problema: la otra mitad es que
+    // el proveedor de teselas de flutter_map no guarda nada en disco, y por eso
+    // la app además cachea por su cuenta.
+    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
     res.send(tile.body);
   } catch (err) {
     handleGeoError(res, err);
