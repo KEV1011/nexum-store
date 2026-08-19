@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,6 +79,20 @@ class _TransportBookingScreenState
     final defaultAddr = ref.read(defaultAddressProvider);
     if (defaultAddr != null) {
       _originCtrl.text = defaultAddr.fullAddress;
+      // Con sus coordenadas, no solo el texto: si se copiaba solo el nombre, el
+      // punto quedaba sin resolver y el botón salía deshabilitado aunque el
+      // campo se viera lleno — que es lo más desconcertante posible.
+      _originLat = defaultAddr.lat;
+      _originLng = defaultAddr.lng;
+    }
+    // Sin dirección guardada (o guardada sin punto), se intenta el GPS: pedir
+    // un viaje desde donde uno está es el caso normal, y así el formulario
+    // nace listo en vez de con el botón apagado esperando que la persona
+    // descubra el icono del mapa.
+    if (_originLat == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_useCurrentLocation(silencioso: true));
+      });
     }
   }
 
@@ -135,7 +151,7 @@ class _TransportBookingScreenState
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: _useCurrentLocation,
+                onPressed: () => unawaited(_useCurrentLocation()),
                 icon: const Icon(Icons.my_location_rounded, size: 18),
                 label: const Text('Usar mi ubicación actual'),
                 style: TextButton.styleFrom(
@@ -265,27 +281,38 @@ class _TransportBookingScreenState
     );
 
     if (selected != null) {
-      ctrl.text = selected.fullAddress;
-      // Direcciones guardadas no traen coordenadas: invalidar las anteriores.
-      if (ctrl == _originCtrl) {
-        _originLat = null;
-        _originLng = null;
-      } else if (ctrl == _destCtrl) {
-        _destLat = null;
-        _destLng = null;
-      }
+      // Las direcciones guardadas SÍ traen su punto (`AddressEntity.lat/lng`,
+      // que se resuelve al guardarlas). El comentario anterior decía lo
+      // contrario y por eso se descartaban: elegir "Casa" dejaba el campo lleno
+      // y el botón de pedir apagado, sin explicación visible.
+      setState(() {
+        ctrl.text = selected.fullAddress;
+        if (ctrl == _originCtrl) {
+          _originLat = selected.lat;
+          _originLng = selected.lng;
+        } else if (ctrl == _destCtrl) {
+          _destLat = selected.lat;
+          _destLng = selected.lng;
+        }
+      });
     }
   }
 
   /// Toma la ubicación actual del dispositivo (GPS en móvil, API del navegador
   /// en web) y la fija como origen. Así se puede pedir un viaje sin depender del
   /// autocompletado de Google: el matching solo necesita el punto de recogida.
-  Future<void> _useCurrentLocation() async {
+  /// [silencioso] = intento automático al abrir la pantalla: si no hay
+  /// permiso o GPS no se molesta a nadie con un aviso, simplemente queda el
+  /// mensaje de "falta el punto de recogida" y sus dos botones. Los avisos
+  /// solo salen cuando la persona TOCÓ "usar mi ubicación" y espera respuesta.
+  Future<void> _useCurrentLocation({bool silencioso = false}) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        messenger.showSnackBar(const SnackBar(
-            content: Text('Activa la ubicación (GPS) del dispositivo.')));
+        if (!silencioso) {
+          messenger.showSnackBar(const SnackBar(
+              content: Text('Activa la ubicación (GPS) del dispositivo.')));
+        }
         return;
       }
       var permission = await Geolocator.checkPermission();
@@ -294,8 +321,10 @@ class _TransportBookingScreenState
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        messenger.showSnackBar(const SnackBar(
-            content: Text('Permiso de ubicación denegado.')));
+        if (!silencioso) {
+          messenger.showSnackBar(const SnackBar(
+              content: Text('Permiso de ubicación denegado.')));
+        }
         return;
       }
       final pos = await Geolocator.getCurrentPosition();
@@ -306,8 +335,10 @@ class _TransportBookingScreenState
         _originCtrl.text = 'Mi ubicación actual';
       });
     } catch (_) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text('No se pudo obtener tu ubicación.')));
+      if (!silencioso) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('No se pudo obtener tu ubicación.')));
+      }
     }
   }
 
