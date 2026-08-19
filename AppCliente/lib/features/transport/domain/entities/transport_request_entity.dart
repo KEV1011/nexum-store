@@ -119,6 +119,7 @@ class TransportRequestEntity {
     required this.originAddress,
     required this.destinationAddress,
     required this.estimatedFare,
+    this.finalFare,
     required this.distanceKm,
     required this.etaMinutes,
     required this.status,
@@ -163,6 +164,7 @@ class TransportRequestEntity {
         originAddress: json['originAddress'] as String,
         destinationAddress: json['destinationAddress'] as String,
         estimatedFare: (json['estimatedFare'] as num).toDouble(),
+        finalFare: (json['finalFare'] as num?)?.toDouble(),
         distanceKm: (json['distanceKm'] as num).toDouble(),
         etaMinutes: json['etaMinutes'] as int,
         status: TransportStatus.values.firstWhere(
@@ -209,7 +211,20 @@ class TransportRequestEntity {
   final String? deliveryPin;
   final String originAddress;
   final String destinationAddress;
+  /// Lo que se estimó al pedir el viaje. Es una previsión, no un cobro.
   final double estimatedFare;
+
+  /// Lo que se cobró de verdad, sellado por el backend al completar el viaje.
+  ///
+  /// Null mientras el viaje no termina. El backend lo calcula y lo mandaba
+  /// desde hace tiempo en el DTO, pero la app no lo leía: al terminar el viaje
+  /// el pasajero seguía viendo la ESTIMACIÓN del principio, que se calcula con
+  /// otra fórmula y por tanto casi nunca coincide con lo que paga.
+  final double? finalFare;
+
+  /// El importe que hay que enseñar: el cobrado si ya está, la estimación
+  /// mientras tanto.
+  double get displayFare => finalFare ?? estimatedFare;
   final double distanceKm;
   final int etaMinutes;
   final TransportStatus status;
@@ -257,6 +272,7 @@ class TransportRequestEntity {
     String? originAddress,
     String? destinationAddress,
     double? estimatedFare,
+    double? finalFare,
     double? distanceKm,
     int? etaMinutes,
     TransportStatus? status,
@@ -290,6 +306,7 @@ class TransportRequestEntity {
       originAddress: originAddress ?? this.originAddress,
       destinationAddress: destinationAddress ?? this.destinationAddress,
       estimatedFare: estimatedFare ?? this.estimatedFare,
+      finalFare: finalFare ?? this.finalFare,
       distanceKm: distanceKm ?? this.distanceKm,
       etaMinutes: etaMinutes ?? this.etaMinutes,
       status: status ?? this.status,
@@ -324,6 +341,7 @@ class TransportRequestEntity {
         'originAddress': originAddress,
         'destinationAddress': destinationAddress,
         'estimatedFare': estimatedFare,
+        if (finalFare != null) 'finalFare': finalFare,
         'distanceKm': distanceKm,
         'etaMinutes': etaMinutes,
         'status': status.name,

@@ -1105,8 +1105,12 @@ class _TripDetails extends StatelessWidget {
               Expanded(
                 child: _StatChip(
                   icon: Icons.payments_outlined,
-                  value: CurrencyFormatter.format(request.estimatedFare),
-                  label: 'Tarifa',
+                  value: CurrencyFormatter.format(request.displayFare),
+                  // Decir cuál de las dos cifras es: mientras el viaje corre
+                  // es una previsión, y al cerrarlo es lo que se cobró. La
+                  // misma etiqueta para las dos deja al pasajero sin saber si
+                  // el número puede cambiar.
+                  label: request.finalFare != null ? 'Total cobrado' : 'Tarifa estimada',
                   valueColor: color,
                 ),
               ),

@@ -257,6 +257,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
         // actualización de posición — que es lo que le pasó al PIN.
         driverCard: DriverCardInfo.fromJson(payload) ?? r.driverCard,
         etaMinutes: payload['etaMinutes'] as int? ?? r.etaMinutes,
+        // Tarifa REAL sellada por el backend al completar. Llegaba en el DTO
+        // desde hace tiempo y la app no la leía: el pasajero terminaba el
+        // viaje viendo la estimación del principio, que se calcula con otra
+        // fórmula y casi nunca coincide con lo que paga.
+        finalFare: (payload['finalFare'] as num?)?.toDouble() ?? r.finalFare,
         acceptedAt: acceptedAtStr != null
             ? DateTime.tryParse(acceptedAtStr)
             : r.acceptedAt,
