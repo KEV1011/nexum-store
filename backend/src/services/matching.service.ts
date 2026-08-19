@@ -69,25 +69,43 @@ const GEO_FRESHNESS_S = 120;      // ignore drivers last seen > 2 min ago
 // esperando para siempre y nadie se enteraba (solo quedaba un console.log).
 // Aunque un repartidor se conectara medio minuto después, nunca se le ofrecía.
 //
-// Un restaurante tarda ~20 min en cocinar, así que hay tiempo de sobra para
-// insistir. El viaje urbano NO reintenta a propósito: el pasajero está parado
-// en la calle esperando y prefiere saber ya que no hay carro.
+// Un restaurante tarda ~20 min en cocinar, así que con un pedido hay tiempo de
+// sobra para insistir.
 const RETRY_DELAY_MS = 30_000;
 const MAX_SEARCH_RETRIES = 20; // 20 × 30 s = 10 minutos insistiendo
+
+// El viaje urbano insiste MUCHO menos: el pasajero está parado en la calle y
+// prefiere enterarse pronto de que no hay carro para buscarse la vida. Pero
+// tampoco puede rendirse al primer intento, que es lo que hacía: si en ESE
+// segundo exacto no había nadie a 5 km —porque el conductor más cercano venía
+// de dejar a otro pasajero, o su teléfono acababa de reportar— el pasajero
+// recibía "no hay conductores disponibles" al instante, con carros a cuatro
+// cuadras. Ninguna plataforma falla en cero segundos; todas buscan un rato.
+const TRIP_RETRY_DELAY_MS = 12_000;
+const TRIP_MAX_RETRIES = 5; // 5 × 12 s ≈ 1 minuto buscando
 
 const searchRetries = new Map<string, NodeJS.Timeout>();
 
 /**
  * Reintenta la búsqueda más tarde. Devuelve false cuando ya se agotaron los
  * intentos, para que quien llama avise a las partes en vez de callar.
+ *
+ * [rapido] usa la ventana corta del viaje urbano (~1 min) en vez de la de
+ * pedidos y mandados (~10 min).
  */
-export function scheduleSearchRetry(key: string, attempt: number, run: () => void): boolean {
-  if (attempt >= MAX_SEARCH_RETRIES) return false;
+export function scheduleSearchRetry(
+  key: string,
+  attempt: number,
+  run: () => void,
+  rapido = false,
+): boolean {
+  const tope = rapido ? TRIP_MAX_RETRIES : MAX_SEARCH_RETRIES;
+  if (attempt >= tope) return false;
   cancelSearchRetry(key);
   const timer = setTimeout(() => {
     searchRetries.delete(key);
     run();
-  }, RETRY_DELAY_MS);
+  }, rapido ? TRIP_RETRY_DELAY_MS : RETRY_DELAY_MS);
   // No debe impedir que el proceso termine (tests, apagado del servidor).
   timer.unref?.();
   searchRetries.set(key, timer);
@@ -111,6 +129,11 @@ interface OfferState {
   candidateIndex: number;
   currentDriverId: string;
   timeout: NodeJS.Timeout;
+  // Origen y número de intento: hacen falta al agotar la lista de candidatos
+  // para volver a buscar en vez de rendirse (ver _retryOrSurrenderTrip).
+  originLat: number;
+  originLng: number;
+  attempt: number;
 }
 
 // tripId → active offer state (at most one offer per trip at a time)
@@ -312,6 +335,7 @@ export async function startMatchingCycle(
   tripId: string,
   originLat: number,
   originLng: number,
+  attempt = 0,
 ): Promise<void> {
   // Filtra por tipo de vehículo pedido (carro vs moto) para no ofrecer "al azar".
   const trip = await prisma.trip.findUnique({
@@ -329,21 +353,57 @@ export async function startMatchingCycle(
     vehicleTypes,
   );
   if (candidates.length === 0) {
-    console.log(`[Matching] No drivers available within ${SEARCH_RADIUS_M}m for trip ${tripId}`);
-    _onNoDrivers?.(tripId);
+    console.log(
+      `[Matching] Sin conductores a ${SEARCH_RADIUS_M} m del viaje ${tripId} ` +
+      `(intento ${attempt + 1}/${TRIP_MAX_RETRIES})`,
+    );
+    _retryOrSurrenderTrip(tripId, originLat, originLng, attempt);
     return;
   }
-  await _offerToCandidate(tripId, candidates, 0);
+  await _offerToCandidate(tripId, candidates, 0, originLat, originLng, attempt);
+}
+
+/**
+ * Insiste un rato con el viaje y, agotado el minuto, avisa al pasajero.
+ *
+ * La ventana es corta a propósito (ver TRIP_MAX_RETRIES): quien está esperando
+ * en la calle necesita saber pronto si tiene que buscar otra cosa. Pero
+ * rendirse al primer intento —lo que se hacía— le decía "no hay conductores"
+ * con carros a cuatro cuadras que simplemente no habían reportado su posición
+ * en ese segundo.
+ */
+function _retryOrSurrenderTrip(
+  tripId: string,
+  originLat: number,
+  originLng: number,
+  attempt: number,
+): void {
+  const sigue = scheduleSearchRetry(
+    `trip:${tripId}`,
+    attempt,
+    () => { void startMatchingCycle(tripId, originLat, originLng, attempt + 1); },
+    true, // ventana corta
+  );
+  if (!sigue) _onNoDrivers?.(tripId);
 }
 
 async function _offerToCandidate(
   tripId: string,
   candidates: NearbyDriver[],
   index: number,
+  originLat: number,
+  originLng: number,
+  attempt: number,
 ): Promise<void> {
   if (index >= candidates.length) {
-    console.log(`[Matching] All ${candidates.length} candidates exhausted for trip ${tripId}`);
-    _onNoDrivers?.(tripId);
+    // Todos declinaron o dejaron pasar el tiempo. No es lo mismo que "no hay
+    // nadie": puede haber otro conductor conectándose ahora, así que se vuelve
+    // a barrer dentro de la ventana corta antes de darle la mala noticia al
+    // pasajero.
+    console.log(
+      `[Matching] Los ${candidates.length} candidatos del viaje ${tripId} no tomaron la oferta`,
+    );
+    _retryOrSurrenderTrip(tripId, originLat, originLng, attempt);
     return;
   }
 
@@ -369,6 +429,9 @@ async function _offerToCandidate(
     candidateIndex: index,
     currentDriverId: candidate.driverId,
     timeout,
+    originLat,
+    originLng,
+    attempt,
   });
 
   _sendToDriver?.(candidate.driverId, { type: 'trip_request', trip: dto });
@@ -399,7 +462,10 @@ export async function onDriverDeclineOrTimeout(
   if (driverId && state.currentDriverId !== driverId) return;
   clearTimeout(state.timeout);
   activeOffers.delete(tripId);
-  await _offerToCandidate(tripId, state.candidates, state.candidateIndex + 1);
+  await _offerToCandidate(
+    tripId, state.candidates, state.candidateIndex + 1,
+    state.originLat, state.originLng, state.attempt,
+  );
 }
 
 /**
@@ -415,6 +481,9 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
 
   clearTimeout(state.timeout);
   activeOffers.delete(tripId);
+  // Alguien lo tomó: se corta la insistencia. Sin esto, el temporizador seguía
+  // vivo y volvía a barrer un viaje que ya tiene conductor.
+  cancelSearchRetry(`trip:${tripId}`);
 
   // Despacho de pool abierto: el viaje queda SELLADO con la empresa del conductor
   // (operatorId) si está afiliado, para trazabilidad legal y liquidación. Los

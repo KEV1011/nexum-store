@@ -1018,6 +1018,8 @@ export async function cancelClientTrip(clientId: string, tripId: string): Promis
   if (!trip) return false;
   const cancellable = ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED'];
   if (!cancellable.includes(trip.status)) return false;
+  // El pasajero se echó atrás: se deja de buscarle conductor.
+  cancelSearchRetry(`trip:${tripId}`);
   const updated = await prisma.trip.update({
     where: { id: tripId },
     data: { status: 'CANCELLED', cancelReason: 'CANCELLED_BY_PASSENGER' },
