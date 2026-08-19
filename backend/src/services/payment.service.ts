@@ -118,7 +118,16 @@ async function _applyPaymentStatus(referenceCode: string, newStatus: PaymentStat
   const existing = await prisma.payment.findUnique({ where: { referenceCode } });
   if (!existing || existing.status === newStatus) return;
 
-  await prisma.payment.update({ where: { referenceCode }, data: { status: newStatus } });
+  // Wompi REINTENTA sus webhooks, así que este método se llama varias veces con
+  // el mismo pago; y la reconciliación por sondeo puede coincidir con el
+  // webhook. El `if` de arriba no basta: entre leerlo y escribirlo caben dos
+  // llegadas, las dos ven 'pending' y las dos siguen adelante a acreditar la
+  // propina. La guarda de verdad va en el `where`, donde decide la base.
+  const cambio = await prisma.payment.updateMany({
+    where: { referenceCode, status: { not: newStatus } },
+    data: { status: newStatus },
+  });
+  if (cambio.count === 0) return;
 
   if (newStatus === 'approved') {
     // Si el pago es una propina, acreditar al conductor (100%, sin comisión).
@@ -159,8 +168,14 @@ async function _creditTipIfApplicable(payment: {
         trip.tipAmount > 0 &&
         Math.round(trip.tipAmount) === Math.round(payment.amount)
       ) {
-        await prisma.trip.update({ where: { id: payment.tripId }, data: { tipPaid: true } });
-        await creditDriverTip(trip.driverId, trip.tipAmount);
+        // `tipPaid: false` en el WHERE: el que marca la bandera es el que
+        // acredita. Con `update` a secas, dos webhooks de Wompi que llegan a la
+        // vez leen ambos `tipPaid:false` y le pagan la propina dos veces.
+        const marcado = await prisma.trip.updateMany({
+          where: { id: payment.tripId, tipPaid: false },
+          data: { tipPaid: true },
+        });
+        if (marcado.count === 1) await creditDriverTip(trip.driverId, trip.tipAmount);
       }
     } else if (payment.orderId) {
       const order = await prisma.order.findUnique({
@@ -173,8 +188,11 @@ async function _creditTipIfApplicable(payment: {
         order.tipAmount > 0 &&
         Math.round(order.tipAmount) === Math.round(payment.amount)
       ) {
-        await prisma.order.update({ where: { id: payment.orderId }, data: { tipPaid: true } });
-        await creditDriverTip(order.driverId, order.tipAmount);
+        const marcado = await prisma.order.updateMany({
+          where: { id: payment.orderId, tipPaid: false },
+          data: { tipPaid: true },
+        });
+        if (marcado.count === 1) await creditDriverTip(order.driverId, order.tipAmount);
       }
     }
   } catch {

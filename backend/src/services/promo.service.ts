@@ -105,7 +105,16 @@ export async function redeemReferral(
   if (!me) throw new PromoError('Usuario no encontrado');
   if (me.referredById) throw new PromoError('Ya canjeaste un código de referido');
 
-  await prisma.user.update({ where: { id: userId }, data: { referredById: referrer.id } });
+  // El canje se sella con `referredById: null` en el WHERE: quien consigue
+  // escribirlo es el único que reparte cupones. Con `update` a secas, dos
+  // toques seguidos del botón leían los dos `referredById: null`, pasaban el
+  // `if` de arriba y regalaban dos cupones al invitado y dos al que invita.
+  const canje = await prisma.user.updateMany({
+    where: { id: userId, referredById: null },
+    data: { referredById: referrer.id },
+  });
+  if (canje.count === 0) throw new PromoError('Ya canjeaste un código de referido');
+
   await _grantPersonalCoupon(userId, 'Bienvenida por referido');
   await _grantPersonalCoupon(referrer.id, `Premio por invitar a ${me.name ?? 'un amigo'}`);
 

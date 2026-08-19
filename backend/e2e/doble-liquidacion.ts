@@ -11,8 +11,11 @@
  *   DATABASE_URL=postgresql://... npx tsx e2e/doble-liquidacion.ts
  */
 import { prisma } from '../src/lib/prisma';
-import { updateClientTripStatus, updateOrderStatusByDriver } from '../src/services/client.service';
-import { updateErrandStatus } from '../src/services/errand.service';
+import {
+  updateClientTripStatus, updateOrderStatusByDriver, acceptClientOrder,
+} from '../src/services/client.service';
+import { updateErrandStatus, acceptClientErrand } from '../src/services/errand.service';
+import { getOrCreateReferralCode, redeemReferral } from '../src/services/promo.service';
 
 let fallos = 0;
 function comprobar(nombre: string, ok: boolean, detalle: string): void {
@@ -193,6 +196,67 @@ async function main(): Promise<void> {
     trasR.viajes === antesR.viajes + 1,
     `se contaron ${trasR.viajes - antesR.viajes} liquidaciones`,
   );
+
+
+  // ── 5. DOS CONDUCTORES ACEPTAN EL MISMO SERVICIO ───────────────────────────
+  console.log('\n5. Dos conductores aceptan a la vez');
+  const driver2 = await prisma.driver.create({
+    data: {
+      phone: `+5730000${Math.floor(10000 + Math.random() * 89999)}`,
+      name: 'Conductor Rival', status: 'ONLINE', isVerified: true,
+    },
+  });
+
+  const mandadoLibre = await prisma.errand.create({
+    data: {
+      requestRef: `AUDE2-${Date.now()}`, userId: user.id,
+      category: 'GROCERIES', description: 'Carrera de aceptación',
+      pickupAddress: 'A', dropoffAddress: 'B',
+      serviceFee: 8000, status: 'SEARCHING',
+      deliveryPin: '9999', updatedAt: new Date(),
+    },
+  });
+  const [a1, a2] = await Promise.all([
+    acceptClientErrand(mandadoLibre.id, 'Conductor Auditoría', driver.phone, driver.id),
+    acceptClientErrand(mandadoLibre.id, 'Conductor Rival', driver2.phone, driver2.id),
+  ]);
+  const ganadores = [a1, a2].filter((x) => x !== null).length;
+  comprobar('solo UNO se lleva el mandado', ganadores === 1, `lo aceptaron ${ganadores}`);
+
+  const pedidoLibre = await prisma.order.create({
+    data: {
+      orderRef: `AUDO2-${Date.now()}`, businessId: biz.id, userId: user.id,
+      status: 'PREPARING',
+      deliveryAddress: 'Calle 2', subtotal: 20000, deliveryFee: 5000, total: 25000,
+      deliveryPin: '4321',
+    },
+  });
+  const [b1, b2] = await Promise.all([
+    acceptClientOrder(pedidoLibre.id, 'Conductor Auditoría', driver.phone, driver.id),
+    acceptClientOrder(pedidoLibre.id, 'Conductor Rival', driver2.phone, driver2.id),
+  ]);
+  const ganadoresP = [b1, b2].filter((x) => x !== null).length;
+  comprobar('solo UNO se lleva el pedido', ganadoresP === 1, `lo aceptaron ${ganadoresP}`);
+
+  // ── 6. REFERIDO CANJEADO DOS VECES ─────────────────────────────────────────
+  console.log('\n6. Doble canje de un código de referido');
+  const invita = await prisma.user.create({
+    data: { phone: `+5734444${Math.floor(10000 + Math.random() * 89999)}`, name: 'Quien invita' },
+  });
+  const codigo = await getOrCreateReferralCode(invita.id);
+  const invitado = await prisma.user.create({
+    data: { phone: `+5735555${Math.floor(10000 + Math.random() * 89999)}`, name: 'Invitado' },
+  });
+  const canjes = await Promise.allSettled([
+    redeemReferral(invitado.id, codigo),
+    redeemReferral(invitado.id, codigo),
+  ]);
+  const ok = canjes.filter((c) => c.status === 'fulfilled').length;
+  comprobar('solo UN canje prospera', ok === 1, `prosperaron ${ok}`);
+  const cupones = await prisma.promoRedemption.count({ where: { userId: invitado.id } }).catch(() => -1);
+  if (cupones >= 0) {
+    comprobar('no se regalan cupones de más', cupones <= 1, `${cupones} cupones`);
+  }
 
   console.log(`\n${fallos === 0 ? '✓ TODO EN VERDE' : `✗ ${fallos} COMPROBACIONES FALLIDAS`}\n`);
   await prisma.$disconnect();

@@ -148,8 +148,12 @@ export async function acceptClientErrand(
     operatorSeal = d?.operatorId ?? null;
   }
 
-  const updated = await prisma.errand.update({
-    where: { id: errandId },
+  // Toma ATÓMICA: `status: 'SEARCHING'` en el WHERE. El `if` de arriba corta
+  // pronto, pero entre leerlo y escribirlo caben dos mandaderos aceptando la
+  // misma oferta; con `update` a secas los dos "ganaban" y el segundo pisaba al
+  // primero, así que uno salía hacia una recogida que ya no era suya.
+  const tomado = await prisma.errand.updateMany({
+    where: { id: errandId, status: 'SEARCHING' },
     data: {
       status: 'ACCEPTED',
       acceptedAt: new Date(),
@@ -159,6 +163,10 @@ export async function acceptClientErrand(
       ...(operatorSeal ? { operatorId: operatorSeal } : {}),
     },
   });
+  if (tomado.count === 0) return null; // otro llegó antes
+
+  const updated = await prisma.errand.findUnique({ where: { id: errandId } });
+  if (!updated) return null;
 
   // Marca al conductor en viaje para que el matching geoespacial no le ofrezca
   // otro servicio mientras hace el mandado (se libera al entregar/cancelar).

@@ -624,8 +624,12 @@ export async function acceptClientOrder(
     select: { operatorId: true },
   });
 
-  const updated = await prisma.order.update({
-    where: { id: orderId },
+  // Toma ATÓMICA: el pedido tiene que seguir en PREPARING y SIN repartidor. Dos
+  // que aceptan a la vez pasaban los dos el `if` de arriba y el segundo pisaba
+  // la asignación del primero: dos repartidores camino del mismo restaurante y
+  // solo uno con el pedido de verdad.
+  const tomado = await prisma.order.updateMany({
+    where: { id: orderId, status: 'PREPARING', driverId: null },
     data: {
       status: 'DRIVER_TO_PICKUP',
       driverId,
@@ -633,8 +637,14 @@ export async function acceptClientOrder(
       driverPhone,
       ...(d?.operatorId ? { operatorId: d.operatorId } : {}),
     },
+  });
+  if (tomado.count === 0) return null; // otro llegó antes
+
+  const updated = await prisma.order.findUnique({
+    where: { id: orderId },
     include: { lines: true, business: { select: { name: true } } },
   });
+  if (!updated) return null;
 
   // El repartidor queda ocupado para el matching mientras entrega.
   await prisma.driver
