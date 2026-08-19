@@ -114,7 +114,6 @@ flutter:
     - assets/icons/
     - assets/sounds/
     - assets/fonts/
-    - assets/vehicles/
 
   fonts:
     - family: Inter

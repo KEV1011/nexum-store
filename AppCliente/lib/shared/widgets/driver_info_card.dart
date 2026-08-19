@@ -76,6 +76,7 @@ class DriverInfoCard extends StatelessWidget {
     this.vehiclePhotoUrl,
     this.vehicleType,
     this.fallbackGlyph = VehicleGlyphKind.car,
+    this.esEntrega = false,
     this.subtitle,
     this.actions = const [],
     this.palette,
@@ -102,6 +103,10 @@ class DriverInfoCard extends StatelessWidget {
   /// cuando no hay foto del vehículo.
   final String? vehicleType;
   final VehicleGlyphKind fallbackGlyph;
+
+  /// El servicio es un pedido o un mandado. Hace que una moto se dibuje como
+  /// moto de reparto (la del cajón), que es lo que la persona espera ver.
+  final bool esEntrega;
 
   /// Texto libre bajo el nombre cuando no hay verificación ni antigüedad
   /// (p. ej. "Repartidor asignado").
@@ -190,6 +195,7 @@ class DriverInfoCard extends StatelessWidget {
               photoUrl: vehiclePhotoUrl,
               vehicleType: vehicleType,
               fallbackGlyph: fallbackGlyph,
+              esEntrega: esEntrega,
               palette: p,
             ),
           ],
@@ -307,6 +313,7 @@ class VehicleRow extends StatelessWidget {
     this.photoUrl,
     this.vehicleType,
     this.fallbackGlyph = VehicleGlyphKind.car,
+    this.esEntrega = false,
     this.palette,
   });
 
@@ -316,6 +323,10 @@ class VehicleRow extends StatelessWidget {
   final String? photoUrl;
   final String? vehicleType;
   final VehicleGlyphKind fallbackGlyph;
+
+  /// El servicio es un pedido o un mandado. Hace que una moto se dibuje como
+  /// moto de reparto (la del cajón), que es lo que la persona espera ver.
+  final bool esEntrega;
 
   @override
   Widget build(BuildContext context) {
@@ -369,7 +380,8 @@ class VehicleRow extends StatelessWidget {
   Widget _dibujo(DriverCardPalette p) => Center(
         child: Icon(
           vehicleGlyphIcon(
-            vehicleGlyphKindFor(vehicleType, fallback: fallbackGlyph),
+            vehicleGlyphKindFor(vehicleType,
+                fallback: fallbackGlyph, entrega: esEntrega),
           ),
           size: 26,
           color: p.textDim,

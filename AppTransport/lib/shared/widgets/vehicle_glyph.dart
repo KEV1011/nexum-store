@@ -1,11 +1,36 @@
 import 'package:flutter/material.dart';
 
 /// Tipo de vehículo para el marcador del mapa.
-enum VehicleGlyphKind { car, moto, truck }
+///
+/// Son cinco y no tres porque el backend YA distingue seis tipos de vehículo
+/// (PARTICULAR, TAXI, MOTO, TURBO, CAMION, MULA) y aquí se aplastaban en
+/// carro/moto/camión: un taxi salía con el mismo icono que un particular. No
+/// nos faltaban iconos — tirábamos el detalle que ya teníamos.
+///
+/// TURBO, CAMION y MULA sí comparten glifo a propósito: Material Icons no tiene
+/// tres camiones que se distingan de un vistazo a 22 px, y tres iconos que se
+/// ven iguales no informan de nada; solo dan la falsa impresión de que sí.
+enum VehicleGlyphKind {
+  /// Carro particular.
+  car,
+
+  /// Taxi (el del cartel en el techo).
+  taxi,
+
+  /// Moto de pasajeros.
+  moto,
+
+  /// Moto de reparto: la del cajón detrás. Es el glifo de pedidos y mandados,
+  /// para que quien espera comida no vea el mismo icono que quien espera una
+  /// carrera.
+  delivery,
+
+  /// Turbo, camión o mula.
+  truck,
+}
 
 /// Marcador de vehículo estilo Google Maps: chip circular blanco con el ícono
-/// oficial de Google (Material Icons: directions_car / two_wheeler /
-/// local_shipping) que se desliza por la ruta A→B. Los íconos miran a la
+/// oficial de Google (Material Icons) que se desliza por la ruta A→B. Los íconos miran a la
 /// DERECHA y se voltean automáticamente cuando el conductor va hacia el oeste,
 /// para que el vehículo siempre "mire" hacia donde avanza.
 class VehicleGlyph extends StatelessWidget {
@@ -34,11 +59,7 @@ class VehicleGlyph extends StatelessWidget {
   static const double markerHeight = 52;
 
   /// Ícono OFICIAL de Google (Material Icons) según el tipo de vehículo.
-  IconData get _icon => switch (kind) {
-        VehicleGlyphKind.car => Icons.directions_car,
-        VehicleGlyphKind.moto => Icons.two_wheeler,
-        VehicleGlyphKind.truck => Icons.local_shipping,
-      };
+  IconData get _icon => vehicleGlyphIcon(kind);
 
   @override
   Widget build(BuildContext context) {
@@ -100,24 +121,39 @@ class VehicleGlyph extends StatelessWidget {
   }
 }
 
+/// Ícono de Material Icons (Apache 2.0, de Google y libre) para cada tipo.
+///
+/// Los vehículos que dibuja Google Maps en su navegación NO se pueden usar:
+/// son contenido de Google Maps y sus términos prohíben reutilizarlo fuera de
+/// un mapa suyo. Material Icons sí es de Google y sí es libre.
+IconData vehicleGlyphIcon(VehicleGlyphKind kind) => switch (kind) {
+      VehicleGlyphKind.car => Icons.directions_car,
+      VehicleGlyphKind.taxi => Icons.local_taxi,
+      VehicleGlyphKind.moto => Icons.two_wheeler,
+      VehicleGlyphKind.delivery => Icons.delivery_dining,
+      VehicleGlyphKind.truck => Icons.local_shipping,
+    };
+
 /// Traduce el tipo REAL del vehículo del backend (PARTICULAR|TAXI|MOTO|TURBO|
 /// CAMION|MULA) al glifo del mapa. [fallback] cubre datos faltantes
 /// (histórico/APK viejo) — nunca rompe un mapa por dato faltante.
+///
+/// [entrega] marca que el servicio es un pedido o un mandado. Convierte la moto
+/// en moto de reparto: el dato del vehículo dice "MOTO" en los dos casos, así
+/// que sin esto el cajón de reparto no aparecería nunca. No toca los carros —
+/// un domicilio en carro sigue siendo un carro.
 VehicleGlyphKind vehicleGlyphKindFor(
   String? vehicleType, {
   VehicleGlyphKind fallback = VehicleGlyphKind.car,
+  bool entrega = false,
 }) {
-  switch (vehicleType?.toUpperCase()) {
-    case 'MOTO':
-      return VehicleGlyphKind.moto;
-    case 'TURBO':
-    case 'CAMION':
-    case 'MULA':
-      return VehicleGlyphKind.truck;
-    case 'PARTICULAR':
-    case 'TAXI':
-      return VehicleGlyphKind.car;
-    default:
-      return fallback;
-  }
+  final tipo = switch (vehicleType?.toUpperCase()) {
+    'MOTO' => VehicleGlyphKind.moto,
+    'TURBO' || 'CAMION' || 'MULA' => VehicleGlyphKind.truck,
+    'TAXI' => VehicleGlyphKind.taxi,
+    'PARTICULAR' => VehicleGlyphKind.car,
+    _ => fallback,
+  };
+  if (entrega && tipo == VehicleGlyphKind.moto) return VehicleGlyphKind.delivery;
+  return tipo;
 }

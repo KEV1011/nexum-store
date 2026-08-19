@@ -461,7 +461,11 @@ class _MessengerCard extends StatelessWidget {
       plate: ficha?.plate,
       vehiclePhotoUrl: ficha?.vehiclePhotoUrl,
       vehicleType: ficha?.vehicleType,
-      fallbackGlyph: VehicleGlyphKind.moto,
+      // Un domicilio suele ir en moto: es el respaldo razonable cuando el
+      // vehículo asignado no llegó. `esEntrega` hace que, venga o no el
+      // dato, una moto se dibuje con el cajón de reparto.
+      fallbackGlyph: VehicleGlyphKind.delivery,
+      esEntrega: true,
       actions: [
         // Antes: un icono de teléfono con `onTap: () {}` que no llamaba a
         // nadie. El número real no se expone, así que el botón explica el

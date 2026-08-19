@@ -524,8 +524,10 @@ class _DriverCard extends StatelessWidget {
       vehiclePhotoUrl: ficha?.vehiclePhotoUrl,
       vehicleType: ficha?.vehicleType,
       // Un domicilio suele ir en moto: es el respaldo razonable cuando el
-      // vehículo asignado no llegó.
-      fallbackGlyph: VehicleGlyphKind.moto,
+      // vehículo asignado no llegó. `esEntrega` hace que, venga o no el
+      // dato, una moto se dibuje con el cajón de reparto.
+      fallbackGlyph: VehicleGlyphKind.delivery,
+      esEntrega: true,
       actions: [
         _CircleAction(
           icon: Icons.call_rounded,
@@ -874,7 +876,15 @@ class _TrackingMapState extends ConsumerState<_TrackingMap>
                             width: VehicleGlyph.markerWidth,
                             height: VehicleGlyph.markerHeight,
                             child: VehicleGlyph(
-                              kind: VehicleGlyphKind.moto,
+                              // El vehículo REAL del repartidor; si no llegó el
+                              // dato, la moto de reparto. Estaba fijo en moto,
+                              // así que un domicilio en carro se dibujaba como
+                              // moto.
+                              kind: vehicleGlyphKindFor(
+                                widget.order.driverCard?.vehicleType,
+                                fallback: VehicleGlyphKind.delivery,
+                                entrega: true,
+                              ),
                               headingDegrees: _rumbo(_desde ?? pos, _destinoTramo),
                             ),
                           ),
