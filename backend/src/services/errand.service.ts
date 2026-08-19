@@ -5,12 +5,13 @@ import {
   RequestClientErrandDTO,
   ErrandRequestDTO,
 } from '../types';
-import { DriverStatus } from '@prisma/client';
+import { DriverStatus, ErrandStatus as ErrandStatusDb } from '@prisma/client';
 import { fichaPorConductor, type DriverCardFields } from '../lib/driver-card';
 import { ERRAND_SERVICE_FEE, COMMISSION_RATE } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { cancelSearchRetry } from './matching.service';
 import { generatePin, assertCustodyPin } from '../lib/custody-pin';
+import { guardaNoTerminal, esEstadoTerminal } from '../lib/estado-terminal';
 import { maskPhone } from './safe-contact.service';
 import { sendPushToClient, sendPushToDriver } from './push.service';
 import { recordCompletedTrip } from './earnings.service';
@@ -190,7 +191,13 @@ export async function updateErrandStatus(
   if (!existing) return null;
   // Un mandado cerrado (entregado o cancelado) no admite más transiciones:
   // evita revivir un cancelado y que un doble "delivered" liquide dos veces.
-  if (existing.status === 'DELIVERED' || existing.status === 'CANCELLED') return null;
+  //
+  // Este `if` se queda para cortar pronto y no pedir el PIN de un mandado ya
+  // cerrado, pero NO es la guarda de verdad: entre leerlo aquí y escribirlo
+  // más abajo hay una ventana por la que pasan dos peticiones casi simultáneas
+  // —un doble toque basta— y las dos liquidarían. La guarda que manda va en el
+  // `where` del `updateMany`, donde decide la base de datos.
+  if (esEstadoTerminal('errand', existing.status)) return null;
 
   // Cadena de custodia: SOLO en la entrega. En un mandado el mandadero recoge
   // en un establecimiento cualquiera (farmacia, tienda, oficina) que NO está
@@ -201,8 +208,11 @@ export async function updateErrandStatus(
     assertCustodyPin(existing.deliveryPin, pin, 'entrega');
   }
 
-  const updated = await prisma.errand.update({
-    where: { id: errandId },
+  const avance = await prisma.errand.updateMany({
+    where: {
+      id: errandId,
+      status: guardaNoTerminal('errand') as { notIn: ErrandStatusDb[] },
+    },
     data: {
       status: STATUS_TO_PRISMA[status],
       ...(actualCost !== undefined && { actualCost }),
@@ -210,6 +220,10 @@ export async function updateErrandStatus(
       ...(status === 'delivered' && { deliveredAt: new Date(), deliveryPinAt: new Date() }),
     },
   });
+  if (avance.count === 0) return null;
+
+  const updated = await prisma.errand.findUnique({ where: { id: errandId } });
+  if (!updated) return null;
   const dto = _toDTO(updated, await fichaPorConductor(updated.driverId));
   _notify(errandId, dto);
 

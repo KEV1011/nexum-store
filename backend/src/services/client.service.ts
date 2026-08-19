@@ -11,6 +11,7 @@ import {
   RequestClientTripDTO,
   TransportServiceType,
 } from '../types';
+import { TripStatus, OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { startMatchingCycle, startOrderMatchingCycle, cancelSearchRetry } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
@@ -21,6 +22,7 @@ import { calcFare } from '../lib/fare';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
 import { resolverOpciones, sanearNota } from '../lib/order-options';
 import { exigirPuntoRecogida, exigirPuntoDestino } from '../lib/trip-coords';
+import { guardaNoTerminal } from '../lib/estado-terminal';
 import { recordCompletedTrip } from './earnings.service';
 import {
   fichaFromDriver, fichaPorConductor, fichasPorConductores,
@@ -762,8 +764,17 @@ export async function updateOrderStatusByDriver(
     delivered: 'DELIVERED',
   } as const;
 
-  const updated = await prisma.order.update({
-    where: { id: orderId },
+  // Transición ATÓMICA con guarda de estado, igual que el viaje urbano: sin
+  // ella un segundo "entregado" volvía a llamar a `recordCompletedTrip`, que
+  // incrementa el acumulado del día, y el repartidor cobraba dos veces el mismo
+  // domicilio. Se comprobaba el dueño (`driverId`) pero no si el pedido ya
+  // estaba cerrado.
+  const avance = await prisma.order.updateMany({
+    where: {
+      id: orderId,
+      driverId,
+      status: guardaNoTerminal('order') as { notIn: OrderStatus[] },
+    },
     data: {
       status: map[status],
       ...(status === 'in_transit'
@@ -773,8 +784,19 @@ export async function updateOrderStatusByDriver(
         ? { deliveredAt: new Date(), deliveryPinAt: new Date() }
         : {}),
     },
+  });
+
+  const updated = await prisma.order.findUnique({
+    where: { id: orderId },
     include: { lines: true, business: { select: { name: true } } },
   });
+  if (!updated) return null;
+
+  // Perdió la carrera o el pedido ya estaba cerrado: se devuelve el estado real
+  // sin liquidar de nuevo ni volver a avisar.
+  if (avance.count === 0) {
+    return _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
+  }
 
   if (status === 'delivered') {
     const commission = Math.round(updated.deliveryFee * COMMISSION_RATE);
@@ -914,8 +936,16 @@ export async function updateClientTripStatus(
     const minutes = trip?.etaMinutes ?? Math.max(1, Math.round(distanceKm * 3));
     const { grossFare, commission, netEarning } = calcFare(distanceKm, minutes);
 
-    const updated = await prisma.trip.update({
-      where: { id: tripId },
+    // Cierre ATÓMICO. La guarda va en el `where`, no en un `if` previo: entre
+    // leer el estado y escribirlo hay una ventana por la que pasan las dos
+    // peticiones, y como `recordCompletedTrip` INCREMENTA el acumulado del día
+    // (no puede ser idempotente), un segundo "completado" le paga al conductor
+    // el viaje dos veces. Un segundo mensaje es de lo más fácil que hay: un
+    // doble toque, una reconexión del WebSocket que reenvía, un reintento tras
+    // un `ack` perdido. Y al revés: sin esto, un "completado" que llega tarde
+    // revive un viaje que el pasajero ya canceló, y encima lo cobra.
+    const cierre = await prisma.trip.updateMany({
+      where: { id: tripId, status: guardaNoTerminal('trip') as { notIn: TripStatus[] } },
       data: {
         status: 'COMPLETED',
         completedAt: new Date(),
@@ -925,6 +955,15 @@ export async function updateClientTripStatus(
         commission,
       },
     });
+
+    const updated = await prisma.trip.findUnique({ where: { id: tripId } });
+    if (!updated) return null;
+
+    // Otro llegó antes (o el viaje ya estaba cerrado): se devuelve el estado
+    // real SIN volver a liquidar ni volver a tocar al conductor.
+    if (cierre.count === 0) {
+      return _toTripDTO(updated, updated.passengerId ?? '');
+    }
 
     if (trip?.driverId) {
       recordCompletedTrip(
@@ -947,12 +986,20 @@ export async function updateClientTripStatus(
     return dto;
   }
 
-  const updated = await prisma.trip.update({
-    where: { id: tripId },
+  // Mismo motivo que arriba, sin dinero de por medio pero igual de confuso: un
+  // `arriving` que llega tarde no debe resucitar un viaje ya cancelado y
+  // ponerle al pasajero "tu conductor está llegando" a un viaje que él anuló.
+  const avance = await prisma.trip.updateMany({
+    where: { id: tripId, status: guardaNoTerminal('trip') as { notIn: TripStatus[] } },
     data: { status: prismaStatus },
   });
+  const updated = await prisma.trip.findUnique({ where: { id: tripId } });
+  if (!updated) return null;
   const dto = _toTripDTO(updated, updated.passengerId ?? '');
-  _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+  // Si no cambió nada, tampoco se avisa: sería repetir el último estado.
+  if (avance.count > 0) {
+    _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+  }
   return dto;
 }
 
