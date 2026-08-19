@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,7 +35,8 @@ class TransportHomeScreen extends ConsumerStatefulWidget {
       _TransportHomeScreenState();
 }
 
-class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
+class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
+    with SingleTickerProviderStateMixin {
   final _mapController = MapController();
   /// Ubicación REAL del usuario. Hasta obtenerla el punto azul no se pinta:
   /// antes se dibujaba fijo en el centro de Pamplona, así que el usuario veía
@@ -43,10 +45,19 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   TransportServiceType _selected = TransportServiceType.transporte;
   Timer? _vehicleTimer;
 
-  // Posiciones REALES (anónimas) de los conductores en línea cercanos, con el
-  // TIPO de su vehículo activo (moto/carro/camión) para pintar el ícono real.
-  // Nada de vehículos simulados en el mapa.
-  List<({LatLng point, String? vehicleType})> _nearby = const [];
+  // Vehículos REALES (anónimos) conectados cerca, con el TIPO de su vehículo
+  // activo para pintar el ícono correcto. Nada simulado.
+  //
+  // Se guardan indexados por el id opaco que manda el backend para poder
+  // reconocer al mismo vehículo entre dos refrescos: sin eso, cada 15 segundos
+  // los carros DESAPARECÍAN y volvían a aparecer en su nueva posición, en vez
+  // de deslizarse como en el resto de plataformas.
+  Map<String, _VehiculoMapa> _nearby = const {};
+
+  /// Anima el deslizamiento entre la posición anterior y la nueva de cada
+  /// vehículo. Dura menos que el intervalo de refresco para que el movimiento
+  /// termine antes de que llegue el siguiente.
+  late final AnimationController _slide;
 
   // Tamaños del panel arrastrable (fracción de la pantalla). Colapsado deja
   // visible solo el asa + la barra de búsqueda para poder usar el mapa.
@@ -57,6 +68,12 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _slide = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..addListener(() {
+        if (mounted) setState(() {});
+      });
     _locateMe();
     _refreshNearby();
     _vehicleTimer = Timer.periodic(
@@ -89,36 +106,91 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
   }
 
   Future<void> _refreshNearby() async {
+    // ALREDEDOR DEL USUARIO, no del centro de Pamplona. Aquí iba `_pamplona`
+    // fijo, y como el backend solo devuelve conductores a menos de 5 km de ese
+    // punto, cualquiera que abriera la app fuera del casco urbano veía el mapa
+    // VACÍO por muchos conductores conectados que tuviera al lado. Hasta que el
+    // GPS responde se usa el centro, que es lo único que se sabe.
+    final centro = _myLocation ?? _pamplona;
     try {
       final res = await ref.read(apiClientProvider).get<Map<String, dynamic>>(
         '/client/drivers/nearby',
-        queryParameters: {
-          'lat': _pamplona.latitude,
-          'lng': _pamplona.longitude,
-        },
+        queryParameters: {'lat': centro.latitude, 'lng': centro.longitude},
       );
       final data = res.data?['data'] as List<dynamic>? ?? const [];
       if (!mounted) return;
-      setState(() {
-        _nearby = [
-          for (final e in data.cast<Map<String, dynamic>>())
-            (
-              point: LatLng(
-                (e['lat'] as num).toDouble(),
-                (e['lng'] as num).toDouble(),
-              ),
-              vehicleType: e['vehicleType'] as String?,
-            ),
-        ];
-      });
+
+      final previos = _nearby;
+      final nuevos = <String, _VehiculoMapa>{};
+      var i = 0;
+      for (final e in data.cast<Map<String, dynamic>>()) {
+        final destino = LatLng(
+          (e['lat'] as num).toDouble(),
+          (e['lng'] as num).toDouble(),
+        );
+        // El backend manda un id opaco que rota a diario; si un servidor viejo
+        // no lo trae, se cae al índice para no perder el mapa (sin animación,
+        // pero pintando).
+        final id = e['id'] as String? ?? 'i$i';
+        i++;
+        final antes = previos[id];
+        nuevos[id] = _VehiculoMapa(
+          // Se parte de donde SE VE ahora mismo, no de la última posición
+          // recibida: si llega un refresco a media animación, el vehículo
+          // continúa desde donde está en pantalla en vez de dar un salto atrás.
+          desde: antes?.posicionActual(_slide.value) ?? destino,
+          hasta: destino,
+          vehicleType: e['vehicleType'] as String?,
+          // Rumbo REAL, deducido de por dónde se movió. Antes todos los
+          // vehículos apuntaban a la derecha (90° fijos) fueran a donde fueran.
+          rumbo: antes == null
+              ? 90
+              : (_rumboEntre(antes.hasta, destino) ?? antes.rumbo),
+        );
+      }
+      setState(() => _nearby = nuevos);
+      _slide.forward(from: 0);
     } catch (_) {
       // Sin red: se conservan las últimas posiciones conocidas.
     }
   }
 
+  /// Cuántos vehículos hay cerca para cada servicio, según su tipo real.
+  ///
+  /// Una moto no sirve para un viaje en carro y un carro no es una moto; los
+  /// envíos los hace cualquiera, así que ahí entra la flota entera.
+  Map<TransportServiceType, int> _conteoPorServicio() {
+    var motos = 0;
+    var carros = 0;
+    for (final v in _nearby.values) {
+      if (v.vehicleType?.toUpperCase() == 'MOTO') {
+        motos++;
+      } else {
+        carros++;
+      }
+    }
+    return {
+      TransportServiceType.transporte: carros,
+      TransportServiceType.moto: motos,
+      TransportServiceType.envios: _nearby.length,
+    };
+  }
+
+  /// Rumbo en grados de A a B, o null si prácticamente no se movió (por debajo
+  /// de unos metros el GPS solo tiembla y girar el icono con eso lo haría
+  /// bailar en el sitio).
+  static double? _rumboEntre(LatLng a, LatLng b) {
+    final dLat = b.latitude - a.latitude;
+    final dLng = b.longitude - a.longitude;
+    if (dLat.abs() < 0.00005 && dLng.abs() < 0.00005) return null;
+    final rad = math.atan2(dLng, dLat);
+    return (rad * 180 / math.pi + 360) % 360;
+  }
+
   @override
   void dispose() {
     _vehicleTimer?.cancel();
+    _slide.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -158,9 +230,12 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
                     ),
                   // Conductores en línea reales cercanos (anónimos), cada uno
                   // con el ícono de SU vehículo real (moto/carro/camión).
-                  ..._nearby.map(
+                  ..._nearby.values.map(
                     (d) => Marker(
-                      point: d.point,
+                      // Posición interpolada: el vehículo se DESLIZA hasta su
+                      // nueva ubicación durante 1,4 s en vez de saltar de golpe
+                      // cuando llega el refresco.
+                      point: d.posicionActual(_slide.value),
                       width: VehicleGlyph.markerWidth,
                       height: VehicleGlyph.markerHeight,
                       child: VehicleGlyph(
@@ -170,7 +245,7 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
                               ? VehicleGlyphKind.moto
                               : VehicleGlyphKind.car,
                         ),
-                        headingDegrees: 90,
+                        headingDegrees: d.rumbo,
                         animate: false,
                       ),
                     ),
@@ -238,13 +313,11 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen> {
             builder: (context, scrollController) => _BottomPanel(
               scrollController: scrollController,
               selected: _selected,
-              // Conteo real de conductores en línea cercanos (misma flota
-              // para los tres servicios en Pamplona).
-              driverCounts: {
-                TransportServiceType.transporte: _nearby.length,
-                TransportServiceType.moto: _nearby.length,
-                TransportServiceType.envios: _nearby.length,
-              },
+              // Conteo real POR TIPO de vehículo. Antes los tres servicios
+              // enseñaban el mismo número —el total— aunque el dato del
+              // vehículo ya venía del backend: alguien que quería moto veía
+              // "8 cerca" contando siete carros.
+              driverCounts: _conteoPorServicio(),
               history: state.past.take(3).toList(),
               onServiceTap: (t) => setState(() => _selected = t),
             ),
@@ -1441,6 +1514,38 @@ class _FreightEntryCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// Un vehículo del mapa entre dos refrescos.
+///
+/// Guarda de dónde viene y a dónde va para poder deslizarlo, en vez de
+/// teletransportarlo cada 15 segundos como hacía antes.
+class _VehiculoMapa {
+  const _VehiculoMapa({
+    required this.desde,
+    required this.hasta,
+    required this.rumbo,
+    this.vehicleType,
+  });
+
+  final LatLng desde;
+  final LatLng hasta;
+
+  /// Grados, 0 = norte. Sale del movimiento real del vehículo.
+  final double rumbo;
+
+  /// PARTICULAR | TAXI | MOTO | TURBO | CAMION | MULA (del backend).
+  final String? vehicleType;
+
+  /// Dónde se pinta ahora, con [t] entre 0 y 1 del animador.
+  LatLng posicionActual(double t) {
+    if (t >= 1) return hasta;
+    return LatLng(
+      desde.latitude + (hasta.latitude - desde.latitude) * t,
+      desde.longitude + (hasta.longitude - desde.longitude) * t,
     );
   }
 }

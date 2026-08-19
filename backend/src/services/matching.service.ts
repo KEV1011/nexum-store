@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { DriverStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { TripRequestDTO } from '../types';
@@ -225,14 +226,29 @@ async function findNearestAvailableDrivers(
  * para pintar los vehículos cercanos en el mapa del home (solo coordenadas,
  * sin identidad del conductor).
  */
+/**
+ * Identificador OPACO y rotatorio de un conductor para el mapa del cliente.
+ *
+ * La app necesita reconocer al mismo vehículo entre dos refrescos para
+ * deslizarlo de una posición a la siguiente (si no, los carros saltan cada 15
+ * segundos) y para calcular hacia dónde mira. Mandar el id real diría quién es
+ * cada punto; este hash no dice nada por sí solo y además CAMBIA cada día, así
+ * que no se puede seguir a un vehículo concreto de una jornada a otra.
+ */
+function _idOpaco(driverId: string): string {
+  const dia = Math.floor(Date.now() / 86_400_000);
+  return createHash('sha256').update(`${driverId}:${dia}`).digest('hex').slice(0, 12);
+}
+
 export async function getNearbyDriverPositions(
   lat: number,
   lng: number,
-): Promise<Array<{ lat: number; lng: number; vehicleType: string }>> {
+): Promise<Array<{ id: string; lat: number; lng: number; vehicleType: string }>> {
   const rows = await prisma.$queryRaw<
-    Array<{ lat: number; lng: number; vehicleType: string | null }>
+    Array<{ id: string; lat: number; lng: number; vehicleType: string | null }>
   >`
-    SELECT ST_Y(d."geo"::geometry) AS lat,
+    SELECT d."id"                  AS id,
+           ST_Y(d."geo"::geometry) AS lat,
            ST_X(d."geo"::geometry) AS lng,
            v."type"::text          AS "vehicleType"
     FROM "drivers" d
@@ -243,7 +259,7 @@ export async function getNearbyDriverPositions(
     ) v ON true
     WHERE d."geo" IS NOT NULL
       AND d."status" = 'ONLINE'
-      AND d."isVerified" = true
+      ${pilotSkipVerification() ? Prisma.empty : Prisma.sql`AND d."isVerified" = true`}
       AND d."lastSeenAt" >= now() - ${GEO_FRESHNESS_S} * INTERVAL '1 second'
       AND ST_DWithin(
             d."geo",
@@ -252,6 +268,7 @@ export async function getNearbyDriverPositions(
           )
     LIMIT 25`;
   return rows.map((r) => ({
+    id: _idOpaco(r.id),
     lat: Number(r.lat),
     lng: Number(r.lng),
     vehicleType: r.vehicleType ?? 'PARTICULAR',
