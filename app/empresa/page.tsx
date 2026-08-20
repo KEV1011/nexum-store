@@ -40,6 +40,24 @@ interface OperatorInfo {
   isVerified: boolean
 }
 
+// Cuánto vale una posición para darla por "donde está ahora".
+//
+// El mapa se anuncia como EN VIVO y se refresca cada 10 s, así que pintar la
+// última coordenada conocida sin mirar su fecha convierte el rótulo en mentira:
+// un conductor que no trabaja desde hace un mes aparecía como un punto más, y
+// quien mira la torre no tiene forma de distinguirlo del que está en la calle
+// ahora mismo. Diez minutos y no los 2 del despacho: para SABER dónde está
+// alguien basta con eso, y un semáforo o un túnel no deben hacerlo desaparecer
+// y reaparecer del mapa.
+const POSICION_FRESCA_MS = 10 * 60_000
+
+function posicionReciente(lastSeenAt: string | null): boolean {
+  if (!lastSeenAt) return false
+  const t = Date.parse(lastSeenAt)
+  if (Number.isNaN(t)) return false
+  return Date.now() - t <= POSICION_FRESCA_MS
+}
+
 interface FleetPos {
   driverId: string
   driverName: string
@@ -372,7 +390,7 @@ function Dashboard({ token, operator, onLogout }: {
   const online = fleet.filter((f) => f.online).length
 
   const mapPoints: FleetMapPoint[] = fleet
-    .filter((f) => f.lat != null && f.lng != null)
+    .filter((f) => f.lat != null && f.lng != null && posicionReciente(f.lastSeenAt))
     .map((f) => ({
       id: f.driverId,
       name: f.driverName,
@@ -509,7 +527,14 @@ function Dashboard({ token, operator, onLogout }: {
               <section>
                 <h2 className="font-semibold text-slate-900 text-sm mb-3 flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-emerald-600" /> Mapa de la flota
-                  <span className="text-slate-400 font-normal">({fleet.length})</span>
+                  <span className="text-slate-400 font-normal">({mapPoints.length})</span>
+                  {fleet.length > mapPoints.length && (
+                    // Decir por qué faltan, en vez de dejar un número que no
+                    // cuadra con la lista de abajo.
+                    <span className="text-slate-400 font-normal text-xs">
+                      · {fleet.length - mapPoints.length} sin posición reciente
+                    </span>
+                  )}
                 </h2>
 
                 {mapPoints.length > 0 && (
