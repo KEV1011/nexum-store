@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/core/network/dio_client.dart';
@@ -38,12 +39,31 @@ Future<List<LatLng>?> fetchRoutePoints({
     );
     final data = res.data?['data'] as Map<String, dynamic>?;
     final encoded = data?['polyline'] as String? ?? '';
-    if (encoded.isEmpty) return null;
+    if (encoded.isEmpty) {
+      _porQueNoHayRuta('el servidor respondió sin trazado');
+      return null;
+    }
     final points = decodePolyline(encoded);
-    if (points.length < 2) return null;
+    if (points.length < 2) {
+      _porQueNoHayRuta('el trazado trae ${points.length} punto(s)');
+      return null;
+    }
     _cache[key] = points;
     return points;
-  } catch (_) {
-    return null; // sin llave/red: el mapa usa el trazado de siempre
+  } catch (e) {
+    // El motivo IMPORTA: sin él, "la ruta sale recta" solo se puede diagnosticar
+    // adivinando. Aquí había un `catch (_)` mudo y por eso no se sabía si
+    // faltaba la llave de Google, si el token no valía o si no había red.
+    _porQueNoHayRuta(e is DioException
+        ? 'HTTP ${e.response?.statusCode}: '
+            '${(e.response?.data as Map?)?['error'] ?? e.message}'
+        : e.toString());
+    return null;
   }
+}
+
+/// Deja constancia de por qué el mapa va a dibujar la recta.
+void _porQueNoHayRuta(String motivo) {
+  // ignore: avoid_print
+  print('[Ruta] sin trazado por calles → se dibuja la recta. Motivo: $motivo');
 }

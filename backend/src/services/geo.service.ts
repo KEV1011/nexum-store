@@ -123,22 +123,51 @@ export async function geoHealth(): Promise<GeoHealth> {
   });
 
   // Routes API: rutas por las calles.
+  //
+  // Pide EXACTAMENTE lo mismo que pide la app —incluida la polilínea— y
+  // comprueba que venga. Antes solo pedía `routes.distanceMeters`, así que
+  // podía responder "ok" mientras el trazado llegaba vacío: la app se quedaba
+  // dibujando la línea recta y el diagnóstico decía que todo estaba bien. Un
+  // diagnóstico que no prueba lo que se usa no sirve de nada.
   const routes = await _probeApi('routes', async () => {
     const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-        'X-Goog-FieldMask': 'routes.distanceMeters',
+        'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
       },
       body: JSON.stringify({
         origin: { location: { latLng: { latitude: DEFAULT_LAT, longitude: DEFAULT_LNG } } },
         destination: { location: { latLng: { latitude: DEFAULT_LAT + 0.02, longitude: DEFAULT_LNG } } },
         travelMode: 'DRIVE',
+        languageCode: 'es',
       }),
     });
     const json = (await res.json()) as Record<string, unknown>;
     const err = (json['error'] as { message?: string } | undefined)?.message;
+    if (res.ok && !err) {
+      const rutas = (json['routes'] ?? []) as Array<Record<string, unknown>>;
+      const linea = (rutas[0]?.['polyline'] as { encodedPolyline?: string } | undefined)
+        ?.encodedPolyline ?? '';
+      if (!linea) {
+        return {
+          error: 'responde sin trazado (polyline vacía): el mapa dibujará la línea recta',
+          httpOk: false,
+          httpStatus: res.status,
+        };
+      }
+      // Cuántos puntos trae: con dos o tres, la "ruta" es prácticamente una
+      // recta y algo va mal aunque técnicamente responda.
+      const puntos = linea.length;
+      if (puntos < 20) {
+        return {
+          error: `trazado sospechosamente corto (${puntos} caracteres)`,
+          httpOk: false,
+          httpStatus: res.status,
+        };
+      }
+    }
     return { error: err, httpOk: res.ok, httpStatus: res.status };
   });
 

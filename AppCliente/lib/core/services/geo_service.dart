@@ -143,7 +143,13 @@ class GeoService {
       final data = res.data?['data'] as Map<String, dynamic>?;
       if (data == null) return null;
       return RouteInfo.fromJson(data);
-    } catch (_) {
+    } catch (e) {
+      // El motivo IMPORTA: sin él, "la ruta sale recta" solo se puede
+      // diagnosticar adivinando. Aquí había un `catch (_)` mudo.
+      // ignore: avoid_print
+      print('[Ruta] sin trazado por calles → se dibuja la recta. Motivo: '
+          '${e is DioException ? 'HTTP ${e.response?.statusCode}: '
+              '${(e.response?.data as Map?)?['error'] ?? e.message}' : e}');
       return null;
     }
   }
