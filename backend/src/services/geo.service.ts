@@ -347,12 +347,32 @@ export interface RouteInfo {
   polyline: string;
 }
 
+/**
+ * Rutas ya calculadas.
+ *
+ * En una ciudad las mismas parejas origen→destino se repiten muchísimo (del
+ * centro al terminal, de la universidad a la plaza), y cada consulta a Google
+ * es un viaje de ida y vuelta más el salto del teléfono hasta aquí: por eso el
+ * trayecto tardaba en aparecer después de aceptar el viaje. Las calles no
+ * cambian en una hora.
+ *
+ * La clave redondea a ~11 m (4 decimales): dos peticiones desde puntos
+ * prácticamente iguales comparten la ruta en vez de pedir dos veces lo mismo.
+ */
+const _rutaCache = new LruCache<RouteInfo>(500, 60 * 60 * 1000);
+
 export async function directions(
   originLat: number,
   originLng: number,
   destLat: number,
   destLng: number,
 ): Promise<RouteInfo> {
+  const clave =
+    `${originLat.toFixed(4)},${originLng.toFixed(4)}` +
+    `->${destLat.toFixed(4)},${destLng.toFixed(4)}`;
+  const guardada = _rutaCache.get(clave);
+  if (guardada) return guardada;
+
   const json = await _googleFetch(
     'https://routes.googleapis.com/directions/v2:computeRoutes',
     {
@@ -378,11 +398,15 @@ export async function directions(
   const polyline =
     ((route['polyline'] as { encodedPolyline?: string } | undefined)?.encodedPolyline) ?? '';
 
-  return {
+  const ruta: RouteInfo = {
     distanceKm: Math.round((distanceMeters / 1000) * 10) / 10,
     durationMinutes: Math.max(1, Math.round(durationSeconds / 60)),
     polyline,
   };
+  // Solo se guarda si trae trazado: cachear una respuesta vacía dejaría el
+  // mapa dibujando la recta durante una hora aunque el problema fuera pasajero.
+  if (polyline) _rutaCache.set(clave, ruta);
+  return ruta;
 }
 
 // ─── Map Tiles API (imágenes REALES del mapa de Google) ───────────────────────

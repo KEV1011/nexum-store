@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:nexum_client/shared/widgets/vehicle_top_down.dart';
+
 /// Tipo de vehículo para el marcador del mapa.
 ///
 /// Son cinco y no tres porque el backend YA distingue seis tipos de vehículo
@@ -39,33 +41,48 @@ class VehicleGlyph extends StatelessWidget {
     required this.headingDegrees,
     this.pulse,
     this.animate = true,
-    this.color = const Color(0xFF202124), // gris 900 de Google
+    this.color,
     super.key,
   });
 
   final VehicleGlyphKind kind;
 
-  /// Rumbo en grados (0 = norte, 90 = este). Determina si se voltea.
+  /// Rumbo en grados (0 = norte, 90 = este). Gira el vehículo entero.
   final double headingDegrees;
 
   /// Pulso opcional para el halo "en vivo".
   final Animation<double>? pulse;
   final bool animate;
 
-  /// Color del ícono del vehículo (por defecto gris oscuro estilo Google Maps).
-  final Color color;
+  /// Anula el color de la carrocería. Null = el propio del tipo (taxi
+  /// amarillo, camión gris azulado…), que es lo que se quiere casi siempre.
+  final Color? color;
 
   static const double markerWidth = 66;
   static const double markerHeight = 52;
 
-  /// Ícono OFICIAL de Google (Material Icons) según el tipo de vehículo.
-  IconData get _icon => vehicleGlyphIcon(kind);
+  /// Traduce el tipo del marcador al del dibujo cenital.
+  VehicleTopDownKind get _dibujo => switch (kind) {
+        VehicleGlyphKind.car => VehicleTopDownKind.car,
+        VehicleGlyphKind.taxi => VehicleTopDownKind.taxi,
+        VehicleGlyphKind.moto => VehicleTopDownKind.moto,
+        VehicleGlyphKind.delivery => VehicleTopDownKind.delivery,
+        VehicleGlyphKind.truck => VehicleTopDownKind.truck,
+      };
+
+  /// Color de la carrocería según el tipo. Un taxi amarillo y una moto de
+  /// reparto en su color son reconocibles de un vistazo sobre el mapa.
+  Color get _carroceria => switch (kind) {
+        VehicleGlyphKind.taxi => const Color(0xFFF6C445),
+        VehicleGlyphKind.moto => const Color(0xFF37474F),
+        VehicleGlyphKind.delivery => const Color(0xFF37474F),
+        VehicleGlyphKind.truck => const Color(0xFF546E7A),
+        VehicleGlyphKind.car => const Color(0xFF2F3640),
+      };
+
 
   @override
   Widget build(BuildContext context) {
-    // Rumbo hacia el oeste (180°–360°) ⇒ mira a la izquierda.
-    final faceLeft = headingDegrees > 180;
-
     return SizedBox(
       width: markerWidth,
       height: markerHeight,
@@ -90,29 +107,25 @@ class VehicleGlyph extends StatelessWidget {
                 );
               },
             ),
-          // Chip circular blanco con el ícono de Google, estilo marcador de
-          // vehículo de Google Maps (sombra suave + borde tenue).
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.black.withValues(alpha: 0.06),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.28),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
+          // El vehículo VISTO DESDE ARRIBA, girado hacia donde avanza.
+          //
+          // Antes esto era un chip circular blanco con un icono de Material
+          // dentro —el carro de perfil— que se volteaba en horizontal según el
+          // rumbo. Se leía como "hay un carro aquí", pero no se parecía a lo
+          // que enseñan las demás plataformas sobre el mapa, y con solo dos
+          // orientaciones (izquierda/derecha) un vehículo que iba hacia el
+          // norte se dibujaba igual que uno que iba al sur.
+          Transform.rotate(
+            angle: radianesDeRumbo(headingDegrees),
+            child: SizedBox(
+              width: 30,
+              height: 44,
+              child: CustomPaint(
+                painter: VehicleTopDownPainter(
+                  kind: _dibujo,
+                  body: color ?? _carroceria,
                 ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: Transform.flip(
-              flipX: faceLeft,
-              child: Icon(_icon, size: 22, color: color),
+              ),
             ),
           ),
         ],
