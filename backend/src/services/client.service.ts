@@ -18,7 +18,9 @@ import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
 import { normalizeColombianPhone } from './auth.service';
-import { calcFare } from '../lib/fare';
+import { calcFare, liquidarViaje } from '../lib/fare';
+import { categoriaDeServicio } from '../lib/tarifa-categoria';
+import { precioServidor, medirTrayecto } from './trip-options.service';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
 import { resolverOpciones, sanearNota } from '../lib/order-options';
 import { exigirPuntoRecogida, exigirPuntoDestino } from '../lib/trip-coords';
@@ -871,7 +873,39 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
     dto.destLng,
   );
 
-  const { multiplier: surgeMultiplier } = await getSurgeMultiplier(originLat, originLng);
+  // EL PRECIO LO CALCULA EL SERVIDOR, SIEMPRE.
+  //
+  // Hasta aquí llegaban `estimatedFare`, `distanceKm` y `etaMinutes` desde el
+  // teléfono y se guardaban tal cual. Eso significaba dos cosas: que una
+  // petición modificada podía pedir una carrera de $1 —el conductor la habría
+  // visto y aceptado— y que el precio dependía de la fórmula que tuviera
+  // instalada esa app, no de la tarifa vigente. Ahora se recalcula aquí con la
+  // misma tabla que cotizó las opciones, y los números del cliente se
+  // descartan. Para un TAXI eso además garantiza que se cobre el decreto.
+  const categoria = categoriaDeServicio(serviceType);
+  let estimatedFare: number | undefined;
+  let distanceKm: number | undefined;
+  let etaMinutes: number | undefined;
+  let surgeMultiplier = 1;
+
+  if (categoria) {
+    const p = await precioServidor(categoria, originLat, originLng, destLat, destLng);
+    estimatedFare = p.fare;
+    distanceKm = p.distanceKm;
+    etaMinutes = p.durationMinutes;
+    surgeMultiplier = p.surge;
+  } else {
+    // ENVIOS: no es una categoría de pasajero, pero el trayecto tampoco se le
+    // cree al teléfono — se mide y se cobra con la fórmula genérica.
+    const t = await medirTrayecto(originLat, originLng, destLat, destLng);
+    const { multiplier } = await getSurgeMultiplier(originLat, originLng);
+    surgeMultiplier = multiplier;
+    distanceKm = t.distanceKm;
+    etaMinutes = t.durationMinutes;
+    estimatedFare = Math.round(
+      calcFare(t.distanceKm, t.durationMinutes).grossFare * multiplier,
+    );
+  }
 
   const trip = await prisma.trip.create({
     data: {
@@ -889,10 +923,10 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       destAddress: dto.destinationAddress,
       destLat,
       destLng,
-      estimatedFare: dto.estimatedFare,
+      estimatedFare,
       surgeMultiplier,
-      distanceKm: dto.distanceKm,
-      etaMinutes: dto.etaMinutes,
+      distanceKm,
+      etaMinutes,
       recipientName: dto.recipientName,
       recipientPhone: dto.recipientPhone,
       packageDescription: dto.packageDescription,
@@ -934,6 +968,7 @@ export async function updateClientTripStatus(
       select: {
         distanceKm: true, etaMinutes: true, driverId: true, originAddress: true,
         destAddress: true, finalFare: true, serviceType: true, deliveryPin: true,
+        surgeMultiplier: true,
       },
     });
     // Envío = mercancía que cambia de manos. Sin el PIN de quien recibe no se
@@ -944,7 +979,15 @@ export async function updateClientTripStatus(
     }
     const distanceKm = trip?.distanceKm ?? 0;
     const minutes = trip?.etaMinutes ?? Math.max(1, Math.round(distanceKm * 3));
-    const { grossFare, commission, netEarning } = calcFare(distanceKm, minutes);
+    // Se cobra con la MISMA tabla con la que se cotizó, incluido el
+    // multiplicador que se le mostró al pasajero. Antes aquí estaba la fórmula
+    // genérica: un taxi se cotizaba por decreto y se cobraba por otra cosa.
+    const { grossFare, commission, netEarning } = liquidarViaje(
+      trip?.serviceType,
+      distanceKm,
+      minutes,
+      trip?.surgeMultiplier ?? 1,
+    );
 
     // Cierre ATÓMICO. La guarda va en el `where`, no en un `if` previo: entre
     // leer el estado y escribirlo hay una ventana por la que pasan las dos

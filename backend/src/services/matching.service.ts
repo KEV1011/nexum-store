@@ -182,6 +182,60 @@ function vehicleTypesForService(serviceType: string | null | undefined): string[
   }
 }
 
+/**
+ * Disponibilidad por tipo de vehículo alrededor de un punto.
+ *
+ * La usa el selector de categorías del pasajero: para poder decir "Taxi · 3 min"
+ * hace falta saber cuántos taxis hay cerca y a qué distancia está el más
+ * próximo. Va en UNA consulta que agrupa por tipo en vez de una por categoría:
+ * esta pantalla se abre en cada solicitud y se refresca sola.
+ *
+ * Aplica EXACTAMENTE los mismos filtros que el despacho (en línea, verificado,
+ * documentos vigentes, acepta viajes, GPS fresco, radio). Si contara con otros,
+ * la app prometería un taxi que el matching luego no le ofrecería a nadie.
+ */
+export async function disponibilidadPorTipoVehiculo(
+  originLat: number,
+  originLng: number,
+  radiusMeters: number = SEARCH_RADIUS_M,
+  freshnessSeconds: number = GEO_FRESHNESS_S,
+): Promise<Map<string, { cuantos: number; distanciaMinM: number }>> {
+  const verifiedFilter = pilotSkipVerification()
+    ? Prisma.empty
+    : Prisma.sql`AND d."isVerified" = true`;
+  const complianceFilter = docKillSwitchEnforced()
+    ? Prisma.sql`AND d."complianceStatus"::text <> 'BLOCKED'`
+    : Prisma.empty;
+
+  const rows = await prisma.$queryRaw<Array<{ tipo: string; cuantos: bigint; min_m: number }>>`
+    SELECT v."type"::text AS tipo,
+           COUNT(DISTINCT d."id") AS cuantos,
+           MIN(ST_Distance(
+             d."geo",
+             ST_SetSRID(ST_MakePoint(${originLng}, ${originLat}), 4326)::geography
+           )) AS min_m
+    FROM "drivers" d
+    JOIN "vehicles" v ON v."driverId" = d."id" AND v."isActive" = true
+    WHERE d."geo" IS NOT NULL
+      AND d."status" = 'ONLINE'
+      AND d."acceptsTrips" = true
+      ${verifiedFilter}
+      ${complianceFilter}
+      AND d."lastSeenAt" >= now() - ${freshnessSeconds} * INTERVAL '1 second'
+      AND ST_DWithin(
+            d."geo",
+            ST_SetSRID(ST_MakePoint(${originLng}, ${originLat}), 4326)::geography,
+            ${radiusMeters}
+          )
+    GROUP BY v."type"`;
+
+  const mapa = new Map<string, { cuantos: number; distanciaMinM: number }>();
+  for (const r of rows) {
+    mapa.set(r.tipo, { cuantos: Number(r.cuantos), distanciaMinM: Number(r.min_m) });
+  }
+  return mapa;
+}
+
 async function findNearestAvailableDrivers(
   originLat: number,
   originLng: number,

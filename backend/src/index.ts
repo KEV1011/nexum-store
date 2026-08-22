@@ -21,6 +21,7 @@ import { prisma } from './lib/prisma';
 import { pagoEnLineaDisponible } from './services/payment.service';
 import { isSmsSenderConfigured } from './services/sms.service';
 import { otpMode, otpEnRiesgo, demoRevisionActiva } from './services/otp.service';
+import { modoTarifaTaxi } from './lib/tarifa-categoria';
 import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
@@ -142,6 +143,11 @@ app.get('/health', async (_req, res) => {
     // al redeploy y si los push llegan con la app cerrada.
     uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',
     push: process.env['FIREBASE_SERVICE_ACCOUNT'] ? 'firebase' : 'apagado',
+    // Tarifa del taxi: 'decreto-municipal' = se cargaron los valores oficiales
+    // (banderazo, $/km, carrera mínima) y el taxi cobra por ellos. 'generica' =
+    // aún se usa la fórmula de la plataforma. La distinción importa: al taxi,
+    // por ser tarifa regulada, nunca se le aplica multiplicador por demanda.
+    tarifaTaxi: modoTarifaTaxi(),
     // KYC: qué proveedor de identidad corre y si el gating bloquea el "conectarse".
     kyc: kycProviderName(),
     kycEnforce: kycEnforced(),

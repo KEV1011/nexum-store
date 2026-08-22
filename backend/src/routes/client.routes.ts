@@ -92,6 +92,7 @@ import {
   PromoError,
 } from '../services/promo.service';
 import { getFareEstimate } from '../services/surge.service';
+import { getTripOptions } from '../services/trip-options.service';
 import { getTripChat, postTripChatPhoto, TripChatError } from '../services/trip-chat.service';
 import {
   getClientKyc,
@@ -389,6 +390,37 @@ router.get('/drivers/nearby', clientAuthMiddleware, async (req, res) => {
     return;
   }
   res.json({ success: true, data: await getNearbyDriverPositions(lat, lng) });
+});
+
+// GET /client/trips/options?originLat&originLng&destLat&destLng
+//
+// Las categorías que puede pedir el pasajero, con su precio YA CALCULADO POR EL
+// SERVIDOR y con cuántos vehículos de cada una hay cerca. Sustituye a que la
+// app calculara el precio por su cuenta con tres fórmulas escritas en Dart.
+//
+// Se devuelven todas las categorías, incluidas las que ahora mismo no tienen
+// vehículo cerca (`disponible: false`), para que la app las muestre apagadas:
+// esconderlas haría que el selector cambiara de tamaño solo, y el pasajero no
+// entendería por qué a veces hay taxi y a veces no.
+router.get('/trips/options', clientAuthMiddleware, async (req, res) => {
+  const originLat = Number(req.query['originLat']);
+  const originLng = Number(req.query['originLng']);
+  const destLat = Number(req.query['destLat']);
+  const destLng = Number(req.query['destLng']);
+
+  if ([originLat, originLng, destLat, destLng].some((n) => !Number.isFinite(n))) {
+    res.status(400).json({
+      success: false,
+      error: 'Necesitamos el punto de recogida y el de destino para calcular el precio.',
+    });
+    return;
+  }
+  try {
+    res.json({ success: true, data: await getTripOptions(originLat, originLng, destLat, destLng) });
+  } catch (err) {
+    console.error('[Opciones] error calculando opciones de viaje:', err);
+    res.status(502).json({ success: false, error: 'No pudimos calcular las tarifas. Intenta de nuevo.' });
+  }
 });
 
 router.get('/trips/estimate', async (req, res) => {
