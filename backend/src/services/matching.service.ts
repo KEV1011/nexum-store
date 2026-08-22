@@ -9,6 +9,7 @@ import { evaluateGeoJump } from './fraud.service';
 import { onDriverHeartbeat } from './safety-alerts.service';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
+import { tarifaDe } from '../lib/tarifa-categoria';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -166,20 +167,22 @@ export function registerOnNoDrivers(fn: (tripId: string) => void): void {
 type ServiceKind = 'trip' | 'errand' | 'order';
 
 /**
- * Tipos de vehículo válidos para un servicio pedido. El pasajero que pide MOTO
- * solo debe recibir motos; quien pide carro (TAXI/PARTICULAR) solo carros —
- * antes se ofrecía "al azar". Envíos/mandados aceptan cualquier vehículo.
+ * Tipos de vehículo válidos para un servicio pedido.
+ *
+ * Sale de la MISMA tabla que cotiza las categorías (`lib/tarifa-categoria.ts`).
+ * Antes era un mapa aparte y TAXI y PARTICULAR compartían lista, así que un
+ * viaje pedido como taxi se le ofrecía también a un particular. Mientras la app
+ * no tenía botón de taxi eso no se notaba; en cuanto el pasajero elige "Taxi ·
+ * tarifa autorizada", darle un particular es incumplir lo que se le ofreció —
+ * y encima la pantalla decía "0 taxis cerca" mientras el despacho mandaba el
+ * viaje a otra cosa, porque cada uno miraba una lista distinta.
+ *
+ * Envíos y mandados siguen aceptando cualquier vehículo: ahí no hay categoría
+ * que prometer.
  */
 function vehicleTypesForService(serviceType: string | null | undefined): string[] | null {
-  switch (serviceType) {
-    case 'MOTO':
-      return ['MOTO'];
-    case 'TAXI':
-    case 'PARTICULAR':
-      return ['TAXI', 'PARTICULAR'];
-    default:
-      return null; // ENVIOS / MANDADO / otros → cualquier vehículo activo
-  }
+  const tarifa = tarifaDe(serviceType);
+  return tarifa ? [...tarifa.tiposVehiculo] : null;
 }
 
 /**
