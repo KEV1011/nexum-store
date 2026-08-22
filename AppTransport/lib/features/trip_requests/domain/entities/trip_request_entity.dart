@@ -90,6 +90,24 @@ class TripRequestEntity {
   /// Cualquier entrega (envío, pedido o mandado) → flujo con prueba de foto.
   bool get isDelivery => isEnvios || isOrder || isErrand;
 
+  /// Nombre del servicio ofrecido, para que el conductor sepa QUÉ está
+  /// aceptando. Null cuando la solicitud no lo trae (mandado o pedido, que ya
+  /// se anuncian por su cuenta, o una oferta de un backend anterior).
+  ///
+  /// Importa desde que el pasajero elige categoría: un taxi y un particular se
+  /// cobran con tarifas distintas —la del taxi la fija el decreto municipal—,
+  /// así que "viaje" a secas ya no dice lo suficiente.
+  String? get servicioEtiqueta => switch (serviceType) {
+        'TAXI' => 'Taxi',
+        'PARTICULAR' => 'Particular',
+        'MOTO' => 'Moto',
+        'ENVIOS' => 'Envío',
+        _ => null,
+      };
+
+  /// La tarifa de este servicio la fija una autoridad, no la plataforma.
+  bool get tarifaRegulada => serviceType == 'TAXI';
+
   TripRequestEntity copyWith({
     String? id,
     PassengerEntity? passenger,

@@ -2593,35 +2593,69 @@ class _TripRequestModal extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Work mode badge
+                        // Qué servicio se está ofreciendo. Antes aquí salía
+                        // el MODO DE TRABAJO del propio conductor ("Pasajeros"),
+                        // que no dice nada de la solicitud: desde que el
+                        // pasajero elige categoría, un taxi y un particular se
+                        // cobran distinto —el taxi por decreto municipal— y el
+                        // conductor tiene derecho a saber qué acepta. Si la
+                        // solicitud no trae servicio, se cae al modo de antes.
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppConstants.spacingS,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: workMode.containerColor,
-                              borderRadius: BorderRadius.circular(
-                                  AppConstants.radiusSmall),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(workMode.icon,
-                                    size: 12, color: workMode.color),
-                                const SizedBox(width: 4),
-                                Text(
-                                  workMode.displayName,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: workMode.color,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppConstants.spacingS,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: workMode.containerColor,
+                                  borderRadius: BorderRadius.circular(
+                                      AppConstants.radiusSmall),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(workMode.icon,
+                                        size: 12, color: workMode.color),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      trip.servicioEtiqueta ??
+                                          workMode.displayName,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: workMode.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (trip.tarifaRegulada) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppConstants.spacingS,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceVariantLight,
+                                    borderRadius: BorderRadius.circular(
+                                        AppConstants.radiusSmall),
+                                  ),
+                                  child: const Text(
+                                    'Tarifa autorizada',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textSecondary,
+                                    ),
                                   ),
                                 ),
                               ],
-                            ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: AppConstants.spacingM),
