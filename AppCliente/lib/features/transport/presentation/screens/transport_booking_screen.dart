@@ -1074,7 +1074,18 @@ class _CategoryCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(vehicleGlyphIcon(glyph), size: 30, color: acento),
+                // La ilustración del vehículo cuando la hay; el ícono de
+                // Material para los tipos que aún no la tienen.
+                if (vehicleGlyphAsset(glyph) != null)
+                  Image.asset(
+                    vehicleGlyphAsset(glyph)!,
+                    width: 54,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) =>
+                        Icon(vehicleGlyphIcon(glyph), size: 30, color: acento),
+                  )
+                else
+                  Icon(vehicleGlyphIcon(glyph), size: 30, color: acento),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

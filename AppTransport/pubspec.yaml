@@ -113,6 +113,7 @@ flutter:
   assets:
     - assets/icons/
     - assets/sounds/
+    - assets/vehicles/
     - assets/fonts/
 
   fonts:

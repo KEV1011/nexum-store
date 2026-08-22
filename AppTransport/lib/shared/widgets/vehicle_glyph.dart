@@ -61,6 +61,16 @@ class VehicleGlyph extends StatelessWidget {
   static const double markerWidth = 66;
   static const double markerHeight = 52;
 
+  /// Ilustración del vehículo, si existe una para este tipo.
+  String? get _ilustracion => vehicleGlyphAsset(kind);
+
+  /// La ilustración mira a la izquierda (hacia el oeste). Se voltea cuando el
+  /// vehículo avanza hacia el este, que es media rosa de los vientos.
+  bool get _vaHaciaElEste {
+    final r = headingDegrees % 360;
+    return r >= 0 && r < 180;
+  }
+
   /// Traduce el tipo del marcador al del dibujo cenital.
   VehicleTopDownKind get _dibujo => switch (kind) {
         VehicleGlyphKind.car => VehicleTopDownKind.car,
@@ -115,24 +125,59 @@ class VehicleGlyph extends StatelessWidget {
           // que enseñan las demás plataformas sobre el mapa, y con solo dos
           // orientaciones (izquierda/derecha) un vehículo que iba hacia el
           // norte se dibujaba igual que uno que iba al sur.
-          Transform.rotate(
-            angle: radianesDeRumbo(headingDegrees),
-            child: SizedBox(
-              width: 30,
-              height: 44,
-              child: CustomPaint(
-                painter: VehicleTopDownPainter(
-                  kind: _dibujo,
-                  body: color ?? _carroceria,
-                ),
+          if (_ilustracion != null)
+            // Ilustración real del vehículo. NO gira con el rumbo, al revés
+            // que el dibujo cenital: está en tres cuartos, y girar una vista en
+            // perspectiva deja el carro tumbado de lado en cuanto el viaje va
+            // hacia el norte o el sur. Lo que sí se hace es voltearla para que
+            // mire hacia donde avanza, que es lo único que esa vista puede
+            // representar con honestidad.
+            Transform.flip(
+              flipX: _vaHaciaElEste,
+              child: Image.asset(
+                _ilustracion!,
+                width: markerWidth,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
+                // Sin el archivo (o si no carga) vuelve el dibujo de siempre:
+                // el mapa no se queda nunca sin vehículo.
+                errorBuilder: (_, __, ___) => _cenital(),
               ),
-            ),
-          ),
+            )
+          else
+            _cenital(),
         ],
       ),
     );
   }
+
+  /// El vehículo dibujado en código, visto desde arriba y girado al rumbo.
+  Widget _cenital() {
+    return Transform.rotate(
+      angle: radianesDeRumbo(headingDegrees),
+      child: SizedBox(
+        width: 30,
+        height: 44,
+        child: CustomPaint(
+          painter: VehicleTopDownPainter(
+            kind: _dibujo,
+            body: color ?? _carroceria,
+          ),
+        ),
+      ),
+    );
+  }
 }
+
+/// Ilustración del vehículo, o null si ese tipo aún no tiene una.
+///
+/// Los tipos sin ilustración siguen con el dibujo cenital en el mapa y con el
+/// ícono de Material fuera de él. Se añaden de uno en uno según lleguen los
+/// archivos: media flota ilustrada y media no se vería peor que ninguna.
+String? vehicleGlyphAsset(VehicleGlyphKind kind) => switch (kind) {
+      VehicleGlyphKind.taxi => 'assets/vehicles/taxi.png',
+      _ => null,
+    };
 
 /// Ícono de Material Icons (Apache 2.0, de Google y libre) para cada tipo.
 ///
