@@ -50,6 +50,13 @@ class _TransportBookingScreenState
   bool _tecladoAbierto = false;
   bool _teniaTrayecto = false;
 
+  /// Con el trayecto puesto, los campos de dirección se pliegan y en su lugar
+  /// queda una píldora sobre el mapa. Es lo que hacen las demás plataformas y
+  /// no es capricho: dos campos de texto y el botón de "usar mi ubicación"
+  /// ocupan media hoja, que es justo el sitio donde tienen que verse las
+  /// categorías. Se vuelve a abrir tocando la píldora.
+  bool _editandoDirecciones = false;
+
   // Coordenadas resueltas por el autocompletado, por el mapa o por el GPS.
   // Null = solo hay texto escrito a mano, y con eso NO se puede pedir el
   // viaje: el emparejamiento busca conductores alrededor del punto de
@@ -216,6 +223,20 @@ class _TransportBookingScreenState
       body: Stack(
         children: [
           Positioned.fill(child: _mapaOPlaceholder(inicial * alto)),
+          // Píldora con el trayecto, como en las demás plataformas: con las
+          // direcciones ya puestas no hacen falta dos campos de texto ocupando
+          // media hoja. Tocarla los devuelve.
+          if (puntos != null && !_editandoDirecciones)
+            Positioned(
+              top: medios.padding.top + 8,
+              left: 64,
+              right: 12,
+              child: _PildoraTrayecto(
+                origen: _originCtrl.text.trim(),
+                destino: _destCtrl.text.trim(),
+                onTap: () => setState(() => _editandoDirecciones = true),
+              ),
+            ),
           // Botón de volver flotante en vez de una AppBar transparente: sobre
           // las teselas del mapa una barra sin fondo se lee mal, y con la hoja
           // casi entera se le metía por debajo.
@@ -271,18 +292,33 @@ class _TransportBookingScreenState
                         ),
                       ),
                     ),
-                    Text(
-                      'Solicitar ${widget.serviceType.label}',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: context.textPrimaryColor,
+                    Center(
+                      child: Text(
+                        puntos == null || _editandoDirecciones
+                            ? 'Solicitar ${widget.serviceType.label}'
+                            : 'Elige tu viaje',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: context.textPrimaryColor,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
-                    ..._camposDelViaje(),
-                    const SizedBox(height: 20),
-                    if (puntos != null)
+                    if (puntos == null || _editandoDirecciones) ...[
+                      ..._camposDelViaje(),
+                      if (puntos != null)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () =>
+                                setState(() => _editandoDirecciones = false),
+                            child: const Text('Listo'),
+                          ),
+                        ),
+                      const SizedBox(height: 20),
+                    ],
+                    if (puntos != null && !_editandoDirecciones)
                       _CategorySelector(
                         puntos: puntos,
                         seleccionada: _categoria,
@@ -1069,12 +1105,25 @@ class _CategoryCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _subtitulo(),
+                        _cuando(),
                         style: TextStyle(
                           fontSize: 12,
                           color: context.textSecondaryColor,
                         ),
                       ),
+                      // Para qué sirve la categoría. El dato lo manda el
+                      // servidor y no se estaba pintando: es lo que distingue
+                      // un taxi de un particular para quien no lo tiene claro.
+                      if (opcion.disponible && opcion.descripcion.isNotEmpty)
+                        Text(
+                          opcion.descripcion,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: context.textTertiaryColor,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -1114,12 +1163,21 @@ class _CategoryCard extends StatelessWidget {
     );
   }
 
-  String _subtitulo() {
+  /// Primera línea bajo el nombre: a qué hora te recogen y en cuántos minutos.
+  ///
+  /// La hora es la de AHORA más el ETA, calculada en el momento de pintar. No
+  /// es un dato inventado: es la misma cuenta que hace quien mira el reloj, y
+  /// sirve para decidir mucho mejor que un "5 min" suelto.
+  String _cuando() {
     if (!opcion.disponible) return 'Sin ${opcion.nombre.toLowerCase()} cerca ahora';
     final eta = opcion.etaMinutes;
     final cuantos = opcion.availableNearby;
     final cerca = cuantos == 1 ? '1 cerca' : '$cuantos cerca';
-    return eta != null ? '$eta min · $cerca' : cerca;
+    if (eta == null) return cerca;
+    final llegada = DateTime.now().add(Duration(minutes: eta));
+    final hh = llegada.hour.toString().padLeft(2, '0');
+    final mm = llegada.minute.toString().padLeft(2, '0');
+    return '$hh:$mm · $eta min · $cerca';
   }
 }
 
@@ -1140,6 +1198,69 @@ class _Etiqueta extends StatelessWidget {
       child: Text(
         texto,
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color),
+      ),
+    );
+  }
+}
+
+/// El trayecto resumido sobre el mapa: recogida en pequeño, destino en grande.
+class _PildoraTrayecto extends StatelessWidget {
+  const _PildoraTrayecto({
+    required this.origen,
+    required this.destino,
+    required this.onTap,
+  });
+
+  final String origen;
+  final String destino;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: context.surfaceColor,
+      borderRadius: BorderRadius.circular(24),
+      elevation: 3,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.circle, size: 8, color: context.textTertiaryColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      origen.isEmpty ? 'Tu ubicación' : origen,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 1),
+              Text(
+                destino,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -101,6 +101,9 @@ class _RoutePreviewMapState extends ConsumerState<RoutePreviewMap> {
     return d == null ? [_origen] : [_origen, d];
   }
 
+  /// El dedo movió el mapa: aparece el botón de reencuadrar.
+  bool _movido = false;
+
   /// Alto real del mapa, medido por el LayoutBuilder. Se recuerda porque el
   /// reencuadre manual ocurre fuera de él y también necesita acotar el margen.
   double _altoMapa = 0;
@@ -156,6 +159,38 @@ class _RoutePreviewMapState extends ConsumerState<RoutePreviewMap> {
   }
 
   Widget _construirMapa(List<LatLng> pts, LatLng? destino, double margenAbajo) {
+    return Stack(
+      children: [
+        Positioned.fill(child: _flutterMap(pts, destino, margenAbajo)),
+        // Reencuadrar el trayecto. Aparece solo cuando el dedo movió el mapa:
+        // si la cámara ya está donde debe, el botón no haría nada y solo
+        // taparía calles.
+        if (_movido)
+          Positioned(
+            right: 12,
+            top: MediaQuery.of(context).padding.top + 60,
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () {
+                  setState(() => _movido = false);
+                  _encuadrar();
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Icon(Icons.my_location_rounded, size: 20),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _flutterMap(List<LatLng> pts, LatLng? destino, double margenAbajo) {
     return FlutterMap(
       mapController: _mapa,
       options: MapOptions(
@@ -168,6 +203,15 @@ class _RoutePreviewMapState extends ConsumerState<RoutePreviewMap> {
                 maxZoom: 17,
               )
             : null,
+        // `hasGesture` distingue el dedo de la persona de los movimientos que
+        // hace la propia app al encuadrar.
+        onPositionChanged: (_, hasGesture) {
+          if (hasGesture && !_movido) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() => _movido = true);
+            });
+          }
+        },
         interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.pinchZoom |
               InteractiveFlag.drag |
