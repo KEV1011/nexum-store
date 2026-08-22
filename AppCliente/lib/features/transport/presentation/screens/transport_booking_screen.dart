@@ -422,6 +422,10 @@ class _TransportBookingScreenState
       destLat: _destLat,
       destLng: _destLng,
       bottomPadding: tapadoPorLaHoja,
+      // Los minutos que se pintan sobre el mapa son los de la categoría
+      // elegida: cambiar de taxi a moto cambia la espera, y el mapa tiene que
+      // decir lo mismo que la fila seleccionada.
+      etaMinutos: _categoria?.etaMinutes,
     );
   }
 

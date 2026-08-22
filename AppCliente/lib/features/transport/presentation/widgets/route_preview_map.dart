@@ -23,6 +23,7 @@ class RoutePreviewMap extends ConsumerStatefulWidget {
     this.destLat,
     this.destLng,
     this.bottomPadding = 0,
+    this.etaMinutos,
     super.key,
   });
 
@@ -30,6 +31,12 @@ class RoutePreviewMap extends ConsumerStatefulWidget {
   final double originLng;
   final double? destLat;
   final double? destLng;
+
+  /// Minutos hasta la recogida de la categoría elegida. Se pinta como etiqueta
+  /// sobre el punto de recogida, igual que en las demás plataformas. Null =
+  /// aún no hay categoría elegida o no hay vehículo cerca: entonces no se pinta
+  /// nada, que es mejor que una etiqueta con un número de relleno.
+  final int? etaMinutos;
 
   /// Alto que tapa la hoja arrastrable. El encuadre deja ese hueco libre para
   /// que el trayecto no quede escondido detrás del panel.
@@ -243,6 +250,16 @@ class _RoutePreviewMapState extends ConsumerState<RoutePreviewMap> {
               height: 22,
               child: const _PuntoRecogida(),
             ),
+            if (widget.etaMinutos != null)
+              Marker(
+                point: _origen,
+                width: 78,
+                height: 30,
+                // Anclada por abajo: la etiqueta queda ENCIMA del punto, sin
+                // taparlo.
+                alignment: Alignment.topCenter,
+                child: _EtiquetaEta(minutos: widget.etaMinutos!),
+              ),
             if (destino != null)
               Marker(
                 point: destino,
@@ -257,6 +274,36 @@ class _RoutePreviewMapState extends ConsumerState<RoutePreviewMap> {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// "5 min" sobre el punto de recogida.
+class _EtiquetaEta extends StatelessWidget {
+  const _EtiquetaEta({required this.minutos});
+
+  final int minutos;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.textPrimary,
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 5)],
+        ),
+        child: Text(
+          '$minutos min',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
     );
   }
 }
