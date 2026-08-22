@@ -10,13 +10,15 @@ import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
-import 'package:nexum_client/core/services/geo_service.dart';
+import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/addresses_provider.dart';
 import 'package:nexum_client/features/payments/presentation/payment_checkout.dart';
+import 'package:nexum_client/features/payments/presentation/providers/payment_method_provider.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:nexum_client/features/transport/presentation/widgets/route_preview_map.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 
@@ -40,6 +42,13 @@ class _TransportBookingScreenState
   final _recipientPhoneCtrl = TextEditingController();
   final _packageCtrl = TextEditingController();
   bool _loading = false;
+
+  /// Manda la hoja arriba cuando sale el teclado. Sin esto, el campo de
+  /// dirección queda debajo del teclado y se escribe a ciegas — que es
+  /// exactamente lo que ya pasó una vez en la pantalla de pedidos.
+  final _hojaCtrl = DraggableScrollableController();
+  bool _tecladoAbierto = false;
+  bool _teniaTrayecto = false;
 
   // Coordenadas resueltas por el autocompletado, por el mapa o por el GPS.
   // Null = solo hay texto escrito a mano, y con eso NO se puede pedir el
@@ -146,194 +155,371 @@ class _TransportBookingScreenState
     _recipientNameCtrl.dispose();
     _recipientPhoneCtrl.dispose();
     _packageCtrl.dispose();
+    _hojaCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final color = _colorOf(widget.serviceType);
-
     // Misma clave que el selector ⇒ misma respuesta cacheada, no una segunda
     // consulta. Solo se mira si quedó alguna categoría con vehículo cerca.
     final puntos = _puntos;
     final cotizacion = (_eligeCategoria && puntos != null)
         ? ref.watch(tripOptionsProvider(puntos)).valueOrNull
         : null;
-    final sinVehiculos =
-        cotizacion != null && cotizacion.disponibles.isEmpty;
+    final sinVehiculos = cotizacion != null && cotizacion.disponibles.isEmpty;
+
+    // Los ENVÍOS conservan el formulario: llevan datos del destinatario y no
+    // eligen categoría, así que un mapa protagonista solo les quitaría sitio.
+    if (!_eligeCategoria) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Solicitar ${widget.serviceType.label}'),
+          leading: const BackButton(),
+        ),
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _ServiceHeader(serviceType: widget.serviceType),
+              const SizedBox(height: 24),
+              ..._camposDelViaje(),
+              const SizedBox(height: 24),
+              _FareEstimateCard(serviceType: widget.serviceType),
+              if (_faltaPunto != null) ...[
+                const SizedBox(height: 16),
+                _AvisoPunto(texto: _faltaPunto!),
+              ],
+              const SizedBox(height: 28),
+              _botonPedir(sinVehiculos: sinVehiculos),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Viaje de pasajero: el mapa manda y las opciones viven en una hoja
+    // arrastrable encima, como en el resto de plataformas. La hoja arranca casi
+    // entera mientras faltan puntos —ahí lo único que hay que hacer es
+    // escribir— y se recoge cuando ya hay trayecto que mirar.
+    final hayTrayecto = puntos != null;
+    final inicial = hayTrayecto ? 0.56 : 0.9;
+    final medios = MediaQuery.of(context);
+    final alto = medios.size.height;
+    final tecladoAlto = medios.viewInsets.bottom;
+    _sincronizarConTeclado(tecladoAlto > 0);
+    _sincronizarConTrayecto(hayTrayecto);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Solicitar ${widget.serviceType.label}'),
-        leading: const BackButton(),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _ServiceHeader(serviceType: widget.serviceType),
-            const SizedBox(height: 24),
-            _SectionTitle(title: 'Origen y destino'),
-            const SizedBox(height: 12),
-            AddressAutocompleteField(
-              controller: _originCtrl,
-              label: 'Origen',
-              hint: '¿Desde dónde saldrás?',
-              requiredField: true,
-              // `setState`: el aviso de abajo y el botón dependen de que haya
-              // punto resuelto, así que la pantalla tiene que repintarse.
-              onPlaceSelected: (place) => setState(() {
-                _originLat = place.lat;
-                _originLng = place.lng;
-              }),
-              onManualEdit: () {
-                if (_originLat == null) return;
-                setState(() {
-                  _originLat = null;
-                  _originLng = null;
-                });
-              },
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.bookmarks_outlined, size: 20),
-                tooltip: 'Mis direcciones',
-                onPressed: () => _pickAddress(_originCtrl),
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => unawaited(_useCurrentLocation()),
-                icon: const Icon(Icons.my_location_rounded, size: 18),
-                label: const Text('Usar mi ubicación actual'),
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  visualDensity: VisualDensity.compact,
+      body: Stack(
+        children: [
+          Positioned.fill(child: _mapaOPlaceholder(inicial * alto)),
+          // Botón de volver flotante en vez de una AppBar transparente: sobre
+          // las teselas del mapa una barra sin fondo se lee mal, y con la hoja
+          // casi entera se le metía por debajo.
+          Positioned(
+            top: medios.padding.top + 8,
+            left: 12,
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => safeBack(context),
+                child: const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Icon(Icons.arrow_back_rounded, size: 20),
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  const SizedBox(width: 16),
-                  Icon(Icons.more_vert_rounded,
-                      color: context.textTertiaryColor, size: 20),
+          ),
+          DraggableScrollableSheet(
+            controller: _hojaCtrl,
+            initialChildSize: inicial,
+            minChildSize: 0.28,
+            maxChildSize: 0.92,
+            snap: true,
+            snapSizes: const [0.28, 0.56, 0.92],
+            builder: (context, scrollController) => Container(
+              decoration: BoxDecoration(
+                color: context.surfaceColor,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(22)),
+                boxShadow: const [
+                  BoxShadow(color: AppColors.shadow, blurRadius: 18),
                 ],
               ),
-            ),
-            AddressAutocompleteField(
-              controller: _destCtrl,
-              label: 'Destino',
-              hint: '¿A dónde vas?',
-              requiredField: true,
-              onPlaceSelected: (place) => setState(() {
-                _destLat = place.lat;
-                _destLng = place.lng;
-              }),
-              onManualEdit: () {
-                if (_destLat == null) return;
-                setState(() {
-                  _destLat = null;
-                  _destLng = null;
-                });
-              },
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.bookmarks_outlined, size: 20),
-                tooltip: 'Mis direcciones',
-                onPressed: () => _pickAddress(_destCtrl),
-              ),
-            ),
-            if (_isEnvios) ...[
-              const SizedBox(height: 24),
-              _SectionTitle(title: 'Datos del destinatario'),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _recipientNameCtrl,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre del destinatario',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _recipientPhoneCtrl,
-                keyboardType: TextInputType.phone,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(
-                  labelText: 'Teléfono del destinatario',
-                  prefixIcon: Icon(Icons.phone_outlined),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _packageCtrl,
-                maxLines: 2,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Descripción del paquete (opcional)',
-                  prefixIcon: Icon(Icons.inventory_2_outlined),
-                  alignLabelWithHint: true,
-                ),
-              ),
-            ],
-            const SizedBox(height: 24),
-            // Con el trayecto resuelto, el selector de categorías con los
-            // precios del servidor; si aún falta un punto, no hay nada que
-            // cotizar y se mantiene la tarjeta de siempre.
-            if (_eligeCategoria && puntos != null)
-              _CategorySelector(
-                puntos: puntos,
-                seleccionada: _categoria,
-                entroPor: widget.serviceType,
-                onSeleccionar: (o) {
-                  if (!mounted) return;
-                  setState(() => _categoria = o);
-                },
-              )
-            else
-              _FareEstimateCard(serviceType: widget.serviceType),
-            if (_faltaPunto != null) ...[
-              const SizedBox(height: 16),
-              _AvisoPunto(texto: _faltaPunto!),
-            ],
-            const SizedBox(height: 28),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: color,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: (_loading || _faltaPunto != null || _faltaCategoria)
-                  ? null
-                  : _submit,
-              child: _loading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text(
-                      _textoBotonCon(sinVehiculos: sinVehiculos),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  controller: scrollController,
+                  // El hueco del teclado se suma abajo: si no, el último campo
+                  // queda justo debajo de él y no hay forma de verlo.
+                  padding: EdgeInsets.fromLTRB(16, 10, 16, 24 + tecladoAlto),
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(
+                          color: context.outlineColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
+                    Text(
+                      'Solicitar ${widget.serviceType.label}',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    ..._camposDelViaje(),
+                    const SizedBox(height: 20),
+                    if (puntos != null)
+                      _CategorySelector(
+                        puntos: puntos,
+                        seleccionada: _categoria,
+                        entroPor: widget.serviceType,
+                        onSeleccionar: (o) {
+                          if (!mounted) return;
+                          setState(() => _categoria = o);
+                        },
+                      ),
+                    if (_faltaPunto != null) ...[
+                      const SizedBox(height: 8),
+                      _AvisoPunto(texto: _faltaPunto!),
+                    ],
+                    const SizedBox(height: 16),
+                    // El método de pago se elige AQUÍ, antes de confirmar.
+                    // Antes se preguntaba después de crear el viaje: quien
+                    // cerraba esa hoja se quedaba con el viaje ya buscando
+                    // conductor y sin haber decidido cómo iba a pagar.
+                    const _FilaMetodoPago(),
+                    const SizedBox(height: 14),
+                    _botonPedir(sinVehiculos: sinVehiculos),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Recoge la hoja en cuanto hay trayecto que mirar.
+  ///
+  /// Hace falta hacerlo a mano: `initialChildSize` solo se lee la primera vez
+  /// que se construye la hoja, así que cambiar ese número en los siguientes
+  /// repintados no la mueve — la hoja se habría quedado tapando el mapa justo
+  /// cuando por fin había algo que enseñar.
+  void _sincronizarConTrayecto(bool hayTrayecto) {
+    if (hayTrayecto == _teniaTrayecto) return;
+    _teniaTrayecto = hayTrayecto;
+    if (_tecladoAbierto) return; // el teclado manda mientras esté abierto
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_hojaCtrl.isAttached) return;
+      _hojaCtrl.animateTo(
+        hayTrayecto ? 0.56 : 0.9,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  /// Sube la hoja al abrirse el teclado y la devuelve a su sitio al cerrarse.
+  /// Se hace después del frame: mover la hoja mientras se construye la pantalla
+  /// es pelearse con el propio layout.
+  void _sincronizarConTeclado(bool abierto) {
+    if (abierto == _tecladoAbierto) return;
+    _tecladoAbierto = abierto;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_hojaCtrl.isAttached) return;
+      final destino = abierto ? 0.92 : (_puntos != null ? 0.56 : 0.9);
+      _hojaCtrl.animateTo(
+        destino,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  /// El mapa del trayecto, o una superficie neutra mientras no haya un punto
+  /// de recogida. No se centra en ninguna parte "por defecto": un mapa apuntando
+  /// a un sitio que nadie eligió es peor que no tener mapa.
+  Widget _mapaOPlaceholder(double tapadoPorLaHoja) {
+    if (_originLat == null || _originLng == null) {
+      return ColoredBox(
+        color: context.surfaceVariantColor,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.map_outlined, size: 34, color: context.textTertiaryColor),
+                const SizedBox(height: 8),
+                Text(
+                  'Marca el punto de recogida y verás el trayecto aquí',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return RoutePreviewMap(
+      // La clave fuerza a rehacer el mapa si cambia el trayecto: así el
+      // encuadre se recalcula en vez de quedarse en el viaje anterior.
+      key: ValueKey('$_originLat,$_originLng>$_destLat,$_destLng'),
+      originLat: _originLat!,
+      originLng: _originLng!,
+      destLat: _destLat,
+      destLng: _destLng,
+      bottomPadding: tapadoPorLaHoja,
+    );
+  }
+
+  /// Botón de confirmar. Vive aparte porque lo usan las dos disposiciones
+  /// (el formulario de envíos y la hoja del viaje de pasajero).
+  Widget _botonPedir({required bool sinVehiculos}) {
+    final color = _colorOf(widget.serviceType);
+    return FilledButton(
+      style: FilledButton.styleFrom(
+        backgroundColor: color,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      onPressed:
+          (_loading || _faltaPunto != null || _faltaCategoria) ? null : _submit,
+      child: _loading
+          ? const SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
+          : Text(
+              _textoBotonCon(sinVehiculos: sinVehiculos),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+    );
+  }
+
+  /// Origen, destino y —solo en envíos— los datos del destinatario.
+  List<Widget> _camposDelViaje() {
+    return [
+      AddressAutocompleteField(
+        controller: _originCtrl,
+        label: 'Origen',
+        hint: '¿Desde dónde saldrás?',
+        requiredField: true,
+        // `setState`: el mapa, el aviso y el botón dependen de que haya punto
+        // resuelto, así que la pantalla tiene que repintarse.
+        onPlaceSelected: (place) => setState(() {
+          _originLat = place.lat;
+          _originLng = place.lng;
+        }),
+        onManualEdit: () {
+          if (_originLat == null) return;
+          setState(() {
+            _originLat = null;
+            _originLng = null;
+          });
+        },
+        suffixIcon: IconButton(
+          icon: const Icon(Icons.bookmarks_outlined, size: 20),
+          tooltip: 'Mis direcciones',
+          onPressed: () => _pickAddress(_originCtrl),
+        ),
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () => unawaited(_useCurrentLocation()),
+          icon: const Icon(Icons.my_location_rounded, size: 18),
+          label: const Text('Usar mi ubicación actual'),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            const SizedBox(width: 16),
+            Icon(Icons.more_vert_rounded, color: context.textTertiaryColor, size: 20),
           ],
         ),
       ),
-    );
+      AddressAutocompleteField(
+        controller: _destCtrl,
+        label: 'Destino',
+        hint: '¿A dónde vas?',
+        requiredField: true,
+        onPlaceSelected: (place) => setState(() {
+          _destLat = place.lat;
+          _destLng = place.lng;
+        }),
+        onManualEdit: () {
+          if (_destLat == null) return;
+          setState(() {
+            _destLat = null;
+            _destLng = null;
+          });
+        },
+        suffixIcon: IconButton(
+          icon: const Icon(Icons.bookmarks_outlined, size: 20),
+          tooltip: 'Mis direcciones',
+          onPressed: () => _pickAddress(_destCtrl),
+        ),
+      ),
+      if (_isEnvios) ...[
+        const SizedBox(height: 24),
+        _SectionTitle(title: 'Datos del destinatario'),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _recipientNameCtrl,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Nombre del destinatario',
+            prefixIcon: Icon(Icons.person_outline_rounded),
+          ),
+          validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _recipientPhoneCtrl,
+          keyboardType: TextInputType.phone,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(
+            labelText: 'Teléfono del destinatario',
+            prefixIcon: Icon(Icons.phone_outlined),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _packageCtrl,
+          maxLines: 2,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Descripción del paquete (opcional)',
+            prefixIcon: Icon(Icons.inventory_2_outlined),
+            alignLabelWithHint: true,
+          ),
+        ),
+      ],
+    ];
   }
 
   Future<void> _pickAddress(TextEditingController ctrl) async {
@@ -417,17 +603,9 @@ class _TransportBookingScreenState
     final surgeMultiplier =
         ref.read(surgeEstimateProvider).valueOrNull?.surgeMultiplier ?? 1.0;
 
-    // Con ambos extremos resueltos por autocompletado se usa la ruta real de
-    // Google Directions (distancia/ETA); si no, el provider estima.
-    RouteInfo? route;
-    if (_originLat != null && _destLat != null) {
-      route = await ref.read(geoServiceProvider).directions(
-            originLat: _originLat!,
-            originLng: _originLng!,
-            destLat: _destLat!,
-            destLng: _destLng!,
-          );
-    }
+    // Ya no se pide la ruta a Google desde el teléfono: el servidor mide el
+    // trayecto él mismo y descarta la distancia que mande la app, así que esa
+    // llamada solo añadía una espera de red justo al tocar "Pedir".
 
     final String id;
     try {
@@ -443,8 +621,6 @@ class _TransportBookingScreenState
             originLng: _originLng,
             destLat: _destLat,
             destLng: _destLng,
-            distanceKm: route?.distanceKm,
-            etaMinutes: route?.durationMinutes,
             recipientName: _isEnvios ? _recipientNameCtrl.text.trim() : null,
             recipientPhone: _isEnvios
                 ? (_recipientPhoneCtrl.text.trim().isEmpty
@@ -481,20 +657,14 @@ class _TransportBookingScreenState
         _categoria?.fare.toDouble() ??
         widget.serviceType.estimateFare(4);
 
-    final choice = await showModalBottomSheet<_PayChoice>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _PaymentSheet(fare: fare, serviceType: widget.serviceType),
-    );
-
-    if (!mounted) return;
-
+    // El método de pago YA está decidido: se eligió en la hoja, antes de
+    // confirmar. Antes se preguntaba aquí, con el viaje ya creado y buscando
+    // conductor; quien cerraba esa hoja se quedaba con un viaje en marcha y sin
+    // método elegido, y no había forma de volver a preguntarle.
+    //
     // Pago en línea: se cierra el ciclo dentro de la app (Wompi + sondeo de
     // estado). Efectivo: el pasajero paga al conductor al final del viaje.
-    if (choice == _PayChoice.online) {
+    if (ref.read(metodoPagoEfectivoProvider) == MetodoPago.enLinea) {
       await showPaymentCheckout(
         context,
         ref,
@@ -975,6 +1145,114 @@ class _Etiqueta extends StatelessWidget {
   }
 }
 
+/// Método de pago, visible y editable ANTES de confirmar el viaje.
+///
+/// Sustituye a la hoja que salía después de crear el viaje. Además recuerda la
+/// elección entre viajes: casi todo el mundo paga siempre igual, y volver a
+/// preguntarlo cada vez era un paso de más en el peor momento.
+class _FilaMetodoPago extends ConsumerWidget {
+  const _FilaMetodoPago();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final metodo = ref.watch(metodoPagoEfectivoProvider);
+    // Sin pasarela configurada no hay nada que elegir: el efectivo es el único
+    // método, y un selector con una sola opción solo estorba.
+    final hayDondeElegir =
+        ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ?? false;
+
+    return Material(
+      color: context.surfaceVariantColor,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: hayDondeElegir ? () => _elegir(context, ref) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                metodo == MetodoPago.efectivo
+                    ? Icons.payments_outlined
+                    : Icons.credit_card_rounded,
+                size: 22,
+                color: context.textSecondaryColor,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      metodo.etiqueta,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                    Text(
+                      metodo.detalle,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (hayDondeElegir)
+                Text(
+                  'Cambiar',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: context.textSecondaryColor,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _elegir(BuildContext context, WidgetRef ref) async {
+    final elegido = await showModalBottomSheet<MetodoPago>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 18),
+            const Text(
+              'Método de pago',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            for (final m in MetodoPago.values)
+              ListTile(
+                leading: Icon(m == MetodoPago.efectivo
+                    ? Icons.payments_outlined
+                    : Icons.credit_card_rounded),
+                title: Text(m.etiqueta),
+                subtitle: Text(m.detalle),
+                onTap: () => Navigator.of(context).pop(m),
+              ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (elegido != null) {
+      await ref.read(metodoPagoProvider.notifier).elegir(elegido);
+    }
+  }
+}
+
 class _SurgeBadge extends StatelessWidget {
   const _SurgeBadge({required this.multiplier});
 
@@ -1089,121 +1367,3 @@ class _AddressPicker extends StatelessWidget {
 // ── Payment sheet ─────────────────────────────────────────────────────────────
 
 /// Método de pago elegido por el pasajero para el viaje.
-enum _PayChoice { online, cash }
-
-/// Selector de método de pago del viaje. El pago en línea (Wompi + sondeo) lo
-/// corre el llamador con `showPaymentCheckout`; en efectivo se paga al conductor.
-class _PaymentSheet extends ConsumerWidget {
-  const _PaymentSheet({required this.fare, required this.serviceType});
-
-  final double fare;
-  final TransportServiceType serviceType;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final color = _colorOf(serviceType);
-    // Sin pasarela configurada no se ofrece pagar en línea: ese botón abría un
-    // checkout que no cobraba nada y el conductor cobraba en efectivo igual.
-    final pagoEnLinea =
-        ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ?? false;
-
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: context.outlineColor,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const Text(
-            'Método de pago',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Tarifa estimada',
-            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            CurrencyFormatter.format(fare),
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 24),
-          if (pagoEnLinea) ...[
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF00B4D8),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () => Navigator.of(context).pop(_PayChoice.online),
-                icon: const Icon(Icons.credit_card_rounded),
-                label: const Text(
-                  'Pagar en línea (tarjeta, Nequi, PSE)',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-          SizedBox(
-            width: double.infinity,
-            child: pagoEnLinea
-                ? OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(_PayChoice.cash),
-                    icon: const Icon(Icons.payments_outlined),
-                    label: const Text(
-                      'Pagar en efectivo al conductor',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                    ),
-                  )
-                // Único método disponible: se presenta como la acción
-                // principal, no como el plan B de algo que no existe.
-                : FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: color,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(_PayChoice.cash),
-                    icon: const Icon(Icons.payments_outlined),
-                    label: const Text(
-                      'Continuar · pago en efectivo',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-}
