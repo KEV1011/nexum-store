@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
+import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -118,6 +119,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
     required TransportServiceType serviceType,
     required String origin,
     required String destination,
+    /// Categoría elegida en el selector ('TAXI' | 'PARTICULAR' | 'MOTO').
+    /// Manda sobre [serviceType]: el enum de la app solo tiene tres valores y
+    /// no distingue taxi de particular, así que sin esto un pasajero que elige
+    /// TAXI acababa con un viaje registrado (y tarifado) como particular.
+    String? categoria,
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
@@ -132,8 +138,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
     // Distancia/ETA reales (Google Directions) cuando el booking las resolvió;
     // estimación local como fallback para texto libre.
     final distance = distanceKm ?? (1.5 + _random.nextDouble() * 6.5);
-    final fare = (serviceType.estimateFare(distance) * surgeMultiplier).roundToDouble();
-    final eta = etaMinutes ?? (distance * 2.5 + 3).round();
+    var fare = (serviceType.estimateFare(distance) * surgeMultiplier).roundToDouble();
+    var eta = etaMinutes ?? (distance * 2.5 + 3).round();
+    var distanciaFinal = distance;
 
     String id;
     String ref;
@@ -143,7 +150,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
       final res = await _dio.post<Map<String, dynamic>>(
         '/client/trips/request',
         data: {
-          'serviceType': serviceType.name,
+          'serviceType': categoria?.toLowerCase() ?? serviceType.name,
           'originAddress': origin,
           'destinationAddress': destination,
           'estimatedFare': fare,
@@ -166,6 +173,17 @@ class TransportNotifier extends StateNotifier<TransportState> {
       // que las ve también el repartidor). Si se descarta aquí, el cliente no
       // tiene qué dictar y la entrega no se puede cerrar nunca.
       deliveryPin = data['deliveryPin'] as String?;
+      // El precio, la distancia y el tiempo son los que calculó el SERVIDOR.
+      // Los de arriba eran una estimación local para poder pintar algo, y
+      // guardarlos era lo que hacía que el pasajero viera una cifra al pedir y
+      // otra al bajarse. Si el backend aún no los devuelve, se quedan los
+      // locales: una app nueva contra un servidor viejo no debe romperse.
+      final delServidor = (data['estimatedFare'] as num?)?.toDouble();
+      if (delServidor != null && delServidor > 0) fare = delServidor;
+      final kmServidor = (data['distanceKm'] as num?)?.toDouble();
+      if (kmServidor != null && kmServidor > 0) distanciaFinal = kmServidor;
+      final etaServidor = (data['etaMinutes'] as num?)?.toInt();
+      if (etaServidor != null && etaServidor > 0) eta = etaServidor;
     } on DioException catch (e) {
       // Sin backend no hay viaje real que despachar: se propaga el error para
       // que la pantalla lo muestre (nada de ids locales inventados). El
@@ -188,7 +206,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
       originAddress: origin,
       destinationAddress: destination,
       estimatedFare: fare,
-      distanceKm: distance,
+      distanceKm: distanciaFinal,
       etaMinutes: eta,
       status: TransportStatus.searching,
       createdAt: DateTime.now(),
@@ -429,4 +447,58 @@ final surgeEstimateProvider =
   } catch (_) {
     return null;
   }
+});
+
+// ─── Opciones de viaje (categorías con precio del servidor) ──────────────────
+
+/// Los cuatro puntos que definen un trayecto. Sirve de clave del provider: dos
+/// búsquedas del mismo trayecto reutilizan la respuesta en vez de volver a
+/// cotizar, que es lo que pasaría con una clave que cambiara en cada rebuild.
+class TripRoutePoints {
+  const TripRoutePoints({
+    required this.originLat,
+    required this.originLng,
+    required this.destLat,
+    required this.destLng,
+  });
+
+  final double originLat;
+  final double originLng;
+  final double destLat;
+  final double destLng;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TripRoutePoints &&
+      other.originLat == originLat &&
+      other.originLng == originLng &&
+      other.destLat == destLat &&
+      other.destLng == destLng;
+
+  @override
+  int get hashCode => Object.hash(originLat, originLng, destLat, destLng);
+}
+
+/// Categorías disponibles para un trayecto, cotizadas por el servidor.
+///
+/// A diferencia de `surgeEstimateProvider`, este NO se traga el error: si la
+/// cotización falla, el pasajero tiene que enterarse — un precio en blanco o
+/// una tarjeta vacía le haría pedir un viaje sin saber cuánto cuesta.
+final tripOptionsProvider = FutureProvider.autoDispose
+    .family<TripOptionsEntity, TripRoutePoints>((ref, puntos) async {
+  final dio = ref.read(apiClientProvider);
+  final res = await dio.get<Map<String, dynamic>>(
+    '/client/trips/options',
+    queryParameters: {
+      'originLat': puntos.originLat,
+      'originLng': puntos.originLng,
+      'destLat': puntos.destLat,
+      'destLng': puntos.destLng,
+    },
+  );
+  final data = res.data?['data'] as Map<String, dynamic>?;
+  if (data == null) {
+    throw Exception('No pudimos calcular las tarifas. Intenta de nuevo.');
+  }
+  return TripOptionsEntity.fromJson(data);
 });

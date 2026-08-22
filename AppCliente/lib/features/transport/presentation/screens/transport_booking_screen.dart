@@ -15,8 +15,10 @@ import 'package:nexum_client/features/addresses/domain/entities/address_entity.d
 import 'package:nexum_client/features/addresses/presentation/providers/addresses_provider.dart';
 import 'package:nexum_client/features/payments/presentation/payment_checkout.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
+import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
+import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 
 /// Pantalla de reserva de servicio de transporte o envío.
 class TransportBookingScreen extends ConsumerStatefulWidget {
@@ -52,6 +54,26 @@ class _TransportBookingScreenState
   bool get _isEnvios =>
       widget.serviceType == TransportServiceType.envios;
 
+  /// Categoría elegida en el selector ('TAXI' | 'PARTICULAR' | 'MOTO') y su
+  /// precio, tal como los cotizó el servidor. Null mientras no haya elección.
+  TripOptionEntity? _categoria;
+
+  /// El selector solo aplica a viajes de pasajero. Los envíos no eligen
+  /// categoría (los lleva cualquier vehículo) y conservan su tarjeta.
+  bool get _eligeCategoria => !_isEnvios;
+
+  /// Los cuatro puntos del trayecto, o null si aún falta alguno.
+  TripRoutePoints? get _puntos =>
+      (_originLat != null && _originLng != null &&
+              _destLat != null && _destLng != null)
+          ? TripRoutePoints(
+              originLat: _originLat!,
+              originLng: _originLng!,
+              destLat: _destLat!,
+              destLng: _destLng!,
+            )
+          : null;
+
   /// Qué punto falta por marcar, o null si ya se puede pedir el viaje.
   /// Escribir la dirección no basta: hace falta la coordenada, que sale del
   /// autocompletado, del mapa o del GPS.
@@ -71,6 +93,27 @@ class _TransportBookingScreenState
           'icono de la derecha del campo.';
     }
     return null;
+  }
+
+  /// Con el trayecto listo hay que elegir categoría antes de pedir: sin ella
+  /// no se sabe si es un taxi o una moto, y son precios y vehículos distintos.
+  bool get _faltaCategoria =>
+      _eligeCategoria && _puntos != null && _categoria == null;
+
+  /// El botón dice qué se pide y cuánto cuesta. Un "Solicitar" a secas obliga a
+  /// mirar hacia arriba para recordar qué se eligió y por cuánto.
+  ///
+  /// [sinVehiculos] = la cotización llegó y NINGUNA categoría tiene vehículo
+  /// cerca. Sin esto el botón se quedaba pidiendo "elige una categoría" cuando
+  /// no había ninguna que elegir: un callejón sin salida sin explicación.
+  String _textoBotonCon({required bool sinVehiculos}) {
+    final c = _categoria;
+    if (c != null) {
+      return 'Pedir ${c.nombre} · ${CurrencyFormatter.format(c.fare.toDouble())}';
+    }
+    if (sinVehiculos) return 'No hay vehículos disponibles ahora';
+    if (_faltaCategoria) return 'Elige una categoría';
+    return 'Solicitar ${widget.serviceType.label}';
   }
 
   @override
@@ -109,6 +152,15 @@ class _TransportBookingScreenState
   @override
   Widget build(BuildContext context) {
     final color = _colorOf(widget.serviceType);
+
+    // Misma clave que el selector ⇒ misma respuesta cacheada, no una segunda
+    // consulta. Solo se mira si quedó alguna categoría con vehículo cerca.
+    final puntos = _puntos;
+    final cotizacion = (_eligeCategoria && puntos != null)
+        ? ref.watch(tripOptionsProvider(puntos)).valueOrNull
+        : null;
+    final sinVehiculos =
+        cotizacion != null && cotizacion.disponibles.isEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -229,7 +281,21 @@ class _TransportBookingScreenState
               ),
             ],
             const SizedBox(height: 24),
-            _FareEstimateCard(serviceType: widget.serviceType),
+            // Con el trayecto resuelto, el selector de categorías con los
+            // precios del servidor; si aún falta un punto, no hay nada que
+            // cotizar y se mantiene la tarjeta de siempre.
+            if (_eligeCategoria && puntos != null)
+              _CategorySelector(
+                puntos: puntos,
+                seleccionada: _categoria,
+                entroPor: widget.serviceType,
+                onSeleccionar: (o) {
+                  if (!mounted) return;
+                  setState(() => _categoria = o);
+                },
+              )
+            else
+              _FareEstimateCard(serviceType: widget.serviceType),
             if (_faltaPunto != null) ...[
               const SizedBox(height: 16),
               _AvisoPunto(texto: _faltaPunto!),
@@ -243,7 +309,9 @@ class _TransportBookingScreenState
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: (_loading || _faltaPunto != null) ? null : _submit,
+              onPressed: (_loading || _faltaPunto != null || _faltaCategoria)
+                  ? null
+                  : _submit,
               child: _loading
                   ? const SizedBox(
                       height: 20,
@@ -254,7 +322,7 @@ class _TransportBookingScreenState
                       ),
                     )
                   : Text(
-                      'Solicitar ${widget.serviceType.label}',
+                      _textoBotonCon(sinVehiculos: sinVehiculos),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
@@ -364,7 +432,11 @@ class _TransportBookingScreenState
     final String id;
     try {
       id = await ref.read(transportProvider.notifier).request(
-            serviceType: widget.serviceType,
+            // La categoría elegida MANDA sobre la pestaña por la que se entró:
+            // quien abrió "Transporte" y eligió Taxi pide un taxi, y así queda
+            // registrado y tarifado.
+            serviceType: _categoria?.serviceType ?? widget.serviceType,
+            categoria: _categoria?.categoria,
             origin: _originCtrl.text.trim(),
             destination: _destCtrl.text.trim(),
             originLat: _originLat,
@@ -403,7 +475,11 @@ class _TransportBookingScreenState
     if (!mounted) return;
 
     final trip = ref.read(transportByIdProvider(id));
-    final fare = trip?.estimatedFare ?? widget.serviceType.estimateFare(4);
+    // El importe a pagar es el del viaje que creó el servidor; si faltara, el
+    // de la categoría cotizada. La estimación local queda como último recurso.
+    final fare = trip?.estimatedFare ??
+        _categoria?.fare.toDouble() ??
+        widget.serviceType.estimateFare(4);
 
     final choice = await showModalBottomSheet<_PayChoice>(
       context: context,
@@ -616,6 +692,285 @@ class _FareEstimateCard extends ConsumerWidget {
           error: (_, __) => const SizedBox.shrink(),
         ),
       ],
+    );
+  }
+}
+
+/// Selector de categoría, con los precios que cotizó el SERVIDOR.
+///
+/// Sustituye a la tarjeta de "precio estimado", que mostraba un rango sacado de
+/// una fórmula escrita en la propia app: el número no era el que se iba a
+/// cobrar y además dependía de la versión instalada.
+class _CategorySelector extends ConsumerWidget {
+  const _CategorySelector({
+    required this.puntos,
+    required this.seleccionada,
+    required this.onSeleccionar,
+    required this.entroPor,
+  });
+
+  final TripRoutePoints puntos;
+  final TripOptionEntity? seleccionada;
+  final void Function(TripOptionEntity) onSeleccionar;
+
+  /// La pestaña por la que entró el pasajero: se usa para preseleccionar. Quien
+  /// tocó "Moto" espera una moto, no tener que elegirla otra vez.
+  final TransportServiceType entroPor;
+
+  /// Preselección: la categoría de la pestaña por la que entró si está
+  /// disponible; si no, la más barata de las que hay. Nunca una apagada — el
+  /// botón se quedaría muerto sin decir por qué.
+  TripOptionEntity? _preseleccion(List<TripOptionEntity> opciones) {
+    final disponibles = opciones.where((o) => o.disponible).toList();
+    if (disponibles.isEmpty) return null;
+    final preferida = entroPor == TransportServiceType.moto ? 'MOTO' : 'TAXI';
+    for (final o in disponibles) {
+      if (o.categoria == preferida) return o;
+    }
+    for (final o in disponibles) {
+      if (o.cheapest) return o;
+    }
+    return disponibles.first;
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(tripOptionsProvider(puntos));
+
+    return async.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      ),
+      // Un fallo al cotizar se DICE. Dejar la tarjeta en blanco haría pedir un
+      // viaje sin saber cuánto cuesta.
+      error: (e, _) => _AvisoPunto(
+        texto: e is Exception
+            ? e.toString().replaceFirst('Exception: ', '')
+            : 'No pudimos calcular las tarifas. Revisa tu conexión.',
+      ),
+      data: (opciones) {
+        if (opciones.opciones.isEmpty) {
+          return const _AvisoPunto(
+            texto: 'No hay categorías disponibles para este trayecto.',
+          );
+        }
+        // Preselección y RESINCRONIZACIÓN. Lo segundo importa tanto como lo
+        // primero: si el pasajero cambia el destino después de elegir, esta
+        // lista se vuelve a cotizar pero la elección guardada se quedaría con
+        // el precio del trayecto anterior — el botón mostraría una cifra que
+        // ya no es la suya. Se aplica después del build: cambiar el estado del
+        // padre mientras se construye este widget es un error en Flutter.
+        TripOptionEntity? elegida;
+        if (seleccionada != null) {
+          for (final o in opciones.opciones) {
+            if (o.categoria == seleccionada!.categoria) {
+              elegida = o;
+              break;
+            }
+          }
+        }
+        final TripOptionEntity? aReportar;
+        if (elegida == null || !elegida.disponible) {
+          aReportar = _preseleccion(opciones.opciones);
+        } else if (elegida.fare != seleccionada!.fare ||
+            elegida.etaMinutes != seleccionada!.etaMinutes) {
+          aReportar = elegida;
+        } else {
+          aReportar = null;
+        }
+        final nueva = aReportar;
+        if (nueva != null) {
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => onSeleccionar(nueva));
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionTitle(title: 'Elige tu viaje'),
+            const SizedBox(height: 4),
+            Text(
+              '${opciones.distanceKm.toStringAsFixed(1)} km · '
+              '${opciones.durationMinutes} min',
+              style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+            ),
+            // Sin ruta real de Google el trayecto se estimó en línea recta. Se
+            // avisa: el precio es aproximado y conviene que se sepa antes, no
+            // al recibir el cobro.
+            if (!opciones.rutaReal) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Distancia aproximada: el precio puede variar según la ruta.',
+                style: TextStyle(fontSize: 11, color: context.textTertiaryColor),
+              ),
+            ],
+            const SizedBox(height: 12),
+            ...opciones.opciones.map(
+              (o) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _CategoryCard(
+                  opcion: o,
+                  seleccionada: o.categoria == seleccionada?.categoria,
+                  onTap: o.disponible ? () => onSeleccionar(o) : null,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CategoryCard extends StatelessWidget {
+  const _CategoryCard({
+    required this.opcion,
+    required this.seleccionada,
+    required this.onTap,
+  });
+
+  final TripOptionEntity opcion;
+  final bool seleccionada;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final glyph = vehicleGlyphKindFor(opcion.categoria);
+    final activa = opcion.disponible;
+    final acento = seleccionada
+        ? AppColors.serviceParticular
+        : context.textSecondaryColor;
+
+    return Opacity(
+      // Apagada, no escondida: si desapareciera, el selector cambiaría de
+      // tamaño solo cada vez que un conductor se conecta o se va.
+      opacity: activa ? 1 : 0.45,
+      child: Material(
+        color: seleccionada
+            ? AppColors.serviceParticularContainer
+            : context.surfaceVariantColor,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: seleccionada ? acento : Colors.transparent,
+                width: 1.6,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(vehicleGlyphIcon(glyph), size: 30, color: acento),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            opcion.nombre,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: context.textPrimaryColor,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.person_outline_rounded,
+                              size: 13, color: context.textTertiaryColor),
+                          Text(
+                            '${opcion.capacidad}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.textTertiaryColor,
+                            ),
+                          ),
+                          if (opcion.cheapest) ...[
+                            const SizedBox(width: 8),
+                            const _Etiqueta(
+                                texto: 'La más barata', color: Color(0xFF0E9F6E)),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _subtitulo(),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      CurrencyFormatter.format(opcion.fare.toDouble()),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                    // La tarifa del taxi la fija el decreto municipal. Decirlo
+                    // es parte de por qué el servicio es legal, y explica que
+                    // su precio no baje aunque otra categoría cueste menos.
+                    if (opcion.regulada)
+                      Text(
+                        'Tarifa autorizada',
+                        style: TextStyle(
+                            fontSize: 10, color: context.textTertiaryColor),
+                      )
+                    else if (opcion.conRecargo)
+                      Text(
+                        'x${opcion.surgeMultiplier.toStringAsFixed(1)} demanda',
+                        style: const TextStyle(
+                            fontSize: 10, color: Color(0xFFD97706)),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _subtitulo() {
+    if (!opcion.disponible) return 'Sin ${opcion.nombre.toLowerCase()} cerca ahora';
+    final eta = opcion.etaMinutes;
+    final cuantos = opcion.availableNearby;
+    final cerca = cuantos == 1 ? '1 cerca' : '$cuantos cerca';
+    return eta != null ? '$eta min · $cerca' : cerca;
+  }
+}
+
+class _Etiqueta extends StatelessWidget {
+  const _Etiqueta({required this.texto, required this.color});
+
+  final String texto;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        texto,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color),
+      ),
     );
   }
 }
