@@ -846,7 +846,8 @@ fetch('/health').then((r) => r.json()).then((h) => {
   document.getElementById('diag').textContent =
     'build ' + (h.commit || '?') + ' · OTP usuarios: ' + (h.otp || '?') +
     ' · OTP admin: ' + (h.otpAdmin || '?') + ' · BD: ' + (h.db ? 'ok' : 'sin conexión') +
-    ' · fotos: ' + (h.uploads || '?') + ' · push: ' + (h.push || '?');
+    ' · fotos: ' + (h.uploads || '?') + ' · push: ' + (h.push || '?') +
+    (h.migraciones === 'fallaron' ? ' · ⚠ MIGRACIONES FALLARON' : '');
   window.NX_HEALTH = h;
   pintarRiesgos(h);
 }).catch(() => {});

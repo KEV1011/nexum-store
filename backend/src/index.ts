@@ -22,6 +22,17 @@ import { pagoEnLineaDisponible } from './services/payment.service';
 import { isSmsSenderConfigured } from './services/sms.service';
 import { otpMode, otpEnRiesgo, demoRevisionActiva } from './services/otp.service';
 import { modoTarifaTaxi } from './lib/tarifa-categoria';
+import { existsSync } from 'fs';
+
+/// Marca que deja el arranque cuando `prisma migrate deploy` falla.
+const MARCA_MIGRACIONES = '/tmp/nexum-migraciones-fallaron';
+function migracionesFallaron(): boolean {
+  try {
+    return existsSync(MARCA_MIGRACIONES);
+  } catch {
+    return false;
+  }
+}
 import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
@@ -143,6 +154,11 @@ app.get('/health', async (_req, res) => {
     // al redeploy y si los push llegan con la app cerrada.
     uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',
     push: process.env['FIREBASE_SERVICE_ACCOUNT'] ? 'firebase' : 'apagado',
+    // ¿Se aplicaron las migraciones al arrancar? 'fallaron' significa que el
+    // servidor está corriendo con un esquema que NO coincide con el código: la
+    // app pedirá columnas que no existen y el usuario verá errores de Prisma.
+    // Lo marca el arranque (ver el CMD del Dockerfile).
+    migraciones: migracionesFallaron() ? 'fallaron' : 'ok',
     // Tarifa del taxi: 'decreto-municipal' = se cargaron los valores oficiales
     // (banderazo, $/km, carrera mínima) y el taxi cobra por ellos. 'generica' =
     // aún se usa la fórmula de la plataforma. La distinción importa: al taxi,

@@ -60,7 +60,31 @@ USER nexum
 
 EXPOSE 3000
 
-# Aplica migraciones pendientes al arrancar (aquí sí hay DATABASE_URL). Si
-# `migrate deploy` falla (p. ej. historial desincronizado al cambiar de rama),
-# el servidor arranca igual para no quedar muerto: /health reporta db:true/false.
-CMD ["sh", "-c", "npx prisma migrate deploy || echo '[start] WARN: prisma migrate deploy falló — el servidor arranca igual; revisa /health (db) y los logs de migración'; exec node dist/index.js"]
+# Aplica migraciones pendientes al arrancar (aquí sí hay DATABASE_URL).
+#
+# El servidor arranca AUNQUE la migración falle —quedarse muerto es peor—, pero
+# eso ya costó caro una vez: un fichero .sql con basura dentro reventó la
+# migración, el `|| echo WARN` se lo tragó, Render mostró "Deploy live" en verde
+# y el servidor corrió con el código nuevo contra la tabla vieja. El fallo solo
+# se vio cuando un pasajero pidió un viaje y le salió el error de Prisma en la
+# cara. Ahora queda una MARCA que /health publica (`migraciones: fallaron`), así
+# que se detecta con una mirada en vez de con un usuario enfadado.
+#
+# PRISMA_RESOLVE_ROLLED_BACK: escotilla para el atasco que deja una migración
+# fallida. Prisma se niega a aplicar nada mientras haya una (P3009), y salir de
+# ahí necesita una consola que en Render no siempre se tiene. Poniendo aquí el
+# nombre de la migración fallida —y quitándolo después— se marca como revertida
+# y el despliegue continúa. Es explícito y de un solo uso a propósito: hacerlo
+# automático sería dar por bueno cualquier fallo futuro sin mirarlo.
+CMD ["sh", "-c", "\
+if [ -n \"$PRISMA_RESOLVE_ROLLED_BACK\" ]; then \
+  echo \"[start] marcando como revertida la migración $PRISMA_RESOLVE_ROLLED_BACK\"; \
+  npx prisma migrate resolve --rolled-back \"$PRISMA_RESOLVE_ROLLED_BACK\" || echo '[start] no se pudo marcar (¿ya estaba resuelta?)'; \
+fi; \
+if npx prisma migrate deploy; then \
+  echo '[start] migraciones al día'; \
+else \
+  echo '[start] ERROR: prisma migrate deploy FALLÓ. El servidor arranca, pero el esquema NO coincide con el código: /health dirá migraciones:fallaron'; \
+  touch /tmp/nexum-migraciones-fallaron; \
+fi; \
+exec node dist/index.js"]

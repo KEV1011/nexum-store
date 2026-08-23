@@ -1,8 +1,2 @@
 -- AlterTable
 ALTER TABLE "trips" ADD COLUMN     "paymentMethod" TEXT;
-
-npm notice
-npm notice New major version of npm available! 10.9.7 -> 12.0.2
-npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2
-npm notice To update run: npm install -g npm@12.0.2
-npm notice
