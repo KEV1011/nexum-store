@@ -107,6 +107,26 @@ async function main(): Promise<void> {
     `se ofreció a ${deViaje[0]?.driverId}`,
   );
 
+  // El ícono del mapa NO se elige por el servicio, sino por el vehículo real
+  // asignado: `driverVehicleType` es lo único que hace que el pasajero vea el
+  // taxi amarillo visto desde arriba y no el carro oscuro genérico. Si el DTO
+  // llega sin ese campo, el mapa cae al respaldo y dibuja un particular en un
+  // viaje de taxi — que es exactamente lo que se reportó.
+  console.log('\n═══ Aceptado: el pasajero recibe el TIPO de vehículo ═══');
+  {
+    const { getClientTripSnapshot } = await import('../src/services/client.service');
+    const aceptado = await matching.onDriverAccept(viaje.id, idTaxi);
+    comprobar('el taxi puede aceptar la oferta', aceptado, 'onDriverAccept devolvió false');
+    const dto = await getClientTripSnapshot(viaje.id);
+    comprobar(
+      'el DTO trae driverVehicleType = TAXI (ícono amarillo cenital)',
+      dto?.driverVehicleType === 'TAXI',
+      `llegó ${dto?.driverVehicleType ?? 'sin tipo'}`,
+    );
+    comprobar('y la placa del vehículo, para la ficha del conductor',
+      !!dto?.vehiclePlate, 'sin placa');
+  }
+
   // Limpieza (se cancela el viaje para cortar el ciclo de reintentos).
   matching.cancelSearchRetry(`trip:${viaje.id}`);
   await prisma.trip.deleteMany({ where: { passengerId: cliente.id } });
