@@ -40,9 +40,28 @@ USER nexum
 
 EXPOSE 3000
 
-# Arranque resiliente: si `migrate deploy` falla (típicamente por un historial
-# de migraciones desincronizado al cambiar la rama del servicio), el servidor
-# NO debe quedar muerto — arranca igual y /health reporta el estado real de la
-# BD (db:true/false). Antes, el `&&` tumbaba TODO el backend ante cualquier
-# fallo de migración, dejando apps y portales sin diagnóstico.
-CMD ["sh", "-c", "npx prisma migrate deploy || echo '[start] WARN: prisma migrate deploy falló — el servidor arranca igual; revisa /health (db) y los logs de migración'; exec node dist/index.js"]
+# ── Arranque ──────────────────────────────────────────────────────────────────
+#
+# ESTE es el Dockerfile que construye Render: render.yaml apunta a
+# `dockerfilePath: ./Dockerfile` con el contexto en la raíz. El de
+# `backend/Dockerfile` lo usa docker-compose en local.
+#
+# LOS DOS TIENEN QUE ARRANCAR IGUAL. Tenerlos distintos ya costó un despliegue
+# entero: se arregló el de backend/, Render siguió con este, y el servidor
+# corrió con el esquema viejo hasta que el error le salió a un pasajero al
+# pedir un viaje. `src/lib/dockerfiles.test.ts` compara los dos CMD y falla si
+# alguien vuelve a tocar solo uno.
+CMD ["sh", "-c", "\
+if [ -n \"$PRISMA_RESOLVE_ROLLED_BACK\" ]; then \
+  echo \"[start] marcando como revertida la migración $PRISMA_RESOLVE_ROLLED_BACK\"; \
+  npx prisma migrate resolve --rolled-back \"$PRISMA_RESOLVE_ROLLED_BACK\" || echo '[start] no se pudo marcar (¿ya estaba resuelta?)'; \
+fi; \
+if npx prisma migrate deploy; then \
+  echo '[start] migraciones al día'; \
+elif node prisma/recuperar-migraciones.mjs && npx prisma migrate deploy; then \
+  echo '[start] migraciones al día (tras desatascar una fallida)'; \
+else \
+  echo '[start] ERROR: prisma migrate deploy FALLÓ. El servidor arranca, pero el esquema NO coincide con el código: /health dirá migraciones:fallaron'; \
+  touch /tmp/nexum-migraciones-fallaron; \
+fi; \
+exec node dist/index.js"]
