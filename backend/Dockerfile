@@ -83,6 +83,8 @@ if [ -n \"$PRISMA_RESOLVE_ROLLED_BACK\" ]; then \
 fi; \
 if npx prisma migrate deploy; then \
   echo '[start] migraciones al día'; \
+elif node prisma/recuperar-migraciones.mjs && npx prisma migrate deploy; then \
+  echo '[start] migraciones al día (tras desatascar una fallida)'; \
 else \
   echo '[start] ERROR: prisma migrate deploy FALLÓ. El servidor arranca, pero el esquema NO coincide con el código: /health dirá migraciones:fallaron'; \
   touch /tmp/nexum-migraciones-fallaron; \
