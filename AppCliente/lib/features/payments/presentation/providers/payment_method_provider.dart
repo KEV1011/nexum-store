@@ -5,16 +5,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Cómo va a pagar el pasajero.
 enum MetodoPago {
   efectivo,
+  transferencia,
   enLinea;
 
   String get etiqueta => switch (this) {
         MetodoPago.efectivo => 'Efectivo',
+        MetodoPago.transferencia => 'Transferencia o Nequi',
         MetodoPago.enLinea => 'Pago en línea',
       };
 
   String get detalle => switch (this) {
         MetodoPago.efectivo => 'Le pagas al conductor al llegar',
-        MetodoPago.enLinea => 'Tarjeta, Nequi o PSE',
+        // Se dice con todas las letras que NO lo cobra la plataforma: el
+        // pasajero le transfiere al conductor y lo acuerdan por el chat del
+        // viaje. Llamarlo "pago en la app" sería mentir sobre quién cobra.
+        MetodoPago.transferencia => 'Le transfieres al conductor; acuerdan el número por el chat',
+        MetodoPago.enLinea => 'Tarjeta, Nequi o PSE, cobrado por la app',
+      };
+
+  /// Lo que entiende el backend.
+  String get valorApi => switch (this) {
+        MetodoPago.efectivo => 'efectivo',
+        MetodoPago.transferencia => 'transferencia',
+        MetodoPago.enLinea => 'en_linea',
       };
 }
 
@@ -39,7 +52,9 @@ class MetodoPagoNotifier extends StateNotifier<MetodoPago> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final guardado = prefs.getString(_clave);
-      if (guardado == MetodoPago.enLinea.name) state = MetodoPago.enLinea;
+      for (final m in MetodoPago.values) {
+        if (m.name == guardado) { state = m; break; }
+      }
     } catch (_) {
       // Sin preferencias guardadas se queda el efectivo, que es el método que
       // siempre está disponible.
@@ -70,6 +85,8 @@ final metodoPagoProvider =
 final metodoPagoEfectivoProvider = Provider<MetodoPago>((ref) {
   final elegido = ref.watch(metodoPagoProvider);
   final disponible = ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ?? false;
+  // Solo el pago EN LÍNEA depende de la pasarela. La transferencia se acuerda
+  // entre pasajero y conductor, así que está disponible siempre.
   if (elegido == MetodoPago.enLinea && !disponible) return MetodoPago.efectivo;
   return elegido;
 });

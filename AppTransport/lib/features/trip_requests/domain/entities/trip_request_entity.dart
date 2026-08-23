@@ -28,6 +28,7 @@ class TripRequestEntity {
     this.errand,
     this.orderId,
     this.serviceType,
+    this.paymentMethod,
   });
 
   /// Identificador único de la solicitud.
@@ -75,6 +76,10 @@ class TripRequestEntity {
   /// Tipo de servicio del backend (TAXI | MOTO | PARTICULAR | ENVIOS | MANDADO).
   final String? serviceType;
 
+  /// Cómo pagará el pasajero: 'efectivo' | 'transferencia' | 'en_linea'.
+  /// Null = efectivo (oferta de un backend anterior a este campo).
+  final String? paymentMethod;
+
   bool get isPending => status == TripRequestStatus.pending;
   bool get isAccepted => status == TripRequestStatus.accepted;
 
@@ -108,6 +113,14 @@ class TripRequestEntity {
   /// La tarifa de este servicio la fija una autoridad, no la plataforma.
   bool get tarifaRegulada => serviceType == 'TAXI';
 
+  /// Cómo cobra el conductor, en una línea. Null = no hay nada que aclarar
+  /// (efectivo es lo que ya espera cualquiera).
+  String? get avisoDePago => switch (paymentMethod) {
+        'transferencia' => 'Te paga por transferencia o Nequi',
+        'en_linea' => 'Ya pagado en la app',
+        _ => null,
+      };
+
   TripRequestEntity copyWith({
     String? id,
     PassengerEntity? passenger,
@@ -123,6 +136,7 @@ class TripRequestEntity {
     ErrandDetails? errand,
     String? orderId,
     String? serviceType,
+    String? paymentMethod,
   }) {
     return TripRequestEntity(
       id: id ?? this.id,
@@ -139,6 +153,7 @@ class TripRequestEntity {
       errand: errand ?? this.errand,
       orderId: orderId ?? this.orderId,
       serviceType: serviceType ?? this.serviceType,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
     );
   }
 

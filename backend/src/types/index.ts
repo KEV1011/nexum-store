@@ -106,6 +106,8 @@ export interface TripRequestDTO {
   estimatedFare: number;
   /** TAXI | MOTO | PARTICULAR | ENVIOS | MANDADO — ENVIOS exige prueba de foto. */
   serviceType?: string;
+  /** Cómo pagará el pasajero: 'efectivo' | 'transferencia' | 'en_linea'. */
+  paymentMethod?: string;
 }
 
 export interface TripSummaryDTO {
@@ -706,6 +708,11 @@ export interface ClientTripDTO {
   estimatedFare: number;
   /** Tarifa final liquidada por el backend (solo al completar). */
   finalFare?: number;
+  /**
+   * Cómo acordó pagar el pasajero. El conductor tiene que saberlo ANTES de
+   * llegar: con 'transferencia' no puede esperar billetes en la mano.
+   */
+  paymentMethod?: string;
   distanceKm: number;
   etaMinutes: number;
   status: ClientTripStatus;
@@ -766,6 +773,8 @@ export interface RequestClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
+  /** 'efectivo' | 'transferencia' | 'en_linea'. Ausente = efectivo. */
+  paymentMethod?: string;
 }
 
 // ─── Work Mode ────────────────────────────────────────────────────────────────

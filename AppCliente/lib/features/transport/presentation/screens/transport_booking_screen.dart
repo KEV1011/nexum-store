@@ -655,6 +655,7 @@ class _TransportBookingScreenState
             // registrado y tarifado.
             serviceType: _categoria?.serviceType ?? widget.serviceType,
             categoria: _categoria?.categoria,
+            paymentMethod: ref.read(metodoPagoEfectivoProvider).valorApi,
             origin: _originCtrl.text.trim(),
             destination: _destCtrl.text.trim(),
             originLat: _originLat,
@@ -1074,18 +1075,7 @@ class _CategoryCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                // La ilustración del vehículo cuando la hay; el ícono de
-                // Material para los tipos que aún no la tienen.
-                if (vehicleGlyphAsset(glyph) != null)
-                  Image.asset(
-                    vehicleGlyphAsset(glyph)!,
-                    width: 54,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) =>
-                        Icon(vehicleGlyphIcon(glyph), size: 30, color: acento),
-                  )
-                else
-                  Icon(vehicleGlyphIcon(glyph), size: 30, color: acento),
+                Icon(vehicleGlyphIcon(glyph), size: 30, color: acento),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1292,9 +1282,11 @@ class _FilaMetodoPago extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final metodo = ref.watch(metodoPagoEfectivoProvider);
-    // Sin pasarela configurada no hay nada que elegir: el efectivo es el único
-    // método, y un selector con una sola opción solo estorba.
-    final hayDondeElegir =
+    // Siempre hay al menos dos opciones —efectivo y transferencia—, así que el
+    // selector nunca se apaga. El pago EN LÍNEA es el único que depende de que
+    // haya pasarela configurada: ofrecerlo sin llaves sería un botón que no
+    // cobra.
+    final pagoEnLinea =
         ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ?? false;
 
     return Material(
@@ -1302,15 +1294,17 @@ class _FilaMetodoPago extends ConsumerWidget {
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: hayDondeElegir ? () => _elegir(context, ref) : null,
+        onTap: () => _elegir(context, ref, pagoEnLinea),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
               Icon(
-                metodo == MetodoPago.efectivo
-                    ? Icons.payments_outlined
-                    : Icons.credit_card_rounded,
+                switch (metodo) {
+                  MetodoPago.efectivo => Icons.payments_outlined,
+                  MetodoPago.transferencia => Icons.swap_horiz_rounded,
+                  MetodoPago.enLinea => Icons.credit_card_rounded,
+                },
                 size: 22,
                 color: context.textSecondaryColor,
               ),
@@ -1337,15 +1331,14 @@ class _FilaMetodoPago extends ConsumerWidget {
                   ],
                 ),
               ),
-              if (hayDondeElegir)
-                Text(
-                  'Cambiar',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: context.textSecondaryColor,
-                  ),
+              Text(
+                'Cambiar',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: context.textSecondaryColor,
                 ),
+              ),
             ],
           ),
         ),
@@ -1353,7 +1346,11 @@ class _FilaMetodoPago extends ConsumerWidget {
     );
   }
 
-  Future<void> _elegir(BuildContext context, WidgetRef ref) async {
+  Future<void> _elegir(
+    BuildContext context,
+    WidgetRef ref,
+    bool pagoEnLinea,
+  ) async {
     final elegido = await showModalBottomSheet<MetodoPago>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -1370,10 +1367,13 @@ class _FilaMetodoPago extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             for (final m in MetodoPago.values)
+              if (m != MetodoPago.enLinea || pagoEnLinea)
               ListTile(
-                leading: Icon(m == MetodoPago.efectivo
-                    ? Icons.payments_outlined
-                    : Icons.credit_card_rounded),
+                leading: Icon(switch (m) {
+                  MetodoPago.efectivo => Icons.payments_outlined,
+                  MetodoPago.transferencia => Icons.swap_horiz_rounded,
+                  MetodoPago.enLinea => Icons.credit_card_rounded,
+                }),
                 title: Text(m.etiqueta),
                 subtitle: Text(m.detalle),
                 onTap: () => Navigator.of(context).pop(m),

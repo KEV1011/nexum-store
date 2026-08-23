@@ -379,6 +379,10 @@ async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | nul
     // Tipo de servicio: el conductor lo necesita para saber si es un ENVÍO
     // (requiere foto de recogida/entrega) vs un viaje de pasajero.
     serviceType: trip.serviceType,
+    // Cómo le van a pagar. Va en la OFERTA, no después: quien acepta esperando
+    // efectivo y se encuentra con una transferencia no puede dar cambio ni
+    // cuadrar su caja, y a esas alturas ya no puede rechazarla.
+    paymentMethod: trip.paymentMethod ?? undefined,
   };
 }
 

@@ -849,6 +849,16 @@ export async function updateOrderStatusByDriver(
 
 // ─── Client Trips ─────────────────────────────────────────────────────────────
 
+/**
+ * Método de pago admitido, o null. No se guarda lo que mande el teléfono tal
+ * cual: es un campo que después decide qué se le muestra al conductor, y un
+ * valor inventado ahí le diría cualquier cosa.
+ */
+function _saneaMetodoPago(v: string | undefined): string | null {
+  const m = (v ?? '').trim().toLowerCase();
+  return ['efectivo', 'transferencia', 'en_linea'].includes(m) ? m : null;
+}
+
 export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripWithPinDTO> {
   const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;
   // 'transporte' es el nombre que usa la app cliente para el servicio de carro
@@ -927,6 +937,7 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       surgeMultiplier,
       distanceKm,
       etaMinutes,
+      paymentMethod: _saneaMetodoPago(dto.paymentMethod),
       recipientName: dto.recipientName,
       recipientPhone: dto.recipientPhone,
       packageDescription: dto.packageDescription,
@@ -1333,6 +1344,7 @@ type PrismaTrip = {
   createdAt: Date; acceptedAt: Date | null; completedAt: Date | null;
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
   deliveryPin?: string | null;
+  paymentMethod?: string | null;
 };
 
 /**
@@ -1393,6 +1405,7 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConduct
     destinationAddress: trip.destAddress,
     estimatedFare: trip.estimatedFare,
     finalFare: trip.finalFare ?? undefined,
+    paymentMethod: trip.paymentMethod ?? undefined,
     distanceKm: trip.distanceKm ?? 0,
     etaMinutes: trip.etaMinutes ?? 0,
     status: statusMap[trip.status] ?? 'searching',

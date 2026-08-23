@@ -124,6 +124,10 @@ class TransportNotifier extends StateNotifier<TransportState> {
     /// no distingue taxi de particular, así que sin esto un pasajero que elige
     /// TAXI acababa con un viaje registrado (y tarifado) como particular.
     String? categoria,
+    /// 'efectivo' | 'transferencia' | 'en_linea'. El conductor lo ve en la
+    /// oferta: aceptar esperando efectivo y encontrarse una transferencia le
+    /// descuadra la caja y ya no puede rechazarla.
+    String? paymentMethod,
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
@@ -163,6 +167,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
           if (recipientName != null) 'recipientName': recipientName,
           if (recipientPhone != null) 'recipientPhone': recipientPhone,
           if (packageDescription != null) 'packageDescription': packageDescription,
+          if (paymentMethod != null) 'paymentMethod': paymentMethod,
         },
       );
       final data = res.data!['data'] as Map<String, dynamic>;

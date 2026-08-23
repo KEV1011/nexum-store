@@ -40,6 +40,8 @@ import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_driver/shared/widgets/vehicle_glyph.dart';
+import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -143,6 +145,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   LatLng? _miPosicion;
   StreamSubscription<Position>? _posSub;
 
+  /// Rumbo del conductor, para orientar el vehículo del mapa. Lo trae el propio
+  /// GPS; con el teléfono quieto llega en cero o negativo, y entonces se
+  /// conserva el último válido en vez de dar un volantazo al norte.
+  double _miRumbo = 0;
+
   /// Se centra el mapa en el conductor una sola vez, con el primer fix: seguir
   /// moviendo la cámara después le quitaría el mapa de las manos mientras mira
   /// dónde hay demanda.
@@ -156,10 +163,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final ultima = LocationService().lastPosition;
     if (ultima != null) {
       _miPosicion = LatLng(ultima.latitude, ultima.longitude);
+      if (ultima.heading > 0) _miRumbo = ultima.heading;
     }
     _posSub = LocationService().positionStream.listen((pos) {
       if (!mounted) return;
-      setState(() => _miPosicion = LatLng(pos.latitude, pos.longitude));
+      setState(() {
+        _miPosicion = LatLng(pos.latitude, pos.longitude);
+        if (pos.heading > 0) _miRumbo = pos.heading;
+      });
       if (!_yaCentrado) {
         _yaCentrado = true;
         try {
@@ -430,6 +441,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         etaToPickupMinutes: 3,
         requestedAt: DateTime.now(),
         serviceType: t['serviceType'] as String?,
+        paymentMethod: t['paymentMethod'] as String?,
       );
     } catch (_) {
       return null;
@@ -717,26 +729,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   markers: [
                     Marker(
                       point: _miPosicion!,
-                      width: 48,
-                      height: 48,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: workMode.color,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: workMode.color.withValues(alpha: 0.45),
-                              blurRadius: 12,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
+                      width: VehicleGlyph.markerWidth,
+                      height: VehicleGlyph.markerHeight,
+                      // El VEHÍCULO del conductor, visto desde arriba, igual
+                      // que en el mapa del pasajero. Antes aquí salía el icono
+                      // de su modo de trabajo —un muñeco de "pasajeros"— que no
+                      // tiene nada que ver con lo que conduce: un taxista se
+                      // veía en el mapa como un peatón.
+                      child: VehicleGlyph(
+                        kind: vehicleGlyphKindFor(
+                          ref.watch(driverProfileProvider).profile?.vehicleType,
                         ),
-                        child: Icon(
-                          workMode.icon,
-                          color: Colors.white,
-                          size: 22,
-                        ),
+                        headingDegrees: _miRumbo,
                       ),
                     ),
                   ],
@@ -2551,6 +2555,14 @@ class _TripRequestModal extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onReject;
 
+  /// Sin puntos reales no se pinta mapa: uno centrado en (0,0) —o en un centro
+  /// de ciudad por defecto— enseñaría un trayecto que no es el de esta oferta.
+  bool _tieneCoordenadas(TripRequestEntity t) =>
+      t.origin.latitude.abs() > 0.01 &&
+      t.origin.longitude.abs() > 0.01 &&
+      t.destination.latitude.abs() > 0.01 &&
+      t.destination.longitude.abs() > 0.01;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -2619,6 +2631,28 @@ class _TripRequestModal extends StatelessWidget {
                                   ],
                                 ),
                               ),
+                              if (trip.avisoDePago != null) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppConstants.spacingS,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.warningContainer,
+                                    borderRadius: BorderRadius.circular(
+                                        AppConstants.radiusSmall),
+                                  ),
+                                  child: Text(
+                                    trip.avisoDePago!,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.warning,
+                                    ),
+                                  ),
+                                ),
+                              ],
                               if (trip.tarifaRegulada) ...[
                                 const SizedBox(width: 6),
                                 Container(
@@ -2645,6 +2679,28 @@ class _TripRequestModal extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: AppConstants.spacingM),
+                        // POR DÓNDE VA EL VIAJE, antes de aceptar.
+                        //
+                        // Hasta ahora el conductor solo veía dos direcciones
+                        // escritas y el trayecto no aparecía hasta DESPUÉS de
+                        // aceptar, cuando ya no podía echarse atrás. Decidir a
+                        // ciegas en quince segundos es lo que hace que se
+                        // acepten carreras que no convienen y se cancelen
+                        // después, que es lo peor para el pasajero.
+                        if (_tieneCoordenadas(trip)) ...[
+                          ClipRRect(
+                            borderRadius:
+                                BorderRadius.circular(AppConstants.radiusMedium),
+                            child: FreightRouteMap(
+                              originLat: trip.origin.latitude,
+                              originLng: trip.origin.longitude,
+                              destLat: trip.destination.latitude,
+                              destLng: trip.destination.longitude,
+                              height: 148,
+                            ),
+                          ),
+                          const SizedBox(height: AppConstants.spacingM),
+                        ],
                         // Detalle del mandado (solo en modo Mandado)
                         if (trip.isErrand) ...[
                           _ErrandRequestCard(errand: trip.errand!),

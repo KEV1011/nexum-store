@@ -603,6 +603,11 @@ model Trip {
   destLng            Float
   estimatedFare      Float
   surgeMultiplier    Float           @default(1.0)
+  /// Cómo acordó pagar el pasajero: 'efectivo' | 'transferencia' | 'en_linea'.
+  /// Null = efectivo (viajes anteriores a este campo). Salvo 'en_linea', que sí
+  /// cobra Wompi, el dinero se mueve entre pasajero y conductor y la comisión
+  /// se descuenta igual de la billetera del conductor.
+  paymentMethod      String?
   finalFare          Float?
   distanceKm         Float?
   etaMinutes         Int?
