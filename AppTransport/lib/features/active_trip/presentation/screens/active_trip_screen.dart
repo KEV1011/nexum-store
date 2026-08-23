@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
-import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
@@ -751,10 +750,16 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                       Flexible(
                         child: Text(
                           _statusLabel(trip),
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
-                            color: context.textPrimaryColor,
+                            // Fijo, NO adaptativo: esta píldora flota sobre el
+                            // mapa y su fondo es blanco en los dos temas (misma
+                            // regla que las barras de vidrio). Con el color
+                            // adaptativo, en modo oscuro el texto se aclaraba y
+                            // quedaba blanco sobre blanco — y es la píldora de
+                            // estado que el conductor mira todo el viaje.
+                            color: AppColors.textPrimary,
                           ),
                           textAlign: TextAlign.center,
                           overflow: TextOverflow.ellipsis,
