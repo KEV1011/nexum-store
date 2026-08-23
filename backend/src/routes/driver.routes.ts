@@ -81,6 +81,21 @@ import {
 
 const router = Router();
 
+/**
+ * «Conductor no encontrado» no es un fallo del servidor: es un 404.
+ *
+ * El token que emite `/auth/verify-otp` a un teléfono todavía sin registrar
+ * lleva el teléfono como `driverId` (es la sesión intermedia que necesita
+ * `/auth/register`). Con ese token, cualquier consulta de perfil no encuentra
+ * fila — y devolverlo como 500 le dice a la app «el servidor está roto»
+ * cuando lo que pasa es que esa cuenta aún no existe. La app no puede
+ * distinguir un caso del otro y acaba mostrando un error genérico.
+ */
+function _estadoDeError(err: unknown): number {
+  const msg = err instanceof Error ? err.message.toLowerCase() : '';
+  return msg.includes('no encontrado') || msg.includes('not found') ? 404 : 500;
+}
+
 router.use(authMiddleware);
 
 // Cinturón sobre el tirante. `authMiddleware` ya responde 401 sin token válido,
@@ -194,7 +209,9 @@ router.get('/kyc', async (req: Request, res: Response): Promise<void> => {
   try {
     res.json({ success: true, data: await getDriverKyc(driverId) });
   } catch (err) {
-    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    res.status(_estadoDeError(err)).json({
+      success: false, error: err instanceof Error ? err.message : 'Error',
+    });
   }
 });
 
@@ -685,7 +702,9 @@ router.get('/pro-status', async (req: Request, res: Response): Promise<void> => 
   try {
     res.json({ success: true, data: await getDriverProStatus(driverId) });
   } catch (err) {
-    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    res.status(_estadoDeError(err)).json({
+      success: false, error: err instanceof Error ? err.message : 'Error',
+    });
   }
 });
 
