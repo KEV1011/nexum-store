@@ -122,7 +122,7 @@ export default function FleetMap({
 
   return (
     <div className="relative mb-3">
-      <div ref={containerRef} className="w-full h-72 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 z-0" />
+      <div ref={containerRef} className="w-full h-72 rounded-xl overflow-hidden border border-slate-200 bg-[#1f2429] z-0" />
       {/*
         Sin nadie reportando, el mapa se queda en la ciudad y lo dice. Es la
         diferencia entre «no hay señal de nadie ahora» y «esto se rompió», que

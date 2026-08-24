@@ -42,13 +42,54 @@ final mapTileTicketProvider = FutureProvider<String?>((ref) async {
   }
 });
 
+/// Color del suelo del mapa, el mismo `#1f2429` del estilo oscuro del backend.
+///
+/// `MapOptions` pinta gris CLARO por defecto, y ese gris asoma en cada hueco
+/// mientras las teselas cargan y en los bordes al arrastrar. Sobre un mapa
+/// oscuro eso son destellos blancos en toda la pantalla, que es justo lo que
+/// delata que el modo oscuro está pegado por encima en vez de ser el diseño.
+const Color mapaFondoOscuro = Color(0xFF1F2429);
+
+/// Vuelve oscura una tesela clara: invertir y girar el tono 180°.
+///
+/// Es el respaldo, no el plan A. El mapa oscuro DE VERDAD lo pinta Google con
+/// el estilo que el backend fija al abrir la sesión de teselas
+/// (`ESTILO_MAPA_OSCURO`), donde cada capa —vías, agua, parques— lleva su color
+/// elegido. Pero sin `GOOGLE_MAPS_API_KEY` no hay teselas de Google y el mapa
+/// cae a OpenStreetMap, que solo existe en claro: dejarlo así sería tener la
+/// app oscura con un rectángulo blanco en medio.
+///
+/// Invertir sin más volvería el agua naranja y los parques morados, porque
+/// invertir un color le da su opuesto; el giro de tono de 180° los devuelve a
+/// su familia (agua azul oscuro, parque verde oscuro). Es una aproximación
+/// —una cartografía diseñada siempre se verá mejor—, pero es honesta y no
+/// depende de ningún tercero.
+const _invertir = ColorFilter.matrix(<double>[
+  -1, 0, 0, 0, 255, //
+  0, -1, 0, 0, 255, //
+  0, 0, -1, 0, 255, //
+  0, 0, 0, 1, 0, //
+]);
+
+const _girarTono180 = ColorFilter.matrix(<double>[
+  -0.574, 1.430, 0.144, 0, 0, //
+  0.426, 0.430, 0.144, 0, 0, //
+  0.426, 1.430, -0.856, 0, 0, //
+  0, 0, 0, 1, 0, //
+]);
+
+Widget _oscurecer(Widget capa) => ColorFiltered(
+      colorFilter: _girarTono180,
+      child: ColorFiltered(colorFilter: _invertir, child: capa),
+    );
+
 /// Capa de tiles del mapa **real de Google** (Map Tiles API), servida por el
 /// backend en `/geo/tile/{z}/{x}/{y}` con la key server-side (la app nunca ve
-/// la key). Reemplaza la capa de OpenStreetMap: el aspecto es idéntico a
-/// maps.google.com.
+/// la key). El backend abre la sesión con el estilo oscuro, así que las
+/// teselas llegan ya oscuras.
 ///
 /// Mientras el pase carga —o si la app está sin autenticar— cae a
-/// OpenStreetMap para no dejar el mapa en gris.
+/// OpenStreetMap oscurecido, para no dejar el mapa en gris ni en blanco.
 class GoogleMapTiles extends ConsumerWidget {
   const GoogleMapTiles({super.key});
 
@@ -63,14 +104,16 @@ class GoogleMapTiles extends ConsumerWidget {
     // navegador) y flutter_map usa su proveedor de siempre.
     final cache = crearTileDiskCache();
     if (ticket == null || ticket.isEmpty) {
-      return TileLayer(
-        urlTemplate: _osm,
-        tileProvider: cache,
-        // Sin esto las teselas de 256 px se ven BORROSAS en pantallas de alta
-        // densidad (el usuario lo describió como "parece un dibujo"): flutter_map
-        // pide un zoom más y las escala, así el mapa se ve nítido.
-        retinaMode: RetinaMode.isHighDensity(context),
-        userAgentPackageName: 'com.nexum.client',
+      return _oscurecer(
+        TileLayer(
+          urlTemplate: _osm,
+          tileProvider: cache,
+          // Sin esto las teselas de 256 px se ven BORROSAS en pantallas de alta
+          // densidad (el usuario lo describió como "parece un dibujo"): flutter_map
+          // pide un zoom más y las escala, así el mapa se ve nítido.
+          retinaMode: RetinaMode.isHighDensity(context),
+          userAgentPackageName: 'com.nexum.client',
+        ),
       );
     }
     // Los tiles de Google Map Tiles API son 256 px, el default de flutter_map.

@@ -670,6 +670,7 @@ class _TripMapState extends ConsumerState<_TripMap>
               child: FlutterMap(
                 mapController: _mapa,
                 options: MapOptions(
+                  backgroundColor: mapaFondoOscuro,
                   initialCenter: driver ?? center,
                   initialZoom: 14.5,
                   // Si el pasajero arrastra o hace zoom, la cámara deja de

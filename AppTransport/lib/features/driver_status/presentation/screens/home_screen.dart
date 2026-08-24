@@ -714,6 +714,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           FlutterMap(
             mapController: _mapController,
             options: const MapOptions(
+              backgroundColor: mapaFondoOscuro,
               initialCenter: _center,
               initialZoom: MapConstants.initialZoom,
             ),

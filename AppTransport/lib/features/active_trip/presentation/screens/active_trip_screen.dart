@@ -544,6 +544,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
+        backgroundColor: mapaFondoOscuro,
         initialCenter: _driverPos,
         initialZoom: MapConstants.tripZoom,
         onMapReady: () => _fitBoundsToRoute(boundsPoints),
