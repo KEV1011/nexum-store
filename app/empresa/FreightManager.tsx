@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Truck, Loader2, PackageSearch, Wifi } from 'lucide-react'
 import type { OperatorApi } from './api'
 import TrackMap, { type TrackPoint } from './TrackMap'
+import { momento } from './fechas'
 
 // Recorrido real del flete (rastro GPS): resumen + traza.
 interface TrackSummary {
@@ -462,7 +463,7 @@ export default function FreightManager({ api, token }: { api: OperatorApi; token
                         {trace.events.map((e) => (
                           <li key={e.id} className="text-[11px] text-slate-600 flex items-start gap-1.5">
                             <span className="font-semibold text-slate-800 shrink-0">
-                              {new Date(e.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                              {momento(e.createdAt)}
                               {' '}· {EVENT_LABEL[e.type] ?? e.type}
                             </span>
                             <span className="min-w-0 truncate">

@@ -537,7 +537,15 @@ function Dashboard({ token, operator, onLogout }: {
                   )}
                 </h2>
 
-                {mapPoints.length > 0 && (
+                {/*
+                  El mapa se pinta SIEMPRE que haya flota, aunque nadie esté
+                  reportando posición. Antes se ocultaba con cero puntos, así
+                  que la sección titulada «Mapa de la flota» aparecía sin mapa
+                  —justo en el estado más frecuente, la flota en reposo— y se
+                  leía como que el mapa se había roto. Vacío, el propio mapa
+                  explica por qué no hay nadie encima.
+                */}
+                {fleet.length > 0 && (
                   <FleetMap points={mapPoints} token={token} backendUrl={BACKEND_URL} />
                 )}
 

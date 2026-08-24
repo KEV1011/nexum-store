@@ -118,9 +118,23 @@ export default function FleetMap({
     )
   }
 
+  const vacio = points.length === 0
+
   return (
     <div className="relative mb-3">
       <div ref={containerRef} className="w-full h-72 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 z-0" />
+      {/*
+        Sin nadie reportando, el mapa se queda en la ciudad y lo dice. Es la
+        diferencia entre «no hay señal de nadie ahora» y «esto se rompió», que
+        para quien vigila la flota son dos cosas muy distintas.
+      */}
+      {vacio && ready && (
+        <div className="absolute inset-x-0 top-2 z-[400] flex justify-center pointer-events-none">
+          <span className="bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] text-slate-600 shadow-sm">
+            Ningún conductor está reportando posición ahora
+          </span>
+        </div>
+      )}
       <div className="absolute bottom-2 right-2 z-[400] flex items-center gap-3 bg-white/90 backdrop-blur px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] text-slate-600">
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> En línea</span>
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-600" /> En viaje</span>

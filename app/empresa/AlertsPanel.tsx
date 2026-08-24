@@ -2,12 +2,13 @@
 
 // ── Alertas de seguridad EN VIVO de la flota (Torre de Control) ───────────────
 // Geocerca de destino, detenciones prolongadas y desvíos del corredor de la
-// ruta en servicios EN CURSO. El backend las mantiene en memoria (se reinician
-// con el redeploy); aquí se sondean cada 15 s.
+// ruta en servicios EN CURSO. El backend las guarda en `safety_alerts` (se
+// conservan 180 días, sobreviven al redeploy); aquí se sondean cada 15 s.
 
 import { useCallback, useEffect, useState } from 'react'
 import { ShieldAlert } from 'lucide-react'
 import type { OperatorApi } from './api'
+import { momento } from './fechas'
 
 interface SafetyAlert {
   id: string
@@ -41,6 +42,10 @@ export default function AlertsPanel({ api }: { api: OperatorApi }) {
   // misma mentira que arreglamos en el botón de pánico.
   const [cargando, setCargando] = useState(true)
   const [fallo, setFallo] = useState(false)
+  // Se pintaban 20 mientras el título decía «(29)». Un panel de seguridad que
+  // dice tener 29 novedades y enseña 20 sin avisar deja nueve escondidas justo
+  // donde alguien las está buscando.
+  const [visibles, setVisibles] = useState(20)
 
   const load = useCallback(async () => {
     try {
@@ -89,7 +94,7 @@ export default function AlertsPanel({ api }: { api: OperatorApi }) {
         </div>
       ) : alerts.length === 0 ? null : (
         <div className="space-y-2">
-          {alerts.slice(0, 20).map((a) => {
+          {alerts.slice(0, visibles).map((a) => {
             const meta = KIND_META[a.kind] ?? KIND_META.deviation
             return (
               <div key={a.id} className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -98,12 +103,21 @@ export default function AlertsPanel({ api }: { api: OperatorApi }) {
                 <span className="text-xs text-slate-500">
                   {SERVICE_LABEL[a.serviceKind] ?? a.serviceKind} · {a.detail}
                 </span>
-                <span className="text-[11px] text-slate-400 ml-auto">
-                  {new Date(a.at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
+                <span className="text-[11px] text-slate-400 ml-auto whitespace-nowrap">
+                  {momento(a.at)}
                 </span>
               </div>
             )
           })}
+          {alerts.length > visibles && (
+            <button
+              onClick={() => setVisibles((n) => n + 20)}
+              className="w-full py-2 rounded-xl border border-slate-200 bg-white text-slate-500 text-xs font-semibold hover:border-emerald-300 hover:text-emerald-700 transition-colors"
+            >
+              Ver {Math.min(20, alerts.length - visibles)} más
+              <span className="font-normal text-slate-400"> · {alerts.length - visibles} sin mostrar</span>
+            </button>
+          )}
         </div>
       )}
     </section>
