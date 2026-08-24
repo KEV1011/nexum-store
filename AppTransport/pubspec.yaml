@@ -113,6 +113,9 @@ flutter:
   assets:
     - assets/icons/
     - assets/sounds/
+    - assets/vehicles/
+    - assets/vehicles/2.0x/
+    - assets/vehicles/3.0x/
     - assets/fonts/
 
   fonts:
