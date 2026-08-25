@@ -150,9 +150,20 @@ export async function getDriverTripHistory(
 
   const rows: DriverTripHistoryDTO[] = [];
 
+  // Los servicios que no guardan neto/comisión se derivan del bruto.
+  const derived = (gross: number) => ({
+    net: Math.round(gross * (1 - COMMISSION_RATE)),
+    commission: Math.round(gross * COMMISSION_RATE),
+  });
+
+
   for (const t of trips) {
     const gross = t.finalFare ?? t.estimatedFare;
-    const net = t.netEarning ?? 0;
+    // Un viaje anterior a que se guardara la liquidación tiene `netEarning`
+    // nulo. Devolver 0 diría que el conductor no ganó nada y que la comisión se
+    // lo llevó todo, que es falso y además alarmante: se deriva del bruto,
+    // igual que hacen los demás servicios.
+    const net = t.netEarning ?? derived(gross).net;
     rows.push({
       id: t.id,
       serviceType: t.serviceType,
@@ -173,12 +184,6 @@ export async function getDriverTripHistory(
       rating: t.rating ?? null,
     });
   }
-
-  // Helper: los servicios que no guardan neto/comisión se derivan del bruto.
-  const derived = (gross: number) => ({
-    net: Math.round(gross * (1 - COMMISSION_RATE)),
-    commission: Math.round(gross * COMMISSION_RATE),
-  });
 
   for (const b of intercity) {
     const gross = b.finalFare ?? b.offeredFare;
