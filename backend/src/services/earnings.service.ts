@@ -105,6 +105,16 @@ export async function getDailyEarnings(driverId: string): Promise<DailyEarningsD
 
 export interface DriverTripHistoryDTO {
   id: string;
+  /**
+   * Qué servicio fue, con el valor REAL de la fila.
+   *
+   * TAXI | MOTO | PARTICULAR | ENVIOS para los viajes urbanos (sale de
+   * `Trip.serviceType`), y INTERCITY | MANDADO | PEDIDO | FLETE para los
+   * demás. Faltaba, y la app no tenía de dónde sacarlo: escribía «Moto» a
+   * mano para todo lo que no fuera un envío, así que el historial de un
+   * taxista decía Moto en cada línea y un flete de carga también.
+   */
+  serviceType: string;
   passengerName: string;
   originAddress: string;
   originLat: number;
@@ -145,6 +155,7 @@ export async function getDriverTripHistory(
     const net = t.netEarning ?? 0;
     rows.push({
       id: t.id,
+      serviceType: t.serviceType,
       passengerName: t.passengerName ?? 'Pasajero',
       originAddress: t.originAddress,
       originLat: t.originLat,
@@ -174,6 +185,7 @@ export async function getDriverTripHistory(
     const d = derived(gross);
     rows.push({
       id: b.id,
+      serviceType: 'INTERCITY',
       passengerName: `Intermunicipal · ${b.origin} → ${b.destination}`,
       originAddress: b.pickupAddress ?? String(b.origin),
       originLat: 0, originLng: 0,
@@ -195,6 +207,7 @@ export async function getDriverTripHistory(
     const d = derived(gross);
     rows.push({
       id: e.id,
+      serviceType: 'MANDADO',
       passengerName: 'Mandado',
       originAddress: e.pickupAddress,
       originLat: 0, originLng: 0,
@@ -216,6 +229,7 @@ export async function getDriverTripHistory(
     const d = derived(gross);
     rows.push({
       id: o.id,
+      serviceType: 'PEDIDO',
       passengerName: o.customerName ? `Pedido · ${o.customerName}` : 'Pedido',
       originAddress: 'Negocio',
       originLat: 0, originLng: 0,
@@ -237,6 +251,7 @@ export async function getDriverTripHistory(
     const net = f.netEarning ?? Math.round(gross * (1 - COMMISSION_RATE));
     rows.push({
       id: f.id,
+      serviceType: 'FLETE',
       passengerName: 'Flete de carga',
       originAddress: f.originAddress,
       originLat: 0, originLng: 0,

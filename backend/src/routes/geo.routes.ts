@@ -12,6 +12,7 @@ import {
   directions,
   geoHealth,
   fetchMapTile,
+  isGeoConfigured,
   GeoError,
 } from '../services/geo.service';
 
@@ -113,6 +114,21 @@ router.get('/tile-ticket', async (req: Request, res: Response) => {
     res.status(401).json({ success: false, error: 'Sesión inválida o expirada' });
     return;
   }
+
+  // Sin llave de Google no hay teselas que servir, así que NO se entrega pase.
+  //
+  // Parece un detalle y no lo es: el pase es lo que le dice a la app «hay mapa
+  // de Google». Entregándolo siempre, la app pedía teselas que fallaban una a
+  // una y flutter_map caía a OpenStreetMap por tesela —sin el filtro oscuro,
+  // que solo se aplica cuando la app sabe que no hay Google—. Resultado: el
+  // mapa salía CLARO en producción y el modo oscuro no se veía por ninguna
+  // parte, aunque estuviera bien hecho. Diciendo la verdad desde aquí, la app
+  // toma su rama de respaldo y la oscurece ella.
+  if (!isGeoConfigured()) {
+    res.json({ success: true, data: { ticket: null, expiresIn: 0 } });
+    return;
+  }
+
   res.json({
     success: true,
     data: { ticket: emitirTilePase(JWT_SECRET), expiresIn: TILE_TICKET_TTL_S },

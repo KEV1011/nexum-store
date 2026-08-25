@@ -10,12 +10,76 @@ import 'package:nexum_driver/features/trip_history/presentation/providers/trip_h
 import 'package:nexum_driver/shared/models/trip_model.dart';
 import 'package:nexum_driver/shared/widgets/skeleton_loader.dart';
 
+
+/// Cómo se pinta cada servicio en el historial.
+///
+/// Son OCHO y no cuatro: a la billetera del conductor liquidan viajes urbanos
+/// (taxi, moto, particular, envíos) y además intermunicipales, mandados,
+/// pedidos y fletes de carga. `ServiceType` solo cubre los cuatro primeros
+/// —es el selector de servicio, no un catálogo del historial—, así que aquí se
+/// resuelve el resto sin tocarlo.
+///
+/// Antes esto no existía y la pantalla escribía `ServiceType.moto` a mano para
+/// todo lo que no fuera un envío: el historial de un taxista decía «Moto» en
+/// cada línea, y un flete de carga también.
+class _Servicio {
+  const _Servicio(this.etiqueta, this.icono, this.color, {this.filtrable});
+
+  final String etiqueta;
+  final IconData icono;
+  final Color color;
+
+  /// El `ServiceType` equivalente, cuando lo hay: es con lo que casan los
+  /// chips de filtro de arriba. Null en los que no son un tipo de vehículo.
+  final ServiceType? filtrable;
+
+  Color get fondo => color.withValues(alpha: 0.14);
+}
+
+/// Traduce el valor del backend. `raw` puede faltar si la respuesta viene de
+/// una versión anterior del servidor; ahí se cae a lo que sí se sabe.
+_Servicio _servicioDe(String? raw, {required bool esEnvio}) {
+  switch (raw?.toUpperCase()) {
+    case 'TAXI':
+      return _Servicio('Taxi', Icons.local_taxi_rounded,
+          AppColors.serviceTaxi, filtrable: ServiceType.taxi);
+    case 'PARTICULAR':
+      return _Servicio('Particular', Icons.directions_car_rounded,
+          AppColors.serviceParticular, filtrable: ServiceType.particular);
+    case 'MOTO':
+      return _Servicio('Moto', Icons.two_wheeler_rounded,
+          AppColors.serviceMoto, filtrable: ServiceType.moto);
+    case 'ENVIOS':
+      return _Servicio('Envío', Icons.local_shipping_rounded,
+          AppColors.serviceEnvios, filtrable: ServiceType.envios);
+    case 'INTERCITY':
+      return const _Servicio(
+          'Intermunicipal', Icons.directions_bus_rounded, AppColors.intercityBrand);
+    case 'MANDADO':
+      return const _Servicio(
+          'Mandado', Icons.shopping_bag_rounded, AppColors.serviceEnvios);
+    case 'PEDIDO':
+      return const _Servicio(
+          'Pedido', Icons.restaurant_rounded, AppColors.serviceEnvios);
+    case 'FLETE':
+      return const _Servicio(
+          'Flete de carga', Icons.fire_truck_rounded, AppColors.warning);
+    default:
+      // Sin dato: no se inventa un tipo de vehículo. Se dice lo único que se
+      // sabe con certeza —si fue una entrega o un servicio— y ya.
+      return esEnvio
+          ? const _Servicio('Envío', Icons.local_shipping_rounded,
+              AppColors.serviceEnvios, filtrable: ServiceType.envios)
+          : const _Servicio('Servicio', Icons.route_rounded, AppColors.serviceMoto);
+  }
+}
+
 // ── Trip record view model ────────────────────────────────────────────────────
 
 class _TripRecord {
   const _TripRecord({
     required this.id,
-    required this.serviceType,
+    required this.servicio,
     required this.dateTime,
     required this.origin,
     required this.destination,
@@ -27,7 +91,7 @@ class _TripRecord {
   });
 
   final String id;
-  final ServiceType serviceType;
+  final _Servicio servicio;
   final String dateTime;
   final String origin;
   final String destination;
@@ -85,7 +149,7 @@ _TripRecord _toRecord(TripModel trip) {
       : '#${rawId.length > 6 ? rawId.substring(0, 6).toUpperCase() : rawId.toUpperCase()}';
   return _TripRecord(
     id: displayId,
-    serviceType: trip.isDeliveryTrip ? ServiceType.envios : ServiceType.moto,
+    servicio: _servicioDe(trip.serviceType, esEnvio: trip.isDeliveryTrip),
     dateTime: _formatDateTime(dt),
     origin: trip.origin.address,
     destination: trip.destination.address,
@@ -128,13 +192,16 @@ class _TripHistoryScreenState extends ConsumerState<TripHistoryScreen> {
       3 => all.where((t) => _isThisMonth(t.finishedAt)).toList(),
       _ => all.toList(),
     };
+    var registros = list.map(_toRecord).toList();
     if (_serviceTypeFilter != null) {
-      list = list.where((t) {
-        if (_serviceTypeFilter == ServiceType.envios) return t.isDeliveryTrip;
-        return !t.isDeliveryTrip;
-      }).toList();
+      // Se compara con el tipo real de cada viaje. Antes el filtro solo sabía
+      // separar envíos del resto, así que pulsar «Taxi» o «Particular» daba
+      // exactamente la misma lista.
+      registros = registros
+          .where((r) => r.servicio.filtrable == _serviceTypeFilter)
+          .toList();
     }
-    return list.map(_toRecord).toList();
+    return registros;
   }
 
   @override
@@ -403,7 +470,7 @@ class _TripHistoryTileState extends State<_TripHistoryTile> {
           borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
           border: Border.all(
             color: _expanded
-                ? trip.serviceType.color.withValues(alpha: 0.4)
+                ? trip.servicio.color.withValues(alpha: 0.4)
                 : (isDark ? AppColors.outlineDark : context.outlineColor),
             width: _expanded ? 1.5 : 1,
           ),
@@ -417,12 +484,12 @@ class _TripHistoryTileState extends State<_TripHistoryTile> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: trip.serviceType.containerColor,
+                    color: trip.servicio.fondo,
                     borderRadius:
                         BorderRadius.circular(AppConstants.radiusMedium),
                   ),
-                  child: Icon(trip.serviceType.icon,
-                      size: 18, color: trip.serviceType.color),
+                  child: Icon(trip.servicio.icono,
+                      size: 18, color: trip.servicio.color),
                 ),
                 const SizedBox(width: AppConstants.spacingS),
                 Expanded(
@@ -432,9 +499,9 @@ class _TripHistoryTileState extends State<_TripHistoryTile> {
                       Row(
                         children: [
                           Text(
-                            trip.serviceType.displayName,
+                            trip.servicio.etiqueta,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: trip.serviceType.color,
+                              color: trip.servicio.color,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

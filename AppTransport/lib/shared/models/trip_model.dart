@@ -9,6 +9,7 @@ import 'package:nexum_driver/shared/models/location_model.dart';
 class TripModel {
   const TripModel({
     required this.id,
+    this.serviceType,
     required this.passengerId,
     required this.passengerName,
     required this.origin,
@@ -30,6 +31,9 @@ class TripModel {
   });
 
   factory TripModel.fromJson(Map<String, dynamic> json) => TripModel(
+        // Tal cual lo manda el backend: TAXI, MOTO, PARTICULAR, ENVIOS,
+        // INTERCITY, MANDADO, PEDIDO o FLETE. Null en respuestas viejas.
+        serviceType: json['serviceType'] as String?,
         id: json['id'] as String,
         passengerId: json['passenger_id'] as String,
         passengerName: json['passenger_name'] as String,
@@ -65,6 +69,10 @@ class TripModel {
 
   /// Unique trip identifier.
   final String id;
+
+  /// Qué servicio fue, con el valor real del backend. Null si la respuesta
+  /// es de una versión anterior a que este campo existiera.
+  final String? serviceType;
 
   /// Identifier of the passenger who requested the trip.
   final String passengerId;
@@ -150,6 +158,7 @@ class TripModel {
 
   TripModel copyWith({
     String? id,
+    String? serviceType,
     String? passengerId,
     String? passengerName,
     LocationModel? origin,
@@ -171,6 +180,7 @@ class TripModel {
   }) {
     return TripModel(
       id: id ?? this.id,
+      serviceType: serviceType ?? this.serviceType,
       passengerId: passengerId ?? this.passengerId,
       passengerName: passengerName ?? this.passengerName,
       origin: origin ?? this.origin,
