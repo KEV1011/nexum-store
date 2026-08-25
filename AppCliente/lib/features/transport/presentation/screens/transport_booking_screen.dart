@@ -67,6 +67,38 @@ class _TransportBookingScreenState
   double? _destLat;
   double? _destLng;
 
+  /// Paradas intermedias que el pasajero añade («pasa por»). Máx. 6, igual que
+  /// el intermunicipal — el límite lo impone el backend y aquí solo se respeta.
+  final List<_ParadaEdit> _paradas = [];
+  static const int _maxParadas = 6;
+
+  /// Las paradas CON punto, en el formato del servidor. Solo esas cuentan para
+  /// el precio: una escrita a mano no se puede medir.
+  String get _paradasClave => _paradas
+      .where((p) => p.lat != null && p.lng != null)
+      .map((p) => '${p.lat},${p.lng}')
+      .join(';');
+
+  /// Lo que se manda al pedir: aquí sí van todas, con punto o sin él. Una
+  /// parada sin coordenada no cambia el precio pero el conductor tiene que
+  /// leerla igual («donde mi tía») para saber por dónde pasa.
+  List<Map<String, dynamic>> get _paradasParaPedir {
+    final out = <Map<String, dynamic>>[];
+    for (final p in _paradas) {
+      final nombre = p.ctrl.text.trim();
+      if (nombre.isEmpty) continue;
+      out.add({
+        'name': nombre,
+        // El spread es necesario: un `if` de colección solo protege la
+        // ENTRADA siguiente, así que sin él 'lng' se colaría siempre y una
+        // parada escrita a mano viajaría con longitud y sin latitud.
+        if (p.lat != null && p.lng != null) ...{'lat': p.lat, 'lng': p.lng},
+        'order': out.length,
+      });
+    }
+    return out;
+  }
+
   bool get _isEnvios =>
       widget.serviceType == TransportServiceType.envios;
 
@@ -87,6 +119,7 @@ class _TransportBookingScreenState
               originLng: _originLng!,
               destLat: _destLat!,
               destLng: _destLng!,
+              paradas: _paradasClave,
             )
           : null;
 
@@ -163,6 +196,9 @@ class _TransportBookingScreenState
     _recipientPhoneCtrl.dispose();
     _packageCtrl.dispose();
     _hojaCtrl.dispose();
+    for (final p in _paradas) {
+      p.ctrl.dispose();
+    }
     super.dispose();
   }
 
@@ -524,6 +560,70 @@ class _TransportBookingScreenState
           onPressed: () => _pickAddress(_destCtrl),
         ),
       ),
+
+      // ── Paradas por el camino ────────────────────────────────────────────
+      // Van con autocompletado, no con un campo de texto suelto, porque solo
+      // las que tienen punto se pueden medir: una parada sin coordenada se
+      // guarda para que el conductor la lea, pero no cambia el precio.
+      for (var i = 0; i < _paradas.length; i++) ...[
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: AddressAutocompleteField(
+                controller: _paradas[i].ctrl,
+                label: 'Parada ${i + 1}',
+                hint: '¿Por dónde pasamos?',
+                onPlaceSelected: (place) => setState(() {
+                  _paradas[i].lat = place.lat;
+                  _paradas[i].lng = place.lng;
+                }),
+                onManualEdit: () {
+                  if (_paradas[i].lat == null) return;
+                  // Al reescribir a mano se pierde el punto: mantenerlo
+                  // cobraría por un desvío a un sitio que ya no es ese.
+                  setState(() {
+                    _paradas[i].lat = null;
+                    _paradas[i].lng = null;
+                  });
+                },
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close_rounded, size: 20),
+              tooltip: 'Quitar parada',
+              onPressed: () => setState(() => _paradas.removeAt(i).ctrl.dispose()),
+            ),
+          ],
+        ),
+      ],
+      if (!_isEnvios && _paradas.length < _maxParadas) ...[
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _paradas.add(_ParadaEdit())),
+            icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+            label: Text(
+              _paradas.isEmpty ? 'Agregar parada' : 'Agregar otra parada',
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ),
+        if (_paradas.any((p) => p.lat != null))
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
+            child: Text(
+              'Las paradas alargan el trayecto y el precio ya las incluye.',
+              style: TextStyle(fontSize: 11.5, color: context.textTertiaryColor),
+            ),
+          ),
+      ],
+
       if (_isEnvios) ...[
         const SizedBox(height: 24),
         _SectionTitle(title: 'Datos del destinatario'),
@@ -662,6 +762,7 @@ class _TransportBookingScreenState
             originLng: _originLng,
             destLat: _destLat,
             destLng: _destLng,
+            stops: _paradasParaPedir,
             recipientName: _isEnvios ? _recipientNameCtrl.text.trim() : null,
             recipientPhone: _isEnvios
                 ? (_recipientPhoneCtrl.text.trim().isEmpty
@@ -1503,3 +1604,13 @@ class _AddressPicker extends StatelessWidget {
 // ── Payment sheet ─────────────────────────────────────────────────────────────
 
 /// Método de pago elegido por el pasajero para el viaje.
+
+
+/// Una parada mientras se edita: su texto y, si se eligió del autocompletado,
+/// su punto. Sin punto no se puede medir, así que no encarece el viaje — pero
+/// el conductor la lee igual.
+class _ParadaEdit {
+  final TextEditingController ctrl = TextEditingController();
+  double? lat;
+  double? lng;
+}

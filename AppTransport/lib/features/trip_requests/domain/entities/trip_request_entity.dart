@@ -29,6 +29,7 @@ class TripRequestEntity {
     this.orderId,
     this.serviceType,
     this.paymentMethod,
+    this.stops = const [],
   });
 
   /// Identificador único de la solicitud.
@@ -79,6 +80,11 @@ class TripRequestEntity {
   /// Cómo pagará el pasajero: 'efectivo' | 'transferencia' | 'en_linea'.
   /// Null = efectivo (oferta de un backend anterior a este campo).
   final String? paymentMethod;
+
+  /// Paradas intermedias, en orden. Llegan en la OFERTA: tres desvíos
+  /// cambian el viaje que se está aceptando, y después ya no se puede
+  /// rechazar.
+  final List<String> stops;
 
   bool get isPending => status == TripRequestStatus.pending;
   bool get isAccepted => status == TripRequestStatus.accepted;
@@ -137,6 +143,7 @@ class TripRequestEntity {
     String? orderId,
     String? serviceType,
     String? paymentMethod,
+    List<String>? stops,
   }) {
     return TripRequestEntity(
       id: id ?? this.id,
@@ -154,6 +161,7 @@ class TripRequestEntity {
       orderId: orderId ?? this.orderId,
       serviceType: serviceType ?? this.serviceType,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      stops: stops ?? this.stops,
     );
   }
 

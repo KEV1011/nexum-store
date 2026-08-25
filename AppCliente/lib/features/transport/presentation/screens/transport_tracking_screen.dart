@@ -1057,6 +1057,26 @@ class _TripDetails extends StatelessWidget {
               child: VerticalDivider(color: context.outlineColor),
             ),
           ),
+          // Las paradas van ENTRE el origen y el destino, en su orden real:
+          // listarlas después del destino contaría el viaje al revés.
+          // Cada parada va seguida de SU separador. El separador que precede a
+          // este bloque ya lo pone el origen: repetirlo aquí dejaba dos rayas
+          // seguidas cuando no hay paradas.
+          for (var i = 0; i < request.stops.length; i++) ...[
+            _RouteRow(
+              icon: Icons.alt_route_rounded,
+              color: AppColors.warning,
+              label: 'Parada ${i + 1}',
+              address: request.stops[i],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: SizedBox(
+                height: 16,
+                child: VerticalDivider(color: context.outlineColor),
+              ),
+            ),
+          ],
           _RouteRow(
             icon: Icons.location_on_rounded,
             color: AppColors.destinationMarker,

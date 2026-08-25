@@ -125,9 +125,13 @@ export function etaDesdeMetros(metros: number): number {
 
 export async function getTripOptions(
   originLat: number, originLng: number, destLat: number, destLng: number,
+  // Las paradas entran también AQUÍ, no solo al pedir: si el precio que se
+  // enseña en el selector no las contara, el pasajero elegiría viendo una
+  // cifra y pagaría otra al confirmar. El precio que se ve es el que se cobra.
+  paradas: Array<{ lat?: number; lng?: number }> = [],
 ): Promise<OpcionesViaje> {
   const [trayecto, disponibilidad, surge] = await Promise.all([
-    medirTrayecto(originLat, originLng, destLat, destLng),
+    medirConParadas(originLat, originLng, destLat, destLng, paradas),
     disponibilidadPorTipoVehiculo(originLat, originLng),
     getSurgeMultiplier(originLat, originLng),
   ]);

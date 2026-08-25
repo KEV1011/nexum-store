@@ -138,6 +138,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
     double? destLng,
     double? distanceKm,
     int? etaMinutes,
+    /// Paradas intermedias: `[{name, lat?, lng?, order}]`. El servidor mide el
+    /// trayecto PASANDO por las que tienen punto, así que encarecen el viaje.
+    List<Map<String, dynamic>>? stops,
   }) async {
     // Distancia/ETA reales (Google Directions) cuando el booking las resolvió;
     // estimación local como fallback para texto libre.
@@ -155,6 +158,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
         '/client/trips/request',
         data: {
           'serviceType': categoria?.toLowerCase() ?? serviceType.name,
+        if (stops != null && stops.isNotEmpty) 'stops': stops,
           'originAddress': origin,
           'destinationAddress': destination,
           'estimatedFare': fare,
@@ -465,6 +469,7 @@ class TripRoutePoints {
     required this.originLng,
     required this.destLat,
     required this.destLng,
+    this.paradas = const '',
   });
 
   final double originLat;
@@ -472,16 +477,26 @@ class TripRoutePoints {
   final double destLat;
   final double destLng;
 
+  /// Paradas con punto, en el formato que espera el servidor:
+  /// `"lat,lng;lat,lng"`. Cadena y no lista porque esto es la CLAVE de la
+  /// familia del provider: dos listas con el mismo contenido son objetos
+  /// distintos y volverían a cotizar sin necesidad, mientras que dos cadenas
+  /// iguales son iguales. Y si las paradas cambian, la clave cambia y se
+  /// vuelve a pedir el precio — que es justo lo que tiene que pasar.
+  final String paradas;
+
   @override
   bool operator ==(Object other) =>
       other is TripRoutePoints &&
       other.originLat == originLat &&
       other.originLng == originLng &&
       other.destLat == destLat &&
-      other.destLng == destLng;
+      other.destLng == destLng &&
+      other.paradas == paradas;
 
   @override
-  int get hashCode => Object.hash(originLat, originLng, destLat, destLng);
+  int get hashCode =>
+      Object.hash(originLat, originLng, destLat, destLng, paradas);
 }
 
 /// Categorías disponibles para un trayecto, cotizadas por el servidor.
@@ -499,6 +514,7 @@ final tripOptionsProvider = FutureProvider.autoDispose
       'originLng': puntos.originLng,
       'destLat': puntos.destLat,
       'destLng': puntos.destLng,
+      if (puntos.paradas.isNotEmpty) 'stops': puntos.paradas,
     },
   );
   final data = res.data?['data'] as Map<String, dynamic>?;

@@ -133,6 +133,7 @@ class TransportRequestEntity {
     this.contactChannel,
     this.driverVehicle,
     this.driverVehicleType,
+    this.stops = const [],
     this.driverCard,
     this.acceptedAt,
     this.completedAt,
@@ -184,6 +185,10 @@ class TransportRequestEntity {
         contactChannel: json['contactChannel'] as String?,
         driverVehicle: json['driverVehicle'] as String?,
         driverVehicleType: json['driverVehicleType'] as String?,
+        stops: ((json['stops'] as List<dynamic>?) ?? const [])
+            .map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '')
+            .where((n) => n.isNotEmpty)
+            .toList(),
         driverCard: DriverCardInfo.fromJson(json),
         acceptedAt: json['acceptedAt'] != null
             ? DateTime.parse(json['acceptedAt'] as String)
@@ -242,6 +247,10 @@ class TransportRequestEntity {
   /// — decide el ícono ilustrado del mapa.
   final String? driverVehicleType;
 
+  /// Paradas intermedias del trayecto, en orden. Solo los nombres: las
+  /// coordenadas ya las usó el servidor para medir y cobrar.
+  final List<String> stops;
+
   /// Foto, calificación, verificación y placa del conductor asignado.
   /// Null mientras se busca conductor.
   final DriverCardInfo? driverCard;
@@ -286,6 +295,7 @@ class TransportRequestEntity {
     String? contactChannel,
     String? driverVehicle,
     String? driverVehicleType,
+    List<String>? stops,
     DriverCardInfo? driverCard,
     DateTime? acceptedAt,
     DateTime? completedAt,
@@ -320,6 +330,7 @@ class TransportRequestEntity {
       contactChannel: contactChannel ?? this.contactChannel,
       driverVehicle: driverVehicle ?? this.driverVehicle,
       driverVehicleType: driverVehicleType ?? this.driverVehicleType,
+      stops: stops ?? this.stops,
       driverCard: driverCard ?? this.driverCard,
       acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,

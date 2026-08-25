@@ -415,8 +415,21 @@ router.get('/trips/options', clientAuthMiddleware, async (req, res) => {
     });
     return;
   }
+  // Las paradas viajan como "lat,lng;lat,lng": es un GET y no puede llevar
+  // cuerpo. Solo cuentan las que tienen punto — una escrita a mano no se puede
+  // medir, y aquí solo se necesita para el precio.
+  const paradas = String(req.query['stops'] ?? '')
+    .split(';')
+    .map((par) => par.split(',').map(Number))
+    .filter((c) => c.length === 2 && c.every(Number.isFinite))
+    .slice(0, 6)
+    .map(([lat, lng]) => ({ lat, lng }));
+
   try {
-    res.json({ success: true, data: await getTripOptions(originLat, originLng, destLat, destLng) });
+    res.json({
+      success: true,
+      data: await getTripOptions(originLat, originLng, destLat, destLng, paradas),
+    });
   } catch (err) {
     console.error('[Opciones] error calculando opciones de viaje:', err);
     res.status(502).json({ success: false, error: 'No pudimos calcular las tarifas. Intenta de nuevo.' });
