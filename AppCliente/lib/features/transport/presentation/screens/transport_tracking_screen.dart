@@ -286,7 +286,7 @@ class _StatusCard extends StatelessWidget {
                 ),
               ),
               if (request.isActive)
-                _EtaBadge(eta: request.etaMinutes),
+                _EtaBadge(eta: request.etaVivoMin),
             ],
           ),
           if (request.isCompleted && request.completedAt != null) ...[
@@ -894,7 +894,7 @@ class _MapLiveOverlay extends StatelessWidget {
                     color: Colors.white, size: 14),
                 const SizedBox(width: 4),
                 Text(
-                  '${request.etaMinutes} min',
+                  '${request.etaVivoMin} min',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -1098,7 +1098,7 @@ class _TripDetails extends StatelessWidget {
               Expanded(
                 child: _StatChip(
                   icon: Icons.schedule_rounded,
-                  value: '${request.etaMinutes} min',
+                  value: '${request.etaVivoMin} min',
                   label: 'Tiempo est.',
                 ),
               ),

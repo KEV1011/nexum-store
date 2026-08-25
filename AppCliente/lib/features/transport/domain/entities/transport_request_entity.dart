@@ -1,5 +1,8 @@
 // `export` re-expone la clase a quien importe este archivo, pero NO la trae
 // a este ámbito: hace falta el import además del export.
+import 'package:latlong2/latlong.dart';
+
+import 'package:nexum_client/core/utils/eta_vivo.dart';
 import 'package:nexum_client/shared/models/driver_card_info.dart';
 
 export 'package:nexum_client/shared/models/driver_card_info.dart';
@@ -372,4 +375,43 @@ class TransportRequestEntity {
         if (destLat != null) 'destLat': destLat,
         if (destLng != null) 'destLng': destLng,
       };
+}
+
+/// El ETA que se le enseña a la persona.
+extension TransportEtaVivo on TransportRequestEntity {
+  /// ¿Va el pasajero (o el paquete) ya dentro del vehículo?
+  bool get aBordo => status == TransportStatus.inProgress;
+
+  /// A dónde se dirige el conductor AHORA: al punto de recogida mientras va
+  /// por el pasajero, al destino cuando ya lo lleva.
+  LatLng? get _objetivo {
+    if (aBordo) {
+      return (destLat != null && destLng != null)
+          ? LatLng(destLat!, destLng!)
+          : null;
+    }
+    return (originLat != null && originLng != null)
+        ? LatLng(originLat!, originLng!)
+        : null;
+  }
+
+  /// Minutos que faltan de verdad, recalculados con cada posición que llega
+  /// del conductor.
+  ///
+  /// Cae al ETA del servidor cuando todavía no hay posición —buscando
+  /// conductor, o el GPS aún sin fijar—, que es exactamente lo que se mostraba
+  /// antes y sigue siendo lo mejor que se puede decir en ese momento.
+  int get etaVivoMin {
+    final conductor = (driverLat != null && driverLng != null)
+        ? LatLng(driverLat!, driverLng!)
+        : null;
+    return etaEnVivoMin(
+          conductor: conductor,
+          destino: _objetivo,
+          aBordo: aBordo,
+          etaTotalMin: etaMinutes,
+          distanciaTotalKm: distanceKm,
+        ) ??
+        etaMinutes;
+  }
 }
