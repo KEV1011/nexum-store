@@ -601,6 +601,10 @@ model Trip {
   destAddress        String
   destLat            Float
   destLng            Float
+  // Paradas intermedias del trayecto: [{name, lat?, lng?, order}] (máx. 6).
+  // Mismo formato que el intermunicipal y los cupos, para que `lib/trip-stops`
+  // valide y lea los tres igual.
+  stops              Json?
   estimatedFare      Float
   surgeMultiplier    Float           @default(1.0)
   /// Cómo acordó pagar el pasajero: 'efectivo' | 'transferencia' | 'en_linea'.

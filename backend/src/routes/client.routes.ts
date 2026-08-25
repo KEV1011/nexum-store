@@ -449,6 +449,7 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
     originLat?: number; originLng?: number; destLat?: number; destLng?: number;
     recipientName?: string; recipientPhone?: string; packageDescription?: string;
     paymentMethod?: string;
+    stops?: import('../types').TripStopDTO[];
   };
 
   if (!dto.serviceType || !dto.originAddress || !dto.destinationAddress) {
@@ -462,6 +463,7 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
       originAddress: dto.originAddress,
       destinationAddress: dto.destinationAddress,
       estimatedFare: dto.estimatedFare ?? 0,
+      stops: dto.stops,
       distanceKm: dto.distanceKm ?? 0,
       etaMinutes: dto.etaMinutes ?? 0,
       originLat: dto.originLat,

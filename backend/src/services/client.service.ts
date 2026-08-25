@@ -20,7 +20,8 @@ import { requestOtp, validateOtp } from './otp.service';
 import { normalizeColombianPhone } from './auth.service';
 import { calcFare, liquidarViaje } from '../lib/fare';
 import { categoriaDeServicio } from '../lib/tarifa-categoria';
-import { precioServidor, medirTrayecto } from './trip-options.service';
+import { precioServidor, medirConParadas } from './trip-options.service';
+import { sanitizeStops, stopsFromDb } from '../lib/trip-stops';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
 import { resolverOpciones, sanearNota } from '../lib/order-options';
 import { exigirPuntoRecogida, exigirPuntoDestino } from '../lib/trip-coords';
@@ -892,6 +893,11 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   // instalada esa app, no de la tarifa vigente. Ahora se recalcula aquí con la
   // misma tabla que cotizó las opciones, y los números del cliente se
   // descartan. Para un TAXI eso además garantiza que se cobre el decreto.
+  // Se validan ANTES de medir y de crear: una parada sin nombre o siete
+  // paradas tienen que fallar con un mensaje claro, no a medio camino.
+  const paradas = sanitizeStops(dto.stops);
+  const paradasCoord = (dto.stops ?? []).map((p) => ({ lat: p.lat, lng: p.lng }));
+
   const categoria = categoriaDeServicio(serviceType);
   let estimatedFare: number | undefined;
   let distanceKm: number | undefined;
@@ -899,7 +905,9 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   let surgeMultiplier = 1;
 
   if (categoria) {
-    const p = await precioServidor(categoria, originLat, originLng, destLat, destLng);
+    const p = await precioServidor(
+      categoria, originLat, originLng, destLat, destLng, paradasCoord,
+    );
     estimatedFare = p.fare;
     distanceKm = p.distanceKm;
     etaMinutes = p.durationMinutes;
@@ -907,7 +915,9 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   } else {
     // ENVIOS: no es una categoría de pasajero, pero el trayecto tampoco se le
     // cree al teléfono — se mide y se cobra con la fórmula genérica.
-    const t = await medirTrayecto(originLat, originLng, destLat, destLng);
+    const t = await medirConParadas(
+      originLat, originLng, destLat, destLng, paradasCoord,
+    );
     const { multiplier } = await getSurgeMultiplier(originLat, originLng);
     surgeMultiplier = multiplier;
     distanceKm = t.distanceKm;
@@ -933,6 +943,7 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       destAddress: dto.destinationAddress,
       destLat,
       destLng,
+      ...(paradas !== undefined ? { stops: paradas } : {}),
       estimatedFare,
       surgeMultiplier,
       distanceKm,
@@ -1345,6 +1356,7 @@ type PrismaTrip = {
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
   deliveryPin?: string | null;
   paymentMethod?: string | null;
+  stops?: unknown;
 };
 
 /**
@@ -1409,6 +1421,9 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConduct
     distanceKm: trip.distanceKm ?? 0,
     etaMinutes: trip.etaMinutes ?? 0,
     status: statusMap[trip.status] ?? 'searching',
+    // Las paradas viajan también al conductor (este DTO es el de
+    // `trip_accepted`): tiene que saber por dónde pasa ANTES de aceptar.
+    ...(stopsFromDb(trip.stops) ? { stops: stopsFromDb(trip.stops) } : {}),
     ...(ficha ? _fichaToDTO(ficha) : {}),
     createdAt: trip.createdAt.toISOString(),
     acceptedAt: trip.acceptedAt?.toISOString(),
