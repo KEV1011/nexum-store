@@ -169,3 +169,23 @@ h1, h2, h3, h4, h5, h6 {
     transform: none;
   }
 }
+
+/* ── Mapa oscuro del portal ───────────────────────────────────────────────────
+   El mapa de la torre de control y el de recorridos van oscuros, igual que los
+   de las apps. Las teselas de Google llegan ya oscuras (el backend fija el
+   estilo al abrir la sesión); las de OpenStreetMap, que es el respaldo cuando
+   no hay llave de Google, solo existen en claro y se oscurecen aquí —por eso
+   el filtro va sobre una clase propia y no sobre `.leaflet-tile`, que las
+   afectaría a las dos y dejaría las de Google otra vez claras.
+
+   Invertir a secas volvería el agua naranja; el giro de tono la devuelve a
+   azul. */
+.nx-tesela-clara {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.92);
+}
+
+/* El suelo que asoma mientras cargan las teselas y al arrastrar hasta el
+   borde. En claro era un gris que destellaba en blanco sobre el mapa oscuro. */
+.leaflet-container {
+  background: #1f2429;
+}

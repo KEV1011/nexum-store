@@ -212,6 +212,7 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
+              backgroundColor: mapaFondoOscuro,
               initialCenter: _myLocation ?? _pamplona,
               initialZoom: 15.2,
               maxZoom: 19,

@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import 'package:nexum_client/shared/widgets/vehicle_top_down.dart';
@@ -31,10 +33,12 @@ enum VehicleGlyphKind {
   truck,
 }
 
-/// Marcador de vehículo estilo Google Maps: chip circular blanco con el ícono
-/// oficial de Google (Material Icons) que se desliza por la ruta A→B. Los íconos miran a la
-/// DERECHA y se voltean automáticamente cuando el conductor va hacia el oeste,
-/// para que el vehículo siempre "mire" hacia donde avanza.
+/// Marcador del vehículo sobre el mapa: la ilustración cenital girada hacia
+/// donde avanza, con un halo claro detrás que la separa del mapa oscuro.
+///
+/// El arte sale de `tools/procesar-vehiculos.py`; los tipos que aún no tienen
+/// ilustración se dibujan en código (`VehicleTopDownPainter`), que también es
+/// el respaldo si un archivo faltara en el paquete.
 class VehicleGlyph extends StatelessWidget {
   const VehicleGlyph({
     required this.kind,
@@ -58,8 +62,11 @@ class VehicleGlyph extends StatelessWidget {
   /// amarillo, camión gris azulado…), que es lo que se quiere casi siempre.
   final Color? color;
 
-  static const double markerWidth = 66;
-  static const double markerHeight = 52;
+  // El marcador es cuadrado y del lado del arte: así el vehículo cabe girado
+  // en cualquier rumbo sin recortarse. El camión, que es el más largo, mide 87
+  // de diagonal — por eso 96 y no menos. Lo que sobra es transparente.
+  static const double markerWidth = _ladoArte;
+  static const double markerHeight = _ladoArte;
 
   /// Traduce el tipo del marcador al del dibujo cenital.
   VehicleTopDownKind get _dibujo => switch (kind) {
@@ -121,11 +128,18 @@ class VehicleGlyph extends StatelessWidget {
     );
   }
 
-  /// El vehículo dibujado en código, visto desde arriba y girado al rumbo.
-  Widget _cenital() {
-    return Transform.rotate(
-      angle: radianesDeRumbo(headingDegrees),
-      child: SizedBox(
+  /// Ilustración cenital de este tipo, o null si no tiene y hay que dibujarlo.
+  ///
+  /// El repartidor NO tiene imagen a propósito: su seña es el cajón detrás del
+  /// asiento, que es lo que distingue «te traen la comida» de «viene tu
+  /// carrera». Usar aquí la moto de pasajeros borraría esa diferencia, así que
+  /// ese caso sigue con el dibujo en código, que sí lleva el cajón.
+  String? get _ilustracion => ilustracionDeVehiculo(kind);
+
+  /// Lado del lienzo de las ilustraciones (ver `tools/procesar-vehiculos.py`).
+  static const double _ladoArte = 96;
+
+  Widget get _dibujado => SizedBox(
         width: 30,
         height: 44,
         child: CustomPaint(
@@ -133,6 +147,67 @@ class VehicleGlyph extends StatelessWidget {
             kind: _dibujo,
             body: color ?? _carroceria,
           ),
+        ),
+      );
+
+  /// El vehículo visto desde arriba, girado al rumbo.
+  ///
+  /// Las ilustraciones vienen en un lienzo cuadrado con el vehículo centrado,
+  /// así que rotarlas es exacto: giran sobre su eje en vez de orbitar.
+  Widget _cenital() {
+    final ruta = _ilustracion;
+    final vehiculo = ruta == null
+        ? _dibujado
+        : Image.asset(
+            ruta,
+            width: _ladoArte,
+            height: _ladoArte,
+            filterQuality: FilterQuality.medium,
+            // Si el archivo faltara en el paquete, el mapa no se queda sin
+            // vehículo: vuelve al dibujo en código.
+            errorBuilder: (_, __, ___) => _dibujado,
+          );
+
+    return Transform.rotate(
+      angle: radianesDeRumbo(headingDegrees),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Halo de contraste, pegado a la silueta.
+          //
+          // Hace falta porque el mapa es oscuro: el particular es azul marino
+          // (#1E293B) y el suelo del mapa es #1f2429 — casi el mismo nivel de
+          // oscuridad, así que sin esto el carro se pierde. Probado sobre el
+          // color real del mapa antes de elegir los valores: más ancho o más
+          // opaco y el taxi y el camión, que ya son claros, parecen encendidos.
+          _Halo(child: vehiculo),
+          vehiculo,
+        ],
+      ),
+    );
+  }
+}
+
+/// Silueta blanca difuminada detrás del vehículo, para separarlo del mapa.
+class _Halo extends StatelessWidget {
+  const _Halo({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.scale(
+      scale: 1.10,
+      child: ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+        child: ColorFiltered(
+          // srcIn = pinta de blanco conservando la transparencia del vehículo,
+          // es decir su silueta exacta.
+          colorFilter: const ColorFilter.mode(
+            Color(0x96FFFFFF),
+            BlendMode.srcIn,
+          ),
+          child: child,
         ),
       ),
     );
@@ -185,3 +260,18 @@ VehicleGlyphKind vehicleGlyphKindFor(
   if (entrega && tipo == VehicleGlyphKind.moto) return VehicleGlyphKind.delivery;
   return tipo;
 }
+
+/// Ruta de la ilustración cenital de un tipo, o null si no tiene.
+///
+/// Es pública porque la usa también la ficha del conductor: ahí se enseñaba un
+/// pictograma gris de Material mientras el mapa dibujaba el taxi amarillo, o
+/// sea dos vehículos distintos para el mismo carro en la misma pantalla.
+///
+/// El repartidor no tiene ilustración a propósito (ver [VehicleGlyph]).
+String? ilustracionDeVehiculo(VehicleGlyphKind kind) => switch (kind) {
+      VehicleGlyphKind.taxi => 'assets/vehicles/taxi.png',
+      VehicleGlyphKind.car => 'assets/vehicles/particular.png',
+      VehicleGlyphKind.moto => 'assets/vehicles/moto.png',
+      VehicleGlyphKind.truck => 'assets/vehicles/camion.png',
+      VehicleGlyphKind.delivery => null,
+    };

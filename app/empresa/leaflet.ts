@@ -112,7 +112,10 @@ export function addTiles(
   backendUrl: string | undefined,
   auth: 'bearer' | 'business' = 'bearer',
 ): void {
-  const osm = L.tileLayer(OSM_URL, { maxZoom: 19 })
+  // La clase la usa `globals.css` para oscurecer SOLO estas teselas: las de
+  // Google ya vienen oscuras del estilo que el backend fija en la sesión, y
+  // filtrarlas también las volvería a aclarar.
+  const osm = L.tileLayer(OSM_URL, { maxZoom: 19, className: 'nx-tesela-clara' })
   osm.addTo(map)
   if (!token || !backendUrl) return
 

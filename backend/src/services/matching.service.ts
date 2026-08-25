@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { DriverStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { stopsFromDb } from '../lib/trip-stops';
 import { TripRequestDTO } from '../types';
 import { sendPushToDriver, sendPushToClient } from '../services/push.service';
 import { getErrandOfferInfo } from './errand.service';
@@ -383,6 +384,10 @@ async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | nul
     // efectivo y se encuentra con una transferencia no puede dar cambio ni
     // cuadrar su caja, y a esas alturas ya no puede rechazarla.
     paymentMethod: trip.paymentMethod ?? undefined,
+    // Por dónde pasa. En la OFERTA, por el mismo motivo que el método de pago:
+    // tres desvíos cambian el viaje que se está aceptando, y una vez aceptado
+    // ya no se puede rechazar.
+    stops: stopsFromDb(trip.stops),
   };
 }
 

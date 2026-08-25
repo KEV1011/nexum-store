@@ -442,6 +442,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         requestedAt: DateTime.now(),
         serviceType: t['serviceType'] as String?,
         paymentMethod: t['paymentMethod'] as String?,
+        // Solo el nombre: al conductor le sirve para decidir y para orientarse;
+        // las coordenadas ya las usó el servidor para medir y cobrar.
+        stops: ((t['stops'] as List<dynamic>?) ?? const [])
+            .map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '')
+            .where((n) => n.isNotEmpty)
+            .toList(),
       );
     } catch (_) {
       return null;
@@ -714,6 +720,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           FlutterMap(
             mapController: _mapController,
             options: const MapOptions(
+              backgroundColor: mapaFondoOscuro,
               initialCenter: _center,
               initialZoom: MapConstants.initialZoom,
             ),
@@ -2678,6 +2685,31 @@ class _TripRequestModal extends StatelessWidget {
                             ],
                           ),
                         ),
+                        // POR DÓNDE PASA. Va junto a las direcciones y no
+                        // en el mapa: un desvío puede ser el motivo para no
+                        // aceptar, y en quince segundos nadie interpreta una
+                        // línea torcida.
+                        if (trip.stops.isNotEmpty) ...[
+                          const SizedBox(height: AppConstants.spacingS),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.alt_route_rounded,
+                                  size: 15, color: AppColors.warning),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  'Pasa por: ${trip.stops.join(' · ')}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.warning,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: AppConstants.spacingM),
                         // POR DÓNDE VA EL VIAJE, antes de aceptar.
                         //

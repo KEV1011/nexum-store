@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nexum_driver/core/utils/fare_calculator.dart';
 import 'package:nexum_driver/features/active_trip/data/datasources/active_trip_datasource.dart';
 import 'package:nexum_driver/features/active_trip/data/repositories/active_trip_repository_impl.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
@@ -164,9 +163,14 @@ class ActiveTripNotifier extends StateNotifier<ActiveTripEntity?> {
 
   // ── Timers ─────────────────────────────────────────────────────────────────
 
-  /// Inicia el timer de acumulación de tarifa.
-  /// Se dispara cada 30 segundos para actualizar [accumulatedFare] y
-  /// [elapsedTripMinutes] usando [FareCalculator.calculateFare].
+  /// Lleva la cuenta de los minutos del viaje, para el «~N min» que falta.
+  ///
+  /// Ya NO calcula tarifa. Lo hacía con `FareCalculator.calculateFare` cada 30
+  /// segundos, y eso era una segunda fórmula de precios viviendo dentro del
+  /// teléfono del conductor: el mismo viaje salía a 6.350 en la app del
+  /// pasajero —el precio del servidor, el del decreto cuando es un taxi— y a
+  /// 5.020 aquí. El precio lo pone el servidor y viene en la oferta; la
+  /// ganancia la liquida el servidor al completar.
   void _startFareAccumulationTimer() {
     _stopFareAccumulationTimer();
 
@@ -179,15 +183,8 @@ class ActiveTripNotifier extends StateNotifier<ActiveTripEntity?> {
           return;
         }
 
-        final newElapsedMinutes = current.elapsedTripMinutes + 1;
-        final newFare = FareCalculator.calculateFare(
-          distanceKm: current.request.distanceKm,
-          durationMinutes: newElapsedMinutes,
-        );
-
         state = current.copyWith(
-          elapsedTripMinutes: newElapsedMinutes,
-          accumulatedFare: newFare,
+          elapsedTripMinutes: current.elapsedTripMinutes + 1,
         );
       },
     );

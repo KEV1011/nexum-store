@@ -201,6 +201,7 @@ class _RoutePreviewMapState extends ConsumerState<RoutePreviewMap> {
     return FlutterMap(
       mapController: _mapa,
       options: MapOptions(
+        backgroundColor: mapaFondoOscuro,
         initialCenter: _origen,
         initialZoom: 15,
         initialCameraFit: pts.length > 1

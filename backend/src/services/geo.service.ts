@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { LruCache } from '../lib/lru-cache';
+import { ESTILO_MAPA_OSCURO } from '../config/estilo-mapa';
 
 const GOOGLE_MAPS_API_KEY = process.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
@@ -173,13 +174,19 @@ export async function geoHealth(): Promise<GeoHealth> {
 
   // Map Tiles API: imágenes del mapa de Google (createSession). REQUEST_DENIED /
   // 403 aquí = Map Tiles API no habilitada o key restringida.
+  //
+  // Se prueba con EL MISMO cuerpo que usa la sesión real, estilo oscuro
+  // incluido. Con un cuerpo distinto, un error en el estilo tumbaría las
+  // sesiones de verdad —todos los mapas caerían a OpenStreetMap— mientras el
+  // diagnóstico seguía diciendo «ok», que es la peor combinación posible:
+  // roto y sin forma de verlo.
   const mapTiles = await _probeApi('mapTiles', async () => {
     const res = await fetch(
       `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mapType: 'roadmap', language: 'es-419', region: 'CO' }),
+        body: JSON.stringify(_cuerpoSesionMapa()),
       },
     );
     const json = (await res.json()) as Record<string, unknown>;
@@ -455,13 +462,31 @@ interface MapSession {
 let _mapSession: MapSession | null = null;
 let _mapSessionInFlight: Promise<string> | null = null;
 
+/**
+ * Cuerpo de `createSession`. Uno solo, usado por la sesión real Y por el
+ * diagnóstico de `/geo/health`.
+ *
+ * El estilo oscuro viaja AQUÍ, no en cada tesela: Map Tiles API lo fija al
+ * abrir la sesión y todas las imágenes de esa sesión salen ya con él. Como la
+ * sesión se cachea ~2 semanas en memoria, un cambio de estilo se ve tras el
+ * siguiente redespliegue.
+ */
+export function _cuerpoSesionMapa(): Record<string, unknown> {
+  return {
+    mapType: 'roadmap',
+    language: 'es-419',
+    region: 'CO',
+    styles: ESTILO_MAPA_OSCURO,
+  };
+}
+
 async function _createMapSession(): Promise<string> {
   const res = await fetch(
     `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mapType: 'roadmap', language: 'es-419', region: 'CO' }),
+      body: JSON.stringify(_cuerpoSesionMapa()),
     },
   );
   const json = (await res.json()) as Record<string, unknown>;

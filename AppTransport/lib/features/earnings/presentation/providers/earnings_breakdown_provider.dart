@@ -11,12 +11,22 @@ class EarningsBucket {
     required this.label,
     required this.trips,
     required this.grossEarnings,
+    required this.netEarnings,
+    required this.commission,
     this.date,
   });
 
   final String label;
   final int trips;
   final double grossEarnings;
+
+  /// Lo que se lleva el conductor, SUMADO de lo que liquidó el servidor viaje
+  /// por viaje. No se deriva del bruto: ver la nota de [_aggregate].
+  final double netEarnings;
+
+  /// Lo que se quedó la plataforma, también del servidor.
+  final double commission;
+
   final DateTime? date;
 }
 
@@ -37,6 +47,16 @@ class EarningsBreakdown {
 bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
+/// Suma lo que LIQUIDÓ EL SERVIDOR, no una proporción del bruto.
+///
+/// Antes esto sumaba solo el bruto y la pantalla repartía después con
+/// `FareCalculator` y un porcentaje de comisión escrito dentro de la app. El
+/// backend ya manda `netEarning` y `commission` viaje por viaje —es lo que de
+/// verdad entró a la billetera—, así que recalcularlo aquí era inventar una
+/// segunda contabilidad: el día que la comisión cambie en el servidor, el
+/// conductor seguiría viendo el reparto viejo hasta que actualice la app. Y si
+/// un viaje se liquidó con otra tasa (una promoción, un flete), el promedio
+/// tampoco cuadraba.
 EarningsBreakdown _aggregate(List<TripModel> trips) {
   final now = DateTime.now();
 
@@ -52,8 +72,9 @@ EarningsBreakdown _aggregate(List<TripModel> trips) {
         label: '${day.day}',
         date: day,
         trips: dayTrips.length,
-        grossEarnings:
-            dayTrips.fold<double>(0, (s, t) => s + t.grossFare),
+        grossEarnings: dayTrips.fold<double>(0, (s, t) => s + t.grossFare),
+        netEarnings: dayTrips.fold<double>(0, (s, t) => s + t.netEarning),
+        commission: dayTrips.fold<double>(0, (s, t) => s + t.commission),
       ),
     );
   }
@@ -64,10 +85,14 @@ EarningsBreakdown _aggregate(List<TripModel> trips) {
           t.finishedAt.year == now.year && t.finishedAt.month == now.month)
       .toList();
   final weekTotals = List<double>.filled(4, 0);
+  final weekNet = List<double>.filled(4, 0);
+  final weekCommission = List<double>.filled(4, 0);
   final weekTrips = List<int>.filled(4, 0);
   for (final t in monthTrips) {
     final idx = math.min(((t.finishedAt.day - 1) ~/ 7), 3);
     weekTotals[idx] += t.grossFare;
+    weekNet[idx] += t.netEarning;
+    weekCommission[idx] += t.commission;
     weekTrips[idx] += 1;
   }
   final weeks = <EarningsBucket>[
@@ -76,6 +101,8 @@ EarningsBreakdown _aggregate(List<TripModel> trips) {
         label: 'Sem ${w + 1}',
         trips: weekTrips[w],
         grossEarnings: weekTotals[w],
+        netEarnings: weekNet[w],
+        commission: weekCommission[w],
       ),
   ];
 

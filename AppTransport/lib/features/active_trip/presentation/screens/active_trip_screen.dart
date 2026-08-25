@@ -544,6 +544,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
+        backgroundColor: mapaFondoOscuro,
         initialCenter: _driverPos,
         initialZoom: MapConstants.tripZoom,
         onMapReady: () => _fitBoundsToRoute(boundsPoints),
@@ -744,8 +745,23 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(serviceType.icon,
-                          size: 14, color: serviceType.color),
+                      // El ícono sale del vehículo REAL, igual que el marcador
+                      // del mapa. Usaba `selectedServiceTypeProvider`, que es
+                      // la pestaña marcada en la pantalla del conductor y no lo
+                      // que está conduciendo: en una carrera de taxi la píldora
+                      // enseñaba una moto. El texto de al lado ya se derivaba
+                      // del viaje; el ícono se había quedado atrás.
+                      Icon(
+                        vehicleGlyphIcon(
+                          vehicleGlyphKindFor(
+                            ref.watch(driverProfileProvider).profile?.vehicleType ??
+                                trip.request.serviceType,
+                            fallback: VehicleGlyphKind.car,
+                          ),
+                        ),
+                        size: 14,
+                        color: serviceType.color,
+                      ),
                       const SizedBox(width: 6),
                       Flexible(
                         child: Text(

@@ -18,6 +18,15 @@ interface Analytics {
   byService: { service: string; count: number; gross: number; avg: number }[]
   topDrivers: { name: string; count: number; gross: number; net: number; avgTicket: number; rating: number | null }[]
   topVehicles: { plate: string; count: number; gross: number; avgTicket: number; type: string | null }[]
+  serie: { fecha: string; servicios: number; bruto: number }[]
+  anterior: { desde: string; hasta: string; bruto: number; servicios: number }
+  cambio: { bruto: number | null; servicios: number | null }
+  tiempos: {
+    esperaAceptacionMin: number | null
+    hastaRecogerMin: number | null
+    duracionMin: number | null
+    muestra: number
+  }
 }
 
 const SERVICE_LABEL: Record<string, string> = {
@@ -102,11 +111,22 @@ export default function AnalyticsPanel({ api }: { api: OperatorApi }) {
         <div className="space-y-3">
           {/* KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <Stat label="Servicios" value={String(data.totalServices)} />
-            <Stat label="Facturación" value={cop(data.totalGross)} />
+            <Stat
+              label="Servicios"
+              value={String(data.totalServices)}
+              cambio={data.cambio.servicios}
+            />
+            <Stat
+              label="Facturación"
+              value={cop(data.totalGross)}
+              cambio={data.cambio.bruto}
+            />
             <Stat label="Ticket promedio" value={cop(data.avgTicket)} />
             <Stat label="Neto flota" value={cop(data.totalNet)} highlight />
           </div>
+
+          <SerieDiaria puntos={data.serie} />
+          <Tiempos t={data.tiempos} />
 
           {/* Ranking de conductores */}
           {data.topDrivers.length > 0 && (
@@ -183,11 +203,106 @@ export default function AnalyticsPanel({ api }: { api: OperatorApi }) {
   )
 }
 
-function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function Stat({ label, value, highlight, cambio }: {
+  label: string; value: string; highlight?: boolean; cambio?: number | null
+}) {
   return (
     <div className={`rounded-xl border p-3 ${highlight ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-200'}`}>
       <p className={`text-lg font-bold leading-tight ${highlight ? 'text-white' : 'text-slate-900'}`}>{value}</p>
-      <p className={`text-[11px] mt-0.5 ${highlight ? 'text-emerald-100' : 'text-slate-400'}`}>{label}</p>
+      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+        <p className={`text-[11px] ${highlight ? 'text-emerald-100' : 'text-slate-400'}`}>{label}</p>
+        {/*
+          `cambio` es null cuando el período anterior fue cero. Ahí no se pinta
+          nada: «+100 %» sobre una base de cero es un estreno disfrazado de
+          crecimiento, y es la mentira más fácil de colar en un tablero.
+        */}
+        {cambio != null && (
+          <span
+            className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              cambio > 0
+                ? 'bg-emerald-50 text-emerald-700'
+                : cambio < 0
+                  ? 'bg-rose-50 text-rose-600'
+                  : 'bg-slate-100 text-slate-500'
+            }`}
+            title="Frente al mismo número de días inmediatamente anterior"
+          >
+            {cambio > 0 ? '▲' : cambio < 0 ? '▼' : '='} {Math.abs(cambio)} %
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Barras por día. Sin librería: son barras, no hace falta traerse una. */
+function SerieDiaria({ puntos }: { puntos: { fecha: string; servicios: number; bruto: number }[] }) {
+  if (puntos.length === 0) return null
+  const max = Math.max(1, ...puntos.map((p) => p.bruto))
+  const dia = (f: string) => f.slice(8, 10)
+  // Con muchos días no cabe una etiqueta por barra: se marcan de cinco en cinco
+  // para no convertir el eje en una mancha.
+  const paso = puntos.length > 20 ? 5 : puntos.length > 10 ? 2 : 1
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+      <p className="text-xs font-semibold text-slate-500 mb-3">Facturación por día</p>
+      <div className="flex items-end gap-[3px] h-28">
+        {puntos.map((p) => (
+          <div
+            key={p.fecha}
+            className="flex-1 min-w-0 flex flex-col justify-end h-full group relative"
+            title={`${p.fecha} · ${p.servicios} servicio(s) · ${cop(p.bruto)}`}
+          >
+            <div
+              className={`w-full rounded-t ${p.bruto > 0 ? 'bg-emerald-500 group-hover:bg-emerald-600' : 'bg-slate-100'}`}
+              // Los días en cero se dibujan como una línea de 2 px en vez de
+              // desaparecer: un hueco en la barra ES la información.
+              style={{ height: p.bruto > 0 ? `${Math.max(4, (p.bruto / max) * 100)}%` : '2px' }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-[3px] mt-1">
+        {puntos.map((p, i) => (
+          <div key={p.fecha} className="flex-1 min-w-0 text-center text-[9px] text-slate-400">
+            {i % paso === 0 ? dia(p.fecha) : ''}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Cuánto tarda de verdad un servicio, por etapas. */
+function Tiempos({ t }: { t: Analytics['tiempos'] }) {
+  const nada =
+    t.esperaAceptacionMin == null && t.hastaRecogerMin == null && t.duracionMin == null
+  if (nada) return null
+  const min = (v: number | null) => (v == null ? '—' : `${v} min`)
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+      <p className="text-xs font-semibold text-slate-500 mb-2.5">
+        Tiempos del servicio
+        <span className="font-normal text-slate-400">
+          {' '}· viajes urbanos · {t.muestra} en la muestra
+        </span>
+      </p>
+      <div className="grid grid-cols-3 gap-2.5">
+        <Reloj label="Hasta que alguien acepta" value={min(t.esperaAceptacionMin)} />
+        <Reloj label="De aceptar a recoger" value={min(t.hastaRecogerMin)} />
+        <Reloj label="Duración del viaje" value={min(t.duracionMin)} />
+      </div>
+    </div>
+  )
+}
+
+function Reloj({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="text-center">
+      <p className="text-base font-bold text-slate-900 leading-tight">{value}</p>
+      <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{label}</p>
     </div>
   )
 }

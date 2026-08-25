@@ -1,5 +1,8 @@
 // `export` re-expone la clase a quien importe este archivo, pero NO la trae
 // a este ámbito: hace falta el import además del export.
+import 'package:latlong2/latlong.dart';
+
+import 'package:nexum_client/core/utils/eta_vivo.dart';
 import 'package:nexum_client/shared/models/driver_card_info.dart';
 
 export 'package:nexum_client/shared/models/driver_card_info.dart';
@@ -130,6 +133,7 @@ class TransportRequestEntity {
     this.contactChannel,
     this.driverVehicle,
     this.driverVehicleType,
+    this.stops = const [],
     this.driverCard,
     this.acceptedAt,
     this.completedAt,
@@ -181,6 +185,10 @@ class TransportRequestEntity {
         contactChannel: json['contactChannel'] as String?,
         driverVehicle: json['driverVehicle'] as String?,
         driverVehicleType: json['driverVehicleType'] as String?,
+        stops: ((json['stops'] as List<dynamic>?) ?? const [])
+            .map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '')
+            .where((n) => n.isNotEmpty)
+            .toList(),
         driverCard: DriverCardInfo.fromJson(json),
         acceptedAt: json['acceptedAt'] != null
             ? DateTime.parse(json['acceptedAt'] as String)
@@ -239,6 +247,10 @@ class TransportRequestEntity {
   /// — decide el ícono ilustrado del mapa.
   final String? driverVehicleType;
 
+  /// Paradas intermedias del trayecto, en orden. Solo los nombres: las
+  /// coordenadas ya las usó el servidor para medir y cobrar.
+  final List<String> stops;
+
   /// Foto, calificación, verificación y placa del conductor asignado.
   /// Null mientras se busca conductor.
   final DriverCardInfo? driverCard;
@@ -283,6 +295,7 @@ class TransportRequestEntity {
     String? contactChannel,
     String? driverVehicle,
     String? driverVehicleType,
+    List<String>? stops,
     DriverCardInfo? driverCard,
     DateTime? acceptedAt,
     DateTime? completedAt,
@@ -317,6 +330,7 @@ class TransportRequestEntity {
       contactChannel: contactChannel ?? this.contactChannel,
       driverVehicle: driverVehicle ?? this.driverVehicle,
       driverVehicleType: driverVehicleType ?? this.driverVehicleType,
+      stops: stops ?? this.stops,
       driverCard: driverCard ?? this.driverCard,
       acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,
@@ -372,4 +386,43 @@ class TransportRequestEntity {
         if (destLat != null) 'destLat': destLat,
         if (destLng != null) 'destLng': destLng,
       };
+}
+
+/// El ETA que se le enseña a la persona.
+extension TransportEtaVivo on TransportRequestEntity {
+  /// ¿Va el pasajero (o el paquete) ya dentro del vehículo?
+  bool get aBordo => status == TransportStatus.inProgress;
+
+  /// A dónde se dirige el conductor AHORA: al punto de recogida mientras va
+  /// por el pasajero, al destino cuando ya lo lleva.
+  LatLng? get _objetivo {
+    if (aBordo) {
+      return (destLat != null && destLng != null)
+          ? LatLng(destLat!, destLng!)
+          : null;
+    }
+    return (originLat != null && originLng != null)
+        ? LatLng(originLat!, originLng!)
+        : null;
+  }
+
+  /// Minutos que faltan de verdad, recalculados con cada posición que llega
+  /// del conductor.
+  ///
+  /// Cae al ETA del servidor cuando todavía no hay posición —buscando
+  /// conductor, o el GPS aún sin fijar—, que es exactamente lo que se mostraba
+  /// antes y sigue siendo lo mejor que se puede decir en ese momento.
+  int get etaVivoMin {
+    final conductor = (driverLat != null && driverLng != null)
+        ? LatLng(driverLat!, driverLng!)
+        : null;
+    return etaEnVivoMin(
+          conductor: conductor,
+          destino: _objetivo,
+          aBordo: aBordo,
+          etaTotalMin: etaMinutes,
+          distanciaTotalKm: distanceKm,
+        ) ??
+        etaMinutes;
+  }
 }

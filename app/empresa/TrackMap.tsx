@@ -94,6 +94,6 @@ export default function TrackMap({
   }
 
   return (
-    <div ref={containerRef} className="w-full h-64 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 z-0" />
+    <div ref={containerRef} className="w-full h-64 rounded-lg overflow-hidden border border-slate-200 bg-[#1f2429] z-0" />
   )
 }

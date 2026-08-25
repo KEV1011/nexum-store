@@ -821,6 +821,7 @@ class _TrackingMapState extends ConsumerState<_TrackingMap>
           children: [
             FlutterMap(
               options: MapOptions(
+                backgroundColor: mapaFondoOscuro,
                 initialCenter: centro,
                 initialZoom: 15.2,
                 interactionOptions: const InteractionOptions(

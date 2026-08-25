@@ -104,14 +104,14 @@ jobs:
         run: |
           mkdir Payload
           cp -r Runner.app Payload/
-          zip -qry nexum-cliente-ios-unsigned.ipa Payload
+          zip -qry zipa-cliente-ios-unsigned.ipa Payload
           ls -la
 
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: nexum-cliente-ipa-unsigned
-          path: AppCliente/build/ios/iphoneos/nexum-cliente-ios-unsigned.ipa
+          name: zipa-cliente-ipa-unsigned
+          path: AppCliente/build/ios/iphoneos/zipa-cliente-ios-unsigned.ipa
           retention-days: 30
 
   ios-driver:
@@ -192,12 +192,12 @@ jobs:
         run: |
           mkdir Payload
           cp -r Runner.app Payload/
-          zip -qry nexum-driver-ios-unsigned.ipa Payload
+          zip -qry zipa-conductor-ios-unsigned.ipa Payload
           ls -la
 
       - name: Upload IPA
         uses: actions/upload-artifact@v7
         with:
-          name: nexum-driver-ipa-unsigned
-          path: AppTransport/build/ios/iphoneos/nexum-driver-ios-unsigned.ipa
+          name: zipa-conductor-ipa-unsigned
+          path: AppTransport/build/ios/iphoneos/zipa-conductor-ios-unsigned.ipa
           retention-days: 30

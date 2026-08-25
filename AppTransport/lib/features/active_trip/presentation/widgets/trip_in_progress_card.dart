@@ -172,7 +172,22 @@ class TripInProgressCard extends StatelessWidget {
           const Divider(color: AppColors.divider, height: 1),
           const SizedBox(height: AppConstants.spacingM),
 
-          // ── Accumulated fare ─────────────────────────────────────────────
+          // ── Lo que paga el pasajero ──────────────────────────────────────
+          //
+          // Es EL MISMO número que ve el pasajero en su app, y sale del
+          // servidor: viene en la oferta (`estimatedFare`), calculado con la
+          // tarifa vigente —el decreto municipal cuando es un taxi—.
+          //
+          // Antes aquí se pintaba `accumulatedFare`, que la app calculaba SOLA
+          // con `FareCalculator` y un temporizador cada 30 s. Eran dos fórmulas
+          // distintas para el mismo viaje: el pasajero veía 6.350 y el
+          // conductor 5.020, con los mismos kilómetros y los mismos minutos. Al
+          // final de la carrera esos dos números enfrentados no los arregla
+          // nadie, y el que manda es el del servidor.
+          //
+          // Lo que el conductor GANA no se estima aquí a ojo: lo liquida el
+          // servidor al completar y llega con el desglose (neto y comisión) a
+          // la pantalla de resumen.
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -181,19 +196,26 @@ class TripInProgressCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Tarifa acumulada',
+                    'El pasajero paga',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: context.textSecondaryColor,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    CurrencyFormatter.format(trip.accumulatedFare),
+                    CurrencyFormatter.format(trip.request.estimatedFare),
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
                       color: AppColors.primary,
                       fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Tu ganancia se liquida al terminar',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: context.textSecondaryColor,
                     ),
                   ),
                 ],

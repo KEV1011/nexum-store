@@ -114,6 +114,7 @@ class _FreightRouteMapState extends State<FreightRouteMap> {
           // captura los gestos de scroll de la lista.
           child: FlutterMap(
             options: MapOptions(
+              backgroundColor: mapaFondoOscuro,
               initialCenter: center,
               initialZoom: zoom,
             ),

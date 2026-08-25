@@ -105,6 +105,16 @@ export async function getDailyEarnings(driverId: string): Promise<DailyEarningsD
 
 export interface DriverTripHistoryDTO {
   id: string;
+  /**
+   * Qué servicio fue, con el valor REAL de la fila.
+   *
+   * TAXI | MOTO | PARTICULAR | ENVIOS para los viajes urbanos (sale de
+   * `Trip.serviceType`), y INTERCITY | MANDADO | PEDIDO | FLETE para los
+   * demás. Faltaba, y la app no tenía de dónde sacarlo: escribía «Moto» a
+   * mano para todo lo que no fuera un envío, así que el historial de un
+   * taxista decía Moto en cada línea y un flete de carga también.
+   */
+  serviceType: string;
   passengerName: string;
   originAddress: string;
   originLat: number;
@@ -140,11 +150,23 @@ export async function getDriverTripHistory(
 
   const rows: DriverTripHistoryDTO[] = [];
 
+  // Los servicios que no guardan neto/comisión se derivan del bruto.
+  const derived = (gross: number) => ({
+    net: Math.round(gross * (1 - COMMISSION_RATE)),
+    commission: Math.round(gross * COMMISSION_RATE),
+  });
+
+
   for (const t of trips) {
     const gross = t.finalFare ?? t.estimatedFare;
-    const net = t.netEarning ?? 0;
+    // Un viaje anterior a que se guardara la liquidación tiene `netEarning`
+    // nulo. Devolver 0 diría que el conductor no ganó nada y que la comisión se
+    // lo llevó todo, que es falso y además alarmante: se deriva del bruto,
+    // igual que hacen los demás servicios.
+    const net = t.netEarning ?? derived(gross).net;
     rows.push({
       id: t.id,
+      serviceType: t.serviceType,
       passengerName: t.passengerName ?? 'Pasajero',
       originAddress: t.originAddress,
       originLat: t.originLat,
@@ -163,17 +185,12 @@ export async function getDriverTripHistory(
     });
   }
 
-  // Helper: los servicios que no guardan neto/comisión se derivan del bruto.
-  const derived = (gross: number) => ({
-    net: Math.round(gross * (1 - COMMISSION_RATE)),
-    commission: Math.round(gross * COMMISSION_RATE),
-  });
-
   for (const b of intercity) {
     const gross = b.finalFare ?? b.offeredFare;
     const d = derived(gross);
     rows.push({
       id: b.id,
+      serviceType: 'INTERCITY',
       passengerName: `Intermunicipal · ${b.origin} → ${b.destination}`,
       originAddress: b.pickupAddress ?? String(b.origin),
       originLat: 0, originLng: 0,
@@ -195,6 +212,7 @@ export async function getDriverTripHistory(
     const d = derived(gross);
     rows.push({
       id: e.id,
+      serviceType: 'MANDADO',
       passengerName: 'Mandado',
       originAddress: e.pickupAddress,
       originLat: 0, originLng: 0,
@@ -216,6 +234,7 @@ export async function getDriverTripHistory(
     const d = derived(gross);
     rows.push({
       id: o.id,
+      serviceType: 'PEDIDO',
       passengerName: o.customerName ? `Pedido · ${o.customerName}` : 'Pedido',
       originAddress: 'Negocio',
       originLat: 0, originLng: 0,
@@ -237,6 +256,7 @@ export async function getDriverTripHistory(
     const net = f.netEarning ?? Math.round(gross * (1 - COMMISSION_RATE));
     rows.push({
       id: f.id,
+      serviceType: 'FLETE',
       passengerName: 'Flete de carga',
       originAddress: f.originAddress,
       originLat: 0, originLng: 0,

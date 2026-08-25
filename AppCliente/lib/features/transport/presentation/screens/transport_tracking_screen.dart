@@ -286,7 +286,7 @@ class _StatusCard extends StatelessWidget {
                 ),
               ),
               if (request.isActive)
-                _EtaBadge(eta: request.etaMinutes),
+                _EtaBadge(eta: request.etaVivoMin),
             ],
           ),
           if (request.isCompleted && request.completedAt != null) ...[
@@ -670,6 +670,7 @@ class _TripMapState extends ConsumerState<_TripMap>
               child: FlutterMap(
                 mapController: _mapa,
                 options: MapOptions(
+                  backgroundColor: mapaFondoOscuro,
                   initialCenter: driver ?? center,
                   initialZoom: 14.5,
                   // Si el pasajero arrastra o hace zoom, la cámara deja de
@@ -893,7 +894,7 @@ class _MapLiveOverlay extends StatelessWidget {
                     color: Colors.white, size: 14),
                 const SizedBox(width: 4),
                 Text(
-                  '${request.etaMinutes} min',
+                  '${request.etaVivoMin} min',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -1056,6 +1057,26 @@ class _TripDetails extends StatelessWidget {
               child: VerticalDivider(color: context.outlineColor),
             ),
           ),
+          // Las paradas van ENTRE el origen y el destino, en su orden real:
+          // listarlas después del destino contaría el viaje al revés.
+          // Cada parada va seguida de SU separador. El separador que precede a
+          // este bloque ya lo pone el origen: repetirlo aquí dejaba dos rayas
+          // seguidas cuando no hay paradas.
+          for (var i = 0; i < request.stops.length; i++) ...[
+            _RouteRow(
+              icon: Icons.alt_route_rounded,
+              color: AppColors.warning,
+              label: 'Parada ${i + 1}',
+              address: request.stops[i],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: SizedBox(
+                height: 16,
+                child: VerticalDivider(color: context.outlineColor),
+              ),
+            ),
+          ],
           _RouteRow(
             icon: Icons.location_on_rounded,
             color: AppColors.destinationMarker,
@@ -1097,7 +1118,7 @@ class _TripDetails extends StatelessWidget {
               Expanded(
                 child: _StatChip(
                   icon: Icons.schedule_rounded,
-                  value: '${request.etaMinutes} min',
+                  value: '${request.etaVivoMin} min',
                   label: 'Tiempo est.',
                 ),
               ),

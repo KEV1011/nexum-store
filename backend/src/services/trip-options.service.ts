@@ -125,9 +125,13 @@ export function etaDesdeMetros(metros: number): number {
 
 export async function getTripOptions(
   originLat: number, originLng: number, destLat: number, destLng: number,
+  // Las paradas entran también AQUÍ, no solo al pedir: si el precio que se
+  // enseña en el selector no las contara, el pasajero elegiría viendo una
+  // cifra y pagaría otra al confirmar. El precio que se ve es el que se cobra.
+  paradas: Array<{ lat?: number; lng?: number }> = [],
 ): Promise<OpcionesViaje> {
   const [trayecto, disponibilidad, surge] = await Promise.all([
-    medirTrayecto(originLat, originLng, destLat, destLng),
+    medirConParadas(originLat, originLng, destLat, destLng, paradas),
     disponibilidadPorTipoVehiculo(originLat, originLng),
     getSurgeMultiplier(originLat, originLng),
   ]);
@@ -187,13 +191,57 @@ export async function getTripOptions(
  * el viaje en vez de creerle al teléfono. Devuelve también la distancia usada,
  * que es la que se guarda: la del cliente tampoco es de fiar.
  */
+/**
+ * Mide el trayecto pasando por las paradas, no en línea del origen al destino.
+ *
+ * Sin esto, añadir paradas sería gratis: el pasajero mete tres desvíos y paga
+ * la carrera directa, y el conductor conduce de más por el mismo dinero. Se
+ * suman los tramos —origen → p1 → … → destino— con la misma medición de
+ * siempre, así que hereda la ruta real de Google donde la haya.
+ *
+ * Solo cuentan las paradas CON coordenadas: una escrita a mano y sin punto no
+ * se puede medir, y estimarla a ojo sería inventar kilómetros.
+ */
+export async function medirConParadas(
+  originLat: number, originLng: number,
+  destLat: number, destLng: number,
+  paradas: Array<{ lat?: number; lng?: number }> = [],
+): Promise<{ distanceKm: number; durationMinutes: number; rutaReal: boolean }> {
+  const puntos: Array<[number, number]> = [
+    [originLat, originLng],
+    ...paradas
+      .filter((p): p is { lat: number; lng: number } =>
+        typeof p.lat === 'number' && typeof p.lng === 'number')
+      .map((p): [number, number] => [p.lat, p.lng]),
+    [destLat, destLng],
+  ];
+  if (puntos.length === 2) {
+    return medirTrayecto(originLat, originLng, destLat, destLng);
+  }
+
+  const tramos = await Promise.all(
+    puntos.slice(0, -1).map((a, i) => {
+      const b = puntos[i + 1]!;
+      return medirTrayecto(a[0], a[1], b[0], b[1]);
+    }),
+  );
+  return {
+    distanceKm: Math.round(tramos.reduce((s, t) => s + t.distanceKm, 0) * 10) / 10,
+    durationMinutes: tramos.reduce((s, t) => s + t.durationMinutes, 0),
+    // Solo se declara ruta real si TODOS los tramos lo son: medio trayecto por
+    // calles y medio en línea recta no es una ruta real, es un promedio.
+    rutaReal: tramos.every((t) => t.rutaReal),
+  };
+}
+
 export async function precioServidor(
   categoria: CategoriaViaje,
   originLat: number, originLng: number, destLat: number, destLng: number,
+  paradas: Array<{ lat?: number; lng?: number }> = [],
 ): Promise<{ fare: number; distanceKm: number; durationMinutes: number; surge: number }> {
   const tarifa = tablaTarifas()[categoria];
   const [trayecto, surge] = await Promise.all([
-    medirTrayecto(originLat, originLng, destLat, destLng),
+    medirConParadas(originLat, originLng, destLat, destLng, paradas),
     getSurgeMultiplier(originLat, originLng),
   ]);
   const precio = precioCategoria(

@@ -108,6 +108,8 @@ export interface TripRequestDTO {
   serviceType?: string;
   /** Cómo pagará el pasajero: 'efectivo' | 'transferencia' | 'en_linea'. */
   paymentMethod?: string;
+  /** Paradas intermedias, en orden. Van en la oferta: cambian el viaje. */
+  stops?: TripStopDTO[];
 }
 
 export interface TripSummaryDTO {
@@ -748,6 +750,8 @@ export interface ClientTripDTO {
   vehiclePhotoUrl?: string;
   driverLat?: number;
   driverLng?: number;
+  /** Paradas intermedias del trayecto, en orden. */
+  stops?: TripStopDTO[];
   createdAt: string;
   acceptedAt?: string;
   completedAt?: string;
@@ -775,6 +779,12 @@ export interface RequestClientTripDTO {
   packageDescription?: string;
   /** 'efectivo' | 'transferencia' | 'en_linea'. Ausente = efectivo. */
   paymentMethod?: string;
+  /**
+   * Paradas intermedias (máx. 6). El precio se mide PASANDO por ellas, así que
+   * añadirlas encarece el viaje: si no, el pasajero mete tres desvíos y el
+   * conductor conduce de más por el mismo dinero.
+   */
+  stops?: TripStopDTO[];
 }
 
 // ─── Work Mode ────────────────────────────────────────────────────────────────

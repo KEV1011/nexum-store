@@ -8,7 +8,6 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
-import 'package:nexum_driver/core/utils/fare_calculator.dart';
 import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/features/earnings/presentation/providers/'
     'earnings_breakdown_provider.dart';
@@ -21,12 +20,19 @@ class _DayEarning {
     required this.date,
     required this.totalTrips,
     required this.grossEarnings,
+    required this.netEarnings,
+    required this.commission,
   });
   final DateTime date;
   final int totalTrips;
   final double grossEarnings;
-  double get netEarnings => FareCalculator.calculateNetEarning(grossEarnings);
-  double get commission => FareCalculator.calculateCommission(grossEarnings);
+  // El neto y la comisión los liquida el SERVIDOR viaje por viaje; aquí solo se
+  // suman. Se calculaban con `FareCalculator` sobre el bruto y una tasa escrita
+  // dentro de la app: el día que la comisión cambie en el servidor, el conductor
+  // vería el reparto viejo hasta actualizar, y un viaje liquidado con otra tasa
+  // (una promoción, un flete) descuadraba el total.
+  final double netEarnings;
+  final double commission;
 }
 
 class _WeekEarning {
@@ -34,12 +40,14 @@ class _WeekEarning {
     required this.label,
     required this.totalTrips,
     required this.grossEarnings,
+    required this.netEarnings,
+    required this.commission,
   });
   final String label;
   final int totalTrips;
   final double grossEarnings;
-  double get netEarnings => FareCalculator.calculateNetEarning(grossEarnings);
-  double get commission => FareCalculator.calculateCommission(grossEarnings);
+  final double netEarnings;
+  final double commission;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -143,6 +151,8 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
             date: b.date!,
             totalTrips: b.trips,
             grossEarnings: b.grossEarnings,
+            netEarnings: b.netEarnings,
+            commission: b.commission,
           ),
         )
         .toList();
@@ -152,6 +162,8 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
             label: b.label,
             totalTrips: b.trips,
             grossEarnings: b.grossEarnings,
+            netEarnings: b.netEarnings,
+            commission: b.commission,
           ),
         )
         .toList();
@@ -161,12 +173,12 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
 
     // Aggregates
     final weekGross = week.fold<double>(0, (s, e) => s + e.grossEarnings);
-    final weekNet = FareCalculator.calculateNetEarning(weekGross);
+    final weekNet = week.fold<double>(0, (s, e) => s + e.netEarnings);
     final weekTrips = week.fold<int>(0, (s, e) => s + e.totalTrips);
 
     final monthGross =
         months.fold<double>(0, (s, e) => s + e.grossEarnings);
-    final monthNet = FareCalculator.calculateNetEarning(monthGross);
+    final monthNet = months.fold<double>(0, (s, e) => s + e.netEarnings);
     final monthTrips =
         months.fold<int>(0, (s, e) => s + e.totalTrips);
 
@@ -223,6 +235,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
             // Commission breakdown
             _CommissionCard(
               gross: isWeek ? week.first.grossEarnings : monthGross,
+              net: isWeek ? week.first.netEarnings : monthNet,
               isWeek: isWeek,
               theme: theme,
             ),
@@ -308,9 +321,12 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
     required int trips,
   }) {
     final period = isWeek ? 'Esta semana' : 'Este mes';
-    final commission = FareCalculator.calculateCommission(gross);
+    // Comisión = bruto − neto, los dos del servidor. Sin tasa local: así el
+    // porcentaje que se enseña es el que de verdad se aplicó, aunque haya
+    // sido una promoción o un servicio que liquida distinto.
+    final commission = gross - net;
     final commissionPct =
-        (AppConstants.platformCommissionRate * 100).toStringAsFixed(0);
+        gross > 0 ? (commission / gross * 100).toStringAsFixed(0) : '0';
     final summary = '''
 Resumen de ganancias — ZIPA Conductor
 Período: $period
@@ -567,9 +583,7 @@ class _HeroCard extends StatelessWidget {
                 ),
                 _MiniStat(
                   label: 'Comisión',
-                  value: CurrencyFormatter.format(
-                    FareCalculator.calculateCommission(gross),
-                  ),
+                  value: CurrencyFormatter.format(gross - net),
                   icon: Icons.percent_rounded,
                   valueColor: AppColors.error,
                 ),
@@ -587,20 +601,25 @@ class _HeroCard extends StatelessWidget {
 class _CommissionCard extends StatelessWidget {
   const _CommissionCard({
     required this.gross,
+    required this.net,
     required this.isWeek,
     required this.theme,
   });
   final double gross;
+
+  /// Lo liquidado por el servidor. La comisión sale de restarlo al bruto.
+  final double net;
   final bool isWeek;
   final ThemeData theme;
 
   @override
   Widget build(BuildContext context) {
-    final net = FareCalculator.calculateNetEarning(gross);
-    final commission = FareCalculator.calculateCommission(gross);
-    final driverPct =
-        ((1 - AppConstants.platformCommissionRate) * 100).round();
-    final nexumPct = (AppConstants.platformCommissionRate * 100).round();
+    final commission = gross - net;
+    // Los porcentajes salen de los importes reales, no de una constante:
+    // enseñar «15 %» junto a unos números que no dan el 15 % sería peor que
+    // no enseñarlo.
+    final driverPct = gross > 0 ? (net / gross * 100).round() : 0;
+    final nexumPct = gross > 0 ? (commission / gross * 100).round() : 0;
 
     return Card(
       child: Padding(
@@ -994,7 +1013,7 @@ class _SelectedPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final commission = FareCalculator.calculateCommission(gross);
+    final commission = gross - net;
     return Container(
       margin: const EdgeInsets.only(top: AppConstants.spacingS),
       padding: const EdgeInsets.symmetric(

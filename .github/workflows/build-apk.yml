@@ -1,4 +1,4 @@
-name: Build Nexum Driver APK
+name: Build ZIPA Conductor APK
 
 on:
   push:
@@ -246,14 +246,14 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: nexum-driver-apk-build${{ github.run_number }}
+          name: zipa-conductor-apk-build${{ github.run_number }}
           path: AppTransport/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
       - name: Upload AAB (Play Store)
         uses: actions/upload-artifact@v7
         with:
-          name: nexum-driver-aab-build${{ github.run_number }}
+          name: zipa-conductor-aab-build${{ github.run_number }}
           path: AppTransport/build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
 

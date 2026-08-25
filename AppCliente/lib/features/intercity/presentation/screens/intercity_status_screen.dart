@@ -1088,6 +1088,7 @@ class _LiveTripMapState extends ConsumerState<_LiveTripMap>
             Positioned.fill(
               child: FlutterMap(
                 options: MapOptions(
+                  backgroundColor: mapaFondoOscuro,
                   initialCenter: driver ??
                       LatLng(
                         (origin.latitude + destination.latitude) / 2,
