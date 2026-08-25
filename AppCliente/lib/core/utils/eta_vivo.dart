@@ -1,5 +1,3 @@
-import 'package:latlong2/latlong.dart';
-
 /// ETA en vivo: cuánto falta AHORA, no cuánto faltaba al reservar.
 ///
 /// El ETA del servidor se calcula una vez, al pedir el viaje, y se queda ahí:
@@ -18,6 +16,8 @@ import 'package:latlong2/latlong.dart';
 /// viaje (que va del origen al destino), así que ahí sí hace falta una
 /// velocidad. Es la única constante y está anotada de dónde sale.
 library;
+
+import 'package:latlong2/latlong.dart';
 
 /// Velocidad urbana de referencia, en km/h.
 ///

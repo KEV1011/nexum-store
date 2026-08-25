@@ -469,7 +469,7 @@ class TripRoutePoints {
     required this.originLng,
     required this.destLat,
     required this.destLng,
-    this.paradas = const '',
+    this.paradas = '',
   });
 
   final double originLat;

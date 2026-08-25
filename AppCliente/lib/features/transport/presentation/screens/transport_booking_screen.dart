@@ -574,6 +574,9 @@ class _TransportBookingScreenState
                 controller: _paradas[i].ctrl,
                 label: 'Parada ${i + 1}',
                 hint: '¿Por dónde pasamos?',
+                // Una parada es opcional por definición: el pasajero la añadió
+                // él mismo y puede quitarla con la X de al lado.
+                requiredField: false,
                 onPlaceSelected: (place) => setState(() {
                   _paradas[i].lat = place.lat;
                   _paradas[i].lng = place.lng;
