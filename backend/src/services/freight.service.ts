@@ -9,6 +9,7 @@
 import { FreightStatus, VehicleType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateCustodyPins, assertCustodyPin } from '../lib/custody-pin';
+import { mediaMinutos, rangoAnterior, variacionPct, duracionMin } from '../lib/analitica';
 import { COMMISSION_RATE, INTERCITY_CITY_COORDS } from '../config/constants';
 import { coordsOfSync } from './municipality.service';
 import { recordCompletedTrip } from './earnings.service';
@@ -676,6 +677,13 @@ export interface FleetFinanceSummary {
   byService: Record<string, { count: number; gross: number }>;
   byDriver: { name: string; count: number; gross: number; cost: number }[];
   byVehicle: { plate: string; count: number; gross: number; cost: number }[];
+
+  /// Un punto por DÍA del rango, incluidos los días sin nada.
+  ///
+  /// Los ceros van explícitos a propósito: una gráfica que se salta los días
+  /// vacíos comprime el tiempo y hace parecer continuo lo que fue a tirones —
+  /// un lunes flojo entre dos findes buenos desaparecería.
+  serie: { fecha: string; servicios: number; bruto: number }[];
 }
 
 /** Consolidado financiero de TODOS los servicios sellados a la flota. */
@@ -688,19 +696,19 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   const [trips, intercity, errands, orders, freights] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId, status: 'COMPLETED', completedAt: range },
-      select: { finalFare: true, estimatedFare: true, driver: { select: { name: true } } },
+      select: { finalFare: true, estimatedFare: true, completedAt: true, driver: { select: { name: true } } },
     }),
     prisma.intercityBooking.findMany({
       where: { operatorId, status: 'COMPLETED', completedAt: range },
-      select: { finalFare: true, offeredFare: true, driverName: true },
+      select: { finalFare: true, offeredFare: true, completedAt: true, driverName: true },
     }),
     prisma.errand.findMany({
       where: { operatorId, status: 'DELIVERED', deliveredAt: range },
-      select: { serviceFee: true, driverName: true },
+      select: { serviceFee: true, deliveredAt: true, driverName: true },
     }),
     prisma.order.findMany({
       where: { operatorId, status: 'DELIVERED', deliveredAt: range },
-      select: { deliveryFee: true, driverName: true },
+      select: { deliveryFee: true, deliveredAt: true, driverName: true },
     }),
     prisma.freightRequest.findMany({
       // Un flete con viaje se contabiliza COMO VIAJE: contarlo también aquí
@@ -828,12 +836,24 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   let totalGross = 0;
   let totalCommission = 0;
 
+  // Serie por día: se llena en el MISMO recorrido que los totales, con la
+  // misma fecha por la que ya filtra cada consulta. Hacerlo aparte habría
+  // costado seis consultas más y, peor, habría abierto la puerta a que la suma
+  // de la gráfica no cuadrara con el total de arriba.
+  const porDia = new Map<string, { servicios: number; bruto: number }>();
+
   const add = (
     service: string, gross: number, commission: number,
     driverName?: string | null, plate?: string | null, cost = 0,
+    cuando?: Date | null,
   ) => {
     totalGross += gross;
     totalCommission += commission;
+    if (cuando) {
+      const dia = cuando.toISOString().slice(0, 10);
+      const cur = porDia.get(dia) ?? { servicios: 0, bruto: 0 };
+      porDia.set(dia, { servicios: cur.servicios + 1, bruto: cur.bruto + gross });
+    }
     byService[service] = {
       count: (byService[service]?.count ?? 0) + 1,
       gross: (byService[service]?.gross ?? 0) + gross,
@@ -850,14 +870,14 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
 
   for (const t of trips) {
     const fare = t.finalFare ?? t.estimatedFare ?? 0;
-    add('VIAJE', fare, Math.round(fare * COMMISSION_RATE), t.driver?.name);
+    add('VIAJE', fare, Math.round(fare * COMMISSION_RATE), t.driver?.name, null, 0, t.completedAt);
   }
   for (const b of intercity) {
     const fare = b.finalFare ?? b.offeredFare ?? 0;
-    add('INTERMUNICIPAL', fare, Math.round(fare * COMMISSION_RATE), b.driverName);
+    add('INTERMUNICIPAL', fare, Math.round(fare * COMMISSION_RATE), b.driverName, null, 0, b.completedAt);
   }
-  for (const e of errands) add('MANDADO', e.serviceFee ?? 0, Math.round((e.serviceFee ?? 0) * COMMISSION_RATE), e.driverName);
-  for (const o of orders) add('PEDIDO', o.deliveryFee ?? 0, Math.round((o.deliveryFee ?? 0) * COMMISSION_RATE), o.driverName);
+  for (const e of errands) add('MANDADO', e.serviceFee ?? 0, Math.round((e.serviceFee ?? 0) * COMMISSION_RATE), e.driverName, null, 0, e.deliveredAt);
+  for (const o of orders) add('PEDIDO', o.deliveryFee ?? 0, Math.round((o.deliveryFee ?? 0) * COMMISSION_RATE), o.driverName, null, 0, o.deliveredAt);
   for (const f of freights) {
     add(
       'FLETE',
@@ -866,6 +886,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
       f.driverId ? drvName.get(f.driverId) : undefined,
       f.vehicleId ? vehPlate.get(f.vehicleId) : undefined,
       costByFreight.get(f.id) ?? 0,
+      f.completedAt,
     );
   }
 
@@ -880,6 +901,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
       t.driverId ? cDrvName.get(t.driverId) : undefined,
       t.vehicleId ? cVehPlate.get(t.vehicleId) : undefined,
       costByFreight.get(t.id) ?? 0,
+      t.completedAt,
     );
   }
 
@@ -889,6 +911,16 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   const byVehicle = [...byVehicleMap.entries()]
     .map(([plate, v]) => ({ plate, ...v }))
     .sort((a, b) => b.gross - a.gross);
+
+  const serie: FleetFinanceSummary['serie'] = [];
+  for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+    const fecha = d.toISOString().slice(0, 10);
+    const v = porDia.get(fecha) ?? { servicios: 0, bruto: 0 };
+    serie.push({ fecha, ...v });
+    // Un rango absurdo (una fecha mal escrita a mano en la URL) no puede
+    // devolver diez mil puntos y tumbar el navegador del operador.
+    if (serie.length >= 400) break;
+  }
 
   const totalNet = totalGross - totalCommission;
 
@@ -914,6 +946,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     byService,
     byDriver,
     byVehicle,
+    serie,
   };
 }
 
@@ -930,6 +963,29 @@ export interface FleetAnalytics {
   byService: { service: string; count: number; gross: number; avg: number }[];
   topDrivers: { name: string; count: number; gross: number; net: number; avgTicket: number; rating: number | null }[];
   topVehicles: { plate: string; count: number; gross: number; avgTicket: number; type: string | null }[];
+
+  /// Un punto por día del rango (viene del consolidado financiero).
+  serie: { fecha: string; servicios: number; bruto: number }[];
+
+  /// El MISMO rango, corrido hacia atrás. Un número solo no dice si el mes fue
+  /// bueno: dice cuánto se facturó. Lo que el operador necesita saber es si
+  /// sube o baja.
+  anterior: { desde: string; hasta: string; bruto: number; servicios: number };
+
+  /// Variación porcentual contra ese período. `null` cuando el anterior fue
+  /// CERO: de cero a algo no es «+100 %», es un estreno, y fingir un
+  /// porcentaje ahí es la forma más fácil de que un tablero mienta.
+  cambio: { bruto: number | null; servicios: number | null };
+
+  /// Tiempos del servicio, en minutos. Solo de los viajes urbanos, que son los
+  /// que tienen sellada cada etapa. `null` cuando no hay ni una muestra: un
+  /// cero se leería como «se acepta al instante».
+  tiempos: {
+    esperaAceptacionMin: number | null;
+    hastaRecogerMin: number | null;
+    duracionMin: number | null;
+    muestra: number;
+  };
 }
 
 /**
@@ -939,6 +995,14 @@ export interface FleetAnalytics {
  */
 export async function getFleetAnalytics(operatorId: string, fromISO?: string, toISO?: string): Promise<FleetAnalytics> {
   const fin = await getFleetFinance(operatorId, fromISO, toISO);
+
+  // El período anterior tiene el MISMO número de días, pegado por detrás.
+  const previo = rangoAnterior(fin.from, fin.to);
+
+  const [finAnterior, tiempos] = await Promise.all([
+    getFleetFinance(operatorId, previo.desde, previo.hasta),
+    _tiemposDeServicio(operatorId, new Date(fin.from), new Date(fin.to)),
+  ]);
 
   const [drivers, vehicles] = await Promise.all([
     prisma.driver.findMany({ where: { operatorId }, select: { name: true, rating: true } }),
@@ -981,6 +1045,60 @@ export async function getFleetAnalytics(operatorId: string, fromISO?: string, to
     byService,
     topDrivers,
     topVehicles,
+    serie: fin.serie,
+    anterior: {
+      desde: finAnterior.from,
+      hasta: finAnterior.to,
+      bruto: finAnterior.totalGross,
+      servicios: finAnterior.totalServices,
+    },
+    cambio: {
+      bruto: variacionPct(fin.totalGross, finAnterior.totalGross),
+      servicios: variacionPct(fin.totalServices, finAnterior.totalServices),
+    },
+    tiempos,
+  };
+}
+
+/**
+ * Cuánto tarda de verdad un servicio, por etapas.
+ *
+ * Solo mira los viajes urbanos: son los únicos que sellan cada momento
+ * (`createdAt` → `acceptedAt` → `arrivedAt` → `completedAt`). Meter aquí un
+ * intermunicipal reservado con dos días de antelación convertiría «espera de
+ * aceptación» en «se aceptó en 2.880 minutos» y arruinaría la media.
+ *
+ * Cada etapa promedia SU propia muestra: un viaje sin `arrivedAt` (de antes de
+ * que se sellara) cuenta para la espera de aceptación y no para el resto, en
+ * vez de tirar el viaje entero o contarlo como cero.
+ */
+async function _tiemposDeServicio(
+  operatorId: string,
+  desde: Date,
+  hasta: Date,
+): Promise<FleetAnalytics['tiempos']> {
+  const viajes = await prisma.trip.findMany({
+    where: { operatorId, status: 'COMPLETED', completedAt: { gte: desde, lte: hasta } },
+    select: {
+      createdAt: true, acceptedAt: true, arrivedAt: true,
+      startedAt: true, completedAt: true,
+    },
+    take: 2000,
+  });
+
+  const noNulos = (xs: (number | null)[]) => xs.filter((x): x is number => x !== null);
+
+  return {
+    esperaAceptacionMin: mediaMinutos(
+      noNulos(viajes.map((v) => duracionMin(v.createdAt, v.acceptedAt))),
+    ),
+    hastaRecogerMin: mediaMinutos(
+      noNulos(viajes.map((v) => duracionMin(v.acceptedAt, v.arrivedAt))),
+    ),
+    duracionMin: mediaMinutos(
+      noNulos(viajes.map((v) => duracionMin(v.startedAt ?? v.acceptedAt, v.completedAt))),
+    ),
+    muestra: viajes.length,
   };
 }
 
