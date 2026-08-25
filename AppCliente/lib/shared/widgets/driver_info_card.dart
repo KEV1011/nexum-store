@@ -94,6 +94,25 @@ class DriverInfoCard extends StatelessWidget {
   final DateTime? since;
   final bool verified;
 
+  /// Antigüedad del conductor, o null si no hay nada que presumir todavía.
+  ///
+  /// Decía «Conductor desde 2026» a alguien que se registró hace tres semanas.
+  /// Un año que acaba de empezar no es una trayectoria: o no dice nada, o
+  /// —peor— parece un error de la app. Con menos de un año se dice lo que de
+  /// verdad es, que la persona es nueva, y a partir del año sí se cuenta desde
+  /// cuándo, que ahí ya significa algo.
+  String? get _antiguedad {
+    if (since == null) return null;
+    final meses = DateTime.now().difference(since!).inDays / 30.44;
+    if (meses < 0) return null; // fecha futura: dato roto, mejor callar
+    if (meses < 1) return 'Nuevo en ZIPA';
+    if (meses < 12) {
+      final n = meses.floor();
+      return 'Conduce con ZIPA hace $n ${n == 1 ? 'mes' : 'meses'}';
+    }
+    return 'Conductor desde ${since!.year}';
+  }
+
   /// "Blanco Toyota Corolla" ya compuesto por quien llama.
   final String? vehicleDescription;
   final String? plate;
@@ -169,12 +188,12 @@ class DriverInfoCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                    if (since != null)
+                    if (_antiguedad != null)
                       Text(
-                        'Conductor desde ${since!.year}',
+                        _antiguedad!,
                         style: TextStyle(fontSize: 11.5, color: p.textDim),
                       ),
-                    if (!verified && since == null && subtitle != null)
+                    if (!verified && _antiguedad == null && subtitle != null)
                       Text(
                         subtitle!,
                         style: TextStyle(fontSize: 12, color: p.textSecondary),
@@ -377,16 +396,34 @@ class VehicleRow extends StatelessWidget {
     );
   }
 
-  Widget _dibujo(DriverCardPalette p) => Center(
-        child: Icon(
-          vehicleGlyphIcon(
-            vehicleGlyphKindFor(vehicleType,
-                fallback: fallbackGlyph, entrega: esEntrega),
-          ),
-          size: 26,
-          color: p.textDim,
+  /// El vehículo cuando la empresa no subió foto.
+  ///
+  /// Es la MISMA ilustración que va en el mapa. Antes era un pictograma gris de
+  /// Material: el pasajero veía un taxi amarillo acercándose por el mapa y, a
+  /// dos centímetros, un icono gris que no se parecía a nada — dos vehículos
+  /// distintos para el mismo carro en la misma pantalla.
+  Widget _dibujo(DriverCardPalette p) {
+    final kind = vehicleGlyphKindFor(vehicleType,
+        fallback: fallbackGlyph, entrega: esEntrega);
+    final ruta = ilustracionDeVehiculo(kind);
+    final icono = Center(
+      child: Icon(vehicleGlyphIcon(kind), size: 26, color: p.textDim),
+    );
+    if (ruta == null) return icono;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Image.asset(
+          ruta,
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          // Sin la imagen, el pictograma de siempre: la ficha nunca se queda
+          // con un hueco.
+          errorBuilder: (_, __, ___) => icono,
         ),
-      );
+      ),
+    );
+  }
 }
 
 /// La placa en su recuadro, como en la vida real.

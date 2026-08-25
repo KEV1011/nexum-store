@@ -10,6 +10,7 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/core/widgets/loading_overlay.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
+import 'package:nexum_driver/shared/widgets/zipa_logo.dart';
 
 /// Pantalla de ingreso del número de celular del conductor.
 ///
@@ -233,20 +234,13 @@ class _ZIPADriverLogo extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Container(
-            width: 66,
-            height: 66,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
-            ),
-            child: const Icon(
-              Icons.local_taxi_rounded,
-              color: Colors.white,
-              size: 38,
-            ),
-          ),
+          // La marca ZIPA de verdad, la misma que se dibuja en el splash.
+          //
+          // Aquí había un ícono genérico de taxi de Material dentro de un
+          // recuadro translúcido: el conductor abría la app, veía la marca en
+          // el splash y al segundo siguiente un pictograma que no es de nadie.
+          // El logo existe y estaba a un import de distancia.
+          const ZipaLogo(size: 78),
           const SizedBox(height: AppConstants.spacingM),
           const Text(
             'ZIPA Conductor',

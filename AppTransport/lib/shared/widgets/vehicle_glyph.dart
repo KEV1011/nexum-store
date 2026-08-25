@@ -134,13 +134,7 @@ class VehicleGlyph extends StatelessWidget {
   /// asiento, que es lo que distingue «te traen la comida» de «viene tu
   /// carrera». Usar aquí la moto de pasajeros borraría esa diferencia, así que
   /// ese caso sigue con el dibujo en código, que sí lleva el cajón.
-  String? get _ilustracion => switch (kind) {
-        VehicleGlyphKind.taxi => 'assets/vehicles/taxi.png',
-        VehicleGlyphKind.car => 'assets/vehicles/particular.png',
-        VehicleGlyphKind.moto => 'assets/vehicles/moto.png',
-        VehicleGlyphKind.truck => 'assets/vehicles/camion.png',
-        VehicleGlyphKind.delivery => null,
-      };
+  String? get _ilustracion => ilustracionDeVehiculo(kind);
 
   /// Lado del lienzo de las ilustraciones (ver `tools/procesar-vehiculos.py`).
   static const double _ladoArte = 96;
@@ -266,3 +260,18 @@ VehicleGlyphKind vehicleGlyphKindFor(
   if (entrega && tipo == VehicleGlyphKind.moto) return VehicleGlyphKind.delivery;
   return tipo;
 }
+
+/// Ruta de la ilustración cenital de un tipo, o null si no tiene.
+///
+/// Es pública porque la usa también la ficha del conductor: ahí se enseñaba un
+/// pictograma gris de Material mientras el mapa dibujaba el taxi amarillo, o
+/// sea dos vehículos distintos para el mismo carro en la misma pantalla.
+///
+/// El repartidor no tiene ilustración a propósito (ver [VehicleGlyph]).
+String? ilustracionDeVehiculo(VehicleGlyphKind kind) => switch (kind) {
+      VehicleGlyphKind.taxi => 'assets/vehicles/taxi.png',
+      VehicleGlyphKind.car => 'assets/vehicles/particular.png',
+      VehicleGlyphKind.moto => 'assets/vehicles/moto.png',
+      VehicleGlyphKind.truck => 'assets/vehicles/camion.png',
+      VehicleGlyphKind.delivery => null,
+    };
