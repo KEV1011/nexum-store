@@ -78,6 +78,10 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
   const r = _vacio();
   const ahora = new Date();
 
+  // Antes que nada, devolver al ruedo a quien se quedó marcado "en viaje": es
+  // gente que no recibe una sola solicitud y no tiene forma de enterarse.
+  await liberarConductoresColgados();
+
   // ── Viajes urbanos ─────────────────────────────────────────────────────────
   try {
     const viajes = await prisma.trip.findMany({
@@ -174,6 +178,77 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
     );
   }
   return r;
+}
+
+/**
+ * Minutos sin latido tras los cuales un conductor "en viaje" ya no lo está.
+ *
+ * Generoso a propósito. Un túnel, un sótano o un rato con la pantalla apagada
+ * cortan el latido sin que pase nada raro, y sacar a alguien de su viaje por
+ * eso sería peor que el problema. Tres cuartos de hora sin una sola posición
+ * no es un túnel: es un teléfono apagado o una app cerrada.
+ */
+const SIN_LATIDO_MIN = Number(process.env['STUCK_ON_TRIP_MIN'] ?? 45);
+
+/**
+ * Devuelve al ruedo a los conductores que quedaron marcados como "en viaje"
+ * pero llevan una eternidad sin reportar.
+ *
+ * El agujero que tapa: cerrar un viaje libera al conductor (`ON_TRIP` →
+ * `ONLINE`), y ese cierre viajaba en un mensaje de WebSocket que se descarta en
+ * silencio si el socket está caído. Cuando se perdía, el conductor se quedaba
+ * `ON_TRIP` PARA SIEMPRE — y `ON_TRIP` está fuera del filtro del despacho, así
+ * que no volvía a recibir una sola solicitud. Reconectar tampoco lo arreglaba:
+ * `noteDriverConnected` respeta el `ON_TRIP` a propósito (para no pisar un viaje
+ * de verdad), de modo que la app se reabría y él seguía invisible sin saberlo.
+ *
+ * Se toca SOLO al conductor, nunca el viaje. Cerrarlo sería inventar que el
+ * servicio acabó —y cerrar paga—; cancelarlo sería inventar que no acabó. Un
+ * conductor sin latido tampoco es despachable (el filtro de frescura de 120 s ya
+ * lo excluye), así que ponerlo OFFLINE no cambia nada hoy: cambia el día que
+ * vuelve a abrir la app, porque entonces sí pasa a ONLINE y trabaja.
+ *
+ * El viaje huérfano queda contado en las métricas para que un humano decida con
+ * `releaseDriver`, que es la vía que sí cancela cosas y por eso pide una mano.
+ */
+export async function liberarConductoresColgados(): Promise<number> {
+  const corte = new Date(Date.now() - SIN_LATIDO_MIN * 60 * 1000);
+  try {
+    const r = await prisma.driver.updateMany({
+      where: {
+        status: 'ON_TRIP',
+        OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: corte } }],
+      },
+      data: { status: 'OFFLINE' },
+    });
+    if (r.count > 0) {
+      console.warn(
+        `[Rescate] ${r.count} conductor(es) llevaban más de ${SIN_LATIDO_MIN} min ` +
+        'marcados en viaje sin reportar; se liberan para que puedan trabajar.',
+      );
+    }
+    return r.count;
+  } catch (e) {
+    console.warn('[Rescate] conductores colgados:', (e as Error).message);
+    return 0;
+  }
+}
+
+/**
+ * Viajes que se quedaron a medias: en curso, con conductor, y sin noticias suyas
+ * desde hace mucho. Es el rastro que deja un cierre perdido.
+ */
+export async function contarViajesColgados(): Promise<{ total: number; desdeMin: number }> {
+  const corte = new Date(Date.now() - SIN_LATIDO_MIN * 60 * 1000);
+  const total = await prisma.trip.count({
+    where: {
+      status: { in: ['ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'] },
+      driverId: { not: null },
+      updatedAt: { lt: corte },
+      driver: { OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: corte } }] },
+    },
+  });
+  return { total, desdeMin: SIN_LATIDO_MIN };
 }
 
 /**

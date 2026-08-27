@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { estadoPiloto } from './kyc.service';
-import { contarDespachoAtascado } from './dispatch-recovery.service';
+import { contarDespachoAtascado, contarViajesColgados } from './dispatch-recovery.service';
 import { cancelOrderByAdmin } from './client.service';
 import { cancelErrandByAdmin } from './errand.service';
 
@@ -50,6 +50,19 @@ export interface AdminMetrics {
     mandado: number;
     pedido: number;
     intermunicipal: number;
+    desdeMin: number;
+  };
+  /**
+   * Viajes que se quedaron EN CURSO sin noticias del conductor.
+   *
+   * Es distinto de `stuck`: allí nadie ha aceptado todavía; aquí sí hay
+   * conductor y el servicio arrancó, pero su cierre nunca llegó. El barrido ya
+   * liberó al conductor para que pueda seguir trabajando; el viaje en sí lo
+   * resuelve un humano, porque darlo por terminado paga una tarifa y darlo por
+   * cancelado niega un servicio que a lo mejor sí se prestó.
+   */
+  orphaned: {
+    total: number;
     desdeMin: number;
   };
   /** Estado del piloto sin verificación, para el aviso del panel. */
@@ -124,6 +137,11 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
 
   const piloto = estadoPiloto();
   const atascado = await contarDespachoAtascado();
+  // Viajes que se quedaron en curso sin noticias del conductor: el rastro de un
+  // cierre que se perdió. El barrido ya liberó al conductor; el viaje lo
+  // resuelve un humano con `releaseDriver`, porque cerrarlo paga y cancelarlo
+  // niega un servicio que quizá sí se prestó.
+  const colgados = await contarViajesColgados();
 
   return {
     trips: {
@@ -148,6 +166,7 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     users: { total: usersTotal, newToday: usersToday },
     safety: { sosLast24h },
     stuck: atascado,
+    orphaned: colgados,
     pilot: {
       active: piloto.activo,
       expired: piloto.vencido,

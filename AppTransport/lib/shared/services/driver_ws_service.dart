@@ -146,6 +146,19 @@ class DriverWsService {
   /// Última liquidación conocida de [tripId], si su ack ya llegó.
   TripSettlement? settlementFor(String tripId) => _settlements[tripId];
 
+  /// Guarda una liquidación que NO vino por el socket.
+  ///
+  /// El cierre del viaje pasó a hacerse por HTTP (`cambiarEstadoViaje`), que sí
+  /// acusa recibo, y esa respuesta trae la liquidación. Sin esto la pantalla de
+  /// resumen se quedaría esperando un `trip_status_ack` que ya no va a llegar y
+  /// acabaría enseñando su estimación local a los seis segundos — justo los
+  /// números que dejamos de usar por no ser los del servidor. Va al mismo buzón
+  /// para que el resumen no tenga que saber por dónde llegó.
+  void publicarLiquidacion(TripSettlement s) {
+    _settlements[s.tripId] = s;
+    if (!_settlementCtrl.isClosed) _settlementCtrl.add(s);
+  }
+
   bool get isConnected => _channel != null;
 
   /// Id del viaje activo. Lo fija la pantalla de viaje activo y lo usa

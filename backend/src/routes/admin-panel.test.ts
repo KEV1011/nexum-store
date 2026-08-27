@@ -125,3 +125,86 @@ describe('panel de administración (HTML embebido)', () => {
     expect(esc(null)).toBe('');
   });
 });
+
+/**
+ * Estas dos EJECUTAN el panel, no lo leen.
+ *
+ * Las de arriba comprueban que el código existe y encaja; ninguna comprueba que
+ * al pintar salga lo que tiene que salir. Y ahí es donde el panel falla de la
+ * forma más silenciosa que hay: `esc()` convierte un campo ausente en cadena
+ * vacía, así que un dato que el backend dejó de mandar no da error — deja un
+ * hueco en blanco en la pantalla del administrador, que se lo cree.
+ *
+ * Se monta un DOM mínimo (solo lo que estas funciones tocan) y se llama a la
+ * función con la forma REAL de su DTO.
+ */
+describe('el panel pintando de verdad', () => {
+  interface ElementoFalso { style: { display: string }; innerHTML: string }
+
+  const almacenFalso = () => ({ getItem: () => null, setItem: () => {}, removeItem: () => {} });
+
+  /** Ejecuta el JS del panel y devuelve las funciones pedidas, con DOM falso. */
+  function montar(ids: string[]): {
+    fn: Record<string, (...a: unknown[]) => void>;
+    el: Record<string, ElementoFalso>;
+  } {
+    const el: Record<string, ElementoFalso> = {};
+    for (const id of ids) el[id] = { style: { display: '' }, innerHTML: '' };
+    const documentoFalso = {
+      getElementById: (id: string) => el[id] ?? null,
+      querySelectorAll: () => [] as unknown[],
+    };
+    const crear = new Function(
+      'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
+      `${PANEL_JS}\n; return { pintarAtascados };`,
+    ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => void>;
+    const fn = crear(
+      documentoFalso,
+      {},
+      () => Promise.resolve(),
+      almacenFalso(),
+      almacenFalso(),
+      () => 0,
+    );
+    return { fn, el };
+  }
+
+  const sinNada = { stuck: { total: 0 }, orphaned: { total: 0 } };
+
+  it('con todo en orden no enseña el aviso', () => {
+    const { fn, el } = montar(['stuck-warn']);
+    fn['pintarAtascados']!(sinNada);
+    expect(el['stuck-warn']!.style.display).toBe('none');
+  });
+
+  it('avisa de los viajes que se quedaron sin cierre, aunque no haya nada buscando conductor', () => {
+    // Es el caso del cierre perdido: nadie está esperando conductor, pero hay
+    // viajes abiertos que ya no va a cerrar nadie. Antes de tener esto, el
+    // aviso entero se ocultaba en cuanto `stuck.total` era cero.
+    const { fn, el } = montar(['stuck-warn']);
+    fn['pintarAtascados']!({ stuck: { total: 0 }, orphaned: { total: 3, desdeMin: 45 } });
+    expect(el['stuck-warn']!.style.display).toBe('block');
+    expect(el['stuck-warn']!.innerHTML).toContain('3 viajes en curso sin noticias');
+    expect(el['stuck-warn']!.innerHTML).toContain('45');
+  });
+
+  it('los dos avisos caben a la vez', () => {
+    const { fn, el } = montar(['stuck-warn']);
+    fn['pintarAtascados']!({
+      stuck: { total: 2, viaje: 2, mandado: 0, pedido: 0, intermunicipal: 0, desdeMin: 30 },
+      orphaned: { total: 1, desdeMin: 45 },
+    });
+    const salida = el['stuck-warn']!.innerHTML;
+    expect(salida).toContain('2 servicios sin conductor');
+    expect(salida).toContain('1 viaje en curso sin noticias');
+  });
+
+  it('no se rompe si el backend todavía no manda el dato nuevo', () => {
+    // Un servidor viejo con un panel nuevo: `orphaned` no viene. Tiene que
+    // comportarse como antes, no reventar ni pintar "undefined".
+    const { fn, el } = montar(['stuck-warn']);
+    expect(() => fn['pintarAtascados']!({ stuck: { total: 0 } })).not.toThrow();
+    expect(el['stuck-warn']!.style.display).toBe('none');
+    expect(el['stuck-warn']!.innerHTML).not.toContain('undefined');
+  });
+});

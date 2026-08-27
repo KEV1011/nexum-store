@@ -45,6 +45,31 @@ class LocationService {
   /// provider para retirar el aviso de "sin ubicación real" en cuanto engancha.
   void Function(bool tieneFix)? onFixChanged;
 
+  /// Cuánto se acepta como válida la última posición guardada del teléfono.
+  ///
+  /// Diez minutos. Por debajo de eso el conductor sigue razonablemente donde
+  /// estaba y sirve para arrancar el mapa y el trayecto; por encima ya no es su
+  /// posición, es su recuerdo, y mandarla al despacho sería el mismo error que
+  /// mandar el centro de Pamplona.
+  static const _vigenciaUltimaConocida = Duration(minutes: 10);
+
+  /// Toma la última posición que el sistema ya tenía guardada, si es reciente y
+  /// si el GPS aún no ha dado ninguna propia.
+  Future<void> _sembrarUltimaConocida() async {
+    try {
+      final previa = await Geolocator.getLastKnownPosition();
+      // Si el stream se adelantó, manda la suya: siempre es mejor.
+      if (previa == null || _lastPosition != null) return;
+      final edad = DateTime.now().difference(previa.timestamp);
+      if (edad > _vigenciaUltimaConocida) return;
+      _lastPosition = previa;
+      if (!_posiciones.isClosed) _posiciones.add(previa);
+      onFixChanged?.call(true);
+    } catch (_) {
+      // Sin permiso o sin servicio: se espera al stream, como antes.
+    }
+  }
+
   /// Posiciones reales del GPS según van llegando.
   ///
   /// El servicio ya escuchaba al GPS para el latido, pero la única forma de
@@ -152,6 +177,24 @@ class LocationService {
   void startTracking() {
     if (_isTracking) return;
     _isTracking = true;
+
+    // Arranque en frío: el último fix que el teléfono YA tiene guardado.
+    //
+    // El GPS tarda entre unos segundos y más de un minuto en dar su primera
+    // lectura propia, y hasta entonces `_lastPosition` era null. Eso no era un
+    // detalle: sin posición el mapa del home no se centra, no sale latido (así
+    // que el conductor no es despachable) y, al aceptar un viaje, `_trazarTramo`
+    // se va sin dibujar nada — el conductor acepta y se queda mirando una
+    // pantalla sin trayecto sin saber por qué. Android y iOS guardan la última
+    // posición conocida y la devuelven al instante; usarla mientras llega la
+    // primera de verdad es lo que hace que la pantalla nazca con algo.
+    //
+    // No contradice la regla de no inventar posiciones: esto NO es una
+    // coordenada fabricada, es una lectura real del propio GPS, solo que de hace
+    // un rato. Se descarta si es vieja: a partir de cierto tiempo ya no dice
+    // dónde está el conductor, dice dónde estuvo, y para el despacho eso es tan
+    // falso como el obelisco. En cuanto llega el primer fix propio, lo pisa.
+    unawaited(_sembrarUltimaConocida());
 
     // Listen to the position stream to keep _lastPosition fresh. onError evita
     // que un fallo del stream (p. ej. web sin permiso) propague una excepción;

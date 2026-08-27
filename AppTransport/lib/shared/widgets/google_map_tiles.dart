@@ -64,24 +64,28 @@ const Color mapaFondoOscuro = Color(0xFF1F2429);
 /// su familia (agua azul oscuro, parque verde oscuro). Es una aproximación
 /// —una cartografía diseñada siempre se verá mejor—, pero es honesta y no
 /// depende de ningún tercero.
-const _invertir = ColorFilter.matrix(<double>[
-  -1, 0, 0, 0, 255, //
-  0, -1, 0, 0, 255, //
-  0, 0, -1, 0, 255, //
+/// Las dos operaciones COMPUESTAS en una sola matriz.
+///
+/// Antes eran dos `ColorFiltered` anidados, y eso no es gratis: cada uno obliga
+/// a Flutter a un `saveLayer` del tamaño de la capa, y el mapa ocupa la pantalla
+/// entera. Eran dos búferes a pantalla completa reservados, pintados y
+/// compuestos en CADA frame mientras se arrastra el mapa — con el mapa quieto no
+/// se nota, pero al mover el dedo es justo la carga que hace que se sienta
+/// trabado. Componer dos matrices de color es multiplicarlas (la 5.ª columna es
+/// el desplazamiento), y aquí sale exacto porque invertir nunca se sale del
+/// rango [0,255] y por tanto no hay recorte intermedio que se pierda al fundir.
+///
+/// Verificado color a color contra la cadena de dos filtros —blanco, agua,
+/// parque, vía, texto y negro dan el mismo resultado— en `tools/matriz-mapa.py`.
+const _oscurecerMatriz = ColorFilter.matrix(<double>[
+  0.574, -1.43, -0.144, 0, 255, //
+  -0.426, -0.43, -0.144, 0, 255, //
+  -0.426, -1.43, 0.856, 0, 255, //
   0, 0, 0, 1, 0, //
 ]);
 
-const _girarTono180 = ColorFilter.matrix(<double>[
-  -0.574, 1.430, 0.144, 0, 0, //
-  0.426, 0.430, 0.144, 0, 0, //
-  0.426, 1.430, -0.856, 0, 0, //
-  0, 0, 0, 1, 0, //
-]);
-
-Widget _oscurecer(Widget capa) => ColorFiltered(
-      colorFilter: _girarTono180,
-      child: ColorFiltered(colorFilter: _invertir, child: capa),
-    );
+Widget _oscurecer(Widget capa) =>
+    ColorFiltered(colorFilter: _oscurecerMatriz, child: capa);
 
 /// Capa de tiles del mapa **real de Google** (Map Tiles API), servida por el
 /// backend en `/geo/tile/{z}/{x}/{y}` con la key server-side (la app nunca ve
@@ -108,10 +112,20 @@ class GoogleMapTiles extends ConsumerWidget {
         TileLayer(
           urlTemplate: _osm,
           tileProvider: cache,
-          // Sin esto las teselas de 256 px se ven BORROSAS en pantallas de alta
-          // densidad (el usuario lo describió como "parece un dibujo"): flutter_map
-          // pide un zoom más y las escala, así el mapa se ve nítido.
-          retinaMode: RetinaMode.isHighDensity(context),
+          // AQUÍ NO se activa `retinaMode`, y es a propósito.
+          //
+          // Sin plantilla `{r}`, flutter_map simula la alta densidad pidiendo
+          // las teselas UN ZOOM MÁS ARRIBA y encogiéndolas: cuatro imágenes por
+          // cada una. Con la llave de Google eso es lo correcto (abajo se activa)
+          // porque son teselas que se pagan y se sirven. Contra
+          // `tile.openstreetmap.org` no: su política de uso prohíbe
+          // explícitamente que una app distribuida tire de sus servidores, y lo
+          // hacen cumplir limitando y bloqueando. Multiplicar por cuatro las
+          // peticiones de cada panorámica es pedir que nos corten — y cuando
+          // cortan, lo que queda es el mapa a parches que se ve en el teléfono.
+          //
+          // Se pierde algo de nitidez en pantallas densas. Un mapa un poco menos
+          // fino se lee; uno a parches, no.
           userAgentPackageName: 'com.nexum.driver',
         ),
       );
