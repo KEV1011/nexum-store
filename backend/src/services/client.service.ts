@@ -1184,7 +1184,7 @@ export class TripDriverError extends Error {
 
 /**
  * Cambio de estado de un viaje HECHO POR SU CONDUCTOR, con la comprobación de
- * propiedad incluida y avisando al pasajero.
+ * propiedad incluida.
  *
  * Existe para que haya UNA sola versión de esta operación. Antes vivía suelta
  * dentro del manejador de `trip_status` del WebSocket, y eso tenía dos
