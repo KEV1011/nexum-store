@@ -84,6 +84,20 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
     super.dispose();
   }
 
+  /// Entra en el viaje encadenado que ya había aceptado.
+  ///
+  /// El `await` es obligatorio, no cosmética: `/active-trip` redirige al inicio
+  /// si `activeTripProvider` está vacío al construirse, así que navegar sin
+  /// esperar a que el viaje esté puesto es una carrera que a veces manda al
+  /// conductor al home con el pasajero ya asignado esperándole.
+  Future<void> _irAlSiguiente() async {
+    final v = ref.read(siguienteViajeProvider.notifier).tomar();
+    if (v == null) return;
+    await ref.read(activeTripProvider.notifier).beginTrip(v);
+    if (!mounted) return;
+    context.go('/active-trip');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -326,12 +340,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
               // otra vez— pero el botón lleva directo al siguiente.
               if (siguiente != null)
                 ElevatedButton.icon(
-                  onPressed: () {
-                    final v = ref.read(siguienteViajeProvider.notifier).tomar();
-                    if (v == null) return;
-                    unawaited(ref.read(activeTripProvider.notifier).beginTrip(v));
-                    context.go('/active-trip');
-                  },
+                  onPressed: _irAlSiguiente,
                   icon: const Icon(Icons.navigation_rounded),
                   label: Text('Siguiente viaje · ${siguiente.passenger.name}'),
                   style: ElevatedButton.styleFrom(
