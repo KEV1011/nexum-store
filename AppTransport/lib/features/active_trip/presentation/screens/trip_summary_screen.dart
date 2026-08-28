@@ -13,6 +13,8 @@ import 'package:nexum_driver/core/widgets/picked_image.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/passenger_rating_sheet.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/trip_history/presentation/providers/trip_history_provider.dart';
+import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
+import 'package:nexum_driver/features/active_trip/presentation/providers/siguiente_viaje_provider.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
@@ -86,6 +88,8 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final driverStatus = ref.watch(driverStatusProvider);
+    // Viaje encadenado que ya aceptó mientras terminaba este.
+    final siguiente = ref.watch(siguienteViajeProvider);
     // Montos: los del backend si ya llegó la liquidación; si no, la estimación.
     final netEarning = _settlement?.netEarning ?? trip.netEarning;
     final grossFare = _settlement?.finalFare ?? trip.grossFare;
@@ -314,15 +318,35 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                 const SizedBox(height: AppConstants.spacingM),
               ],
 
-              // ── Volver al inicio ─────────────────────────────────────────
-              ElevatedButton.icon(
-                onPressed: () => context.go('/home'),
-                icon: const Icon(Icons.home_rounded),
-                label: const Text('Volver al inicio'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(52),
+              // ── Siguiente viaje, o volver al inicio ──────────────────────
+              //
+              // Con un viaje encadenado esperando, mandarlo al inicio sería
+              // hacerle buscar a mano al pasajero que ya aceptó. El resumen se
+              // enseña igual —tiene derecho a ver lo que ganó antes de arrancar
+              // otra vez— pero el botón lleva directo al siguiente.
+              if (siguiente != null)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final v = ref.read(siguienteViajeProvider.notifier).tomar();
+                    if (v == null) return;
+                    unawaited(ref.read(activeTripProvider.notifier).beginTrip(v));
+                    context.go('/active-trip');
+                  },
+                  icon: const Icon(Icons.navigation_rounded),
+                  label: Text('Siguiente viaje · ${siguiente.passenger.name}'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                )
+              else
+                ElevatedButton.icon(
+                  onPressed: () => context.go('/home'),
+                  icon: const Icon(Icons.home_rounded),
+                  label: const Text('Volver al inicio'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
                 ),
-              ),
               const SizedBox(height: AppConstants.spacingM),
             ],
           ),

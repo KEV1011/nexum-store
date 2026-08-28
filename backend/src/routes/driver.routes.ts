@@ -472,6 +472,7 @@ router.get('/service-prefs', async (req: Request, res: Response): Promise<void> 
       acceptsTrips: true,
       acceptsErrands: true,
       acceptsOrders: true,
+      acceptsChained: true,
       intercityEnabled: true,
     },
   });
@@ -485,28 +486,31 @@ router.get('/service-prefs', async (req: Request, res: Response): Promise<void> 
       trips: driver.acceptsTrips,
       errands: driver.acceptsErrands,
       orders: driver.acceptsOrders,
+      chained: driver.acceptsChained,
       intercity: driver.intercityEnabled,
     },
   });
 });
 
-// PUT /driver/service-prefs { trips?, errands?, orders?, intercity? }
+// PUT /driver/service-prefs { trips?, errands?, orders?, chained?, intercity? }
 router.put('/service-prefs', async (req: Request, res: Response): Promise<void> => {
   const b = req.body as {
     trips?: unknown;
     errands?: unknown;
     orders?: unknown;
+    chained?: unknown;
     intercity?: unknown;
   };
   const data: Record<string, boolean> = {};
   if (typeof b.trips === 'boolean') data['acceptsTrips'] = b.trips;
   if (typeof b.errands === 'boolean') data['acceptsErrands'] = b.errands;
   if (typeof b.orders === 'boolean') data['acceptsOrders'] = b.orders;
+  if (typeof b.chained === 'boolean') data['acceptsChained'] = b.chained;
   if (typeof b.intercity === 'boolean') data['intercityEnabled'] = b.intercity;
   if (Object.keys(data).length === 0) {
     res.status(400).json({
       success: false,
-      error: 'Envía al menos una preferencia booleana (trips, errands, orders, intercity).',
+      error: 'Envía al menos una preferencia booleana (trips, errands, orders, chained, intercity).',
     });
     return;
   }
@@ -517,6 +521,7 @@ router.put('/service-prefs', async (req: Request, res: Response): Promise<void> 
       acceptsTrips: true,
       acceptsErrands: true,
       acceptsOrders: true,
+      acceptsChained: true,
       intercityEnabled: true,
     },
   });
@@ -526,6 +531,7 @@ router.put('/service-prefs', async (req: Request, res: Response): Promise<void> 
       trips: updated.acceptsTrips,
       errands: updated.acceptsErrands,
       orders: updated.acceptsOrders,
+      chained: updated.acceptsChained,
       intercity: updated.intercityEnabled,
     },
   });

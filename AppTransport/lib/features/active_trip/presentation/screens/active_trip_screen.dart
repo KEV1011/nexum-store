@@ -17,6 +17,9 @@ import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
+import 'package:nexum_driver/features/active_trip/presentation/providers/siguiente_viaje_provider.dart';
+import 'package:nexum_driver/features/active_trip/presentation/widgets/siguiente_viaje_card.dart';
+import 'package:nexum_driver/shared/models/oferta_mapper.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/delivery_proof_sheet.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/going_to_passenger_card.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/pickup_proof_sheet.dart';
@@ -94,6 +97,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   StreamSubscription<Map<String, dynamic>>? _chatSub;
   int _unreadChat = 0;
 
+  // ── Viaje encadenado ────────────────────────────────────────────────────────
+  // La oferta del SIGUIENTE servicio, que el despacho manda cuando ya se está
+  // llegando al destino. Se enseña en una franja arriba, no a pantalla completa:
+  // quien la mira va conduciendo con un pasajero dentro.
+  TripRequestEntity? _ofertaSiguiente;
+  int _segundosOferta = 0;
+  Timer? _cuentaOferta;
+  StreamSubscription<Map<String, dynamic>>? _encTripSub;
+  StreamSubscription<Map<String, dynamic>>? _encErrandSub;
+  StreamSubscription<Map<String, dynamic>>? _encOrderSub;
+
   @override
   void initState() {
     super.initState();
@@ -117,6 +131,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         }
         _startSimulatedMovement(trip);
         _startEtaCountdown(trip);
+        _escucharOfertasEncadenadas();
 
         // Pedido cancelado por el cliente (permitido hasta la recogida): se
         // avisa y se libera al repartidor de vuelta al inicio.
@@ -163,12 +178,105 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     });
   }
 
+  // ── Viaje encadenado ──────────────────────────────────────────────────────
+
+  /// Escucha las ofertas que el despacho manda MIENTRAS este viaje sigue vivo.
+  ///
+  /// Solo las marcadas como encadenadas: las normales son del home, que está
+  /// montado debajo y las gestiona él. Un servicio se ofrece de una en una, así
+  /// que si ya hay otra en pantalla se ignora la nueva en vez de pisarla.
+  void _escucharOfertasEncadenadas() {
+    final ws = DriverWsService();
+    _encTripSub = ws.tripRequests.listen((m) => _ofertaEncadenada(m, ofertaDeViaje));
+    _encErrandSub = ws.errandRequests.listen((m) => _ofertaEncadenada(m, ofertaDeMandado));
+    _encOrderSub = ws.orderRequests.listen((m) => _ofertaEncadenada(m, ofertaDePedido));
+  }
+
+  void _ofertaEncadenada(
+    Map<String, dynamic> crudo,
+    TripRequestEntity? Function(Map<String, dynamic>) mapear,
+  ) {
+    if (!mounted) return;
+    if (crudo[kEsEncadenado] != true) return;
+    // Ya hay una oferta en pantalla, o ya aceptó una para después.
+    if (_ofertaSiguiente != null) return;
+    if (ref.read(siguienteViajeProvider) != null) return;
+
+    final oferta = mapear(crudo);
+    if (oferta == null) return;
+
+    // Un toque corto, no la alarma en bucle de la oferta normal: está
+    // conduciendo y con un pasajero al lado.
+    NotificationService().vibrateSelection();
+    setState(() {
+      _ofertaSiguiente = oferta;
+      _segundosOferta = AppConstants.tripRequestTimeoutSeconds;
+    });
+    _cuentaOferta?.cancel();
+    _cuentaOferta = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_segundosOferta <= 1) {
+        t.cancel();
+        // No se manda rechazo: el servidor ya la dio por vencida a los quince
+        // segundos y se la pasó al siguiente. Mandarlo sería declinar una
+        // oferta que ya no existe.
+        setState(() => _ofertaSiguiente = null);
+        return;
+      }
+      setState(() => _segundosOferta--);
+    });
+  }
+
+  void _aceptarEncadenado() {
+    final oferta = _ofertaSiguiente;
+    if (oferta == null) return;
+    _cuentaOferta?.cancel();
+    final ws = DriverWsService();
+    if (oferta.isOrder) {
+      ws.sendAcceptOrder(oferta.orderId!);
+    } else if (oferta.isErrand) {
+      ws.sendAcceptErrand(oferta.id);
+    } else {
+      ws.sendAccept(oferta.id);
+    }
+    // NO se entra en él: todavía lleva un pasajero dentro. Queda en la cola y
+    // la pantalla de resumen, al cerrar el viaje actual, ofrece ir directo.
+    ref.read(siguienteViajeProvider.notifier).encolar(oferta);
+    setState(() => _ofertaSiguiente = null);
+    AppSnackbar.showSuccess(
+      context,
+      'Aceptado. Entras en él al terminar este viaje.',
+    );
+  }
+
+  void _rechazarEncadenado() {
+    final oferta = _ofertaSiguiente;
+    if (oferta == null) return;
+    _cuentaOferta?.cancel();
+    final ws = DriverWsService();
+    if (oferta.isOrder) {
+      ws.sendRejectOrder(oferta.orderId!);
+    } else if (oferta.isErrand) {
+      ws.sendRejectErrand(oferta.id);
+    } else {
+      ws.sendReject(oferta.id);
+    }
+    setState(() => _ofertaSiguiente = null);
+  }
+
   @override
   void dispose() {
     DriverWsService().activeTripId = null;
     _orderCancelSub?.cancel();
     _custodyPinSub?.cancel();
     _chatSub?.cancel();
+    _encTripSub?.cancel();
+    _encErrandSub?.cancel();
+    _encOrderSub?.cancel();
+    _cuentaOferta?.cancel();
     _pulse.dispose();
     _posSub?.cancel();
     _etaTimer?.cancel();
@@ -515,6 +623,13 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             _buildMap(trip, serviceType),
             _buildTopBar(trip, serviceType),
             if (!_origenRealDeRuta) const _BuscandoSenalGps(),
+            if (_ofertaSiguiente != null)
+              SiguienteViajeCard(
+                oferta: _ofertaSiguiente!,
+                segundos: _segundosOferta,
+                onAceptar: _aceptarEncadenado,
+                onRechazar: _rechazarEncadenado,
+              ),
             if (_isLoading)
               Container(
                 color: AppColors.overlay,

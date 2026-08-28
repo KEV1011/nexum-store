@@ -11,24 +11,33 @@ class ServicePrefsState {
     this.trips = true,
     this.errands = true,
     this.orders = true,
+    this.chained = true,
     this.isLoading = false,
   });
 
   final bool trips;
   final bool errands;
   final bool orders;
+
+  /// Recibir la siguiente solicitud mientras se termina la actual, ya cerca del
+  /// destino. Activo por defecto: sin esto el conductor llega a dejar al
+  /// pasajero y no ve el servicio que acaba de salir a dos cuadras.
+  final bool chained;
+
   final bool isLoading;
 
   ServicePrefsState copyWith({
     bool? trips,
     bool? errands,
     bool? orders,
+    bool? chained,
     bool? isLoading,
   }) {
     return ServicePrefsState(
       trips: trips ?? this.trips,
       errands: errands ?? this.errands,
       orders: orders ?? this.orders,
+      chained: chained ?? this.chained,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -49,6 +58,7 @@ class ServicePrefsNotifier extends StateNotifier<ServicePrefsState> {
         trips: data?['trips'] as bool? ?? true,
         errands: data?['errands'] as bool? ?? true,
         orders: data?['orders'] as bool? ?? true,
+        chained: data?['chained'] as bool? ?? true,
         isLoading: false,
       );
     } catch (_) {
@@ -57,9 +67,16 @@ class ServicePrefsNotifier extends StateNotifier<ServicePrefsState> {
   }
 
   /// Actualización optimista con rollback. Devuelve un mensaje de error o null.
-  Future<String?> set({bool? trips, bool? errands, bool? orders}) async {
+  Future<String?> set({
+    bool? trips,
+    bool? errands,
+    bool? orders,
+    bool? chained,
+  }) async {
     final previous = state;
-    state = state.copyWith(trips: trips, errands: errands, orders: orders);
+    state = state.copyWith(
+      trips: trips, errands: errands, orders: orders, chained: chained,
+    );
     try {
       await _client.put<Map<String, dynamic>>(
         '/driver/service-prefs',
@@ -67,6 +84,7 @@ class ServicePrefsNotifier extends StateNotifier<ServicePrefsState> {
           if (trips != null) 'trips': trips,
           if (errands != null) 'errands': errands,
           if (orders != null) 'orders': orders,
+          if (chained != null) 'chained': chained,
         },
       );
       return null;

@@ -64,6 +64,16 @@ const SEARCH_RADIUS_M = 5_000;   // 5 km initial radius
 const MAX_CANDIDATES = 5;         // try up to 5 drivers before giving up
 const GEO_FRESHNESS_S = 120;      // ignore drivers last seen > 2 min ago
 
+/**
+ * A qué distancia de su destino un conductor ocupado vuelve a ser despachable.
+ *
+ * 1,5 km: en ciudad son unos tres o cuatro minutos. Lo justo para que el nuevo
+ * pasajero no espere de más y para que el conductor no reciba ofertas al
+ * principio de una carrera larga. Ajustable por si en la práctica conviene
+ * apretarlo o soltarlo, que es de esas cosas que solo se afinan viendo datos.
+ */
+const CHAIN_NEAR_DEST_M = Number(process.env['CHAIN_NEAR_DEST_M'] ?? 1_500);
+
 // ─── Reintento de búsqueda ───────────────────────────────────────────────────
 //
 // Pedidos, mandados e intermunicipales buscaban conductor UNA sola vez: si en
@@ -123,7 +133,16 @@ export function cancelSearchRetry(key: string): void {
   }
 }
 
-type NearbyDriver = { driverId: string; distanceMeters: number };
+type NearbyDriver = {
+  driverId: string;
+  distanceMeters: number;
+  /**
+   * ¿Se le ofrece estando todavía en un viaje? La app lo presenta distinto —una
+   * tarjeta pequeña sobre el viaje en curso, no una pantalla completa— porque
+   * quien la va a mirar está conduciendo.
+   */
+  encadenado: boolean;
+};
 
 interface OfferState {
   tripId: string;
@@ -240,7 +259,11 @@ export async function disponibilidadPorTipoVehiculo(
   return mapa;
 }
 
-async function findNearestAvailableDrivers(
+/**
+ * Exportada para que la prueba E2E pueda comprobar las reglas del encadenado
+ * una a una. Dentro del servidor sigue usándose solo desde los ciclos de oferta.
+ */
+export async function findNearestAvailableDrivers(
   originLat: number,
   originLng: number,
   radiusMeters: number,
@@ -276,15 +299,67 @@ async function findNearestAvailableDrivers(
     ? Prisma.sql`AND d."complianceStatus"::text <> 'BLOCKED'`
     : Prisma.empty;
 
-  const rows = await prisma.$queryRaw<Array<{ driver_id: string; distance_m: number }>>`
+  // ── Viajes encadenados ──────────────────────────────────────────────────────
+  //
+  // Un conductor que va llegando a dejar a su pasajero está, para efectos
+  // prácticos, disponible dentro de tres minutos. Excluirlo por estar ON_TRIP
+  // es lo que hacía que un servicio saliera a la vuelta de la esquina y él no
+  // lo viera nunca — y es exactamente lo que Uber y DiDi resuelven encadenando.
+  //
+  // Se le ofrece SOLO si se cumple todo esto:
+  //
+  //   · lo tiene activado (`acceptsChained`, se puede apagar);
+  //   · su viaje actual ya va EN CURSO — con el pasajero a bordo. Si todavía va
+  //     de camino a recogerlo, encadenar sería empezar la casa por el tejado;
+  //   · está a menos de `CHAIN_NEAR_DEST_M` del destino de ese viaje. Sin esto
+  //     se le ofrecerían servicios al empezar una carrera de media hora y el
+  //     nuevo pasajero esperaría todo ese rato;
+  //   · y NO tiene ya otro servicio aceptado esperando. Uno en cola, no una
+  //     pila: encadenar dos es prometer lo que no se puede cumplir.
+  //
+  // El `NOT EXISTS` cubre los tres tipos, porque el despacho está unificado y
+  // el siguiente servicio bien puede ser un pedido detrás de un viaje.
+  const encadenado = Prisma.sql`(
+    d."status" = 'ON_TRIP'
+    AND d."acceptsChained" = true
+    AND EXISTS (
+      SELECT 1 FROM "trips" t
+      WHERE t."driverId" = d."id"
+        AND t."status" = 'IN_PROGRESS'
+        AND t."destLat" IS NOT NULL AND t."destLng" IS NOT NULL
+        AND ST_DWithin(
+              d."geo",
+              ST_SetSRID(ST_MakePoint(t."destLng", t."destLat"), 4326)::geography,
+              ${CHAIN_NEAR_DEST_M}
+            )
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM "trips" t2
+      WHERE t2."driverId" = d."id"
+        AND t2."status" NOT IN ('IN_PROGRESS', 'COMPLETED', 'CANCELLED')
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM "orders" o
+      WHERE o."driverId" = d."id" AND o."status" NOT IN ('DELIVERED', 'CANCELLED')
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM "errands" e
+      WHERE e."driverId" = d."id" AND e."status" NOT IN ('DELIVERED', 'CANCELLED')
+    )
+  )`;
+
+  const rows = await prisma.$queryRaw<
+    Array<{ driver_id: string; distance_m: number; en_viaje: boolean }>
+  >`
     SELECT d."id" AS driver_id,
+           d."status" = 'ON_TRIP' AS en_viaje,
            ST_Distance(
              d."geo",
              ST_SetSRID(ST_MakePoint(${originLng}, ${originLat}), 4326)::geography
            ) AS distance_m
     FROM "drivers" d
     WHERE d."geo" IS NOT NULL
-      AND d."status" = 'ONLINE'
+      AND (d."status" = 'ONLINE' OR ${encadenado})
       ${verifiedFilter}
       ${complianceFilter}
       AND (${serviceKind} != 'trip' OR d."acceptsTrips" = true)
@@ -299,7 +374,11 @@ async function findNearestAvailableDrivers(
           )
     ORDER BY distance_m ASC
     LIMIT ${maxResults}`;
-  return rows.map((r) => ({ driverId: r.driver_id, distanceMeters: Number(r.distance_m) }));
+  return rows.map((r) => ({
+    driverId: r.driver_id,
+    distanceMeters: Number(r.distance_m),
+    encadenado: r.en_viaje === true,
+  }));
 }
 
 /**
@@ -500,7 +579,12 @@ async function _offerToCandidate(
     attempt,
   });
 
-  _sendToDriver?.(candidate.driverId, { type: 'trip_request', trip: dto });
+  _sendToDriver?.(candidate.driverId, {
+    type: 'trip_request',
+    trip: dto,
+    // Va todavía en un viaje: la app lo enseña como "siguiente viaje".
+    chained: candidate.encadenado,
+  });
   // Push FCM en paralelo al WS: despierta la app si está en background.
   void sendPushToDriver(candidate.driverId, {
     title: 'Nueva solicitud de viaje',
@@ -731,7 +815,11 @@ async function _offerErrandToCandidate(
     retry,
   });
 
-  _sendToDriver?.(candidate.driverId, { type: 'errand_request', errand: info.dto });
+  _sendToDriver?.(candidate.driverId, {
+    type: 'errand_request',
+    errand: info.dto,
+    chained: candidate.encadenado,
+  });
   // Push FCM en paralelo al WS: despierta la app si está en background.
   void sendPushToDriver(candidate.driverId, {
     title: 'Nuevo mandado disponible',
@@ -904,7 +992,11 @@ async function _offerOrderToCandidate(
     attempt,
   });
 
-  _sendToDriver?.(candidate.driverId, { type: 'order_request', order: info.dto });
+  _sendToDriver?.(candidate.driverId, {
+    type: 'order_request',
+    order: info.dto,
+    chained: candidate.encadenado,
+  });
   void sendPushToDriver(candidate.driverId, {
     title: 'Nuevo pedido para entregar',
     body: `${info.dto.businessName} → ${info.dto.deliveryAddress}`,

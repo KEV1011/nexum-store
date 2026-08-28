@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { TripStatus, OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { startMatchingCycle, startOrderMatchingCycle, cancelSearchRetry } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
@@ -691,9 +692,7 @@ export async function cancelClientOrder(clientId: string, orderId: string): Prom
 
   if (order.driverId) {
     _sendToDriver?.(order.driverId, { type: 'order_cancelled', orderId });
-    await prisma.driver
-      .update({ where: { id: order.driverId }, data: { status: 'ONLINE' } })
-      .catch(() => { /* noop */ });
+    await liberarConductorSiNoTieneMas(order.driverId);
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
@@ -824,9 +823,7 @@ export async function updateOrderStatusByDriver(
       },
       driverId,
     );
-    await prisma.driver
-      .update({ where: { id: driverId }, data: { status: 'ONLINE' } })
-      .catch(() => { /* noop */ });
+    await liberarConductorSiNoTieneMas(driverId);
   }
 
   if (updated.userId && status === 'in_transit') {
@@ -1052,8 +1049,8 @@ export async function updateClientTripStatus(
         },
         trip.driverId,
       );
-      // El conductor queda libre para nuevos viajes.
-      await prisma.driver.update({ where: { id: trip.driverId }, data: { status: 'ONLINE' } }).catch(() => { /* noop */ });
+      // Libre para nuevos viajes — salvo que ya tenga el siguiente aceptado.
+      await liberarConductorSiNoTieneMas(trip.driverId);
     }
 
     const dto = _toTripDTO(updated, updated.passengerId ?? '');
@@ -1094,7 +1091,7 @@ export async function cancelClientTrip(clientId: string, tripId: string): Promis
   // quede con un viaje colgado en ON_TRIP.
   if (trip.driverId) {
     _sendToDriver?.(trip.driverId, { type: 'trip_cancelled', tripId });
-    await prisma.driver.update({ where: { id: trip.driverId }, data: { status: 'ONLINE' } }).catch(() => { /* noop */ });
+    await liberarConductorSiNoTieneMas(trip.driverId);
   }
 
   const dto = _toTripDTO(updated, clientId);
