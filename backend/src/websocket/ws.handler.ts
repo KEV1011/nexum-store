@@ -17,7 +17,7 @@ import {
   subscribeClientOrder,
   getClientOrderSnapshot,
   updateClientTripLocation,
-  updateClientTripStatus,
+  driverUpdateTripStatus,
   subscribeClientTrip,
   getClientTripSnapshot,
   getClientTripRaw,
@@ -25,7 +25,6 @@ import {
   notifyClientTripUpdateById,
   registerClientSendToDriver,
   handleNoDriversFound,
-  getTripSettlement,
   acceptClientOrder,
   updateOrderStatusByDriver,
   DriverOrderStatus,
@@ -887,47 +886,35 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (typeof tripId !== 'string' || typeof status !== 'string') {
         sendTo(ws, { type: 'error', message: 'tripId and status required' }); return;
       }
-      const senderDriverId = driverIdByWs.get(ws);
+      const senderDriverId = driverIdByWs.get(ws)!;
       void (async () => {
-        const raw = await getClientTripRaw(tripId);
-        if (!raw) {
-          sendTo(ws, { type: 'error', message: `Trip ${tripId} not found` });
-          return;
-        }
-        // Solo el conductor ASIGNADO puede cambiar el estado del viaje (antes
-        // cualquier conductor autenticado podía completar/cancelar viajes ajenos).
-        if (raw.driverId && raw.driverId !== senderDriverId) {
-          sendTo(ws, { type: 'error', message: 'Ese viaje no está asignado a ti' });
-          return;
-        }
-        // El PIN del envío viaja en el mismo mensaje; si no coincide, el
-        // servicio lanza y el conductor recibe el motivo en vez de un cierre
-        // silencioso.
-        let updated;
+        // La comprobación de propiedad, la liquidación y el aviso al pasajero
+        // viven en `driverUpdateTripStatus`, compartida con la ruta HTTP. Antes
+        // estaban escritas aquí, y una guarda de seguridad que solo existe en
+        // un camino deja de existir en cuanto se abre otro.
         try {
-          updated = await updateClientTripStatus(
+          const { trip, settlement } = await driverUpdateTripStatus(
+            senderDriverId,
             tripId,
             status as import('../types').ClientTripStatus,
             typeof msg['pin'] === 'string' ? (msg['pin'] as string) : undefined,
           );
+          // `driverUpdateTripStatus` ya avisó a quien esté SUSCRITO al viaje.
+          // Esto cubre al pasajero que tiene el socket abierto pero no llegó a
+          // suscribirse (p. ej. acaba de reconectar): se le manda directo.
+          const raw = await getClientTripRaw(tripId);
+          const clientWs = raw ? clientSockets.get(raw.clientId) : undefined;
+          if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip });
+          // Al completar, el ack lleva la liquidación real del backend para que
+          // la app del conductor muestre tarifa/neto/comisión verdaderos.
+          sendTo(ws, settlement
+            ? { type: 'trip_status_ack', tripId, status, settlement }
+            : { type: 'trip_status_ack', tripId, status });
         } catch (err) {
           sendTo(ws, {
             type: 'error',
             message: err instanceof Error ? err.message : 'No se pudo actualizar el viaje',
           });
-          return;
-        }
-        if (updated) {
-          const clientWs = clientSockets.get(raw.clientId);
-          if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip: updated });
-          // Al completar, el ack lleva la liquidación real del backend para que
-          // la app del conductor muestre tarifa/neto/comisión verdaderos.
-          const settlement = status === 'completed' ? await getTripSettlement(tripId) : null;
-          sendTo(ws, settlement
-            ? { type: 'trip_status_ack', tripId, status, settlement }
-            : { type: 'trip_status_ack', tripId, status });
-        } else {
-          sendTo(ws, { type: 'error', message: `Trip ${tripId} not found` });
         }
       })();
       break;

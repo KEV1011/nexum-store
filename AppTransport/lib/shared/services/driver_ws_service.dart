@@ -10,6 +10,11 @@ import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
 import 'package:nexum_driver/shared/services/ws_service.dart' show IntercityLifecycleEvent;
 
+/// Clave con la que el despacho marca una oferta como ENCADENADA: le llega al
+/// conductor mientras todavía termina otro servicio, ya cerca de su destino.
+/// Va dentro del mapa de la oferta para no cambiar el tipo de los flujos.
+const kEsEncadenado = 'esEncadenado';
+
 /// Liquidación real de un viaje calculada por el backend. Llega dentro del
 /// `trip_status_ack` cuando el conductor reporta `completed`.
 class TripSettlement {
@@ -145,6 +150,19 @@ class DriverWsService {
 
   /// Última liquidación conocida de [tripId], si su ack ya llegó.
   TripSettlement? settlementFor(String tripId) => _settlements[tripId];
+
+  /// Guarda una liquidación que NO vino por el socket.
+  ///
+  /// El cierre del viaje pasó a hacerse por HTTP (`cambiarEstadoViaje`), que sí
+  /// acusa recibo, y esa respuesta trae la liquidación. Sin esto la pantalla de
+  /// resumen se quedaría esperando un `trip_status_ack` que ya no va a llegar y
+  /// acabaría enseñando su estimación local a los seis segundos — justo los
+  /// números que dejamos de usar por no ser los del servidor. Va al mismo buzón
+  /// para que el resumen no tenga que saber por dónde llegó.
+  void publicarLiquidacion(TripSettlement s) {
+    _settlements[s.tripId] = s;
+    if (!_settlementCtrl.isClosed) _settlementCtrl.add(s);
+  }
 
   bool get isConnected => _channel != null;
 
@@ -492,22 +510,26 @@ class DriverWsService {
             _authCompleter!.complete(false);
           }
 
+        // `chained` viaja fuera del DTO (es del despacho, no del servicio) y se
+        // mete dentro del mapa para no cambiar el tipo de los tres flujos: la
+        // pantalla del viaje activo lo mira para saber si esta oferta es un
+        // "siguiente viaje" que puede enseñar en pequeño mientras se conduce.
         case 'trip_request':
           final trip = msg['trip'];
           if (trip is Map<String, dynamic>) {
-            _tripCtrl.add(trip);
+            _tripCtrl.add({...trip, kEsEncadenado: msg['chained'] == true});
           }
 
         case 'errand_request':
           final errand = msg['errand'];
           if (errand is Map<String, dynamic>) {
-            _errandCtrl.add(errand);
+            _errandCtrl.add({...errand, kEsEncadenado: msg['chained'] == true});
           }
 
         case 'order_request':
           final order = msg['order'];
           if (order is Map<String, dynamic>) {
-            _orderCtrl.add(order);
+            _orderCtrl.add({...order, kEsEncadenado: msg['chained'] == true});
           }
 
         case 'trip_cancelled':

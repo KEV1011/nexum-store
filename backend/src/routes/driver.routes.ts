@@ -33,6 +33,11 @@ import {
   type ReceiveManifestDTO,
 } from '../services/manifest.service';
 import { CustodyPinError } from '../lib/custody-pin';
+import {
+  driverUpdateTripStatus,
+  TripDriverError,
+} from '../services/client.service';
+import type { ClientTripStatus } from '../types';
 import { prisma } from '../lib/prisma';
 import { registerDriverFcmToken } from '../services/push.service';
 import { getSurgeMultiplier } from '../services/surge.service';
@@ -467,6 +472,7 @@ router.get('/service-prefs', async (req: Request, res: Response): Promise<void> 
       acceptsTrips: true,
       acceptsErrands: true,
       acceptsOrders: true,
+      acceptsChained: true,
       intercityEnabled: true,
     },
   });
@@ -480,28 +486,31 @@ router.get('/service-prefs', async (req: Request, res: Response): Promise<void> 
       trips: driver.acceptsTrips,
       errands: driver.acceptsErrands,
       orders: driver.acceptsOrders,
+      chained: driver.acceptsChained,
       intercity: driver.intercityEnabled,
     },
   });
 });
 
-// PUT /driver/service-prefs { trips?, errands?, orders?, intercity? }
+// PUT /driver/service-prefs { trips?, errands?, orders?, chained?, intercity? }
 router.put('/service-prefs', async (req: Request, res: Response): Promise<void> => {
   const b = req.body as {
     trips?: unknown;
     errands?: unknown;
     orders?: unknown;
+    chained?: unknown;
     intercity?: unknown;
   };
   const data: Record<string, boolean> = {};
   if (typeof b.trips === 'boolean') data['acceptsTrips'] = b.trips;
   if (typeof b.errands === 'boolean') data['acceptsErrands'] = b.errands;
   if (typeof b.orders === 'boolean') data['acceptsOrders'] = b.orders;
+  if (typeof b.chained === 'boolean') data['acceptsChained'] = b.chained;
   if (typeof b.intercity === 'boolean') data['intercityEnabled'] = b.intercity;
   if (Object.keys(data).length === 0) {
     res.status(400).json({
       success: false,
-      error: 'Envía al menos una preferencia booleana (trips, errands, orders, intercity).',
+      error: 'Envía al menos una preferencia booleana (trips, errands, orders, chained, intercity).',
     });
     return;
   }
@@ -512,6 +521,7 @@ router.put('/service-prefs', async (req: Request, res: Response): Promise<void> 
       acceptsTrips: true,
       acceptsErrands: true,
       acceptsOrders: true,
+      acceptsChained: true,
       intercityEnabled: true,
     },
   });
@@ -521,6 +531,7 @@ router.put('/service-prefs', async (req: Request, res: Response): Promise<void> 
       trips: updated.acceptsTrips,
       errands: updated.acceptsErrands,
       orders: updated.acceptsOrders,
+      chained: updated.acceptsChained,
       intercity: updated.intercityEnabled,
     },
   });
@@ -929,6 +940,59 @@ router.post(
     }
   },
 );
+
+// ─── Estado del viaje por HTTP ────────────────────────────────────────────────
+
+/** Estados que el conductor puede fijar desde su app. */
+const ESTADOS_DEL_CONDUCTOR = [
+  'arriving', 'arrived', 'in_progress', 'completed', 'cancelled',
+] as const;
+
+/**
+ * POST /driver/trips/:id/status — mover el viaje, con respuesta.
+ *
+ * El mismo cambio de estado que ya se podía mandar por WebSocket, pero por HTTP.
+ * No es un duplicado por gusto: el socket no acusa recibo, y su emisor descarta
+ * en silencio lo que se manda con la conexión caída. Para "he llegado" eso es un
+ * incordio; para "he terminado" es dinero — liquida la tarifa, le paga al
+ * conductor y lo libera para el siguiente viaje. Esa no puede ser una operación
+ * que la app crea hecha sin que nadie se lo haya confirmado.
+ */
+router.post('/trips/:id/status', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId!;
+  const status = req.body?.['status'];
+  if (typeof status !== 'string' ||
+      !(ESTADOS_DEL_CONDUCTOR as readonly string[]).includes(status)) {
+    res.status(400).json({
+      success: false,
+      error: `El estado debe ser uno de: ${ESTADOS_DEL_CONDUCTOR.join(', ')}`,
+    });
+    return;
+  }
+  const pin = typeof req.body?.['pin'] === 'string' ? (req.body['pin'] as string) : undefined;
+
+  try {
+    const { trip, settlement } = await driverUpdateTripStatus(
+      driverId, req.params['id']!, status as ClientTripStatus, pin,
+    );
+    res.json({ success: true, data: { trip, settlement } });
+  } catch (err) {
+    if (err instanceof TripDriverError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    // PIN de custodia que no cuadra: es culpa del dato, no del servidor, y el
+    // conductor tiene que poder leer el motivo y volver a pedirlo.
+    if (err instanceof CustodyPinError) {
+      res.status(400).json({ success: false, error: err.message });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo actualizar el viaje',
+    });
+  }
+});
 
 // ─── Chat del viaje (conductor ↔ pasajero) ─────────────────────────────────────
 

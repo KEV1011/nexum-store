@@ -9,6 +9,7 @@ import { DriverStatus, ErrandStatus as ErrandStatusDb } from '@prisma/client';
 import { fichaPorConductor, type DriverCardFields } from '../lib/driver-card';
 import { ERRAND_SERVICE_FEE, COMMISSION_RATE } from '../config/constants';
 import { prisma } from '../lib/prisma';
+import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { cancelSearchRetry } from './matching.service';
 import { generatePin, assertCustodyPin } from '../lib/custody-pin';
 import { guardaNoTerminal, esEstadoTerminal } from '../lib/estado-terminal';
@@ -287,9 +288,7 @@ export async function cancelClientErrand(clientId: string, errandId: string): Pr
       body: 'El cliente canceló el mandado que tenías asignado.',
       data: { type: 'errand_cancelled', errandId },
     });
-    await prisma.driver
-      .update({ where: { id: errand.driverId }, data: { status: DriverStatus.ONLINE } })
-      .catch(() => { /* noop */ });
+    await liberarConductorSiNoTieneMas(errand.driverId);
   }
   return true;
 }

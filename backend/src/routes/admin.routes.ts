@@ -968,7 +968,22 @@ function loadMetrics() {
 function pintarAtascados(m) {
   const box = document.getElementById('stuck-warn');
   const s = m.stuck || {};
-  if (!s.total) { box.style.display = 'none'; return; }
+  const h = m.orphaned || {};
+  // Viajes que arrancaron y se quedaron sin cierre. El conductor ya se liberó
+  // solo; lo que queda es un viaje abierto que solo un humano puede resolver,
+  // porque cerrarlo paga y cancelarlo niega un servicio quizá prestado.
+  const huerfanos = h.total
+    ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)">' +
+      '<strong>🚧 ' + esc(String(h.total)) + ' viaje' + (h.total === 1 ? '' : 's') +
+      ' en curso sin noticias del conductor</strong> desde hace más de ' +
+      esc(String(h.desdeMin)) + ' minutos. Los conductores ya se liberaron para ' +
+      'seguir trabajando; decide tú qué hacer con el viaje (Conductores → Liberar).</div>'
+    : '';
+  if (!s.total) {
+    box.style.display = huerfanos ? 'block' : 'none';
+    if (huerfanos) box.innerHTML = huerfanos;
+    return;
+  }
   const partes = [];
   if (s.viaje) partes.push(s.viaje + ' viaje' + (s.viaje === 1 ? '' : 's'));
   if (s.mandado) partes.push(s.mandado + ' mandado' + (s.mandado === 1 ? '' : 's'));
@@ -980,7 +995,7 @@ function pintarAtascados(m) {
     esc(String(s.desdeMin)) + ' minutos: ' + esc(partes.join(' · ')) +
     '.<div style="margin-top:6px">Alguien está esperando. Mira si hay conductores en línea en la zona ' +
     '(pestaña Conductores → Diagnóstico de despacho); el sistema reintenta solo, ' +
-    'pero si no hay nadie conectado no va a aparecer de la nada.</div>';
+    'pero si no hay nadie conectado no va a aparecer de la nada.</div>' + huerfanos;
 }
 
 // El piloto sin verificación, con cara y números. "PILOT_SKIP_VERIFICATION

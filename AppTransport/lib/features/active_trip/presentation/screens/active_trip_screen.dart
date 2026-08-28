@@ -17,6 +17,9 @@ import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
+import 'package:nexum_driver/features/active_trip/presentation/providers/siguiente_viaje_provider.dart';
+import 'package:nexum_driver/features/active_trip/presentation/widgets/siguiente_viaje_card.dart';
+import 'package:nexum_driver/shared/models/oferta_mapper.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/delivery_proof_sheet.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/going_to_passenger_card.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/pickup_proof_sheet.dart';
@@ -29,6 +32,7 @@ import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/services/route_service.dart';
+import 'package:nexum_driver/shared/services/trip_completion.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/shared/widgets/custody_pin_dialog.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
@@ -93,6 +97,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   StreamSubscription<Map<String, dynamic>>? _chatSub;
   int _unreadChat = 0;
 
+  // ── Viaje encadenado ────────────────────────────────────────────────────────
+  // La oferta del SIGUIENTE servicio, que el despacho manda cuando ya se está
+  // llegando al destino. Se enseña en una franja arriba, no a pantalla completa:
+  // quien la mira va conduciendo con un pasajero dentro.
+  TripRequestEntity? _ofertaSiguiente;
+  int _segundosOferta = 0;
+  Timer? _cuentaOferta;
+  StreamSubscription<Map<String, dynamic>>? _encTripSub;
+  StreamSubscription<Map<String, dynamic>>? _encErrandSub;
+  StreamSubscription<Map<String, dynamic>>? _encOrderSub;
+
   @override
   void initState() {
     super.initState();
@@ -116,6 +131,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         }
         _startSimulatedMovement(trip);
         _startEtaCountdown(trip);
+        _escucharOfertasEncadenadas();
 
         // Pedido cancelado por el cliente (permitido hasta la recogida): se
         // avisa y se libera al repartidor de vuelta al inicio.
@@ -162,12 +178,105 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     });
   }
 
+  // ── Viaje encadenado ──────────────────────────────────────────────────────
+
+  /// Escucha las ofertas que el despacho manda MIENTRAS este viaje sigue vivo.
+  ///
+  /// Solo las marcadas como encadenadas: las normales son del home, que está
+  /// montado debajo y las gestiona él. Un servicio se ofrece de una en una, así
+  /// que si ya hay otra en pantalla se ignora la nueva en vez de pisarla.
+  void _escucharOfertasEncadenadas() {
+    final ws = DriverWsService();
+    _encTripSub = ws.tripRequests.listen((m) => _ofertaEncadenada(m, ofertaDeViaje));
+    _encErrandSub = ws.errandRequests.listen((m) => _ofertaEncadenada(m, ofertaDeMandado));
+    _encOrderSub = ws.orderRequests.listen((m) => _ofertaEncadenada(m, ofertaDePedido));
+  }
+
+  void _ofertaEncadenada(
+    Map<String, dynamic> crudo,
+    TripRequestEntity? Function(Map<String, dynamic>) mapear,
+  ) {
+    if (!mounted) return;
+    if (crudo[kEsEncadenado] != true) return;
+    // Ya hay una oferta en pantalla, o ya aceptó una para después.
+    if (_ofertaSiguiente != null) return;
+    if (ref.read(siguienteViajeProvider) != null) return;
+
+    final oferta = mapear(crudo);
+    if (oferta == null) return;
+
+    // Un toque corto, no la alarma en bucle de la oferta normal: está
+    // conduciendo y con un pasajero al lado.
+    NotificationService().vibrateSelection();
+    setState(() {
+      _ofertaSiguiente = oferta;
+      _segundosOferta = AppConstants.tripRequestTimeoutSeconds;
+    });
+    _cuentaOferta?.cancel();
+    _cuentaOferta = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_segundosOferta <= 1) {
+        t.cancel();
+        // No se manda rechazo: el servidor ya la dio por vencida a los quince
+        // segundos y se la pasó al siguiente. Mandarlo sería declinar una
+        // oferta que ya no existe.
+        setState(() => _ofertaSiguiente = null);
+        return;
+      }
+      setState(() => _segundosOferta--);
+    });
+  }
+
+  void _aceptarEncadenado() {
+    final oferta = _ofertaSiguiente;
+    if (oferta == null) return;
+    _cuentaOferta?.cancel();
+    final ws = DriverWsService();
+    if (oferta.isOrder) {
+      ws.sendAcceptOrder(oferta.orderId!);
+    } else if (oferta.isErrand) {
+      ws.sendAcceptErrand(oferta.id);
+    } else {
+      ws.sendAccept(oferta.id);
+    }
+    // NO se entra en él: todavía lleva un pasajero dentro. Queda en la cola y
+    // la pantalla de resumen, al cerrar el viaje actual, ofrece ir directo.
+    ref.read(siguienteViajeProvider.notifier).encolar(oferta);
+    setState(() => _ofertaSiguiente = null);
+    AppSnackbar.showSuccess(
+      context,
+      'Aceptado. Entras en él al terminar este viaje.',
+    );
+  }
+
+  void _rechazarEncadenado() {
+    final oferta = _ofertaSiguiente;
+    if (oferta == null) return;
+    _cuentaOferta?.cancel();
+    final ws = DriverWsService();
+    if (oferta.isOrder) {
+      ws.sendRejectOrder(oferta.orderId!);
+    } else if (oferta.isErrand) {
+      ws.sendRejectErrand(oferta.id);
+    } else {
+      ws.sendReject(oferta.id);
+    }
+    setState(() => _ofertaSiguiente = null);
+  }
+
   @override
   void dispose() {
     DriverWsService().activeTripId = null;
     _orderCancelSub?.cancel();
     _custodyPinSub?.cancel();
     _chatSub?.cancel();
+    _encTripSub?.cancel();
+    _encErrandSub?.cancel();
+    _encOrderSub?.cancel();
+    _cuentaOferta?.cancel();
     _pulse.dispose();
     _posSub?.cancel();
     _etaTimer?.cancel();
@@ -513,6 +622,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           children: [
             _buildMap(trip, serviceType),
             _buildTopBar(trip, serviceType),
+            if (!_origenRealDeRuta) const _BuscandoSenalGps(),
+            if (_ofertaSiguiente != null)
+              SiguienteViajeCard(
+                oferta: _ofertaSiguiente!,
+                segundos: _segundosOferta,
+                onAceptar: _aceptarEncadenado,
+                onRechazar: _rechazarEncadenado,
+              ),
             if (_isLoading)
               Container(
                 color: AppColors.overlay,
@@ -623,6 +740,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       ActiveTripEntity trip, ServiceType serviceType) {
     final dashedPattern = StrokePattern.dashed(segments: const [18, 8]);
     final solidPattern = StrokePattern.solid();
+
+    // Sin posición real no se dibuja NADA. Esta rama se saltaba la guarda que
+    // sí respeta `_trazarTramo`: con el GPS aún sin enganchar, `_driverPos`
+    // vale el centro de la ciudad, así que aquí salía una recta naciendo en el
+    // obelisco hacia el pasajero — exactamente la línea falsa que se quitó del
+    // resto de la pantalla. Mejor mapa sin línea, y el aviso de que se está
+    // buscando señal lo da la propia pantalla.
+    if (!_origenRealDeRuta) return const [];
 
     if (_waypoints.isEmpty) {
       final target = trip.isInProgress
@@ -1115,6 +1240,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     }
 
     setState(() => _isLoading = true);
+    // Lo que liquidó el SERVIDOR. Se guarda aquí fuera para que el acumulado
+    // del día sume su neto y no el que estima el teléfono.
+    LiquidacionViaje? liquidacion;
     try {
       if (tripBeforeFinish != null) {
         if (tripBeforeFinish.request.isOrder) {
@@ -1131,11 +1259,30 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             pin: pin,
           );
         } else {
-          DriverWsService().sendTripStatus(
-            tripBeforeFinish.request.id,
-            'completed',
+          // Por HTTP y ESPERANDO respuesta, no por el socket a ciegas.
+          //
+          // Cerrar el viaje liquida la tarifa, le paga al conductor y lo libera
+          // para el siguiente. Con `sendTripStatus` eso se mandaba sin acuse: si
+          // el socket estaba caído el mensaje se descartaba en silencio y esta
+          // pantalla seguía adelante igual — resumen en el teléfono, pasajero
+          // "en trayecto" para siempre, cero liquidación y el conductor marcado
+          // ON_TRIP, fuera del despacho sin enterarse. Si el servidor no
+          // confirma, aquí se lanza y el viaje NO se da por terminado.
+          liquidacion = await cambiarEstadoViaje(
+            tripId: tripBeforeFinish.request.id,
+            estado: 'completed',
             pin: pin,
           );
+          // La respuesta trae la liquidación real. Va al mismo buzón donde la
+          // dejaba el `trip_status_ack`, que es donde la busca el resumen.
+          if (liquidacion != null) {
+            DriverWsService().publicarLiquidacion(TripSettlement(
+              tripId: tripBeforeFinish.request.id,
+              finalFare: liquidacion.finalFare,
+              netEarning: liquidacion.netEarning,
+              commission: liquidacion.commission,
+            ));
+          }
         }
       }
 
@@ -1158,9 +1305,12 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
       final tripModel =
           await ref.read(activeTripProvider.notifier).finishTrip();
+      // El neto del servidor manda. `tripModel.netEarning` lo calcula el
+      // teléfono con su propia tasa de comisión, y esa cuenta ya se retiró del
+      // resto de la app por dar cifras distintas a las del backend.
       await ref
           .read(driverStatusProvider.notifier)
-          .updateEarnings(tripModel.netEarning);
+          .updateEarnings(liquidacion?.netEarning ?? tripModel.netEarning);
       if (!mounted) return;
 
       if (workMode.isDelivery) {
@@ -1175,9 +1325,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       } else {
         context.go('/trip-summary', extra: tripModel);
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        AppSnackbar.showError(context, 'Error al finalizar el viaje');
+        // El motivo del servidor, no un "Error al finalizar el viaje" que no
+        // dice si fue el PIN, la red o que el viaje ya estaba cerrado. Y
+        // `_finishing` vuelve a false: el viaje sigue abierto y el conductor
+        // tiene que poder darle otra vez sin salirse de la pantalla.
+        AppSnackbar.showError(
+          context,
+          e is CierreViajeError ? e.mensaje : 'No se pudo finalizar el viaje.',
+        );
+        _finishing = false;
         setState(() => _isLoading = false);
       }
     }
@@ -1233,5 +1391,58 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       ),
     );
     if (confirmed == true && mounted) _handleCancelled();
+  }
+}
+
+/// Aviso mientras el GPS todavía no ha dado una lectura propia.
+///
+/// Sin él, el conductor acepta un viaje y ve un mapa sin trayecto, sin nada que
+/// le diga por qué ni cuánto va a durar — y lo natural es pensar que la app se
+/// colgó. La línea no está porque no se sabe desde dónde trazarla, y eso se
+/// puede decir en una frase en vez de dejarlo adivinar.
+class _BuscandoSenalGps extends StatelessWidget {
+  const _BuscandoSenalGps();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 16,
+      child: SafeArea(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppColors.textPrimary.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(Colors.white),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Buscando señal GPS para trazar el trayecto…',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

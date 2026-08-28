@@ -32,11 +32,10 @@ import 'package:nexum_driver/features/intercity/presentation/providers/intercity
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
-import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
-import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/models/oferta_mapper.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
@@ -326,24 +325,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }),
     );
 
-    // Subscribe to incoming trip requests from the server.
+    // Ofertas del servidor. Las ENCADENADAS se ignoran aquí a propósito: llegan
+    // mientras el conductor va terminando otro servicio, o sea con la pantalla
+    // del viaje activo delante, y es ella quien las enseña —en pequeño, porque
+    // él está manejando—. El home sigue montado debajo y sin este filtro se
+    // guardaría la oferta para plantársela a pantalla completa al volver, ya
+    // caducada.
     _wsTripSub = DriverWsService().tripRequests.listen((tripMap) {
-      if (!mounted) return;
-      final request = _tripRequestFromMap(tripMap);
+      if (!mounted || tripMap[kEsEncadenado] == true) return;
+      final request = ofertaDeViaje(tripMap);
       if (request != null) _onTripRequest(request);
     });
 
     // Subscribe to incoming errand requests from the server.
     _wsErrandSub = DriverWsService().errandRequests.listen((errandMap) {
-      if (!mounted) return;
-      final request = _errandRequestFromMap(errandMap);
+      if (!mounted || errandMap[kEsEncadenado] == true) return;
+      final request = ofertaDeMandado(errandMap);
       if (request != null) _onTripRequest(request);
     });
 
     // Subscribe to incoming business-order delivery offers.
     _wsOrderSub = DriverWsService().orderRequests.listen((orderMap) {
-      if (!mounted) return;
-      final request = _orderRequestFromMap(orderMap);
+      if (!mounted || orderMap[kEsEncadenado] == true) return;
+      final request = ofertaDePedido(orderMap);
       if (request != null) _onTripRequest(request);
     });
 
@@ -406,162 +410,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// Build a [TripRequestEntity] from a raw trip JSON map received via WS.
-  TripRequestEntity? _tripRequestFromMap(Map<String, dynamic> t) {
-    try {
-      final p = t['passenger'] as Map<String, dynamic>;
-      final o = t['origin'] as Map<String, dynamic>;
-      final d = t['destination'] as Map<String, dynamic>;
-      final name = p['name'] as String;
-      return TripRequestEntity(
-        id: t['id'] as String,
-        passenger: PassengerEntity(
-          id: (p['id'] as String?) ?? '',
-          name: name,
-          rating: (p['rating'] as num).toDouble(),
-          totalTrips: 0,
-          verified: (p['verified'] as bool?) ?? false,
-          photoUrl:
-              'https://ui-avatars.com/api/?name=${Uri.encodeComponent(name)}'
-              '&background=00C853&color=fff&size=128',
-        ),
-        origin: LocationModel(
-          latitude: (o['lat'] as num).toDouble(),
-          longitude: (o['lng'] as num).toDouble(),
-          address: o['address'] as String,
-        ),
-        destination: LocationModel(
-          latitude: (d['lat'] as num).toDouble(),
-          longitude: (d['lng'] as num).toDouble(),
-          address: d['address'] as String,
-        ),
-        distanceKm: (t['distanceKm'] as num).toDouble(),
-        durationMinutes: (t['estimatedMinutes'] as num).toInt(),
-        estimatedFare: (t['estimatedFare'] as num).toDouble(),
-        distanceToPickupKm: 0.5,
-        etaToPickupMinutes: 3,
-        requestedAt: DateTime.now(),
-        serviceType: t['serviceType'] as String?,
-        paymentMethod: t['paymentMethod'] as String?,
-        // Solo el nombre: al conductor le sirve para decidir y para orientarse;
-        // las coordenadas ya las usó el servidor para medir y cobrar.
-        stops: ((t['stops'] as List<dynamic>?) ?? const [])
-            .map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '')
-            .where((n) => n.isNotEmpty)
-            .toList(),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Build a [TripRequestEntity] from a raw `order_request` (entrega de pedido
-  /// a negocio). Origen = el negocio donde recoger; destino = dirección de
-  /// entrega; tarifa = el domicilio que gana el repartidor.
-  TripRequestEntity? _orderRequestFromMap(Map<String, dynamic> o) {
-    try {
-      const double fallbackLat = MapConstants.pamplonaCenterLat;
-      const double fallbackLng = MapConstants.pamplonaCenterLng;
-      final businessName = o['businessName'] as String? ?? 'Negocio';
-      final itemsCount = (o['itemsCount'] as num?)?.toInt() ?? 0;
-      // Coordenadas reales del backend: negocio (recogida) y entrega. La entrega
-      // cae al negocio si el pedido no trajo coords de destino.
-      final bizLat = (o['businessLat'] as num?)?.toDouble() ?? fallbackLat;
-      final bizLng = (o['businessLng'] as num?)?.toDouble() ?? fallbackLng;
-      final delLat = (o['deliveryLat'] as num?)?.toDouble() ?? bizLat;
-      final delLng = (o['deliveryLng'] as num?)?.toDouble() ?? bizLng;
-
-      return TripRequestEntity(
-        id: o['id'] as String,
-        orderId: o['id'] as String,
-        passenger: PassengerEntity(
-          id: '',
-          name: businessName,
-          rating: 5.0,
-          totalTrips: 0,
-          photoUrl: '',
-        ),
-        origin: LocationModel(
-          latitude: bizLat,
-          longitude: bizLng,
-          address: o['businessAddress'] as String? ?? businessName,
-        ),
-        destination: LocationModel(
-          latitude: delLat,
-          longitude: delLng,
-          address: o['deliveryAddress'] as String? ?? '',
-        ),
-        distanceKm: 0,
-        durationMinutes: 0,
-        estimatedFare: (o['deliveryFee'] as num?)?.toDouble() ?? 0,
-        distanceToPickupKm: 0.5,
-        etaToPickupMinutes: 3,
-        requestedAt: DateTime.now(),
-        errand: ErrandDetails(
-          category: ErrandCategory.other,
-          description:
-              'Pedido ${o['orderRef'] ?? ''} · $itemsCount producto(s) de $businessName',
-        ),
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Build a [TripRequestEntity] (with [ErrandDetails]) from a raw errand
-  /// JSON map received via WS. Uses Pamplona-centre placeholder coords
-  /// because the WS errand payload does not include coordinates.
-  TripRequestEntity? _errandRequestFromMap(Map<String, dynamic> e) {
-    try {
-      const double pamplonaCenterLat = MapConstants.pamplonaCenterLat;
-      const double pamplonaCenterLng = MapConstants.pamplonaCenterLng;
-
-      final categoryStr = e['category'] as String? ?? 'other';
-      final category = ErrandCategory.values.firstWhere(
-        (c) => c.name == categoryStr,
-        orElse: () => ErrandCategory.other,
-      );
-
-      final errand = ErrandDetails(
-        category: category,
-        description: e['description'] as String? ?? '',
-        purchaseBudget:
-            e['purchaseBudget'] != null ? (e['purchaseBudget'] as num).toDouble() : null,
-        notes: e['notes'] as String?,
-      );
-
-      return TripRequestEntity(
-        id: e['id'] as String,
-        passenger: const PassengerEntity(
-          id: '',
-          name: 'Cliente',
-          rating: 5.0,
-          totalTrips: 0,
-          photoUrl: '',
-        ),
-        origin: LocationModel(
-          latitude: pamplonaCenterLat,
-          longitude: pamplonaCenterLng,
-          address: e['pickupAddress'] as String? ?? '',
-        ),
-        destination: LocationModel(
-          latitude: pamplonaCenterLat,
-          longitude: pamplonaCenterLng,
-          address: e['dropoffAddress'] as String? ?? '',
-        ),
-        distanceKm: 0,
-        durationMinutes: 0,
-        estimatedFare:
-            e['serviceFee'] != null ? (e['serviceFee'] as num).toDouble() : 0,
-        distanceToPickupKm: 0.5,
-        etaToPickupMinutes: 3,
-        requestedAt: DateTime.now(),
-        errand: errand,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
   void _onTripRequest(TripRequestEntity request) {
     if (!mounted || !_state.isOnline) return;
     // Alarma en BUCLE mientras dura la espera de aceptación (no un beep corto).
@@ -1276,6 +1124,23 @@ class _ServicePrefsSheet extends ConsumerWidget {
                   style: TextStyle(color: _sub, fontSize: 11.5)),
               secondary:
                   const Icon(Icons.route_rounded, color: _sub, size: 22),
+              contentPadding: EdgeInsets.zero,
+            ),
+            // Encadenar: recibir el siguiente servicio antes de soltar al
+            // pasajero. Es lo que evita llegar a un punto y no enterarse de
+            // que había una solicitud a dos cuadras. Se puede apagar porque
+            // hay quien prefiere cerrar un viaje antes de pensar en el otro.
+            SwitchListTile(
+              value: prefs.chained,
+              onChanged: (v) => showIfError(
+                  ref.read(servicePrefsProvider.notifier).set(chained: v)),
+              title: const Text('Enlazar viajes',
+                  style: TextStyle(color: _text, fontSize: 14.5)),
+              subtitle: const Text(
+                  'Recibe el siguiente servicio al ir llegando a tu destino',
+                  style: TextStyle(color: _sub, fontSize: 11.5)),
+              secondary:
+                  const Icon(Icons.bolt_rounded, color: _sub, size: 22),
               contentPadding: EdgeInsets.zero,
             ),
           ],

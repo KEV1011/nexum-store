@@ -189,6 +189,12 @@ model Driver {
   acceptsTrips      Boolean      @default(true)
   acceptsErrands    Boolean      @default(true)
   acceptsOrders     Boolean      @default(true)
+  // Viajes encadenados: recibir la siguiente solicitud mientras se termina la
+  // actual, ya cerca del destino (como Uber y DiDi). Sin esto el conductor
+  // llega a dejar al pasajero y no ve el servicio que acaba de salir a la
+  // vuelta de la esquina. Se puede apagar: hay quien prefiere cerrar un viaje
+  // antes de pensar en el siguiente.
+  acceptsChained    Boolean      @default(true)
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
   fcmToken          String?
   rating            Float        @default(5.0)
