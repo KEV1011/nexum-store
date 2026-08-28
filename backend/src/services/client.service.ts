@@ -1217,11 +1217,15 @@ export async function driverUpdateTripStatus(
     throw new TripDriverError('Ese viaje no está asignado a ti', 403);
   }
 
+  // Avisar al pasajero NO se hace aquí: `updateClientTripStatus` ya llama a
+  // `_notifyTripListeners` con el DTO que acaba de construir, y lo hace solo si
+  // el estado cambió de verdad. Añadir un aviso propio parecía cubrir el camino
+  // HTTP y en realidad duplicaba el mensaje, gastaba una consulta más pesada
+  // (la que incluye conductor y vehículo) y —lo peor— avisaba también cuando no
+  // había cambiado nada, que es justo lo que ese `if (avance.count > 0)` evita
+  // a propósito para no repetirle al pasajero el estado en el que ya estaba.
   const trip = await updateClientTripStatus(tripId, status, pin);
   if (!trip) throw new TripDriverError('Ese viaje no existe', 404);
-
-  // El pasajero se entera por aquí, venga la orden del socket o de HTTP.
-  await notifyClientTripUpdateById(tripId);
 
   return {
     trip,
