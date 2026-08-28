@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
+import 'package:nexum_client/shared/services/zona_marca_provider.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -100,6 +101,10 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
       final here = LatLng(pos.latitude, pos.longitude);
       setState(() => _myLocation = here);
       _mapController.move(here, 16);
+      // Con qué nombre se presenta la marca aquí: en Pamplona, ZIPA/SANTURBÁN.
+      unawaited(
+        ref.read(zonaMarcaProvider.notifier).resolver(here.latitude, here.longitude),
+      );
     } catch (_) {
       // Sin GPS disponible: se conserva el centro por defecto.
     }
@@ -362,11 +367,19 @@ class _MyLocationDot extends StatelessWidget {
 
 // ── Chip de ubicación (top left) ──────────────────────────────────────────────
 
-class _LocationChip extends StatelessWidget {
+class _LocationChip extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Era un adorno: parecía un selector (con su flecha hacia abajo) pero no
     // tenía onTap y al tocarlo no pasaba nada. Ahora lleva a las direcciones.
+    //
+    // Y dice dónde estás con el nombre de la marca allí: en Pamplona,
+    // «ZIPA/SANTURBÁN». Mientras no se sepa la zona —GPS sin enganchar, permiso
+    // denegado, un municipio sin zona asignada— se queda en «Tu ubicación», que
+    // era el texto de siempre. Nunca una zona inventada ni un hueco.
+    final zona = ref.watch(zonaMarcaProvider);
+    final texto = zona.tieneZona ? zona.etiqueta : 'Tu ubicación';
+
     return GestureDetector(
       onTap: () => context.push(AppRoutes.addresses),
       behavior: HitTestBehavior.opaque,
@@ -379,22 +392,22 @@ class _LocationChip extends StatelessWidget {
           BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2)),
         ],
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.location_on_rounded,
+          const Icon(Icons.location_on_rounded,
               size: 15, color: AppColors.serviceMoto),
-          SizedBox(width: 4),
+          const SizedBox(width: 4),
           Text(
-            'Tu ubicación',
-            style: TextStyle(
+            texto,
+            style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
             ),
           ),
-          SizedBox(width: 2),
-          Icon(Icons.keyboard_arrow_down_rounded,
+          const SizedBox(width: 2),
+          const Icon(Icons.keyboard_arrow_down_rounded,
               size: 17, color: AppColors.textSecondary),
         ],
       ),

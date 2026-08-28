@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
-import { listMunicipalities } from '../services/municipality.service';
+import { listMunicipalities, zonaDeCoordenadas } from '../services/municipality.service';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';
 import { emitirTilePase, verificarTilePase, TILE_TICKET_TTL_S } from '../lib/tile-ticket';
@@ -33,6 +33,30 @@ router.get('/municipios', async (req: Request, res: Response) => {
   const q = typeof req.query['q'] === 'string' ? (req.query['q'] as string) : undefined;
   try {
     res.json({ success: true, data: await listMunicipalities(q) });
+  } catch (err) {
+    handleGeoError(res, err);
+  }
+});
+
+// GET /geo/zona?lat=&lng= — con qué nombre se presenta la marca ahí.
+//
+// En Pamplona la app dice «ZIPA/SANTURBÁN» y no «ZIPA» a secas: el operador de
+// allí quiere que se note que la plataforma es de su tierra, y en un pueblo eso
+// pesa más que un nombre genérico. ZIPA crecerá a otras ciudades, así que la
+// zona sale de la tabla de municipios, no de un `if` con el nombre dentro.
+//
+// Público y sin datos personales: son unas coordenadas a cambio de un nombre.
+// Y sin geocodificador: se resuelve por el centroide más cercano de la tabla ya
+// cacheada, así que funciona igual sin `GOOGLE_MAPS_API_KEY`.
+router.get('/zona', async (req: Request, res: Response) => {
+  const lat = Number(req.query['lat']);
+  const lng = Number(req.query['lng']);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    res.status(400).json({ success: false, error: 'Faltan lat y lng.' });
+    return;
+  }
+  try {
+    res.json({ success: true, data: await zonaDeCoordenadas(lat, lng) });
   } catch (err) {
     handleGeoError(res, err);
   }

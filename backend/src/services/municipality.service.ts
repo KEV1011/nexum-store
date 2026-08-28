@@ -15,6 +15,8 @@ export interface MunicipalityDTO {
   department: string;
   lat: number;
   lng: number;
+  /** Zona con la que la marca se presenta ahí, o null para usar solo «ZIPA». */
+  zone: string | null;
 }
 
 /**
@@ -37,7 +39,14 @@ async function _cargar(): Promise<Map<string, MunicipalityDTO>> {
   _cache = new Map(
     filas.map((m) => [
       m.slug,
-      { slug: m.slug, name: m.name, department: m.department, lat: m.lat, lng: m.lng },
+      {
+        slug: m.slug,
+        name: m.name,
+        department: m.department,
+        lat: m.lat,
+        lng: m.lng,
+        zone: m.zone,
+      },
     ]),
   );
   _cacheAt = Date.now();
@@ -111,6 +120,8 @@ export async function upsertMunicipality(dto: {
   lat: number;
   lng: number;
   isActive?: boolean;
+  /** Null explícito para quitarla; omitido para dejarla como está. */
+  zone?: string | null;
 }): Promise<MunicipalityDTO> {
   const slug = dto.slug
     .normalize('NFD')
@@ -132,6 +143,7 @@ export async function upsertMunicipality(dto: {
       lat: dto.lat,
       lng: dto.lng,
       isActive: dto.isActive ?? true,
+      zone: dto.zone ?? null,
     },
     update: {
       name: dto.name.trim(),
@@ -139,10 +151,100 @@ export async function upsertMunicipality(dto: {
       lat: dto.lat,
       lng: dto.lng,
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+      ...(dto.zone !== undefined && { zone: dto.zone }),
     },
   });
   invalidarCacheMunicipios();
-  return { slug: m.slug, name: m.name, department: m.department, lat: m.lat, lng: m.lng };
+  return {
+    slug: m.slug,
+    name: m.name,
+    department: m.department,
+    lat: m.lat,
+    lng: m.lng,
+    zone: m.zone,
+  };
+}
+
+// ─── Zona de marca según dónde está el usuario ───────────────────────────────
+
+/**
+ * Hasta qué distancia se acepta que alguien "está" en un municipio.
+ *
+ * Se compara contra el CENTROIDE del casco urbano, no contra el límite real,
+ * así que hace falta holgura: 40 km cubre de sobra el área de cualquier
+ * municipio de la región y sigue siendo poco para atribuirle una zona a quien
+ * está a doscientos kilómetros. Fuera de eso no se afirma nada — la marca se
+ * queda en «ZIPA» a secas, que es la verdad.
+ */
+const ZONA_MAX_KM = Number(process.env['ZONA_MAX_KM'] ?? 40);
+
+export interface ZonaDeMarca {
+  /** Municipio más cercano, o null si ninguno está lo bastante cerca. */
+  municipio: string | null;
+  departamento: string | null;
+  /** Zona configurada para ese municipio, si tiene. */
+  zona: string | null;
+  /** Lo que la app pinta: «ZIPA/SANTURBÁN» o «ZIPA». */
+  etiqueta: string;
+}
+
+function _kmEntre(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const la1 = (aLat * Math.PI) / 180;
+  const la2 = (bLat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(la1) * Math.cos(la2);
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/**
+ * Con qué nombre se presenta la marca donde está el usuario.
+ *
+ * Resuelve el municipio por el centroide más cercano, no por geocodificación:
+ * son cuarenta y pico de filas ya cacheadas y el cálculo es local, así que
+ * funciona igual sin `GOOGLE_MAPS_API_KEY` y sin gastar una llamada. Para
+ * decidir cómo se llama la app en tu ciudad no hace falta más precisión.
+ */
+export async function zonaDeCoordenadas(lat: number, lng: number): Promise<ZonaDeMarca> {
+  const sinZona: ZonaDeMarca = {
+    municipio: null,
+    departamento: null,
+    zona: null,
+    etiqueta: MARCA,
+  };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return sinZona;
+
+  let mejor: MunicipalityDTO | null = null;
+  let mejorKm = Infinity;
+  for (const m of (await _cargar()).values()) {
+    const km = _kmEntre(lat, lng, m.lat, m.lng);
+    if (km < mejorKm) {
+      mejorKm = km;
+      mejor = m;
+    }
+  }
+  if (!mejor || mejorKm > ZONA_MAX_KM) return sinZona;
+
+  return {
+    municipio: mejor.name,
+    departamento: mejor.department,
+    zona: mejor.zone,
+    etiqueta: etiquetaDeZona(mejor.zone),
+  };
+}
+
+/** Nombre de la marca a secas, cuando no hay zona que añadir. */
+export const MARCA = 'ZIPA';
+
+/**
+ * «ZIPA/SANTURBÁN» o «ZIPA». En mayúsculas porque va como logotipo, y la zona
+ * se guarda con su tilde y su capitalización correctas ('Santurbán').
+ */
+export function etiquetaDeZona(zona: string | null | undefined): string {
+  const z = zona?.trim();
+  return z ? `${MARCA}/${z.toUpperCase()}` : MARCA;
 }
 
 // Al cargar el módulo, la configuración de rutas empieza a resolver
