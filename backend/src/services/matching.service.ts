@@ -206,6 +206,67 @@ function vehicleTypesForService(serviceType: string | null | undefined): string[
 }
 
 /**
+ * Condición SQL que hace despachable a un conductor que TODAVÍA va en un viaje.
+ *
+ * Suelta porque la usan DOS consultas: la que elige a quién ofrecerle el
+ * servicio y `disponibilidadPorTipoVehiculo`, que cuenta los vehículos cerca
+ * para cotizarle al cliente. Esa segunda dice de sí misma que aplica
+ * «EXACTAMENTE los mismos filtros que el despacho», y con razón: si contara de
+ * otra forma, el cliente leería «no hay vehículos disponibles» mientras el
+ * despacho sí tiene a quién ofrecérselo.
+ */
+function _sqlEncadenado(): Prisma.Sql {
+  // ── Viajes encadenados ──────────────────────────────────────────────────────
+  //
+  // Un conductor que va llegando a dejar a su pasajero está, para efectos
+  // prácticos, disponible dentro de tres minutos. Excluirlo por estar ON_TRIP
+  // es lo que hacía que un servicio saliera a la vuelta de la esquina y él no
+  // lo viera nunca — y es exactamente lo que Uber y DiDi resuelven encadenando.
+  //
+  // Se le ofrece SOLO si se cumple todo esto:
+  //
+  //   · lo tiene activado (`acceptsChained`, se puede apagar);
+  //   · su viaje actual ya va EN CURSO — con el pasajero a bordo. Si todavía va
+  //     de camino a recogerlo, encadenar sería empezar la casa por el tejado;
+  //   · está a menos de `CHAIN_NEAR_DEST_M` del destino de ese viaje. Sin esto
+  //     se le ofrecerían servicios al empezar una carrera de media hora y el
+  //     nuevo pasajero esperaría todo ese rato;
+  //   · y NO tiene ya otro servicio aceptado esperando. Uno en cola, no una
+  //     pila: encadenar dos es prometer lo que no se puede cumplir.
+  //
+  // El `NOT EXISTS` cubre los tres tipos, porque el despacho está unificado y
+  // el siguiente servicio bien puede ser un pedido detrás de un viaje.
+  return Prisma.sql`(
+    d."status" = 'ON_TRIP'
+    AND d."acceptsChained" = true
+    AND EXISTS (
+      SELECT 1 FROM "trips" t
+      WHERE t."driverId" = d."id"
+        AND t."status" = 'IN_PROGRESS'
+        AND t."destLat" IS NOT NULL AND t."destLng" IS NOT NULL
+        AND ST_DWithin(
+              d."geo",
+              ST_SetSRID(ST_MakePoint(t."destLng", t."destLat"), 4326)::geography,
+              ${CHAIN_NEAR_DEST_M}
+            )
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM "trips" t2
+      WHERE t2."driverId" = d."id"
+        AND t2."status" NOT IN ('IN_PROGRESS', 'COMPLETED', 'CANCELLED')
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM "orders" o
+      WHERE o."driverId" = d."id" AND o."status" NOT IN ('DELIVERED', 'CANCELLED')
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM "errands" e
+      WHERE e."driverId" = d."id" AND e."status" NOT IN ('DELIVERED', 'CANCELLED')
+    )
+  )`;
+}
+
+/**
  * Disponibilidad por tipo de vehículo alrededor de un punto.
  *
  * La usa el selector de categorías del pasajero: para poder decir "Taxi · 3 min"
@@ -240,7 +301,7 @@ export async function disponibilidadPorTipoVehiculo(
     FROM "drivers" d
     JOIN "vehicles" v ON v."driverId" = d."id" AND v."isActive" = true
     WHERE d."geo" IS NOT NULL
-      AND d."status" = 'ONLINE'
+      AND (d."status" = 'ONLINE' OR ${_sqlEncadenado()})
       AND d."acceptsTrips" = true
       ${verifiedFilter}
       ${complianceFilter}
@@ -299,54 +360,7 @@ export async function findNearestAvailableDrivers(
     ? Prisma.sql`AND d."complianceStatus"::text <> 'BLOCKED'`
     : Prisma.empty;
 
-  // ── Viajes encadenados ──────────────────────────────────────────────────────
-  //
-  // Un conductor que va llegando a dejar a su pasajero está, para efectos
-  // prácticos, disponible dentro de tres minutos. Excluirlo por estar ON_TRIP
-  // es lo que hacía que un servicio saliera a la vuelta de la esquina y él no
-  // lo viera nunca — y es exactamente lo que Uber y DiDi resuelven encadenando.
-  //
-  // Se le ofrece SOLO si se cumple todo esto:
-  //
-  //   · lo tiene activado (`acceptsChained`, se puede apagar);
-  //   · su viaje actual ya va EN CURSO — con el pasajero a bordo. Si todavía va
-  //     de camino a recogerlo, encadenar sería empezar la casa por el tejado;
-  //   · está a menos de `CHAIN_NEAR_DEST_M` del destino de ese viaje. Sin esto
-  //     se le ofrecerían servicios al empezar una carrera de media hora y el
-  //     nuevo pasajero esperaría todo ese rato;
-  //   · y NO tiene ya otro servicio aceptado esperando. Uno en cola, no una
-  //     pila: encadenar dos es prometer lo que no se puede cumplir.
-  //
-  // El `NOT EXISTS` cubre los tres tipos, porque el despacho está unificado y
-  // el siguiente servicio bien puede ser un pedido detrás de un viaje.
-  const encadenado = Prisma.sql`(
-    d."status" = 'ON_TRIP'
-    AND d."acceptsChained" = true
-    AND EXISTS (
-      SELECT 1 FROM "trips" t
-      WHERE t."driverId" = d."id"
-        AND t."status" = 'IN_PROGRESS'
-        AND t."destLat" IS NOT NULL AND t."destLng" IS NOT NULL
-        AND ST_DWithin(
-              d."geo",
-              ST_SetSRID(ST_MakePoint(t."destLng", t."destLat"), 4326)::geography,
-              ${CHAIN_NEAR_DEST_M}
-            )
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM "trips" t2
-      WHERE t2."driverId" = d."id"
-        AND t2."status" NOT IN ('IN_PROGRESS', 'COMPLETED', 'CANCELLED')
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM "orders" o
-      WHERE o."driverId" = d."id" AND o."status" NOT IN ('DELIVERED', 'CANCELLED')
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM "errands" e
-      WHERE e."driverId" = d."id" AND e."status" NOT IN ('DELIVERED', 'CANCELLED')
-    )
-  )`;
+  const encadenado = _sqlEncadenado();
 
   const rows = await prisma.$queryRaw<
     Array<{ driver_id: string; distance_m: number; en_viaje: boolean }>
