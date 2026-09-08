@@ -4,6 +4,14 @@ import { maskPhone } from './safe-contact.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { estadoPiloto } from './kyc.service';
 import { contarDespachoAtascado, contarViajesColgados } from './dispatch-recovery.service';
+import {
+  serieDeDias,
+  emparejamiento,
+  retencion,
+  type Emparejamiento,
+  type Retencion,
+} from '../lib/metricas-negocio';
+import { saneaTasa } from '../lib/comision';
 import { cancelOrderByAdmin } from './client.service';
 import { cancelErrandByAdmin } from './errand.service';
 
@@ -174,6 +182,136 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
       daysLeft: piloto.diasRestantes,
     },
   };
+}
+
+// ─── Métricas de NEGOCIO ──────────────────────────────────────────────────────
+//
+// Las de arriba son de operación: sirven para vigilar el día. Éstas son otra
+// cosa — son con las que se decide si el negocio existe. Van en su propia
+// consulta y su propia ruta porque son más pesadas (series y cohortes) y no
+// deben retrasar los números que el administrador mira de un vistazo.
+
+/** Desfase horario de Colombia, sin horario de verano. Mismo criterio que `_startOfToday`. */
+const HORAS_UTC_COLOMBIA = -5;
+
+export interface MetricasNegocio {
+  desde: string;
+  hasta: string;
+  /** Viajes solicitados y completados por día, con los días vacíos en cero. */
+  serie: Array<{ dia: string; solicitados: number; completados: number }>;
+  /** Salud del despacho en el período: cuánto de lo pedido encontró conductor. */
+  emparejamiento: Emparejamiento;
+  /** ¿Vuelven los pasajeros? Semana pasada contra ésta. */
+  retencion: Retencion;
+  /** Pasajeros distintos que pidieron algo en el período. */
+  pasajerosActivos: number;
+}
+
+/**
+ * Las tres cifras del piloto, para un rango de días hacia atrás.
+ *
+ * El corte del día es la medianoche de Colombia, igual que el resto del panel:
+ * un viaje de las 11 de la noche pertenece a ese día y no al siguiente.
+ */
+export async function getMetricasNegocio(dias = 30): Promise<MetricasNegocio> {
+  const rango = Math.min(Math.max(Math.trunc(dias) || 30, 1), 90);
+  const finMs = Date.now();
+  const desdeMs = finMs - (rango - 1) * 24 * 60 * 60 * 1000;
+  const desdeCorte = new Date(desdeMs);
+  desdeCorte.setUTCHours(0, 0, 0, 0);
+  // La medianoche local es la medianoche UTC desplazada.
+  const desde = new Date(desdeCorte.getTime() - HORAS_UTC_COLOMBIA * 60 * 60 * 1000);
+
+  const diaLocal = (d: Date): string =>
+    new Date(d.getTime() + HORAS_UTC_COLOMBIA * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const semana = 7 * 24 * 60 * 60 * 1000;
+  const iniSemanaActual = new Date(finMs - semana);
+  const iniSemanaPrevia = new Date(finMs - 2 * semana);
+
+  const [creados, completados, conConductor, sinConductor, activos, cohorte] =
+    await Promise.all([
+      prisma.trip.findMany({
+        where: { createdAt: { gte: desde } },
+        select: { createdAt: true },
+      }),
+      prisma.trip.findMany({
+        where: { status: 'COMPLETED', completedAt: { gte: desde } },
+        select: { completedAt: true },
+      }),
+      prisma.trip.count({ where: { createdAt: { gte: desde }, driverId: { not: null } } }),
+      prisma.trip.count({
+        where: { createdAt: { gte: desde }, cancelReason: 'NO_DRIVERS_AVAILABLE' },
+      }),
+      prisma.trip.groupBy({
+        by: ['passengerId'],
+        where: { createdAt: { gte: desde }, passengerId: { not: null } },
+      }),
+      // Retención: de quienes pidieron la semana PASADA, cuántos volvieron esta.
+      // Una sola consulta con auto-unión — con `in` sobre la cohorte, una base
+      // de usuarios grande generaría una lista enorme en el SQL.
+      prisma.$queryRaw<Array<{ base: bigint; volvieron: bigint }>>`
+        SELECT COUNT(DISTINCT prev."passengerId")::bigint AS base,
+               COUNT(DISTINCT cur."passengerId")::bigint AS volvieron
+        FROM (
+          SELECT DISTINCT "passengerId" FROM "trips"
+          WHERE "passengerId" IS NOT NULL
+            AND "createdAt" >= ${iniSemanaPrevia} AND "createdAt" < ${iniSemanaActual}
+        ) prev
+        LEFT JOIN (
+          SELECT DISTINCT "passengerId" FROM "trips"
+          WHERE "passengerId" IS NOT NULL AND "createdAt" >= ${iniSemanaActual}
+        ) cur ON cur."passengerId" = prev."passengerId"`,
+    ]);
+
+  const porDiaSolicitados = new Map<string, number>();
+  for (const t of creados) {
+    const d = diaLocal(t.createdAt);
+    porDiaSolicitados.set(d, (porDiaSolicitados.get(d) ?? 0) + 1);
+  }
+  const porDiaCompletados = new Map<string, number>();
+  for (const t of completados) {
+    if (!t.completedAt) continue;
+    const d = diaLocal(t.completedAt);
+    porDiaCompletados.set(d, (porDiaCompletados.get(d) ?? 0) + 1);
+  }
+
+  const desdeDia = diaLocal(desde);
+  const hastaDia = diaLocal(new Date(finMs));
+  const serieSolicitados = serieDeDias(desdeDia, hastaDia, porDiaSolicitados);
+  const serieCompletados = serieDeDias(desdeDia, hastaDia, porDiaCompletados);
+
+  const fila = cohorte[0];
+  return {
+    desde: desdeDia,
+    hasta: hastaDia,
+    serie: serieSolicitados.map((s, i) => ({
+      dia: s.dia,
+      solicitados: s.valor,
+      completados: serieCompletados[i]?.valor ?? 0,
+    })),
+    emparejamiento: emparejamiento(creados.length, conConductor, sinConductor),
+    retencion: retencion(Number(fila?.base ?? 0), Number(fila?.volvieron ?? 0)),
+    pasajerosActivos: activos.length,
+  };
+}
+
+/**
+ * Fija (o quita) la comisión negociada con una flota.
+ *
+ * Solo afecta a lo que se liquide DESPUÉS: los servicios ya cerrados guardan su
+ * comisión y su neto, y no se recalculan. Renegociar no puede reescribir lo que
+ * ya se le pagó a un conductor.
+ */
+export async function setOperatorCommission(
+  id: string,
+  valor: unknown,
+): Promise<number | null> {
+  const tasa = saneaTasa(valor);
+  const op = await prisma.operator.findUnique({ where: { id }, select: { id: true } });
+  if (!op) throw new Error('Empresa no encontrada');
+  await prisma.operator.update({ where: { id }, data: { commissionRate: tasa } });
+  return tasa;
 }
 
 // ─── Conductores ──────────────────────────────────────────────────────────────
@@ -505,6 +643,8 @@ export interface AdminOperatorRow {
   pendingDocs: number;
   /** Habilitación aprobada y vigente: lo que legalmente sostiene el intermunicipal. */
   habilitacionOk: boolean;
+  /** Comisión negociada con esta flota (0–1), o null si paga la de su ciudad. */
+  commissionRate: number | null;
   createdAt: string;
 }
 
@@ -528,6 +668,7 @@ export async function listOperatorsForAdmin(status?: OperatorStatus): Promise<Ad
     isVerified: o.isVerified,
     city: o.city,
     contactPhone: o.contactPhone,
+    commissionRate: o.commissionRate,
     vehicles: o._count.vehicles,
     drivers: o._count.drivers,
     pendingDocs: o.documents.filter((d) => d.status === 'PENDING').length,

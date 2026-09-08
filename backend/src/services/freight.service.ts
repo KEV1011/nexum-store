@@ -8,6 +8,7 @@
 
 import { FreightStatus, VehicleType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { tasaComision } from './comision.service';
 import { generateCustodyPins, assertCustodyPin } from '../lib/custody-pin';
 import { mediaMinutos, rangoAnterior, variacionPct, duracionMin } from '../lib/analitica';
 import { COMMISSION_RATE, INTERCITY_CITY_COORDS } from '../config/constants';
@@ -618,7 +619,13 @@ async function _applyFreightStatus(
 
   // completed → liquidación con comisión de plataforma
   const finalPrice = f.offeredPrice;
-  const commission = Math.round(finalPrice * COMMISSION_RATE);
+  const tasa = await tasaComision({
+    operatorId: f.operatorId,
+    driverId: f.driverId,
+    lat: f.originLat,
+    lng: f.originLng,
+  });
+  const commission = Math.round(finalPrice * tasa);
   const netEarning = finalPrice - commission;
   const res = await prisma.freightRequest.updateMany({
     where: { id: freightId, status: { in: ['IN_PROGRESS', 'ACCEPTED'] } },

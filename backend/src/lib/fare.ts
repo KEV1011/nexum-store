@@ -1,4 +1,5 @@
-import { FARE_BASE, FARE_PER_KM, FARE_PER_MIN, FARE_MINIMUM, COMMISSION_RATE } from '../config/constants';
+import { FARE_BASE, FARE_PER_KM, FARE_PER_MIN, FARE_MINIMUM } from '../config/constants';
+import { repartir, COMISION_GLOBAL } from './comision';
 import { categoriaDeServicio, tablaTarifas, precioCategoria } from './tarifa-categoria';
 
 export interface FareBreakdown {
@@ -12,10 +13,14 @@ export interface FareBreakdown {
  * (trip.service) y por el ciclo de viaje real basado en WebSocket
  * (client.service) para que ambos liquiden EXACTAMENTE igual.
  */
-export function calcFare(distanceKm: number, minutes: number): FareBreakdown {
+export function calcFare(
+  distanceKm: number,
+  minutes: number,
+  tasaComision?: number,
+): FareBreakdown {
   const raw = FARE_BASE + distanceKm * FARE_PER_KM + minutes * FARE_PER_MIN;
   const grossFare = Math.round(Math.max(raw, FARE_MINIMUM));
-  return desglosar(conTope(grossFare, distanceKm, minutes));
+  return desglosar(conTope(grossFare, distanceKm, minutes), tasaComision);
 }
 
 /**
@@ -71,10 +76,15 @@ export function conTope(grossFare: number, distanceKm: number, minutes: number):
   return tope;
 }
 
-/** Reparte un bruto entre comisión y neto del conductor. */
-export function desglosar(grossFare: number): FareBreakdown {
-  const commission = Math.round(grossFare * COMMISSION_RATE);
-  return { grossFare, commission, netEarning: grossFare - commission };
+/**
+ * Reparte un bruto entre comisión y neto del conductor.
+ *
+ * [tasa] llega resuelta desde fuera (flota → ciudad → global) al LIQUIDAR. Al
+ * cotizar se omite y se usa la global: el precio que ve el pasajero no depende
+ * de con qué empresa acabe viajando, y de hecho todavía no se sabe.
+ */
+export function desglosar(grossFare: number, tasa?: number): FareBreakdown {
+  return repartir(grossFare, tasa ?? COMISION_GLOBAL);
 }
 
 /**
@@ -93,10 +103,12 @@ export function liquidarViaje(
   distanceKm: number,
   minutes: number,
   surgeMultiplier = 1,
+  tasaComision?: number,
 ): FareBreakdown {
   const categoria = categoriaDeServicio(serviceType);
-  if (!categoria) return calcFare(distanceKm, minutes); // ENVIOS y demás
+  // ENVIOS y demás: fórmula genérica, pero la comisión resuelta sí aplica.
+  if (!categoria) return calcFare(distanceKm, minutes, tasaComision);
   const tarifa = tablaTarifas()[categoria];
   const bruto = precioCategoria(tarifa, distanceKm, minutes, surgeMultiplier).fare;
-  return desglosar(conTope(bruto, distanceKm, minutes));
+  return desglosar(conTope(bruto, distanceKm, minutes), tasaComision);
 }

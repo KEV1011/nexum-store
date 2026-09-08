@@ -22,11 +22,11 @@ import {
   INTERCITY_DUAL_MODEL,
   INTERCITY_SIMULATE,
   INTERCITY_CITY_COORDS,
-  COMMISSION_RATE,
 } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
 import { scheduleSearchRetry, cancelSearchRetry } from './matching.service';
 import { coordsOf, getMunicipality } from './municipality.service';
+import { tasaComision } from './comision.service';
 
 export class IntercityError extends Error {
   constructor(message: string) {
@@ -659,7 +659,17 @@ export async function driverCompleteIntercity(
   if (!updated) return null;
 
   const grossFare = Math.round(updated.finalFare ?? updated.offeredFare);
-  const netEarning = grossFare - Math.round(grossFare * COMMISSION_RATE);
+  // Comisión de la flota o de la plaza de ORIGEN, resuelta al liquidar. Se usa
+  // el origen y no el destino porque es donde se prestó el servicio y donde
+  // está el conductor: un viaje Pamplona→Cúcuta lo cobra la plaza de Pamplona.
+  const origen = await coordsOf(updated.origin);
+  const tasa = await tasaComision({
+    operatorId: updated.operatorId,
+    driverId: updated.driverId,
+    lat: origen?.lat,
+    lng: origen?.lng,
+  });
+  const netEarning = grossFare - Math.round(grossFare * tasa);
   recordCompletedTrip(
     {
       tripId: updated.id,

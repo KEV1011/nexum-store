@@ -156,7 +156,7 @@ describe('el panel pintando de verdad', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { pintarAtascados };`,
+      `${PANEL_JS}\n; return { pintarAtascados, pintarNegocio };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => void>;
     const fn = crear(
       documentoFalso,
@@ -206,5 +206,220 @@ describe('el panel pintando de verdad', () => {
     expect(() => fn['pintarAtascados']!({ stuck: { total: 0 } })).not.toThrow();
     expect(el['stuck-warn']!.style.display).toBe('none');
     expect(el['stuck-warn']!.innerHTML).not.toContain('undefined');
+  });
+});
+
+/**
+ * Las tres cifras del piloto, pintadas de verdad.
+ *
+ * Son las que se van a mirar para decidir si el negocio existe, y la forma en
+ * que engañarían no es dando un número equivocado —son divisiones— sino
+ * afirmando cosas que los datos no sostienen: un «0 %» donde no hubo viajes,
+ * un «50 % de retención» sobre dos personas.
+ */
+describe('el panel pintando las cifras del piloto', () => {
+  const almacen = () => ({ getItem: () => null, setItem: () => {}, removeItem: () => {} });
+
+  function pintor(): (n: unknown) => string {
+    const crear = new Function(
+      'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
+      `${PANEL_JS}\n; return pintarNegocio;`,
+    ) as (...a: unknown[]) => (n: unknown) => string;
+    return crear(
+      { getElementById: () => null, querySelectorAll: () => [] },
+      {},
+      () => Promise.resolve(),
+      almacen(),
+      almacen(),
+      () => 0,
+    );
+  }
+
+  const vacio = {
+    desde: '2026-09-01', hasta: '2026-09-03',
+    serie: [
+      { dia: '2026-09-01', solicitados: 0, completados: 0 },
+      { dia: '2026-09-02', solicitados: 0, completados: 0 },
+      { dia: '2026-09-03', solicitados: 0, completados: 0 },
+    ],
+    emparejamiento: { solicitados: 0, conConductor: 0, sinConductor: 0, tasa: null },
+    retencion: { base: 0, volvieron: 0, pct: null, fiable: false },
+    pasajerosActivos: 0,
+  };
+
+  it('sin viajes NO acusa al despacho de un 0 %', () => {
+    // Un «0 % encuentran conductor» en un día sin solicitudes dice que el
+    // despacho falló. Lo cierto es que no hubo nada que despachar.
+    const html = pintor()(vacio);
+    expect(html).not.toContain('0 %');
+    expect(html).toContain('No hubo solicitudes');
+  });
+
+  it('sin nadie la semana pasada dice «Sin datos», no un porcentaje', () => {
+    const html = pintor()(vacio);
+    expect(html).toContain('Sin datos');
+  });
+
+  it('con una base diminuta enseña la fracción, no el porcentaje', () => {
+    // «50 %» sobre dos personas no es una métrica, es una anécdota — y en un
+    // piloto es justo el número que va a salir.
+    const html = pintor()({
+      ...vacio,
+      retencion: { base: 2, volvieron: 1, pct: 50, fiable: false },
+    });
+    expect(html).toContain('1 de 2');
+    expect(html).not.toContain('50 %');
+  });
+
+  it('con datos de verdad enseña los porcentajes y las dos cifras crudas', () => {
+    const html = pintor()({
+      desde: '2026-09-01', hasta: '2026-09-02',
+      serie: [
+        { dia: '2026-09-01', solicitados: 10, completados: 8 },
+        { dia: '2026-09-02', solicitados: 6, completados: 5 },
+      ],
+      emparejamiento: { solicitados: 16, conConductor: 13, sinConductor: 3, tasa: 81.3 },
+      retencion: { base: 20, volvieron: 9, pct: 45, fiable: true },
+      pasajerosActivos: 12,
+    });
+    expect(html).toContain('81.3 %');
+    expect(html).toContain('13 de 16');
+    expect(html).toContain('45 %');
+    expect(html).toContain('volvieron 9');
+  });
+
+  it('dibuja TODOS los días, también los vacíos', () => {
+    // Si los días de cero desaparecieran, una semana con dos días muertos se
+    // vería como una semana entera de actividad.
+    const html = pintor()(vacio);
+    expect((html.match(/title="09-0/g) ?? []).length).toBe(3);
+  });
+
+  it('no revienta ni imprime «undefined» si el backend manda un objeto vacío', () => {
+    const html = pintor()({});
+    expect(html).not.toContain('undefined');
+    expect(html).not.toContain('NaN');
+  });
+});
+
+/**
+ * La comisión, pintada de verdad.
+ *
+ * Es la única cifra del panel que sale del bolsillo de otra persona: si la
+ * pantalla dice «15 %» donde la flota tiene pactado 10, alguien firma un
+ * acuerdo mirando un número que no es el que se cobra. Y hay dos formas
+ * concretas de que mienta —confundir «no tiene tasa propia» con «cero», y
+ * escribir 0.1 donde se pactó 10 %— que solo se ven ejecutando.
+ */
+describe('el panel pintando la comisión', () => {
+  interface ElementoFalso { style: { display: string }; innerHTML: string; value: string }
+
+  const almacen = () => ({ getItem: () => null, setItem: () => {}, removeItem: () => {} });
+
+  /** Monta el panel con un `fetch` que responde por ruta. */
+  function montar(respuestas: Record<string, unknown>, ids: string[]) {
+    const el: Record<string, ElementoFalso> = {};
+    for (const id of ids) el[id] = { style: { display: '' }, innerHTML: '', value: '' };
+    const documentoFalso = {
+      getElementById: (id: string) => el[id] ?? null,
+      querySelectorAll: () => [] as unknown[],
+    };
+    const fetchFalso = (path: string) => {
+      const clave = Object.keys(respuestas).find((k) => path.startsWith(k));
+      return Promise.resolve({
+        ok: clave !== undefined,
+        status: clave !== undefined ? 200 : 404,
+        json: () => Promise.resolve(
+          clave !== undefined
+            ? { success: true, data: respuestas[clave] }
+            : { success: false, error: 'ruta no simulada: ' + path },
+        ),
+      });
+    };
+    const crear = new Function(
+      'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
+      `${PANEL_JS}\n; return { pct, loadOperators, loadCityCommissions };`,
+    ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
+    const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
+    return { fn, el };
+  }
+
+  /** Deja correr las promesas que arranca el cargador. */
+  const esperar = () => new Promise((r) => setImmediate(r));
+
+  const empresa = {
+    id: 'op1', legalName: 'Trans Norte', nit: '900123', type: 'INTERCITY',
+    city: 'Pamplona', vehicles: 3, drivers: 5, status: 'ACTIVE',
+    habilitacionOk: true, pendingDocs: 0, createdAt: '2026-01-01T00:00:00.000Z',
+    commissionRate: null as number | null,
+  };
+
+  it('pinta la fracción como el porcentaje que se pactó', () => {
+    const { fn } = montar({}, []);
+    const pct = fn['pct'] as (v: number) => string;
+    expect(pct(0.15)).toBe('15 %');
+    expect(pct(0.125)).toBe('12,5 %');
+    expect(pct(0)).toBe('0 %');
+  });
+
+  it('una flota SIN tasa propia dice «heredada», no «0 %»', async () => {
+    // Es la confusión que importa: cero por ciento es un acuerdo (esa flota no
+    // paga nada) y no tener tasa es lo contrario (paga la de su ciudad).
+    const { fn, el } = montar({ '/admin/operators': [empresa] }, ['operator-filter', 'operators-body']);
+    fn['loadOperators']!();
+    await esperar();
+    expect(el['operators-body']!.innerHTML).toContain('heredada');
+    expect(el['operators-body']!.innerHTML).not.toContain('0 %');
+  });
+
+  it('una flota con comisión CERO enseña «0 %», no «heredada»', async () => {
+    const { fn, el } = montar(
+      { '/admin/operators': [{ ...empresa, commissionRate: 0 }] },
+      ['operator-filter', 'operators-body'],
+    );
+    fn['loadOperators']!();
+    await esperar();
+    expect(el['operators-body']!.innerHTML).toContain('0 %');
+    expect(el['operators-body']!.innerHTML).not.toContain('heredada');
+  });
+
+  it('el botón lleva la tasa real, no la palabra undefined', async () => {
+    const { fn, el } = montar(
+      { '/admin/operators': [{ ...empresa, commissionRate: 0.1 }] },
+      ['operator-filter', 'operators-body'],
+    );
+    fn['loadOperators']!();
+    await esperar();
+    const html = el['operators-body']!.innerHTML;
+    expect(html).toContain('10 %');
+    expect(html).toContain('askOperatorCommission(');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('ninguna ciudad con tasa propia se explica, no se deja en blanco', async () => {
+    const ciudades = [
+      { slug: 'pamplona', name: 'Pamplona', department: 'Norte de Santander', lat: 7.3, lng: -72.6, zone: null, commissionRate: null },
+    ];
+    const { fn, el } = montar({ '/admin/municipalities': ciudades }, ['city-com-slug', 'city-com-body']);
+    fn['loadCityCommissions']!();
+    await esperar();
+    expect(el['city-com-body']!.innerHTML).toContain('todas cobran la global');
+    // El selector sí trae todas: quitar una tasa y ponerla son la misma pantalla.
+    expect(el['city-com-slug']!.innerHTML).toContain('Pamplona');
+  });
+
+  it('lista solo las plazas con tasa propia, con su porcentaje', async () => {
+    const ciudades = [
+      { slug: 'pamplona', name: 'Pamplona', department: 'N. de Santander', lat: 7.3, lng: -72.6, zone: null, commissionRate: null },
+      { slug: 'cucuta', name: 'Cúcuta', department: 'N. de Santander', lat: 7.9, lng: -72.5, zone: null, commissionRate: 0.08 },
+    ];
+    const { fn, el } = montar({ '/admin/municipalities': ciudades }, ['city-com-slug', 'city-com-body']);
+    fn['loadCityCommissions']!();
+    await esperar();
+    const html = el['city-com-body']!.innerHTML;
+    expect(html).toContain('Cúcuta');
+    expect(html).toContain('8 %');
+    expect(html).not.toContain('Pamplona');
+    expect(html).not.toContain('undefined');
   });
 });

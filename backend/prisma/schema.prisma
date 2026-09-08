@@ -1717,6 +1717,12 @@ model Municipality {
   /// genérico. ZIPA va a crecer a otras ciudades, así que la zona vive en la
   /// tabla: sumar una región es insertar o editar una fila, no desplegar código.
   zone       String?
+  /// Comisión de la plataforma en ese municipio (0–1), o null para la global.
+  ///
+  /// Abrir plaza nueva casi siempre exige entrar con una comisión más baja que
+  /// la de la ciudad consolidada. Con una constante en el código eso obliga a
+  /// desplegar y a que TODAS las ciudades cambien a la vez.
+  commissionRate Float?
   /// Centroide del casco urbano. Ancla el matching y el mapa.
   lat        Float
   lng        Float

@@ -21,6 +21,8 @@ import { PORTAL_BASE_URL } from '../config/constants';
 import { probeSms } from '../services/sms.service';
 import {
   getAdminMetrics,
+  getMetricasNegocio,
+  setOperatorCommission,
   listDriversForAdmin,
   // (kill-switch documental: desbloqueo manual vive en document-expiry.service)
   listSosForAdmin,
@@ -54,6 +56,7 @@ import {
 import { SupportStatus } from '@prisma/client';
 import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
 import { listPayoutsForAdmin, adminUpdatePayout } from '../services/payout.service';
+import { listMunicipalities, setMunicipalityCommission } from '../services/municipality.service';
 
 const router = Router();
 
@@ -141,6 +144,20 @@ router.get('/matching/diagnose', async (req: Request, res: Response): Promise<vo
 router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
   try {
     res.json({ success: true, data: await getAdminMetrics() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/metrics/negocio?dias=30 — las tres cifras con las que se juzga el
+// piloto: viajes por día, tasa de emparejamiento y retención semanal.
+//
+// Aparte de /metrics a propósito: éstas hacen series y cohortes, y no deben
+// retrasar los números operativos que el administrador mira de un vistazo.
+router.get('/metrics/negocio', async (req: Request, res: Response): Promise<void> => {
+  const dias = Number(req.query['dias'] ?? 30);
+  try {
+    res.json({ success: true, data: await getMetricasNegocio(dias) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
@@ -390,6 +407,40 @@ router.post('/operators/:id/verify', async (req: Request, res: Response): Promis
   const ok = await setOperatorStatus(req.params['id']!, 'ACTIVE');
   if (!ok) { res.status(404).json({ success: false, error: 'Empresa no encontrada' }); return; }
   res.json({ success: true });
+});
+
+// POST /admin/operators/:id/commission { rate } — comisión negociada con la flota.
+//
+// `rate` vacío la quita y la empresa vuelve a pagar la de su ciudad (o la
+// global). Solo afecta a lo que se liquide después: lo ya cerrado guardó su
+// comisión y no se recalcula.
+router.post('/operators/:id/commission', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tasa = await setOperatorCommission(req.params['id']!, req.body?.['rate']);
+    res.json({ success: true, data: { commissionRate: tasa } });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Error';
+    res.status(msg.includes('no encontrada') ? 404 : 400).json({ success: false, error: msg });
+  }
+});
+
+// GET /admin/municipalities — las plazas y su comisión.
+router.get('/municipalities', async (_req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listMunicipalities() });
+});
+
+// POST /admin/municipalities/:slug/commission { rate } — comisión de la plaza.
+//
+// Es el precio de entrada de una ciudad nueva. Vacío la quita y se vuelve a la
+// global. Solo afecta a lo que se liquide después.
+router.post('/municipalities/:slug/commission', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tasa = await setMunicipalityCommission(req.params['slug']!, req.body?.['rate']);
+    res.json({ success: true, data: { commissionRate: tasa } });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Error';
+    res.status(msg.includes('no encontrado') ? 404 : 400).json({ success: false, error: msg });
+  }
 });
 
 // POST /admin/operators/:id/suspend
@@ -687,6 +738,19 @@ const PANEL_HTML = `<!DOCTYPE html>
       <div id="stuck-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #78350f;background:#451a03;border-radius:10px;color:#fed7aa;font-size:.85rem;line-height:1.5"></div>
       <div id="pilot-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #7f1d1d;background:#450a0a;border-radius:10px;color:#fecaca;font-size:.85rem;line-height:1.5"></div>
       <div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div>
+
+      <h3 style="margin:22px 0 4px">El piloto en tres cifras</h3>
+      <p style="color:#94a3b8;font-size:13px;margin:0 0 10px">
+        Lo de arriba es la operación del día. Esto es con lo que se decide si el negocio
+        existe: si crece, si hay conductores suficientes y si la gente vuelve.
+        <select id="neg-dias" onchange="loadNegocio()" style="width:auto;display:inline-block;margin-left:8px">
+          <option value="7">7 días</option>
+          <option value="30" selected>30 días</option>
+          <option value="90">90 días</option>
+        </select>
+      </p>
+      <div id="negocio"><div class="empty">Cargando…</div></div>
+
       <h3 style="margin:22px 0 10px">Estado de las integraciones</h3>
       <p style="color:#94a3b8;font-size:13px;margin:0 0 10px">
         Comprobación REAL: escribe y lee un archivo de prueba en el bucket y consulta Twilio
@@ -753,8 +817,8 @@ const PANEL_HTML = `<!DOCTYPE html>
           <option value="SUSPENDED">Suspendidas</option>
         </select>
       </div>
-      <table><thead><tr><th>Empresa</th><th>Tipo</th><th>Ciudad</th><th>Veh/Cond</th><th>Habilitación</th><th>Estado</th><th>Creada</th><th>Acciones</th></tr></thead>
-      <tbody id="operators-body"><tr><td colspan="8" class="empty">Cargando…</td></tr></tbody></table>
+      <table><thead><tr><th>Empresa</th><th>Tipo</th><th>Ciudad</th><th>Veh/Cond</th><th>Comisión</th><th>Habilitación</th><th>Estado</th><th>Creada</th><th>Acciones</th></tr></thead>
+      <tbody id="operators-body"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table>
       <div id="opdocs-panel" style="display:none;margin-top:18px;padding:16px;background:#fafafe;border:1px solid #e4e4ef;border-radius:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <strong id="opdocs-title" style="color:#00695c">Documentos de la empresa</strong>
@@ -774,6 +838,22 @@ const PANEL_HTML = `<!DOCTYPE html>
         </div>
         <table><thead><tr><th>Ruta</th><th>Estado</th><th>Declarada</th><th>Acciones</th></tr></thead>
         <tbody id="routes-body"><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody></table>
+      </div>
+      <div style="margin-top:18px;padding:16px;background:#fafafe;border:1px solid #e4e4ef;border-radius:12px">
+        <strong style="color:#00695c">Comisión por ciudad</strong>
+        <p style="font-size:.78rem;color:#64748b;margin:6px 0 10px">
+          El precio de entrada de una plaza: una ciudad nueva se abre con una comisión más
+          baja que la consolidada. La de una flota, si la tiene, manda sobre esta. Solo
+          afecta a lo que se liquide de aquí en adelante — lo ya cerrado guardó su comisión.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+          <select id="city-com-slug" style="width:auto;min-width:200px"></select>
+          <input id="city-com-rate" style="width:120px" placeholder="% (ej. 12)" inputmode="decimal">
+          <button class="btn-sm btn-approve" onclick="saveCityCommission()">Guardar</button>
+          <button class="btn-sm" style="background:#eee;color:#555" onclick="saveCityCommission(true)">Quitar</button>
+        </div>
+        <table><thead><tr><th>Ciudad</th><th>Departamento</th><th>Comisión</th><th></th></tr></thead>
+        <tbody id="city-com-body"><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody></table>
       </div>
     </section>
 
@@ -929,7 +1009,7 @@ function show(tab) {
   const sec = document.getElementById('tab-' + tab);
   if (sec) sec.style.display = 'block';
   for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
-  const cargar = ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperators, businesses: loadBusinesses, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab];
+  const cargar = ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperatorsTab, businesses: loadBusinesses, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab];
   // Sin la guarda, añadir una pestaña y olvidar su cargador reventaba show()
   // ENTERO: no se abría ninguna sección y no aparecía ningún mensaje. Ahora
   // la pestaña se abre y dice qué falta.
@@ -958,7 +1038,83 @@ function loadMetrics() {
     ].map(([v, l]) => '<div class="metric"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('');
     pintarPiloto(m);
     pintarAtascados(m);
+  }).then(loadNegocio).catch((e) => showMsg(e.message, true));
+}
+
+// Las tres cifras del piloto. Van en su propia petición porque hacen series y
+// cohortes: si tardan, que tarden ellas y no los números operativos.
+function loadNegocio() {
+  const dias = document.getElementById('neg-dias').value;
+  api('/admin/metrics/negocio?dias=' + encodeURIComponent(dias)).then((n) => {
+    document.getElementById('negocio').innerHTML = pintarNegocio(n);
   }).catch((e) => showMsg(e.message, true));
+}
+
+// Dibuja las tres cifras del piloto.
+//
+// Regla de toda esta función: cuando el dato no da para afirmar algo, se dice
+// —"sin datos", "sobre N"— en vez de enseñar un número redondo que se lee como
+// una conclusión. Un 0 % de emparejamiento en un día sin viajes acusa al
+// despacho de algo que no hizo.
+function pintarNegocio(n) {
+  const e = n.emparejamiento || {};
+  const r = n.retencion || {};
+  const serie = n.serie || [];
+
+  const pct = (v) => (v === null || v === undefined) ? '—' : v + ' %';
+
+  // Barras por día. Se dibujan TODOS los días, también los de cero: si los
+  // vacíos desaparecieran, una semana con dos días muertos parecería entera.
+  const tope = Math.max(1, ...serie.map((d) => d.solicitados));
+  const barras = serie.map((d) => {
+    const alto = Math.round((d.solicitados / tope) * 46);
+    const dia = esc(d.dia.slice(5));
+    return '<div title="' + dia + ': ' + d.solicitados + ' pedidos, ' + d.completados + ' completados"' +
+      ' style="flex:1;min-width:3px;display:flex;flex-direction:column;justify-content:flex-end;height:50px">' +
+      '<div style="height:' + Math.max(alto, 2) + 'px;background:' +
+      (d.solicitados ? '#10b981' : '#334155') + ';border-radius:2px 2px 0 0"></div></div>';
+  }).join('');
+
+  const totalPedidos = serie.reduce((a, d) => a + d.solicitados, 0);
+  const totalHechos = serie.reduce((a, d) => a + d.completados, 0);
+  const porDia = serie.length ? (totalPedidos / serie.length).toFixed(1) : '0';
+
+  const tarjeta = (titulo, valor, pie) =>
+    '<div style="flex:1;min-width:210px;padding:14px 16px;border:1px solid #1e293b;background:#0b1220;border-radius:10px">' +
+    '<div style="color:#94a3b8;font-size:12px;margin-bottom:6px">' + titulo + '</div>' +
+    '<div style="font-size:1.6rem;font-weight:700;color:#e2e8f0">' + valor + '</div>' +
+    '<div style="color:#64748b;font-size:11.5px;margin-top:4px">' + pie + '</div></div>';
+
+  // La retención sobre una base diminuta no es una métrica, es una anécdota:
+  // el backend lo marca y aquí se enseña la fracción en crudo en vez del %.
+  const retValor = !r.base ? 'Sin datos'
+    : (r.fiable ? pct(r.pct) : r.volvieron + ' de ' + r.base);
+  const retPie = !r.base
+    ? 'Nadie pidió nada la semana pasada'
+    : (r.fiable
+        ? 'De ' + r.base + ' pasajeros de la semana pasada, volvieron ' + r.volvieron
+        : 'Base muy pequeña para un porcentaje (hacen falta 10)');
+
+  return '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">' +
+    tarjeta('Viajes pedidos por día',
+            esc(String(porDia)),
+            esc(String(totalPedidos)) + ' pedidos y ' + esc(String(totalHechos)) +
+            ' completados entre ' + esc(n.desde) + ' y ' + esc(n.hasta)) +
+    tarjeta('Encuentran conductor',
+            pct(e.tasa),
+            e.solicitados
+              ? esc(String(e.conConductor)) + ' de ' + esc(String(e.solicitados)) +
+                ' · ' + esc(String(e.sinConductor)) + ' cerrados por falta de conductor'
+              : 'No hubo solicitudes en el período') +
+    tarjeta('Vuelven a la semana siguiente',
+            esc(retValor),
+            esc(retPie)) +
+    tarjeta('Pasajeros activos',
+            esc(String(n.pasajerosActivos || 0)),
+            'Personas distintas que pidieron algo en el período') +
+    '</div>' +
+    '<div style="display:flex;gap:2px;align-items:flex-end;padding:10px 12px;border:1px solid #1e293b;background:#0b1220;border-radius:10px">' +
+    barras + '</div>';
 }
 
 // Servicios que llevan demasiado tiempo pidiendo conductor. Lo normal es cero:
@@ -1222,24 +1378,100 @@ function setBusiness(id, action) {
     .catch((e) => showMsg(e.message, true));
 }
 
+// La pestaña trae dos cosas independientes: las empresas y la comisión de cada
+// plaza. El filtro de estado recarga solo la primera.
+function loadOperatorsTab() {
+  loadOperators();
+  loadCityCommissions();
+}
+
 function loadOperators() {
   const status = document.getElementById('operator-filter').value;
   api('/admin/operators' + (status ? '?status=' + status : '')).then((rows) => {
     const tb = document.getElementById('operators-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Sin empresas registradas.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">Sin empresas registradas.</td></tr>'; return; }
     tb.innerHTML = rows.map((o) => '<tr><td><strong>' + esc(o.legalName) + '</strong><div style="font-size:.72rem;color:#777">NIT ' + esc(o.nit) + '</div></td><td>' + esc(o.type) +
       '</td><td>' + esc(o.city || '—') + '</td><td>' + o.vehicles + ' / ' + o.drivers + '</td><td>' +
+      (typeof o.commissionRate === 'number'
+        ? '<strong>' + pct(o.commissionRate) + '</strong>'
+        : '<span style="color:#94a3b8">heredada</span>') +
+      '</td><td>' +
       (o.habilitacionOk
         ? '<span class="badge badge-ok">Aprobada</span>'
         : '<span class="badge badge-REJECTED">Sin habilitación</span>') +
       (o.pendingDocs ? ' <span class="badge badge-PENDING">' + o.pendingDocs + ' por revisar</span>' : '') +
       '</td><td><span class="badge badge-' + (o.status === 'ACTIVE' ? 'ok' : o.status === 'SUSPENDED' ? 'REJECTED' : 'PENDING') + '">' + o.status + '</span></td><td>' + when(o.createdAt) + '</td><td>' +
       '<button class="btn-sm" style="background:#e0f2f1;color:#00695c" onclick="loadOperatorDocs(\\'' + o.id + '\\', \\'' + encodeURIComponent(o.legalName).replace(/'/g, '%27') + '\\')">Docs</button> ' +
+      '<button class="btn-sm" style="background:#fff7ed;color:#b45309" onclick="askOperatorCommission(\\'' + o.id + '\\', \\'' + encodeURIComponent(o.legalName).replace(/'/g, '%27') + '\\', ' + (typeof o.commissionRate === 'number' ? o.commissionRate : 'null') + ')">Comisión</button> ' +
       (o.status !== 'ACTIVE' ? '<button class="btn-sm btn-approve" onclick="setOperator(\\'' + o.id + '\\', \\'verify\\', ' + (o.habilitacionOk ? 'true' : 'false') + ')">Verificar</button>' : '') +
       (o.status !== 'SUSPENDED' ? '<button class="btn-sm btn-reject" onclick="setOperator(\\'' + o.id + '\\', \\'suspend\\')">Suspender</button>' : '') +
       (o.type !== 'TAXI' ? '<button class="btn-sm" style="background:#e8eaf6;color:#3949ab" onclick="loadRoutes(\\'' + o.id + '\\', \\'' + encodeURIComponent(o.legalName).replace(/'/g, '%27') + '\\')">Rutas</button>' : '') +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
+}
+
+// Una fracción como porcentaje legible. 0.15 → «15 %», 0.125 → «12,5 %».
+function pct(v) {
+  const n = Math.round(v * 1000) / 10;
+  return String(n).replace('.', ',') + ' %';
+}
+
+// El admin escribe «12», no «0.12»; el backend acepta las dos y sanea. Aquí no
+// se valida nada a mano para no tener DOS reglas de qué es una comisión válida.
+function askOperatorCommission(id, encName, actual) {
+  const nombre = decodeURIComponent(encName);
+  const previo = typeof actual === 'number' ? String(Math.round(actual * 1000) / 10) : '';
+  const v = prompt('Comisión de ' + nombre + ' en % (vacío = hereda la de su ciudad o la global):', previo);
+  if (v === null) return;
+  api('/admin/operators/' + id + '/commission', { method: 'POST', body: JSON.stringify({ rate: v.trim() === '' ? null : v.trim() }) })
+    .then((d) => {
+      showMsg(d && typeof d.commissionRate === 'number'
+        ? 'Comisión de ' + nombre + ': ' + pct(d.commissionRate) + '. Aplica a lo que se liquide de aquí en adelante.'
+        : nombre + ' vuelve a la comisión heredada.', false);
+      loadOperators();
+    })
+    .catch((e) => showMsg(e.message, true));
+}
+
+function loadCityCommissions() {
+  api('/admin/municipalities').then((rows) => {
+    const sel = document.getElementById('city-com-slug');
+    const previo = sel.value;
+    sel.innerHTML = rows.map((m) => '<option value="' + esc(m.slug) + '">' + esc(m.name) + ' · ' + esc(m.department) + '</option>').join('');
+    if (previo) sel.value = previo;
+    const conTasa = rows.filter((m) => typeof m.commissionRate === 'number');
+    const tb = document.getElementById('city-com-body');
+    if (!conTasa.length) {
+      // Ninguna plaza con tasa propia no es un fallo: significa que todas cobran
+      // la global, que es el estado normal hasta que se abre una ciudad nueva.
+      tb.innerHTML = '<tr><td colspan="4" class="empty">Ninguna ciudad tiene comisión propia: todas cobran la global.</td></tr>';
+      return;
+    }
+    tb.innerHTML = conTasa.map((m) => '<tr><td><strong>' + esc(m.name) + '</strong></td><td>' + esc(m.department) + '</td><td><strong>' + pct(m.commissionRate) + '</strong></td><td>' +
+      '<button class="btn-sm btn-reject" onclick="clearCityCommission(\\'' + esc(m.slug) + '\\')">Quitar</button></td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function saveCityCommission(quitar) {
+  const slug = document.getElementById('city-com-slug').value;
+  if (!slug) { showMsg('Elige una ciudad.', true); return; }
+  const campo = document.getElementById('city-com-rate');
+  const rate = quitar ? null : campo.value.trim();
+  if (!quitar && rate === '') { showMsg('Escribe el porcentaje, o usa «Quitar».', true); return; }
+  api('/admin/municipalities/' + slug + '/commission', { method: 'POST', body: JSON.stringify({ rate }) })
+    .then((d) => {
+      campo.value = '';
+      showMsg(d && typeof d.commissionRate === 'number'
+        ? 'Comisión de la plaza: ' + pct(d.commissionRate) + '.'
+        : 'Esa ciudad vuelve a la comisión global.', false);
+      loadCityCommissions();
+    })
+    .catch((e) => showMsg(e.message, true));
+}
+
+function clearCityCommission(slug) {
+  document.getElementById('city-com-slug').value = slug;
+  saveCityCommission(true);
 }
 
 function loadRoutes(id, encName) {
