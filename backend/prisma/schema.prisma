@@ -1708,6 +1708,15 @@ model Municipality {
   department String
   /// Código DANE, cuando se conoce. Útil para cruzar con fuentes oficiales.
   daneCode   String?
+  /// Nombre de la zona con la que la marca se presenta en ese municipio, o null
+  /// para usar solo «ZIPA».
+  ///
+  /// No es una división administrativa: es identidad local. En Pamplona la marca
+  /// se presenta como «ZIPA/SANTURBÁN» porque el operador de allí quiere que se
+  /// note que la plataforma es de su tierra, y eso vale más que un nombre
+  /// genérico. ZIPA va a crecer a otras ciudades, así que la zona vive en la
+  /// tabla: sumar una región es insertar o editar una fila, no desplegar código.
+  zone       String?
   /// Centroide del casco urbano. Ancla el matching y el mapa.
   lat        Float
   lng        Float
