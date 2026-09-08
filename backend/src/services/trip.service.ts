@@ -3,6 +3,7 @@ import { COMMISSION_RATE } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
 import { calcFare } from '../lib/fare';
 import { prisma } from '../lib/prisma';
+import { plazaDeCoordenadas } from './municipality.service';
 
 // ─── In-memory dispatch state (ephemeral) ─────────────────────────────────────
 // The trips Map holds dispatch-generated trips while they are pending/active.
@@ -154,6 +155,7 @@ const service: TripService = {
           driverId: activeDriverId,
           serviceType: 'PARTICULAR',
           status: 'SEARCHING',
+          citySlug: await plazaDeCoordenadas(req.origin.lat, req.origin.lng),
           originAddress: req.origin.address,
           originLat: req.origin.lat,
           originLng: req.origin.lng,

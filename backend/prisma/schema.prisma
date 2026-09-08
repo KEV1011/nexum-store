@@ -240,8 +240,13 @@ model Driver {
   operator         Operator?        @relation(fields: [operatorId], references: [id])
   fleetAssignments FleetAssignment[]
 
+  // Plaza donde se le vio por última vez, refrescada con el latido. A
+  // diferencia de la del viaje, esta NO es historia: dice dónde está hoy.
+  citySlug          String?
+
   @@index([status])
   @@index([operatorId])
+  @@index([citySlug])
   @@map("drivers")
 }
 
@@ -650,10 +655,18 @@ model Trip {
   vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
   ratings            Rating[]
 
+  // Plaza donde se ORIGINÓ el viaje, sellada al crearlo con el mismo criterio
+  // que usa la app para saber en qué municipio estás (centroide más cercano).
+  // Se guarda en vez de calcularse al consultar para que el panel pueda filtrar
+  // por ciudad con un índice, y para que cambiar un centroide mañana no
+  // reescriba a qué plaza perteneció un viaje del mes pasado.
+  citySlug           String?
+
   @@index([passengerId])
   @@index([driverId])
   @@index([status])
   @@index([operatorId])
+  @@index([citySlug])
   @@map("trips")
   // Custodia del ENVÍO: el PIN lo dicta quien RECIBE el paquete. Sin él, el
   // repartidor no puede cerrar la entrega. Solo se genera para serviceType

@@ -34,6 +34,7 @@ import {
   type DriverCardFields,
 } from '../lib/driver-card';
 import { sendPushToClient } from './push.service';
+import { plazaDeCoordenadas } from './municipality.service';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -931,12 +932,18 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
     );
   }
 
+  // La plaza se sella al crear: el panel filtra por ella y contarla después,
+  // sobre coordenadas, daría un número distinto cada vez que se corrija un
+  // centroide.
+  const citySlug = await plazaDeCoordenadas(originLat, originLng);
+
   const trip = await prisma.trip.create({
     data: {
       requestRef,
       passengerId: clientId,
       serviceType,
       status: 'SEARCHING',
+      citySlug,
       // Solo los ENVÍOS llevan PIN: es mercancía que cambia de manos y hay que
       // poder probar que llegó a quien debía. Un pasajero no necesita PIN para
       // bajarse del carro.

@@ -11,6 +11,7 @@ import { onDriverHeartbeat } from './safety-alerts.service';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { tarifaDe } from '../lib/tarifa-categoria';
+import { plazaDeCoordenadas } from './municipality.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -44,11 +45,17 @@ export async function updateDriverGeo(driverId: string, lat: number, lng: number
   });
   if (prev) evaluateGeoJump(driverId, prev, lat, lng);
 
+  // La plaza sale de la lista de municipios YA cacheada en memoria: no cuesta
+  // una consulta y viaja en el mismo UPDATE que el fix. Sirve para que el panel
+  // por ciudad pueda decir cuántos conductores hay AHÍ.
+  const citySlug = await plazaDeCoordenadas(lat, lng);
+
   await prisma.$executeRaw`
     UPDATE "drivers"
     SET "geo" = ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
         "lastLat" = ${lat},
         "lastLng" = ${lng},
+        "citySlug" = ${citySlug},
         "lastSeenAt" = now()
     WHERE "id" = ${driverId}`;
 

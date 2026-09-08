@@ -256,6 +256,22 @@ export async function municipioDeCoordenadas(
   return mejor && mejorKm <= ZONA_MAX_KM ? mejor : null;
 }
 
+/**
+ * La plaza a la que pertenece un punto, para sellarla en el servicio.
+ *
+ * Mismo criterio que usa la app para saber en qué municipio estás: si el panel
+ * contara las ciudades de otra forma, la operación y el tablero dirían cosas
+ * distintas del mismo viaje. Devuelve null lejos de toda plaza — eso se cuenta
+ * aparte, no se atribuye a nadie.
+ */
+export async function plazaDeCoordenadas(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): Promise<string | null> {
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+  return (await municipioDeCoordenadas(lat, lng))?.slug ?? null;
+}
+
 export async function zonaDeCoordenadas(lat: number, lng: number): Promise<ZonaDeMarca> {
   const m = await municipioDeCoordenadas(lat, lng);
   if (!m) {

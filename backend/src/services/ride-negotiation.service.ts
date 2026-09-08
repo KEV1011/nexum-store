@@ -12,6 +12,7 @@ import {
 } from '../types';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
+import { plazaDeCoordenadas } from './municipality.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Ride negotiation service (inDriver-style)
@@ -346,9 +347,11 @@ export function updateRideStatus(
     driverActiveRide.delete(driverId);
 
     // Persist completed ride to Trip table (fire-and-forget).
-    void prisma.trip.create({
+    void plazaDeCoordenadas(ride.originLat, ride.originLng).then((citySlug) =>
+      prisma.trip.create({
       data: {
         requestRef: ride.id,
+        citySlug,
         driverId: ride.matchedDriverId ?? null,
         serviceType: SERVICE_TYPE_TO_PRISMA[ride.serviceType] ?? 'PARTICULAR',
         status: 'COMPLETED',
@@ -365,7 +368,8 @@ export function updateRideStatus(
         passengerName: ride.clientName,
         completedAt: now,
       },
-    }).catch(() => { /* ignore if requestRef already exists */ });
+      }),
+    ).catch(() => { /* ignore if requestRef already exists */ });
   }
   notifyRide(ride);
   return rideToDTO(ride);

@@ -5,6 +5,7 @@ import {
   isAdminPhone,
   getAdminPhones,
   signAdminToken,
+  plazaDeLaPeticion,
 } from '../middleware/admin.middleware';
 import {
   listDocumentsForAdmin,
@@ -141,9 +142,9 @@ router.get('/matching/diagnose', async (req: Request, res: Response): Promise<vo
 });
 
 // GET /admin/metrics
-router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
+router.get('/metrics', async (req: Request, res: Response): Promise<void> => {
   try {
-    res.json({ success: true, data: await getAdminMetrics() });
+    res.json({ success: true, data: await getAdminMetrics(plazaDeLaPeticion(req)) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
@@ -157,7 +158,7 @@ router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
 router.get('/metrics/negocio', async (req: Request, res: Response): Promise<void> => {
   const dias = Number(req.query['dias'] ?? 30);
   try {
-    res.json({ success: true, data: await getMetricasNegocio(dias) });
+    res.json({ success: true, data: await getMetricasNegocio(dias, plazaDeLaPeticion(req)) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
@@ -177,9 +178,9 @@ router.get('/diagnostics', async (_req: Request, res: Response): Promise<void> =
 });
 
 // GET /admin/drivers
-router.get('/drivers', async (_req: Request, res: Response): Promise<void> => {
+router.get('/drivers', async (req: Request, res: Response): Promise<void> => {
   try {
-    res.json({ success: true, data: await listDriversForAdmin() });
+    res.json({ success: true, data: await listDriversForAdmin(plazaDeLaPeticion(req)) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
@@ -422,6 +423,16 @@ router.post('/operators/:id/commission', async (req: Request, res: Response): Pr
     const msg = err instanceof Error ? err.message : 'Error';
     res.status(msg.includes('no encontrada') ? 404 : 400).json({ success: false, error: msg });
   }
+});
+
+// GET /admin/me — quién soy y qué alcance tengo.
+//
+// El panel la necesita al arrancar: si el admin está atado a una plaza, el
+// selector de ciudad se bloquea en la suya. La restricción REAL no vive aquí
+// sino en `plazaDeLaPeticion` — esto solo evita ofrecerle un desplegable que
+// el servidor le va a ignorar.
+router.get('/me', (req: Request, res: Response): void => {
+  res.json({ success: true, data: { phone: req.adminPhone ?? null, city: req.adminCity ?? null } });
 });
 
 // GET /admin/municipalities — las plazas y su comisión.
@@ -717,6 +728,7 @@ const PANEL_HTML = `<!DOCTYPE html>
   <header>
     <span style="font-size:1.4rem">🛡️</span>
     <h1>ZIPA — Panel de Operación</h1>
+    <select id="plaza" style="width:auto;margin-right:8px" onchange="cambiarPlaza()" title="Plaza"></select>
     <button onclick="logout()" style="width:auto">Salir</button>
   </header>
   <div style="padding:18px 0">
@@ -1001,7 +1013,13 @@ function logout() {
 function boot() {
   document.getElementById('login').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  show('metrics');
+  // El alcance se pregunta al servidor en cada arranque, no se guarda: si a
+  // alguien le cambian la ciudad, su panel lo refleja al recargar.
+  api('/admin/me')
+    .then((yo) => { ADMIN_CITY = (yo && yo.city) || ''; })
+    .catch(() => { ADMIN_CITY = ''; })
+    .then(cargarPlazas)
+    .then(() => show('metrics'));
 }
 
 function show(tab) {
@@ -1018,10 +1036,57 @@ function show(tab) {
 }
 
 const money = (v) => '$' + Number(v || 0).toLocaleString('es-CO');
+
+// null es «no se sabe» y se escribe «—». Cero es un dato: dice que no pasó
+// nada. Confundirlos aquí haría que filtrar por una ciudad la hiciera parecer
+// muerta cuando lo único cierto es que ese número no sabe de plazas.
+const oGuion = (v, fmt) => (v === null || v === undefined) ? '—' : (fmt ? fmt(v) : String(v));
+
+// Plaza seleccionada, o '' = toda la plataforma. Si el admin está atado a una
+// ciudad, el servidor la impone: aquí solo se refleja.
+let PLAZA = '';
+let ADMIN_CITY = '';
+const qPlaza = (sep) => PLAZA ? sep + 'ciudad=' + encodeURIComponent(PLAZA) : '';
+
+function cambiarPlaza() {
+  PLAZA = document.getElementById('plaza').value;
+  try { localStorage.setItem('nx_plaza', PLAZA); } catch (e) { /* modo privado */ }
+  const activa = document.querySelector('nav.tabs button.active');
+  show(activa ? activa.dataset.tab : 'metrics');
+}
+
+// Llena el selector de plazas. Si el admin está atado a una, se queda esa sola
+// y bloqueada: el filtro no es una comodidad suya, es su alcance.
+// Devuelve la promesa a propósito: si el panel pintara antes de saber qué
+// plaza está seleccionada, la primera carga saldría sin filtro y el
+// administrador vería los números de toda la plataforma creyendo que son los
+// de su ciudad.
+function cargarPlazas() {
+  const sel = document.getElementById('plaza');
+  return api('/admin/municipalities').then((rows) => {
+    if (ADMIN_CITY) {
+      const suya = rows.filter((m) => m.slug === ADMIN_CITY);
+      sel.innerHTML = suya.length
+        ? '<option value="' + esc(ADMIN_CITY) + '">' + esc(suya[0].name) + '</option>'
+        : '<option value="' + esc(ADMIN_CITY) + '">' + esc(ADMIN_CITY) + '</option>';
+      sel.disabled = true;
+      PLAZA = ADMIN_CITY;
+      return;
+    }
+    sel.innerHTML = '<option value="">Toda la plataforma</option>' +
+      rows.map((m) => '<option value="' + esc(m.slug) + '">' + esc(m.name) + '</option>').join('');
+    let guardada = '';
+    try { guardada = localStorage.getItem('nx_plaza') || ''; } catch (e) { guardada = ''; }
+    if (guardada && rows.some((m) => m.slug === guardada)) {
+      PLAZA = guardada;
+      sel.value = guardada;
+    }
+  }).catch(() => { sel.innerHTML = '<option value="">Toda la plataforma</option>'; });
+}
 const when = (iso) => iso ? new Date(iso).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
 function loadMetrics() {
-  api('/admin/metrics').then((m) => {
+  api('/admin/metrics' + qPlaza('?')).then((m) => {
     document.getElementById('metrics-grid').innerHTML = [
       [m.trips.todayRequested, 'Viajes pedidos hoy'],
       [m.trips.todayCompleted, 'Completados hoy'],
@@ -1029,12 +1094,13 @@ function loadMetrics() {
       [m.trips.last7dCompleted, 'Completados 7 días'],
       [money(m.money.todayGmv), 'GMV hoy'],
       [money(m.money.todayCommission), 'Comisión hoy'],
-      [money(m.money.paymentsApprovedToday), 'Pagos Wompi hoy'],
+      [oGuion(m.money.paymentsApprovedToday, money), 'Pagos Wompi hoy'],
       [m.drivers.onlineNow + ' / ' + m.drivers.total, 'Conductores en línea'],
       [m.drivers.verified, 'Verificados'],
       [m.drivers.pendingDocuments, 'Docs pendientes'],
-      [m.users.total + ' (+' + m.users.newToday + ' hoy)', 'Usuarios'],
-      [m.safety.sosLast24h, 'SOS últimas 24 h'],
+      [m.users.total + ' (+' + m.users.newToday + ' hoy)',
+        m.users.porViajes ? 'Pasajeros con viajes aquí' : 'Usuarios'],
+      [oGuion(m.safety.sosLast24h), 'SOS últimas 24 h'],
     ].map(([v, l]) => '<div class="metric"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('');
     pintarPiloto(m);
     pintarAtascados(m);
@@ -1045,7 +1111,7 @@ function loadMetrics() {
 // cohortes: si tardan, que tarden ellas y no los números operativos.
 function loadNegocio() {
   const dias = document.getElementById('neg-dias').value;
-  api('/admin/metrics/negocio?dias=' + encodeURIComponent(dias)).then((n) => {
+  api('/admin/metrics/negocio?dias=' + encodeURIComponent(dias) + qPlaza('&')).then((n) => {
     document.getElementById('negocio').innerHTML = pintarNegocio(n);
   }).catch((e) => showMsg(e.message, true));
 }
@@ -1239,7 +1305,7 @@ function reviewDoc(id, approve) {
 
 var KYC_LABEL = { PENDING: 'Pendiente', IN_REVIEW: 'En revisión', VERIFIED: 'Verificado', REJECTED: 'Rechazado' };
 function loadDrivers() {
-  api('/admin/drivers').then((rows) => {
+  api('/admin/drivers' + qPlaza('?')).then((rows) => {
     const tb = document.getElementById('drivers-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="13" class="empty">Sin conductores.</td></tr>'; return; }
     tb.innerHTML = rows.map((d) => {
@@ -1393,7 +1459,7 @@ function loadOperators() {
     tb.innerHTML = rows.map((o) => '<tr><td><strong>' + esc(o.legalName) + '</strong><div style="font-size:.72rem;color:#777">NIT ' + esc(o.nit) + '</div></td><td>' + esc(o.type) +
       '</td><td>' + esc(o.city || '—') + '</td><td>' + o.vehicles + ' / ' + o.drivers + '</td><td>' +
       (typeof o.commissionRate === 'number'
-        ? '<strong>' + pct(o.commissionRate) + '</strong>'
+        ? '<strong>' + pctComision(o.commissionRate) + '</strong>'
         : '<span style="color:#94a3b8">heredada</span>') +
       '</td><td>' +
       (o.habilitacionOk
@@ -1411,7 +1477,7 @@ function loadOperators() {
 }
 
 // Una fracción como porcentaje legible. 0.15 → «15 %», 0.125 → «12,5 %».
-function pct(v) {
+function pctComision(v) {
   const n = Math.round(v * 1000) / 10;
   return String(n).replace('.', ',') + ' %';
 }
@@ -1426,7 +1492,7 @@ function askOperatorCommission(id, encName, actual) {
   api('/admin/operators/' + id + '/commission', { method: 'POST', body: JSON.stringify({ rate: v.trim() === '' ? null : v.trim() }) })
     .then((d) => {
       showMsg(d && typeof d.commissionRate === 'number'
-        ? 'Comisión de ' + nombre + ': ' + pct(d.commissionRate) + '. Aplica a lo que se liquide de aquí en adelante.'
+        ? 'Comisión de ' + nombre + ': ' + pctComision(d.commissionRate) + '. Aplica a lo que se liquide de aquí en adelante.'
         : nombre + ' vuelve a la comisión heredada.', false);
       loadOperators();
     })
@@ -1447,7 +1513,7 @@ function loadCityCommissions() {
       tb.innerHTML = '<tr><td colspan="4" class="empty">Ninguna ciudad tiene comisión propia: todas cobran la global.</td></tr>';
       return;
     }
-    tb.innerHTML = conTasa.map((m) => '<tr><td><strong>' + esc(m.name) + '</strong></td><td>' + esc(m.department) + '</td><td><strong>' + pct(m.commissionRate) + '</strong></td><td>' +
+    tb.innerHTML = conTasa.map((m) => '<tr><td><strong>' + esc(m.name) + '</strong></td><td>' + esc(m.department) + '</td><td><strong>' + pctComision(m.commissionRate) + '</strong></td><td>' +
       '<button class="btn-sm btn-reject" onclick="clearCityCommission(\\'' + esc(m.slug) + '\\')">Quitar</button></td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
@@ -1462,7 +1528,7 @@ function saveCityCommission(quitar) {
     .then((d) => {
       campo.value = '';
       showMsg(d && typeof d.commissionRate === 'number'
-        ? 'Comisión de la plaza: ' + pct(d.commissionRate) + '.'
+        ? 'Comisión de la plaza: ' + pctComision(d.commissionRate) + '.'
         : 'Esa ciudad vuelve a la comisión global.', false);
       loadCityCommissions();
     })

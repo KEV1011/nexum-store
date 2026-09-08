@@ -238,7 +238,9 @@ export async function liberarConductoresColgados(): Promise<number> {
  * Viajes que se quedaron a medias: en curso, con conductor, y sin noticias suyas
  * desde hace mucho. Es el rastro que deja un cierre perdido.
  */
-export async function contarViajesColgados(): Promise<{ total: number; desdeMin: number }> {
+export async function contarViajesColgados(
+  ciudad?: string | null,
+): Promise<{ total: number; desdeMin: number }> {
   const corte = new Date(Date.now() - SIN_LATIDO_MIN * 60 * 1000);
   const total = await prisma.trip.count({
     where: {
@@ -246,6 +248,7 @@ export async function contarViajesColgados(): Promise<{ total: number; desdeMin:
       driverId: { not: null },
       updatedAt: { lt: corte },
       driver: { OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: corte } }] },
+      ...(ciudad ? { citySlug: ciudad } : {}),
     },
   });
   return { total, desdeMin: SIN_LATIDO_MIN };
@@ -256,17 +259,33 @@ export async function contarViajesColgados(): Promise<{ total: number; desdeMin:
  * panel: la operación tiene que poder verlo sin que se lo cuente un cliente
  * enfadado.
  */
-export async function contarDespachoAtascado(): Promise<{
+export async function contarDespachoAtascado(ciudad?: string | null): Promise<{
   total: number;
   viaje: number;
-  mandado: number;
-  pedido: number;
-  intermunicipal: number;
+  /**
+   * Los tres van en `null` cuando se filtra por plaza: solo el viaje lleva
+   * `citySlug` sellado, y mandados, pedidos e intermunicipales no se pueden
+   * atribuir a una ciudad todavía. Un cero ahí sería peor que un hueco: diría
+   * que no hay nadie esperando cuando lo que pasa es que no se sabe.
+   */
+  mandado: number | null;
+  pedido: number | null;
+  intermunicipal: number | null;
   desdeMin: number;
 }> {
   const corte = new Date(Date.now() - MAX_EDAD_MIN * 60 * 1000);
-  const [viaje, mandado, pedido, intermunicipal] = await Promise.all([
-    prisma.trip.count({ where: { status: 'SEARCHING', driverId: null, createdAt: { lt: corte } } }),
+  const viaje = await prisma.trip.count({
+    where: {
+      status: 'SEARCHING',
+      driverId: null,
+      createdAt: { lt: corte },
+      ...(ciudad ? { citySlug: ciudad } : {}),
+    },
+  });
+  if (ciudad) {
+    return { total: viaje, viaje, mandado: null, pedido: null, intermunicipal: null, desdeMin: MAX_EDAD_MIN };
+  }
+  const [mandado, pedido, intermunicipal] = await Promise.all([
     prisma.errand.count({ where: { status: 'SEARCHING', driverId: null, createdAt: { lt: corte } } }),
     prisma.order.count({ where: { status: 'PREPARING', driverId: null, createdAt: { lt: corte } } }),
     prisma.intercityBooking.count({
