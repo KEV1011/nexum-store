@@ -154,6 +154,20 @@ async function main(): Promise<void> {
     comprobar('la serie diaria de Pamplona suma sus 3', totalPam === 3, String(totalPam));
   }
 
+  console.log('\n═══ El CSV del piloto sale con los datos de SU plaza ═══');
+  {
+    const { metricasACsv } = await import('../src/lib/piloto-csv');
+    const csv = metricasACsv(await getMetricasNegocio(7, 'pamplona'), 'pamplona');
+    const lineas = csv.split('\n');
+    comprobar('la cabecera es la de la serie', lineas[0] === 'Fecha;Solicitados;Completados',
+      lineas[0]);
+    comprobar('lleva sus 7 días', lineas.filter((l) => /^\d{4}-\d{2}-\d{2};/.test(l)).length === 7,
+      String(lineas.filter((l) => /^\d{4}-\d{2}-\d{2};/.test(l)).length));
+    comprobar('dice de qué plaza es', csv.includes('Plaza;pamplona'));
+    comprobar('y sus 3 solicitudes, no las 5 de la plataforma',
+      csv.includes('Solicitados;3'), csv.split('\n').find((l) => l.startsWith('Solicitados;')) ?? '');
+  }
+
   console.log('\n═══ El conductor pertenece a donde late ═══');
   {
     await updateDriverGeo(conPam.id, PAMPLONA.lat, PAMPLONA.lng);

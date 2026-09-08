@@ -58,6 +58,7 @@ import { SupportStatus } from '@prisma/client';
 import { adminCreatePromo, adminListPromos, adminTogglePromo, PromoError } from '../services/promo.service';
 import { listPayoutsForAdmin, adminUpdatePayout } from '../services/payout.service';
 import { listMunicipalities, setMunicipalityCommission } from '../services/municipality.service';
+import { metricasACsv } from '../lib/piloto-csv';
 
 const router = Router();
 
@@ -159,6 +160,26 @@ router.get('/metrics/negocio', async (req: Request, res: Response): Promise<void
   const dias = Number(req.query['dias'] ?? 30);
   try {
     res.json({ success: true, data: await getMetricasNegocio(dias, plazaDeLaPeticion(req)) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/metrics/negocio.csv?dias=30 — las mismas cifras, para guardar.
+//
+// Un piloto de un mes se juzga comparando: la semana tres contra la uno, esta
+// ciudad contra la otra. Eso no se hace mirando una pantalla que solo sabe del
+// presente.
+router.get('/metrics/negocio.csv', async (req: Request, res: Response): Promise<void> => {
+  const dias = Number(req.query['dias'] ?? 30);
+  const plaza = plazaDeLaPeticion(req);
+  try {
+    const m = await getMetricasNegocio(dias, plaza);
+    const nombre = `piloto-${plaza ?? 'todo'}-${m.desde}_${m.hasta}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    // BOM: sin él, Excel abre el archivo en Latin-1 y «Retención» sale rota.
+    res.send('\ufeff' + metricasACsv(m, plaza));
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
@@ -760,6 +781,7 @@ const PANEL_HTML = `<!DOCTYPE html>
           <option value="30" selected>30 días</option>
           <option value="90">90 días</option>
         </select>
+        <button class="btn-sm" style="background:#e0f2f1;color:#00695c;margin-left:8px" onclick="bajarNegocioCsv()">Descargar CSV</button>
       </p>
       <div id="negocio"><div class="empty">Cargando…</div></div>
 
@@ -1114,6 +1136,30 @@ function loadNegocio() {
   api('/admin/metrics/negocio?dias=' + encodeURIComponent(dias) + qPlaza('&')).then((n) => {
     document.getElementById('negocio').innerHTML = pintarNegocio(n);
   }).catch((e) => showMsg(e.message, true));
+}
+
+// La descarga no puede ser un enlace normal: la ruta va con Authorization y
+// un <a href> no lleva cabeceras. Se pide con fetch y se guarda el blob.
+function bajarNegocioCsv() {
+  const dias = document.getElementById('neg-dias').value;
+  fetch('/admin/metrics/negocio.csv?dias=' + encodeURIComponent(dias) + qPlaza('&'), {
+    headers: { Authorization: 'Bearer ' + TOKEN },
+  })
+    .then((r) => {
+      if (!r.ok) throw new Error('No se pudo generar el archivo.');
+      return r.blob();
+    })
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'piloto-' + (PLAZA || 'todo') + '-' + dias + 'd.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    })
+    .catch((e) => showMsg(e.message, true));
 }
 
 // Dibuja las tres cifras del piloto.
