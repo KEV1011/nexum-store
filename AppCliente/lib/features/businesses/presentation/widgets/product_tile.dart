@@ -3,7 +3,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
-import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/precio_producto.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 
@@ -61,6 +61,10 @@ class ProductTile extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (product.masPedidoPuesto != null) ...[
+                  const SizedBox(height: 4),
+                  InsigniaMasPedido(puesto: product.masPedidoPuesto!),
+                ],
                 const SizedBox(height: 2),
                 Text(
                   product.description,
@@ -72,15 +76,7 @@ class ProductTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: AppConstants.spacingS),
-                Text(
-                  CurrencyFormatter.format(product.price),
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
-                ),
+                PrecioProducto(product: product),
               ],
             ),
           ),

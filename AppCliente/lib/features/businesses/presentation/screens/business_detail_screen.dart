@@ -17,6 +17,8 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'product_tile.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'product_options_sheet.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'precio_producto.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
 
@@ -89,6 +91,15 @@ class _DetailViewState extends ConsumerState<_DetailView> {
       grouped.putIfAbsent(product.category, () => []).add(product);
     }
 
+    // Dos secciones DERIVADAS que se arman solas con lo que el negocio ya
+    // cargó: no hay que curar nada a mano. Van arriba porque es lo que la
+    // gente busca primero, y solo aparecen si tienen contenido — una pestaña
+    // «Populares» vacía en una tienda nueva es peor que no tenerla.
+    final populares = visibles.where((p) => p.masPedidoPuesto != null).toList()
+      ..sort((a, b) => a.masPedidoPuesto!.compareTo(b.masPedidoPuesto!));
+    final enOferta = visibles.where((p) => p.enOferta).toList()
+      ..sort((a, b) => b.descuentoPct!.compareTo(a.descuentoPct!));
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -96,6 +107,21 @@ class _DetailViewState extends ConsumerState<_DetailView> {
           if (!business.isOpen || business.openingHours != null)
             SliverToBoxAdapter(
               child: _StatusBanner(business: business),
+            ),
+          // La promoción de la tienda, con lo que lleva el carrito AHORA: el
+          // mismo mínimo y el mismo descuento que aplicará el servidor.
+          if (business.tienePromo)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.spacingM, AppConstants.spacingM, AppConstants.spacingM, 0,
+                ),
+                child: BannerPromoTienda(
+                  minimo: business.promoMinAmount!,
+                  descuento: business.promoDiscount!,
+                  subtotal: cart.business?.id == business.id ? cart.subtotal : 0,
+                ),
+              ),
             ),
           if (business.products.length >= _minParaBuscador)
             SliverToBoxAdapter(
@@ -133,54 +159,31 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                 ),
               ),
             ),
+          if (populares.isNotEmpty) ...[
+            const SliverToBoxAdapter(child: _SectionHeader(title: 'Lo más pedido')),
+            _RejillaProductos(
+              productos: populares,
+              cart: cart,
+              cartNotifier: cartNotifier,
+              business: business,
+            ),
+          ],
+          if (enOferta.isNotEmpty) ...[
+            const SliverToBoxAdapter(child: _SectionHeader(title: 'Descuentos')),
+            _RejillaProductos(
+              productos: enOferta,
+              cart: cart,
+              cartNotifier: cartNotifier,
+              business: business,
+            ),
+          ],
           for (final entry in grouped.entries) ...[
             SliverToBoxAdapter(child: _SectionHeader(title: entry.key)),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppConstants.spacingM,
-              ),
-              sliver: SliverList.separated(
-                itemCount: entry.value.length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(height: AppConstants.spacingS),
-                itemBuilder: (context, i) {
-                  final product = entry.value[i];
-                  // Con opciones: el tile siempre muestra "Agregar" y abre la
-                  // hoja de selección (las variantes se gestionan en el carrito).
-                  final qty = (product.hasOptions ||
-                          cart.business?.id != business.id)
-                      ? 0
-                      : cartNotifier.quantityOf(product.id);
-                  return ProductTile(
-                    product: product,
-                    quantity: qty,
-                    onAdd: () async {
-                      if (!business.isOpen) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('El negocio está cerrado ahora.'),
-                          ),
-                        );
-                        return;
-                      }
-                      // La hoja se abre también sin opciones: ahí es donde se
-                      // elige la cantidad y se escribe la nota para la cocina.
-                      final elegido =
-                          await showProductOptionsSheet(context, product);
-                      if (elegido != null) {
-                        cartNotifier.addProduct(
-                          product,
-                          business,
-                          selectedOptions: elegido.options,
-                          quantity: elegido.quantity,
-                          notes: elegido.notes,
-                        );
-                      }
-                    },
-                    onRemove: () => cartNotifier.removeOne(product.id),
-                  );
-                },
-              ),
+            _RejillaProductos(
+              productos: entry.value,
+              cart: cart,
+              cartNotifier: cartNotifier,
+              business: business,
             ),
           ],
           const SliverToBoxAdapter(
@@ -189,6 +192,70 @@ class _DetailViewState extends ConsumerState<_DetailView> {
         ],
       ),
       bottomNavigationBar: _CartBar(cart: cart),
+    );
+  }
+}
+
+/// La lista de productos de una sección.
+///
+/// Se extrajo porque ahora hay TRES secciones que pintan lo mismo («Lo más
+/// pedido», «Descuentos» y cada categoría del negocio). Duplicarla habría
+/// hecho que el botón de agregar se comportara distinto según en qué sección
+/// tocara el cliente el mismo plato.
+class _RejillaProductos extends StatelessWidget {
+  const _RejillaProductos({
+    required this.productos,
+    required this.cart,
+    required this.cartNotifier,
+    required this.business,
+  });
+
+  final List<ProductEntity> productos;
+  final CartState cart;
+  final CartNotifier cartNotifier;
+  final BusinessEntity business;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM),
+      sliver: SliverList.separated(
+        itemCount: productos.length,
+        separatorBuilder: (_, __) => const SizedBox(height: AppConstants.spacingS),
+        itemBuilder: (context, i) {
+          final product = productos[i];
+          // Con opciones: el tile siempre muestra "Agregar" y abre la hoja de
+          // selección (las variantes se gestionan en el carrito).
+          final qty = (product.hasOptions || cart.business?.id != business.id)
+              ? 0
+              : cartNotifier.quantityOf(product.id);
+          return ProductTile(
+            product: product,
+            quantity: qty,
+            onAdd: () async {
+              if (!business.isOpen) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('El negocio está cerrado ahora.')),
+                );
+                return;
+              }
+              // La hoja se abre también sin opciones: ahí es donde se elige la
+              // cantidad y se escribe la nota para la cocina.
+              final elegido = await showProductOptionsSheet(context, product);
+              if (elegido != null) {
+                cartNotifier.addProduct(
+                  product,
+                  business,
+                  selectedOptions: elegido.options,
+                  quantity: elegido.quantity,
+                  notes: elegido.notes,
+                );
+              }
+            },
+            onRemove: () => cartNotifier.removeOne(product.id),
+          );
+        },
+      ),
     );
   }
 }

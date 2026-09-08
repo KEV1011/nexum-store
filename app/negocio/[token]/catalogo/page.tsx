@@ -84,6 +84,10 @@ interface Product {
   name: string
   description: string
   price: number
+  /** Lo que DEVUELVE el servidor (ya saneado). Al enviar se manda texto o null:
+   *  el backend es quien decide si «$30.000» es válido, no el formulario. */
+  compareAtPrice?: number
+  descuentoPct?: number
   category: string
   imageUrl?: string
   isAvailable: boolean
@@ -324,31 +328,47 @@ function ProductCard({
   // Campos de edición inline
   const [eName, setEName] = useState(product.name)
   const [ePrice, setEPrice] = useState(String(product.price))
+  const [eAntes, setEAntes] = useState(product.compareAtPrice ? String(product.compareAtPrice) : '')
+  // El backend RECHAZA un «antes» al revés o increíble, y su mensaje explica
+  // cuál de las dos cosas pasó. Tragárselo dejaría al dueño reintentando.
+  const [eError, setEError] = useState<string | null>(null)
   const [eCategory, setECategory] = useState(product.category)
   const [eDescription, setEDescription] = useState(product.description)
 
-  const patch = async (body: Partial<Product>) => {
+  type CuerpoPatch = Omit<Partial<Product>, 'compareAtPrice'> & {
+    compareAtPrice?: string | number | null
+  }
+
+  const patch = async (body: CuerpoPatch) => {
     setBusy(true)
+    setEError(null)
     try {
       const res = await fetch(`${BACKEND_URL}/business/${token}/products/${product.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const json = (await res.json()) as { success: boolean; data?: Product }
+      const json = (await res.json()) as { success: boolean; data?: Product; error?: string }
       if (json.success && json.data) onChanged(json.data)
+      else setEError(json.error ?? 'No se pudo guardar.')
       return json.success
     } finally {
       setBusy(false)
     }
   }
 
+  /// Alias tipado para el guardado que sí manda el «antes» como texto.
+  const patchConAntes = (body: CuerpoPatch) => patch(body)
+
   const saveEdit = async () => {
     const priceNum = Number(ePrice.replace(/[^\d]/g, ''))
     if (eName.trim().length < 2 || !(priceNum > 0)) return
-    const ok = await patch({
+    const ok = await patchConAntes({
       name: eName.trim(),
       price: priceNum,
+      // Vacío = quitar el descuento. Se manda siempre para que borrarlo
+      // funcione, no solo ponerlo.
+      compareAtPrice: eAntes.trim() === '' ? null : eAntes.trim(),
       category: eCategory.trim() || 'General',
       description: eDescription.trim(),
     })
@@ -446,14 +466,18 @@ function ProductCard({
               <input className={INPUT} value={eName} onChange={(e) => setEName(e.target.value)} maxLength={80} placeholder="Nombre" />
               <div className="grid grid-cols-2 gap-2">
                 <input className={INPUT} value={ePrice} onChange={(e) => setEPrice(e.target.value)} inputMode="numeric" maxLength={12} placeholder="Precio" />
+                <input className={INPUT} value={eAntes} onChange={(e) => setEAntes(e.target.value)} inputMode="numeric" maxLength={12} placeholder="Antes (opcional)" title="Precio anterior real. Se muestra tachado con el % de descuento." />
                 <input className={INPUT} list="cat-list" value={eCategory} onChange={(e) => setECategory(e.target.value)} maxLength={40} placeholder="Sección" />
               </div>
               <input className={INPUT} value={eDescription} onChange={(e) => setEDescription(e.target.value)} maxLength={140} placeholder="Descripción" />
+              {eError && (
+                <p className="rounded-lg bg-red-50 border border-red-200 px-2 py-1.5 text-[11px] text-red-700">{eError}</p>
+              )}
               <div className="flex gap-2">
                 <button onClick={saveEdit} disabled={busy} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
                   <Check className="w-3.5 h-3.5" /> Guardar
                 </button>
-                <button onClick={() => { setEditing(false); setEName(product.name); setEPrice(String(product.price)); setECategory(product.category); setEDescription(product.description) }} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                <button onClick={() => { setEditing(false); setEError(null); setEName(product.name); setEPrice(String(product.price)); setEAntes(product.compareAtPrice ? String(product.compareAtPrice) : ''); setECategory(product.category); setEDescription(product.description) }} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -463,7 +487,17 @@ function ProductCard({
               <div>
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-semibold text-slate-900 text-sm truncate">{product.name}</p>
-                  <p className="font-bold text-teal-700 text-sm shrink-0">{formatCOP(product.price)}</p>
+                  <div className="shrink-0 text-right">
+                    <p className="font-bold text-teal-700 text-sm">{formatCOP(product.price)}</p>
+                    {/* El dueño ve exactamente lo que ve su cliente: si el
+                        tachado quedó raro, se da cuenta aquí y no en una queja. */}
+                    {product.descuentoPct != null && product.compareAtPrice != null && (
+                      <p className="flex items-center justify-end gap-1 text-[11px]">
+                        <span className="rounded bg-red-600 px-1 py-px font-bold text-white">-{product.descuentoPct} %</span>
+                        <span className="text-slate-400 line-through">{formatCOP(product.compareAtPrice)}</span>
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <p className="text-xs text-slate-400">
                   {product.brand ? `${product.brand} · ` : ''}{product.category}

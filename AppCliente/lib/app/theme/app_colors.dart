@@ -7,6 +7,17 @@ abstract final class AppColors {
   static const Color primaryLight = Color(0xFF5EFF82);
   static const Color primaryContainer = Color(0xFFE8F5E9);
 
+  // ── Vitrina: ofertas y promociones ────────────────────────────────────────
+  // Rojo para el porcentaje de descuento porque es el código que la gente ya
+  // reconoce del comercio; el ámbar de la promoción de la tienda es distinto a
+  // propósito, para que no se confundan dos cosas que no son lo mismo (una
+  // rebaja de un producto y un descuento por comprar más).
+  static const Color descuento = Color(0xFFE53935);
+  static const Color descuentoTexto = Color(0xFFFFFFFF);
+  static const Color promoFondo = Color(0xFFFFF8E1);
+  static const Color promoBorde = Color(0xFFFFE082);
+  static const Color promoTexto = Color(0xFF8D6E00);
+
   // ── Secondary (Azul institucional) ───────────────────────────────────────
   static const Color secondary = Color(0xFF1565C0);
   static const Color secondaryDark = Color(0xFF003C8F);

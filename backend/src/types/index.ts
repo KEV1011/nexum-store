@@ -501,6 +501,13 @@ export interface ProductDTO {
   name: string;
   description: string;
   price: number;
+  /** Precio antes de la rebaja. Ausente = este producto no está en oferta. */
+  compareAtPrice?: number;
+  /** El porcentaje ya calculado, para que la app no repita la aritmética. */
+  descuentoPct?: number;
+  /** Puesto en «lo más pedido» de SU tienda. Ausente = no está entre los primeros
+   *  o la tienda todavía no ha vendido lo suficiente para que signifique algo. */
+  masPedidoPuesto?: number;
   category: string;
   imageUrl?: string;
   isAvailable: boolean;
@@ -536,6 +543,8 @@ export interface SetProductOptionsDTO {
 export interface CreateProductDTO {
   name: string;
   price: number;
+  /** Precio anterior para el tachado. Vacío/null = sin descuento. */
+  compareAtPrice?: number | string | null;
   description?: string;
   category?: string;
   imageUrl?: string;
@@ -553,6 +562,8 @@ export interface UpdateProductDTO {
   /** Posición en la carta. Menor = más arriba. */
   sortOrder?: number;
   price?: number;
+  /** Precio anterior para el tachado. Null/vacío = quitar el descuento. */
+  compareAtPrice?: number | string | null;
   description?: string;
   category?: string;
   imageUrl?: string;
@@ -577,6 +588,9 @@ export interface BusinessPublicDTO {
   isOpen: boolean;
   imageUrl?: string;
   openingHours?: string;
+  /** Promoción de la tienda. Ausentes = no tiene ninguna que anunciar. */
+  promoMinAmount?: number;
+  promoDiscount?: number;
   products: ProductDTO[];
 }
 
@@ -588,6 +602,9 @@ export interface BusinessSettingsDTO {
   whatsapp?: string;
   deliveryFee?: number;
   etaMinutes?: number;
+  /** Promoción de la tienda. Las dos o ninguna; vacías = quitarla. */
+  promoMinAmount?: number | string | null;
+  promoDiscount?: number | string | null;
   acceptingOrders?: boolean;
   openingHours?: string;
 }
@@ -646,6 +663,8 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   businessName: string;
   status: string;
   subtotal: number;
+  /** Descuento de la promoción de la tienda que se aplicó a ESTE pedido. */
+  promoDiscount?: number;
   deliveryFee: number;
   total: number;
   etaMinutes: number;

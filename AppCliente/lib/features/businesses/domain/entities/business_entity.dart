@@ -33,6 +33,8 @@ class BusinessEntity {
     required this.deliveryFee,
     required this.address,
     required this.products,
+    this.promoMinAmount,
+    this.promoDiscount,
     this.isOpen = true,
     this.imageUrl,
     this.openingHours,
@@ -44,6 +46,19 @@ class BusinessEntity {
 
   /// Calificación promedio (1.0 – 5.0).
   final double rating;
+
+  /// Promoción de la tienda: «$promoDiscount de descuento comprando
+  /// $promoMinAmount». Null las dos = no tiene ninguna que anunciar.
+  final int? promoMinAmount;
+  final int? promoDiscount;
+
+  /// Hay promoción que anunciar (con las dos mitades y coherente).
+  bool get tienePromo =>
+      promoMinAmount != null &&
+      promoDiscount != null &&
+      promoMinAmount! > 0 &&
+      promoDiscount! > 0 &&
+      promoDiscount! < promoMinAmount!;
 
   /// Tiempo estimado de entrega en minutos.
   final int etaMinutes;
@@ -110,6 +125,9 @@ class ProductEntity {
     required this.name,
     required this.description,
     required this.price,
+    this.compareAtPrice,
+    this.descuentoPct,
+    this.masPedidoPuesto,
     this.category = 'General',
     this.imageUrl,
     this.images = const [],
@@ -122,6 +140,24 @@ class ProductEntity {
 
   /// Precio unitario (COP).
   final double price;
+
+  /// Precio ANTES de la rebaja, para tacharlo. Null = no está en oferta.
+  final double? compareAtPrice;
+
+  /// El porcentaje de descuento, calculado por el servidor. Null = sin oferta.
+  ///
+  /// Llega hecho a propósito: si cada pantalla lo derivara, acabarían
+  /// redondeando distinto y el «-46 %» del listado no coincidiría con el del
+  /// detalle del mismo plato.
+  final int? descuentoPct;
+
+  /// Puesto en «lo más pedido» de su tienda (1 = el más pedido). Null cuando
+  /// no está entre los primeros o la tienda aún no ha vendido lo suficiente
+  /// para que el ranking signifique algo.
+  final int? masPedidoPuesto;
+
+  /// Está rebajado de verdad (hay un antes mayor y un porcentaje que enseñar).
+  bool get enOferta => descuentoPct != null && compareAtPrice != null;
 
   /// Categoría dentro del menú (ej: "Almuerzos", "Bebidas").
   final String category;

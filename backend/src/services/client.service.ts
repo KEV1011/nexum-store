@@ -35,6 +35,7 @@ import {
 } from '../lib/driver-card';
 import { sendPushToClient } from './push.service';
 import { plazaDeCoordenadas } from './municipality.service';
+import { promoDeTienda } from '../lib/vitrina';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -290,6 +291,13 @@ export async function placeClientOrder(
     descontados.push({ productId: item.productId, cantidad: item.cantidad });
   }
 
+  // La promoción de la tienda se resuelve AQUÍ, con la misma función que pinta
+  // el banner: si fueran dos cuentas, la pantalla prometería «$6.000 OFF» y la
+  // caja cobraría completo. El resultado se SELLA en el pedido — cambiar la
+  // promoción mañana no puede reescribir lo que se cobró hoy.
+  const promo = promoDeTienda(subtotal, biz.promoMinAmount, biz.promoDiscount);
+  const descuentoPromo = promo?.descuento ?? 0;
+
   const order = await prisma.order.create({
     data: {
       orderRef,
@@ -303,8 +311,11 @@ export async function placeClientOrder(
       // dispara cuando el negocio acepta (así el conductor no espera en la puerta).
       status: 'PENDING',
       subtotal,
+      promoDiscount: descuentoPromo > 0 ? descuentoPromo : null,
       deliveryFee: biz.deliveryFee,
-      total: subtotal + biz.deliveryFee,
+      // El descuento se resta del subtotal, NUNCA del domicilio: ese es el pago
+      // del repartidor y no lo financia una promoción del restaurante.
+      total: subtotal - descuentoPromo + biz.deliveryFee,
       etaMinutes: biz.etaMinutes,
       // Cadena de custodia: el negocio guarda el PIN de recogida y el cliente
       // el de entrega. El repartidor los pide de viva voz en cada paso.
@@ -1322,6 +1333,7 @@ export async function notifyClientTripUpdateById(tripId: string): Promise<void> 
 
 type PrismaOrder = {
   id: string; orderRef: string; businessId: string; status: string; subtotal: number;
+  promoDiscount?: number | null;
   deliveryFee: number; total: number; etaMinutes: number | null; deliveryAddress: string;
   pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
   createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
@@ -1359,6 +1371,9 @@ function _toSummary(
     businessName,
     status: statusMap[o.status] ?? o.status.toLowerCase(),
     subtotal: o.subtotal,
+    // El descuento que SÍ se aplicó a este pedido. Sin él, el cliente ve un
+    // total menor que la suma de sus productos y no sabe por qué.
+    promoDiscount: o.promoDiscount ?? undefined,
     deliveryFee: o.deliveryFee,
     total: o.total,
     etaMinutes: o.etaMinutes ?? 30,

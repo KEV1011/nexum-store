@@ -376,6 +376,11 @@ model Business {
   phone        String?
   whatsapp     String?
   rating       Float            @default(5.0)
+  /// Promoción de la tienda: «$descuento comprando $mínimo». Las dos o
+  /// ninguna. El MISMO cálculo (`promoDeTienda`) alimenta el banner y el
+  /// cobro, para que la pantalla no prometa lo que la caja no aplica.
+  promoMinAmount Int?
+  promoDiscount  Int?
   etaMinutes   Int              @default(30)
   deliveryFee  Float            @default(2500)
   // isOpen = cuenta activa (gate de acceso al portal, lo controla el admin/registro).
@@ -413,6 +418,10 @@ model Product {
   name         String
   description  String?
   price        Float
+  /// Precio ANTES de la rebaja, para el tachado. Null = sin descuento.
+  /// Se valida al guardar (`saneaPrecioAntes`): un «antes» inflado no es una
+  /// decisión de precio, es publicidad engañosa.
+  compareAtPrice Float?
   category     String   @default("General")
   /// Orden dentro de la carta. Una carta se lee en un orden concreto —
   /// entradas antes que postres— y por fecha de creación salen mezclados.
@@ -511,6 +520,10 @@ model Order {
   deliveryLat      Float?
   deliveryLng      Float?
   subtotal         Float
+  /// Descuento de la promoción de la tienda, SELLADO al crear el pedido: se
+  /// guarda en vez de recalcularse, porque cambiar la promoción mañana no
+  /// puede reescribir lo que se cobró hoy.
+  promoDiscount    Float?
   deliveryFee      Float
   total            Float
   etaMinutes       Int?

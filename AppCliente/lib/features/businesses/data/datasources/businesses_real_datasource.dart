@@ -26,6 +26,8 @@ class BusinessesRealDataSource {
       rating: (j['rating'] as num).toDouble(),
       etaMinutes: j['etaMinutes'] as int,
       deliveryFee: (j['deliveryFee'] as num).toDouble(),
+      promoMinAmount: (j['promoMinAmount'] as num?)?.toInt(),
+      promoDiscount: (j['promoDiscount'] as num?)?.toInt(),
       address: j['address'] as String,
       isOpen: j['isOpen'] as bool? ?? true,
       imageUrl: j['imageUrl'] as String?,
@@ -50,6 +52,9 @@ class BusinessesRealDataSource {
       name: j['name'] as String,
       description: j['description'] as String? ?? '',
       price: (j['price'] as num).toDouble(),
+      compareAtPrice: (j['compareAtPrice'] as num?)?.toDouble(),
+      descuentoPct: (j['descuentoPct'] as num?)?.toInt(),
+      masPedidoPuesto: (j['masPedidoPuesto'] as num?)?.toInt(),
       category: j['category'] as String? ?? 'General',
       imageUrl: j['imageUrl'] as String?,
       images: ((j['images'] as List?) ?? const [])

@@ -29,6 +29,8 @@ interface Settings {
   whatsapp: string
   deliveryFee: number
   etaMinutes: number
+  promoMinAmount?: number | null
+  promoDiscount?: number | null
   acceptingOrders: boolean
   openingHours: string
 }
@@ -106,11 +108,17 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const json = (await res.json()) as { success: boolean; data?: Settings }
+      const json = (await res.json()) as { success: boolean; data?: Settings; error?: string }
       if (json.success && json.data) {
         setSettings(json.data)
+        setError(null)
         setSaved(true)
         setTimeout(() => setSaved(false), 2500)
+      } else {
+        // El backend rechaza media promoción o un descuento mayor que el
+        // mínimo, y su mensaje dice cuál de las dos. Callarlo dejaba al dueño
+        // creyendo que había guardado.
+        setError(json.error ?? 'No se pudo guardar.')
       }
     } finally {
       setSaving(false)
@@ -248,6 +256,46 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                     inputMode="numeric"
                     maxLength={4}
                   />
+                </div>
+              </div>
+              {/* Promoción de la tienda: lo que ve el cliente como banner con
+                  barra de progreso, y lo que el servidor descuenta al cobrar.
+                  Es la misma cuenta: si aquí se pone algo, ahí se cobra. */}
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-900 mb-1">Promoción de la tienda</p>
+                <p className="text-[11px] text-amber-800 mb-2">
+                  «$X de descuento comprando $Y». El cliente ve una barra que le dice cuánto le
+                  falta, y el descuento se aplica solo al confirmar. Deja las dos vacías para quitarla.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-amber-900 mb-1">Descuento (COP)</label>
+                    <input
+                      className={INPUT}
+                      value={settings.promoDiscount ? String(settings.promoDiscount) : ''}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^\d]/g, '')
+                        set({ promoDiscount: v === '' ? null : Number(v) })
+                      }}
+                      inputMode="numeric"
+                      maxLength={9}
+                      placeholder="6000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-amber-900 mb-1">Compra mínima (COP)</label>
+                    <input
+                      className={INPUT}
+                      value={settings.promoMinAmount ? String(settings.promoMinAmount) : ''}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^\d]/g, '')
+                        set({ promoMinAmount: v === '' ? null : Number(v) })
+                      }}
+                      inputMode="numeric"
+                      maxLength={9}
+                      placeholder="30000"
+                    />
+                  </div>
                 </div>
               </div>
               <LocationPicker

@@ -16,6 +16,7 @@ import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { normalizeColombianPhone } from './auth.service';
 import { geocodeAddress } from './geo.service';
+import { porcentajeDescuento, rankingMasPedido, saneaPrecioAntes, saneaPromoTienda } from '../lib/vitrina';
 
 // ─── Enum mappings ─────────────────────────────────────────────────────────────
 
@@ -195,6 +196,7 @@ function _productToDTO(p: {
   name: string;
   description: string | null;
   price: number;
+  compareAtPrice?: number | null;
   category: string;
   imageUrl: string | null;
   isAvailable: boolean;
@@ -224,6 +226,11 @@ function _productToDTO(p: {
     imageUrl: p.imageUrl ?? undefined,
     isAvailable: p.isAvailable,
     sortOrder: p.sortOrder ?? 0,
+    compareAtPrice: p.compareAtPrice ?? undefined,
+    // El porcentaje se calcula UNA vez, aquí: si cada pantalla lo derivara,
+    // acabarían redondeando distinto y el «-46 %» del listado no coincidiría
+    // con el del detalle.
+    descuentoPct: porcentajeDescuento(p.price, p.compareAtPrice) ?? undefined,
     barcode: p.barcode ?? undefined,
     sku: p.sku ?? undefined,
     stock: p.stock ?? undefined,
@@ -244,6 +251,43 @@ function _productToDTO(p: {
       })),
     })),
   };
+}
+
+/**
+ * Marca los productos que más se piden en ESA tienda.
+ *
+ * Sale de las líneas de pedidos ya entregados: es un dato real, no una
+ * curaduría. Si la tienda no ha vendido lo suficiente, `rankingMasPedido`
+ * devuelve vacío y no se marca nada — un «#1 más pedido» sobre tres unidades
+ * solo dice qué compró la última persona que entró.
+ *
+ * Best-effort: si la consulta falla, la carta sale sin insignias en vez de no
+ * salir. Es adorno, no el pedido.
+ */
+async function _conMasPedido(businessId: string, productos: ProductDTO[]): Promise<ProductDTO[]> {
+  try {
+    const filas = await prisma.orderLine.groupBy({
+      by: ['productId'],
+      where: { order: { businessId, status: 'DELIVERED' } },
+      _sum: { quantity: true },
+    });
+    const unidades = new Map<string, number>();
+    for (const f of filas) {
+      // `productId` es opcional en la línea: un producto borrado deja la línea
+      // con su nombre pero sin referencia, y esa venta ya no se le puede
+      // atribuir a nada que siga en la carta.
+      if (f.productId) unidades.set(f.productId, f._sum?.quantity ?? 0);
+    }
+    const puestos = new Map(
+      rankingMasPedido(unidades).map((r) => [r.productId, r.puesto]),
+    );
+    if (puestos.size === 0) return productos;
+    return productos.map((p) =>
+      puestos.has(p.id) ? { ...p, masPedidoPuesto: puestos.get(p.id) } : p,
+    );
+  } catch {
+    return productos;
+  }
 }
 
 // Incluir galería y grupos de opciones ordenados en cada consulta de producto.
@@ -519,6 +563,8 @@ export async function createBusinessProduct(
       businessId,
       name,
       price: dto.price,
+      // Lanza con el motivo si el «antes» está al revés o es increíble.
+      compareAtPrice: saneaPrecioAntes(dto.price, dto.compareAtPrice),
       description: dto.description?.trim() || null,
       category: dto.category?.trim() || 'General',
       imageUrl: dto.imageUrl ?? null,
@@ -544,6 +590,11 @@ export async function updateBusinessProduct(
     data: {
       ...(dto.name !== undefined && { name: dto.name.trim() }),
       ...(dto.price !== undefined && { price: dto.price }),
+      // Se valida contra el precio que va a QUEDAR, no contra el que había:
+      // bajar el precio sin tocar el «antes» debe seguir siendo coherente.
+      ...(dto.compareAtPrice !== undefined && {
+        compareAtPrice: saneaPrecioAntes(dto.price ?? existing.price, dto.compareAtPrice),
+      }),
       ...(dto.description !== undefined && { description: dto.description.trim() || null }),
       ...(dto.category !== undefined && { category: dto.category.trim() || 'General' }),
       ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
@@ -585,12 +636,15 @@ export interface BusinessSettingsView {
   acceptingOrders: boolean;
   openingHours: string;
   imageUrl?: string;
+  promoMinAmount?: number;
+  promoDiscount?: number;
 }
 
 function _settingsView(b: {
   name: string; address: string; phone: string | null; whatsapp: string | null;
   deliveryFee: number; etaMinutes: number; acceptingOrders: boolean;
   openingHours: string | null; imageUrl: string | null;
+  promoMinAmount?: number | null; promoDiscount?: number | null;
 }): BusinessSettingsView {
   return {
     name: b.name,
@@ -602,6 +656,8 @@ function _settingsView(b: {
     acceptingOrders: b.acceptingOrders,
     openingHours: b.openingHours ?? '',
     imageUrl: b.imageUrl ?? undefined,
+    promoMinAmount: b.promoMinAmount ?? undefined,
+    promoDiscount: b.promoDiscount ?? undefined,
   };
 }
 
@@ -630,6 +686,16 @@ export async function updateBusinessSettings(
         : {}),
       ...(dto.acceptingOrders !== undefined && { acceptingOrders: dto.acceptingOrders }),
       ...(dto.openingHours !== undefined && { openingHours: dto.openingHours.trim() || null }),
+      // Las dos juntas o ninguna: `saneaPromoTienda` lanza si llega media.
+      // Se renombran a mano a propósito: un spread NO pasa por el control de
+      // propiedades sobrantes de TypeScript, así que las claves en español se
+      // colaban hasta Prisma sin que el compilador dijera nada.
+      ...(dto.promoMinAmount !== undefined || dto.promoDiscount !== undefined
+        ? (() => {
+            const p = saneaPromoTienda(dto.promoMinAmount, dto.promoDiscount);
+            return { promoMinAmount: p.minimo, promoDiscount: p.descuento };
+          })()
+        : {}),
     },
   });
   return _settingsView(b);
@@ -716,6 +782,8 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     isOpen: b.acceptingOrders,
     imageUrl: b.imageUrl ?? undefined,
     openingHours: b.openingHours ?? undefined,
+    promoMinAmount: b.promoMinAmount ?? undefined,
+    promoDiscount: b.promoDiscount ?? undefined,
     products: b.products.map(_productToDTO),
   }));
 }
@@ -745,7 +813,9 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     isOpen: b.acceptingOrders,
     imageUrl: b.imageUrl ?? undefined,
     openingHours: b.openingHours ?? undefined,
-    products: b.products.map(_productToDTO),
+    promoMinAmount: b.promoMinAmount ?? undefined,
+    promoDiscount: b.promoDiscount ?? undefined,
+    products: await _conMasPedido(b.id, b.products.map(_productToDTO)),
   };
 }
 
