@@ -156,7 +156,7 @@ describe('el panel pintando de verdad', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { pintarAtascados };`,
+      `${PANEL_JS}\n; return { pintarAtascados, pintarNegocio };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => void>;
     const fn = crear(
       documentoFalso,
@@ -206,5 +206,98 @@ describe('el panel pintando de verdad', () => {
     expect(() => fn['pintarAtascados']!({ stuck: { total: 0 } })).not.toThrow();
     expect(el['stuck-warn']!.style.display).toBe('none');
     expect(el['stuck-warn']!.innerHTML).not.toContain('undefined');
+  });
+});
+
+/**
+ * Las tres cifras del piloto, pintadas de verdad.
+ *
+ * Son las que se van a mirar para decidir si el negocio existe, y la forma en
+ * que engañarían no es dando un número equivocado —son divisiones— sino
+ * afirmando cosas que los datos no sostienen: un «0 %» donde no hubo viajes,
+ * un «50 % de retención» sobre dos personas.
+ */
+describe('el panel pintando las cifras del piloto', () => {
+  const almacen = () => ({ getItem: () => null, setItem: () => {}, removeItem: () => {} });
+
+  function pintor(): (n: unknown) => string {
+    const crear = new Function(
+      'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
+      `${PANEL_JS}\n; return pintarNegocio;`,
+    ) as (...a: unknown[]) => (n: unknown) => string;
+    return crear(
+      { getElementById: () => null, querySelectorAll: () => [] },
+      {},
+      () => Promise.resolve(),
+      almacen(),
+      almacen(),
+      () => 0,
+    );
+  }
+
+  const vacio = {
+    desde: '2026-09-01', hasta: '2026-09-03',
+    serie: [
+      { dia: '2026-09-01', solicitados: 0, completados: 0 },
+      { dia: '2026-09-02', solicitados: 0, completados: 0 },
+      { dia: '2026-09-03', solicitados: 0, completados: 0 },
+    ],
+    emparejamiento: { solicitados: 0, conConductor: 0, sinConductor: 0, tasa: null },
+    retencion: { base: 0, volvieron: 0, pct: null, fiable: false },
+    pasajerosActivos: 0,
+  };
+
+  it('sin viajes NO acusa al despacho de un 0 %', () => {
+    // Un «0 % encuentran conductor» en un día sin solicitudes dice que el
+    // despacho falló. Lo cierto es que no hubo nada que despachar.
+    const html = pintor()(vacio);
+    expect(html).not.toContain('0 %');
+    expect(html).toContain('No hubo solicitudes');
+  });
+
+  it('sin nadie la semana pasada dice «Sin datos», no un porcentaje', () => {
+    const html = pintor()(vacio);
+    expect(html).toContain('Sin datos');
+  });
+
+  it('con una base diminuta enseña la fracción, no el porcentaje', () => {
+    // «50 %» sobre dos personas no es una métrica, es una anécdota — y en un
+    // piloto es justo el número que va a salir.
+    const html = pintor()({
+      ...vacio,
+      retencion: { base: 2, volvieron: 1, pct: 50, fiable: false },
+    });
+    expect(html).toContain('1 de 2');
+    expect(html).not.toContain('50 %');
+  });
+
+  it('con datos de verdad enseña los porcentajes y las dos cifras crudas', () => {
+    const html = pintor()({
+      desde: '2026-09-01', hasta: '2026-09-02',
+      serie: [
+        { dia: '2026-09-01', solicitados: 10, completados: 8 },
+        { dia: '2026-09-02', solicitados: 6, completados: 5 },
+      ],
+      emparejamiento: { solicitados: 16, conConductor: 13, sinConductor: 3, tasa: 81.3 },
+      retencion: { base: 20, volvieron: 9, pct: 45, fiable: true },
+      pasajerosActivos: 12,
+    });
+    expect(html).toContain('81.3 %');
+    expect(html).toContain('13 de 16');
+    expect(html).toContain('45 %');
+    expect(html).toContain('volvieron 9');
+  });
+
+  it('dibuja TODOS los días, también los vacíos', () => {
+    // Si los días de cero desaparecieran, una semana con dos días muertos se
+    // vería como una semana entera de actividad.
+    const html = pintor()(vacio);
+    expect((html.match(/title="09-0/g) ?? []).length).toBe(3);
+  });
+
+  it('no revienta ni imprime «undefined» si el backend manda un objeto vacío', () => {
+    const html = pintor()({});
+    expect(html).not.toContain('undefined');
+    expect(html).not.toContain('NaN');
   });
 });

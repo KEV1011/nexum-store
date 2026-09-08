@@ -21,6 +21,7 @@ import { PORTAL_BASE_URL } from '../config/constants';
 import { probeSms } from '../services/sms.service';
 import {
   getAdminMetrics,
+  getMetricasNegocio,
   listDriversForAdmin,
   // (kill-switch documental: desbloqueo manual vive en document-expiry.service)
   listSosForAdmin,
@@ -141,6 +142,20 @@ router.get('/matching/diagnose', async (req: Request, res: Response): Promise<vo
 router.get('/metrics', async (_req: Request, res: Response): Promise<void> => {
   try {
     res.json({ success: true, data: await getAdminMetrics() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/metrics/negocio?dias=30 — las tres cifras con las que se juzga el
+// piloto: viajes por día, tasa de emparejamiento y retención semanal.
+//
+// Aparte de /metrics a propósito: éstas hacen series y cohortes, y no deben
+// retrasar los números operativos que el administrador mira de un vistazo.
+router.get('/metrics/negocio', async (req: Request, res: Response): Promise<void> => {
+  const dias = Number(req.query['dias'] ?? 30);
+  try {
+    res.json({ success: true, data: await getMetricasNegocio(dias) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
@@ -687,6 +702,19 @@ const PANEL_HTML = `<!DOCTYPE html>
       <div id="stuck-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #78350f;background:#451a03;border-radius:10px;color:#fed7aa;font-size:.85rem;line-height:1.5"></div>
       <div id="pilot-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #7f1d1d;background:#450a0a;border-radius:10px;color:#fecaca;font-size:.85rem;line-height:1.5"></div>
       <div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div>
+
+      <h3 style="margin:22px 0 4px">El piloto en tres cifras</h3>
+      <p style="color:#94a3b8;font-size:13px;margin:0 0 10px">
+        Lo de arriba es la operación del día. Esto es con lo que se decide si el negocio
+        existe: si crece, si hay conductores suficientes y si la gente vuelve.
+        <select id="neg-dias" onchange="loadNegocio()" style="width:auto;display:inline-block;margin-left:8px">
+          <option value="7">7 días</option>
+          <option value="30" selected>30 días</option>
+          <option value="90">90 días</option>
+        </select>
+      </p>
+      <div id="negocio"><div class="empty">Cargando…</div></div>
+
       <h3 style="margin:22px 0 10px">Estado de las integraciones</h3>
       <p style="color:#94a3b8;font-size:13px;margin:0 0 10px">
         Comprobación REAL: escribe y lee un archivo de prueba en el bucket y consulta Twilio
@@ -958,7 +986,83 @@ function loadMetrics() {
     ].map(([v, l]) => '<div class="metric"><div class="v">' + v + '</div><div class="l">' + l + '</div></div>').join('');
     pintarPiloto(m);
     pintarAtascados(m);
+  }).then(loadNegocio).catch((e) => showMsg(e.message, true));
+}
+
+// Las tres cifras del piloto. Van en su propia petición porque hacen series y
+// cohortes: si tardan, que tarden ellas y no los números operativos.
+function loadNegocio() {
+  const dias = document.getElementById('neg-dias').value;
+  api('/admin/metrics/negocio?dias=' + encodeURIComponent(dias)).then((n) => {
+    document.getElementById('negocio').innerHTML = pintarNegocio(n);
   }).catch((e) => showMsg(e.message, true));
+}
+
+// Dibuja las tres cifras del piloto.
+//
+// Regla de toda esta función: cuando el dato no da para afirmar algo, se dice
+// —"sin datos", "sobre N"— en vez de enseñar un número redondo que se lee como
+// una conclusión. Un 0 % de emparejamiento en un día sin viajes acusa al
+// despacho de algo que no hizo.
+function pintarNegocio(n) {
+  const e = n.emparejamiento || {};
+  const r = n.retencion || {};
+  const serie = n.serie || [];
+
+  const pct = (v) => (v === null || v === undefined) ? '—' : v + ' %';
+
+  // Barras por día. Se dibujan TODOS los días, también los de cero: si los
+  // vacíos desaparecieran, una semana con dos días muertos parecería entera.
+  const tope = Math.max(1, ...serie.map((d) => d.solicitados));
+  const barras = serie.map((d) => {
+    const alto = Math.round((d.solicitados / tope) * 46);
+    const dia = esc(d.dia.slice(5));
+    return '<div title="' + dia + ': ' + d.solicitados + ' pedidos, ' + d.completados + ' completados"' +
+      ' style="flex:1;min-width:3px;display:flex;flex-direction:column;justify-content:flex-end;height:50px">' +
+      '<div style="height:' + Math.max(alto, 2) + 'px;background:' +
+      (d.solicitados ? '#10b981' : '#334155') + ';border-radius:2px 2px 0 0"></div></div>';
+  }).join('');
+
+  const totalPedidos = serie.reduce((a, d) => a + d.solicitados, 0);
+  const totalHechos = serie.reduce((a, d) => a + d.completados, 0);
+  const porDia = serie.length ? (totalPedidos / serie.length).toFixed(1) : '0';
+
+  const tarjeta = (titulo, valor, pie) =>
+    '<div style="flex:1;min-width:210px;padding:14px 16px;border:1px solid #1e293b;background:#0b1220;border-radius:10px">' +
+    '<div style="color:#94a3b8;font-size:12px;margin-bottom:6px">' + titulo + '</div>' +
+    '<div style="font-size:1.6rem;font-weight:700;color:#e2e8f0">' + valor + '</div>' +
+    '<div style="color:#64748b;font-size:11.5px;margin-top:4px">' + pie + '</div></div>';
+
+  // La retención sobre una base diminuta no es una métrica, es una anécdota:
+  // el backend lo marca y aquí se enseña la fracción en crudo en vez del %.
+  const retValor = !r.base ? 'Sin datos'
+    : (r.fiable ? pct(r.pct) : r.volvieron + ' de ' + r.base);
+  const retPie = !r.base
+    ? 'Nadie pidió nada la semana pasada'
+    : (r.fiable
+        ? 'De ' + r.base + ' pasajeros de la semana pasada, volvieron ' + r.volvieron
+        : 'Base muy pequeña para un porcentaje (hacen falta 10)');
+
+  return '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">' +
+    tarjeta('Viajes pedidos por día',
+            esc(String(porDia)),
+            esc(String(totalPedidos)) + ' pedidos y ' + esc(String(totalHechos)) +
+            ' completados entre ' + esc(n.desde) + ' y ' + esc(n.hasta)) +
+    tarjeta('Encuentran conductor',
+            pct(e.tasa),
+            e.solicitados
+              ? esc(String(e.conConductor)) + ' de ' + esc(String(e.solicitados)) +
+                ' · ' + esc(String(e.sinConductor)) + ' cerrados por falta de conductor'
+              : 'No hubo solicitudes en el período') +
+    tarjeta('Vuelven a la semana siguiente',
+            esc(retValor),
+            esc(retPie)) +
+    tarjeta('Pasajeros activos',
+            esc(String(n.pasajerosActivos || 0)),
+            'Personas distintas que pidieron algo en el período') +
+    '</div>' +
+    '<div style="display:flex;gap:2px;align-items:flex-end;padding:10px 12px;border:1px solid #1e293b;background:#0b1220;border-radius:10px">' +
+    barras + '</div>';
 }
 
 // Servicios que llevan demasiado tiempo pidiendo conductor. Lo normal es cero:
