@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { DocumentStatus, PayoutStatus } from '@prisma/client';
 import {
   requireAdmin,
@@ -120,7 +120,28 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
 
 // ─── API del panel (requiere JWT de admin) ───────────────────────────────────
 
-router.use(['/verifications', '/metrics', '/drivers', '/clients', '/sos', '/alerts', '/takedowns', '/promos', '/payouts', '/operators', '/operator-documents', '/businesses', '/routes', '/matching', '/support'], requireAdmin);
+/**
+ * De aquí para abajo, TODO exige sesión de administrador.
+ *
+ * Antes esto era una lista de rutas a proteger, y eso hace que cada ruta nueva
+ * nazca ABIERTA: hay que acordarse de apuntarla. No nos acordamos dos veces —
+ * `POST /municipalities/:slug/commission` dejaba a cualquiera fijar la comisión
+ * de una plaza sin identificarse, y `/diagnostics` decía en su propio
+ * comentario que estaba protegida sin estarlo.
+ *
+ * Invertido: la lista es de EXCEPCIONES y se falla cerrado. Lo único público es
+ * el login (que tiene su propio límite de intentos) y el HTML del panel, que no
+ * lleva datos dentro — los pide después con el token.
+ *
+ * Las dos rutas de `/auth` van declaradas ARRIBA, así que ni llegan aquí; se
+ * listan igual para que reordenar el fichero no las cierre por sorpresa.
+ */
+const RUTAS_PUBLICAS = new Set(['/', '/auth/send-otp', '/auth/verify-otp']);
+
+router.use((req: Request, res: Response, next: NextFunction): void => {
+  if (RUTAS_PUBLICAS.has(req.path)) { next(); return; }
+  requireAdmin(req, res, next);
+});
 
 // GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
 // por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.

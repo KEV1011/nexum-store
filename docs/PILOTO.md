@@ -126,10 +126,25 @@ Un administrador puede quedar **atado a una plaza** con `ADMIN_PHONES`:
 ADMIN_PHONES="+573001112233,+573004445566:cucuta"
 ```
 
-El primero ve toda la plataforma. El segundo solo Cúcuta: su selector queda
-bloqueado y el servidor ignora cualquier otra ciudad que pida, aunque edite la
-dirección del navegador. Es lo que permite que la operación de una ciudad la
-lleve alguien de esa ciudad sin darle acceso a las demás.
+El primero ve toda la plataforma. El segundo queda atado a Cúcuta: su selector
+se bloquea y el servidor ignora cualquier otra ciudad que pida, aunque edite la
+dirección del navegador.
 
 Quitarle o cambiarle la plaza tiene efecto en cuanto recargue: el alcance se
 relee de la configuración en cada petición, no se guarda en su sesión.
+
+### Hasta dónde llega hoy ese límite
+
+**El filtro por ciudad alcanza a tres pantallas: las métricas de operación, las
+tres cifras del piloto y la lista de conductores.** El resto del panel
+—empresas, clientes, negocios, verificación de documentos, SOS, soporte,
+retiros, promociones— sigue siendo global, y las acciones sobre una ficha
+concreta (verificar un conductor, aprobar un retiro) no comprueban de qué
+ciudad es.
+
+O sea: un administrador atado a una plaza **ve sus números, pero no está
+encerrado en ella**. Sirve para que quien lleva una ciudad mire lo suyo sin
+ruido de las demás; **no sirve todavía para dar acceso a alguien externo en
+quien no se confía para el resto de la operación.** Cerrarlo del todo es
+trabajo pendiente: son unas cuarenta rutas y cada una necesita saber a qué
+ciudad pertenece la ficha que toca.

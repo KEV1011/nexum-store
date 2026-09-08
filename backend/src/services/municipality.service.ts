@@ -269,7 +269,16 @@ export async function plazaDeCoordenadas(
   lng: number | null | undefined,
 ): Promise<string | null> {
   if (typeof lat !== 'number' || typeof lng !== 'number') return null;
-  return (await municipioDeCoordenadas(lat, lng))?.slug ?? null;
+  try {
+    return (await municipioDeCoordenadas(lat, lng))?.slug ?? null;
+  } catch {
+    // NUNCA lanza: esto se llama desde el latido del GPS y desde la creación
+    // del viaje. Si un fallo al leer la tabla de municipios se propagara, el
+    // conductor se quedaría sin escribir su posición —y a los 120 s fuera del
+    // despacho— por no poder ponerle una etiqueta al viaje. Sin plaza el
+    // sistema entero ya sabe funcionar: `null` es «no se sabe».
+    return null;
+  }
 }
 
 export async function zonaDeCoordenadas(lat: number, lng: number): Promise<ZonaDeMarca> {
