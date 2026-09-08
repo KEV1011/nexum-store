@@ -21,6 +21,7 @@ import 'package:nexum_client/features/transport/presentation/providers/transport
 import 'package:nexum_client/features/transport/presentation/widgets/route_preview_map.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
+import 'package:nexum_client/shared/widgets/vehicle_top_down.dart';
 
 /// Pantalla de reserva de servicio de transporte o envío.
 class TransportBookingScreen extends ConsumerStatefulWidget {
@@ -1137,6 +1138,63 @@ class _CategorySelector extends ConsumerWidget {
   }
 }
 
+/// El vehículo de la categoría, dibujado.
+///
+/// Antes era un icono plano de catálogo (`Icons.directions_car`), que es lo que
+/// distingue a simple vista una app hecha a medias de una terminada. El dibujo
+/// cenital ya existía para el mapa y es un VECTOR pintado a mano
+/// (`VehicleTopDownPainter`): se puede usar aquí sin exportar nada, se ve
+/// nítido a cualquier tamaño y no depende de la licencia de nadie.
+///
+/// Va girado 24°: de frente, un coche visto desde arriba se lee como una
+/// mancha; en diagonal se reconoce al instante.
+class _IlustracionVehiculo extends StatelessWidget {
+  const _IlustracionVehiculo({required this.glyph, required this.resaltada});
+
+  final VehicleGlyphKind glyph;
+  final bool resaltada;
+
+  @override
+  Widget build(BuildContext context) {
+    final dibujo = switch (glyph) {
+      VehicleGlyphKind.taxi => VehicleTopDownKind.taxi,
+      VehicleGlyphKind.moto => VehicleTopDownKind.moto,
+      VehicleGlyphKind.delivery => VehicleTopDownKind.delivery,
+      VehicleGlyphKind.truck => VehicleTopDownKind.truck,
+      VehicleGlyphKind.car => VehicleTopDownKind.car,
+    };
+    final carroceria = switch (glyph) {
+      VehicleGlyphKind.taxi => const Color(0xFFF6C445),
+      VehicleGlyphKind.moto => const Color(0xFF37474F),
+      VehicleGlyphKind.delivery => const Color(0xFF37474F),
+      VehicleGlyphKind.truck => const Color(0xFF546E7A),
+      VehicleGlyphKind.car => const Color(0xFF2F3640),
+    };
+
+    return Container(
+      width: 54,
+      height: 46,
+      decoration: BoxDecoration(
+        color: resaltada
+            ? Colors.white.withValues(alpha: 0.65)
+            : context.surfaceColor.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(11),
+      ),
+      alignment: Alignment.center,
+      child: Transform.rotate(
+        angle: 0.42, // ~24°
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: CustomPaint(
+            painter: VehicleTopDownPainter(kind: dibujo, body: carroceria),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CategoryCard extends StatelessWidget {
   const _CategoryCard({
     required this.opcion,
@@ -1179,7 +1237,7 @@ class _CategoryCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(vehicleGlyphIcon(glyph), size: 30, color: acento),
+                _IlustracionVehiculo(glyph: glyph, resaltada: seleccionada),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -20,6 +21,7 @@ import 'package:nexum_driver/features/active_trip/presentation/providers/active_
 import 'package:nexum_driver/features/active_trip/presentation/providers/siguiente_viaje_provider.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/siguiente_viaje_card.dart';
 import 'package:nexum_driver/shared/models/oferta_mapper.dart';
+import 'package:nexum_driver/shared/services/navegacion_externa.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/delivery_proof_sheet.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/going_to_passenger_card.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/pickup_proof_sheet.dart';
@@ -622,6 +624,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           children: [
             _buildMap(trip, serviceType),
             _buildTopBar(trip, serviceType),
+            _buildNavegarPill(trip, serviceType),
             if (!_origenRealDeRuta) const _BuscandoSenalGps(),
             if (_ofertaSiguiente != null)
               SiguienteViajeCard(
@@ -795,6 +798,72 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         ),
       ],
     ];
+  }
+
+  // ── Navegar: traspaso a Waze / Google Maps ───────────────────────────────
+  //
+  // Va flotando sobre el mapa y no dentro de la tarjeta de abajo porque tiene
+  // que estar a un toque en CUALQUIER fase: quien lo busca va conduciendo.
+  // Antes no existía y el conductor copiaba la dirección a mano.
+
+  /// A dónde toca ir AHORA. Mismo criterio que usa el trazado de la ruta: con
+  /// el pasajero a bordo, el destino; antes, la recogida.
+  Destino _destinoActual(ActiveTripEntity trip) {
+    final punto = trip.isInProgress
+        ? trip.request.destination
+        : trip.request.origin;
+    return Destino(
+      lat: punto.latLng.latitude,
+      lng: punto.latLng.longitude,
+      etiqueta: punto.address,
+    );
+  }
+
+  Widget _buildNavegarPill(ActiveTripEntity trip, ServiceType serviceType) {
+    final destino = _destinoActual(trip);
+    // Sin coordenadas no se ofrece el botón, en vez de ofrecerlo y fallar.
+    if (!destino.esValido) return const SizedBox.shrink();
+    final aRecoger = !trip.isInProgress;
+
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 62,
+      right: AppConstants.spacingM,
+      child: Material(
+        color: AppColors.textPrimary,
+        borderRadius: BorderRadius.circular(24),
+        elevation: 4,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => _navegar(trip),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.navigation_rounded, size: 18, color: serviceType.color),
+                const SizedBox(width: 6),
+                Text(
+                  aRecoger ? 'Navegar a recogida' : 'Navegar al destino',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _navegar(ActiveTripEntity trip) async {
+    HapticFeedback.selectionClick();
+    final motivo = await abrirNavegacion(_destinoActual(trip));
+    // Si no se pudo, se dice POR QUÉ: un botón que no hace nada y se calla es
+    // de lo que más desconfianza genera, y aquí hay alguien esperando.
+    if (motivo != null && mounted) AppSnackbar.showError(context, motivo);
   }
 
   // ── FAB: recenter ────────────────────────────────────────────────────────

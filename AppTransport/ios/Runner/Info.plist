@@ -74,5 +74,14 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Apps de navegación a las que se traspasa el viaje. iOS exige
+	     declararlas para poder preguntar si están instaladas; sin esto el
+	     botón «Navegar» diría que no tienes Waze aunque lo tengas. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+		<string>waze</string>
+		<string>maps</string>
+	</array>
 </dict>
 </plist>
