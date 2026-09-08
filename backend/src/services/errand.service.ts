@@ -7,9 +7,10 @@ import {
 } from '../types';
 import { DriverStatus, ErrandStatus as ErrandStatusDb } from '@prisma/client';
 import { fichaPorConductor, type DriverCardFields } from '../lib/driver-card';
-import { ERRAND_SERVICE_FEE, COMMISSION_RATE } from '../config/constants';
+import { ERRAND_SERVICE_FEE } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
+import { tasaComision } from './comision.service';
 import { cancelSearchRetry } from './matching.service';
 import { generatePin, assertCustodyPin } from '../lib/custody-pin';
 import { guardaNoTerminal, esEstadoTerminal } from '../lib/estado-terminal';
@@ -240,7 +241,13 @@ export async function updateErrandStatus(
     // Liquidación real del mandado: el serviceFee (menos comisión) alimenta la
     // billetera del mandadero, igual que viajes/pedidos/fletes.
     if (existing.driverId) {
-      const commission = Math.round(existing.serviceFee * COMMISSION_RATE);
+      const tasa = await tasaComision({
+        operatorId: existing.operatorId,
+        driverId: existing.driverId,
+        lat: existing.pickupLat,
+        lng: existing.pickupLng,
+      });
+      const commission = Math.round(existing.serviceFee * tasa);
       recordCompletedTrip(
         {
           tripId: errandId,

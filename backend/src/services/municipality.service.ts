@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { INTERCITY_CITY_COORDS, registerMunicipalityCoords } from '../config/constants';
+import { saneaTasa } from '../lib/comision';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Municipios a los que se puede viajar.
@@ -17,6 +18,8 @@ export interface MunicipalityDTO {
   lng: number;
   /** Zona con la que la marca se presenta ahí, o null para usar solo «ZIPA». */
   zone: string | null;
+  /** Comisión de la plataforma en ese municipio, o null para la global. */
+  commissionRate: number | null;
 }
 
 /**
@@ -46,6 +49,7 @@ async function _cargar(): Promise<Map<string, MunicipalityDTO>> {
         lat: m.lat,
         lng: m.lng,
         zone: m.zone,
+        commissionRate: m.commissionRate,
       },
     ]),
   );
@@ -122,6 +126,8 @@ export async function upsertMunicipality(dto: {
   isActive?: boolean;
   /** Null explícito para quitarla; omitido para dejarla como está. */
   zone?: string | null;
+  /** Comisión de la plaza (0–1). Null para heredar la global. */
+  commissionRate?: number | null;
 }): Promise<MunicipalityDTO> {
   const slug = dto.slug
     .normalize('NFD')
@@ -144,6 +150,7 @@ export async function upsertMunicipality(dto: {
       lng: dto.lng,
       isActive: dto.isActive ?? true,
       zone: dto.zone ?? null,
+      commissionRate: dto.commissionRate ?? null,
     },
     update: {
       name: dto.name.trim(),
@@ -152,6 +159,7 @@ export async function upsertMunicipality(dto: {
       lng: dto.lng,
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       ...(dto.zone !== undefined && { zone: dto.zone }),
+      ...(dto.commissionRate !== undefined && { commissionRate: dto.commissionRate }),
     },
   });
   invalidarCacheMunicipios();
@@ -162,7 +170,30 @@ export async function upsertMunicipality(dto: {
     lat: m.lat,
     lng: m.lng,
     zone: m.zone,
+    commissionRate: m.commissionRate,
   };
+}
+
+/**
+ * Fija (o quita) la comisión de una plaza.
+ *
+ * Es el precio de entrada de una ciudad nueva: se abre con una comisión más
+ * baja que la de la plaza consolidada y se sube cuando hay masa crítica. Solo
+ * afecta a lo que se liquide DESPUÉS — lo ya cerrado guardó su comisión.
+ */
+export async function setMunicipalityCommission(
+  slug: string,
+  valor: unknown,
+): Promise<number | null> {
+  const tasa = saneaTasa(valor);
+  const existe = await prisma.municipality.findUnique({
+    where: { slug },
+    select: { slug: true },
+  });
+  if (!existe) throw new Error('Municipio no encontrado');
+  await prisma.municipality.update({ where: { slug }, data: { commissionRate: tasa } });
+  invalidarCacheMunicipios();
+  return tasa;
 }
 
 // ─── Zona de marca según dónde está el usuario ───────────────────────────────
@@ -207,14 +238,11 @@ function _kmEntre(aLat: number, aLng: number, bLat: number, bLng: number): numbe
  * funciona igual sin `GOOGLE_MAPS_API_KEY` y sin gastar una llamada. Para
  * decidir cómo se llama la app en tu ciudad no hace falta más precisión.
  */
-export async function zonaDeCoordenadas(lat: number, lng: number): Promise<ZonaDeMarca> {
-  const sinZona: ZonaDeMarca = {
-    municipio: null,
-    departamento: null,
-    zona: null,
-    etiqueta: MARCA,
-  };
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return sinZona;
+export async function municipioDeCoordenadas(
+  lat: number,
+  lng: number,
+): Promise<MunicipalityDTO | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
   let mejor: MunicipalityDTO | null = null;
   let mejorKm = Infinity;
@@ -225,13 +253,19 @@ export async function zonaDeCoordenadas(lat: number, lng: number): Promise<ZonaD
       mejor = m;
     }
   }
-  if (!mejor || mejorKm > ZONA_MAX_KM) return sinZona;
+  return mejor && mejorKm <= ZONA_MAX_KM ? mejor : null;
+}
 
+export async function zonaDeCoordenadas(lat: number, lng: number): Promise<ZonaDeMarca> {
+  const m = await municipioDeCoordenadas(lat, lng);
+  if (!m) {
+    return { municipio: null, departamento: null, zona: null, etiqueta: MARCA };
+  }
   return {
-    municipio: mejor.name,
-    departamento: mejor.department,
-    zona: mejor.zone,
-    etiqueta: etiquetaDeZona(mejor.zone),
+    municipio: m.name,
+    departamento: m.department,
+    zona: m.zone,
+    etiqueta: etiquetaDeZona(m.zone),
   };
 }
 

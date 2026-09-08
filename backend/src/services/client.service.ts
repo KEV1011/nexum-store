@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, JWT_EXPIRES_IN, COMMISSION_RATE } from '../config/constants';
+import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/constants';
 import {
   ClientDTO,
   ClientJwtPayload,
@@ -14,6 +14,7 @@ import {
 import { TripStatus, OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
+import { tasaComision } from './comision.service';
 import { startMatchingCycle, startOrderMatchingCycle, cancelSearchRetry } from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
@@ -811,7 +812,13 @@ export async function updateOrderStatusByDriver(
   }
 
   if (status === 'delivered') {
-    const commission = Math.round(updated.deliveryFee * COMMISSION_RATE);
+    const tasa = await tasaComision({
+      operatorId: updated.operatorId,
+      driverId: updated.driverId,
+      lat: updated.deliveryLat,
+      lng: updated.deliveryLng,
+    });
+    const commission = Math.round(updated.deliveryFee * tasa);
     recordCompletedTrip(
       {
         tripId: orderId,
@@ -987,7 +994,7 @@ export async function updateClientTripStatus(
       select: {
         distanceKm: true, etaMinutes: true, driverId: true, originAddress: true,
         destAddress: true, finalFare: true, serviceType: true, deliveryPin: true,
-        surgeMultiplier: true,
+        surgeMultiplier: true, operatorId: true, originLat: true, originLng: true,
       },
     });
     // Envío = mercancía que cambia de manos. Sin el PIN de quien recibe no se
@@ -1001,11 +1008,22 @@ export async function updateClientTripStatus(
     // Se cobra con la MISMA tabla con la que se cotizó, incluido el
     // multiplicador que se le mostró al pasajero. Antes aquí estaba la fórmula
     // genérica: un taxi se cotizaba por decreto y se cobraba por otra cosa.
+    // La comisión ya no es una constante: la flota puede tener la suya
+    // negociada y la ciudad la de su plaza. Se resuelve AQUÍ, al liquidar, y lo
+    // que se guarde abajo es la foto de este momento — renegociar mañana no
+    // puede cambiar lo que se pagó hoy.
+    const tasa = await tasaComision({
+      operatorId: trip?.operatorId,
+      driverId: trip?.driverId,
+      lat: trip?.originLat,
+      lng: trip?.originLng,
+    });
     const { grossFare, commission, netEarning } = liquidarViaje(
       trip?.serviceType,
       distanceKm,
       minutes,
       trip?.surgeMultiplier ?? 1,
+      tasa,
     );
 
     // Cierre ATÓMICO. La guarda va en el `where`, no en un `if` previo: entre

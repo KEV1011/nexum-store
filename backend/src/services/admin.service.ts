@@ -11,6 +11,7 @@ import {
   type Emparejamiento,
   type Retencion,
 } from '../lib/metricas-negocio';
+import { saneaTasa } from '../lib/comision';
 import { cancelOrderByAdmin } from './client.service';
 import { cancelErrandByAdmin } from './errand.service';
 
@@ -293,6 +294,24 @@ export async function getMetricasNegocio(dias = 30): Promise<MetricasNegocio> {
     retencion: retencion(Number(fila?.base ?? 0), Number(fila?.volvieron ?? 0)),
     pasajerosActivos: activos.length,
   };
+}
+
+/**
+ * Fija (o quita) la comisión negociada con una flota.
+ *
+ * Solo afecta a lo que se liquide DESPUÉS: los servicios ya cerrados guardan su
+ * comisión y su neto, y no se recalculan. Renegociar no puede reescribir lo que
+ * ya se le pagó a un conductor.
+ */
+export async function setOperatorCommission(
+  id: string,
+  valor: unknown,
+): Promise<number | null> {
+  const tasa = saneaTasa(valor);
+  const op = await prisma.operator.findUnique({ where: { id }, select: { id: true } });
+  if (!op) throw new Error('Empresa no encontrada');
+  await prisma.operator.update({ where: { id }, data: { commissionRate: tasa } });
+  return tasa;
 }
 
 // ─── Conductores ──────────────────────────────────────────────────────────────
@@ -624,6 +643,8 @@ export interface AdminOperatorRow {
   pendingDocs: number;
   /** Habilitación aprobada y vigente: lo que legalmente sostiene el intermunicipal. */
   habilitacionOk: boolean;
+  /** Comisión negociada con esta flota (0–1), o null si paga la de su ciudad. */
+  commissionRate: number | null;
   createdAt: string;
 }
 
@@ -647,6 +668,7 @@ export async function listOperatorsForAdmin(status?: OperatorStatus): Promise<Ad
     isVerified: o.isVerified,
     city: o.city,
     contactPhone: o.contactPhone,
+    commissionRate: o.commissionRate,
     vehicles: o._count.vehicles,
     drivers: o._count.drivers,
     pendingDocs: o.documents.filter((d) => d.status === 'PENDING').length,
