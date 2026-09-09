@@ -33,10 +33,14 @@ import {
   fichaFromDriver, fichaPorConductor, fichasPorConductores,
   type DriverCardFields,
 } from '../lib/driver-card';
-import { sendPushToClient } from './push.service';
+import { sendPushToClient, sendPushToDriver } from './push.service';
 import { plazaDeCoordenadas } from './municipality.service';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
+import {
+  avisoDeEstado, avisoCancelacionAlConductor,
+  type EstadoViaje, type DatosDelViaje,
+} from '../lib/avisos-viaje';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -1167,6 +1171,11 @@ export async function updateClientTripStatus(
 
     const dto = _toTripDTO(updated, updated.passengerId ?? '');
     _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+    _avisarPasajero(updated.passengerId, 'completed', {
+      esEnvio: updated.serviceType === 'ENVIOS',
+      finalFare: updated.finalFare,
+      destino: updated.destAddress,
+    }, tripId);
     return dto;
   }
 
@@ -1181,10 +1190,39 @@ export async function updateClientTripStatus(
   if (!updated) return null;
   const dto = _toTripDTO(updated, updated.passengerId ?? '');
   // Si no cambió nada, tampoco se avisa: sería repetir el último estado.
+  // El push cuelga de la MISMA guarda, y por el mismo motivo: un `arrived` que
+  // llega dos veces sonaría dos veces con el carro esperando una sola.
   if (avance.count > 0) {
     _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+    _avisarPasajero(updated.passengerId, status, {
+      esEnvio: updated.serviceType === 'ENVIOS',
+      destino: updated.destAddress,
+    }, tripId);
   }
   return dto;
+}
+
+/**
+ * Push al pasajero por un cambio de estado de su viaje.
+ *
+ * `avisoDeEstado` decide si ese estado merece notificación; los que no, salen
+ * en silencio. Best-effort y sin `await`: un fallo de Firebase no puede frenar
+ * la transición del viaje, que es lo que de verdad importa.
+ */
+function _avisarPasajero(
+  passengerId: string | null,
+  estado: ClientTripStatus,
+  datos: DatosDelViaje,
+  tripId: string,
+): void {
+  if (!passengerId) return;
+  const aviso = avisoDeEstado(estado as EstadoViaje, datos);
+  if (!aviso) return;
+  void sendPushToClient(passengerId, {
+    title: aviso.title,
+    body: aviso.body,
+    data: { type: aviso.type, tripId },
+  });
 }
 
 export async function cancelClientTrip(clientId: string, tripId: string): Promise<boolean> {
@@ -1203,6 +1241,16 @@ export async function cancelClientTrip(clientId: string, tripId: string): Promis
   // quede con un viaje colgado en ON_TRIP.
   if (trip.driverId) {
     _sendToDriver?.(trip.driverId, { type: 'trip_cancelled', tripId });
+    // Y push, no solo WebSocket: el conductor va CONDUCIENDO hacia la recogida
+    // con el teléfono en el soporte y la pantalla apagada. Sin esto sigue el
+    // camino hasta llegar y encontrarse con que no hay nadie — gasolina y
+    // tiempo suyos. Los mandados y los pedidos ya avisaban así; el viaje no.
+    const aviso = avisoCancelacionAlConductor(trip.originAddress);
+    void sendPushToDriver(trip.driverId, {
+      title: aviso.title,
+      body: aviso.body,
+      data: { type: aviso.type, tripId },
+    });
     await liberarConductorSiNoTieneMas(trip.driverId);
   }
 

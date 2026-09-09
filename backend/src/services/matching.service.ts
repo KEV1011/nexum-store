@@ -11,6 +11,7 @@ import { onDriverHeartbeat } from './safety-alerts.service';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { tarifaDe } from '../lib/tarifa-categoria';
+import { avisoSinConductor } from '../lib/avisos-viaje';
 import { plazaDeCoordenadas } from './municipality.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -550,7 +551,7 @@ function _retryOrSurrenderTrip(
     () => { void startMatchingCycle(tripId, originLat, originLng, attempt + 1); },
     true, // ventana corta
   );
-  if (!sigue) _onNoDrivers?.(tripId);
+  if (!sigue) void _notifyTripNoDriver(tripId);
 }
 
 async function _offerToCandidate(
@@ -771,7 +772,7 @@ export async function startErrandMatchingCycle(
 export function rendirBusqueda(kind: 'trip' | 'errand' | 'order', id: string): void {
   cancelSearchRetry(`${kind}:${id}`);
   switch (kind) {
-    case 'trip': _onNoDrivers?.(id); break;
+    case 'trip': void _notifyTripNoDriver(id); break;
     case 'errand': void _notifyErrandNoDriver(id); break;
     case 'order': void _notifyOrderNoDriver(id); break;
   }
@@ -788,6 +789,31 @@ function _retryOrSurrenderErrand(
     void startErrandMatchingCycle(errandId, pickupLat, pickupLng, attempt + 1);
   });
   if (!sigue) void _notifyErrandNoDriver(errandId);
+}
+
+/**
+ * Se acabaron los candidatos para un viaje urbano.
+ *
+ * Además del aviso por WebSocket que ya existía —que solo ve quien tiene la app
+ * abierta—, va un push: el pasajero pidió un taxi, bloqueó el teléfono y se
+ * quedó esperando en la calle. Sin esto se entera cuando vuelve a abrir la app
+ * y encuentra el viaje cancelado sin explicación, y lo primero que piensa es
+ * que le cobraron.
+ */
+async function _notifyTripNoDriver(tripId: string): Promise<void> {
+  _onNoDrivers?.(tripId);
+  const t = await prisma.trip.findUnique({
+    where: { id: tripId },
+    select: { passengerId: true, driverId: true },
+  });
+  // Si alguien aceptó entre medias, no hay nada que lamentar.
+  if (!t || t.driverId != null || !t.passengerId) return;
+  const aviso = avisoSinConductor();
+  void sendPushToClient(t.passengerId, {
+    title: aviso.title,
+    body: aviso.body,
+    data: { type: aviso.type, tripId },
+  });
 }
 
 async function _notifyErrandNoDriver(errandId: string): Promise<void> {
