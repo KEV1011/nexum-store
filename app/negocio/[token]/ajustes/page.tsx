@@ -4,6 +4,7 @@ import { use, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { PortalTabs } from '../PortalTabs'
 import { LocationPicker } from './LocationPicker'
+import { HorarioEditor, type Franja } from './HorarioEditor'
 import {
   ArrowLeft,
   Loader2,
@@ -12,6 +13,8 @@ import {
   AlertCircle,
   BarChart3,
   Power,
+  PauseCircle,
+  Star,
 } from 'lucide-react'
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -31,8 +34,28 @@ interface Settings {
   etaMinutes: number
   promoMinAmount?: number | null
   promoDiscount?: number | null
+  promoFrom?: string | null
+  promoUntil?: string | null
   acceptingOrders: boolean
   openingHours: string
+  hours: Franja[]
+  pausedUntil?: string | null
+  pauseReason?: string | null
+  /** Lo que ve el cliente AHORA. Lo decide el backend, no esta pantalla. */
+  isOpen: boolean
+  cerradoMotivo?: string | null
+}
+
+/** Lo que se manda al guardar; hay campos que no existen en la vista. */
+interface SettingsPatch extends Partial<Settings> {
+  pauseMinutes?: number | null
+}
+
+interface Reviews {
+  rating: number | null
+  ratingCount: number
+  distribucion: Record<string, number>
+  comentarios: Array<{ estrellas: number; comentario: string; fecha: string }>
 }
 
 interface Stats {
@@ -44,6 +67,11 @@ interface Stats {
   inProgressCount: number
   revenue: number
   topProducts: Array<{ name: string; quantity: number; revenue: number }>
+}
+
+/** El ISO que devuelve el backend, en el «AAAA-MM-DD» que quiere un <input date>. */
+function soloFecha(iso?: string | null): string {
+  return iso ? iso.slice(0, 10) : ''
 }
 
 function formatCOP(n: number) {
@@ -61,20 +89,27 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
 
   const [settings, setSettings] = useState<Settings | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
+  const [reviews, setReviews] = useState<Reviews | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   // Punto del negocio: viene de /info, no de /settings (son datos distintos).
   const [geo, setGeo] = useState<{ lat?: number; lng?: number } | null>(null)
+  // El motivo de la pausa se escribe ANTES de elegir cuánto dura, así que no
+  // puede vivir en `settings`: todavía no se ha guardado nada.
+  const [pausaMotivo, setPausaMotivo] = useState('')
 
   const load = useCallback(async () => {
     try {
-      const [sRes, stRes, iRes] = await Promise.all([
+      const [sRes, stRes, iRes, rRes] = await Promise.all([
         fetch(`${BACKEND_URL}/business/${token}/settings`, { cache: 'no-store' }),
         fetch(`${BACKEND_URL}/business/${token}/stats`, { cache: 'no-store' }),
         fetch(`${BACKEND_URL}/business/${token}/info`, { cache: 'no-store' }),
+        fetch(`${BACKEND_URL}/business/${token}/reviews`, { cache: 'no-store' }),
       ])
+      const rJson = (await rRes.json().catch(() => ({}))) as { data?: Reviews }
+      if (rJson.data) setReviews(rJson.data)
       const iJson = (await iRes.json().catch(() => ({}))) as {
         data?: { lat?: number; lng?: number }
       }
@@ -99,7 +134,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
     void load()
   }, [load])
 
-  const patch = async (body: Partial<Settings>) => {
+  const patch = async (body: SettingsPatch) => {
     setSaving(true)
     setSaved(false)
     try {
@@ -158,20 +193,25 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
           </div>
         ) : settings ? (
           <>
-            {/* Abierto / Cerrado */}
+            {/* Estado real: lo que el cliente ve de tu local ahora mismo.
+                No es el interruptor: puedes tenerlo encendido y estar cerrado
+                por horario o por una pausa, y hasta ahora no había forma de
+                enterarse sin abrir la app de cliente. */}
             <section className={`rounded-2xl border p-5 flex items-center justify-between ${
-              settings.acceptingOrders ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-100 border-slate-200'
+              settings.isOpen ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-100 border-slate-200'
             }`}>
               <div className="flex items-center gap-3">
-                <Power className={`w-6 h-6 ${settings.acceptingOrders ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <Power className={`w-6 h-6 ${settings.isOpen ? 'text-emerald-600' : 'text-slate-400'}`} />
                 <div>
                   <p className="font-bold text-slate-900 text-sm">
-                    {settings.acceptingOrders ? 'Abierto · recibiendo pedidos' : 'Cerrado · en pausa'}
+                    {settings.isOpen ? 'Abierto · recibiendo pedidos' : 'Cerrado · no entran pedidos'}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {settings.acceptingOrders
+                    {settings.isOpen
                       ? 'Los clientes pueden pedirte ahora.'
-                      : 'Apareces como cerrado; no entran pedidos.'}
+                      : settings.cerradoMotivo
+                        ? `Tus clientes ven: «${settings.cerradoMotivo}».`
+                        : 'Apareces como cerrado en la app.'}
                   </p>
                 </div>
               </div>
@@ -184,6 +224,62 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
               >
                 {settings.acceptingOrders ? 'Cerrar' : 'Abrir'}
               </button>
+            </section>
+
+            {/* Pausa temporal. Es distinta de cerrar: se levanta SOLA. La
+                cocina copada quiere parar veinte minutos, y si eso exige
+                acordarse de volver a encender, se queda cerrada media tarde. */}
+            <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-3">
+              <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                <PauseCircle className="w-4 h-4 text-amber-600" /> Pausa rápida
+              </h2>
+              {settings.pausedUntil ? (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
+                  <p className="text-xs text-amber-900">
+                    En pausa hasta las{' '}
+                    <strong>
+                      {new Date(settings.pausedUntil).toLocaleTimeString('es-CO', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </strong>
+                    {settings.pauseReason ? ` · ${settings.pauseReason}` : ''}. Se reanuda sola.
+                  </p>
+                  <button
+                    onClick={() => void patch({ pauseMinutes: 0 })}
+                    disabled={saving}
+                    className="mt-2 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Reanudar ahora
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500">
+                    ¿Cocina copada o se acabó un ingrediente? Deja de recibir pedidos un rato
+                    y vuelve a abrir solo, sin que se te olvide.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[15, 30, 60, 120].map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => void patch({ pauseMinutes: m, pauseReason: pausaMotivo.trim() || null })}
+                        disabled={saving}
+                        className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        {m < 60 ? `${m} min` : `${m / 60} h`}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    className={INPUT}
+                    value={pausaMotivo}
+                    onChange={(e) => setPausaMotivo(e.target.value)}
+                    placeholder="Motivo (opcional): se lo mostramos al cliente"
+                    maxLength={60}
+                  />
+                </>
+              )}
             </section>
 
             {/* Estadísticas de hoy */}
@@ -211,6 +307,67 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                       ))}
                     </div>
                   </div>
+                )}
+              </section>
+            )}
+
+            {/* Calificaciones. Se le enseñan al dueño porque una nota sin los
+                comentarios es un castigo sin explicación: sabe que bajó y no
+                sabe si fue la comida, la demora o una noche mala. */}
+            {reviews && (
+              <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-3">
+                <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-500" /> Lo que dicen tus clientes
+                </h2>
+                {reviews.ratingCount === 0 ? (
+                  <p className="text-xs text-slate-500">
+                    Todavía nadie te ha calificado. Mientras tanto tu local aparece como
+                    <strong> «Nuevo»</strong> en la app — no con una nota inventada.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <div className="text-center shrink-0">
+                        <p className="text-3xl font-bold text-slate-900 leading-none">
+                          {reviews.rating?.toFixed(1)}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {reviews.ratingCount} {reviews.ratingCount === 1 ? 'calificación' : 'calificaciones'}
+                        </p>
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        {[5, 4, 3, 2, 1].map((n) => {
+                          const c = reviews.distribucion[String(n)] ?? 0
+                          const pct = reviews.ratingCount ? (c / reviews.ratingCount) * 100 : 0
+                          return (
+                            <div key={n} className="flex items-center gap-2">
+                              <span className="text-[11px] text-slate-500 w-3">{n}</span>
+                              <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full bg-amber-400" style={{ width: `${pct}%` }} />
+                              </div>
+                              <span className="text-[11px] text-slate-400 w-6 text-right">{c}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {reviews.comentarios.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        {reviews.comentarios.slice(0, 5).map((c, i) => (
+                          <div key={i} className="rounded-xl bg-slate-50 p-3">
+                            <p className="text-[11px] text-amber-600 font-bold">
+                              {'★'.repeat(c.estrellas)}
+                              <span className="text-slate-300">{'★'.repeat(5 - c.estrellas)}</span>
+                              <span className="text-slate-400 font-normal ml-2">
+                                {new Date(c.fecha).toLocaleDateString('es-CO')}
+                              </span>
+                            </p>
+                            <p className="text-xs text-slate-700 mt-1">{c.comentario}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             )}
@@ -297,6 +454,32 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                     />
                   </div>
                 </div>
+                {/* Vigencia: lo que hace posible un «solo este fin de semana».
+                    Sin fechas la promoción sigue puesta hasta que alguien se
+                    acuerde de quitarla, y nadie se acuerda. */}
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-xs font-medium text-amber-900 mb-1">Desde (opcional)</label>
+                    <input
+                      type="date"
+                      className={INPUT}
+                      value={soloFecha(settings.promoFrom)}
+                      onChange={(e) => set({ promoFrom: e.target.value || null })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-amber-900 mb-1">Hasta (opcional)</label>
+                    <input
+                      type="date"
+                      className={INPUT}
+                      value={soloFecha(settings.promoUntil)}
+                      onChange={(e) => set({ promoUntil: e.target.value || null })}
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-amber-800 mt-1.5">
+                  Sin fechas, la promoción está siempre activa. Con fecha de fin, se apaga sola.
+                </p>
               </div>
               <LocationPicker
                 token={token}
@@ -304,10 +487,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                 lng={geo?.lng}
                 onSaved={(la, ln) => setGeo({ lat: la, lng: ln })}
               />
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Horario (informativo)</label>
-                <input className={INPUT} value={settings.openingHours} onChange={(e) => set({ openingHours: e.target.value })} placeholder="Ej: Lun-Sáb 8am-9pm" maxLength={80} />
-              </div>
+              <HorarioEditor franjas={settings.hours} onChange={(hours) => set({ hours })} />
               <button
                 onClick={() => void patch({
                   name: settings.name,
@@ -316,7 +496,15 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                   whatsapp: settings.whatsapp,
                   deliveryFee: settings.deliveryFee,
                   etaMinutes: settings.etaMinutes,
-                  openingHours: settings.openingHours,
+                  hours: settings.hours,
+                  // La promoción se quedaba fuera del guardado: el dueño
+                  // escribía los dos números, pulsaba «Guardar» y no pasaba
+                  // nada. Se manda SIEMPRE (aunque esté vacía) para que
+                  // borrarla también funcione.
+                  promoDiscount: settings.promoDiscount ?? null,
+                  promoMinAmount: settings.promoMinAmount ?? null,
+                  promoFrom: settings.promoFrom ?? null,
+                  promoUntil: settings.promoUntil ?? null,
                 })}
                 disabled={saving}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-800 transition-colors disabled:opacity-50"

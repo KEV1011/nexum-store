@@ -36,6 +36,7 @@ import {
 import { sendPushToClient } from './push.service';
 import { plazaDeCoordenadas } from './municipality.service';
 import { promoDeTienda } from '../lib/vitrina';
+import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -172,9 +173,17 @@ export async function placeClientOrder(
 ): Promise<ClientOrderWithPinDTO> {
   const { getBusinessPublicById } = await import('./business.service');
   const biz = await getBusinessPublicById(dto.businessId);
-  // El negocio debe estar recibiendo pedidos (vitrina abierta).
+  // El negocio debe estar recibiendo pedidos. `isOpen` sale de la MISMA
+  // función que pinta la vitrina (`tiendaRecibiendo`: interruptor + horario +
+  // pausa), así que no puede pasar que la pantalla diga «cerrado» y el pedido
+  // entre igual. Se devuelve el motivo concreto —«Abre mañana a las 08:00»—
+  // en vez de un «no puede ser» que no dice si volver en una hora o mañana.
   if (!biz.isOpen) {
-    throw new Error('El negocio no está recibiendo pedidos en este momento.');
+    throw new Error(
+      biz.cerradoMotivo
+        ? `${biz.name} no está recibiendo pedidos: ${biz.cerradoMotivo.toLowerCase()}.`
+        : 'El negocio no está recibiendo pedidos en este momento.',
+    );
   }
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
@@ -711,6 +720,73 @@ export async function cancelClientOrder(clientId: string, orderId: string): Prom
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
   for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
   return true;
+}
+
+/**
+ * El cliente califica un pedido entregado, y esa nota llega al negocio.
+ *
+ * Hasta ahora la app tenía la hoja de estrellas y `rateOrder` solo la guardaba
+ * en memoria: se puntuaba, se veía bonito y la nota moría al cerrar la app. El
+ * negocio nunca se enteraba y `Business.rating` se quedaba en el 5,0 de
+ * fábrica que nadie le había dado.
+ *
+ * Reglas:
+ * - Solo el dueño del pedido, y solo si está ENTREGADO (calificar algo que aún
+ *   no llegó no es una opinión sobre nada).
+ * - **Se puede corregir** mientras no pase de una vez: si el cliente se
+ *   equivoca de estrella, obligarlo a vivir con ella no mejora el dato.
+ * - El promedio del negocio se RECALCULA de las filas, nunca se suma encima.
+ */
+export async function rateClientOrder(
+  clientId: string,
+  orderId: string,
+  estrellas: unknown,
+  comentario: unknown,
+): Promise<{ rating: number; ratingComment: string | null }> {
+  const stars = saneaEstrellas(estrellas);
+  const comment = saneaComentario(comentario);
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, userId: clientId },
+    select: { id: true, status: true, businessId: true },
+  });
+  if (!order) throw new Error('El pedido no existe.');
+  if (order.status !== 'DELIVERED') {
+    throw new Error('Solo puedes calificar un pedido que ya te entregaron.');
+  }
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { rating: stars, ratingComment: comment },
+  });
+
+  await recalcularReputacionNegocio(order.businessId);
+  return { rating: stars, ratingComment: comment };
+}
+
+/**
+ * Vuelve a calcular la nota del negocio a partir de sus pedidos calificados.
+ *
+ * Best-effort a propósito: si esto falla, la calificación del cliente YA quedó
+ * guardada en su pedido y el promedio se corrige en la siguiente. Perder la
+ * nota por un fallo al promediar sería tirar el dato bueno por el derivado.
+ */
+export async function recalcularReputacionNegocio(businessId: string): Promise<void> {
+  try {
+    const filas = await prisma.order.findMany({
+      where: { businessId, rating: { not: null } },
+      select: { rating: true },
+    });
+    const { rating, ratingCount } = promedioReputacion(
+      filas.map((f) => f.rating as number),
+    );
+    await prisma.business.update({
+      where: { id: businessId },
+      data: { rating, ratingCount },
+    });
+  } catch (err) {
+    console.error('[reputacion] no se pudo recalcular la nota del negocio:', err);
+  }
 }
 
 /**

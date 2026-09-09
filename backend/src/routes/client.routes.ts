@@ -12,6 +12,7 @@ import {
   getClientOrders,
   getClientOrderById,
   cancelClientOrder,
+  rateClientOrder,
   requestClientTrip,
   getActiveClientTrip,
   getClientTripHistory,
@@ -364,6 +365,23 @@ router.post('/orders/:id/cancel', clientAuthMiddleware, async (req, res) => {
     return;
   }
   res.json({ success: true });
+});
+
+// POST /client/orders/:id/rate { stars, comment } — califica un pedido entregado.
+//
+// La hoja de estrellas ya existía en la app; lo que no existía era esta ruta,
+// así que la nota se quedaba en el teléfono y el negocio nunca la veía.
+router.post('/orders/:id/rate', clientAuthMiddleware, async (req, res) => {
+  const { stars, comment } = req.body as { stars?: unknown; comment?: unknown };
+  try {
+    const data = await rateClientOrder(req.clientId!, req.params['id']!, stars, comment);
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo calificar el pedido',
+    });
+  }
 });
 
 // POST /client/orders/:id/tip { amount } — propina al repartidor (pago Wompi).

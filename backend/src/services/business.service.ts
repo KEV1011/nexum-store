@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Prisma } from '@prisma/client';
 import {
   Business,
   RegisterBusinessDTO,
@@ -17,6 +18,11 @@ import { maskPhone } from './safe-contact.service';
 import { normalizeColombianPhone } from './auth.service';
 import { geocodeAddress } from './geo.service';
 import { porcentajeDescuento, rankingMasPedido, saneaPrecioAntes, saneaPromoTienda } from '../lib/vitrina';
+import { promedioReputacion } from '../lib/reputacion';
+import {
+  saneaHorario, estaDentroDelHorario, proximaApertura, horarioEnTexto,
+  saneaPausa, enPausa, promoVigente, saneaVigencia, type Franja,
+} from '../lib/horario-tienda';
 
 // ─── Enum mappings ─────────────────────────────────────────────────────────────
 
@@ -251,6 +257,68 @@ function _productToDTO(p: {
       })),
     })),
   };
+}
+
+/**
+ * ¿La tienda está recibiendo pedidos AHORA?
+ *
+ * Tres condiciones, y las tres tienen que darse. Vive en una sola función
+ * porque la usan la vitrina, el detalle y —lo que importa— la creación del
+ * pedido: si la pantalla y la caja lo decidieran por separado, el cliente
+ * vería «cerrado» y aun así podría pedir, o al revés.
+ */
+export function tiendaRecibiendo(b: {
+  acceptingOrders: boolean;
+  hours?: unknown;
+  pausedUntil?: Date | null;
+}, ahora = new Date()): { abierta: boolean; motivo: string | null } {
+  if (!b.acceptingOrders) return { abierta: false, motivo: 'No está recibiendo pedidos' };
+  if (enPausa(b.pausedUntil, ahora)) {
+    return { abierta: false, motivo: 'Pausado temporalmente' };
+  }
+  const franjas = _franjas(b.hours);
+  if (!estaDentroDelHorario(franjas, ahora)) {
+    return { abierta: false, motivo: proximaApertura(franjas, ahora) ?? 'Cerrado ahora' };
+  }
+  return { abierta: true, motivo: null };
+}
+
+/**
+ * Lo que la vitrina dice del estado de la tienda: si recibe, por qué no, su
+ * horario y su promoción — con la promoción CALLADA si no está vigente,
+ * porque anunciar una que ya venció es prometer lo que la caja no aplica.
+ */
+function _estadoVitrina(b: {
+  acceptingOrders: boolean; hours: unknown; pausedUntil: Date | null;
+  pauseReason: string | null; openingHours: string | null;
+  promoMinAmount: number | null; promoDiscount: number | null;
+  promoFrom: Date | null; promoUntil: Date | null;
+}) {
+  const estado = tiendaRecibiendo(b);
+  const franjas = _franjas(b.hours);
+  const vigente = promoVigente(b.promoFrom, b.promoUntil);
+  return {
+    isOpen: estado.abierta,
+    cerradoMotivo: estado.abierta ? undefined : (b.pauseReason || estado.motivo || undefined),
+    // El horario en texto sale del estructurado si lo hay; si no, del campo
+    // libre de siempre, que es lo único que tienen los negocios ya registrados.
+    openingHours: horarioEnTexto(franjas) || b.openingHours || undefined,
+    hours: franjas.length ? franjas : undefined,
+    promoMinAmount: vigente ? (b.promoMinAmount ?? undefined) : undefined,
+    promoDiscount: vigente ? (b.promoDiscount ?? undefined) : undefined,
+  };
+}
+
+/** El horario guardado como JSON, tolerando basura sin reventar. */
+function _franjas(hours: unknown): Franja[] {
+  if (!Array.isArray(hours)) return [];
+  try {
+    return saneaHorario(hours);
+  } catch {
+    // Un horario corrupto en la base NO puede cerrar una tienda: se ignora y
+    // la tienda queda como estaba antes de tener horario.
+    return [];
+  }
 }
 
 /**
@@ -638,6 +706,20 @@ export interface BusinessSettingsView {
   imageUrl?: string;
   promoMinAmount?: number;
   promoDiscount?: number;
+  promoFrom?: string;
+  promoUntil?: string;
+  /** Horario estructurado. [] = sin horario declarado (siempre abierta). */
+  hours: Franja[];
+  /** Hasta cuándo está pausada, si lo está. */
+  pausedUntil?: string;
+  pauseReason?: string;
+  /**
+   * Si está recibiendo pedidos AHORA y por qué no. Es lo mismo que ve el
+   * cliente: el dueño tiene que poder comprobar en su portal lo que la app
+   * está enseñando de su tienda, sin abrir la app.
+   */
+  isOpen: boolean;
+  cerradoMotivo?: string;
 }
 
 function _settingsView(b: {
@@ -645,7 +727,14 @@ function _settingsView(b: {
   deliveryFee: number; etaMinutes: number; acceptingOrders: boolean;
   openingHours: string | null; imageUrl: string | null;
   promoMinAmount?: number | null; promoDiscount?: number | null;
+  promoFrom?: Date | null; promoUntil?: Date | null;
+  hours?: unknown; pausedUntil?: Date | null; pauseReason?: string | null;
 }): BusinessSettingsView {
+  const estado = tiendaRecibiendo({
+    acceptingOrders: b.acceptingOrders,
+    hours: b.hours,
+    pausedUntil: b.pausedUntil ?? null,
+  });
   return {
     name: b.name,
     address: b.address,
@@ -658,6 +747,14 @@ function _settingsView(b: {
     imageUrl: b.imageUrl ?? undefined,
     promoMinAmount: b.promoMinAmount ?? undefined,
     promoDiscount: b.promoDiscount ?? undefined,
+    promoFrom: b.promoFrom?.toISOString(),
+    promoUntil: b.promoUntil?.toISOString(),
+    hours: _franjas(b.hours),
+    // Una pausa vencida no se enseña: sería un aviso de algo que ya pasó.
+    pausedUntil: enPausa(b.pausedUntil ?? null) ? b.pausedUntil!.toISOString() : undefined,
+    pauseReason: enPausa(b.pausedUntil ?? null) ? (b.pauseReason ?? undefined) : undefined,
+    isOpen: estado.abierta,
+    cerradoMotivo: estado.abierta ? undefined : (estado.motivo ?? undefined),
   };
 }
 
@@ -686,6 +783,23 @@ export async function updateBusinessSettings(
         : {}),
       ...(dto.acceptingOrders !== undefined && { acceptingOrders: dto.acceptingOrders }),
       ...(dto.openingHours !== undefined && { openingHours: dto.openingHours.trim() || null }),
+      // El horario estructurado. `saneaHorario` lanza con el día y el motivo:
+      // guardar una franja rota dejaría la tienda cerrada sin que el dueño
+      // pueda saber por qué.
+      ...(dto.hours !== undefined && {
+        hours: saneaHorario(dto.hours) as unknown as Prisma.InputJsonValue,
+      }),
+      // La pausa se guarda como el INSTANTE en que termina, no como minutos:
+      // así se levanta sola sin que nadie tenga que acordarse de nada.
+      ...(dto.pauseMinutes !== undefined
+        ? (() => {
+            const hasta = saneaPausa(dto.pauseMinutes);
+            return {
+              pausedUntil: hasta,
+              pauseReason: hasta ? (dto.pauseReason?.trim() || null) : null,
+            };
+          })()
+        : {}),
       // Las dos juntas o ninguna: `saneaPromoTienda` lanza si llega media.
       // Se renombran a mano a propósito: un spread NO pasa por el control de
       // propiedades sobrantes de TypeScript, así que las claves en español se
@@ -693,12 +807,70 @@ export async function updateBusinessSettings(
       ...(dto.promoMinAmount !== undefined || dto.promoDiscount !== undefined
         ? (() => {
             const p = saneaPromoTienda(dto.promoMinAmount, dto.promoDiscount);
-            return { promoMinAmount: p.minimo, promoDiscount: p.descuento };
+            const v = saneaVigencia(dto.promoFrom, dto.promoUntil);
+            // Al quitar la promoción se van también sus fechas: dejarlas sería
+            // dejar una vigencia huérfana que reviviría la siguiente promoción
+            // ya vencida.
+            const sinPromo = p.minimo === null;
+            return {
+              promoMinAmount: p.minimo,
+              promoDiscount: p.descuento,
+              promoFrom: sinPromo ? null : v.desde,
+              promoUntil: sinPromo ? null : v.hasta,
+            };
           })()
         : {}),
     },
   });
   return _settingsView(b);
+}
+
+// ─── Calificaciones que recibe el negocio ─────────────────────────────────────
+
+export interface BusinessReviewsView {
+  /** Promedio, o null si todavía nadie lo ha calificado. */
+  rating: number | null;
+  ratingCount: number;
+  /** Cuántos pusieron 5, 4, 3… para ver de dónde sale el promedio. */
+  distribucion: Record<number, number>;
+  comentarios: Array<{ estrellas: number; comentario: string; fecha: string }>;
+}
+
+/**
+ * Lo que la gente ha dicho de este local.
+ *
+ * Se le enseña al dueño porque una nota sin los comentarios es un castigo sin
+ * explicación: sabe que bajó a 3,8 y no sabe si es por la comida, por la
+ * demora o por un pedido que salió mal una noche.
+ */
+export async function getBusinessReviews(businessId: string): Promise<BusinessReviewsView> {
+  const filas = await prisma.order.findMany({
+    where: { businessId, rating: { not: null } },
+    select: { rating: true, ratingComment: true, updatedAt: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 200,
+  });
+
+  const distribucion: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const f of filas) {
+    const n = f.rating as number;
+    if (n >= 1 && n <= 5) distribucion[n] = (distribucion[n] ?? 0) + 1;
+  }
+
+  const { rating, ratingCount } = promedioReputacion(filas.map((f) => f.rating as number));
+  return {
+    rating,
+    ratingCount,
+    distribucion,
+    comentarios: filas
+      .filter((f) => f.ratingComment)
+      .slice(0, 30)
+      .map((f) => ({
+        estrellas: f.rating as number,
+        comentario: f.ratingComment as string,
+        fecha: f.updatedAt.toISOString(),
+      })),
+  };
 }
 
 // ─── Estadísticas de ventas ───────────────────────────────────────────────────
@@ -775,15 +947,13 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     name: b.name,
     category: (CATEGORY_FROM_PRISMA[b.category] ?? 'other') as BusinessCategory,
     address: b.address,
-    rating: b.rating,
+    rating: b.ratingCount > 0 ? b.rating : null,
+    ratingCount: b.ratingCount,
     etaMinutes: b.etaMinutes,
     deliveryFee: b.deliveryFee,
     // "Abierto" para el cliente = la vitrina está recibiendo pedidos.
-    isOpen: b.acceptingOrders,
+    ..._estadoVitrina(b),
     imageUrl: b.imageUrl ?? undefined,
-    openingHours: b.openingHours ?? undefined,
-    promoMinAmount: b.promoMinAmount ?? undefined,
-    promoDiscount: b.promoDiscount ?? undefined,
     products: b.products.map(_productToDTO),
   }));
 }
@@ -807,14 +977,12 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     name: b.name,
     category: (CATEGORY_FROM_PRISMA[b.category] ?? 'other') as BusinessCategory,
     address: b.address,
-    rating: b.rating,
+    rating: b.ratingCount > 0 ? b.rating : null,
+    ratingCount: b.ratingCount,
     etaMinutes: b.etaMinutes,
     deliveryFee: b.deliveryFee,
-    isOpen: b.acceptingOrders,
+    ..._estadoVitrina(b),
     imageUrl: b.imageUrl ?? undefined,
-    openingHours: b.openingHours ?? undefined,
-    promoMinAmount: b.promoMinAmount ?? undefined,
-    promoDiscount: b.promoDiscount ?? undefined,
     products: await _conMasPedido(b.id, b.products.map(_productToDTO)),
   };
 }

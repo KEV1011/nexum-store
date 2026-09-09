@@ -23,7 +23,10 @@ class BusinessesRealDataSource {
       id: j['id'] as String,
       name: j['name'] as String,
       category: _mapCategory(j['category'] as String),
-      rating: (j['rating'] as num).toDouble(),
+      // Nullable: el backend manda null cuando nadie ha calificado el local.
+      // Con el `as num` de antes, un negocio nuevo reventaba la lista entera.
+      rating: (j['rating'] as num?)?.toDouble(),
+      ratingCount: (j['ratingCount'] as num?)?.toInt() ?? 0,
       etaMinutes: j['etaMinutes'] as int,
       deliveryFee: (j['deliveryFee'] as num).toDouble(),
       promoMinAmount: (j['promoMinAmount'] as num?)?.toInt(),
@@ -32,6 +35,7 @@ class BusinessesRealDataSource {
       isOpen: j['isOpen'] as bool? ?? true,
       imageUrl: j['imageUrl'] as String?,
       openingHours: j['openingHours'] as String?,
+      cerradoMotivo: j['cerradoMotivo'] as String?,
       products: ((j['products'] as List?) ?? [])
           .cast<Map<String, dynamic>>()
           .map(_mapProduct)

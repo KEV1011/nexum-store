@@ -354,7 +354,16 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
   // ── rateOrder ──────────────────────────────────────────────────────────────
 
-  void rateOrder(String id, int stars, {String? comment}) {
+  /// Califica el pedido y **manda la nota al servidor**.
+  ///
+  /// Antes solo tocaba el estado en memoria: el cliente ponía sus estrellas,
+  /// las veía pintadas y la calificación se perdía al cerrar la app. El
+  /// negocio nunca se enteraba de nada.
+  ///
+  /// Devuelve el motivo si el servidor la rechaza, o null si quedó guardada.
+  /// La UI se actualiza igual: la estrella que el cliente acaba de tocar no
+  /// debe parpadear mientras va la petición.
+  Future<String?> rateOrder(String id, int stars, {String? comment}) async {
     _updateOrder(
       id,
       (o) => o.copyWith(
@@ -363,6 +372,17 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
         ratedAt: DateTime.now(),
       ),
     );
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/orders/$id/rate',
+        data: {'stars': stars, if (comment != null) 'comment': comment},
+      );
+      return null;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map && data['error'] is String) return data['error'] as String;
+      return 'No se pudo enviar tu calificación. Revisa tu conexión.';
+    }
   }
 
   /// Solicita una propina para el pedido [id]. Devuelve la URL de checkout de

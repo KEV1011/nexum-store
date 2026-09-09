@@ -582,12 +582,25 @@ export interface BusinessPublicDTO {
   name: string;
   category: BusinessCategory;
   address: string;
-  rating: number;
+  /**
+   * Reputación REAL, o null si nadie la ha calificado todavía.
+   *
+   * Antes era `@default(5.0)` en la base y NUNCA se calculaba: la app enseñaba
+   * un «5.0» que no dio nadie. Null significa «sin calificaciones», y la app
+   * escribe «Nuevo» en vez de inventar una nota.
+   */
+  rating: number | null;
+  /** Sobre cuántas calificaciones. Cero = la nota es null. */
+  ratingCount: number;
   etaMinutes: number;
   deliveryFee: number;
   isOpen: boolean;
+  /** Por qué está cerrada, si lo está: «Abre mañana a las 08:00», «Pausado». */
+  cerradoMotivo?: string;
   imageUrl?: string;
   openingHours?: string;
+  /** Horario estructurado, si el negocio lo declaró. */
+  hours?: Array<{ dia: number; abre: string; cierra: string }>;
   /** Promoción de la tienda. Ausentes = no tiene ninguna que anunciar. */
   promoMinAmount?: number;
   promoDiscount?: number;
@@ -605,8 +618,16 @@ export interface BusinessSettingsDTO {
   /** Promoción de la tienda. Las dos o ninguna; vacías = quitarla. */
   promoMinAmount?: number | string | null;
   promoDiscount?: number | string | null;
+  /** Vigencia de la promoción (ISO o ''). Vacías = siempre vigente. */
+  promoFrom?: string | null;
+  promoUntil?: string | null;
   acceptingOrders?: boolean;
   openingHours?: string;
+  /** Horario estructurado: [{dia,abre,cierra}]. [] = sin horario (siempre abierta). */
+  hours?: unknown;
+  /** Pausa temporal en minutos desde ahora. 0/null = quitarla. */
+  pauseMinutes?: number | string | null;
+  pauseReason?: string | null;
 }
 
 // Estadísticas de ventas del negocio en un rango de fechas.

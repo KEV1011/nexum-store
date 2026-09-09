@@ -358,17 +358,33 @@ class _InfoRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(Icons.star_rounded, color: AppColors.star, size: 16),
-        const SizedBox(width: 2),
-        Text(
-          business.rating.toStringAsFixed(1),
-          style: TextStyle(
-            fontFamily: 'Inter',
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: context.textPrimaryColor,
+        // Sin votos no hay estrella ni número: «Nuevo». La nota de fábrica que
+        // enseñaba un 5,0 a todo el mundo se retiró a propósito.
+        if (business.rating == null)
+          Text(
+            'Nuevo',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: context.textSecondaryColor,
+            ),
+          )
+        else ...[
+          const Icon(Icons.star_rounded, color: AppColors.star, size: 16),
+          const SizedBox(width: 2),
+          Text(
+            business.ratingCount > 0
+                ? '${business.rating!.toStringAsFixed(1)} (${business.ratingCount})'
+                : business.rating!.toStringAsFixed(1),
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: context.textPrimaryColor,
+            ),
           ),
-        ),
+        ],
         _dot(context),
         Text(
           '${business.etaMinutes} min',
@@ -455,8 +471,12 @@ class _StatusBanner extends StatelessWidget {
           const SizedBox(width: AppConstants.spacingS),
           Expanded(
             child: Text(
+              // `cerradoMotivo` dice CUÁNDO vuelve («Abre mañana a las 08:00»)
+              // o que está en pausa. Es lo que el cliente necesita para saber
+              // si volver en una hora o buscar otro sitio; un «Cerrado» a
+              // secas no le dice nada.
               closed
-                  ? 'Cerrado ahora. ${business.openingHours ?? 'Vuelve más tarde.'}'
+                  ? 'Cerrado ahora. ${business.cerradoMotivo ?? business.openingHours ?? 'Vuelve más tarde.'}'
                   : 'Horario: ${business.openingHours}',
               style: TextStyle(
                 fontFamily: 'Inter',

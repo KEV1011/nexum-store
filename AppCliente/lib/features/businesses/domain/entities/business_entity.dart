@@ -35,17 +35,27 @@ class BusinessEntity {
     required this.products,
     this.promoMinAmount,
     this.promoDiscount,
+    this.ratingCount = 0,
     this.isOpen = true,
     this.imageUrl,
     this.openingHours,
+    this.cerradoMotivo,
   });
 
   final String id;
   final String name;
   final BusinessCategory category;
 
-  /// Calificación promedio (1.0 – 5.0).
-  final double rating;
+  /// Calificación promedio (1.0 – 5.0), o **null si nadie lo ha calificado**.
+  ///
+  /// Nulo, no 5,0: durante mucho tiempo todos los locales enseñaron un cinco
+  /// de fábrica que nadie les había dado. Sin nota se muestra «Nuevo», que es
+  /// la verdad y además ayuda al cliente a entender por qué no hay número.
+  final double? rating;
+
+  /// Cuántas personas lo han calificado. Un 4,9 con dos votos y otro con
+  /// doscientos no son la misma información.
+  final int ratingCount;
 
   /// Promoción de la tienda: «$promoDiscount de descuento comprando
   /// $promoMinAmount». Null las dos = no tiene ninguna que anunciar.
@@ -79,6 +89,11 @@ class BusinessEntity {
   /// Horario de atención en texto libre (ej: "Lun-Sáb 8am-9pm"). Null si no se
   /// configuró.
   final String? openingHours;
+
+  /// Por qué está cerrado, cuando lo está: «Abre mañana a las 08:00»,
+  /// «Pausado temporalmente». Lo decide el servidor con el horario y la pausa
+  /// del local; aquí solo se pinta.
+  final String? cerradoMotivo;
 }
 
 /// Un producto del catálogo de un negocio.

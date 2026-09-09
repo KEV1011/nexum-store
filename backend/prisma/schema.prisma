@@ -375,12 +375,29 @@ model Business {
   lng          Float?
   phone        String?
   whatsapp     String?
-  rating       Float            @default(5.0)
+  rating       Float?
   /// Promoción de la tienda: «$descuento comprando $mínimo». Las dos o
   /// ninguna. El MISMO cálculo (`promoDeTienda`) alimenta el banner y el
   /// cobro, para que la pantalla no prometa lo que la caja no aplica.
   promoMinAmount Int?
   promoDiscount  Int?
+  /// Vigencia de la promoción. Null = siempre. Con fecha, se apaga SOLA —
+  /// un «solo este fin de semana» que hay que acordarse de quitar el lunes
+  /// sigue puesto en marzo.
+  promoFrom      DateTime?
+  promoUntil     DateTime?
+  /// Horario estructurado: [{dia:0-6, abre:"HH:MM", cierra:"HH:MM"}].
+  /// Vacío/null = sin horario declarado ⇒ se considera SIEMPRE abierta, que
+  /// es como se comportaban los negocios ya registrados. `openingHours` (texto
+  /// libre) se conserva para los que aún no lo han declarado.
+  hours          Json?
+  /// Pausa temporal que se levanta sola. Distinta de apagar el interruptor:
+  /// la cocina copada para media hora, no cierra el día.
+  pausedUntil    DateTime?
+  pauseReason    String?
+  /// Reputación REAL. `rating` es null mientras nadie haya calificado — antes
+  /// era 5.0 por defecto y la app enseñaba una nota que nadie dio.
+  ratingCount    Int              @default(0)
   etaMinutes   Int              @default(30)
   deliveryFee  Float            @default(2500)
   // isOpen = cuenta activa (gate de acceso al portal, lo controla el admin/registro).

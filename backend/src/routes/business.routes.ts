@@ -17,6 +17,7 @@ import {
   getBusinessSettings,
   updateBusinessSettings,
   getBusinessStats,
+  getBusinessReviews,
   findBusinessesByPhone,
   updateBusinessLocation,
 } from '../services/business.service';
@@ -208,6 +209,18 @@ router.put('/:token/location', async (req: Request, res: Response): Promise<void
 });
 
 // ─── Estadísticas de ventas del negocio ───────────────────────────────────────
+
+// GET /business/:token/reviews — la nota del local y lo que la gente escribió.
+router.get('/:token/reviews', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.status(200).json({ success: true, data: await getBusinessReviews(business.id) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron cargar las calificaciones';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
 
 router.get('/:token/stats', async (req: Request, res: Response): Promise<void> => {
   const { token } = req.params as { token: string };
