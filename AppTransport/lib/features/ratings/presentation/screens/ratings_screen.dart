@@ -149,7 +149,7 @@ class _RatingsScreenState extends ConsumerState<RatingsScreen> {
                   // Sin nota no se pintan estrellas vacías: cinco contornos
                   // grises se leen como «cero estrellas», que no es lo mismo
                   // que «todavía nadie lo ha calificado».
-                  if (avg != null) _Stars(rating: avg, size: 22)
+                  if (avg != null) _Stars(rating: avg!, size: 22)
                   else Text(
                     'Aún nadie te ha calificado',
                     style: theme.textTheme.bodySmall

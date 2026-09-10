@@ -6,6 +6,7 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
 import 'package:nexum_driver/features/active_trip/presentation/screens/trip_chat_screen.dart';
+import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
 
 /// Tarjeta inferior para el estado (a): conductor yendo al punto de recogida.
 ///
@@ -283,7 +284,11 @@ class _PassengerInfo extends StatelessWidget {
     required this.onMessage,
   });
 
-  final dynamic passenger;
+  /// Tipado de verdad: era `dynamic`, y por eso el compilador no pudo
+  /// avisar de nada cuando `rating` pasó a poder ser nulo — el error salió
+  /// en el CI en vez de aquí. Todos los miembros que se usan existen en
+  /// `PassengerEntity` (name, firstName, rating).
+  final PassengerEntity passenger;
   final ThemeData theme;
   final VoidCallback onCall;
   final VoidCallback onMessage;
