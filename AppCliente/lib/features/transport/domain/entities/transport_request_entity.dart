@@ -119,6 +119,8 @@ class TransportRequestEntity {
     required this.requestRef,
     required this.serviceType,
     this.deliveryPin,
+    this.promoDiscount = 0,
+    this.totalPasajero,
     required this.originAddress,
     required this.destinationAddress,
     required this.estimatedFare,
@@ -157,6 +159,8 @@ class TransportRequestEntity {
         // Parsing defensivo: el backend usa 'taxi'/'particular' para el
         // servicio que la app llama 'transporte', y 'mandado' viaja como envío.
         deliveryPin: json['deliveryPin'] as String?,
+        promoDiscount: (json['promoDiscount'] as num?)?.round() ?? 0,
+        totalPasajero: (json['totalPasajero'] as num?)?.toDouble(),
         serviceType: TransportServiceType.values.firstWhere(
           (e) => e.name == json['serviceType'],
           orElse: () => switch (json['serviceType']) {
@@ -217,6 +221,17 @@ class TransportRequestEntity {
   /// ENVIOS: sin él el repartidor no puede cerrar la entrega, y es lo que
   /// prueba que el paquete llegó a su destinatario.
   final String? deliveryPin;
+
+  /// Lo que descuenta el cupón, en pesos. 0 = sin cupón.
+  ///
+  /// NO sale del bolsillo del conductor: su liquidación es la misma que sin
+  /// cupón. Lo pone la plataforma.
+  final int promoDiscount;
+
+  /// Lo que el pasajero paga de verdad = tarifa − descuento, según el
+  /// SERVIDOR. Es la cifra que se cobra: la de aquí es la que manda, no la
+  /// resta que pudiera hacer la app con su vista previa del cupón.
+  final double? totalPasajero;
   final String originAddress;
   final String destinationAddress;
   /// Lo que se estimó al pedir el viaje. Es una previsión, no un cobro.
@@ -281,6 +296,8 @@ class TransportRequestEntity {
     String? requestRef,
     TransportServiceType? serviceType,
     String? deliveryPin,
+    int? promoDiscount,
+    double? totalPasajero,
     String? originAddress,
     String? destinationAddress,
     double? estimatedFare,
@@ -316,6 +333,8 @@ class TransportRequestEntity {
       requestRef: requestRef ?? this.requestRef,
       serviceType: serviceType ?? this.serviceType,
       deliveryPin: deliveryPin ?? this.deliveryPin,
+      promoDiscount: promoDiscount ?? this.promoDiscount,
+      totalPasajero: totalPasajero ?? this.totalPasajero,
       originAddress: originAddress ?? this.originAddress,
       destinationAddress: destinationAddress ?? this.destinationAddress,
       estimatedFare: estimatedFare ?? this.estimatedFare,
@@ -363,6 +382,8 @@ class TransportRequestEntity {
         // Sin esto el PIN del envío se perdía al cerrar la app: se guardaba el
         // viaje pero no el dato que permite cerrar la entrega.
         if (deliveryPin != null) 'deliveryPin': deliveryPin,
+        if (promoDiscount > 0) 'promoDiscount': promoDiscount,
+        if (totalPasajero != null) 'totalPasajero': totalPasajero,
         if (driverName != null) 'driverName': driverName,
         if (driverPhone != null) 'driverPhone': driverPhone,
         if (maskedPhone != null) 'maskedPhone': maskedPhone,

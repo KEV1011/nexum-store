@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { TripStatus, OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { nuevaReferencia } from '../lib/referencia';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { tasaComision } from './comision.service';
 import { startMatchingCycle, startOrderMatchingCycle, cancelSearchRetry } from './matching.service';
@@ -38,6 +39,8 @@ import { plazaDeCoordenadas } from './municipality.service';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
 import { saneaMetodoPago } from '../lib/metodos-pago';
+import { descuentoSellable, totalPasajero } from '../lib/descuento-viaje';
+import { redeemPromo, PromoError } from './promo.service';
 import {
   avisoDeEstado, avisoCancelacionAlConductor,
   type EstadoViaje, type DatosDelViaje,
@@ -1023,7 +1026,7 @@ export async function updateOrderStatusByDriver(
 const _saneaMetodoPago = saneaMetodoPago;
 
 export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripWithPinDTO> {
-  const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;
+  const requestRef = nuevaReferencia('NXM');
   // 'transporte' es el nombre que usa la app cliente para el servicio de carro
   // particular/taxi — se acepta como alias para no romper el contrato REST.
   const normalized = dto.serviceType.toLowerCase() === 'transporte' ? 'particular' : dto.serviceType;
@@ -1094,6 +1097,36 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   // centroide.
   const citySlug = await plazaDeCoordenadas(originLat, originLng);
 
+  // ── Cupón ───────────────────────────────────────────────────────────────
+  //
+  // Llega el CÓDIGO, nunca el monto: si el teléfono dijera cuánto descontar,
+  // sería el mismo agujero que ya se cerró con la tarifa —una petición
+  // modificada pidiendo un descuento de $19.000 sobre una carrera de
+  // $20.000—. El descuento lo calcula el canje contra la tarifa que acaba de
+  // medir el servidor.
+  //
+  // Un canje fallido NO tumba el viaje. Puede fallar por una carrera con otro
+  // dispositivo o porque el cupón llegó a su límite entre la cotización y el
+  // "Pedir", y dejar a alguien sin taxi en la calle por un descuento de
+  // $5.000 es un mal cambio. El viaje sale sin descuento y la respuesta dice
+  // por qué, para que la app lo diga en vez de cobrar de más en silencio.
+  let promoCode: string | null = null;
+  let promoDiscount: number | null = null;
+  let promoError: string | null = null;
+  const codigo = (dto.promoCode ?? '').trim();
+  if (codigo && estimatedFare != null && estimatedFare > 0) {
+    try {
+      const canje = await redeemPromo(clientId, codigo, estimatedFare, 'trip');
+      promoCode = canje.code;
+      promoDiscount = descuentoSellable(canje.discount);
+      if (promoDiscount === null) promoCode = null;
+    } catch (err) {
+      promoError = err instanceof PromoError
+        ? err.message
+        : 'No se pudo aplicar el cupón';
+    }
+  }
+
   const trip = await prisma.trip.create({
     data: {
       requestRef,
@@ -1117,6 +1150,8 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       distanceKm,
       etaMinutes,
       paymentMethod: _saneaMetodoPago(dto.paymentMethod),
+      promoCode,
+      promoDiscount,
       recipientName: dto.recipientName,
       recipientPhone: dto.recipientPhone,
       packageDescription: dto.packageDescription,
@@ -1128,7 +1163,8 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
 
   // El PIN va SOLO en esta respuesta (y en las vistas propias del cliente):
   // es quien recibe el paquete el que debe conocerlo.
-  return _conPin(_toTripDTO(trip, clientId), trip.deliveryPin);
+  const dtoFinal = _conPin(_toTripDTO(trip, clientId), trip.deliveryPin);
+  return promoError ? { ...dtoFinal, promoError } : dtoFinal;
 }
 
 // (acceptClientTrip + _startTripSimulation eliminados: eran restos del flujo
@@ -1693,6 +1729,8 @@ type PrismaTrip = {
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
   deliveryPin?: string | null;
   paymentMethod?: string | null;
+  promoCode?: string | null;
+  promoDiscount?: number | null;
   stops?: unknown;
 };
 
@@ -1754,6 +1792,14 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConduct
     destinationAddress: trip.destAddress,
     estimatedFare: trip.estimatedFare,
     finalFare: trip.finalFare ?? undefined,
+    promoCode: trip.promoCode ?? undefined,
+    promoDiscount: trip.promoDiscount ?? undefined,
+    // Derivado, nunca guardado: un total guardado y un descuento guardado
+    // acaban discrepando y nadie sabe cuál miente. Antes de liquidar se usa la
+    // estimación, que es la cifra sobre la que se aplicó el cupón.
+    totalPasajero:
+      totalPasajero(trip.finalFare ?? trip.estimatedFare, trip.promoDiscount) ??
+      undefined,
     paymentMethod: trip.paymentMethod ?? undefined,
     distanceKm: trip.distanceKm ?? 0,
     etaMinutes: trip.etaMinutes ?? 0,

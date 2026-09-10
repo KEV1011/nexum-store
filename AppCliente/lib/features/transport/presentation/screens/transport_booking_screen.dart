@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
@@ -15,6 +17,7 @@ import 'package:nexum_client/features/addresses/presentation/providers/addresses
 import 'package:nexum_client/features/payments/presentation/payment_checkout.dart';
 import 'package:nexum_client/features/payments/presentation/providers/payment_method_provider.dart';
 import 'package:nexum_client/features/payments/presentation/widgets/icono_metodo_pago.dart';
+import 'package:nexum_client/features/payments/presentation/widgets/fila_cupon.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
@@ -107,6 +110,15 @@ class _TransportBookingScreenState
   /// precio, tal como los cotizó el servidor. Null mientras no haya elección.
   TripOptionEntity? _categoria;
 
+  /// Cupón puesto por el pasajero. El descuento lo dice el SERVIDOR al
+  /// validarlo: aquí solo se guarda para pintarlo y para mandar el código al
+  /// pedir. Quien cobra de verdad vuelve a canjearlo contra la tarifa que él
+  /// mismo midió, así que esto es una vista previa, nunca la cifra que manda.
+  String? _cupon;
+  int _descuentoCupon = 0;
+  String? _errorCupon;
+  bool _validandoCupon = false;
+
   /// El selector solo aplica a viajes de pasajero. Los envíos no eligen
   /// categoría (los lleva cualquier vehículo) y conservan su tarjeta.
   bool get _eligeCategoria => !_isEnvios;
@@ -159,11 +171,65 @@ class _TransportBookingScreenState
   String _textoBotonCon({required bool sinVehiculos}) {
     final c = _categoria;
     if (c != null) {
-      return 'Pedir ${c.nombre} · ${CurrencyFormatter.format(c.fare.toDouble())}';
+      // Con cupón el botón enseña lo que se va a pagar de verdad. Dejar la
+      // tarifa completa y que el descuento apareciera solo en el recibo sería
+      // la misma trampa al revés: prometer un precio y cobrar otro.
+      final total = (c.fare - _descuentoCupon).clamp(0, c.fare);
+      return 'Pedir ${c.nombre} · ${CurrencyFormatter.format(total.toDouble())}';
     }
     if (sinVehiculos) return 'No hay vehículos disponibles ahora';
     if (_faltaCategoria) return 'Elige una categoría';
     return 'Solicitar ${widget.serviceType.label}';
+  }
+
+  /// Pregunta al servidor cuánto descuenta este código sobre la tarifa elegida.
+  ///
+  /// Es una VISTA PREVIA. Al pedir el viaje el servidor vuelve a canjearlo
+  /// contra la tarifa que él mismo midió, así que lo que se guarde aquí no
+  /// puede cambiar lo que se cobra — solo lo que se enseña.
+  Future<void> _aplicarCupon(String codigo) async {
+    final c = _categoria;
+    if (c == null) return;
+    setState(() {
+      _validandoCupon = true;
+      _errorCupon = null;
+    });
+    try {
+      final res = await ref.read(apiClientProvider).post<Map<String, dynamic>>(
+        '/client/promos/validate',
+        data: {'code': codigo, 'amount': c.fare, 'context': 'trip'},
+      );
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      final descuento = (data?['discount'] as num?)?.round() ?? 0;
+      if (!mounted) return;
+      setState(() {
+        _validandoCupon = false;
+        if (descuento > 0) {
+          _cupon = (data?['code'] as String?) ?? codigo;
+          _descuentoCupon = descuento;
+        } else {
+          _errorCupon = 'Ese código no descuenta nada en este viaje';
+        }
+      });
+    } on DioException catch (e) {
+      if (!mounted) return;
+      // El motivo del servidor MANDA: dice si venció, si ya se usó o si el
+      // viaje no llega al mínimo. «Código no válido» a secas hace que la
+      // persona lo escriba tres veces.
+      final motivo = (e.response?.data as Map?)?['error'] as String?;
+      setState(() {
+        _validandoCupon = false;
+        _errorCupon = motivo ?? 'No se pudo validar el código';
+      });
+    }
+  }
+
+  void _quitarCupon() {
+    setState(() {
+      _cupon = null;
+      _descuentoCupon = 0;
+      _errorCupon = null;
+    });
   }
 
   @override
@@ -362,7 +428,16 @@ class _TransportBookingScreenState
                         entroPor: widget.serviceType,
                         onSeleccionar: (o) {
                           if (!mounted) return;
+                          final cambio = _categoria?.categoria != o.categoria;
                           setState(() => _categoria = o);
+                          // Un cupón de porcentaje descuenta distinto sobre una
+                          // tarifa distinta: al cambiar de categoría hay que
+                          // volver a preguntar, o el botón enseñaría el
+                          // descuento de la categoría anterior.
+                          final vigente = _cupon;
+                          if (cambio && vigente != null) {
+                            unawaited(_aplicarCupon(vigente));
+                          }
                         },
                       ),
                     if (_faltaPunto != null) ...[
@@ -375,6 +450,20 @@ class _TransportBookingScreenState
                     // cerraba esa hoja se quedaba con el viaje ya buscando
                     // conductor y sin haber decidido cómo iba a pagar.
                     const _FilaMetodoPago(),
+                    // El cupón solo se ofrece cuando ya hay un precio contra
+                    // el que aplicarlo: sin tarifa, validar un código no puede
+                    // decir cuánto descuenta.
+                    if (_categoria != null) ...[
+                      const SizedBox(height: 10),
+                      FilaCupon(
+                        codigo: _cupon,
+                        descuento: _descuentoCupon,
+                        error: _errorCupon,
+                        cargando: _validandoCupon,
+                        onAplicar: _aplicarCupon,
+                        onQuitar: _quitarCupon,
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     _botonPedir(sinVehiculos: sinVehiculos),
                   ],
@@ -760,6 +849,7 @@ class _TransportBookingScreenState
             serviceType: _categoria?.serviceType ?? widget.serviceType,
             categoria: _categoria?.categoria,
             paymentMethod: ref.read(metodoPagoEfectivoProvider).valorApi,
+            promoCode: _cupon,
             origin: _originCtrl.text.trim(),
             destination: _destCtrl.text.trim(),
             originLat: _originLat,
@@ -796,10 +886,23 @@ class _TransportBookingScreenState
 
     if (!mounted) return;
 
+    // Si el cupón no se pudo aplicar, el viaje salió igual —dejar a alguien
+    // sin taxi por un descuento sería un mal cambio— pero se dice. Cobrar de
+    // más en silencio es lo que no se puede hacer.
+    final aviso = ref.read(transportProvider.notifier).avisoCupon;
+    if (aviso != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('El cupón no se aplicó: $aviso')),
+      );
+    }
+
     final trip = ref.read(transportByIdProvider(id));
-    // El importe a pagar es el del viaje que creó el servidor; si faltara, el
-    // de la categoría cotizada. La estimación local queda como último recurso.
-    final fare = trip?.estimatedFare ??
+    // Lo que se cobra es lo que el SERVIDOR dice que paga el pasajero: ya trae
+    // restado el cupón que él mismo selló. Cobrar la tarifa completa después de
+    // haber enseñado el precio con descuento sería prometer una cifra y cobrar
+    // otra. La estimación local queda como último recurso.
+    final fare = trip?.totalPasajero ??
+        trip?.estimatedFare ??
         _categoria?.fare.toDouble() ??
         widget.serviceType.estimateFare(4);
 

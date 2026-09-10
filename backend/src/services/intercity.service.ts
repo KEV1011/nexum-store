@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { nuevaReferencia } from '../lib/referencia';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { maskPhone } from './safe-contact.service';
@@ -741,7 +742,7 @@ export async function requestIntercityBooking(
     }
   }
 
-  const requestRef = `NXI-${Math.floor(1000 + Math.random() * 8000)}`;
+  const requestRef = nuevaReferencia('NXI');
   const booking = await prisma.intercityBooking.create({
     data: {
       requestRef,

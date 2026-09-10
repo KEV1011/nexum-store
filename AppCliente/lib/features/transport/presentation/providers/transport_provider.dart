@@ -148,6 +148,12 @@ class TransportNotifier extends StateNotifier<TransportState> {
     _locationSub = _wsService.driverLocations.listen(_applyLocationUpdate);
   }
 
+  /// Por qué NO se aplicó el cupón del último viaje pedido, o null.
+  ///
+  /// El viaje se crea igual —dejar a alguien sin taxi por un descuento sería un
+  /// mal cambio— pero hay que decirlo: cobrar de más en silencio es peor.
+  String? avisoCupon;
+
   Future<String> request({
     required TransportServiceType serviceType,
     required String origin,
@@ -161,6 +167,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
     /// oferta: aceptar esperando efectivo y encontrarse una transferencia le
     /// descuadra la caja y ya no puede rechazarla.
     String? paymentMethod,
+    /// Código del cupón. Va el CÓDIGO, nunca el monto: el descuento lo calcula
+    /// el servidor al canjearlo contra la tarifa que él mismo midió.
+    String? promoCode,
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
@@ -185,6 +194,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
     String id;
     String ref;
     String? deliveryPin;
+    // Lo que selló el SERVIDOR con el cupón. La app no vuelve a restar nada:
+    // su validación previa era solo para enseñar el precio.
+    var promoDiscount = 0;
+    double? totalPasajero;
+    avisoCupon = null;
 
     try {
       final res = await _dio.post<Map<String, dynamic>>(
@@ -205,6 +219,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
           if (recipientPhone != null) 'recipientPhone': recipientPhone,
           if (packageDescription != null) 'packageDescription': packageDescription,
           if (paymentMethod != null) 'paymentMethod': paymentMethod,
+          if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
         },
       );
       final data = res.data!['data'] as Map<String, dynamic>;
@@ -215,6 +230,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
       // que las ve también el repartidor). Si se descarta aquí, el cliente no
       // tiene qué dictar y la entrega no se puede cerrar nunca.
       deliveryPin = data['deliveryPin'] as String?;
+      avisoCupon = data['promoError'] as String?;
+      promoDiscount = (data['promoDiscount'] as num?)?.round() ?? 0;
+      totalPasajero = (data['totalPasajero'] as num?)?.toDouble();
       // El precio, la distancia y el tiempo son los que calculó el SERVIDOR.
       // Los de arriba eran una estimación local para poder pintar algo, y
       // guardarlos era lo que hacía que el pasajero viera una cifra al pedir y
@@ -244,6 +262,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
       id: id,
       requestRef: ref,
       deliveryPin: deliveryPin,
+      promoDiscount: promoDiscount,
+      totalPasajero: totalPasajero,
       serviceType: serviceType,
       originAddress: origin,
       destinationAddress: destination,
@@ -322,6 +342,10 @@ class TransportNotifier extends StateNotifier<TransportState> {
         // viaje viendo la estimación del principio, que se calcula con otra
         // fórmula y casi nunca coincide con lo que paga.
         finalFare: (payload['finalFare'] as num?)?.toDouble() ?? r.finalFare,
+        promoDiscount:
+            (payload['promoDiscount'] as num?)?.round() ?? r.promoDiscount,
+        totalPasajero:
+            (payload['totalPasajero'] as num?)?.toDouble() ?? r.totalPasajero,
         acceptedAt: acceptedAtStr != null
             ? DateTime.tryParse(acceptedAtStr)
             : r.acceptedAt,

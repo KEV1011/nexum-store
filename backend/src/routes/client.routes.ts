@@ -512,6 +512,7 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
     originLat?: number; originLng?: number; destLat?: number; destLng?: number;
     recipientName?: string; recipientPhone?: string; packageDescription?: string;
     paymentMethod?: string;
+    promoCode?: string;
     stops?: import('../types').TripStopDTO[];
   };
 
@@ -526,6 +527,7 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
       originAddress: dto.originAddress,
       destinationAddress: dto.destinationAddress,
       estimatedFare: dto.estimatedFare ?? 0,
+      promoCode: dto.promoCode,
       stops: dto.stops,
       distanceKm: dto.distanceKm ?? 0,
       etaMinutes: dto.etaMinutes ?? 0,

@@ -124,6 +124,18 @@ export interface TripRequestDTO {
    * en las apps que no se hayan actualizado.
    */
   paymentNote?: string;
+  /**
+   * Cupón del pasajero, si lo hay. Va en la OFERTA a propósito.
+   *
+   * `estimatedFare` es lo que el conductor GANA, y no cambia por el cupón: el
+   * descuento lo pone la plataforma. Pero en un viaje en efectivo lo que
+   * recibe en la mano es `cobraAlPasajero`, que es menos. Enterarse de eso al
+   * final del día cuadrando la caja sería una sorpresa desagradable con toda
+   * la razón; verlo antes de aceptar, no.
+   */
+  promoDiscount?: number;
+  /** Lo que el conductor debe cobrarle al pasajero = tarifa − descuento. */
+  cobraAlPasajero?: number;
   /** Paradas intermedias, en orden. Van en la oferta: cambian el viaje. */
   stops?: TripStopDTO[];
 }
@@ -766,6 +778,25 @@ export interface ClientTripDTO {
   estimatedFare: number;
   /** Tarifa final liquidada por el backend (solo al completar). */
   finalFare?: number;
+  /** Cupón aplicado a este viaje, si lo hubo. */
+  promoCode?: string;
+  /**
+   * Lo que se le descuenta al pasajero. NO sale del bolsillo del conductor:
+   * su liquidación es la misma que sin cupón (ver `lib/descuento-viaje`).
+   */
+  promoDiscount?: number;
+  /**
+   * Lo que el pasajero paga de verdad = tarifa − descuento. Se DERIVA, nunca
+   * se guarda: un total guardado y un descuento guardado acaban discrepando y
+   * nadie sabe cuál miente.
+   */
+  totalPasajero?: number;
+  /**
+   * Por qué NO se aplicó el cupón que se pidió. El viaje sale igual —dejar a
+   * alguien sin taxi por un descuento sería un mal cambio— pero se dice, en
+   * vez de cobrar de más en silencio.
+   */
+  promoError?: string;
   /**
    * Cómo acordó pagar el pasajero. El conductor tiene que saberlo ANTES de
    * llegar: con 'transferencia' no puede esperar billetes en la mano.
@@ -833,8 +864,14 @@ export interface RequestClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
-  /** 'efectivo' | 'transferencia' | 'en_linea'. Ausente = efectivo. */
+  /** Los valores los define `lib/metodos-pago`. Ausente = efectivo. */
   paymentMethod?: string;
+  /**
+   * Código del cupón, si el pasajero puso uno. Va el CÓDIGO y nunca el monto:
+   * si el teléfono dijera cuánto descontar, sería el mismo agujero que ya se
+   * cerró con la tarifa. El descuento lo calcula el servidor al canjear.
+   */
+  promoCode?: string;
   /**
    * Paradas intermedias (máx. 6). El precio se mide PASANDO por ellas, así que
    * añadirlas encarece el viaje: si no, el pasajero mete tres desvíos y el

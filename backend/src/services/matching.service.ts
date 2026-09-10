@@ -12,6 +12,7 @@ import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { tarifaDe } from '../lib/tarifa-categoria';
 import { metodoPorValor } from '../lib/metodos-pago';
+import { totalPasajero } from '../lib/descuento-viaje';
 import { avisoSinConductor } from '../lib/avisos-viaje';
 import { plazaDeCoordenadas } from './municipality.service';
 
@@ -497,6 +498,12 @@ async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | nul
     // pago, el conductor que no haya actualizado ve el texto correcto en vez
     // de un hueco en blanco donde debería decir cómo le pagan.
     paymentNote: metodoPorValor(trip.paymentMethod)?.avisoAlConductor ?? undefined,
+    // El cupón del pasajero. Su tarifa NO baja —el descuento lo pone la
+    // plataforma— pero en efectivo recibe en la mano menos, y tiene que
+    // saberlo antes de aceptar, no al cuadrar la caja.
+    promoDiscount: trip.promoDiscount ?? undefined,
+    cobraAlPasajero:
+      totalPasajero(trip.estimatedFare, trip.promoDiscount) ?? undefined,
     // Por dónde pasa. En la OFERTA, por el mismo motivo que el método de pago:
     // tres desvíos cambian el viaje que se está aceptando, y una vez aceptado
     // ya no se puede rechazar.
