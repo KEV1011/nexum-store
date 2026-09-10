@@ -70,6 +70,15 @@ enum TransportServiceType {
 
 /// Estado del viaje o envío en tiempo real.
 enum TransportStatus {
+  /// Reservado para más tarde. Todavía no se le ofrece a ningún conductor: el
+  /// servidor empieza a buscar con antelación para que a la hora acordada el
+  /// carro esté en la puerta.
+  ///
+  /// OJO con el nombre: el estado que llega del servidor se busca por el
+  /// NOMBRE del valor del enum (ver `_applyTripUpdate`). Llamarlo «programado»
+  /// hacía que 'scheduled' no casara con nada y el viaje se quedara con el
+  /// estado anterior, en silencio.
+  scheduled,
   searching,
   accepted,
   arriving,
@@ -79,6 +88,7 @@ enum TransportStatus {
   cancelled;
 
   String get label => switch (this) {
+        TransportStatus.scheduled => 'Viaje reservado',
         TransportStatus.searching => 'Buscando conductor...',
         TransportStatus.accepted => 'Conductor asignado',
         TransportStatus.arriving => 'Conductor en camino',
@@ -96,11 +106,14 @@ enum TransportStatus {
   bool get isCancelled => this == TransportStatus.cancelled;
 
   bool get canCancel =>
+      this == TransportStatus.scheduled ||
       this == TransportStatus.searching ||
       this == TransportStatus.accepted ||
       this == TransportStatus.arriving;
 
   int get step => switch (this) {
+        // Antes del primer paso: todavía no ha empezado nada.
+        TransportStatus.scheduled => 0,
         TransportStatus.searching => 0,
         TransportStatus.accepted ||
         TransportStatus.arriving =>

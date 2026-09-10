@@ -170,6 +170,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
     /// Código del cupón. Va el CÓDIGO, nunca el monto: el descuento lo calcula
     /// el servidor al canjearlo contra la tarifa que él mismo midió.
     String? promoCode,
+    /// Para cuándo lo quiere, en ISO UTC. Null = ahora mismo.
+    String? scheduledFor,
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
@@ -220,6 +222,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
           if (packageDescription != null) 'packageDescription': packageDescription,
           if (paymentMethod != null) 'paymentMethod': paymentMethod,
           if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
+          if (scheduledFor != null) 'scheduledFor': scheduledFor,
         },
       );
       final data = res.data!['data'] as Map<String, dynamic>;
@@ -270,7 +273,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
       estimatedFare: fare,
       distanceKm: distanciaFinal,
       etaMinutes: eta,
-      status: TransportStatus.searching,
+      // Un viaje reservado NO está buscando conductor: lo dice el servidor y
+      // se respeta, o la pantalla enseñaría «buscando» toda la noche.
+      status: scheduledFor != null
+          ? TransportStatus.scheduled
+          : TransportStatus.searching,
       createdAt: DateTime.now(),
       recipientName: recipientName,
       recipientPhone: recipientPhone,

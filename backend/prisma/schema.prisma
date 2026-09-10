@@ -671,6 +671,13 @@ model Trip {
   /// el pasajero se deriva restando (ver `lib/descuento-viaje`).
   promoCode          String?
   promoDiscount      Int?
+  /// Para cuándo lo reservó el pasajero. Null = viaje inmediato.
+  scheduledFor       DateTime?
+  /// Cuándo hay que empezar a buscar conductor: la hora reservada MENOS la
+  /// antelación (ver `lib/viaje-programado`). Se guarda calculado para que el
+  /// barrido sea una consulta indexada y no tenga que hacer aritmética por
+  /// fila.
+  searchFrom         DateTime?
   distanceKm         Float?
   etaMinutes         Int?
   cancelReason       String?
@@ -718,6 +725,9 @@ model Trip {
   @@index([status])
   @@index([operatorId])
   @@index([citySlug])
+  /// El barrido de programados corre cada minuto: sin esto sería un recorrido
+  /// completo de la tabla sesenta veces por hora.
+  @@index([status, searchFrom])
   @@map("trips")
   // Custodia del ENVÍO: el PIN lo dicta quien RECIBE el paquete. Sin él, el
   // repartidor no puede cerrar la entrega. Solo se genera para serviceType
@@ -742,6 +752,10 @@ enum WorkMode {
 }
 
 enum TripStatus {
+  /// Reservado para más tarde. Todavía no se le ofrece a nadie: el barrido lo
+  /// pasa a SEARCHING con antelación, para que a la hora acordada el carro
+  /// esté en la puerta y no empezando a buscarse.
+  SCHEDULED
   SEARCHING
   ACCEPTED
   ARRIVING

@@ -759,6 +759,8 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
 // ─── Client Trips ─────────────────────────────────────────────────────────────
 
 export type ClientTripStatus =
+  /** Reservado para más tarde; todavía no se le ofrece a nadie. */
+  | 'scheduled'
   | 'searching'
   | 'accepted'
   | 'arriving'
@@ -778,6 +780,8 @@ export interface ClientTripDTO {
   estimatedFare: number;
   /** Tarifa final liquidada por el backend (solo al completar). */
   finalFare?: number;
+  /** Para cuándo está reservado, en ISO. Ausente = viaje inmediato. */
+  scheduledFor?: string;
   /** Cupón aplicado a este viaje, si lo hubo. */
   promoCode?: string;
   /**
@@ -872,6 +876,11 @@ export interface RequestClientTripDTO {
   packageDescription?: string;
   /** Los valores los define `lib/metodos-pago`. Ausente = efectivo. */
   paymentMethod?: string;
+  /**
+   * Para cuándo lo quiere, en ISO. Ausente = ahora mismo. El servidor valida
+   * la antelación y decide cuándo empezar a buscar (`lib/viaje-programado`).
+   */
+  scheduledFor?: string;
   /**
    * Código del cupón, si el pasajero puso uno. Va el CÓDIGO y nunca el monto:
    * si el teléfono dijera cuánto descontar, sería el mismo agujero que ya se

@@ -40,6 +40,7 @@ import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
 import { saneaMetodoPago } from '../lib/metodos-pago';
 import { saneaElogios } from '../lib/elogios';
+import { planificar } from '../lib/viaje-programado';
 import { descuentoSellable, totalPasajero } from '../lib/descuento-viaje';
 import { redeemPromo, PromoError } from './promo.service';
 import {
@@ -1116,6 +1117,15 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   // "Pedir", y dejar a alguien sin taxi en la calle por un descuento de
   // $5.000 es un mal cambio. El viaje sale sin descuento y la respuesta dice
   // por qué, para que la app lo diga en vez de cobrar de más en silencio.
+  // ── ¿Es para más tarde? ─────────────────────────────────────────────────
+  //
+  // Se valida ANTES de crear: una hora imposible tiene que fallar con un
+  // mensaje claro, no dejar un viaje colgado que nunca sale a buscar.
+  let programado: { para: Date; buscarDesde: Date } | null = null;
+  if (dto.scheduledFor) {
+    programado = planificar(new Date(dto.scheduledFor));
+  }
+
   let promoCode: string | null = null;
   let promoDiscount: number | null = null;
   let promoError: string | null = null;
@@ -1138,7 +1148,9 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       requestRef,
       passengerId: clientId,
       serviceType,
-      status: 'SEARCHING',
+      status: programado ? 'SCHEDULED' : 'SEARCHING',
+      scheduledFor: programado?.para ?? null,
+      searchFrom: programado?.buscarDesde ?? null,
       citySlug,
       // Solo los ENVÍOS llevan PIN: es mercancía que cambia de manos y hay que
       // poder probar que llegó a quien debía. Un pasajero no necesita PIN para
@@ -1165,7 +1177,11 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   });
 
   // Kick off geo-matching asynchronously — does not block the REST response.
-  void startMatchingCycle(trip.id, trip.originLat, trip.originLng);
+  // Un viaje programado NO sale a buscar todavía: lo hará el barrido, con
+  // antelación, para que a la hora acordada el carro esté en la puerta.
+  if (!programado) {
+    void startMatchingCycle(trip.id, trip.originLat, trip.originLng);
+  }
 
   // El PIN va SOLO en esta respuesta (y en las vistas propias del cliente):
   // es quien recibe el paquete el que debe conocerlo.
@@ -1336,7 +1352,7 @@ function _avisarPasajero(
 export async function cancelClientTrip(clientId: string, tripId: string): Promise<boolean> {
   const trip = await prisma.trip.findFirst({ where: { id: tripId, passengerId: clientId } });
   if (!trip) return false;
-  const cancellable = ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED'];
+  const cancellable = ['SCHEDULED', 'SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED'];
   if (!cancellable.includes(trip.status)) return false;
   // El pasajero se echó atrás: se deja de buscarle conductor.
   cancelSearchRetry(`trip:${tripId}`);
@@ -1384,7 +1400,10 @@ export async function handleNoDriversFound(tripId: string): Promise<void> {
 }
 
 export async function getActiveClientTrip(clientId: string): Promise<ClientTripWithPinDTO | null> {
-  const active = ['SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'];
+  // SCHEDULED entra: para el pasajero un viaje reservado para mañana está
+  // muy vivo, y si no saliera aquí no lo vería al reabrir la app ni podría
+  // cancelarlo desde el seguimiento.
+  const active = ['SCHEDULED', 'SEARCHING', 'ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'];
   const trip = await prisma.trip.findFirst({
     where: { passengerId: clientId, status: { in: active as never[] } },
     orderBy: { createdAt: 'desc' },
@@ -1393,6 +1412,78 @@ export async function getActiveClientTrip(clientId: string): Promise<ClientTripW
   // Vista propia del cliente: aquí sí va el PIN (así lo recupera si reinstala
   // la app o pierde el estado local con un envío en curso).
   return _conPin(_toTripDTO(trip, clientId), trip.deliveryPin);
+}
+
+/**
+ * Saca a buscar conductor los viajes programados a los que ya les toca.
+ *
+ * Corre cada minuto. Es un BARRIDO y no un temporizador por viaje a propósito:
+ * un `setTimeout` puesto al reservar se pierde en el siguiente despliegue —y
+ * Render redespliega en cada push—, así que el viaje de mañana a las 8 se
+ * habría quedado esperando para siempre. Al consultar la base, un reinicio no
+ * pierde nada y el barrido recoge también lo atrasado.
+ *
+ * El precio se RECALCULA aquí, no se usa el de cuando se reservó: la tarifa de
+ * un taxi la fija el decreto municipal y puede no ser la misma mañana, y el
+ * multiplicador por demanda de anoche no tiene por qué aplicarse hoy. Lo que
+ * se enseñó al reservar era una estimación, y así se dice en la app.
+ */
+export async function despacharProgramados(): Promise<number> {
+  const pendientes = await prisma.trip.findMany({
+    where: { status: 'SCHEDULED', searchFrom: { lte: new Date() } },
+    select: {
+      id: true, serviceType: true, originLat: true, originLng: true,
+      distanceKm: true, etaMinutes: true,
+    },
+  });
+
+  let despachados = 0;
+  for (const t of pendientes) {
+    // Toma ATÓMICA con guarda en el `where`: si dos instancias del servidor
+    // corren el barrido a la vez —y en Render puede haberlas— solo una se lo
+    // lleva. Sin esto el mismo viaje saldría a buscar dos veces y el pasajero
+    // recibiría dos conductores.
+    const tomado = await prisma.trip.updateMany({
+      where: { id: t.id, status: 'SCHEDULED' },
+      data: { status: 'SEARCHING' },
+    });
+    if (tomado.count === 0) continue;
+
+    // Reprecio con la tarifa y la demanda de AHORA. El trayecto no se vuelve a
+    // medir: las direcciones no cambiaron y una llamada a Routes por cada
+    // viaje programado no aporta nada.
+    try {
+      const km = t.distanceKm ?? 0;
+      const min = t.etaMinutes ?? 0;
+      if (km > 0) {
+        const { multiplier } = await getSurgeMultiplier(t.originLat, t.originLng);
+        const { grossFare } = liquidarViaje(t.serviceType, km, min, multiplier);
+        await prisma.trip.update({
+          where: { id: t.id },
+          data: { estimatedFare: grossFare, surgeMultiplier: multiplier },
+        });
+      }
+    } catch {
+      // Si el reprecio falla se sigue con el estimado de la reserva: dejar al
+      // pasajero sin carro por no poder recalcular sería mucho peor.
+    }
+
+    void startMatchingCycle(t.id, t.originLat, t.originLng);
+    void sendPushToClient(await _pasajeroDe(t.id), {
+      title: 'Buscando tu conductor',
+      body: 'Tu viaje reservado ya está buscando conductor.',
+      data: { type: 'trip_searching', tripId: t.id },
+    });
+    despachados++;
+  }
+  return despachados;
+}
+
+async function _pasajeroDe(tripId: string): Promise<string> {
+  const t = await prisma.trip.findUnique({
+    where: { id: tripId }, select: { passengerId: true },
+  });
+  return t?.passengerId ?? '';
 }
 
 /** Viajes finalizados (completados o cancelados) del cliente, más reciente primero. */
@@ -1738,6 +1829,7 @@ type PrismaTrip = {
   promoCode?: string | null;
   promoDiscount?: number | null;
   driverId?: string | null;
+  scheduledFor?: Date | null;
   stops?: unknown;
 };
 
@@ -1788,6 +1880,10 @@ function _fichaToDTO(f: FichaConductor): Partial<ClientTripDTO> {
 
 function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConductor): ClientTripDTO {
   const statusMap: Record<string, ClientTripStatus> = {
+    // SCHEDULED tiene que estar: el respaldo de abajo es 'searching', y sin
+    // esta línea un viaje reservado para mañana le diría a la app «buscando
+    // conductor» toda la noche.
+    SCHEDULED: 'scheduled',
     SEARCHING: 'searching', ACCEPTED: 'accepted', ARRIVING: 'arriving',
     ARRIVED: 'arrived', IN_PROGRESS: 'in_progress', COMPLETED: 'completed', CANCELLED: 'cancelled',
   };
@@ -1800,6 +1896,7 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConduct
     estimatedFare: trip.estimatedFare,
     finalFare: trip.finalFare ?? undefined,
     driverId: trip.driverId ?? undefined,
+    scheduledFor: trip.scheduledFor?.toISOString(),
     promoCode: trip.promoCode ?? undefined,
     promoDiscount: trip.promoDiscount ?? undefined,
     // Derivado, nunca guardado: un total guardado y un descuento guardado

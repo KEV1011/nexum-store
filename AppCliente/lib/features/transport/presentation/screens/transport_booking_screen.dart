@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -114,6 +115,9 @@ class _TransportBookingScreenState
   /// validarlo: aquí solo se guarda para pintarlo y para mandar el código al
   /// pedir. Quien cobra de verdad vuelve a canjearlo contra la tarifa que él
   /// mismo midió, así que esto es una vista previa, nunca la cifra que manda.
+  /// Para cuándo lo quiere. Null = ahora mismo.
+  DateTime? _programadoPara;
+
   String? _cupon;
   int _descuentoCupon = 0;
   String? _errorCupon;
@@ -222,6 +226,46 @@ class _TransportBookingScreenState
         _errorCupon = motivo ?? 'No se pudo validar el código';
       });
     }
+  }
+
+  /// Pide fecha y hora. Los límites los pone el servidor y los repite aquí la
+  /// pantalla, para que no se pueda ni elegir algo que va a rechazar.
+  Future<void> _elegirCuando() async {
+    final ahora = DateTime.now();
+    // El mínimo lo valida también el servidor (30 min). Aquí se ofrece a
+    // partir de hoy y se comprueba después, porque el selector de fecha no
+    // sabe de horas.
+    final dia = await showDatePicker(
+      context: context,
+      initialDate: ahora,
+      firstDate: DateTime(ahora.year, ahora.month, ahora.day),
+      lastDate: ahora.add(const Duration(days: 7)),
+      helpText: '¿Qué día?',
+    );
+    if (dia == null || !mounted) return;
+
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(ahora.add(const Duration(hours: 1))),
+      helpText: '¿A qué hora?',
+    );
+    if (hora == null || !mounted) return;
+
+    final cuando = DateTime(dia.year, dia.month, dia.day, hora.hour, hora.minute);
+    // Se comprueba ANTES de guardar: dejar elegir una hora que el servidor va
+    // a rechazar y enterarse al tocar «Pedir» es hacerle repetir todo.
+    if (cuando.difference(ahora).inMinutes < 30) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Programa con al menos 30 minutos de anticipación. '
+            'Si lo necesitas ya, pídelo normal.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _programadoPara = cuando);
   }
 
   void _quitarCupon() {
@@ -450,6 +494,16 @@ class _TransportBookingScreenState
                     // cerraba esa hoja se quedaba con el viaje ya buscando
                     // conductor y sin haber decidido cómo iba a pagar.
                     const _FilaMetodoPago(),
+                    // Programar solo tiene sentido en viajes de pasajero: un
+                    // envío se despacha cuando el paquete está listo.
+                    if (!_isEnvios) ...[
+                      const SizedBox(height: 10),
+                      _FilaProgramar(
+                        para: _programadoPara,
+                        onElegir: _elegirCuando,
+                        onQuitar: () => setState(() => _programadoPara = null),
+                      ),
+                    ],
                     // El cupón solo se ofrece cuando ya hay un precio contra
                     // el que aplicarlo: sin tarifa, validar un código no puede
                     // decir cuánto descuenta.
@@ -850,6 +904,7 @@ class _TransportBookingScreenState
             categoria: _categoria?.categoria,
             paymentMethod: ref.read(metodoPagoEfectivoProvider).valorApi,
             promoCode: _cupon,
+            scheduledFor: _programadoPara?.toUtc().toIso8601String(),
             origin: _originCtrl.text.trim(),
             destination: _destCtrl.text.trim(),
             originLat: _originLat,
@@ -1661,6 +1716,87 @@ class _FilaMetodoPago extends ConsumerWidget {
     if (elegido != null) {
       await ref.read(metodoPagoProvider.notifier).elegir(elegido);
     }
+  }
+}
+
+/// Fila para reservar el viaje para más tarde.
+///
+/// El precio que se enseña al reservar es una ESTIMACIÓN y se dice con todas
+/// las letras: el de verdad se calcula cuando el viaje sale a buscar
+/// conductor, con la tarifa vigente en ese momento. En un taxi esa tarifa la
+/// fija el decreto municipal, no nosotros, y sellarla hoy sería prometer un
+/// precio que mañana puede no ser el autorizado.
+class _FilaProgramar extends StatelessWidget {
+  const _FilaProgramar({
+    required this.para,
+    required this.onElegir,
+    required this.onQuitar,
+  });
+
+  final DateTime? para;
+  final Future<void> Function() onElegir;
+  final VoidCallback onQuitar;
+
+  String get _cuando {
+    final d = para!;
+    final hoy = DateTime.now();
+    final esHoy = d.year == hoy.year && d.month == hoy.month && d.day == hoy.day;
+    final hora = DateFormat('h:mm a', 'es_CO').format(d);
+    if (esHoy) return 'Hoy a las $hora';
+    return '${DateFormat('EEEE d \'de\' MMMM', 'es_CO').format(d)} a las $hora';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final programado = para != null;
+    return Material(
+      color: context.surfaceVariantColor,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => onElegir(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                programado
+                    ? Icons.event_available_rounded
+                    : Icons.schedule_rounded,
+                size: 20,
+                color: context.textSecondaryColor,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      programado ? _cuando : 'Programar para más tarde',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                    if (programado)
+                      Text(
+                        'El precio final se calcula al salir a buscar conductor',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (programado)
+                TextButton(onPressed: onQuitar, child: const Text('Quitar')),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
