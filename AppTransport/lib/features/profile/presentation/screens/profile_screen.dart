@@ -108,7 +108,7 @@ class ProfileScreen extends ConsumerWidget {
             ],
 
             // ── Rating breakdown ───────────────────────────────────────────
-            _buildRatingCard(theme, profile),
+            _buildRatingCard(context, theme, profile),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Session + performance stats ────────────────────────────────
@@ -400,7 +400,11 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Rating breakdown card ────────────────────────────────────────────────────
 
-  Widget _buildRatingCard(ThemeData theme, EditableProfile profile) {
+  Widget _buildRatingCard(
+    BuildContext context,
+    ThemeData theme,
+    EditableProfile profile,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.spacingM),

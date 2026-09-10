@@ -98,7 +98,8 @@ class _TripRecord {
   final double distanceKm;
   final int durationMin;
   final double earnings;
-  final double rating;
+  /// Null si ese viaje no se calificó.
+  final double? rating;
   final String passengerName;
 }
 
@@ -156,7 +157,9 @@ _TripRecord _toRecord(TripModel trip) {
     distanceKm: trip.distanceKm,
     durationMin: trip.durationMinutes,
     earnings: trip.netEarning,
-    rating: trip.rating ?? 5.0,
+    // Sin `?? 5.0`: inventar un cinco por cada viaje sin calificar
+    // inflaba el promedio que se le enseña al conductor.
+    rating: trip.rating,
     passengerName: trip.passengerName,
   );
 }
@@ -373,9 +376,14 @@ class _SummaryBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalEarnings = trips.fold<double>(0, (acc, t) => acc + t.earnings);
-    final avgRating = trips.isEmpty
-        ? 0.0
-        : trips.fold<double>(0, (acc, t) => acc + t.rating) / trips.length;
+    // El promedio sale SOLO de los viajes que alguien calificó. Dividir entre
+    // todos —contando un 5,0 inventado por los no calificados— daba una cifra
+    // que no era ni el promedio real ni nada.
+    final calificados = trips.where((t) => t.rating != null).toList();
+    final double? avgRating = calificados.isEmpty
+        ? null
+        : calificados.fold<double>(0, (acc, t) => acc + t.rating!) /
+            calificados.length;
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -404,7 +412,7 @@ class _SummaryBanner extends StatelessWidget {
               color: AppColors.primary.withValues(alpha: 0.3)),
           _BannerStat(
             label: 'Calificación',
-            value: trips.isEmpty
+            value: avgRating == null
                 ? '--'
                 : '★ ${avgRating.toStringAsFixed(1)}',
           ),
@@ -533,16 +541,17 @@ class _TripHistoryTileState extends State<_TripHistoryTile> {
                         color: AppColors.primary,
                       ),
                     ),
-                    Row(
-                      children: [
-                        const Icon(Icons.star_rounded,
-                            size: 12, color: AppColors.star),
-                        Text(
-                          ' ${trip.rating.toStringAsFixed(1)}',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
+                    if (trip.rating != null)
+                      Row(
+                        children: [
+                          const Icon(Icons.star_rounded,
+                              size: 12, color: AppColors.star),
+                          Text(
+                            ' ${trip.rating!.toStringAsFixed(1)}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ],

@@ -95,7 +95,8 @@ class RideBidEntity {
   final String driverId;
   final String driverName;
   final String driverPhone;
-  final double driverRating;
+  /// Null si a ese conductor todavía nadie lo ha calificado.
+  final double? driverRating;
   final int driverTotalTrips;
   final String vehicleDescription;
   final double fare;
@@ -107,7 +108,7 @@ class RideBidEntity {
         driverId: j['driverId'] as String? ?? '',
         driverName: j['driverName'] as String? ?? 'Conductor',
         driverPhone: j['driverPhone'] as String? ?? '',
-        driverRating: (j['driverRating'] as num?)?.toDouble() ?? 5.0,
+        driverRating: (j['driverRating'] as num?)?.toDouble(),
         driverTotalTrips: (j['driverTotalTrips'] as num?)?.toInt() ?? 0,
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         fare: (j['fare'] as num?)?.toDouble() ?? 0,

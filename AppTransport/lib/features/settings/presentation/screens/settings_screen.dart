@@ -314,7 +314,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             size: 14, color: AppColors.star),
                         const SizedBox(width: 2),
                         Text(
-                          profile.rating.toStringAsFixed(2),
+                          profile.rating?.toStringAsFixed(2) ?? 'Nuevo',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: context.textSecondaryColor,
                             fontWeight: FontWeight.w600,

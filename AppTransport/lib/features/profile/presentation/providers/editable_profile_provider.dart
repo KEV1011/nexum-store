@@ -91,7 +91,7 @@ class EditableProfile {
         vehiclePlate: '',
         vehicleColor: '',
         vehicleType: '',
-        rating: 0,
+        rating: null,
         totalTrips: 0,
         isVerified: false,
         documentNumber: '',
@@ -110,7 +110,8 @@ class EditableProfile {
   final String vehiclePlate;
   final String vehicleColor;
   final String vehicleType;
-  final double rating;
+  /// Null mientras nadie lo haya calificado.
+  final double? rating;
   final int totalTrips;
   final bool isVerified;
   final String documentNumber;
