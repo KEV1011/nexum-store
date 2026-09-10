@@ -116,8 +116,14 @@ export interface TripRequestDTO {
    * que el precio es el oficial cuando no lo es.
    */
   tarifaRegulada?: boolean;
-  /** Cómo pagará el pasajero: 'efectivo' | 'transferencia' | 'en_linea'. */
+  /** Cómo pagará el pasajero. Los valores los define `lib/metodos-pago`. */
   paymentMethod?: string;
+  /**
+   * Ese método, ya redactado para el conductor («Te paga por Nequi»). Lo
+   * escribe el servidor para que añadir un método no deje un hueco en blanco
+   * en las apps que no se hayan actualizado.
+   */
+  paymentNote?: string;
   /** Paradas intermedias, en orden. Van en la oferta: cambian el viaje. */
   stops?: TripStopDTO[];
 }

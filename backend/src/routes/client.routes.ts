@@ -85,6 +85,7 @@ import {
   pagoEnLineaDisponible,
   reconcilePayment,
 } from '../services/payment.service';
+import { metodosDisponibles } from '../lib/metodos-pago';
 import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
 import {
   getClientPromoOverview,
@@ -175,8 +176,20 @@ router.get('/config', (_req, res) => {
     success: true,
     data: {
       pagoEnLinea: pagoEnLineaDisponible(),
-      // Métodos que la app debe mostrar, en orden. El efectivo siempre está.
-      metodosPago: pagoEnLineaDisponible() ? ['efectivo', 'en_linea'] : ['efectivo'],
+      // Los métodos que la app debe mostrar, en orden, con su texto. Va el
+      // texto y no solo el identificador para que la etiqueta viva en un solo
+      // sitio: si la app trajera la suya, añadir un método aquí dejaría un
+      // hueco en blanco en los teléfonos que no se hayan actualizado.
+      //
+      // `metodosPago` (solo los identificadores) se mantiene para las apps ya
+      // instaladas, que es lo que leen.
+      metodosPago: metodosDisponibles(pagoEnLineaDisponible()).map((m) => m.valor),
+      metodosDePago: metodosDisponibles(pagoEnLineaDisponible()).map((m) => ({
+        valor: m.valor,
+        etiqueta: m.etiqueta,
+        detalle: m.detalle,
+        quienCobra: m.quienCobra,
+      })),
     },
   });
 });

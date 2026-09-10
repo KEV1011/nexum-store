@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nexum_client/core/config/app_config_provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
@@ -15,6 +14,7 @@ import 'package:nexum_client/features/addresses/domain/entities/address_entity.d
 import 'package:nexum_client/features/addresses/presentation/providers/addresses_provider.dart';
 import 'package:nexum_client/features/payments/presentation/payment_checkout.dart';
 import 'package:nexum_client/features/payments/presentation/providers/payment_method_provider.dart';
+import 'package:nexum_client/features/payments/presentation/widgets/icono_metodo_pago.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
@@ -1444,32 +1444,21 @@ class _FilaMetodoPago extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final metodo = ref.watch(metodoPagoEfectivoProvider);
-    // Siempre hay al menos dos opciones —efectivo y transferencia—, así que el
-    // selector nunca se apaga. El pago EN LÍNEA es el único que depende de que
-    // haya pasarela configurada: ofrecerlo sin llaves sería un botón que no
-    // cobra.
-    final pagoEnLinea =
-        ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ?? false;
+    // La lista la manda el servidor; el catálogo local es el respaldo. Siempre
+    // queda al menos el efectivo, así que el selector nunca se apaga.
+    final disponibles = ref.watch(metodosDePagoProvider);
 
     return Material(
       color: context.surfaceVariantColor,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _elegir(context, ref, pagoEnLinea),
+        onTap: () => _elegir(context, ref, disponibles),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Icon(
-                switch (metodo) {
-                  MetodoPago.efectivo => Icons.payments_outlined,
-                  MetodoPago.transferencia => Icons.swap_horiz_rounded,
-                  MetodoPago.enLinea => Icons.credit_card_rounded,
-                },
-                size: 22,
-                color: context.textSecondaryColor,
-              ),
+              IconoMetodoPago(metodo, tamano: 34),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1511,37 +1500,58 @@ class _FilaMetodoPago extends ConsumerWidget {
   Future<void> _elegir(
     BuildContext context,
     WidgetRef ref,
-    bool pagoEnLinea,
+    List<MetodoPago> disponibles,
   ) async {
+    final actual = ref.read(metodoPagoEfectivoProvider);
     final elegido = await showModalBottomSheet<MetodoPago>(
       context: context,
+      // La lista crece y, con la letra grande del sistema, seis filas no caben
+      // en la mitad de la pantalla: sin esto la hoja se desborda.
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 18),
-            const Text(
-              'Método de pago',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            for (final m in MetodoPago.values)
-              if (m != MetodoPago.enLinea || pagoEnLinea)
-              ListTile(
-                leading: Icon(switch (m) {
-                  MetodoPago.efectivo => Icons.payments_outlined,
-                  MetodoPago.transferencia => Icons.swap_horiz_rounded,
-                  MetodoPago.enLinea => Icons.credit_card_rounded,
-                }),
-                title: Text(m.etiqueta),
-                subtitle: Text(m.detalle),
-                onTap: () => Navigator.of(context).pop(m),
+      builder: (hoja) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(hoja).size.height * 0.8,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 18),
+              Text(
+                'Paga con',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
               ),
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final m in disponibles)
+                      ListTile(
+                        leading: IconoMetodoPago(m),
+                        title: Text(m.etiqueta),
+                        subtitle: Text(m.detalle),
+                        // Se marca el que está puesto: una lista de opciones
+                        // sin señalar la vigente obliga a cerrar y volver a
+                        // abrir para saber cuál estaba.
+                        trailing: m == actual
+                            ? const Icon(Icons.check_circle_rounded)
+                            : null,
+                        onTap: () => Navigator.of(hoja).pop(m),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );

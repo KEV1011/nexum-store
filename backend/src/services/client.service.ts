@@ -37,6 +37,7 @@ import { sendPushToClient, sendPushToDriver } from './push.service';
 import { plazaDeCoordenadas } from './municipality.service';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
+import { saneaMetodoPago } from '../lib/metodos-pago';
 import {
   avisoDeEstado, avisoCancelacionAlConductor,
   type EstadoViaje, type DatosDelViaje,
@@ -1013,14 +1014,13 @@ export async function updateOrderStatusByDriver(
 // ─── Client Trips ─────────────────────────────────────────────────────────────
 
 /**
- * Método de pago admitido, o null. No se guarda lo que mande el teléfono tal
- * cual: es un campo que después decide qué se le muestra al conductor, y un
- * valor inventado ahí le diría cualquier cosa.
+ * Método de pago admitido, o null.
+ *
+ * El catálogo vive en `lib/metodos-pago` porque el mismo dato lo consumen la
+ * app del pasajero (para ofrecer), esta capa (para validar y sellar) y la app
+ * del conductor (para saber cómo cobra).
  */
-function _saneaMetodoPago(v: string | undefined): string | null {
-  const m = (v ?? '').trim().toLowerCase();
-  return ['efectivo', 'transferencia', 'en_linea'].includes(m) ? m : null;
-}
+const _saneaMetodoPago = saneaMetodoPago;
 
 export async function requestClientTrip(clientId: string, dto: RequestClientTripDTO): Promise<ClientTripWithPinDTO> {
   const requestRef = `NXM-${Math.floor(1000 + Math.random() * 8000)}`;

@@ -59,10 +59,26 @@ class TransportNotifier extends StateNotifier<TransportState> {
   StreamSubscription<TripUpdateEvent>? _tripSub;
   StreamSubscription<DriverLocationEvent>? _locationSub;
 
+  /// Se completa cuando los viajes guardados ya están en memoria. Lo espera el
+  /// arranque para saber si hay que devolver al pasajero a su viaje en vez de
+  /// dejarlo en el inicio.
+  final _cargado = Completer<void>();
+  Future<void> get cargado => _cargado.future;
+
+  /// Se avisa SIEMPRE, incluso si el provider murió antes de cargar: quien
+  /// espera este futuro es el arranque de la app, y dejarlo colgado sería
+  /// dejar al pasajero mirando el splash.
+  void _avisarCargado() {
+    if (!_cargado.isCompleted) _cargado.complete();
+  }
+
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_kKey) ?? [];
-    if (!mounted) return;
+    if (!mounted) {
+      _avisarCargado();
+      return;
+    }
     final requests = raw
         .map(
           (s) => TransportRequestEntity.fromJson(
@@ -71,7 +87,22 @@ class TransportNotifier extends StateNotifier<TransportState> {
         )
         .toList();
     state = state.copyWith(requests: requests, isLoading: false);
+    // Después de dejar el estado puesto: quien despierte con este futuro va a
+    // leer `state` acto seguido.
+    _avisarCargado();
     unawaited(_resumeActiveTracking(requests));
+  }
+
+  /// Vuelve a enganchar el seguimiento tras volver del segundo plano.
+  ///
+  /// Android puede cortar el socket —o matar el proceso entero— mientras la
+  /// app está en el fondo. Al volver, lo que se ve en pantalla es lo último
+  /// que llegó antes de salir: un viaje "buscando conductor" que en realidad
+  /// ya tiene uno en la puerta. Esto releé el estado real del servidor y
+  /// reabre el socket sin esperar al backoff.
+  Future<void> reanudar() async {
+    if (!mounted) return;
+    await _resumeActiveTracking(state.requests);
   }
 
   /// Al reabrir la app, reconecta el WS y se resuscribe a los viajes que siguen
@@ -101,7 +132,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
     }
     if (!mounted) return;
 
-    final wsOk = await _wsService.connect();
+    // `reconectarYa` y no `connect`: al volver del segundo plano el socket
+    // puede seguir "abierto" pero muerto, y `connect` lo daría por bueno.
+    final wsOk = await _wsService.reconectarYa();
     if (!wsOk || !mounted) return;
     for (final r in active) {
       if (_wsSubscribed.add(r.id)) {

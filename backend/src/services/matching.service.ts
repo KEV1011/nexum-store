@@ -11,6 +11,7 @@ import { onDriverHeartbeat } from './safety-alerts.service';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { tarifaDe } from '../lib/tarifa-categoria';
+import { metodoPorValor } from '../lib/metodos-pago';
 import { avisoSinConductor } from '../lib/avisos-viaje';
 import { plazaDeCoordenadas } from './municipality.service';
 
@@ -492,6 +493,10 @@ async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | nul
     // efectivo y se encuentra con una transferencia no puede dar cambio ni
     // cuadrar su caja, y a esas alturas ya no puede rechazarla.
     paymentMethod: trip.paymentMethod ?? undefined,
+    // El aviso lo redacta el servidor, no la app. Así, al añadir un método de
+    // pago, el conductor que no haya actualizado ve el texto correcto en vez
+    // de un hueco en blanco donde debería decir cómo le pagan.
+    paymentNote: metodoPorValor(trip.paymentMethod)?.avisoAlConductor ?? undefined,
     // Por dónde pasa. En la OFERTA, por el mismo motivo que el método de pago:
     // tres desvíos cambian el viaje que se está aceptando, y una vez aceptado
     // ya no se puede rechazar.

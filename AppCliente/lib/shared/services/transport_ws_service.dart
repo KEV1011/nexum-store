@@ -141,6 +141,27 @@ class TransportWsService {
     return _openAndAuth();
   }
 
+  /// Reconecta AHORA, sin esperar al backoff.
+  ///
+  /// Se llama al volver a la app. Mientras estuvo en segundo plano el sistema
+  /// pudo cortar el socket, y la reconexión programada puede estar a hasta 30
+  /// segundos vista: medio minuto mirando una pantalla congelada mientras el
+  /// conductor ya está en la puerta. Al volver, el intento se hace de
+  /// inmediato y la cuenta de fallos se reinicia — el teléfono acaba de
+  /// recuperar la red y la pantalla, no es el mismo escenario que un servidor
+  /// caído.
+  Future<bool> reconectarYa() async {
+    _shouldReconnect = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempts = 0;
+    if (_channel != null && _authenticated) return true;
+    // Un socket a medio morir (abierto pero sin autenticar) impediría abrir
+    // uno nuevo: `_openAndAuth` se planta si `_channel` no es nulo.
+    if (_channel != null) _cleanup();
+    return _openAndAuth();
+  }
+
   Future<bool> _openAndAuth() async {
     if (_channel != null) return _authenticated;
     if (_connecting) return false;

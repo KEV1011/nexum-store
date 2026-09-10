@@ -53,6 +53,9 @@ TripRequestEntity? ofertaDeViaje(Map<String, dynamic> t) {
       // municipal está cargado de verdad.
       tarifaRegulada: (t['tarifaRegulada'] as bool?) ?? false,
       paymentMethod: t['paymentMethod'] as String?,
+      // El aviso ya redactado por el servidor. Si el backend es anterior a
+      // este campo, la entidad lo compone con su propia tabla.
+      paymentNote: t['paymentNote'] as String?,
       // Solo el nombre: al conductor le sirve para decidir y para orientarse;
       // las coordenadas ya las usó el servidor para medir y cobrar.
       stops: ((t['stops'] as List<dynamic>?) ?? const [])

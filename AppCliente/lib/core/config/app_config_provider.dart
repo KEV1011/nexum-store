@@ -12,9 +12,16 @@ import 'package:nexum_client/core/network/api_client.dart';
 /// Ante la duda se asume que NO hay pago en línea: si la consulta falla, se
 /// ofrece solo efectivo, que siempre funciona. Prometer de más es el error caro.
 class AppConfig {
-  const AppConfig({required this.pagoEnLinea});
+  const AppConfig({
+    required this.pagoEnLinea,
+    this.metodosPago = const [],
+  });
 
   final bool pagoEnLinea;
+
+  /// Los identificadores de los métodos de pago que ofrece el servidor, en
+  /// orden. Vacío = servidor viejo (o sin responder): la app usa su catálogo.
+  final List<String> metodosPago;
 
   static const AppConfig soloEfectivo = AppConfig(pagoEnLinea: false);
 }
@@ -25,7 +32,14 @@ final appConfigProvider = FutureProvider<AppConfig>((ref) async {
         .read(apiClientProvider)
         .get<Map<String, dynamic>>('/client/config');
     final data = res.data?['data'] as Map<String, dynamic>?;
-    return AppConfig(pagoEnLinea: data?['pagoEnLinea'] as bool? ?? false);
+    final metodos = (data?['metodosPago'] as List<dynamic>?)
+            ?.whereType<String>()
+            .toList() ??
+        const <String>[];
+    return AppConfig(
+      pagoEnLinea: data?['pagoEnLinea'] as bool? ?? false,
+      metodosPago: metodos,
+    );
   } catch (_) {
     return AppConfig.soloEfectivo;
   }

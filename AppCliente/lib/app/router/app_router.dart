@@ -4,6 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_transitions.dart';
 import 'package:nexum_client/app/router/splash_screen.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/core/session/reanudar.dart';
+import 'package:nexum_client/features/orders/presentation/providers/'
+    'orders_provider.dart';
+import 'package:nexum_client/features/transport/presentation/providers/'
+    'transport_provider.dart';
 import 'package:nexum_client/features/addresses/presentation/screens/'
     'addresses_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/'
@@ -313,9 +318,54 @@ class _SplashGateState extends ConsumerState<_SplashGate> {
       return;
     }
     final auth = ref.read(authProvider);
-    router.go(
-      auth is AuthAuthenticated ? AppRoutes.home : AppRoutes.login,
-    );
+    if (auth is! AuthAuthenticated) {
+      router.go(AppRoutes.login);
+      return;
+    }
+
+    // Si quedó un servicio en curso, se vuelve a ÉL y no al inicio. Este es el
+    // caso de quien sale a otra app con un taxi en camino y el sistema mata el
+    // proceso: al volver, la app arranca de cero y sin esto aterrizaba en la
+    // pantalla de pedir un viaje, como si no estuviera pasando nada.
+    final destino = await _servicioEnCurso();
+    if (!mounted) return;
+    router.go(destino ?? AppRoutes.home);
+  }
+
+  /// La ruta del servicio abierto más reciente, o `null` si no hay ninguno.
+  ///
+  /// Los dos providers cargan de su caché local antes que del servidor, así
+  /// que esto también responde sin red. El tiempo de espera es la red del
+  /// arranque: si tarda más, se entra al inicio y el seguimiento se engancha
+  /// solo cuando el provider termine — más vale entrar que quedarse en el
+  /// splash.
+  Future<String?> _servicioEnCurso() async {
+    try {
+      final viajes = ref.read(transportProvider.notifier);
+      final pedidos = ref.read(ordersProvider.notifier);
+      await Future.wait([viajes.cargado, pedidos.cargado])
+          .timeout(const Duration(seconds: 3));
+      if (!mounted) return null;
+
+      final abiertos = <ServicioAbierto>[
+        for (final v in ref.read(transportProvider).active)
+          ServicioAbierto(
+            id: v.id,
+            tipo: TipoServicioAbierto.viaje,
+            creado: v.createdAt,
+          ),
+        for (final p in ref.read(ordersProvider).active)
+          ServicioAbierto(
+            id: p.id,
+            tipo: TipoServicioAbierto.pedido,
+            creado: p.createdAt,
+          ),
+      ];
+      return rutaDeReanudacion(abiertos);
+    } catch (_) {
+      // Sin red, con la caché corrupta o si un provider tarda: al inicio.
+      return null;
+    }
   }
 
   @override
