@@ -1,4 +1,4 @@
-import { DocumentType, DocumentStatus as PrismaDocumentStatus } from '@prisma/client';
+import { DocumentType, DocumentStatus as PrismaDocumentStatus, Prisma } from '@prisma/client';
 import {
   DriverProfileDTO,
   DriverPublicProfileDTO,
@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { prisma } from '../lib/prisma';
 import { verificacionesDeConductor } from '../lib/verificaciones-conductor';
+import { cuentaElogios } from '../lib/elogios';
 import { pilotSkipVerification } from './kyc.service';
 import { evaluateDriverCompliance } from './document-expiry.service';
 import { runDocumentOcr } from './ocr.service';
@@ -108,9 +109,22 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
   const approvedCount = docs.filter((d) => d.status === 'APPROVED').length;
   const vehicle = driver.vehicles[0];
 
+  // Lo que sus pasajeros destacan. Para él es la parte útil de la
+  // calificación: un 4,8 no le enseña nada, y «tres pasajeros dicen que llegas
+  // puntual» sí le dice qué está haciendo bien y qué conviene repetir.
+  const elogios = cuentaElogios(
+    (
+      await prisma.trip.findMany({
+        where: { driverId, ratingTags: { not: Prisma.DbNull } },
+        select: { ratingTags: true },
+      })
+    ).map((t) => (Array.isArray(t.ratingTags) ? (t.ratingTags as string[]) : null)),
+  );
+
   return {
     driverId: driver.id,
     fullName: driver.name,
+    elogios,
     phone: driver.phone,
     photoUrl: driver.avatarUrl ?? undefined,
     bio: driver.bio ?? undefined,
@@ -175,6 +189,18 @@ export async function getDriverPublicProfile(driverId: string): Promise<DriverPu
     })),
   });
 
+  // Los elogios se RECALCULAN de los viajes, nunca se suman encima de un
+  // contador: un acumulado y unas filas acaban discrepando y nadie sabe cuál
+  // miente. Es la misma regla que ya siguen la nota del conductor y la del
+  // negocio.
+  const calificados = await prisma.trip.findMany({
+    where: { driverId, ratingTags: { not: Prisma.DbNull } },
+    select: { ratingTags: true },
+  });
+  const elogios = cuentaElogios(
+    calificados.map((t) => (Array.isArray(t.ratingTags) ? (t.ratingTags as string[]) : null)),
+  );
+
   return {
     driverId: driver.id,
     fullName: driver.name,
@@ -188,6 +214,7 @@ export async function getDriverPublicProfile(driverId: string): Promise<DriverPu
     memberSince: driver.createdAt.toISOString(),
     isVerified: driver.isVerified,
     citySlug: driver.citySlug ?? undefined,
+    elogios,
     verificaciones: verificaciones.items,
     verificacionesCumplidas: verificaciones.cumplidas,
     verificacionesTotal: verificaciones.total,

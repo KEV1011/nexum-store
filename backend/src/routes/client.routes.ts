@@ -86,6 +86,7 @@ import {
   reconcilePayment,
 } from '../services/payment.service';
 import { metodosDisponibles } from '../lib/metodos-pago';
+import { ELOGIOS_AL_CONDUCTOR, MAX_ELOGIOS_POR_VIAJE } from '../lib/elogios';
 import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
 import {
   getClientPromoOverview,
@@ -190,6 +191,12 @@ router.get('/config', (_req, res) => {
         detalle: m.detalle,
         quienCobra: m.quienCobra,
       })),
+      // Lo que el pasajero puede destacar del conductor al calificar. Viaja
+      // desde aquí por lo mismo que los métodos de pago: la etiqueta vive en
+      // un solo sitio, así que añadir un elogio no deja un chip sin nombre en
+      // los teléfonos que no se hayan actualizado.
+      elogios: ELOGIOS_AL_CONDUCTOR,
+      maxElogios: MAX_ELOGIOS_POR_VIAJE,
     },
   });
 });
@@ -381,15 +388,17 @@ router.post('/orders/:id/cancel', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true });
 });
 
-// POST /client/trips/:id/rate { stars, comment } — califica un viaje terminado.
+// POST /client/trips/:id/rate { stars, comment, tags } — califica un viaje.
 //
 // La hoja de estrellas ya existía en la app; lo que no existía era esta ruta,
 // así que la nota moría en el teléfono y el conductor seguía con el 5,0 de
 // fábrica que nadie le dio.
 router.post('/trips/:id/rate', clientAuthMiddleware, async (req, res) => {
-  const { stars, comment } = req.body as { stars?: unknown; comment?: unknown };
+  const { stars, comment, tags } = req.body as {
+    stars?: unknown; comment?: unknown; tags?: unknown;
+  };
   try {
-    const data = await rateClientTrip(req.clientId!, req.params['id']!, stars, comment);
+    const data = await rateClientTrip(req.clientId!, req.params['id']!, stars, comment, tags);
     res.status(201).json({ success: true, data });
   } catch (err) {
     res.status(400).json({

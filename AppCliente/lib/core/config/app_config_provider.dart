@@ -15,6 +15,8 @@ class AppConfig {
   const AppConfig({
     required this.pagoEnLinea,
     this.metodosPago = const [],
+    this.elogios = const [],
+    this.maxElogios = 3,
   });
 
   final bool pagoEnLinea;
@@ -22,6 +24,17 @@ class AppConfig {
   /// Los identificadores de los métodos de pago que ofrece el servidor, en
   /// orden. Vacío = servidor viejo (o sin responder): la app usa su catálogo.
   final List<String> metodosPago;
+
+  /// Lo que el pasajero puede destacar del conductor: `{clave, etiqueta}`.
+  ///
+  /// Viene del servidor para que la etiqueta viva en un solo sitio: añadir un
+  /// elogio allí no deja un chip sin nombre en un teléfono sin actualizar.
+  /// Vacío = no se ofrece nada, que es lo correcto ante la duda.
+  final List<({String clave, String etiqueta})> elogios;
+
+  /// Cuántos puede marcar en un mismo viaje. Lo decide el servidor, que además
+  /// lo hace cumplir al guardar.
+  final int maxElogios;
 
   static const AppConfig soloEfectivo = AppConfig(pagoEnLinea: false);
 }
@@ -36,9 +49,18 @@ final appConfigProvider = FutureProvider<AppConfig>((ref) async {
             ?.whereType<String>()
             .toList() ??
         const <String>[];
+    final elogios = <({String clave, String etiqueta})>[
+      for (final e in (data?['elogios'] as List<dynamic>?) ?? const [])
+        if (e is Map<String, dynamic> &&
+            e['clave'] is String &&
+            e['etiqueta'] is String)
+          (clave: e['clave'] as String, etiqueta: e['etiqueta'] as String),
+    ];
     return AppConfig(
       pagoEnLinea: data?['pagoEnLinea'] as bool? ?? false,
       metodosPago: metodos,
+      elogios: elogios,
+      maxElogios: (data?['maxElogios'] as num?)?.toInt() ?? 3,
     );
   } catch (_) {
     return AppConfig.soloEfectivo;

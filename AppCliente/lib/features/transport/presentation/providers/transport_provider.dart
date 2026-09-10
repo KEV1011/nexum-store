@@ -431,12 +431,23 @@ class TransportNotifier extends StateNotifier<TransportState> {
   /// conductor nunca se enteraba y seguía con el 5,0 de fábrica.
   ///
   /// Devuelve el motivo si el servidor la rechaza, o null si quedó guardada.
-  Future<String?> rateRequest(String id, int stars, {String? comment}) async {
+  /// Califica el viaje. [elogios] son claves del catálogo (`GET /client/config`);
+  /// el servidor descarta lo que no reconozca y corta en su tope.
+  Future<String?> rateRequest(
+    String id,
+    int stars, {
+    String? comment,
+    List<String>? elogios,
+  }) async {
     _update(id, (r) => r.copyWith(rating: stars, ratingComment: comment));
     try {
       await _dio.post<Map<String, dynamic>>(
         '/client/trips/$id/rate',
-        data: {'stars': stars, if (comment != null) 'comment': comment},
+        data: {
+          'stars': stars,
+          if (comment != null) 'comment': comment,
+          if (elogios != null && elogios.isNotEmpty) 'tags': elogios,
+        },
       );
       return null;
     } on DioException catch (e) {

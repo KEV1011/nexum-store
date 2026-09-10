@@ -11,7 +11,7 @@ import {
   RequestClientTripDTO,
   TransportServiceType,
 } from '../types';
-import { TripStatus, OrderStatus } from '@prisma/client';
+import { TripStatus, OrderStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { nuevaReferencia } from '../lib/referencia';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
@@ -39,6 +39,7 @@ import { plazaDeCoordenadas } from './municipality.service';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
 import { saneaMetodoPago } from '../lib/metodos-pago';
+import { saneaElogios } from '../lib/elogios';
 import { descuentoSellable, totalPasajero } from '../lib/descuento-viaje';
 import { redeemPromo, PromoError } from './promo.service';
 import {
@@ -789,9 +790,14 @@ export async function rateClientTrip(
   tripId: string,
   estrellas: unknown,
   comentario: unknown,
-): Promise<{ rating: number; ratingComment: string | null }> {
+  elogios?: unknown,
+): Promise<{ rating: number; ratingComment: string | null; ratingTags: string[] | null }> {
   const stars = saneaEstrellas(estrellas);
   const comment = saneaComentario(comentario);
+  // Catálogo cerrado y tope de tres: ver `lib/elogios`. Lo que mande el
+  // teléfono y no exista se descarta — un elogio inventado en el perfil de
+  // alguien es tan grave como una verificación falsa.
+  const tags = saneaElogios(elogios);
 
   const trip = await prisma.trip.findFirst({
     where: { id: tripId, passengerId: clientId },
@@ -804,13 +810,13 @@ export async function rateClientTrip(
 
   await prisma.trip.update({
     where: { id: tripId },
-    data: { rating: stars, ratingComment: comment },
+    data: { rating: stars, ratingComment: comment, ratingTags: tags ?? Prisma.DbNull },
   });
 
   // Un viaje sin conductor asignado no puede calificar a nadie; la nota igual
   // queda guardada en el viaje, que es información de la operación.
   if (trip.driverId) await recalcularReputacionConductor(trip.driverId);
-  return { rating: stars, ratingComment: comment };
+  return { rating: stars, ratingComment: comment, ratingTags: tags };
 }
 
 /**

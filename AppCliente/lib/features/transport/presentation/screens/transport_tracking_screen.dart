@@ -1355,6 +1355,23 @@ class _RatingSectionState extends ConsumerState<_RatingSection> {
   int _hovered = 0;
   int _selected = 0;
 
+  /// Lo que el pasajero destaca. Se envía junto con las estrellas: el catálogo
+  /// y el tope los pone el servidor, aquí solo se marca y se manda.
+  final Set<String> _elogios = {};
+
+  Future<void> _enviar(int estrellas) async {
+    final motivo = await ref.read(transportProvider.notifier).rateRequest(
+          widget.requestId,
+          estrellas,
+          elogios: _elogios.toList(),
+        );
+    if (motivo != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(motivo), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1383,17 +1400,7 @@ class _RatingSectionState extends ConsumerState<_RatingSection> {
                   setState(() => _selected = i + 1);
                   // La nota ahora VIAJA al servidor. Si la rechaza, se dice:
                   // antes no podía fallar nada porque no salía del teléfono.
-                  final motivo = await ref
-                      .read(transportProvider.notifier)
-                      .rateRequest(widget.requestId, i + 1);
-                  if (motivo != null && context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(motivo),
-                        backgroundColor: AppColors.error,
-                      ),
-                    );
-                  }
+                  await _enviar(i + 1);
                 },
                 onLongPressStart: (_) => setState(() => _hovered = i + 1),
                 onLongPressEnd: (_) => setState(() => _hovered = 0),
@@ -1417,6 +1424,19 @@ class _RatingSectionState extends ConsumerState<_RatingSection> {
                 fontSize: 13,
               ),
             ),
+            // Los elogios salen DESPUÉS de la nota: pedir que destaque algo
+            // antes de decir qué tal estuvo es preguntar al revés. Una nota de
+            // cinco estrellas no le dice al conductor qué hizo bien; «Carro
+            // limpio» sí.
+            _Elogios(
+              marcados: _elogios,
+              onToggle: (clave) {
+                setState(() {
+                  if (!_elogios.remove(clave)) _elogios.add(clave);
+                });
+                unawaited(_enviar(_selected));
+              },
+            ),
           ],
         ],
       ),
@@ -1431,6 +1451,95 @@ class _RatingSectionState extends ConsumerState<_RatingSection> {
         5 => '¡Excelente!',
         _ => '',
       };
+}
+
+/// Lo que el pasajero destaca del conductor.
+///
+/// El catálogo y el tope los manda el servidor: si no responde, no se ofrece
+/// nada. Un chip sin nombre es peor que ningún chip.
+class _Elogios extends ConsumerWidget {
+  const _Elogios({required this.marcados, required this.onToggle});
+
+  final Set<String> marcados;
+  final ValueChanged<String> onToggle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final config = ref.watch(appConfigProvider).valueOrNull;
+    final catalogo = config?.elogios ?? const [];
+    if (catalogo.isEmpty) return const SizedBox.shrink();
+
+    final tope = config?.maxElogios ?? 3;
+    final lleno = marcados.length >= tope;
+
+    return Column(
+      children: [
+        const SizedBox(height: 14),
+        Text(
+          '¿Qué destacas? (hasta $tope)',
+          style: TextStyle(fontSize: 12.5, color: context.textSecondaryColor),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 7,
+          runSpacing: 7,
+          children: [
+            for (final e in catalogo)
+              _ChipElogio(
+                etiqueta: e.etiqueta,
+                marcado: marcados.contains(e.clave),
+                // Con el tope alcanzado los no marcados se apagan en vez de
+                // desaparecer: si se fueran, la lista cambiaría de tamaño sola
+                // y no se entendería por qué.
+                habilitado: marcados.contains(e.clave) || !lleno,
+                onTap: () => onToggle(e.clave),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ChipElogio extends StatelessWidget {
+  const _ChipElogio({
+    required this.etiqueta,
+    required this.marcado,
+    required this.habilitado,
+    required this.onTap,
+  });
+
+  final String etiqueta;
+  final bool marcado;
+  final bool habilitado;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: habilitado ? 1 : 0.4,
+      child: Material(
+        color: marcado ? AppColors.primary : context.surfaceColor,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: habilitado ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+            child: Text(
+              etiqueta,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: marcado ? FontWeight.w700 : FontWeight.w500,
+                color: marcado ? Colors.white : context.textPrimaryColor,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Propina ──────────────────────────────────────────────────────────────────

@@ -104,6 +104,9 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
     final verificaciones =
         (p['verificaciones'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
             const [];
+    final elogios =
+        (p['elogios'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
+            const [];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -118,6 +121,25 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
             cumplidas: (p['verificacionesCumplidas'] as num?)?.toInt() ?? 0,
             total: (p['verificacionesTotal'] as num?)?.toInt() ??
                 verificaciones.length,
+          ),
+        ],
+        // Solo si alguien destacó algo: una sección vacía con el título
+        // «Lo que destacan sus pasajeros» y nada debajo se lee como un vacío
+        // en su contra, y lo único que dice es que aún no lo han calificado.
+        if (elogios.isNotEmpty) ...[
+          const SizedBox(height: 28),
+          _Seccion(titulo: 'Lo que destacan sus pasajeros'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final e in elogios)
+                _Elogio(
+                  etiqueta: e['etiqueta'] as String? ?? '',
+                  veces: (e['veces'] as num?)?.toInt() ?? 0,
+                ),
+            ],
           ),
         ],
         if ((p['vehicleDescription'] as String?)?.trim().isNotEmpty ?? false) ...[
@@ -346,6 +368,50 @@ class _Chip extends StatelessWidget {
               fontSize: 13,
               fontWeight: verificada ? FontWeight.w600 : FontWeight.w400,
               color: verificada ? context.textPrimaryColor : context.textSecondaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Un elogio con su número de veces.
+///
+/// El número va SIEMPRE. «Puntual» a secas podría venir de un solo viaje y
+/// parecería una costumbre; «Puntual · 7» dice lo que de verdad hay.
+class _Elogio extends StatelessWidget {
+  const _Elogio({required this.etiqueta, required this.veces});
+
+  final String etiqueta;
+  final int veces;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+      decoration: BoxDecoration(
+        color: context.surfaceVariantColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            etiqueta,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: context.textPrimaryColor,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$veces',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: context.textSecondaryColor,
             ),
           ),
         ],

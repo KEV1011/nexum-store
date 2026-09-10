@@ -170,6 +170,70 @@ class _RatingsScreenState extends ConsumerState<RatingsScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
 
+          // ── Lo que destacan los pasajeros ────────────────────────────────
+          //
+          // La parte útil de la calificación para el conductor: el promedio le
+          // dice cómo va, esto le dice QUÉ está haciendo bien. Solo aparece
+          // cuando alguien destacó algo — un recuadro vacío con el título se
+          // leería como un vacío en su contra.
+          if (profileState.profile?.elogios.isNotEmpty ?? false) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(AppConstants.spacingL),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Lo que destacan tus pasajeros',
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: AppConstants.spacingM),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final e in profileState.profile!.elogios)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              color: context.surfaceVariantColor,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  e.etiqueta,
+                                  style: theme.textTheme.bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 8),
+                                // El número va SIEMPRE: una etiqueta suelta
+                                // podría venir de un solo viaje y parecería
+                                // una costumbre.
+                                Text(
+                                  '${e.veces}',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: context.textSecondaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
+
           // ── Distribución por estrellas (viajes calificados reales) ───────
           if (rated.isNotEmpty) ...[
             Card(

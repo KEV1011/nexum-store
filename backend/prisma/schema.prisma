@@ -681,6 +681,11 @@ model Trip {
   packageDescription String?
   passengerName      String?
   passengerRating    Float?
+  /// Lo que el pasajero destacó del conductor («Puntual», «Carro limpio»).
+  /// Claves del catálogo cerrado de `lib/elogios`; máximo tres. Se sellan en
+  /// el viaje que las produjo, que es lo que las hace auditables: el conteo
+  /// del perfil se RECALCULA de aquí, nunca se suma encima.
+  ratingTags         Json?
   netEarning         Float?
   commission         Float?
   tipAmount          Float           @default(0)

@@ -1253,6 +1253,11 @@ export interface DriverDocumentDTO {
 export interface DriverProfileDTO {
   driverId: string;
   fullName: string;
+  /**
+   * Lo que sus pasajeros destacan, de más a menos. Es la parte útil de la
+   * calificación para el conductor: un 4,8 no le enseña qué hizo bien.
+   */
+  elogios?: { clave: string; etiqueta: string; veces: number }[];
   phone: string;
   photoUrl?: string;
   bio?: string;
@@ -1311,6 +1316,14 @@ export interface DriverPublicProfileDTO {
   isVerified: boolean;
   /** Plaza donde opera. */
   citySlug?: string;
+  /**
+   * Lo que sus pasajeros destacan, de más a menos, con el número de veces.
+   *
+   * El número va SIEMPRE: «Puntual · 3» dice mucho más que la etiqueta suelta,
+   * y evita que un solo viaje parezca una costumbre. Solo salen los que
+   * alguien marcó — «Buena música · 0» sería ruido y se leería como reproche.
+   */
+  elogios?: { clave: string; etiqueta: string; veces: number }[];
   /**
    * Lo que el pasajero mira antes de subirse al carro de un desconocido.
    *
