@@ -332,6 +332,7 @@ class _StatusCard extends StatelessWidget {
   }
 
   IconData _statusIcon(TransportStatus status) => switch (status) {
+        TransportStatus.scheduled => Icons.event_available_rounded,
         TransportStatus.searching => Icons.search_rounded,
         TransportStatus.accepted => Icons.person_pin_rounded,
         TransportStatus.arriving => Icons.directions_rounded,

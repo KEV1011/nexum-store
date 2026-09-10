@@ -69,6 +69,11 @@ enum TransportServiceType {
 }
 
 /// Estado del viaje o envío en tiempo real.
+/// AL AÑADIR UN VALOR AQUÍ: buscar TODOS los `switch` sobre este enum
+/// (`grep -rn "TransportStatus\." lib/`). Los `switch` de EXPRESIÓN son
+/// exhaustivos y sin el caso nuevo NO compilan — y como no hay Flutter en el
+/// entorno de desarrollo, eso se descubre en el CI, no antes. Ya pasó con
+/// `_statusIcon` de la pantalla de seguimiento.
 enum TransportStatus {
   /// Reservado para más tarde. Todavía no se le ofrece a ningún conductor: el
   /// servidor empieza a buscar con antelación para que a la hora acordada el
