@@ -47,6 +47,23 @@ describe('tarifa del taxi cargada desde el decreto', () => {
     expect(modoTarifaTaxi()).toBe('decreto-municipal');
   });
 
+  it('sin decreto NO se dice «tarifa autorizada» al pasajero', () => {
+    // Es la afirmación que hace legal al servicio. Decirla mientras el precio
+    // lo pone nuestra tabla genérica es exactamente lo contrario de lo que
+    // dice: el número no es el oficial del municipio.
+    delete process.env['TAXI_BANDERAZO_COP'];
+    delete process.env['TAXI_POR_KM_COP'];
+    delete process.env['TAXI_CARRERA_MINIMA_COP'];
+    expect(tablaTarifas().TAXI.descripcion).not.toMatch(/autorizada/i);
+  });
+
+  it('con el decreto cargado sí se dice', () => {
+    process.env['TAXI_BANDERAZO_COP'] = '4200';
+    process.env['TAXI_POR_KM_COP'] = '1800';
+    process.env['TAXI_CARRERA_MINIMA_COP'] = '7000';
+    expect(tablaTarifas().TAXI.descripcion).toMatch(/autorizada/i);
+  });
+
   it('media tarifa cargada NO cuenta como decreto', () => {
     // Cargar solo el banderazo del decreto y dejar el resto genérico produce un
     // número que no es ni el oficial ni el nuestro. Se exige el juego completo.

@@ -485,6 +485,9 @@ async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | nul
     // Tipo de servicio: el conductor lo necesita para saber si es un ENVÍO
     // (requiere foto de recogida/entrega) vs un viaje de pasajero.
     serviceType: trip.serviceType,
+    // Si esa tarifa la fija el decreto. La app lo deducía de que el servicio
+    // fuera TAXI, y eso es cierto solo si el decreto está cargado.
+    tarifaRegulada: tarifaDe(trip.serviceType)?.regulada ?? false,
     // Cómo le van a pagar. Va en la OFERTA, no después: quien acepta esperando
     // efectivo y se encuentra con una transferencia no puede dar cambio ni
     // cuadrar su caja, y a esas alturas ya no puede rechazarla.

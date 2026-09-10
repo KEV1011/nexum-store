@@ -43,6 +43,7 @@ import {
 import { setClientKycStatus, ClientKycError } from '../services/client-kyc.service';
 import { OperatorStatus } from '@prisma/client';
 import { setDriverKycStatus, KycError } from '../services/kyc.service';
+import { motivoParaNoConectar } from '../services/driver-online-guard';
 import { adminClearCompliance } from '../services/document-expiry.service';
 import { listSafetyAlerts } from '../services/safety-alerts.service';
 import { checkDriverBackground, BackgroundCheckError } from '../services/background-check.service';
@@ -280,6 +281,37 @@ router.post('/drivers/:id/background', async (req: Request, res: Response): Prom
 // POST /admin/drivers/:id/kyc { status: 'VERIFIED'|'REJECTED'|'IN_REVIEW', reference? }
 // Decisión manual de identidad del conductor (revisión de selfie + documento).
 const KYC_DECISIONS = new Set(['VERIFIED', 'REJECTED', 'IN_REVIEW']);
+// POST /admin/drivers/:id/habilitar — deja al conductor listo para trabajar.
+//
+// Con los dos gates encendidos hacen falta DOS acciones en sitios distintos
+// (aprobar documentos y marcar la identidad), y olvidarse de la segunda deja al
+// conductor sin poder conectarse sin que nadie entienda por qué. Esto hace las
+// dos y devuelve si quedó desbloqueado de verdad.
+//
+// No sustituye a revisar los papeles: es el botón que se pulsa DESPUÉS de
+// mirarlos, y por eso el panel pide confirmación.
+router.post('/drivers/:id/habilitar', async (req: Request, res: Response): Promise<void> => {
+  const id = req.params['id']!;
+  try {
+    const existe = await setDriverVerified(id, true);
+    if (!existe) {
+      res.status(404).json({ success: false, error: 'Conductor no encontrado' });
+      return;
+    }
+    await setDriverKycStatus(id, 'VERIFIED');
+    // La verdad no es «hice dos updates», es «¿ya puede conectarse?». Puede que
+    // no: un documento vencido lo sigue bloqueando, y el admin tiene que verlo.
+    const motivo = await motivoParaNoConectar(id);
+    res.json({
+      success: true,
+      data: { habilitado: motivo === null, motivo: motivo?.error ?? null },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'No se pudo habilitar';
+    res.status(err instanceof KycError ? 404 : 400).json({ success: false, error: msg });
+  }
+});
+
 router.post('/drivers/:id/kyc', async (req: Request, res: Response): Promise<void> => {
   const { status, reference } = req.body as { status?: string; reference?: string };
   if (!status || !KYC_DECISIONS.has(status)) {
@@ -839,8 +871,8 @@ const PANEL_HTML = `<!DOCTYPE html>
         <table><thead><tr><th>Conductor</th><th>Estado</th><th>Verif.</th><th>GPS hace</th><th>Distancia</th><th>Radio 5 km</th><th>GPS fresco</th><th>¿Recibiría oferta?</th></tr></thead>
         <tbody id="diag-body"></tbody></table>
       </div>
-      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Docs</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
-      <tbody id="drivers-body"><tr><td colspan="13" class="empty">Cargando…</td></tr></tbody></table>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>¿Puede trabajar?</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Docs</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
+      <tbody id="drivers-body"><tr><td colspan="14" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-clients" style="display:none">
@@ -1374,7 +1406,7 @@ var KYC_LABEL = { PENDING: 'Pendiente', IN_REVIEW: 'En revisión', VERIFIED: 'Ve
 function loadDrivers() {
   api('/admin/drivers' + qPlaza('?')).then((rows) => {
     const tb = document.getElementById('drivers-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="13" class="empty">Sin conductores.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="14" class="empty">Sin conductores.</td></tr>'; return; }
     tb.innerHTML = rows.map((d) => {
       var kycCell = '<span style="font-size:.72rem">' + (KYC_LABEL[d.kycStatus] || d.kycStatus) + '</span>';
       if (d.hasSelfie && d.selfieUrl) kycCell += ' <a href="' + esc(d.selfieUrl) + '" target="_blank" style="color:#059669">selfie</a>';
@@ -1389,7 +1421,13 @@ function loadDrivers() {
         : d.complianceStatus === 'EXPIRING'
           ? '<span class="badge" style="background:#fef3c7;color:#92400e">⏳ Por vencer</span>'
           : '✅';
+      // La respuesta directa a «¿por qué este no recibe viajes?». Cruzar
+      // isVerified + KYC + cumplimiento a ojo es justo donde se pierde el rato.
+      var trabaja = d.motivoBloqueo
+        ? '<span class="badge badge-reject" title="' + esc(d.motivoBloqueo) + '">⛔ No</span>'
+        : '<span class="badge badge-approve">✅ Sí</span>';
       return '<tr><td><strong>' + esc(d.name) + '</strong></td><td>' + esc(d.phone) + '</td><td>' + esc(d.vehicle || '—') +
+      '</td><td>' + trabaja +
       '</td><td><span class="badge badge-' + d.status + '">' + d.status + '</span></td><td>' + (d.isVerified ? '✅' : '—') +
       '</td><td>' + (d.intercityEnabled ? '🛣️' : '—') +
       '</td><td>' + kycCell + '</td><td>' + compliance + '</td><td>' + fraud +
@@ -1399,11 +1437,23 @@ function loadDrivers() {
         ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
       ' ' + kycBtns +
+      (d.motivoBloqueo ? ' <button class="btn-sm" style="background:#7c3aed;color:#fff" onclick="habilitar(\\'' + d.id + '\\')">Habilitar</button>' : '') +
       (d.complianceStatus === 'BLOCKED' ? ' <button class="btn-sm" style="background:#0ea5e9;color:#fff" onclick="clearCompliance(\\'' + d.id + '\\')">Desbloquear docs</button>' : '') +
       (d.status === 'ON_TRIP' ? ' <button class="btn-sm" style="background:#f59e0b;color:#fff" onclick="releaseDriver(\\'' + d.id + '\\')">Liberar</button>' : '') +
       '</td></tr>';
     }).join('');
   }).catch((e) => showMsg(e.message, true));
+}
+function habilitar(id) {
+  if (!confirm('Vas a aprobar sus documentos y su identidad de una vez. Hazlo solo si ya revisaste los papeles. ¿Continuar?')) return;
+  api('/admin/drivers/' + id + '/habilitar', { method: 'POST' })
+    .then((r) => {
+      // Puede quedar bloqueado igual (un documento vencido, por ejemplo). Se
+      // dice, en vez de cantar victoria y dejar al admin creyendo que ya está.
+      showMsg(r.habilitado ? 'Listo: ya puede conectarse.' : 'Aprobado, pero sigue bloqueado: ' + r.motivo, !r.habilitado);
+      loadDrivers();
+    })
+    .catch((e) => showMsg(e.message, true));
 }
 function setDriverKyc(id, status) {
   api('/admin/drivers/' + id + '/kyc', { method: 'POST', body: JSON.stringify({ status: status }) })

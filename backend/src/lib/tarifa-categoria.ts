@@ -110,7 +110,13 @@ export function tablaTarifas(): Record<CategoriaViaje, TarifaCategoria> {
     TAXI: {
       categoria: 'TAXI',
       nombre: 'Taxi',
-      descripcion: 'Servicio público con tarifa autorizada',
+      // Solo se dice «autorizada» cuando la tarifa del decreto está
+      // REALMENTE cargada. Con la genérica, decirlo sería afirmar que el
+      // precio es el oficial del municipio cuando lo estamos poniendo
+      // nosotros — y eso, en un servicio público regulado, no es un matiz.
+      descripcion: decreto != null
+        ? 'Servicio público con tarifa autorizada'
+        : 'Servicio público',
       capacidad: 4,
       banderazo: decreto?.banderazo ?? FARE_BASE,
       porKm: decreto?.porKm ?? FARE_PER_KM,

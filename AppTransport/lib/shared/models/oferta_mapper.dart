@@ -49,6 +49,9 @@ TripRequestEntity? ofertaDeViaje(Map<String, dynamic> t) {
       etaToPickupMinutes: 3,
       requestedAt: DateTime.now(),
       serviceType: t['serviceType'] as String?,
+      // Lo decide el backend: solo es «autorizada» si el decreto
+      // municipal está cargado de verdad.
+      tarifaRegulada: (t['tarifaRegulada'] as bool?) ?? false,
       paymentMethod: t['paymentMethod'] as String?,
       // Solo el nombre: al conductor le sirve para decidir y para orientarse;
       // las coordenadas ya las usó el servidor para medir y cobrar.
