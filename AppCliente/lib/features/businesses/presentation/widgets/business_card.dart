@@ -152,19 +152,41 @@ class BusinessCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        const Icon(
-                          Icons.star_rounded,
-                          color: AppColors.star,
-                          size: 15,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          business.rating.toStringAsFixed(1),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                        // Sin calificaciones NO se pinta una estrella: se dice
+                        // que es nuevo. Un 5,0 que nadie dio no es un adorno,
+                        // es una recomendación falsa.
+                        if (business.rating == null)
+                          Text(
+                            'Nuevo',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: context.textTertiaryColor,
+                            ),
+                          )
+                        else ...[
+                          const Icon(
+                            Icons.star_rounded,
+                            color: AppColors.star,
+                            size: 15,
                           ),
-                        ),
+                          const SizedBox(width: 2),
+                          Text(
+                            business.rating!.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (business.ratingCount > 0)
+                            Text(
+                              ' (${business.ratingCount})',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.textTertiaryColor,
+                              ),
+                            ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 4),

@@ -97,8 +97,15 @@ abstract final class AppRoutes {
   static String transportTrackingPath(String id) => '/transport/tracking/$id';
 }
 
+/// Navegador raíz, para poder navegar desde fuera del árbol de widgets.
+///
+/// Lo necesita el push: cuando el usuario toca una notificación no hay ningún
+/// `BuildContext` a mano — el aviso llega a un servicio, no a una pantalla.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: AppRoutes.splash,
     routes: [
       GoRoute(

@@ -21,7 +21,8 @@ class DriverEntity {
   final String id;
   final String name;
   final String phone;
-  final double rating;
+  /// Null mientras nadie lo haya calificado.
+  final double? rating;
   final int totalTrips;
   final String vehiclePlate;
   final String vehicleDescription;

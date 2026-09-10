@@ -1,4 +1,4 @@
-import { OperatorStatus } from '@prisma/client';
+import { OperatorStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
@@ -22,6 +22,14 @@ import { cancelErrandByAdmin } from './errand.service';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface AdminMetrics {
+  /**
+   * Plaza sobre la que están calculadas, o null = toda la plataforma.
+   *
+   * Lo que no se puede atribuir a una ciudad viaja en `null`, nunca en cero: un
+   * cero afirma que ahí no pasó nada, y lo cierto es que ese dato todavía no
+   * sabe de plazas.
+   */
+  ciudad: string | null;
   trips: {
     todayRequested: number;
     todayCompleted: number;
@@ -32,7 +40,8 @@ export interface AdminMetrics {
   money: {
     todayGmv: number;        // suma de finalFare de viajes completados hoy
     todayCommission: number; // ingreso plataforma hoy
-    paymentsApprovedToday: number;
+    /** null al filtrar por plaza: un pago no siempre cuelga de un viaje. */
+    paymentsApprovedToday: number | null;
   };
   drivers: {
     total: number;
@@ -55,9 +64,10 @@ export interface AdminMetrics {
   stuck: {
     total: number;
     viaje: number;
-    mandado: number;
-    pedido: number;
-    intermunicipal: number;
+    /** null al filtrar por plaza: estos tres no llevan ciudad sellada. */
+    mandado: number | null;
+    pedido: number | null;
+    intermunicipal: number | null;
     desdeMin: number;
   };
   /**
@@ -83,9 +93,15 @@ export interface AdminMetrics {
   users: {
     total: number;
     newToday: number;
+    /**
+     * true cuando se filtró por plaza: entonces no son «los registrados» sino
+     * «los que han pedido aquí», que es otra cosa y el panel lo dice.
+     */
+    porViajes: boolean;
   };
   safety: {
-    sosLast24h: number;
+    /** null al filtrar por plaza: el SOS guarda coordenadas, no ciudad. */
+    sosLast24h: number | null;
   };
 }
 
@@ -97,10 +113,23 @@ function _startOfToday(): Date {
   return new Date(bogota.getTime() + 5 * 60 * 60 * 1000);
 }
 
-export async function getAdminMetrics(): Promise<AdminMetrics> {
+/**
+ * Métricas de operación, opcionalmente de UNA plaza.
+ *
+ * Con `ciudad`, todo lo que lleva plaza sellada (viajes y conductores) se
+ * filtra por ella; lo que no se puede atribuir a una ciudad se devuelve en
+ * `null` para que el panel escriba «—» en vez de un cero que mentiría.
+ */
+export async function getAdminMetrics(ciudad?: string | null): Promise<AdminMetrics> {
   const today = _startOfToday();
   const last7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const plaza = ciudad ?? null;
+  const deViaje = plaza ? { citySlug: plaza } : {};
+  // Un conductor «de la plaza» es aquel cuyo último latido cayó ahí. No es su
+  // domicilio: es dónde está trabajando hoy, que es lo que importa para saber
+  // si esta ciudad tiene oferta suficiente.
+  const deConductor = plaza ? { citySlug: plaza } : {};
 
   const [
     todayRequested,
@@ -118,40 +147,64 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     sosLast24h,
     unverifiedOperatingNow,
   ] = await Promise.all([
-    prisma.trip.count({ where: { createdAt: { gte: today } } }),
+    prisma.trip.count({ where: { createdAt: { gte: today }, ...deViaje } }),
     prisma.trip.aggregate({
-      where: { status: 'COMPLETED', completedAt: { gte: today } },
+      where: { status: 'COMPLETED', completedAt: { gte: today }, ...deViaje },
       _count: { _all: true },
       _sum: { finalFare: true, commission: true },
     }),
-    prisma.trip.count({ where: { status: 'CANCELLED', updatedAt: { gte: today } } }),
-    prisma.trip.count({ where: { status: 'COMPLETED', completedAt: { gte: last7d } } }),
-    prisma.trip.count({ where: { status: { in: ['ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'] } } }),
-    prisma.payment.aggregate({
-      where: { status: 'approved', updatedAt: { gte: today } },
-      _sum: { amount: true },
+    prisma.trip.count({ where: { status: 'CANCELLED', updatedAt: { gte: today }, ...deViaje } }),
+    prisma.trip.count({ where: { status: 'COMPLETED', completedAt: { gte: last7d }, ...deViaje } }),
+    prisma.trip.count({
+      where: {
+        status: { in: ['ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS'] },
+        ...deViaje,
+      },
     }),
-    prisma.driver.count(),
-    prisma.driver.count({ where: { isVerified: true } }),
-    prisma.driver.count({ where: { status: 'ONLINE' } }),
-    prisma.driverDocument.count({ where: { status: 'PENDING' } }),
-    prisma.user.count(),
-    prisma.user.count({ where: { createdAt: { gte: today } } }),
-    prisma.emergencyEvent.count({ where: { createdAt: { gte: last24h } } }),
+    // Un pago puede no colgar de ningún viaje (un pedido, por ejemplo), así que
+    // filtrarlo por plaza dejaría fuera una parte sin decirlo. Se omite.
+    plaza
+      ? Promise.resolve(null)
+      : prisma.payment.aggregate({
+          where: { status: 'approved', updatedAt: { gte: today } },
+          _sum: { amount: true },
+        }),
+    prisma.driver.count({ where: deConductor }),
+    prisma.driver.count({ where: { isVerified: true, ...deConductor } }),
+    prisma.driver.count({ where: { status: 'ONLINE', ...deConductor } }),
+    prisma.driverDocument.count({
+      where: { status: 'PENDING', ...(plaza ? { driver: { citySlug: plaza } } : {}) },
+    }),
+    // Con plaza, «usuarios» pasa a ser «pasajeros que han pedido aquí»: una
+    // persona no vive en una ciudad para la plataforma, sus viajes sí.
+    plaza
+      ? prisma.user.count({ where: { trips: { some: { citySlug: plaza } } } })
+      : prisma.user.count(),
+    plaza
+      ? prisma.user.count({
+          where: { createdAt: { gte: today }, trips: { some: { citySlug: plaza } } },
+        })
+      : prisma.user.count({ where: { createdAt: { gte: today } } }),
+    // El SOS guarda coordenadas, no plaza: no se puede filtrar sin inventarse
+    // el criterio, así que con ciudad se devuelve «no se sabe».
+    plaza
+      ? Promise.resolve(null)
+      : prisma.emergencyEvent.count({ where: { createdAt: { gte: last24h } } }),
     prisma.driver.count({
-      where: { isVerified: false, status: { in: ['ONLINE', 'ON_TRIP'] } },
+      where: { isVerified: false, status: { in: ['ONLINE', 'ON_TRIP'] }, ...deConductor },
     }),
   ]);
 
   const piloto = estadoPiloto();
-  const atascado = await contarDespachoAtascado();
+  const atascado = await contarDespachoAtascado(plaza);
   // Viajes que se quedaron en curso sin noticias del conductor: el rastro de un
   // cierre que se perdió. El barrido ya liberó al conductor; el viaje lo
   // resuelve un humano con `releaseDriver`, porque cerrarlo paga y cancelarlo
   // niega un servicio que quizá sí se prestó.
-  const colgados = await contarViajesColgados();
+  const colgados = await contarViajesColgados(plaza);
 
   return {
+    ciudad: plaza,
     trips: {
       todayRequested,
       todayCompleted: todayCompletedAgg._count._all,
@@ -162,7 +215,7 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
     money: {
       todayGmv: Math.round(todayCompletedAgg._sum.finalFare ?? 0),
       todayCommission: Math.round(todayCompletedAgg._sum.commission ?? 0),
-      paymentsApprovedToday: Math.round(paymentsToday._sum.amount ?? 0),
+      paymentsApprovedToday: paymentsToday ? Math.round(paymentsToday._sum.amount ?? 0) : null,
     },
     drivers: {
       total: driversTotal,
@@ -171,7 +224,7 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
       pendingDocuments: pendingDocs,
       unverifiedOperatingNow,
     },
-    users: { total: usersTotal, newToday: usersToday },
+    users: { total: usersTotal, newToday: usersToday, porViajes: plaza !== null },
     safety: { sosLast24h },
     stuck: atascado,
     orphaned: colgados,
@@ -213,7 +266,10 @@ export interface MetricasNegocio {
  * El corte del día es la medianoche de Colombia, igual que el resto del panel:
  * un viaje de las 11 de la noche pertenece a ese día y no al siguiente.
  */
-export async function getMetricasNegocio(dias = 30): Promise<MetricasNegocio> {
+export async function getMetricasNegocio(
+  dias = 30,
+  ciudad?: string | null,
+): Promise<MetricasNegocio> {
   const rango = Math.min(Math.max(Math.trunc(dias) || 30, 1), 90);
   const finMs = Date.now();
   const desdeMs = finMs - (rango - 1) * 24 * 60 * 60 * 1000;
@@ -229,23 +285,29 @@ export async function getMetricasNegocio(dias = 30): Promise<MetricasNegocio> {
   const iniSemanaActual = new Date(finMs - semana);
   const iniSemanaPrevia = new Date(finMs - 2 * semana);
 
+  // Todas las cifras del piloto son de viajes, y el viaje lleva su plaza
+  // sellada: aquí el filtro por ciudad es exacto, sin huecos que explicar.
+  const plaza = ciudad ?? null;
+  const deViaje = plaza ? { citySlug: plaza } : {};
+  const sqlPlaza = plaza ? Prisma.sql` AND "citySlug" = ${plaza}` : Prisma.empty;
+
   const [creados, completados, conConductor, sinConductor, activos, cohorte] =
     await Promise.all([
       prisma.trip.findMany({
-        where: { createdAt: { gte: desde } },
+        where: { createdAt: { gte: desde }, ...deViaje },
         select: { createdAt: true },
       }),
       prisma.trip.findMany({
-        where: { status: 'COMPLETED', completedAt: { gte: desde } },
+        where: { status: 'COMPLETED', completedAt: { gte: desde }, ...deViaje },
         select: { completedAt: true },
       }),
-      prisma.trip.count({ where: { createdAt: { gte: desde }, driverId: { not: null } } }),
+      prisma.trip.count({ where: { createdAt: { gte: desde }, driverId: { not: null }, ...deViaje } }),
       prisma.trip.count({
-        where: { createdAt: { gte: desde }, cancelReason: 'NO_DRIVERS_AVAILABLE' },
+        where: { createdAt: { gte: desde }, cancelReason: 'NO_DRIVERS_AVAILABLE', ...deViaje },
       }),
       prisma.trip.groupBy({
         by: ['passengerId'],
-        where: { createdAt: { gte: desde }, passengerId: { not: null } },
+        where: { createdAt: { gte: desde }, passengerId: { not: null }, ...deViaje },
       }),
       // Retención: de quienes pidieron la semana PASADA, cuántos volvieron esta.
       // Una sola consulta con auto-unión — con `in` sobre la cohorte, una base
@@ -256,11 +318,11 @@ export async function getMetricasNegocio(dias = 30): Promise<MetricasNegocio> {
         FROM (
           SELECT DISTINCT "passengerId" FROM "trips"
           WHERE "passengerId" IS NOT NULL
-            AND "createdAt" >= ${iniSemanaPrevia} AND "createdAt" < ${iniSemanaActual}
+            AND "createdAt" >= ${iniSemanaPrevia} AND "createdAt" < ${iniSemanaActual}${sqlPlaza}
         ) prev
         LEFT JOIN (
           SELECT DISTINCT "passengerId" FROM "trips"
-          WHERE "passengerId" IS NOT NULL AND "createdAt" >= ${iniSemanaActual}
+          WHERE "passengerId" IS NOT NULL AND "createdAt" >= ${iniSemanaActual}${sqlPlaza}
         ) cur ON cur."passengerId" = prev."passengerId"`,
     ]);
 
@@ -323,7 +385,7 @@ export interface AdminDriverRow {
   status: string;
   isVerified: boolean;
   intercityEnabled: boolean;
-  rating: number;
+  rating: number | null;
   totalTrips: number;
   vehicle: string | null;
   lastSeenAt: string | null;
@@ -337,10 +399,16 @@ export interface AdminDriverRow {
   blockedReason: string | null;
   // Antecedentes (env-gated): UNCHECKED / PENDING / CLEAR / HIT.
   backgroundStatus: string;
+  /** Plaza donde se le vio por última vez, o null si nunca dio un latido. */
+  citySlug: string | null;
 }
 
-export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
+export async function listDriversForAdmin(ciudad?: string | null): Promise<AdminDriverRow[]> {
   const drivers = await prisma.driver.findMany({
+    // Con plaza: los que dieron su último latido ahí. Un conductor que aún no
+    // se ha conectado nunca no tiene plaza y por eso no sale — decir que está
+    // en una ciudad sin que lo hayamos visto ahí sería inventarlo.
+    ...(ciudad ? { where: { citySlug: ciudad } } : {}),
     orderBy: { createdAt: 'desc' },
     take: 200,
     include: { vehicles: { where: { isActive: true }, take: 1 } },
@@ -366,6 +434,7 @@ export async function listDriversForAdmin(): Promise<AdminDriverRow[]> {
       complianceStatus: d.complianceStatus,
       blockedReason: d.blockedReason,
       backgroundStatus: d.backgroundStatus,
+      citySlug: d.citySlug,
     };
   });
 }

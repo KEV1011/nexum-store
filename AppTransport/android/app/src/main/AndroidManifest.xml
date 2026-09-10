@@ -3,6 +3,36 @@
     encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nexum.driver_app">
+    <!-- ─── Apps de navegación a las que se traspasa el viaje ──────────────
+         Desde Android 11 una app NO puede ni PREGUNTAR si otra está instalada
+         sin declararla aquí: `canLaunchUrl('waze://…')` devuelve false aunque
+         Waze esté puesto, y el botón «Navegar» diría que no la tienes. -->
+    <queries>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="geo"/>
+        </intent>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="google.navigation"/>
+        </intent>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="waze"/>
+        </intent>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="https"/>
+        </intent>
+    </queries>
     <!-- ─── Permisos de red ─────────────────────────────────────────────── -->
     <uses-permission
         android:name="android.permission.INTERNET"/>

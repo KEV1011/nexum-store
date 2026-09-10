@@ -1,31 +1,45 @@
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
+import 'package:nexum_driver/core/network/dio_client.dart';
 
 /// Hoja modal para calificar al pasajero al finalizar un viaje.
 ///
 /// Muestra estrellas animadas, etiquetas rápidas que cambian según la
 /// puntuación, un comentario opcional y un estado de éxito con confeti.
 class PassengerRatingSheet extends StatefulWidget {
-  const PassengerRatingSheet({required this.passengerName, super.key});
+  const PassengerRatingSheet({
+    required this.passengerName,
+    this.tripId,
+    super.key,
+  });
 
   final String passengerName;
+
+  /// Viaje que se califica. Sin él la nota no puede llegar a ninguna parte.
+  final String? tripId;
 
   /// Presenta la hoja de calificación como modal de pantalla inferior.
   static Future<void> show(
     BuildContext context, {
     required String passengerName,
+    String? tripId,
   }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => PassengerRatingSheet(passengerName: passengerName),
+      builder: (_) => PassengerRatingSheet(
+        passengerName: passengerName,
+        tripId: tripId,
+      ),
     );
   }
 
@@ -109,9 +123,37 @@ class _PassengerRatingSheetState extends State<PassengerRatingSheet>
     });
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_rating == 0) return;
     HapticFeedback.mediumImpact();
+
+    // La nota AHORA sale del teléfono. Antes esta hoja solo lanzaba confeti y
+    // se cerraba: el conductor puntuaba y no llegaba a ninguna parte, así que
+    // el pasajero nunca tenía una calificación de verdad.
+    //
+    // El envío es best-effort a propósito: el conductor ya terminó su viaje y
+    // no se le puede retener la pantalla por un fallo de red. Si falla, se
+    // dice y se cierra igual.
+    final id = widget.tripId;
+    String? motivo;
+    if (id != null && id.isNotEmpty) {
+      try {
+        await DioClient().post<Map<String, dynamic>>(
+          '/driver/trips/$id/rate-passenger',
+          data: {'stars': _rating},
+        );
+      } on DioException catch (e) {
+        final data = e.response?.data;
+        motivo = data is Map && data['error'] is String
+            ? data['error'] as String
+            : 'No se pudo enviar la calificación.';
+      }
+    }
+    if (!mounted) return;
+    if (motivo != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(motivo)));
+    }
+
     setState(() => _submitted = true);
     _confettiController.forward(from: 0);
     // Auto-dismiss after the success animation settles.
@@ -328,7 +370,7 @@ class _PassengerRatingSheetState extends State<PassengerRatingSheet>
               Expanded(
                 flex: 2,
                 child: ElevatedButton.icon(
-                  onPressed: _rating == 0 ? null : _submit,
+                  onPressed: _rating == 0 ? null : () => unawaited(_submit()),
                   icon: const Icon(Icons.send_rounded, size: 18),
                   label: const Text('Enviar calificación'),
                   style: ElevatedButton.styleFrom(

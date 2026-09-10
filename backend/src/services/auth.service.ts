@@ -173,7 +173,7 @@ export function verifyToken(token: string): JwtPayload {
 
 function _driverToDTO(
   driver: {
-    id: string; name: string; phone: string; rating: number; totalTrips: number;
+    id: string; name: string; phone: string; rating: number | null; totalTrips: number;
     bankName: string | null; bankAccountType: string | null; bankAccountNumber: string | null;
   },
   vehicle?: { brand: string; model: string; year: number; plate: string; color: string } | null,

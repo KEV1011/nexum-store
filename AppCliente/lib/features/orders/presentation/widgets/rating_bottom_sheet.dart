@@ -42,13 +42,23 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
 
   Future<void> _submit() async {
     if (_stars == 0) return;
-    ref.read(ordersProvider.notifier).rateOrder(
+    // La calificación ahora VIAJA al servidor. Si la rechaza, se dice: hasta
+    // ahora la hoja siempre mostraba «gracias» porque no había nada que
+    // pudiera fallar — la nota no salía del teléfono.
+    final motivo = await ref.read(ordersProvider.notifier).rateOrder(
       widget.order.id,
       _stars,
       comment: _commentController.text.trim().isEmpty
           ? null
           : _commentController.text.trim(),
     );
+    if (!mounted) return;
+    if (motivo != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(motivo), backgroundColor: AppColors.error),
+      );
+      return;
+    }
     setState(() => _submitted = true);
     await Future<void>.delayed(const Duration(milliseconds: 1100));
     if (mounted) Navigator.of(context).pop();

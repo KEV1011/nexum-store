@@ -12,8 +12,7 @@ import 'package:nexum_driver/features/profile_verification/presentation/provider
 import 'package:nexum_driver/features/settings/presentation/screens/delete_account_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/legal_doc_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/privacy_screen.dart';
-
-enum _MapApp { googleMaps, waze, mapsDotMe, system }
+import 'package:nexum_driver/shared/services/navegacion_externa.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -28,10 +27,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _vibrationEnabled = true;
   bool _promoNotifications = false;
   bool _wifiOnly = false;
-  _MapApp _selectedMapApp = _MapApp.googleMaps;
+  // La app de navegación del conductor. Antes era estado local de esta
+  // pantalla: se olvidaba al salir y NADIE la usaba para navegar. Ahora se
+  // guarda y es la que abre el botón «Navegar» del viaje.
+  AppDeMapas _appDeMapas = AppDeMapas.googleMaps;
 
   // Simulated cache size in MB
   double _cacheMb = 24.3;
+
+  @override
+  void initState() {
+    super.initState();
+    // La elección guardada: sin esto la pantalla diría «Google Maps» cuando el
+    // conductor ya eligió Waze.
+    appDeMapasGuardada().then((a) {
+      if (mounted) setState(() => _appDeMapas = a);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +118,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             icon: Icons.map_rounded,
             iconColor: AppColors.primary,
             title: 'Aplicación de mapas',
-            subtitle: _mapAppLabel(_selectedMapApp),
+            subtitle: _appDeMapas.etiqueta,
             trailing: Icon(Icons.chevron_right_rounded,
                 color: context.textSecondaryColor),
             onTap: _showMapPickerSheet,
@@ -302,7 +314,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             size: 14, color: AppColors.star),
                         const SizedBox(width: 2),
                         Text(
-                          profile.rating.toStringAsFixed(2),
+                          profile.rating?.toStringAsFixed(2) ?? 'Nuevo',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: context.textSecondaryColor,
                             fontWeight: FontWeight.w600,
@@ -355,23 +367,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: AppConstants.spacingM),
-              ..._MapApp.values.map(
-                (app) => RadioListTile<_MapApp>(
+              ...AppDeMapas.values.map(
+                (app) => RadioListTile<AppDeMapas>(
                   value: app,
-                  groupValue: _selectedMapApp,
-                  title: Text(_mapAppLabel(app)),
+                  groupValue: _appDeMapas,
+                  title: Text(app.etiqueta),
+                  subtitle: Text(app.detalle,
+                      style: const TextStyle(fontSize: 12)),
                   secondary: Icon(_mapAppIcon(app),
                       color: AppColors.primary, size: 22),
                   activeColor: AppColors.primary,
-                  onChanged: (v) {
+                  onChanged: (v) async {
                     if (v == null) return;
                     setSheet(() {});
-                    setState(() => _selectedMapApp = v);
+                    setState(() => _appDeMapas = v);
+                    await guardarAppDeMapas(v);
+                    if (!ctx.mounted) return;
                     Navigator.of(ctx).pop();
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                           content: Text(
-                              '${_mapAppLabel(v)} seleccionado como app de mapas')),
+                              'El botón «Navegar» del viaje abrirá ${v.etiqueta}')),
                     );
                   },
                 ),
@@ -455,18 +472,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  String _mapAppLabel(_MapApp app) => switch (app) {
-        _MapApp.googleMaps => 'Google Maps',
-        _MapApp.waze => 'Waze',
-        _MapApp.mapsDotMe => 'Maps.me',
-        _MapApp.system => 'Predeterminada del sistema',
-      };
-
-  IconData _mapAppIcon(_MapApp app) => switch (app) {
-        _MapApp.googleMaps => Icons.map_rounded,
-        _MapApp.waze => Icons.navigation_rounded,
-        _MapApp.mapsDotMe => Icons.explore_rounded,
-        _MapApp.system => Icons.phone_android_rounded,
+  IconData _mapAppIcon(AppDeMapas app) => switch (app) {
+        AppDeMapas.googleMaps => Icons.map_rounded,
+        AppDeMapas.waze => Icons.navigation_rounded,
+        AppDeMapas.sistema => Icons.phone_android_rounded,
       };
 }
 

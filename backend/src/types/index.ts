@@ -34,7 +34,7 @@ export interface Driver {
   id: string;
   name: string;
   phone: string;
-  rating: number;
+  rating: number | null;  // null = todavía sin calificaciones
   totalTrips: number;
   vehicle: Vehicle;
   bankAccount: BankAccount;
@@ -44,7 +44,7 @@ export interface DriverDTO {
   id: string;
   name: string;
   phone: string;
-  rating: number;
+  rating: number | null;  // null = todavía sin calificaciones
   totalTrips: number;
   vehicle: Vehicle;
   bankAccount: BankAccount;
@@ -61,7 +61,8 @@ export interface DriverStatusDTO {
 export interface Passenger {
   id: string;
   name: string;
-  rating: number;
+  /// Null: todavía no existe calificación de pasajeros. NO se inventa un 5,0.
+  rating: number | null;
   /** Identidad del pasajero verificada (KYC) — el conductor decide con confianza. */
   verified?: boolean;
 }
@@ -501,6 +502,13 @@ export interface ProductDTO {
   name: string;
   description: string;
   price: number;
+  /** Precio antes de la rebaja. Ausente = este producto no está en oferta. */
+  compareAtPrice?: number;
+  /** El porcentaje ya calculado, para que la app no repita la aritmética. */
+  descuentoPct?: number;
+  /** Puesto en «lo más pedido» de SU tienda. Ausente = no está entre los primeros
+   *  o la tienda todavía no ha vendido lo suficiente para que signifique algo. */
+  masPedidoPuesto?: number;
   category: string;
   imageUrl?: string;
   isAvailable: boolean;
@@ -536,6 +544,8 @@ export interface SetProductOptionsDTO {
 export interface CreateProductDTO {
   name: string;
   price: number;
+  /** Precio anterior para el tachado. Vacío/null = sin descuento. */
+  compareAtPrice?: number | string | null;
   description?: string;
   category?: string;
   imageUrl?: string;
@@ -553,6 +563,8 @@ export interface UpdateProductDTO {
   /** Posición en la carta. Menor = más arriba. */
   sortOrder?: number;
   price?: number;
+  /** Precio anterior para el tachado. Null/vacío = quitar el descuento. */
+  compareAtPrice?: number | string | null;
   description?: string;
   category?: string;
   imageUrl?: string;
@@ -571,12 +583,28 @@ export interface BusinessPublicDTO {
   name: string;
   category: BusinessCategory;
   address: string;
-  rating: number;
+  /**
+   * Reputación REAL, o null si nadie la ha calificado todavía.
+   *
+   * Antes era `@default(5.0)` en la base y NUNCA se calculaba: la app enseñaba
+   * un «5.0» que no dio nadie. Null significa «sin calificaciones», y la app
+   * escribe «Nuevo» en vez de inventar una nota.
+   */
+  rating: number | null;
+  /** Sobre cuántas calificaciones. Cero = la nota es null. */
+  ratingCount: number;
   etaMinutes: number;
   deliveryFee: number;
   isOpen: boolean;
+  /** Por qué está cerrada, si lo está: «Abre mañana a las 08:00», «Pausado». */
+  cerradoMotivo?: string;
   imageUrl?: string;
   openingHours?: string;
+  /** Horario estructurado, si el negocio lo declaró. */
+  hours?: Array<{ dia: number; abre: string; cierra: string }>;
+  /** Promoción de la tienda. Ausentes = no tiene ninguna que anunciar. */
+  promoMinAmount?: number;
+  promoDiscount?: number;
   products: ProductDTO[];
 }
 
@@ -588,8 +616,19 @@ export interface BusinessSettingsDTO {
   whatsapp?: string;
   deliveryFee?: number;
   etaMinutes?: number;
+  /** Promoción de la tienda. Las dos o ninguna; vacías = quitarla. */
+  promoMinAmount?: number | string | null;
+  promoDiscount?: number | string | null;
+  /** Vigencia de la promoción (ISO o ''). Vacías = siempre vigente. */
+  promoFrom?: string | null;
+  promoUntil?: string | null;
   acceptingOrders?: boolean;
   openingHours?: string;
+  /** Horario estructurado: [{dia,abre,cierra}]. [] = sin horario (siempre abierta). */
+  hours?: unknown;
+  /** Pausa temporal en minutos desde ahora. 0/null = quitarla. */
+  pauseMinutes?: number | string | null;
+  pauseReason?: string | null;
 }
 
 // Estadísticas de ventas del negocio en un rango de fechas.
@@ -646,6 +685,8 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   businessName: string;
   status: string;
   subtotal: number;
+  /** Descuento de la promoción de la tienda que se aplicó a ESTE pedido. */
+  promoDiscount?: number;
   deliveryFee: number;
   total: number;
   etaMinutes: number;
@@ -1072,7 +1113,7 @@ export interface RideBidDTO {
   driverPhone: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
-  driverRating: number;
+  driverRating: number | null;  // null = sin calificaciones
   driverTotalTrips: number;
   vehicleDescription: string;
   fare: number;
@@ -1157,7 +1198,7 @@ export interface DriverProfileDTO {
   phone: string;
   photoUrl?: string;
   bio?: string;
-  rating: number;
+  rating: number | null;  // null = todavía sin calificaciones
   totalTrips: number;
   vehicleDescription: string;
   // Desglose del vehículo activo (para la pantalla de perfil del conductor).
@@ -1203,7 +1244,7 @@ export interface DriverPublicProfileDTO {
   fullName: string;
   photoUrl?: string;
   bio?: string;
-  rating: number;
+  rating: number | null;  // null = todavía sin calificaciones
   totalTrips: number;
   vehicleDescription: string;
   memberSince: string;

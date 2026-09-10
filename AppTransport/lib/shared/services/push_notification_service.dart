@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:go_router/go_router.dart';
+import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/shared/services/push_routing.dart';
 
 /// Background handler — debe ser top-level o static para FCM.
 @pragma('vm:entry-point')
@@ -60,6 +65,15 @@ class PushNotificationService {
       // Foreground handler — show local notification
       FirebaseMessaging.onMessage.listen(_onForegroundMessage);
 
+      // App en segundo plano y el conductor toca la notificación.
+      FirebaseMessaging.onMessageOpenedApp.listen(_abrirDesdeNotificacion);
+
+      // App CERRADA: la notificación que la lanzó. Se consulta una sola vez y
+      // se navega en cuanto el árbol esté montado — aquí todavía no lo está,
+      // porque init() corre antes de runApp().
+      final inicial = await FirebaseMessaging.instance.getInitialMessage();
+      if (inicial != null) _abrirDesdeNotificacion(inicial);
+
       _fcmToken = await FirebaseMessaging.instance.getToken();
       debugPrint('[FCM] Token obtained: ${_fcmToken != null}');
 
@@ -91,6 +105,37 @@ class PushNotificationService {
     } catch (_) {
       // Sin sesión o sin red: se reintentará en el próximo arranque del home.
     }
+  }
+
+  // ── Al tocar la notificación ────────────────────────────────────────────────
+
+  /// Lleva al conductor a donde la notificación promete llevarlo.
+  ///
+  /// Antes esto no existía: la notificación abría la app donde se hubiera
+  /// quedado y el conductor tenía que buscarse la vida, con la mano en el
+  /// volante.
+  void _abrirDesdeNotificacion(RemoteMessage msg) {
+    final ruta = rutaDeNotificacion(msg.data);
+    if (ruta == null) return;
+    unawaited(_navegarCuandoSePueda(ruta));
+  }
+
+  /// Navega en cuanto haya árbol de widgets.
+  ///
+  /// Con la app cerrada, `getInitialMessage()` responde antes de `runApp()`, así
+  /// que no hay `context` todavía. Se reintenta un rato corto y se abandona en
+  /// silencio: quedarse esperando para siempre a un árbol que no llega (login
+  /// pendiente, arranque fallido) sería peor que no navegar.
+  Future<void> _navegarCuandoSePueda(String ruta) async {
+    for (var i = 0; i < 20; i++) {
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        ctx.go(ruta);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    debugPrint('[FCM] No se pudo abrir $ruta: la app no llegó a montarse');
   }
 
   // ── Foreground handler ──────────────────────────────────────────────────────

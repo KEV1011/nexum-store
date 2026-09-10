@@ -70,6 +70,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
             PassengerRatingSheet.show(
               context,
               passengerName: trip.passengerName,
+              tripId: trip.id,
             );
           }
         });
@@ -320,6 +321,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                   onPressed: () => PassengerRatingSheet.show(
                     context,
                     passengerName: trip.passengerName,
+                    tripId: trip.id,
                   ),
                   icon: const Icon(Icons.star_outline_rounded),
                   label: const Text('Calificar pasajero'),

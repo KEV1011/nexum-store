@@ -171,7 +171,7 @@ class _BidCard extends StatelessWidget {
                         const Icon(Icons.star_rounded,
                             size: 15, color: Color(0xFFFFB300)),
                         const SizedBox(width: 2),
-                        Text(bid.driverRating.toStringAsFixed(2),
+                        Text(bid.driverRating?.toStringAsFixed(2) ?? 'Nuevo',
                             style: TextStyle(
                                 fontSize: 12.5, color: context.textSecondaryColor)),
                         const SizedBox(width: 8),
@@ -305,7 +305,7 @@ class _MatchedView extends StatelessWidget {
                             children: [
                               const Icon(Icons.star_rounded,
                                   size: 15, color: Color(0xFFFFB300)),
-                              Text(' ${bid.driverRating.toStringAsFixed(2)}',
+                              Text(' ${bid.driverRating?.toStringAsFixed(2) ?? 'Nuevo'}',
                                   style: const TextStyle(fontSize: 12.5)),
                             ],
                           ),

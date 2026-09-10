@@ -35,6 +35,7 @@ import {
 import { CustodyPinError } from '../lib/custody-pin';
 import {
   driverUpdateTripStatus,
+  rateTripPassenger,
   TripDriverError,
 } from '../services/client.service';
 import type { ClientTripStatus } from '../types';
@@ -958,6 +959,22 @@ const ESTADOS_DEL_CONDUCTOR = [
  * conductor y lo libera para el siguiente viaje. Esa no puede ser una operación
  * que la app crea hecha sin que nadie se lo haya confirmado.
  */
+// POST /driver/trips/:id/rate-passenger { stars } — el conductor califica.
+//
+// La hoja ya existía en la app y no mandaba nada: puntuaba, lanzaba confeti y
+// cerraba. Sin esto, `Passenger.rating` no puede ser nunca un dato real.
+router.post('/trips/:id/rate-passenger', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await rateTripPassenger(req.driverId!, req.params['id']!, req.body?.['stars']);
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo calificar al pasajero',
+    });
+  }
+});
+
 router.post('/trips/:id/status', async (req: Request, res: Response): Promise<void> => {
   const driverId = req.driverId!;
   const status = req.body?.['status'];

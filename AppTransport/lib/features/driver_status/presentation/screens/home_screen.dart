@@ -1862,7 +1862,8 @@ class _AppDrawer extends ConsumerWidget {
                                 ),
                                 const SizedBox(width: 2),
                                 Text(
-                                  profile.rating.toStringAsFixed(2),
+                                  profile.rating?.toStringAsFixed(2) ??
+                                      'Nuevo',
                                   style: theme.textTheme.bodySmall
                                       ?.copyWith(
                                     fontWeight: FontWeight.w700,
@@ -2665,7 +2666,8 @@ class _TripRequestModal extends StatelessWidget {
                                       const SizedBox(width: 2),
                                       Text(
                                         trip.passenger.rating
-                                            .toStringAsFixed(1),
+                                                ?.toStringAsFixed(1) ??
+                                            'Nuevo',
                                         style: theme.textTheme.bodySmall,
                                       ),
                                     ],

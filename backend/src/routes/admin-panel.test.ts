@@ -338,7 +338,7 @@ describe('el panel pintando la comisión', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { pct, loadOperators, loadCityCommissions };`,
+      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
     const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
     return { fn, el };
@@ -421,5 +421,179 @@ describe('el panel pintando la comisión', () => {
     expect(html).toContain('8 %');
     expect(html).not.toContain('Pamplona');
     expect(html).not.toContain('undefined');
+  });
+
+  // La nota del conductor pasó a poder ser NULL (antes era `@default(5.0)` y
+  // nadie la escribía). El panel hacía `d.rating.toFixed(2)` a pelo: con la
+  // nota nula reventaba la tabla ENTERA de conductores delante del admin, y
+  // como el panel es JavaScript dentro de una cadena, ni tsc ni el linter lo
+  // ven — solo se descubre ejecutándolo.
+  it('un conductor SIN calificaciones no revienta la tabla', async () => {
+    const base = {
+      id: 'd1', name: 'Nelson', phone: '+573001112233', status: 'ONLINE',
+      isVerified: true, intercityEnabled: true, totalTrips: 0, vehicle: 'Mazda 2',
+      lastSeenAt: new Date().toISOString(), kycStatus: 'PENDING', hasSelfie: false,
+      selfieUrl: null, backgroundStatus: 'UNCHECKED', fraudFlags: 0,
+      complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+    };
+    const { fn, el } = montar(
+      { '/admin/drivers': [{ ...base, rating: null }] },
+      ['drivers-body'],
+    );
+    fn['loadDrivers']!();
+    await esperar();
+    const html = el['drivers-body']!.innerHTML;
+    expect(html).toContain('Nelson');
+    // Y dice «Nuevo», no un número inventado ni un hueco en blanco.
+    expect(html).toContain('Nuevo');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('y con nota la sigue mostrando', async () => {
+    const base = {
+      id: 'd2', name: 'Marta', phone: '+573004445566', status: 'ONLINE',
+      isVerified: true, intercityEnabled: false, totalTrips: 12, vehicle: 'Spark',
+      lastSeenAt: new Date().toISOString(), kycStatus: 'VERIFIED', hasSelfie: false,
+      selfieUrl: null, backgroundStatus: 'CLEAR', fraudFlags: 0,
+      complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+    };
+    const { fn, el } = montar(
+      { '/admin/drivers': [{ ...base, rating: 4.6 }] },
+      ['drivers-body'],
+    );
+    fn['loadDrivers']!();
+    await esperar();
+    expect(el['drivers-body']!.innerHTML).toContain('4.60');
+  });
+});
+
+/**
+ * El panel filtrado por plaza.
+ *
+ * Filtrar por ciudad tiene una forma concreta de mentir: los números que NO
+ * saben de plazas (los pagos, el SOS) llegan en `null`, y si el panel los
+ * imprimiera con su formateador de siempre saldría «$0» y «0» — o sea, una
+ * ciudad que parece muerta cuando lo único cierto es que ese dato no está
+ * repartido por ciudades. Eso solo se ve ejecutando.
+ */
+describe('el panel por plaza', () => {
+  interface ElementoFalso { style: Record<string, string>; innerHTML: string; value: string; disabled: boolean }
+
+  const almacen = () => {
+    const datos: Record<string, string> = {};
+    return {
+      getItem: (k: string) => datos[k] ?? null,
+      setItem: (k: string, v: string) => { datos[k] = v; },
+      removeItem: (k: string) => { delete datos[k]; },
+    };
+  };
+
+  function montar(respuestas: Record<string, unknown>, ids: string[]) {
+    const el: Record<string, ElementoFalso> = {};
+    for (const id of ids) el[id] = { style: {}, innerHTML: '', value: '', disabled: false };
+    const pedidas: string[] = [];
+    const documentoFalso = {
+      getElementById: (id: string) => el[id] ?? null,
+      querySelector: () => null,
+      querySelectorAll: () => [] as unknown[],
+    };
+    const fetchFalso = (path: string) => {
+      pedidas.push(path);
+      const clave = Object.keys(respuestas).find((k) => path.startsWith(k));
+      return Promise.resolve({
+        ok: clave !== undefined,
+        status: clave !== undefined ? 200 : 404,
+        json: () => Promise.resolve(
+          clave !== undefined
+            ? { success: true, data: respuestas[clave] }
+            : { success: false, error: 'ruta no simulada: ' + path },
+        ),
+      });
+    };
+    const crear = new Function(
+      'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
+      `${PANEL_JS}\n; return { loadMetrics, cargarPlazas, cambiarPlaza, oGuion, qPlaza,
+         plaza: () => PLAZA, ponerCiudadAdmin: (c) => { ADMIN_CITY = c; } };`,
+    ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
+    const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
+    return { fn, el, pedidas };
+  }
+
+  const esperar = () => new Promise((r) => setImmediate(r));
+
+  const metricasDePlaza = {
+    ciudad: 'pamplona',
+    trips: { todayRequested: 4, todayCompleted: 3, todayCancelled: 1, last7dCompleted: 9, activeNow: 1 },
+    // Los dos que no saben de plazas.
+    money: { todayGmv: 42000, todayCommission: 6300, paymentsApprovedToday: null },
+    drivers: { total: 5, verified: 4, onlineNow: 2, pendingDocuments: 0, unverifiedOperatingNow: 0 },
+    stuck: { total: 0, viaje: 0, mandado: null, pedido: null, intermunicipal: null, desdeMin: 6 },
+    orphaned: { total: 0, desdeMin: 45 },
+    pilot: { active: false, expired: false, until: null, daysLeft: null },
+    users: { total: 7, newToday: 1, porViajes: true },
+    safety: { sosLast24h: null },
+  };
+
+  const domMetricas = ['metrics-grid', 'stuck-warn', 'pilot-warn', 'neg-dias', 'negocio', 'plaza'];
+
+  it('«no se sabe» se escribe «—», y el cero sigue siendo cero', () => {
+    const { fn } = montar({}, []);
+    const oGuion = fn['oGuion'] as (v: unknown, f?: (x: unknown) => string) => string;
+    expect(oGuion(null)).toBe('—');
+    expect(oGuion(undefined)).toBe('—');
+    expect(oGuion(0)).toBe('0');
+    expect(oGuion(null, () => '$0')).toBe('—');
+  });
+
+  it('los datos que no saben de plazas NO se pintan como cero', async () => {
+    const { fn, el } = montar({ '/admin/metrics': metricasDePlaza, '/admin/metrics/negocio': {} }, domMetricas);
+    fn['loadMetrics']!();
+    await esperar();
+    const html = el['metrics-grid']!.innerHTML;
+    expect(html).toContain('Pagos Wompi hoy');
+    expect(html).not.toContain('$0');
+    // El GMV de la plaza sí es un número y se pinta.
+    expect(html).toContain('42.000');
+    // Y «usuarios» cambia de nombre: con plaza no son los registrados.
+    expect(html).toContain('Pasajeros con viajes aquí');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('la plaza elegida viaja en TODAS las consultas', async () => {
+    const ciudades = [
+      { slug: 'pamplona', name: 'Pamplona', department: 'N. de Santander', lat: 7.3, lng: -72.6, zone: null, commissionRate: null },
+      { slug: 'cucuta', name: 'Cúcuta', department: 'N. de Santander', lat: 7.9, lng: -72.5, zone: null, commissionRate: null },
+    ];
+    const { fn, el, pedidas } = montar(
+      { '/admin/municipalities': ciudades, '/admin/metrics': metricasDePlaza, '/admin/metrics/negocio': {} },
+      domMetricas,
+    );
+    await fn['cargarPlazas']!();
+    el['plaza']!.value = 'cucuta';
+    // `cambiarPlaza` repinta la pestaña activa; sin pestaña activa no hay nada
+    // que recargar, así que se llama a la carga directamente después.
+    fn['cambiarPlaza']!();
+    fn['loadMetrics']!();
+    await esperar();
+    expect(fn['plaza']!()).toBe('cucuta');
+    expect(pedidas.some((p) => p === '/admin/metrics?ciudad=cucuta')).toBe(true);
+    // La de negocio ya lleva `?dias=`: el separador tiene que ser «&» o la
+    // petición saldría malformada y el filtro se perdería en silencio.
+    expect(pedidas.some((p) => p.includes('/admin/metrics/negocio?dias=') && p.includes('&ciudad=cucuta'))).toBe(true);
+  });
+
+  it('un admin atado a su ciudad no puede elegir otra', async () => {
+    const ciudades = [
+      { slug: 'pamplona', name: 'Pamplona', department: 'N. de Santander', lat: 7.3, lng: -72.6, zone: null, commissionRate: null },
+      { slug: 'cucuta', name: 'Cúcuta', department: 'N. de Santander', lat: 7.9, lng: -72.5, zone: null, commissionRate: null },
+    ];
+    const { fn, el } = montar({ '/admin/municipalities': ciudades }, ['plaza']);
+    fn['ponerCiudadAdmin']!('cucuta');
+    await fn['cargarPlazas']!();
+    expect(el['plaza']!.disabled).toBe(true);
+    expect(el['plaza']!.innerHTML).toContain('Cúcuta');
+    expect(el['plaza']!.innerHTML).not.toContain('Pamplona');
+    expect(el['plaza']!.innerHTML).not.toContain('Toda la plataforma');
+    expect(fn['plaza']!()).toBe('cucuta');
   });
 });

@@ -44,6 +44,12 @@ model User {
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
   fcmToken    String?
 
+  /// Reputación del pasajero, promediada de los viajes que sus conductores
+  /// calificaron. Null mientras nadie lo haya calificado — el conductor ve
+  /// «Nuevo», no un 5,0 escrito a mano como hasta ahora.
+  rating         Float?
+  ratingCount    Int      @default(0)
+
   // Trusted contact for the SOS / share-trip safety features.
   trustedContactName  String?
   trustedContactPhone String?
@@ -57,7 +63,6 @@ model User {
   addresses         Address[]
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
-  ratings           Rating[]          @relation("RatingAuthor")
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
@@ -197,7 +202,12 @@ model Driver {
   acceptsChained    Boolean      @default(true)
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
   fcmToken          String?
-  rating            Float        @default(5.0)
+  /// Reputación REAL, promediada de los viajes que los pasajeros calificaron.
+  /// Null mientras nadie lo haya calificado — antes era `@default(5.0)` y
+  /// NADIE la escribía nunca, así que todos los conductores enseñaban el mismo
+  /// cinco de fábrica al pasajero que decidía si subirse a su carro.
+  rating            Float?
+  ratingCount       Int          @default(0)
   totalTrips        Int          @default(0)
   bio               String?
   bankName          String?
@@ -240,8 +250,13 @@ model Driver {
   operator         Operator?        @relation(fields: [operatorId], references: [id])
   fleetAssignments FleetAssignment[]
 
+  // Plaza donde se le vio por última vez, refrescada con el latido. A
+  // diferencia de la del viaje, esta NO es historia: dice dónde está hoy.
+  citySlug          String?
+
   @@index([status])
   @@index([operatorId])
+  @@index([citySlug])
   @@map("drivers")
 }
 
@@ -370,7 +385,29 @@ model Business {
   lng          Float?
   phone        String?
   whatsapp     String?
-  rating       Float            @default(5.0)
+  rating       Float?
+  /// Promoción de la tienda: «$descuento comprando $mínimo». Las dos o
+  /// ninguna. El MISMO cálculo (`promoDeTienda`) alimenta el banner y el
+  /// cobro, para que la pantalla no prometa lo que la caja no aplica.
+  promoMinAmount Int?
+  promoDiscount  Int?
+  /// Vigencia de la promoción. Null = siempre. Con fecha, se apaga SOLA —
+  /// un «solo este fin de semana» que hay que acordarse de quitar el lunes
+  /// sigue puesto en marzo.
+  promoFrom      DateTime?
+  promoUntil     DateTime?
+  /// Horario estructurado: [{dia:0-6, abre:"HH:MM", cierra:"HH:MM"}].
+  /// Vacío/null = sin horario declarado ⇒ se considera SIEMPRE abierta, que
+  /// es como se comportaban los negocios ya registrados. `openingHours` (texto
+  /// libre) se conserva para los que aún no lo han declarado.
+  hours          Json?
+  /// Pausa temporal que se levanta sola. Distinta de apagar el interruptor:
+  /// la cocina copada para media hora, no cierra el día.
+  pausedUntil    DateTime?
+  pauseReason    String?
+  /// Reputación REAL. `rating` es null mientras nadie haya calificado — antes
+  /// era 5.0 por defecto y la app enseñaba una nota que nadie dio.
+  ratingCount    Int              @default(0)
   etaMinutes   Int              @default(30)
   deliveryFee  Float            @default(2500)
   // isOpen = cuenta activa (gate de acceso al portal, lo controla el admin/registro).
@@ -408,6 +445,10 @@ model Product {
   name         String
   description  String?
   price        Float
+  /// Precio ANTES de la rebaja, para el tachado. Null = sin descuento.
+  /// Se valida al guardar (`saneaPrecioAntes`): un «antes» inflado no es una
+  /// decisión de precio, es publicidad engañosa.
+  compareAtPrice Float?
   category     String   @default("General")
   /// Orden dentro de la carta. Una carta se lee en un orden concreto —
   /// entradas antes que postres— y por fecha de creación salen mezclados.
@@ -506,6 +547,10 @@ model Order {
   deliveryLat      Float?
   deliveryLng      Float?
   subtotal         Float
+  /// Descuento de la promoción de la tienda, SELLADO al crear el pedido: se
+  /// guarda en vez de recalcularse, porque cambiar la promoción mañana no
+  /// puede reescribir lo que se cobró hoy.
+  promoDiscount    Float?
   deliveryFee      Float
   total            Float
   etaMinutes       Int?
@@ -648,12 +693,19 @@ model Trip {
   passenger          User?           @relation("TripPassenger", fields: [passengerId], references: [id])
   driver             Driver?         @relation(fields: [driverId], references: [id])
   vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
-  ratings            Rating[]
+
+  // Plaza donde se ORIGINÓ el viaje, sellada al crearlo con el mismo criterio
+  // que usa la app para saber en qué municipio estás (centroide más cercano).
+  // Se guarda en vez de calcularse al consultar para que el panel pueda filtrar
+  // por ciudad con un índice, y para que cambiar un centroide mañana no
+  // reescriba a qué plaza perteneció un viaje del mes pasado.
+  citySlug           String?
 
   @@index([passengerId])
   @@index([driverId])
   @@index([status])
   @@index([operatorId])
+  @@index([citySlug])
   @@map("trips")
   // Custodia del ENVÍO: el PIN lo dicta quien RECIBE el paquete. Sin él, el
   // repartidor no puede cerrar la entrega. Solo se genera para serviceType
@@ -962,22 +1014,6 @@ enum PooledTripStatus {
 enum SeatBookingStatus {
   CONFIRMED
   CANCELLED
-}
-
-// ── Calificaciones ────────────────────────────────────────────────────────────
-
-model Rating {
-  id        String   @id @default(cuid())
-  authorId  String
-  tripId    String?
-  stars     Int
-  comment   String?
-  createdAt DateTime @default(now())
-
-  author    User     @relation("RatingAuthor", fields: [authorId], references: [id])
-  trip      Trip?    @relation(fields: [tripId], references: [id])
-
-  @@map("ratings")
 }
 
 // ── Pagos (Wompi) ─────────────────────────────────────────────────────────────

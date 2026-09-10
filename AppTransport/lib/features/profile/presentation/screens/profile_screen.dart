@@ -108,7 +108,7 @@ class ProfileScreen extends ConsumerWidget {
             ],
 
             // ── Rating breakdown ───────────────────────────────────────────
-            _buildRatingCard(theme, profile),
+            _buildRatingCard(context, theme, profile),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Session + performance stats ────────────────────────────────
@@ -400,7 +400,11 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Rating breakdown card ────────────────────────────────────────────────────
 
-  Widget _buildRatingCard(ThemeData theme, EditableProfile profile) {
+  Widget _buildRatingCard(
+    BuildContext context,
+    ThemeData theme,
+    EditableProfile profile,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.spacingM),
@@ -420,18 +424,22 @@ class ProfileScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      profile.rating.toStringAsFixed(2),
+                      // Sin calificaciones no se enseña un número: antes salía
+                      // un 5,00 que era el valor de fábrica del backend, no una
+                      // nota que alguien le hubiera dado.
+                      profile.rating?.toStringAsFixed(2) ?? 'Nuevo',
                       style: theme.textTheme.displaySmall?.copyWith(
                         fontWeight: FontWeight.w800,
-                        color: AppColors.star,
+                        color: profile.rating == null
+                            ? context.textSecondaryColor
+                            : AppColors.star,
                       ),
                     ),
                     Row(
                       children: List.generate(5, (i) {
-                        final filled = i < profile.rating.floor();
-                        final half = !filled &&
-                            i < profile.rating &&
-                            (profile.rating - i) >= 0.5;
+                        final nota = profile.rating ?? 0;
+                        final filled = i < nota.floor();
+                        final half = !filled && i < nota && (nota - i) >= 0.5;
                         return Icon(
                           filled
                               ? Icons.star_rounded

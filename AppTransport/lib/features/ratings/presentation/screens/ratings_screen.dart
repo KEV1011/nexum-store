@@ -76,14 +76,16 @@ class _RatingsScreenState extends ConsumerState<RatingsScreen> {
 
     // Promedio: en "Total" manda el promedio de carrera del perfil; en los
     // períodos cortos, el promedio real de los viajes calificados del rango.
-    final double avg;
+    // Puede no haber promedio: un conductor al que todavía nadie ha calificado
+    // no tiene nota, y enseñar un 0,0 lo haría parecer pésimo en vez de nuevo.
+    final double? avg;
     if (_periodIndex == 2 && profile != null) {
       avg = profile.rating;
     } else if (rated.isNotEmpty) {
       avg = rated.fold<double>(0, (s, t) => s + (t.rating ?? 0)) /
           rated.length;
     } else {
-      avg = profile?.rating ?? 0;
+      avg = profile?.rating;
     }
     final tripCount =
         _periodIndex == 2 ? (profile?.totalTrips ?? trips.length) : trips.length;
@@ -135,14 +137,24 @@ class _RatingsScreenState extends ConsumerState<RatingsScreen> {
               child: Column(
                 children: [
                   Text(
-                    avg.toStringAsFixed(2),
+                    avg?.toStringAsFixed(2) ?? 'Nuevo',
                     style: theme.textTheme.displayMedium?.copyWith(
                       fontWeight: FontWeight.w800,
-                      color: AppColors.star,
+                      color: avg == null
+                          ? context.textSecondaryColor
+                          : AppColors.star,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  _Stars(rating: avg, size: 22),
+                  // Sin nota no se pintan estrellas vacías: cinco contornos
+                  // grises se leen como «cero estrellas», que no es lo mismo
+                  // que «todavía nadie lo ha calificado».
+                  if (avg != null) _Stars(rating: avg!, size: 22)
+                  else Text(
+                    'Aún nadie te ha calificado',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: context.textSecondaryColor),
+                  ),
                   const SizedBox(height: AppConstants.spacingS),
                   Text(
                     _periodIndex == 2

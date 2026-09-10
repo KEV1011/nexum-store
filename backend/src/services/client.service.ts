@@ -33,7 +33,14 @@ import {
   fichaFromDriver, fichaPorConductor, fichasPorConductores,
   type DriverCardFields,
 } from '../lib/driver-card';
-import { sendPushToClient } from './push.service';
+import { sendPushToClient, sendPushToDriver } from './push.service';
+import { plazaDeCoordenadas } from './municipality.service';
+import { promoDeTienda } from '../lib/vitrina';
+import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
+import {
+  avisoDeEstado, avisoCancelacionAlConductor,
+  type EstadoViaje, type DatosDelViaje,
+} from '../lib/avisos-viaje';
 
 // ─── WS listener Maps (ephemeral per session) ────────────────────────────────
 
@@ -170,9 +177,17 @@ export async function placeClientOrder(
 ): Promise<ClientOrderWithPinDTO> {
   const { getBusinessPublicById } = await import('./business.service');
   const biz = await getBusinessPublicById(dto.businessId);
-  // El negocio debe estar recibiendo pedidos (vitrina abierta).
+  // El negocio debe estar recibiendo pedidos. `isOpen` sale de la MISMA
+  // función que pinta la vitrina (`tiendaRecibiendo`: interruptor + horario +
+  // pausa), así que no puede pasar que la pantalla diga «cerrado» y el pedido
+  // entre igual. Se devuelve el motivo concreto —«Abre mañana a las 08:00»—
+  // en vez de un «no puede ser» que no dice si volver en una hora o mañana.
   if (!biz.isOpen) {
-    throw new Error('El negocio no está recibiendo pedidos en este momento.');
+    throw new Error(
+      biz.cerradoMotivo
+        ? `${biz.name} no está recibiendo pedidos: ${biz.cerradoMotivo.toLowerCase()}.`
+        : 'El negocio no está recibiendo pedidos en este momento.',
+    );
   }
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
@@ -289,6 +304,13 @@ export async function placeClientOrder(
     descontados.push({ productId: item.productId, cantidad: item.cantidad });
   }
 
+  // La promoción de la tienda se resuelve AQUÍ, con la misma función que pinta
+  // el banner: si fueran dos cuentas, la pantalla prometería «$6.000 OFF» y la
+  // caja cobraría completo. El resultado se SELLA en el pedido — cambiar la
+  // promoción mañana no puede reescribir lo que se cobró hoy.
+  const promo = promoDeTienda(subtotal, biz.promoMinAmount, biz.promoDiscount);
+  const descuentoPromo = promo?.descuento ?? 0;
+
   const order = await prisma.order.create({
     data: {
       orderRef,
@@ -302,8 +324,11 @@ export async function placeClientOrder(
       // dispara cuando el negocio acepta (así el conductor no espera en la puerta).
       status: 'PENDING',
       subtotal,
+      promoDiscount: descuentoPromo > 0 ? descuentoPromo : null,
       deliveryFee: biz.deliveryFee,
-      total: subtotal + biz.deliveryFee,
+      // El descuento se resta del subtotal, NUNCA del domicilio: ese es el pago
+      // del repartidor y no lo financia una promoción del restaurante.
+      total: subtotal - descuentoPromo + biz.deliveryFee,
       etaMinutes: biz.etaMinutes,
       // Cadena de custodia: el negocio guarda el PIN de recogida y el cliente
       // el de entrega. El repartidor los pide de viva voz en cada paso.
@@ -702,6 +727,139 @@ export async function cancelClientOrder(clientId: string, orderId: string): Prom
 }
 
 /**
+ * El cliente califica un pedido entregado, y esa nota llega al negocio.
+ *
+ * Hasta ahora la app tenía la hoja de estrellas y `rateOrder` solo la guardaba
+ * en memoria: se puntuaba, se veía bonito y la nota moría al cerrar la app. El
+ * negocio nunca se enteraba y `Business.rating` se quedaba en el 5,0 de
+ * fábrica que nadie le había dado.
+ *
+ * Reglas:
+ * - Solo el dueño del pedido, y solo si está ENTREGADO (calificar algo que aún
+ *   no llegó no es una opinión sobre nada).
+ * - **Se puede corregir** mientras no pase de una vez: si el cliente se
+ *   equivoca de estrella, obligarlo a vivir con ella no mejora el dato.
+ * - El promedio del negocio se RECALCULA de las filas, nunca se suma encima.
+ */
+export async function rateClientOrder(
+  clientId: string,
+  orderId: string,
+  estrellas: unknown,
+  comentario: unknown,
+): Promise<{ rating: number; ratingComment: string | null }> {
+  const stars = saneaEstrellas(estrellas);
+  const comment = saneaComentario(comentario);
+
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, userId: clientId },
+    select: { id: true, status: true, businessId: true },
+  });
+  if (!order) throw new Error('El pedido no existe.');
+  if (order.status !== 'DELIVERED') {
+    throw new Error('Solo puedes calificar un pedido que ya te entregaron.');
+  }
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { rating: stars, ratingComment: comment },
+  });
+
+  await recalcularReputacionNegocio(order.businessId);
+  return { rating: stars, ratingComment: comment };
+}
+
+/**
+ * El pasajero califica su viaje, y esa nota llega al conductor.
+ *
+ * Mismo defecto que tenían los negocios, y por las mismas razones: la app ya
+ * tenía las estrellas, pero `rateRequest` solo tocaba el estado en memoria y no
+ * existía ninguna ruta que recibiera la nota. `Driver.rating` se quedaba en el
+ * 5,0 de fábrica que nadie le había dado — y esa es la cifra que mira alguien
+ * antes de subirse al carro de un desconocido.
+ *
+ * Reglas idénticas a las del pedido: solo el dueño del viaje, solo si está
+ * COMPLETADO, corregible, y el promedio se RECALCULA de las filas.
+ */
+export async function rateClientTrip(
+  clientId: string,
+  tripId: string,
+  estrellas: unknown,
+  comentario: unknown,
+): Promise<{ rating: number; ratingComment: string | null }> {
+  const stars = saneaEstrellas(estrellas);
+  const comment = saneaComentario(comentario);
+
+  const trip = await prisma.trip.findFirst({
+    where: { id: tripId, passengerId: clientId },
+    select: { id: true, status: true, driverId: true },
+  });
+  if (!trip) throw new Error('El viaje no existe.');
+  if (trip.status !== 'COMPLETED') {
+    throw new Error('Solo puedes calificar un viaje que ya terminó.');
+  }
+
+  await prisma.trip.update({
+    where: { id: tripId },
+    data: { rating: stars, ratingComment: comment },
+  });
+
+  // Un viaje sin conductor asignado no puede calificar a nadie; la nota igual
+  // queda guardada en el viaje, que es información de la operación.
+  if (trip.driverId) await recalcularReputacionConductor(trip.driverId);
+  return { rating: stars, ratingComment: comment };
+}
+
+/**
+ * Vuelve a calcular la nota del conductor a partir de sus viajes calificados.
+ *
+ * Best-effort por el mismo motivo que la del negocio: la calificación del
+ * pasajero ya quedó guardada en su viaje, y perderla por un fallo al promediar
+ * sería tirar el dato bueno por el derivado.
+ */
+export async function recalcularReputacionConductor(driverId: string): Promise<void> {
+  try {
+    const filas = await prisma.trip.findMany({
+      where: { driverId, rating: { not: null } },
+      select: { rating: true },
+    });
+    const { rating, ratingCount } = promedioReputacion(
+      filas.map((f) => f.rating as number),
+    );
+    await prisma.driver.update({
+      where: { id: driverId },
+      data: { rating, ratingCount },
+    });
+  } catch (err) {
+    console.error('[reputacion] no se pudo recalcular la nota del conductor:', err);
+  }
+}
+
+/**
+ * Vuelve a calcular la nota del negocio a partir de sus pedidos calificados.
+ *
+ * Best-effort a propósito: si esto falla, la calificación del cliente YA quedó
+ * guardada en su pedido y el promedio se corrige en la siguiente. Perder la
+ * nota por un fallo al promediar sería tirar el dato bueno por el derivado.
+ */
+export async function recalcularReputacionNegocio(businessId: string): Promise<void> {
+  try {
+    const filas = await prisma.order.findMany({
+      where: { businessId, rating: { not: null } },
+      select: { rating: true },
+    });
+    const { rating, ratingCount } = promedioReputacion(
+      filas.map((f) => f.rating as number),
+    );
+    await prisma.business.update({
+      where: { id: businessId },
+      data: { rating, ratingCount },
+    });
+  } catch (err) {
+    console.error('[reputacion] no se pudo recalcular la nota del negocio:', err);
+  }
+}
+
+/**
  * Cancela un pedido por decisión del ADMINISTRADOR, sin las restricciones del
  * cliente (que no puede cancelar más allá de AT_PICKUP).
  *
@@ -931,12 +1089,18 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
     );
   }
 
+  // La plaza se sella al crear: el panel filtra por ella y contarla después,
+  // sobre coordenadas, daría un número distinto cada vez que se corrija un
+  // centroide.
+  const citySlug = await plazaDeCoordenadas(originLat, originLng);
+
   const trip = await prisma.trip.create({
     data: {
       requestRef,
       passengerId: clientId,
       serviceType,
       status: 'SEARCHING',
+      citySlug,
       // Solo los ENVÍOS llevan PIN: es mercancía que cambia de manos y hay que
       // poder probar que llegó a quien debía. Un pasajero no necesita PIN para
       // bajarse del carro.
@@ -1073,6 +1237,11 @@ export async function updateClientTripStatus(
 
     const dto = _toTripDTO(updated, updated.passengerId ?? '');
     _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+    _avisarPasajero(updated.passengerId, 'completed', {
+      esEnvio: updated.serviceType === 'ENVIOS',
+      finalFare: updated.finalFare,
+      destino: updated.destAddress,
+    }, tripId);
     return dto;
   }
 
@@ -1087,10 +1256,39 @@ export async function updateClientTripStatus(
   if (!updated) return null;
   const dto = _toTripDTO(updated, updated.passengerId ?? '');
   // Si no cambió nada, tampoco se avisa: sería repetir el último estado.
+  // El push cuelga de la MISMA guarda, y por el mismo motivo: un `arrived` que
+  // llega dos veces sonaría dos veces con el carro esperando una sola.
   if (avance.count > 0) {
     _notifyTripListeners(tripId, updated.passengerId ?? '', dto);
+    _avisarPasajero(updated.passengerId, status, {
+      esEnvio: updated.serviceType === 'ENVIOS',
+      destino: updated.destAddress,
+    }, tripId);
   }
   return dto;
+}
+
+/**
+ * Push al pasajero por un cambio de estado de su viaje.
+ *
+ * `avisoDeEstado` decide si ese estado merece notificación; los que no, salen
+ * en silencio. Best-effort y sin `await`: un fallo de Firebase no puede frenar
+ * la transición del viaje, que es lo que de verdad importa.
+ */
+function _avisarPasajero(
+  passengerId: string | null,
+  estado: ClientTripStatus,
+  datos: DatosDelViaje,
+  tripId: string,
+): void {
+  if (!passengerId) return;
+  const aviso = avisoDeEstado(estado as EstadoViaje, datos);
+  if (!aviso) return;
+  void sendPushToClient(passengerId, {
+    title: aviso.title,
+    body: aviso.body,
+    data: { type: aviso.type, tripId },
+  });
 }
 
 export async function cancelClientTrip(clientId: string, tripId: string): Promise<boolean> {
@@ -1109,6 +1307,16 @@ export async function cancelClientTrip(clientId: string, tripId: string): Promis
   // quede con un viaje colgado en ON_TRIP.
   if (trip.driverId) {
     _sendToDriver?.(trip.driverId, { type: 'trip_cancelled', tripId });
+    // Y push, no solo WebSocket: el conductor va CONDUCIENDO hacia la recogida
+    // con el teléfono en el soporte y la pantalla apagada. Sin esto sigue el
+    // camino hasta llegar y encontrarse con que no hay nadie — gasolina y
+    // tiempo suyos. Los mandados y los pedidos ya avisaban así; el viaje no.
+    const aviso = avisoCancelacionAlConductor(trip.originAddress);
+    void sendPushToDriver(trip.driverId, {
+      title: aviso.title,
+      body: aviso.body,
+      data: { type: aviso.type, tripId },
+    });
     await liberarConductorSiNoTieneMas(trip.driverId);
   }
 
@@ -1218,6 +1426,57 @@ export class TripDriverError extends Error {
  * Con esto la app puede cerrarlo por HTTP, que sí tiene respuesta y se puede
  * reintentar. El socket sigue valiendo para lo que sirve: avisar en vivo.
  */
+/**
+ * El conductor califica a su pasajero al terminar el viaje.
+ *
+ * La hoja existía en la app —521 líneas, con confeti— y **no mandaba nada a
+ * ninguna parte**: el conductor puntuaba y la nota se perdía. Mientras tanto,
+ * la oferta le enseñaba «5,0» de todo el mundo, que era una constante escrita
+ * en el código.
+ *
+ * `Trip.passengerRating` ya existía en la base sin que nadie lo escribiera.
+ */
+export async function rateTripPassenger(
+  driverId: string,
+  tripId: string,
+  estrellas: unknown,
+): Promise<{ rating: number }> {
+  const stars = saneaEstrellas(estrellas);
+
+  const trip = await prisma.trip.findFirst({
+    where: { id: tripId, driverId },
+    select: { id: true, status: true, passengerId: true },
+  });
+  if (!trip) throw new Error('El viaje no existe.');
+  if (trip.status !== 'COMPLETED') {
+    throw new Error('Solo puedes calificar un viaje que ya terminó.');
+  }
+
+  await prisma.trip.update({
+    where: { id: tripId },
+    data: { passengerRating: stars },
+  });
+
+  if (trip.passengerId) await recalcularReputacionPasajero(trip.passengerId);
+  return { rating: stars };
+}
+
+/** Recalcula la nota del pasajero de sus viajes calificados. Best-effort. */
+export async function recalcularReputacionPasajero(userId: string): Promise<void> {
+  try {
+    const filas = await prisma.trip.findMany({
+      where: { passengerId: userId, passengerRating: { not: null } },
+      select: { passengerRating: true },
+    });
+    const { rating, ratingCount } = promedioReputacion(
+      filas.map((f) => f.passengerRating as number),
+    );
+    await prisma.user.update({ where: { id: userId }, data: { rating, ratingCount } });
+  } catch (err) {
+    console.error('[reputacion] no se pudo recalcular la nota del pasajero:', err);
+  }
+}
+
 export async function driverUpdateTripStatus(
   driverId: string,
   tripId: string,
@@ -1315,6 +1574,7 @@ export async function notifyClientTripUpdateById(tripId: string): Promise<void> 
 
 type PrismaOrder = {
   id: string; orderRef: string; businessId: string; status: string; subtotal: number;
+  promoDiscount?: number | null;
   deliveryFee: number; total: number; etaMinutes: number | null; deliveryAddress: string;
   pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
   createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
@@ -1352,6 +1612,9 @@ function _toSummary(
     businessName,
     status: statusMap[o.status] ?? o.status.toLowerCase(),
     subtotal: o.subtotal,
+    // El descuento que SÍ se aplicó a este pedido. Sin él, el cliente ve un
+    // total menor que la suma de sus productos y no sabe por qué.
+    promoDiscount: o.promoDiscount ?? undefined,
     deliveryFee: o.deliveryFee,
     total: o.total,
     etaMinutes: o.etaMinutes ?? 30,
@@ -1459,7 +1722,7 @@ function _conPin(dto: ClientTripDTO, pin: string | null | undefined): ClientTrip
 interface FichaConductor {
   driver?: {
     name: string; phone: string; avatarUrl: string | null;
-    rating: number; totalTrips: number; isVerified: boolean; createdAt: Date;
+    rating: number | null; totalTrips: number; isVerified: boolean; createdAt: Date;
   } | null;
   vehicle?: {
     brand: string; model: string; color: string; plate: string;

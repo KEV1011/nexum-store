@@ -18,8 +18,13 @@ class PassengerEntity {
   /// Full display name of the passenger.
   final String name;
 
-  /// Aggregate rating (1.0 – 5.0) given by previous drivers.
-  final double rating;
+  /// Calificación del pasajero, o null si no la hay.
+  ///
+  /// Hoy es SIEMPRE null: no existe calificación de pasajeros (`User` no
+  /// tiene columna de nota y nadie los puntúa). El backend mandaba un 5,0
+  /// escrito a mano y el conductor veía la misma nota perfecta de todo el
+  /// mundo, en la pantalla con la que decide si acepta la carrera.
+  final double? rating;
 
   /// Total completed trips as a passenger.
   final int totalTrips;
