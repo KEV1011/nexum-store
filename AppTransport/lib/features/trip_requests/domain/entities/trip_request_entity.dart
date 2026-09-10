@@ -28,6 +28,7 @@ class TripRequestEntity {
     this.errand,
     this.orderId,
     this.serviceType,
+    this.tarifaRegulada = false,
     this.paymentMethod,
     this.stops = const [],
   });
@@ -117,7 +118,13 @@ class TripRequestEntity {
       };
 
   /// La tarifa de este servicio la fija una autoridad, no la plataforma.
-  bool get tarifaRegulada => serviceType == 'TAXI';
+  ///
+  /// Lo dice el SERVIDOR, no esta app. Antes se deducía de que el servicio
+  /// fuera TAXI, y eso solo es cierto si el operador cargó el decreto
+  /// municipal: sin él, el taxi cobra con nuestra tabla y enseñar «Tarifa
+  /// autorizada» sería decirle al conductor que el precio es el oficial
+  /// cuando lo estamos poniendo nosotros.
+  final bool tarifaRegulada;
 
   /// Cómo cobra el conductor, en una línea. Null = no hay nada que aclarar
   /// (efectivo es lo que ya espera cualquiera).
@@ -142,6 +149,7 @@ class TripRequestEntity {
     ErrandDetails? errand,
     String? orderId,
     String? serviceType,
+    bool? tarifaRegulada,
     String? paymentMethod,
     List<String>? stops,
   }) {
@@ -160,6 +168,7 @@ class TripRequestEntity {
       errand: errand ?? this.errand,
       orderId: orderId ?? this.orderId,
       serviceType: serviceType ?? this.serviceType,
+      tarifaRegulada: tarifaRegulada ?? this.tarifaRegulada,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       stops: stops ?? this.stops,
     );

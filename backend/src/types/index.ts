@@ -107,6 +107,15 @@ export interface TripRequestDTO {
   estimatedFare: number;
   /** TAXI | MOTO | PARTICULAR | ENVIOS | MANDADO — ENVIOS exige prueba de foto. */
   serviceType?: string;
+  /**
+   * La tarifa de este viaje la fija el decreto municipal.
+   *
+   * Viaja en la oferta porque la app lo deducía con `serviceType == 'TAXI'`, y
+   * eso es cierto solo si el operador cargó el decreto: sin él, el taxi cobra
+   * con NUESTRA tabla y enseñarle «Tarifa autorizada» al conductor es decirle
+   * que el precio es el oficial cuando no lo es.
+   */
+  tarifaRegulada?: boolean;
   /** Cómo pagará el pasajero: 'efectivo' | 'transferencia' | 'en_linea'. */
   paymentMethod?: string;
   /** Paradas intermedias, en orden. Van en la oferta: cambian el viaje. */
