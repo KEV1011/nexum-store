@@ -385,7 +385,15 @@ class _DriverCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ficha = request.driverCard;
+    final idConductor = request.driverId;
     return DriverInfoCard(
+      // Tocar la ficha abre su perfil: verificaciones, servicios y desde
+      // cuándo conduce con nosotros. Sin id —viajes guardados de antes de que
+      // el servidor lo mandara— la tarjeta simplemente no se puede tocar, en
+      // vez de abrir una pantalla vacía.
+      onTap: (idConductor != null && idConductor.isNotEmpty)
+          ? () => context.push(AppRoutes.driverProfilePath(idConductor))
+          : null,
       name: request.driverName,
       photoUrl: ficha?.photoUrl,
       rating: ficha?.rating,

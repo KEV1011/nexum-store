@@ -119,6 +119,7 @@ class TransportRequestEntity {
     required this.requestRef,
     required this.serviceType,
     this.deliveryPin,
+    this.driverId,
     this.promoDiscount = 0,
     this.totalPasajero,
     required this.originAddress,
@@ -159,6 +160,7 @@ class TransportRequestEntity {
         // Parsing defensivo: el backend usa 'taxi'/'particular' para el
         // servicio que la app llama 'transporte', y 'mandado' viaja como envío.
         deliveryPin: json['deliveryPin'] as String?,
+        driverId: json['driverId'] as String?,
         promoDiscount: (json['promoDiscount'] as num?)?.round() ?? 0,
         totalPasajero: (json['totalPasajero'] as num?)?.toDouble(),
         serviceType: TransportServiceType.values.firstWhere(
@@ -221,6 +223,9 @@ class TransportRequestEntity {
   /// ENVIOS: sin él el repartidor no puede cerrar la entrega, y es lo que
   /// prueba que el paquete llegó a su destinatario.
   final String? deliveryPin;
+
+  /// Id del conductor asignado. Sirve para abrir su perfil público.
+  final String? driverId;
 
   /// Lo que descuenta el cupón, en pesos. 0 = sin cupón.
   ///
@@ -296,6 +301,7 @@ class TransportRequestEntity {
     String? requestRef,
     TransportServiceType? serviceType,
     String? deliveryPin,
+    String? driverId,
     int? promoDiscount,
     double? totalPasajero,
     String? originAddress,
@@ -333,6 +339,7 @@ class TransportRequestEntity {
       requestRef: requestRef ?? this.requestRef,
       serviceType: serviceType ?? this.serviceType,
       deliveryPin: deliveryPin ?? this.deliveryPin,
+      driverId: driverId ?? this.driverId,
       promoDiscount: promoDiscount ?? this.promoDiscount,
       totalPasajero: totalPasajero ?? this.totalPasajero,
       originAddress: originAddress ?? this.originAddress,
@@ -382,6 +389,7 @@ class TransportRequestEntity {
         // Sin esto el PIN del envío se perdía al cerrar la app: se guardaba el
         // viaje pero no el dato que permite cerrar la entrega.
         if (deliveryPin != null) 'deliveryPin': deliveryPin,
+        if (driverId != null) 'driverId': driverId,
         if (promoDiscount > 0) 'promoDiscount': promoDiscount,
         if (totalPasajero != null) 'totalPasajero': totalPasajero,
         if (driverName != null) 'driverName': driverName,

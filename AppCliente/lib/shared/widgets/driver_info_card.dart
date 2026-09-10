@@ -80,7 +80,12 @@ class DriverInfoCard extends StatelessWidget {
     this.subtitle,
     this.actions = const [],
     this.palette,
+    this.onTap,
   });
+
+  /// Abre el perfil del conductor. Null = la ficha no se puede tocar (viajes
+  /// guardados de antes, o servicios donde no hay perfil que enseñar).
+  final VoidCallback? onTap;
 
   /// Colores propios cuando la pantalla no sigue el tema de la app. El
   /// intermunicipal tiene su tema nocturno hecho a mano: en vez de arrancarlo
@@ -139,7 +144,7 @@ class DriverInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = palette ?? DriverCardPalette.deTema(context);
-    return Container(
+    final tarjeta = Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: p.surface,
@@ -219,6 +224,20 @@ class DriverInfoCard extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+
+    if (onTap == null) return tarjeta;
+    // El detector ENVUELVE la tarjeta, no se superpone. Los botones de chat y
+    // contacto seguro viven dentro, y en Flutter el gesto del hijo gana al del
+    // padre: quien toca el chat abre el chat, no el perfil. Puesto encima con
+    // un Stack sería al revés y los dejaría muertos.
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: tarjeta,
       ),
     );
   }

@@ -1731,6 +1731,7 @@ type PrismaTrip = {
   paymentMethod?: string | null;
   promoCode?: string | null;
   promoDiscount?: number | null;
+  driverId?: string | null;
   stops?: unknown;
 };
 
@@ -1792,6 +1793,7 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConduct
     destinationAddress: trip.destAddress,
     estimatedFare: trip.estimatedFare,
     finalFare: trip.finalFare ?? undefined,
+    driverId: trip.driverId ?? undefined,
     promoCode: trip.promoCode ?? undefined,
     promoDiscount: trip.promoDiscount ?? undefined,
     // Derivado, nunca guardado: un total guardado y un descuento guardado

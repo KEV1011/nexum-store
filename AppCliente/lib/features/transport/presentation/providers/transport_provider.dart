@@ -342,6 +342,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
         // viaje viendo la estimación del principio, que se calcula con otra
         // fórmula y casi nunca coincide con lo que paga.
         finalFare: (payload['finalFare'] as num?)?.toDouble() ?? r.finalFare,
+        driverId: payload['driverId'] as String? ?? r.driverId,
         promoDiscount:
             (payload['promoDiscount'] as num?)?.round() ?? r.promoDiscount,
         totalPasajero:

@@ -8,6 +8,7 @@ import {
   UpsertDriverDocumentDTO,
 } from '../types';
 import { prisma } from '../lib/prisma';
+import { verificacionesDeConductor } from '../lib/verificaciones-conductor';
 import { pilotSkipVerification } from './kyc.service';
 import { evaluateDriverCompliance } from './document-expiry.service';
 import { runDocumentOcr } from './ocr.service';
@@ -150,9 +151,29 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
 export async function getDriverPublicProfile(driverId: string): Promise<DriverPublicProfileDTO | null> {
   const driver = await prisma.driver.findUnique({
     where: { id: driverId },
-    include: { vehicles: { where: { isActive: true }, take: 1 } },
+    include: {
+      vehicles: { where: { isActive: true }, take: 1 },
+      documents: { select: { type: true, status: true, expiresAt: true } },
+    },
   });
   if (!driver) return null;
+
+  // Las verificaciones que el pasajero mira antes de subirse. Los datos ya
+  // estaban guardados —KYC, antecedentes, documentos, foto— y no los veía
+  // nadie. La regla de qué cuenta como verificado vive suelta y probada en
+  // `lib/verificaciones-conductor`, porque es donde es fácil mentir sin querer:
+  // un SOAT aprobado el año pasado y ya vencido NO es «SOAT vigente».
+  const verificaciones = verificacionesDeConductor({
+    kycStatus: driver.kycStatus,
+    backgroundStatus: driver.backgroundStatus,
+    tieneFotoDePerfil: Boolean(driver.avatarUrl),
+    tieneSelfie: Boolean(driver.selfieUrl),
+    documentos: driver.documents.map((d) => ({
+      tipo: d.type,
+      estado: d.status as 'PENDING' | 'APPROVED' | 'REJECTED',
+      venceEl: d.expiresAt,
+    })),
+  });
 
   return {
     driverId: driver.id,
@@ -160,10 +181,16 @@ export async function getDriverPublicProfile(driverId: string): Promise<DriverPu
     photoUrl: driver.avatarUrl ?? undefined,
     bio: driver.bio ?? undefined,
     rating: driver.rating,
+    // Un 4,9 con dos votos y otro con doscientos no son la misma información.
+    ratingCount: driver.ratingCount,
     totalTrips: driver.totalTrips,
     vehicleDescription: _vehicleDescription(driver.vehicles[0]),
     memberSince: driver.createdAt.toISOString(),
     isVerified: driver.isVerified,
+    citySlug: driver.citySlug ?? undefined,
+    verificaciones: verificaciones.items,
+    verificacionesCumplidas: verificaciones.cumplidas,
+    verificacionesTotal: verificaciones.total,
   };
 }
 

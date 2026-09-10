@@ -5,6 +5,8 @@ import 'package:nexum_client/app/router/app_transitions.dart';
 import 'package:nexum_client/app/router/splash_screen.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/session/reanudar.dart';
+import 'package:nexum_client/features/transport/presentation/screens/'
+    'driver_profile_screen.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
 import 'package:nexum_client/features/transport/presentation/providers/'
@@ -76,6 +78,7 @@ abstract final class AppRoutes {
   static const String business = '/business/:id';
   static const String order = '/order/:id';
   static const String transportTracking = '/transport/tracking/:id';
+  static const String driverProfile = '/driver/:id';
   static const String tripHistory = '/transport/history';
 
   // Rutas de transporte
@@ -100,6 +103,7 @@ abstract final class AppRoutes {
   static String businessPath(String id) => '/business/$id';
   static String orderPath(String id) => '/order/$id';
   static String transportTrackingPath(String id) => '/transport/tracking/$id';
+  static String driverProfilePath(String id) => '/driver/$id';
 }
 
 /// Navegador raíz, para poder navegar desde fuera del árbol de widgets.
@@ -160,6 +164,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           );
         },
+      ),
+      GoRoute(
+        path: AppRoutes.driverProfile,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: DriverProfileScreen(
+            driverId: state.pathParameters['id'] ?? '',
+          ),
+        ),
       ),
       GoRoute(
         path: AppRoutes.cart,

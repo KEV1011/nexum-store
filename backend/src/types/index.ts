@@ -805,6 +805,12 @@ export interface ClientTripDTO {
   distanceKm: number;
   etaMinutes: number;
   status: ClientTripStatus;
+  /**
+   * Para poder abrir su perfil público desde la ficha. Es un identificador
+   * opaco y la ruta que lo consume exige sesión del pasajero: no revela nada
+   * que no vea ya en la tarjeta del conductor.
+   */
+  driverId?: string;
   driverName?: string;
   driverPhone?: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
@@ -1297,10 +1303,24 @@ export interface DriverPublicProfileDTO {
   photoUrl?: string;
   bio?: string;
   rating: number | null;  // null = todavía sin calificaciones
+  /** Sobre cuántas calificaciones. Un 4,9 con dos votos no dice lo mismo. */
+  ratingCount?: number;
   totalTrips: number;
   vehicleDescription: string;
   memberSince: string;
   isVerified: boolean;
+  /** Plaza donde opera. */
+  citySlug?: string;
+  /**
+   * Lo que el pasajero mira antes de subirse al carro de un desconocido.
+   *
+   * Van SIEMPRE las seis, verificadas o no: esconder las que faltan haría que
+   * «3 verificaciones» pareciera la lista completa. La regla de qué cuenta
+   * está en `lib/verificaciones-conductor`.
+   */
+  verificaciones?: { clave: string; etiqueta: string; verificada: boolean }[];
+  verificacionesCumplidas?: number;
+  verificacionesTotal?: number;
 }
 
 // ─── Wompi Payments ───────────────────────────────────────────────────────────
