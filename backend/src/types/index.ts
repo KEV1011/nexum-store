@@ -34,7 +34,7 @@ export interface Driver {
   id: string;
   name: string;
   phone: string;
-  rating: number;
+  rating: number | null;  // null = todavía sin calificaciones
   totalTrips: number;
   vehicle: Vehicle;
   bankAccount: BankAccount;
@@ -44,7 +44,7 @@ export interface DriverDTO {
   id: string;
   name: string;
   phone: string;
-  rating: number;
+  rating: number | null;  // null = todavía sin calificaciones
   totalTrips: number;
   vehicle: Vehicle;
   bankAccount: BankAccount;
@@ -1112,7 +1112,7 @@ export interface RideBidDTO {
   driverPhone: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
-  driverRating: number;
+  driverRating: number | null;  // null = sin calificaciones
   driverTotalTrips: number;
   vehicleDescription: string;
   fare: number;
@@ -1197,7 +1197,7 @@ export interface DriverProfileDTO {
   phone: string;
   photoUrl?: string;
   bio?: string;
-  rating: number;
+  rating: number | null;  // null = todavía sin calificaciones
   totalTrips: number;
   vehicleDescription: string;
   // Desglose del vehículo activo (para la pantalla de perfil del conductor).
@@ -1243,7 +1243,7 @@ export interface DriverPublicProfileDTO {
   fullName: string;
   photoUrl?: string;
   bio?: string;
-  rating: number;
+  rating: number | null;  // null = todavía sin calificaciones
   totalTrips: number;
   vehicleDescription: string;
   memberSince: string;

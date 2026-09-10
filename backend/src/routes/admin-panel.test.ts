@@ -338,7 +338,7 @@ describe('el panel pintando la comisión', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions };`,
+      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
     const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
     return { fn, el };
@@ -421,6 +421,49 @@ describe('el panel pintando la comisión', () => {
     expect(html).toContain('8 %');
     expect(html).not.toContain('Pamplona');
     expect(html).not.toContain('undefined');
+  });
+
+  // La nota del conductor pasó a poder ser NULL (antes era `@default(5.0)` y
+  // nadie la escribía). El panel hacía `d.rating.toFixed(2)` a pelo: con la
+  // nota nula reventaba la tabla ENTERA de conductores delante del admin, y
+  // como el panel es JavaScript dentro de una cadena, ni tsc ni el linter lo
+  // ven — solo se descubre ejecutándolo.
+  it('un conductor SIN calificaciones no revienta la tabla', async () => {
+    const base = {
+      id: 'd1', name: 'Nelson', phone: '+573001112233', status: 'ONLINE',
+      isVerified: true, intercityEnabled: true, totalTrips: 0, vehicle: 'Mazda 2',
+      lastSeenAt: new Date().toISOString(), kycStatus: 'PENDING', hasSelfie: false,
+      selfieUrl: null, backgroundStatus: 'UNCHECKED', fraudFlags: 0,
+      complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+    };
+    const { fn, el } = montar(
+      { '/admin/drivers': [{ ...base, rating: null }] },
+      ['drivers-body'],
+    );
+    fn['loadDrivers']!();
+    await esperar();
+    const html = el['drivers-body']!.innerHTML;
+    expect(html).toContain('Nelson');
+    // Y dice «Nuevo», no un número inventado ni un hueco en blanco.
+    expect(html).toContain('Nuevo');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('y con nota la sigue mostrando', async () => {
+    const base = {
+      id: 'd2', name: 'Marta', phone: '+573004445566', status: 'ONLINE',
+      isVerified: true, intercityEnabled: false, totalTrips: 12, vehicle: 'Spark',
+      lastSeenAt: new Date().toISOString(), kycStatus: 'VERIFIED', hasSelfie: false,
+      selfieUrl: null, backgroundStatus: 'CLEAR', fraudFlags: 0,
+      complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+    };
+    const { fn, el } = montar(
+      { '/admin/drivers': [{ ...base, rating: 4.6 }] },
+      ['drivers-body'],
+    );
+    fn['loadDrivers']!();
+    await esperar();
+    expect(el['drivers-body']!.innerHTML).toContain('4.60');
   });
 });
 

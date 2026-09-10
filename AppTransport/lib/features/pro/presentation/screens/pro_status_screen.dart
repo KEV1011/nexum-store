@@ -183,7 +183,9 @@ class _ProStatusScreenState extends ConsumerState<ProStatusScreen> {
 
     return Row(
       children: [
-        stat(status.rating.toStringAsFixed(2), 'Calificación',
+        // Sin calificaciones no hay número: el nivel se gana con servicios
+        // hasta que alguien lo puntúe.
+        stat(status.rating?.toStringAsFixed(2) ?? '—', 'Calificación',
             Icons.star_rounded),
         const SizedBox(width: AppConstants.spacingS),
         stat('${status.totalServices}', 'Servicios', Icons.route_rounded),

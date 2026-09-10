@@ -283,7 +283,33 @@ class DriverAvatar extends StatelessWidget {
                     ),
                   ),
           ),
-          if (rating != null)
+          // Sin calificaciones se dice «Nuevo», no se omite en silencio: un
+          // hueco donde debería ir la nota se lee como un dato que falta, y
+          // pintar un número que nadie dio sería peor.
+          if (rating == null)
+            Positioned(
+              left: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(color: AppColors.shadow, blurRadius: 4),
+                  ],
+                ),
+                child: Text(
+                  'Nuevo',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            )
+          else
             Positioned(
               left: 0,
               bottom: 0,

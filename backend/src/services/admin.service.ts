@@ -385,7 +385,7 @@ export interface AdminDriverRow {
   status: string;
   isVerified: boolean;
   intercityEnabled: boolean;
-  rating: number;
+  rating: number | null;
   totalTrips: number;
   vehicle: string | null;
   lastSeenAt: string | null;

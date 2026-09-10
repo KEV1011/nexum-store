@@ -769,6 +769,72 @@ export async function rateClientOrder(
 }
 
 /**
+ * El pasajero califica su viaje, y esa nota llega al conductor.
+ *
+ * Mismo defecto que tenían los negocios, y por las mismas razones: la app ya
+ * tenía las estrellas, pero `rateRequest` solo tocaba el estado en memoria y no
+ * existía ninguna ruta que recibiera la nota. `Driver.rating` se quedaba en el
+ * 5,0 de fábrica que nadie le había dado — y esa es la cifra que mira alguien
+ * antes de subirse al carro de un desconocido.
+ *
+ * Reglas idénticas a las del pedido: solo el dueño del viaje, solo si está
+ * COMPLETADO, corregible, y el promedio se RECALCULA de las filas.
+ */
+export async function rateClientTrip(
+  clientId: string,
+  tripId: string,
+  estrellas: unknown,
+  comentario: unknown,
+): Promise<{ rating: number; ratingComment: string | null }> {
+  const stars = saneaEstrellas(estrellas);
+  const comment = saneaComentario(comentario);
+
+  const trip = await prisma.trip.findFirst({
+    where: { id: tripId, passengerId: clientId },
+    select: { id: true, status: true, driverId: true },
+  });
+  if (!trip) throw new Error('El viaje no existe.');
+  if (trip.status !== 'COMPLETED') {
+    throw new Error('Solo puedes calificar un viaje que ya terminó.');
+  }
+
+  await prisma.trip.update({
+    where: { id: tripId },
+    data: { rating: stars, ratingComment: comment },
+  });
+
+  // Un viaje sin conductor asignado no puede calificar a nadie; la nota igual
+  // queda guardada en el viaje, que es información de la operación.
+  if (trip.driverId) await recalcularReputacionConductor(trip.driverId);
+  return { rating: stars, ratingComment: comment };
+}
+
+/**
+ * Vuelve a calcular la nota del conductor a partir de sus viajes calificados.
+ *
+ * Best-effort por el mismo motivo que la del negocio: la calificación del
+ * pasajero ya quedó guardada en su viaje, y perderla por un fallo al promediar
+ * sería tirar el dato bueno por el derivado.
+ */
+export async function recalcularReputacionConductor(driverId: string): Promise<void> {
+  try {
+    const filas = await prisma.trip.findMany({
+      where: { driverId, rating: { not: null } },
+      select: { rating: true },
+    });
+    const { rating, ratingCount } = promedioReputacion(
+      filas.map((f) => f.rating as number),
+    );
+    await prisma.driver.update({
+      where: { id: driverId },
+      data: { rating, ratingCount },
+    });
+  } catch (err) {
+    console.error('[reputacion] no se pudo recalcular la nota del conductor:', err);
+  }
+}
+
+/**
  * Vuelve a calcular la nota del negocio a partir de sus pedidos calificados.
  *
  * Best-effort a propósito: si esto falla, la calificación del cliente YA quedó
@@ -1605,7 +1671,7 @@ function _conPin(dto: ClientTripDTO, pin: string | null | undefined): ClientTrip
 interface FichaConductor {
   driver?: {
     name: string; phone: string; avatarUrl: string | null;
-    rating: number; totalTrips: number; isVerified: boolean; createdAt: Date;
+    rating: number | null; totalTrips: number; isVerified: boolean; createdAt: Date;
   } | null;
   vehicle?: {
     brand: string; model: string; color: string; plate: string;

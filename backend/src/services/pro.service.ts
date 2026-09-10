@@ -55,7 +55,8 @@ export const PRO_LEVELS: ProLevelDef[] = [
 export interface ProStatusDTO {
   level: ProLevel;
   levelLabel: string;
-  rating: number;
+  /** Null si todavía nadie lo ha calificado. */
+  rating: number | null;
   totalServices: number;
   monthServices: number;
   /** Siguiente nivel y lo que falta para alcanzarlo; null si ya es Diamante. */
@@ -99,15 +100,25 @@ export async function getDriverProStatus(driverId: string): Promise<ProStatusDTO
   const totalServices = Math.max(driver.totalTrips, settled);
   const monthServices = monthAgg._sum.tripCount ?? 0;
 
-  const rating =
-    intercityRating._count.rating > 0
-      ? Math.round((intercityRating._avg.rating ?? driver.rating) * 100) / 100
+  // La nota: la de sus viajes urbanos (`Driver.rating`, ya recalculada de las
+  // calificaciones reales) o el promedio de sus intermunicipales si los tiene.
+  // Puede ser NULL: un conductor al que todavía nadie ha calificado no tiene
+  // nota, y antes esto se apoyaba en el 5,0 de fábrica — o sea, los niveles se
+  // repartían sobre una cifra que nadie había dado.
+  const rating: number | null =
+    intercityRating._count.rating > 0 && intercityRating._avg.rating !== null
+      ? Math.round(intercityRating._avg.rating * 100) / 100
       : driver.rating;
 
   // Nivel actual = el más alto cuyos requisitos se cumplen.
+  //
+  // Sin calificaciones solo se alcanzan los niveles que no exigen nota (Bronce).
+  // Es lo correcto: no se puede conceder un nivel «4,7 estrellas» a quien no
+  // tiene ninguna. Los servicios sí cuentan desde el primer día.
   let current = PRO_LEVELS[0]!;
   for (const def of PRO_LEVELS) {
-    if (totalServices >= def.minServices && rating >= def.minRating) current = def;
+    const notaSuficiente = def.minRating <= 0 || (rating !== null && rating >= def.minRating);
+    if (totalServices >= def.minServices && notaSuficiente) current = def;
   }
 
   const idx = PRO_LEVELS.findIndex((l) => l.level === current.level);

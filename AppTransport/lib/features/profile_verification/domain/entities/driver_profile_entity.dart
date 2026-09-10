@@ -111,7 +111,9 @@ class DriverProfileEntity {
   final String driverId;
   final String fullName;
   final String phone;
-  final double rating;
+  /// Null mientras nadie lo haya calificado. Antes se rellenaba con un 5,0
+  /// que el backend tampoco había calculado: era el valor de fábrica.
+  final double? rating;
   final int totalTrips;
   final String vehicleDescription;
 
@@ -140,7 +142,7 @@ class DriverProfileEntity {
         driverId: j['driverId'] as String? ?? '',
         fullName: j['fullName'] as String? ?? 'Conductor',
         phone: j['phone'] as String? ?? '',
-        rating: (j['rating'] as num?)?.toDouble() ?? 5.0,
+        rating: (j['rating'] as num?)?.toDouble(),
         totalTrips: (j['totalTrips'] as num?)?.toInt() ?? 0,
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         vehicleType: j['vehicleType'] as String?,

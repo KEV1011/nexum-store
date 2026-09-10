@@ -73,7 +73,7 @@ class AuthRepositoryImpl implements AuthRepository {
         id: d['id'] as String,
         name: d['name'] as String,
         phone: d['phone'] as String,
-        rating: (d['rating'] as num).toDouble(),
+        rating: (d['rating'] as num?)?.toDouble(),
         totalTrips: (d['totalTrips'] as num).toInt(),
         vehiclePlate: vehicle['plate'] as String,
         vehicleDescription:
@@ -114,7 +114,7 @@ class AuthRepositoryImpl implements AuthRepository {
         id: d['id'] as String,
         name: d['name'] as String,
         phone: d['phone'] as String,
-        rating: (d['rating'] as num).toDouble(),
+        rating: (d['rating'] as num?)?.toDouble(),
         totalTrips: (d['totalTrips'] as num).toInt(),
         vehiclePlate: vehicle['plate'] as String,
         vehicleDescription:

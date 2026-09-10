@@ -36,7 +36,8 @@ export interface DriverCardFields {
 
 interface DriverLike {
   avatarUrl: string | null;
-  rating: number;
+  /** Null mientras nadie lo haya calificado: la app dice «Nuevo». */
+  rating: number | null;
   totalTrips: number;
   isVerified: boolean;
   createdAt: Date;
@@ -76,7 +77,7 @@ export function fichaFromDriver(
   if (!driver && !vehicle) return {};
   return {
     driverPhotoUrl: driver?.avatarUrl ?? undefined,
-    driverRating: driver?.rating,
+    driverRating: driver?.rating ?? undefined,
     driverTotalTrips: driver?.totalTrips,
     driverSince: driver?.createdAt.toISOString(),
     driverVerified: driver?.isVerified,

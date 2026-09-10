@@ -13,6 +13,7 @@ import {
   getClientOrderById,
   cancelClientOrder,
   rateClientOrder,
+  rateClientTrip,
   requestClientTrip,
   getActiveClientTrip,
   getClientTripHistory,
@@ -365,6 +366,24 @@ router.post('/orders/:id/cancel', clientAuthMiddleware, async (req, res) => {
     return;
   }
   res.json({ success: true });
+});
+
+// POST /client/trips/:id/rate { stars, comment } — califica un viaje terminado.
+//
+// La hoja de estrellas ya existía en la app; lo que no existía era esta ruta,
+// así que la nota moría en el teléfono y el conductor seguía con el 5,0 de
+// fábrica que nadie le dio.
+router.post('/trips/:id/rate', clientAuthMiddleware, async (req, res) => {
+  const { stars, comment } = req.body as { stars?: unknown; comment?: unknown };
+  try {
+    const data = await rateClientTrip(req.clientId!, req.params['id']!, stars, comment);
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo calificar el viaje',
+    });
+  }
 });
 
 // POST /client/orders/:id/rate { stars, comment } — califica un pedido entregado.

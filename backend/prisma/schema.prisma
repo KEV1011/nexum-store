@@ -57,7 +57,6 @@ model User {
   addresses         Address[]
   orders            Order[]
   trips             Trip[]            @relation("TripPassenger")
-  ratings           Rating[]          @relation("RatingAuthor")
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
@@ -197,7 +196,12 @@ model Driver {
   acceptsChained    Boolean      @default(true)
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
   fcmToken          String?
-  rating            Float        @default(5.0)
+  /// Reputación REAL, promediada de los viajes que los pasajeros calificaron.
+  /// Null mientras nadie lo haya calificado — antes era `@default(5.0)` y
+  /// NADIE la escribía nunca, así que todos los conductores enseñaban el mismo
+  /// cinco de fábrica al pasajero que decidía si subirse a su carro.
+  rating            Float?
+  ratingCount       Int          @default(0)
   totalTrips        Int          @default(0)
   bio               String?
   bankName          String?
@@ -683,7 +687,6 @@ model Trip {
   passenger          User?           @relation("TripPassenger", fields: [passengerId], references: [id])
   driver             Driver?         @relation(fields: [driverId], references: [id])
   vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
-  ratings            Rating[]
 
   // Plaza donde se ORIGINÓ el viaje, sellada al crearlo con el mismo criterio
   // que usa la app para saber en qué municipio estás (centroide más cercano).
@@ -1005,22 +1008,6 @@ enum PooledTripStatus {
 enum SeatBookingStatus {
   CONFIRMED
   CANCELLED
-}
-
-// ── Calificaciones ────────────────────────────────────────────────────────────
-
-model Rating {
-  id        String   @id @default(cuid())
-  authorId  String
-  tripId    String?
-  stars     Int
-  comment   String?
-  createdAt DateTime @default(now())
-
-  author    User     @relation("RatingAuthor", fields: [authorId], references: [id])
-  trip      Trip?    @relation(fields: [tripId], references: [id])
-
-  @@map("ratings")
 }
 
 // ── Pagos (Wompi) ─────────────────────────────────────────────────────────────

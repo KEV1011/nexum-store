@@ -40,7 +40,7 @@ interface RideBid {
   driverId: string;
   driverName: string;
   driverPhone: string;
-  driverRating: number;
+  driverRating: number | null;
   driverTotalTrips: number;
   vehicleDescription: string;
   fare: number;
@@ -261,7 +261,7 @@ export function placeBid(
   driverId: string,
   driverName: string,
   driverPhone: string,
-  driverRating: number,
+  driverRating: number | null,
   driverTotalTrips: number,
   vehicleDescription: string,
   rideId: string,

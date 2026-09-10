@@ -1393,7 +1393,8 @@ function loadDrivers() {
       '</td><td><span class="badge badge-' + d.status + '">' + d.status + '</span></td><td>' + (d.isVerified ? '✅' : '—') +
       '</td><td>' + (d.intercityEnabled ? '🛣️' : '—') +
       '</td><td>' + kycCell + '</td><td>' + compliance + '</td><td>' + fraud +
-      '</td><td>' + d.rating.toFixed(2) + '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
+      '</td><td>' + (d.rating == null ? '<span class="muted">Nuevo</span>' : d.rating.toFixed(2)) +
+      '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
       (d.isVerified
         ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +

@@ -105,7 +105,8 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen>
     final profile = ref.watch(driverProfileProvider).profile;
     final history = ref.watch(tripHistoryProvider);
     final totalTrips = profile?.totalTrips ?? 0;
-    final rating = profile?.rating ?? 0;
+    // Puede no tener nota todavía; el widget lo enseña como «Nuevo».
+    final double? rating = profile?.rating;
     final tier = _tierFrom(totalTrips);
 
     final weekAgo = DateTime.now().subtract(const Duration(days: 7));
@@ -179,7 +180,7 @@ class _PerformanceScreenState extends ConsumerState<PerformanceScreen>
                 child: _StatTile(
                   icon: Icons.star_rounded,
                   label: 'Calificación',
-                  value: rating.toStringAsFixed(2),
+                  value: rating?.toStringAsFixed(2) ?? 'Nuevo',
                   accent: AppColors.star,
                 ),
               ),
@@ -204,7 +205,8 @@ class _TierCard extends StatelessWidget {
 
   final _Tier tier;
   final int totalTrips;
-  final double rating;
+  /// Null mientras nadie lo haya calificado.
+  final double? rating;
   final Animation<double> anim;
 
   @override
@@ -261,7 +263,9 @@ class _TierCard extends StatelessWidget {
                 ),
               ),
               Text(
-                '⭐ ${rating.toStringAsFixed(2)}',
+                rating == null
+                    ? 'Sin calificaciones aún'
+                    : '⭐ ${rating!.toStringAsFixed(2)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,

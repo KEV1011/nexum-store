@@ -332,7 +332,13 @@ class TransportNotifier extends StateNotifier<TransportState> {
     _timers.putIfAbsent(id, () => []).add(timer);
   }
 
-  void cancelRequest(String id) {
+  /// Cancela el viaje. Devuelve el motivo si el servidor lo rechazó.
+  ///
+  /// El estado local se marca cancelado de inmediato (la respuesta al toque
+  /// tiene que ser instantánea), pero si el backend dice que no, la pantalla lo
+  /// enseña: seguir mostrando «cancelado» con un conductor en camino es peor
+  /// que un error.
+  Future<String?> cancelRequest(String id) async {
     for (final t in _timers[id] ?? <Timer>[]) {
       t.cancel();
     }
@@ -340,19 +346,46 @@ class TransportNotifier extends StateNotifier<TransportState> {
     _wsService.unsubscribeTrip(id);
     _update(id, (r) => r.copyWith(status: TransportStatus.cancelled));
     // Cancela también en el backend para liberar/avisar al conductor asignado.
-    unawaited(_cancelOnServer(id));
+    return _cancelOnServer(id);
   }
 
-  Future<void> _cancelOnServer(String id) async {
+  /// Cancela en el servidor. Devuelve el motivo si NO se pudo.
+  ///
+  /// Antes se lo tragaba con un `catch (_) {}` y el comentario «la cancelación
+  /// local ya se aplicó a la UI». Eso es justo el problema: el pasajero veía
+  /// «cancelado» mientras el backend seguía con el viaje vivo y el conductor en
+  /// camino a recogerlo. La pantalla tiene que poder decirlo.
+  Future<String?> _cancelOnServer(String id) async {
     try {
       await _dio.post<Map<String, dynamic>>('/client/trips/$id/cancel');
-    } catch (_) {
-      // Silencioso: la cancelación local ya se aplicó a la UI.
+      return null;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map && data['error'] is String) return data['error'] as String;
+      return 'No pudimos confirmar la cancelación. Revisa tu conexión.';
     }
   }
 
-  void rateRequest(String id, int stars, {String? comment}) {
+  /// Califica el viaje y **manda la nota al servidor**.
+  ///
+  /// Antes solo tocaba el estado en memoria: el pasajero ponía sus estrellas,
+  /// las veía pintadas, y la calificación se perdía al cerrar la app. El
+  /// conductor nunca se enteraba y seguía con el 5,0 de fábrica.
+  ///
+  /// Devuelve el motivo si el servidor la rechaza, o null si quedó guardada.
+  Future<String?> rateRequest(String id, int stars, {String? comment}) async {
     _update(id, (r) => r.copyWith(rating: stars, ratingComment: comment));
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/trips/$id/rate',
+        data: {'stars': stars, if (comment != null) 'comment': comment},
+      );
+      return null;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map && data['error'] is String) return data['error'] as String;
+      return 'No se pudo enviar tu calificación. Revisa tu conexión.';
+    }
   }
 
   /// Solicita una propina para el viaje [id]. Devuelve la URL de checkout de

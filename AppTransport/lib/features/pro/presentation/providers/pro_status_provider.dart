@@ -65,7 +65,7 @@ class ProStatus {
   factory ProStatus.fromJson(Map<String, dynamic> json) => ProStatus(
         level: json['level'] as String? ?? 'BRONCE',
         levelLabel: json['levelLabel'] as String? ?? 'Bronce',
-        rating: (json['rating'] as num?)?.toDouble() ?? 5.0,
+        rating: (json['rating'] as num?)?.toDouble(),
         totalServices: (json['totalServices'] as num?)?.toInt() ?? 0,
         monthServices: (json['monthServices'] as num?)?.toInt() ?? 0,
         next: json['next'] is Map<String, dynamic>
@@ -79,7 +79,8 @@ class ProStatus {
 
   final String level;
   final String levelLabel;
-  final double rating;
+  /// Null si todavía nadie lo ha calificado.
+  final double? rating;
   final int totalServices;
   final int monthServices;
   final ProNextLevel? next;

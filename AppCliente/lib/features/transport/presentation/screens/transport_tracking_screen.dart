@@ -135,9 +135,19 @@ class TransportTrackingScreen extends ConsumerWidget {
                   if (request.status.canCancel) ...[
                     const SizedBox(height: 16),
                     _CancelButton(
-                      onCancel: () => ref
-                          .read(transportProvider.notifier)
-                          .cancelRequest(requestId),
+                      onCancel: () async {
+                        final motivo = await ref
+                            .read(transportProvider.notifier)
+                            .cancelRequest(requestId);
+                        if (motivo != null && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(motivo),
+                              backgroundColor: AppColors.error,
+                            ),
+                          );
+                        }
+                      },
                     ),
                   ],
                   if (request.isCompleted && !request.isRated) ...[
@@ -1361,12 +1371,21 @@ class _RatingSectionState extends ConsumerState<_RatingSection> {
             children: List.generate(5, (i) {
               final filled = i < (_hovered > 0 ? _hovered : _selected);
               return GestureDetector(
-                onTap: () {
+                onTap: () async {
                   setState(() => _selected = i + 1);
-                  ref.read(transportProvider.notifier).rateRequest(
-                        widget.requestId,
-                        i + 1,
-                      );
+                  // La nota ahora VIAJA al servidor. Si la rechaza, se dice:
+                  // antes no podía fallar nada porque no salía del teléfono.
+                  final motivo = await ref
+                      .read(transportProvider.notifier)
+                      .rateRequest(widget.requestId, i + 1);
+                  if (motivo != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(motivo),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
                 },
                 onLongPressStart: (_) => setState(() => _hovered = i + 1),
                 onLongPressEnd: (_) => setState(() => _hovered = 0),
