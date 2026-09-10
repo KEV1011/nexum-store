@@ -2666,7 +2666,8 @@ class _TripRequestModal extends StatelessWidget {
                                       const SizedBox(width: 2),
                                       Text(
                                         trip.passenger.rating
-                                            .toStringAsFixed(1),
+                                                ?.toStringAsFixed(1) ??
+                                            'Nuevo',
                                         style: theme.textTheme.bodySmall,
                                       ),
                                     ],

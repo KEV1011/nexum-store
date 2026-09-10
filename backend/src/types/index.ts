@@ -61,7 +61,8 @@ export interface DriverStatusDTO {
 export interface Passenger {
   id: string;
   name: string;
-  rating: number;
+  /// Null: todavía no existe calificación de pasajeros. NO se inventa un 5,0.
+  rating: number | null;
   /** Identidad del pasajero verificada (KYC) — el conductor decide con confianza. */
   verified?: boolean;
 }

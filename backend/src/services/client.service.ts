@@ -1426,6 +1426,57 @@ export class TripDriverError extends Error {
  * Con esto la app puede cerrarlo por HTTP, que sí tiene respuesta y se puede
  * reintentar. El socket sigue valiendo para lo que sirve: avisar en vivo.
  */
+/**
+ * El conductor califica a su pasajero al terminar el viaje.
+ *
+ * La hoja existía en la app —521 líneas, con confeti— y **no mandaba nada a
+ * ninguna parte**: el conductor puntuaba y la nota se perdía. Mientras tanto,
+ * la oferta le enseñaba «5,0» de todo el mundo, que era una constante escrita
+ * en el código.
+ *
+ * `Trip.passengerRating` ya existía en la base sin que nadie lo escribiera.
+ */
+export async function rateTripPassenger(
+  driverId: string,
+  tripId: string,
+  estrellas: unknown,
+): Promise<{ rating: number }> {
+  const stars = saneaEstrellas(estrellas);
+
+  const trip = await prisma.trip.findFirst({
+    where: { id: tripId, driverId },
+    select: { id: true, status: true, passengerId: true },
+  });
+  if (!trip) throw new Error('El viaje no existe.');
+  if (trip.status !== 'COMPLETED') {
+    throw new Error('Solo puedes calificar un viaje que ya terminó.');
+  }
+
+  await prisma.trip.update({
+    where: { id: tripId },
+    data: { passengerRating: stars },
+  });
+
+  if (trip.passengerId) await recalcularReputacionPasajero(trip.passengerId);
+  return { rating: stars };
+}
+
+/** Recalcula la nota del pasajero de sus viajes calificados. Best-effort. */
+export async function recalcularReputacionPasajero(userId: string): Promise<void> {
+  try {
+    const filas = await prisma.trip.findMany({
+      where: { passengerId: userId, passengerRating: { not: null } },
+      select: { passengerRating: true },
+    });
+    const { rating, ratingCount } = promedioReputacion(
+      filas.map((f) => f.passengerRating as number),
+    );
+    await prisma.user.update({ where: { id: userId }, data: { rating, ratingCount } });
+  } catch (err) {
+    console.error('[reputacion] no se pudo recalcular la nota del pasajero:', err);
+  }
+}
+
 export async function driverUpdateTripStatus(
   driverId: string,
   tripId: string,

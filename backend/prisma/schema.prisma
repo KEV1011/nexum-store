@@ -44,6 +44,12 @@ model User {
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
   fcmToken    String?
 
+  /// Reputación del pasajero, promediada de los viajes que sus conductores
+  /// calificaron. Null mientras nadie lo haya calificado — el conductor ve
+  /// «Nuevo», no un 5,0 escrito a mano como hasta ahora.
+  rating         Float?
+  ratingCount    Int      @default(0)
+
   // Trusted contact for the SOS / share-trip safety features.
   trustedContactName  String?
   trustedContactPhone String?

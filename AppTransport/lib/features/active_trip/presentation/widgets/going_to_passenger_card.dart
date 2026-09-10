@@ -332,8 +332,7 @@ class _PassengerInfo extends StatelessWidget {
                   ),
                   const SizedBox(width: 2),
                   Text(
-                    (passenger.rating as double)
-                        .toStringAsFixed(1),
+                    passenger.rating?.toStringAsFixed(1) ?? 'Nuevo',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: context.textSecondaryColor,
                       fontWeight: FontWeight.w500,

@@ -470,7 +470,11 @@ async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | nul
     passenger: {
       id: trip.passenger.id,
       name: trip.passenger.name ?? 'Pasajero',
-      rating: 5.0,
+      // La nota REAL del pasajero, la que le pusieron sus conductores
+      // anteriores. Null mientras nadie lo haya calificado: aquí había un 5,0
+      // escrito a mano, así que el conductor veía la misma nota perfecta de
+      // todo el mundo en la pantalla con la que decide si acepta la carrera.
+      rating: trip.passenger.rating,
       verified: trip.passenger.kycStatus === 'VERIFIED',
     },
     origin: { lat: trip.originLat, lng: trip.originLng, address: trip.originAddress },

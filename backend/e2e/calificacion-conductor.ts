@@ -30,7 +30,8 @@ async function rechaza(nombre: string, fn: () => Promise<unknown>, patron: RegEx
 const tel = (p: string) => `+57${p}${Math.floor(10000000 + Math.random() * 89999999)}`;
 
 async function main(): Promise<void> {
-  const { rateClientTrip, getClientTripSnapshot } = await import('../src/services/client.service');
+  const { rateClientTrip, rateTripPassenger, getClientTripSnapshot } =
+    await import('../src/services/client.service');
   const { getDriverProStatus } = await import('../src/services/pro.service');
   const { fichaFromDriver, DRIVER_CARD_SELECT } = await import('../src/lib/driver-card');
 
@@ -150,6 +151,36 @@ async function main(): Promise<void> {
     comprobar('y NO se le concede un nivel que exige estrellas',
       estado.level === 'BRONCE', estado.level);
     await prisma.driver.delete({ where: { id: nuevo.id } });
+  }
+
+  // ── 5b. El conductor califica al PASAJERO ──────────────────────────────────
+  console.log('\n5b. La otra dirección: el conductor califica');
+  {
+    const antes = await prisma.user.findUniqueOrThrow({ where: { id: pasajero.id } });
+    comprobar('el pasajero tampoco nace con 5,0', antes.rating === null, String(antes.rating));
+
+    const v = await crearViaje();
+    await rateTripPassenger(conductor.id, v.id, 5);
+    const despues = await prisma.user.findUniqueOrThrow({ where: { id: pasajero.id } });
+    comprobar('la nota del conductor llega al pasajero',
+      despues.rating === 5 && despues.ratingCount === 1,
+      `${despues.rating} / ${despues.ratingCount}`);
+
+    const v2 = await crearViaje();
+    await rateTripPassenger(conductor.id, v2.id, 3);
+    const dos = await prisma.user.findUniqueOrThrow({ where: { id: pasajero.id } });
+    comprobar('y se promedia', dos.rating === 4, String(dos.rating));
+
+    const enCurso = await crearViaje('IN_PROGRESS');
+    await rechaza('no puede calificar un viaje sin terminar',
+      () => rateTripPassenger(conductor.id, enCurso.id, 5), /ya terminó/);
+
+    const ajeno = await prisma.driver.create({
+      data: { name: `${marca} Ajeno`, phone: tel('34') },
+    });
+    await rechaza('ni el viaje de otro conductor',
+      () => rateTripPassenger(ajeno.id, v.id, 1), /no existe/);
+    await prisma.driver.delete({ where: { id: ajeno.id } });
   }
 
   // ── 6. La nota viaja en el DTO del viaje ───────────────────────────────────

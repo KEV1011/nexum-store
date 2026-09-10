@@ -25,7 +25,7 @@ TripRequestEntity? ofertaDeViaje(Map<String, dynamic> t) {
       passenger: PassengerEntity(
         id: (p['id'] as String?) ?? '',
         name: name,
-        rating: (p['rating'] as num).toDouble(),
+        rating: (p['rating'] as num?)?.toDouble(),
         totalTrips: 0,
         verified: (p['verified'] as bool?) ?? false,
         photoUrl:
@@ -84,7 +84,9 @@ TripRequestEntity? ofertaDePedido(Map<String, dynamic> o) {
       passenger: PassengerEntity(
         id: '',
         name: businessName,
-        rating: 5.0,
+        // Sin nota: el negocio no se califica desde esta pantalla y un 5,0
+        // escrito a mano es un dato inventado en la oferta.
+        rating: null,
         totalTrips: 0,
         photoUrl: '',
       ),
@@ -142,7 +144,7 @@ TripRequestEntity? ofertaDeMandado(Map<String, dynamic> e) {
       passenger: const PassengerEntity(
         id: '',
         name: 'Cliente',
-        rating: 5.0,
+        rating: null,
         totalTrips: 0,
         photoUrl: '',
       ),
