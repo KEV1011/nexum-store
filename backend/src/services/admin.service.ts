@@ -2,7 +2,7 @@ import { OperatorStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
-import { estadoPiloto } from './kyc.service';
+import { estadoPiloto, kycEnforced } from './kyc.service';
 import { contarDespachoAtascado, contarViajesColgados } from './dispatch-recovery.service';
 import {
   serieDeDias,
@@ -12,6 +12,7 @@ import {
   type Retencion,
 } from '../lib/metricas-negocio';
 import { saneaTasa } from '../lib/comision';
+import { motivoParaNoConectar } from './driver-online-guard';
 import { cancelOrderByAdmin } from './client.service';
 import { cancelErrandByAdmin } from './errand.service';
 
@@ -397,6 +398,13 @@ export interface AdminDriverRow {
   // Kill-switch documental: CLEAR / EXPIRING / BLOCKED (+ motivo del bloqueo).
   complianceStatus: string;
   blockedReason: string | null;
+  /**
+   * Por qué NO puede conectarse, o null si puede. Es la pregunta que el admin
+   * se hace de verdad: «isVerified true + KYC PENDING» obliga a cruzar dos
+   * columnas mentalmente, y con los gates encendidos eso es justo lo que
+   * decide si esa persona trabaja hoy.
+   */
+  motivoBloqueo: string | null;
   // Antecedentes (env-gated): UNCHECKED / PENDING / CLEAR / HIT.
   backgroundStatus: string;
   /** Plaza donde se le vio por última vez, o null si nunca dio un latido. */
@@ -413,7 +421,7 @@ export async function listDriversForAdmin(ciudad?: string | null): Promise<Admin
     take: 200,
     include: { vehicles: { where: { isActive: true }, take: 1 } },
   });
-  return drivers.map((d) => {
+  const filas: AdminDriverRow[] = drivers.map((d) => {
     const v = d.vehicles[0];
     return {
       id: d.id,
@@ -434,9 +442,22 @@ export async function listDriversForAdmin(ciudad?: string | null): Promise<Admin
       complianceStatus: d.complianceStatus,
       blockedReason: d.blockedReason,
       backgroundStatus: d.backgroundStatus,
+      motivoBloqueo: null, // se rellena justo debajo
       citySlug: d.citySlug,
     };
   });
+
+  // El motivo, uno a uno. Son consultas por conductor, así que solo se hacen
+  // cuando hay algún gate encendido: con los dos apagados nadie está bloqueado
+  // y sería gastar N consultas para escribir N nulos.
+  if (kycEnforced() || docKillSwitchEnforced()) {
+    await Promise.all(
+      filas.map(async (f) => {
+        f.motivoBloqueo = (await motivoParaNoConectar(f.id))?.error ?? null;
+      }),
+    );
+  }
+  return filas;
 }
 
 // ─── Verificación de identidad de clientes (KYC pasajero) ─────────────────────

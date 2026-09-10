@@ -373,3 +373,35 @@ export async function listDocumentsForAdmin(
     reviewedAt: d.reviewedAt?.toISOString() ?? null,
   }));
 }
+
+/**
+ * Los datos que hacen falta para explicarle a un conductor por qué no puede
+ * conectarse (ver `lib/bloqueo-conductor`).
+ *
+ * Vive aquí porque `REQUIRED_DOCS` y `DOC_LABELS` viven aquí: si el guard
+ * tuviera su propia lista de documentos obligatorios, tarde o temprano diría
+ * que falta uno que ya no se pide, o callaría uno nuevo.
+ */
+export async function getEstadoHabilitacion(driverId: string): Promise<{
+  documentosFaltantes: string[];
+  documentosRechazados: Array<{ label: string; motivo: string | null }>;
+} | null> {
+  const docs = await prisma.driverDocument.findMany({
+    where: { driverId, type: { in: REQUIRED_DOCS } },
+    select: { type: true, status: true, rejectionReason: true },
+  });
+  const porTipo = new Map(docs.map((d) => [d.type, d]));
+
+  const faltantes: string[] = [];
+  const rechazados: Array<{ label: string; motivo: string | null }> = [];
+  for (const t of REQUIRED_DOCS) {
+    const d = porTipo.get(t);
+    const label = DOC_LABELS[t] ?? t;
+    if (!d || d.status === PrismaDocumentStatus.PENDING) {
+      faltantes.push(label);
+    } else if (d.status === PrismaDocumentStatus.REJECTED) {
+      rechazados.push({ label, motivo: d.rejectionReason ?? null });
+    }
+  }
+  return { documentosFaltantes: faltantes, documentosRechazados: rechazados };
+}

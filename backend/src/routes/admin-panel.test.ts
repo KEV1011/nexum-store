@@ -449,6 +449,47 @@ describe('el panel pintando la comisión', () => {
     expect(html).not.toContain('undefined');
   });
 
+  it('la columna «¿Puede trabajar?» dice NO y ofrece Habilitar', async () => {
+    // Es la respuesta directa a «¿por qué este conductor no recibe viajes?».
+    // El botón se genera con comillas escapadas dentro de una cadena de
+    // TypeScript: si el escape está mal, el panel revienta al pulsarlo y eso
+    // solo se ve ejecutándolo.
+    const base = {
+      id: 'd9', name: 'Bloqueado', phone: '+573007778899', status: 'OFFLINE',
+      isVerified: false, intercityEnabled: false, rating: null, totalTrips: 0,
+      vehicle: 'Spark', lastSeenAt: null, kycStatus: 'IN_REVIEW', hasSelfie: true,
+      selfieUrl: null, backgroundStatus: 'UNCHECKED', fraudFlags: 0,
+      complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+      motivoBloqueo: 'Estamos revisando tu identidad.',
+    };
+    const { fn, el } = montar({ '/admin/drivers': [base] }, ['drivers-body']);
+    fn['loadDrivers']!();
+    await esperar();
+    const html = el['drivers-body']!.innerHTML;
+    expect(html).toContain('⛔ No');
+    expect(html).toContain('Estamos revisando tu identidad.');
+    // El onclick tiene que salir con comillas REALES, no con la barra.
+    expect(html).toContain("habilitar('d9')");
+    expect(html).not.toContain('undefined');
+  });
+
+  it('a quien puede trabajar NO se le ofrece habilitar', async () => {
+    const base = {
+      id: 'd10', name: 'Al dia', phone: '+573001112233', status: 'ONLINE',
+      isVerified: true, intercityEnabled: true, rating: 4.9, totalTrips: 30,
+      vehicle: 'Mazda', lastSeenAt: new Date().toISOString(), kycStatus: 'VERIFIED',
+      hasSelfie: true, selfieUrl: null, backgroundStatus: 'CLEAR', fraudFlags: 0,
+      complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+      motivoBloqueo: null,
+    };
+    const { fn, el } = montar({ '/admin/drivers': [base] }, ['drivers-body']);
+    fn['loadDrivers']!();
+    await esperar();
+    const html = el['drivers-body']!.innerHTML;
+    expect(html).toContain('✅ Sí');
+    expect(html).not.toContain('habilitar(');
+  });
+
   it('y con nota la sigue mostrando', async () => {
     const base = {
       id: 'd2', name: 'Marta', phone: '+573004445566', status: 'ONLINE',
