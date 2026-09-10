@@ -338,7 +338,7 @@ describe('el panel pintando la comisión', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers };`,
+      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers, loadDiagnostics };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
     const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
     return { fn, el };
@@ -447,6 +447,44 @@ describe('el panel pintando la comisión', () => {
     // Y dice «Nuevo», no un número inventado ni un hueco en blanco.
     expect(html).toContain('Nuevo');
     expect(html).not.toContain('undefined');
+  });
+
+  it('el diagnóstico pinta el push con su cobertura de tokens', async () => {
+    // El bloque del push es nuevo: si el panel leyera una clave que el DTO no
+    // trae, `esc()` la convierte en un hueco en BLANCO —no en «undefined»— y
+    // el recuento de texto no lo ve. Por eso se comprueba el contenido.
+    const diag = {
+      uploads: { mode: 's3-r2', write: 'ok', publicRead: 'ok', veredicto: 'Todo bien', config: 'bucket=zipa' },
+      sms: { mode: 'twilio', check: 'ok', veredicto: 'SMS reales' },
+      push: {
+        mode: 'firebase', conductores: '6/10', clientes: '25/40',
+        envios: '50 enviados · 4 sin token · 0 fallidos',
+        ultimoError: null,
+        veredicto: '4 conductor(es) sin token: a esos no les llega ningún aviso.',
+      },
+      huerfanos: { total: 12, detalle: '12 documento(s) de conductor. Hay que volver a pedirlos.' },
+    };
+    const { fn, el } = montar({ '/admin/diagnostics': diag }, ['diagnostics']);
+    fn['loadDiagnostics']!();
+    await esperar();
+    const html = el['diagnostics']!.innerHTML;
+    expect(html).toContain('6/10');
+    expect(html).toContain('sin token');
+    expect(html).toContain('12 documento(s)');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('sin archivos perdidos no se pinta esa fila', async () => {
+    const diag = {
+      uploads: { mode: 's3-r2', write: 'ok', publicRead: 'ok', veredicto: 'ok', config: '' },
+      sms: { mode: 'twilio', check: 'ok', veredicto: 'ok' },
+      push: { mode: 'firebase', conductores: '10/10', clientes: '5/5', envios: '0', ultimoError: null, veredicto: 'Push operativo' },
+      huerfanos: { total: 0, detalle: 'Ningún archivo apunta al disco efímero.' },
+    };
+    const { fn, el } = montar({ '/admin/diagnostics': diag }, ['diagnostics']);
+    fn['loadDiagnostics']!();
+    await esperar();
+    expect(el['diagnostics']!.innerHTML).not.toContain('Archivos perdidos');
   });
 
   it('la columna «¿Puede trabajar?» dice NO y ofrece Habilitar', async () => {

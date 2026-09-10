@@ -20,11 +20,13 @@ import {
 import { probeUploads } from '../lib/upload';
 import { PORTAL_BASE_URL } from '../config/constants';
 import { probeSms } from '../services/sms.service';
+import { probePush, enviarPushDePrueba } from '../services/push.service';
 import {
   getAdminMetrics,
   getMetricasNegocio,
   setOperatorCommission,
   listDriversForAdmin,
+  contarArchivosHuerfanos,
   // (kill-switch documental: desbloqueo manual vive en document-expiry.service)
   listSosForAdmin,
   listOperatorsForAdmin,
@@ -213,14 +215,27 @@ router.get('/metrics/negocio.csv', async (req: Request, res: Response): Promise<
 // SMS). Protegido por requireAdmin porque hace llamadas con efectos.
 router.get('/diagnostics', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const [uploads, sms] = await Promise.all([probeUploads(), probeSms()]);
-    res.json({ success: true, data: { uploads, sms } });
+    const [uploads, sms, push, huerfanos] = await Promise.all([
+      probeUploads(), probeSms(), probePush(), contarArchivosHuerfanos(),
+    ]);
+    res.json({ success: true, data: { uploads, sms, push, huerfanos } });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
 
 // GET /admin/drivers
+// POST /admin/drivers/:id/push-prueba — manda un aviso real a ese conductor.
+//
+// Que la sonda diga «configurado» no prueba que el aviso ENTRE en el teléfono.
+// Esto lo manda y el admin mira la pantalla.
+router.post('/drivers/:id/push-prueba', async (req: Request, res: Response): Promise<void> => {
+  const r = await enviarPushDePrueba(req.params['id']!);
+  res.status(r.enviado ? 200 : 400).json(
+    r.enviado ? { success: true, data: r } : { success: false, error: r.motivo },
+  );
+});
+
 router.get('/drivers', async (req: Request, res: Response): Promise<void> => {
   try {
     res.json({ success: true, data: await listDriversForAdmin(plazaDeLaPeticion(req)) });
@@ -1361,7 +1376,19 @@ function loadDiagnostics() {
       row('Fotos y documentos', d.uploads.mode,
           'escritura: ' + d.uploads.write + ' · lectura pública: ' + d.uploads.publicRead,
           d.uploads.veredicto, d.uploads.config) +
-      row('Códigos SMS (OTP)', d.sms.mode, 'comprobación: ' + d.sms.check, d.sms.veredicto, '');
+      // Los archivos anteriores a R2: el enlace existe y el fichero no.
+      (d.huerfanos && d.huerfanos.total > 0
+        ? row('Archivos perdidos', d.huerfanos.total + ' en disco efímero', '',
+              d.huerfanos.detalle, '')
+        : '') +
+      row('Códigos SMS (OTP)', d.sms.mode, 'comprobación: ' + d.sms.check, d.sms.veredicto, '') +
+      // La cobertura de tokens es el dato que /health no puede ver: Firebase
+      // perfecto y cero tokens da el mismo resultado que no tener push.
+      row('Notificaciones (push)', d.push.mode,
+          'conductores con token: ' + d.push.conductores + ' · clientes: ' + d.push.clientes +
+          ' · ' + d.push.envios,
+          d.push.veredicto,
+          d.push.ultimoError ? 'último error: ' + d.push.ultimoError : '');
   }).catch((e) => { box.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
 }
 
@@ -1438,11 +1465,17 @@ function loadDrivers() {
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +
       ' ' + kycBtns +
       (d.motivoBloqueo ? ' <button class="btn-sm" style="background:#7c3aed;color:#fff" onclick="habilitar(\\'' + d.id + '\\')">Habilitar</button>' : '') +
+      ' <button class="btn-sm" style="background:#0f766e;color:#fff" onclick="pushPrueba(\\'' + d.id + '\\')" title="Manda un aviso real a su teléfono">🔔</button>' +
       (d.complianceStatus === 'BLOCKED' ? ' <button class="btn-sm" style="background:#0ea5e9;color:#fff" onclick="clearCompliance(\\'' + d.id + '\\')">Desbloquear docs</button>' : '') +
       (d.status === 'ON_TRIP' ? ' <button class="btn-sm" style="background:#f59e0b;color:#fff" onclick="releaseDriver(\\'' + d.id + '\\')">Liberar</button>' : '') +
       '</td></tr>';
     }).join('');
   }).catch((e) => showMsg(e.message, true));
+}
+function pushPrueba(id) {
+  api('/admin/drivers/' + id + '/push-prueba', { method: 'POST' })
+    .then((r) => showMsg(r.motivo, false))
+    .catch((e) => showMsg(e.message, true));
 }
 function habilitar(id) {
   if (!confirm('Vas a aprobar sus documentos y su identidad de una vez. Hazlo solo si ya revisaste los papeles. ¿Continuar?')) return;

@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { veredictoPush } from '../lib/veredicto-push';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Push notification service (Firebase Cloud Messaging).
@@ -65,6 +66,32 @@ function _getMessaging(): Messaging | null {
   return _messaging;
 }
 
+// ── Contabilidad de envíos ────────────────────────────────────────────────────
+//
+// El push falla EN SILENCIO de dos formas y ninguna deja rastro útil: sin token
+// registrado la función simplemente vuelve, y un fallo de envío es un
+// `console.warn` en un log que nadie lee. Con Firebase perfectamente
+// configurado y cero tokens, el sistema entero está muerto sin una sola pista.
+//
+// Esto no es telemetría: es lo mínimo para poder responder «¿están llegando?».
+// Vive en memoria y se pierde al reiniciar, que basta para diagnosticar.
+const _cuentas = { enviados: 0, sinToken: 0, fallidos: 0 };
+let _ultimoError: string | null = null;
+let _ultimoEnvio: string | null = null;
+
+export function estadisticasPush(): {
+  enviados: number; sinToken: number; fallidos: number;
+  ultimoError: string | null; ultimoEnvio: string | null;
+} {
+  return { ..._cuentas, ultimoError: _ultimoError, ultimoEnvio: _ultimoEnvio };
+}
+
+/** Un destinatario sin token: no es un error, pero hay que poder contarlo. */
+function _anotarSinToken(logRef: string): void {
+  _cuentas.sinToken++;
+  console.log(`[Push] Sin token registrado: ${logRef}`);
+}
+
 async function _sendToToken(token: string, payload: PushPayload, logRef: string): Promise<void> {
   const messaging = _getMessaging();
   if (!messaging) {
@@ -78,10 +105,14 @@ async function _sendToToken(token: string, payload: PushPayload, logRef: string)
       data: payload.data,
       android: { priority: 'high' },
     });
+    _cuentas.enviados++;
+    _ultimoEnvio = new Date().toISOString();
     console.log(`[Push] Sent ${logRef}`);
   } catch (err) {
     // Token inválido/expirado es esperable (app desinstalada); no es fatal.
-    console.warn(`[Push] Send failed ${logRef}:`, err instanceof Error ? err.message : 'unknown error');
+    _cuentas.fallidos++;
+    _ultimoError = err instanceof Error ? err.message : 'error desconocido';
+    console.warn(`[Push] Send failed ${logRef}:`, _ultimoError);
   }
 }
 
@@ -102,7 +133,7 @@ export async function sendPushToDriver(driverId: string, payload: PushPayload): 
     where: { id: driverId },
     select: { fcmToken: true },
   });
-  if (!driver?.fcmToken) return;
+  if (!driver?.fcmToken) { _anotarSinToken(`driver=${driverId}`); return; }
   await _sendToToken(driver.fcmToken, payload, `driver=${driverId} type=${payload.data?.['type'] ?? 'generic'}`);
 }
 
@@ -111,6 +142,93 @@ export async function sendPushToClient(userId: string, payload: PushPayload): Pr
     where: { id: userId },
     select: { fcmToken: true },
   });
-  if (!user?.fcmToken) return;
+  if (!user?.fcmToken) { _anotarSinToken(`user=${userId}`); return; }
   await _sendToToken(user.fcmToken, payload, `user=${userId} type=${payload.data?.['type'] ?? 'generic'}`);
+}
+
+// ── Diagnóstico real del push ─────────────────────────────────────────────────
+//
+// `/health` solo mira si hay credenciales de Firebase: con ellas perfectamente
+// puestas y CERO tokens registrados, el resultado es el mismo que no tener push
+// —nadie recibe nada— y no hay forma de notarlo. La cobertura de tokens es el
+// dato que falta.
+
+export interface PushProbe {
+  /** 'firebase' | 'apagado' — el modo configurado. */
+  mode: string;
+  /** Conductores con token registrado, sobre el total. */
+  conductores: string;
+  /** Clientes con token, sobre el total. */
+  clientes: string;
+  /** Envíos desde el último reinicio. */
+  envios: string;
+  /** Último error de envío, si lo hubo. */
+  ultimoError: string | null;
+  /** Resumen accionable en español. */
+  veredicto: string;
+}
+
+export async function probePush(): Promise<PushProbe> {
+  const stats = estadisticasPush();
+  const [condTotal, condConToken, cliTotal, cliConToken] = await Promise.all([
+    prisma.driver.count(),
+    prisma.driver.count({ where: { fcmToken: { not: null } } }),
+    prisma.user.count({ where: { deletedAt: null } }),
+    prisma.user.count({ where: { fcmToken: { not: null }, deletedAt: null } }),
+  ]);
+
+  const activo = _getMessaging() != null;
+  const envios =
+    `${stats.enviados} enviados · ${stats.sinToken} sin token · ${stats.fallidos} fallidos`;
+
+  const veredicto = veredictoPush({
+    activo,
+    conductoresTotal: condTotal,
+    conductoresConToken: condConToken,
+    enviados: stats.enviados,
+    fallidos: stats.fallidos,
+    ultimoError: stats.ultimoError,
+  });
+
+  return {
+    mode: activo ? 'firebase' : 'apagado',
+    conductores: `${condConToken}/${condTotal}`,
+    clientes: `${cliConToken}/${cliTotal}`,
+    envios,
+    ultimoError: stats.ultimoError,
+    veredicto,
+  };
+}
+
+/**
+ * Envío de prueba a un conductor concreto, desde el panel.
+ *
+ * Cierra el ciclo que ninguna sonda puede cerrar sola: que el aviso SALGA no
+ * prueba que ENTRE. Esto se manda y el admin mira el teléfono.
+ */
+export async function enviarPushDePrueba(driverId: string): Promise<{ enviado: boolean; motivo: string }> {
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { fcmToken: true, name: true },
+  });
+  if (!driver) return { enviado: false, motivo: 'Conductor no encontrado.' };
+  if (!driver.fcmToken) {
+    return {
+      enviado: false,
+      motivo: `${driver.name} no tiene token registrado. Que abra la app con sesión iniciada y acepte las notificaciones.`,
+    };
+  }
+  if (!_getMessaging()) {
+    return { enviado: false, motivo: 'Firebase no está configurado: no saldría nada.' };
+  }
+  const antes = estadisticasPush().fallidos;
+  await _sendToToken(driver.fcmToken, {
+    title: 'Prueba de ZIPA',
+    body: 'Si ves esto, las notificaciones te están llegando bien.',
+    data: { type: 'prueba' },
+  }, `driver=${driverId} type=prueba`);
+  const fallo = estadisticasPush().fallidos > antes;
+  return fallo
+    ? { enviado: false, motivo: estadisticasPush().ultimoError ?? 'Falló el envío.' }
+    : { enviado: true, motivo: `Enviado a ${driver.name}. Mira su teléfono.` };
 }

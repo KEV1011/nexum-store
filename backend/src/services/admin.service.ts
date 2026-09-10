@@ -952,3 +952,46 @@ export async function hasApprovedHabilitacion(operatorId: string): Promise<boole
   });
   return doc != null;
 }
+
+/**
+ * Archivos que apuntan al disco EFÍMERO de Render, no a R2.
+ *
+ * Todo lo que se subió antes de configurar S3/R2 quedó con una URL
+ * `/uploads/...` y el fichero vivía en el disco del contenedor: cada redeploy
+ * lo borra. Las filas siguen ahí, así que el enlace existe y da 404 — el admin
+ * hace clic, no ve nada, y concluye que el sistema está roto.
+ *
+ * Contarlos es la diferencia entre «esto no funciona» y «estos 12 documentos
+ * hay que volver a pedirlos».
+ */
+export async function contarArchivosHuerfanos(): Promise<{
+  total: number;
+  detalle: string;
+}> {
+  const local = { startsWith: '/uploads/' };
+  const [docs, avatarsCond, selfies, avatarsCli, pruebas] = await Promise.all([
+    prisma.driverDocument.count({ where: { fileUrl: local } }),
+    prisma.driver.count({ where: { avatarUrl: local } }),
+    prisma.driver.count({ where: { selfieUrl: local } }),
+    prisma.user.count({ where: { avatarUrl: local } }),
+    prisma.trip.count({
+      where: { OR: [{ pickupPhotoUrl: local }, { deliveryPhotoUrl: local }] },
+    }),
+  ]);
+
+  const partes: string[] = [];
+  if (docs) partes.push(`${docs} documento(s) de conductor`);
+  if (avatarsCond) partes.push(`${avatarsCond} foto(s) de perfil de conductor`);
+  if (selfies) partes.push(`${selfies} selfie(s) de verificación`);
+  if (avatarsCli) partes.push(`${avatarsCli} foto(s) de perfil de cliente`);
+  if (pruebas) partes.push(`${pruebas} prueba(s) de entrega`);
+
+  const total = docs + avatarsCond + selfies + avatarsCli + pruebas;
+  return {
+    total,
+    detalle: total === 0
+      ? 'Ningún archivo apunta al disco efímero.'
+      : `${partes.join(', ')}. Subidos antes de configurar R2: el enlace existe pero el archivo ya no. `
+        + 'Hay que volver a pedirlos.',
+  };
+}
