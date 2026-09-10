@@ -1325,6 +1325,17 @@ export interface DriverPublicProfileDTO {
    */
   elogios?: { clave: string; etiqueta: string; veces: number }[];
   /**
+   * Su nivel en Nexum Pro («Plata», «Oro»…). Los beneficios de esos niveles
+   * prometen «insignia visible en tu perfil» desde que existen; hasta ahora el
+   * perfil no enseñaba ninguna.
+   */
+  nivelPro?: string;
+  /**
+   * Hitos alcanzados: «100+ servicios», «1.000+ km recorridos». Solo el
+   * escalón más alto de cada familia, y solo con datos medidos de verdad.
+   */
+  hitos?: { clave: string; etiqueta: string }[];
+  /**
    * Lo que el pasajero mira antes de subirse al carro de un desconocido.
    *
    * Van SIEMPRE las seis, verificadas o no: esconder las que faltan haría que

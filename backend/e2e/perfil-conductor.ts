@@ -120,6 +120,50 @@ async function main(): Promise<void> {
     comprobar('tarjeta de propiedad tampoco', (await marca('tarjeta')) === false);
   }
 
+  console.log('\n═══ Trayectoria: insignia Pro y kilómetros medidos ═══');
+  {
+    const p = await getDriverPublicProfile(conductor.id);
+    comprobar('sin servicios no hay hitos', (p!.hitos ?? []).length === 0,
+      JSON.stringify(p!.hitos));
+    comprobar('pero sí nivel Pro, que arranca en Bronce',
+      p!.nivelPro === 'Bronce', String(p!.nivelPro));
+
+    // Diez viajes completados, la mitad con distancia medida y la otra mitad
+    // sin ella (los de antes de que el servidor midiera el trayecto).
+    for (let i = 0; i < 10; i++) {
+      await prisma.trip.create({
+        data: {
+          requestRef: `E2E-PF-${Date.now()}-${i}`,
+          driverId: conductor.id,
+          serviceType: 'TAXI',
+          status: 'COMPLETED',
+          originAddress: 'A', destAddress: 'B',
+          originLat: 7.3754, originLng: -72.6486,
+          destLat: 7.3921, destLng: -72.6602,
+          estimatedFare: 10000,
+          distanceKm: i < 5 ? 120 : null,
+        },
+      });
+    }
+    await prisma.driver.update({
+      where: { id: conductor.id }, data: { totalTrips: 10 },
+    });
+
+    const p2 = await getDriverPublicProfile(conductor.id);
+    const claves = (p2!.hitos ?? []).map((h) => h.clave);
+    comprobar('10 servicios dan su hito', claves.includes('servicios_10'),
+      JSON.stringify(claves));
+    // Las cifras están elegidas para que los dos casos den escalones
+    // DISTINTOS; si no, la prueba pasaría igual estimando y no probaría nada.
+    //   medido:    5 × 120 km =   600 → escalón 500
+    //   estimando: 10 × 120 km = 1.200 → escalón 1.000
+    comprobar('los km salen SOLO de lo medido: 600 → escalón de 500',
+      claves.includes('km_500'), JSON.stringify(claves));
+    comprobar('NO se estiman los viajes sin medir: nada de 1.000',
+      !claves.includes('km_1000'), JSON.stringify(claves));
+  }
+
+  await prisma.trip.deleteMany({ where: { driverId: conductor.id } });
   await prisma.driverDocument.deleteMany({ where: { driverId: conductor.id } });
   await prisma.driver.delete({ where: { id: conductor.id } });
 

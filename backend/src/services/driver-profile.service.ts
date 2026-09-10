@@ -10,6 +10,8 @@ import {
 import { prisma } from '../lib/prisma';
 import { verificacionesDeConductor } from '../lib/verificaciones-conductor';
 import { cuentaElogios } from '../lib/elogios';
+import { hitosDeConductor } from '../lib/hitos';
+import { getDriverProStatus } from './pro.service';
 import { pilotSkipVerification } from './kyc.service';
 import { evaluateDriverCompliance } from './document-expiry.service';
 import { runDocumentOcr } from './ocr.service';
@@ -201,6 +203,20 @@ export async function getDriverPublicProfile(driverId: string): Promise<DriverPu
     calificados.map((t) => (Array.isArray(t.ratingTags) ? (t.ratingTags as string[]) : null)),
   );
 
+  // Kilómetros REALMENTE medidos por el servidor. Los viajes anteriores a esa
+  // medición tienen la distancia en null y no se estiman: quedarse corto es
+  // seguro, inventar kilómetros en un perfil público no.
+  const km = await prisma.trip.aggregate({
+    where: { driverId, status: 'COMPLETED', distanceKm: { not: null } },
+    _sum: { distanceKm: true },
+  });
+
+  // La insignia de Nexum Pro. Sus beneficios llevaban tiempo prometiendo
+  // «insignia visible en tu perfil» y el perfil no enseñaba ninguna. Se reusa
+  // esa escalera en vez de inventar otra: medir dos veces lo mismo obligaría
+  // al conductor a entender dos sistemas que dicen casi igual.
+  const pro = await getDriverProStatus(driverId).catch(() => null);
+
   return {
     driverId: driver.id,
     fullName: driver.name,
@@ -215,6 +231,8 @@ export async function getDriverPublicProfile(driverId: string): Promise<DriverPu
     isVerified: driver.isVerified,
     citySlug: driver.citySlug ?? undefined,
     elogios,
+    nivelPro: pro?.levelLabel,
+    hitos: hitosDeConductor(driver.totalTrips, km._sum.distanceKm ?? null),
     verificaciones: verificaciones.items,
     verificacionesCumplidas: verificaciones.cumplidas,
     verificacionesTotal: verificaciones.total,

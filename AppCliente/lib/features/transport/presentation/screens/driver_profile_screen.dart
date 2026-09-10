@@ -107,6 +107,9 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
     final elogios =
         (p['elogios'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
             const [];
+    final hitos =
+        (p['hitos'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? const [];
+    final nivelPro = p['nivelPro'] as String?;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -121,6 +124,24 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
             cumplidas: (p['verificacionesCumplidas'] as num?)?.toInt() ?? 0,
             total: (p['verificacionesTotal'] as num?)?.toInt() ??
                 verificaciones.length,
+          ),
+        ],
+        // Nivel de Nexum Pro y hitos. Van juntos porque son lo mismo: lo que
+        // este conductor lleva hecho. La insignia se prometía en los
+        // beneficios de Plata y Oro («visible en tu perfil») y hasta ahora no
+        // se enseñaba en ninguna parte.
+        if (nivelPro != null || hitos.isNotEmpty) ...[
+          const SizedBox(height: 28),
+          _Seccion(titulo: 'Trayectoria'),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (nivelPro != null) _Insignia(texto: 'Nexum Pro $nivelPro'),
+              for (final h in hitos)
+                _Insignia(texto: h['etiqueta'] as String? ?? ''),
+            ],
           ),
         ],
         // Solo si alguien destacó algo: una sección vacía con el título
@@ -368,6 +389,40 @@ class _Chip extends StatelessWidget {
               fontSize: 13,
               fontWeight: verificada ? FontWeight.w600 : FontWeight.w400,
               color: verificada ? context.textPrimaryColor : context.textSecondaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Una insignia: el nivel Pro o un hito alcanzado.
+class _Insignia extends StatelessWidget {
+  const _Insignia({required this.texto});
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF8A6D1B).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF8A6D1B).withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.workspace_premium_rounded,
+              size: 16, color: Color(0xFF8A6D1B)),
+          const SizedBox(width: 7),
+          Text(
+            texto,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: context.textPrimaryColor,
             ),
           ),
         ],
