@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_client/app/theme/zipa_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
@@ -412,7 +413,7 @@ class _ServiceHighlights extends StatelessWidget {
         children: [
           Expanded(
             child: _ServiceCard(
-              emoji: '🍔',
+              icono: ZipaIconName.restaurantes,
               title: 'Restaurantes',
               subtitle: 'Domicilio en 30 min',
               gradient: const [Color(0xFFFF7043), Color(0xFFBF360C)],
@@ -423,7 +424,7 @@ class _ServiceHighlights extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: _ServiceCard(
-              emoji: '🚗',
+              icono: ZipaIconName.movilidad,
               title: 'Movilidad',
               subtitle: 'Taxi · Moto · Envíos',
               gradient: const [AppColors.secondary, AppColors.secondaryDark],
@@ -439,7 +440,7 @@ class _ServiceHighlights extends StatelessWidget {
 
 class _ServiceCard extends StatelessWidget {
   const _ServiceCard({
-    required this.emoji,
+    required this.icono,
     required this.title,
     required this.subtitle,
     required this.gradient,
@@ -448,7 +449,7 @@ class _ServiceCard extends StatelessWidget {
     super.key,
   });
 
-  final String emoji;
+  final ZipaIconName icono;
   final String title;
   final String subtitle;
   final List<Color> gradient;
@@ -482,9 +483,15 @@ class _ServiceCard extends StatelessWidget {
             Positioned(
               top: -8,
               right: -4,
-              child: Text(
-                emoji,
-                style: const TextStyle(fontSize: 56),
+              // Sin emoji: lo dibuja el sistema operativo y se ve distinto
+              // en cada teléfono. Blanco translúcido sobre el degradado.
+              child: Opacity(
+                opacity: 0.9,
+                child: ZipaIcon(
+                  icono,
+                  size: ZipaIconSize.nav,
+                  color: Colors.white,
+                ),
               ),
             ),
             Positioned(
