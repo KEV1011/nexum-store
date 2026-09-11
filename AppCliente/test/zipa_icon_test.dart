@@ -9,7 +9,7 @@ import 'package:nexum_client/app/theme/zipa_icon.dart';
 /// La lista es explícita y no un barrido de `lib/`: el resto de la app tiene
 /// cientos de iconos de antes, y una prueba que falla desde el primer día no
 /// la arregla nadie, la desactivan. Al migrar una pantalla, se añade aquí.
-const _archivosRediseñados = [
+const _archivosRedisenados = [
   'lib/features/businesses/presentation/screens/businesses_screen.dart',
   'lib/features/shell/presentation/screens/home_shell.dart',
   'lib/shared/widgets/estados_zipa.dart',
@@ -57,7 +57,7 @@ void main() {
 
     test('los archivos rediseñados no instancian iconos por su cuenta', () {
       final infractores = <String>[];
-      for (final ruta in _archivosRediseñados) {
+      for (final ruta in _archivosRedisenados) {
         final f = File(ruta);
         if (!f.existsSync()) continue; // aún no creado por su tarea
         final lineas = f.readAsLinesSync();
