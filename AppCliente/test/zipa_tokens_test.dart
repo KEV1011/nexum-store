@@ -108,18 +108,35 @@ void main() {
 
   group('resolución por tema', () {
     testWidgets('un token devuelve el valor del tema en curso', (tester) async {
-      late Color enClaro;
-      late Color enOscuro;
-      Widget sonda(ThemeData tema, void Function(Color) guardar) => MaterialApp(
-            theme: tema,
-            home: Builder(builder: (context) {
-              guardar(ZipaTokens.fondo.de(context));
-              return const SizedBox();
-            }),
-          );
+      // Los dos temas en el MISMO árbol y en una sola pasada. Con dos
+      // `pumpWidget` seguidos, Flutter reutiliza el elemento y el segundo
+      // `Builder` puede no reconstruirse: la variable se quedaba sin asignar
+      // y la prueba fallaba por su propia culpa, no por el código.
+      Color? enClaro;
+      Color? enOscuro;
 
-      await tester.pumpWidget(sonda(ThemeData.light(), (c) => enClaro = c));
-      await tester.pumpWidget(sonda(ThemeData.dark(), (c) => enOscuro = c));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Column(
+            children: [
+              Theme(
+                data: ThemeData(brightness: Brightness.light),
+                child: Builder(builder: (context) {
+                  enClaro = ZipaTokens.fondo.de(context);
+                  return const SizedBox();
+                }),
+              ),
+              Theme(
+                data: ThemeData(brightness: Brightness.dark),
+                child: Builder(builder: (context) {
+                  enOscuro = ZipaTokens.fondo.de(context);
+                  return const SizedBox();
+                }),
+              ),
+            ],
+          ),
+        ),
+      );
 
       expect(enClaro, ZipaTokens.fondo.claro);
       expect(enOscuro, ZipaTokens.fondo.oscuro);

@@ -67,13 +67,19 @@ abstract final class ZipaTokens {
   // MEDIDO: el terciario que había (`#9CA3AF`) daba 2,41:1 sobre el fondo de la
   // app. Es justo el gris de los metadatos de un comercio —«categoría · tiempo
   // · envío»—, o sea la línea que alguien lee para decidir dónde pedir, y no se
-  // veía. Subido a `#6B7280` (4,59:1).
+  // veía.
   //
-  // Y como el terciario tuvo que subir hasta donde estaba el secundario, el
-  // secundario baja un paso más (`#565E6B`, 6,21:1). La jerarquía se mantiene
-  // con dos grises que CUMPLEN los dos, en vez de tres donde el último no se
-  // leía. Sobre un fondo casi blanco no caben tres grises legibles: el tercer
-  // nivel se hace con tamaño y peso, no con más gris.
+  // La superficie que manda NO es el fondo de la app: es la HUNDIDA
+  // (`#F0F2F5`), la del buscador, que es la más oscura de las claras. La
+  // primera medición la pasó por alto y se quedó en `#6B7280`, que da 4,59:1
+  // sobre el fondo pero **4,31:1** sobre la hundida. Lo cazó la prueba, no yo.
+  // Ahora `#666D7A`: 4,64:1 en la peor de las tres.
+  //
+  // Y como el terciario subió hasta donde estaba el secundario, el secundario
+  // baja un paso (`#565E6B`, 5,83:1 en la peor). Se mantiene la jerarquía con
+  // dos grises que CUMPLEN los dos, en vez de tres donde el último no se leía.
+  // Sobre un fondo casi blanco no caben tres grises legibles: el tercer nivel
+  // se hace con tamaño y peso, no con más gris.
 
   static const textoPrincipal = ZipaColor(
     claro: Color(0xFF111827),
@@ -86,7 +92,7 @@ abstract final class ZipaTokens {
   );
 
   static const textoTerciario = ZipaColor(
-    claro: Color(0xFF6B7280),
+    claro: Color(0xFF666D7A),
     oscuro: Color(0xFF94A3B8),
   );
 
