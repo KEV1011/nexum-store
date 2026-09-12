@@ -8,14 +8,23 @@ import 'package:nexum_client/app/theme/zipa_icon.dart';
 ///
 /// La lista es explícita y no un barrido de `lib/`: el resto de la app tiene
 /// cientos de iconos de antes, y una prueba que falla desde el primer día no
-/// la arregla nadie, la desactivan. Al migrar una pantalla, se añade aquí.
+/// la arregla nadie, la desactivan.
+///
+/// REGLA: un archivo entra aquí **cuando ya está migrado**, no cuando se
+/// planea migrarlo. Se incumplió al escribir esta prueba —entraron
+/// `businesses_screen.dart` y `home_shell.dart`, que todavía tienen los
+/// iconos de antes— y dejó el CI en rojo con 18 infracciones que no eran
+/// deuda nueva, sino la pantalla sin tocar. Los archivos que aún no existen
+/// sí pueden estar: `existsSync` los salta, así que no fallan hasta que
+/// alguien los crea, y entonces ya deben cumplir.
 const _archivosRedisenados = [
-  'lib/features/businesses/presentation/screens/businesses_screen.dart',
-  'lib/features/shell/presentation/screens/home_shell.dart',
   'lib/shared/widgets/estados_zipa.dart',
   'lib/features/businesses/presentation/widgets/fila_comercio.dart',
   'lib/features/businesses/presentation/widgets/tarjeta_servicio.dart',
   'lib/features/businesses/presentation/widgets/sello_confianza.dart',
+  // Entran con la Tarea 3, al reestructurar la home:
+  //   lib/features/businesses/presentation/screens/businesses_screen.dart
+  //   lib/features/shell/presentation/screens/home_shell.dart
 ];
 
 void main() {
