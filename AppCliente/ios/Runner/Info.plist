@@ -2,13 +2,38 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!--
+		ATS queda ACTIVA. Aquí estaba `NSAllowsArbitraryLoads`, que apaga la
+		seguridad de transporte para todos los hosts: la app habría aceptado
+		HTTP plano contra cualquier servidor. Que era un descuido y no una
+		decisión se ve solo — la app del conductor no lo tenía, y el Android de
+		este mismo repositorio hace lo contrario (`network_security_config.xml`
+		prohíbe cleartext salvo en los hosts de desarrollo).
+
+		`NSAllowsLocalNetworking` es lo único que hace falta, y es lo que
+		permite apuntar al backend de la máquina de desarrollo sin abrirle la
+		puerta a internet entera.
+	-->
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- Solo HTTPS estándar del sistema: exento. Sin esto, cada subida a
+	     TestFlight se detiene a preguntarlo a mano. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!--
+		El cliente NO lleva el modo `location`: no rastrea nada en segundo
+		plano, y declarar un modo que no se usa es de lo que Apple pregunta.
+		`remote-notification` sí, porque registra
+		`FirebaseMessaging.onBackgroundMessage` y sin él iOS no despierta la
+		app para ejecutarlo (ahí es donde llega «tu conductor llegó»).
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

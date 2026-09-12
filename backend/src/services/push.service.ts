@@ -27,7 +27,27 @@ type Messaging = {
     notification: { title: string; body: string };
     data?: Record<string, string>;
     android: { priority: 'high' | 'normal' };
+    apns: {
+      headers: Record<string, string>;
+      payload: { aps: { contentAvailable: boolean; sound: string } };
+    };
   }): Promise<string>;
+};
+
+// ── Lo que iOS necesita y Android no ─────────────────────────────────────────
+//
+// Aquí solo iba `android: { priority: 'high' }`. En iOS eso deja el envío en la
+// prioridad por defecto (5), que el sistema puede retrasar o agrupar para
+// ahorrar batería — con una oferta de viaje que caduca en 15 segundos, llegar
+// tarde es no llegar.
+//
+// `contentAvailable` es la otra mitad: sin él iOS muestra el aviso pero NO
+// despierta la app, así que el `onBackgroundMessage` que ambas apps registran
+// no se ejecuta nunca. Necesita además `UIBackgroundModes: remote-notification`
+// en los dos Info.plist, que ya está.
+const APNS = {
+  headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
+  payload: { aps: { contentAvailable: true, sound: 'default' } },
 };
 
 let _messaging: Messaging | null = null;
@@ -104,6 +124,7 @@ async function _sendToToken(token: string, payload: PushPayload, logRef: string)
       notification: { title: payload.title, body: payload.body },
       data: payload.data,
       android: { priority: 'high' },
+      apns: APNS,
     });
     _cuentas.enviados++;
     _ultimoEnvio = new Date().toISOString();

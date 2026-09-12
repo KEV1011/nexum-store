@@ -157,9 +157,19 @@ class LocationService {
       );
     }
     if (!kIsWeb && Platform.isIOS) {
+      // `allowBackgroundLocationUpdates` es el equivalente iOS del foreground
+      // service de Android: sin él, iOS deja de entregar posiciones en cuanto
+      // la app se va al fondo, y el conductor sale del despacho por frescura
+      // con el teléfono en el bolsillo.
+      //
+      // Va emparejado con `UIBackgroundModes: location` en el Info.plist. Si
+      // alguien quita el modo y deja este flag, CLLocationManager LANZA al
+      // arrancar el stream y el conductor no puede conectarse. Los dos, o
+      // ninguno.
       return AppleSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
+        allowBackgroundLocationUpdates: true,
         showBackgroundLocationIndicator: true,
         pauseLocationUpdatesAutomatically: false,
       );
