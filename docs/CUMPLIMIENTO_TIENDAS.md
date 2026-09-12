@@ -41,23 +41,33 @@ no ve el botón, y devuelve la app.
 **Qué contenido de usuario tenemos hoy** (no es poco):
 
 - Chat pasajero↔conductor en viajes, pedidos y mandados — `trip-chat.service.ts`,
-  con texto y **fotos**.
-- Comentario libre al calificar al conductor — `client.service.ts:770`.
-- Comentario libre al calificar al negocio, y **se publica a todo el mundo** —
-  `business.service.ts:849-870`.
-- Elogios al conductor, visibles en su perfil público.
+  con texto y **fotos**. Es la superficie principal: texto libre de una persona
+  que llega a otra.
 - Catálogo del negocio: nombre, descripción y **foto** de cada producto, que ve
-  cualquier usuario de la app.
+  cualquier usuario de la app. Lo publica un tercero, no nosotros.
+- Comentario libre al calificar al conductor (`client.service.ts:770`) y al
+  negocio (`business.service.ts:849-870`).
+- Elogios al conductor, en su perfil público.
 - Adjuntos en tickets de soporte.
+
+**Corrección de la primera versión de este documento.** Escribí que el
+comentario de una reseña «se publica a todo el mundo». No es cierto: los
+comentarios de un negocio se los enseña `GET /business/:token/reviews` **solo a
+su dueño**, en su portal, y los de un conductor solo a él. El perfil público
+del conductor no muestra texto libre — solo los elogios, que salen de un
+catálogo cerrado. Sigue siendo contenido de usuario y sigue aplicando la guía
+1.2 (el chat basta por sí solo), pero el botón de reportar una reseña no tiene
+dónde ir en las apps, porque esa pantalla no existe ahí.
 
 **Qué hay que construir:**
 
 1. `POST /report` con `{tipo, objetivoId, motivo, detalle}` y una tabla
    `content_reports`. Los motivos son cerrados (contenido ofensivo, acoso,
    fraude, no es real, otro) — un campo libre no se puede triar.
-2. Botón **Reportar** en: la burbuja del chat, la ficha pública del conductor,
-   la reseña de un negocio, y la ficha de un producto. Cuatro sitios, un mismo
-   widget.
+2. Botón **Reportar** en el chat de las dos apps y en la ficha pública del
+   conductor, con un mismo widget. La reseña y el producto quedan pendientes:
+   la reseña no se enseña en las apps, y el producto es la superficie que
+   falta por cablear.
 3. **Bloquear**: una tabla `user_blocks` y, como mínimo, que el despacho no
    vuelva a emparejar a dos personas que se bloquearon. Esto último es lo que
    convierte el bloqueo en algo real y no en un botón decorativo — y es
