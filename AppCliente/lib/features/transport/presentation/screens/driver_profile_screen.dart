@@ -6,6 +6,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
+import 'package:nexum_client/features/moderacion/presentation/reportar_sheet.dart';
 
 /// El perfil del conductor, tal como lo ve el pasajero.
 ///
@@ -72,6 +73,32 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
           onPressed: () => safeBack(context),
         ),
         title: const Text('Tu conductor'),
+        actions: [
+          // Reportar a la PERSONA (y, si quiere, no volver a coincidir con
+          // ella) va aquí, en su ficha. Es el sitio donde alguien mira cuando
+          // algo fue mal, y el que busca la revisión de la tienda.
+          IconButton(
+            icon: const Icon(Icons.flag_outlined),
+            tooltip: 'Reportar',
+            onPressed: () async {
+              final enviado = await mostrarReporte(
+                context,
+                ref,
+                tipo: 'driver',
+                objetivoId: widget.driverId,
+                queSeReporta: 'a este conductor',
+                bloqueablePersonaId: widget.driverId,
+              );
+              if (enviado && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Gracias. Lo revisa una persona del equipo.'),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: _cuerpo(),
     );

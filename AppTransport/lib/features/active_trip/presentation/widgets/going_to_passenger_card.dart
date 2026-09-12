@@ -125,6 +125,7 @@ class GoingToPassengerCard extends ConsumerWidget {
                   builder: (_) => TripChatScreen(
                     tripId: trip.request.id,
                     peerName: passenger.name,
+                    passengerId: passenger.id,
                   ),
                 ),
               ),

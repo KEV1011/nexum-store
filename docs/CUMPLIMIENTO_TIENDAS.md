@@ -28,7 +28,7 @@ Verificado, no asumido:
 
 ---
 
-## 1. Contenido de usuario sin reporte ni bloqueo — BLOQUEANTE
+## 1. Contenido de usuario sin reporte ni bloqueo — ✅ HECHO
 
 **Lo que exigen.** Apple, guía 1.2, pide **cuatro cosas juntas** en cualquier app
 con contenido generado por usuarios: filtrar el material ofensivo, un mecanismo
@@ -71,7 +71,7 @@ persona. Apple lo rechaza como equivalente.
 
 ---
 
-## 2. iOS del conductor: promete ubicación en segundo plano y no puede darla — BLOQUEANTE
+## 2. iOS del conductor: promete ubicación en segundo plano y no puede darla — ✅ HECHO
 
 `AppTransport/ios/Runner/Info.plist:31` declara
 `NSLocationAlwaysAndWhenInUseUsageDescription` («…usa tu ubicación en segundo
@@ -99,7 +99,7 @@ Recomiendo (a): sin ella la app del conductor no cumple su función en iPhone.
 
 ---
 
-## 3. iOS del cliente: ATS abierto de par en par — ALTO
+## 3. iOS del cliente: ATS abierto de par en par — ✅ HECHO
 
 `AppCliente/ios/Runner/Info.plist:6-8`:
 
@@ -124,7 +124,7 @@ HTTPS, así que no se pierde nada.
 
 ---
 
-## 4. No hay divulgación previa antes de pedir la ubicación — ALTO
+## 4. No hay divulgación previa antes de pedir la ubicación — ✅ HECHO
 
 Play exige, en su política de Datos de usuario, una **divulgación destacada
 dentro de la app** antes del diálogo del sistema: qué dato se recoge, para qué,
@@ -147,7 +147,7 @@ recogida) en vez de al abrir.
 
 ---
 
-## 5. Falta la clave de cifrado para exportación — MENOR
+## 5. Falta la clave de cifrado para exportación — ✅ HECHO
 
 `ITSAppUsesNonExemptEncryption` no está en ninguno de los dos `Info.plist`.
 No rechaza la app, pero **cada** subida a TestFlight se detiene en la pregunta de
@@ -169,7 +169,7 @@ desaparece. Es configuración, no código.
 
 ---
 
-## 7. Un dato que se contradice entre la ficha y el manifiesto — MENOR
+## 7. Un dato que se contradice entre la ficha y el manifiesto — ✅ HECHO
 
 `docs/PRIVACIDAD_DATOS.md` dice, para el conductor, «Ubicación precisa **incl.
 segundo plano**», y el manifiesto de Android **no** declara
@@ -203,7 +203,30 @@ anuncie como transporte público algo que no lo es.
 
 ---
 
-## Orden de ejecución propuesto
+## Cómo quedó
+
+Todo lo de código está hecho y verificado. Lo que sigue abierto es
+configuración y decisiones que no son mías:
+
+| Qué | Estado |
+|---|---|
+| 1. Reportar y bloquear | Hecho. Backend, las dos apps y cola en `/admin`. El bloqueo saca del despacho de verdad, probado contra PostgreSQL |
+| 2. Ubicación de fondo en iOS | Hecho. Modo `location` + `allowBackgroundLocationUpdates`, sin pedir «Siempre» |
+| 3. ATS del cliente | Hecho |
+| 4. Divulgación previa | Hecho en las dos apps, con una puerta única que una prueba vigila |
+| 5. Cifrado de exportación | Hecho |
+| 6. SOS sin Twilio | **Pendiente de configuración**: sin proveedor de SMS no se avisa al contacto |
+| 7. Coherencia de la ficha de privacidad | Hecho |
+
+**Lo que queda del lado del usuario**, ya documentado en `PUBLICAR_EN_PLAY.md`
+y `REVISION_TIENDAS.md`: `REVIEW_DEMO_PHONE`/`REVIEW_DEMO_CODE`,
+`NEXT_PUBLIC_SUPPORT_EMAIL`, Twilio, el formulario de seguridad de datos, la
+declaración de servicio en primer plano y el contacto público que Apple 1.2
+pide junto al reporte y el bloqueo (basta el correo de soporte en la ficha).
+
+**Y una decisión de producto**: las categorías Particular y Moto, más abajo.
+
+## Orden de ejecución (ya recorrido)
 
 Por bloqueo primero, y dentro de eso por esfuerzo:
 

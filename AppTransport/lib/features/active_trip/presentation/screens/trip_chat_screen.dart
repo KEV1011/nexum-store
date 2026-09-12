@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -9,14 +10,25 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/features/moderacion/presentation/reportar_sheet.dart';
 
 /// Chat en vivo del viaje normal (conductor ↔ pasajero) sobre el WS singleton
 /// del conductor y el canal persistente `subscribe_trip_chat`.
 class TripChatScreen extends StatefulWidget {
-  const TripChatScreen({required this.tripId, required this.peerName, super.key});
+  const TripChatScreen({
+    required this.tripId,
+    required this.peerName,
+    this.passengerId,
+    super.key,
+  });
 
   final String tripId;
   final String peerName;
+
+  /// Sin id de pasajero la hoja de reporte no ofrece bloquear: bloquear «a
+  /// nadie» no evitaría nada, y una casilla que no hace nada es peor que no
+  /// tenerla.
+  final String? passengerId;
 
   @override
   State<TripChatScreen> createState() => _TripChatScreenState();
@@ -211,6 +223,37 @@ class _TripChatScreenState extends State<TripChatScreen> {
         foregroundColor: context.textPrimaryColor,
         elevation: 0,
         title: Text(widget.peerName),
+        actions: [
+          // El botón va donde está el contenido. Un ajuste escondido en el
+          // perfil no lo encuentra quien acaba de recibir algo que no debería,
+          // y tampoco lo encuentra la revisión de la tienda.
+          //
+          // `Consumer` porque esta pantalla es un StatefulWidget normal y la
+          // hoja necesita un `WidgetRef`.
+          Consumer(
+            builder: (ctx, ref, _) => IconButton(
+              icon: const Icon(Icons.flag_outlined),
+              tooltip: 'Reportar',
+              onPressed: () async {
+                final enviado = await mostrarReporte(
+                  ctx,
+                  ref,
+                  tipo: 'chat_message',
+                  objetivoId: widget.tripId,
+                  queSeReporta: 'esta conversación',
+                  bloqueablePersonaId: widget.passengerId,
+                );
+                if (enviado && ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text('Gracias. Lo revisa una persona del equipo.'),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [
