@@ -12,10 +12,21 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+
+/// El plist sin sus comentarios.
+///
+/// Buscar sobre el texto crudo hace que la prueba cuente lo que EXPLICAN los
+/// comentarios. Pasó: el plist del cliente documenta por qué se retiró
+/// `NSAllowsArbitraryLoads`, y esa mención hizo fallar la comprobación de que
+/// no está. Un comentario que describe el peligro no es el peligro.
+String _sinComentarios(String plist) =>
+    plist.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');
+
 void main() {
-  final plist = File('ios/Runner/Info.plist').readAsStringSync();
-  final settings =
-      File('lib/shared/services/location_service.dart').readAsStringSync();
+  final plist =
+      _sinComentarios(File('ios/Runner/Info.plist').readAsStringSync());
+  final settings = _sinComentarios(
+      File('lib/shared/services/location_service.dart').readAsStringSync());
 
   group('ubicación en segundo plano', () {
     test('declara el modo de fondo `location`', () {
