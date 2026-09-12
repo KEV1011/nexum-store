@@ -288,11 +288,35 @@ function _sqlEncadenado(): Prisma.Sql {
  * documentos vigentes, acepta viajes, GPS fresco, radio). Si contara con otros,
  * la app prometería un taxi que el matching luego no le ofrecería a nadie.
  */
+/**
+ * Conductores que esta persona bloqueó, o que la bloquearon a ella.
+ *
+ * Vive en una función porque lo usan las DOS consultas del despacho: la que
+ * ofrece el servicio y la que cuenta vehículos para cotizar. Si solo lo
+ * aplicara una, el selector diría «1 taxi cerca» y el despacho no tendría a
+ * quién ofrecérselo — el mismo desajuste que ya pasó con los encadenados.
+ *
+ * En las dos direcciones: cualquiera de los dos que haya bloqueado basta para
+ * no volver a emparejarlos. Sin `userId` no filtra nada, en vez de excluir a
+ * todo el mundo.
+ */
+function _sqlBloqueos(userId: string | null): Prisma.Sql {
+  if (userId == null || userId === '') return Prisma.empty;
+  return Prisma.sql`AND NOT EXISTS (
+    SELECT 1 FROM "user_blocks" b
+    WHERE (b."blockerKind" = 'client' AND b."blockerId" = ${userId}
+           AND b."blockedKind" = 'driver' AND b."blockedId" = d."id")
+       OR (b."blockerKind" = 'driver' AND b."blockerId" = d."id"
+           AND b."blockedKind" = 'client' AND b."blockedId" = ${userId})
+  )`;
+}
+
 export async function disponibilidadPorTipoVehiculo(
   originLat: number,
   originLng: number,
   radiusMeters: number = SEARCH_RADIUS_M,
   freshnessSeconds: number = GEO_FRESHNESS_S,
+  userId: string | null = null,
 ): Promise<Map<string, { cuantos: number; distanciaMinM: number }>> {
   const verifiedFilter = pilotSkipVerification()
     ? Prisma.empty
@@ -315,6 +339,7 @@ export async function disponibilidadPorTipoVehiculo(
       AND d."acceptsTrips" = true
       ${verifiedFilter}
       ${complianceFilter}
+      ${_sqlBloqueos(userId)}
       AND d."lastSeenAt" >= now() - ${freshnessSeconds} * INTERVAL '1 second'
       AND ST_DWithin(
             d."geo",
@@ -342,6 +367,7 @@ export async function findNearestAvailableDrivers(
   freshnessSeconds: number,
   serviceKind: ServiceKind,
   vehicleTypes: string[] | null = null,
+  userId: string | null = null,
 ): Promise<NearbyDriver[]> {
   // All parameters come from internal constants or trusted DB data — no user strings.
   // freshnessSeconds * INTERVAL '1 second' uses PostgreSQL's integer×interval operator.
@@ -370,6 +396,11 @@ export async function findNearestAvailableDrivers(
     ? Prisma.sql`AND d."complianceStatus"::text <> 'BLOCKED'`
     : Prisma.empty;
 
+  // Bloqueos entre personas: es lo que convierte el botón «Bloquear» en algo
+  // real. Sin este filtro sería una fila en una tabla que nadie lee y el
+  // despacho volvería a emparejarlos a la primera. Ver `_sqlBloqueos`.
+  const bloqueos = _sqlBloqueos(userId);
+
   const encadenado = _sqlEncadenado();
 
   const rows = await prisma.$queryRaw<
@@ -390,6 +421,7 @@ export async function findNearestAvailableDrivers(
       AND (${serviceKind} != 'errand' OR d."acceptsErrands" = true)
       AND (${serviceKind} != 'order' OR d."acceptsOrders" = true)
       ${vehicleFilter}
+      ${bloqueos}
       AND d."lastSeenAt" >= now() - ${freshnessSeconds} * INTERVAL '1 second'
       AND ST_DWithin(
             d."geo",
@@ -526,7 +558,7 @@ export async function startMatchingCycle(
   // Filtra por tipo de vehículo pedido (carro vs moto) para no ofrecer "al azar".
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
-    select: { serviceType: true },
+    select: { serviceType: true, passengerId: true },
   });
   const vehicleTypes = vehicleTypesForService(trip?.serviceType);
   const candidates = await findNearestAvailableDrivers(
@@ -537,6 +569,7 @@ export async function startMatchingCycle(
     GEO_FRESHNESS_S,
     'trip',
     vehicleTypes,
+    trip?.passengerId ?? null,
   );
   if (candidates.length === 0) {
     console.log(
@@ -761,6 +794,10 @@ export async function startErrandMatchingCycle(
     return;
   }
 
+  const duenoMandado = await prisma.errand.findUnique({
+    where: { id: errandId },
+    select: { userId: true },
+  });
   const candidates = await findNearestAvailableDrivers(
     pickupLat,
     pickupLng,
@@ -768,6 +805,8 @@ export async function startErrandMatchingCycle(
     MAX_CANDIDATES,
     GEO_FRESHNESS_S,
     'errand',
+    null,
+    duenoMandado?.userId ?? null,
   );
   if (candidates.length === 0) {
     console.log(
@@ -965,6 +1004,10 @@ export async function startOrderMatchingCycle(orderId: string, attempt = 0): Pro
     return;
   }
 
+  const duenoPedido = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { userId: true },
+  });
   const candidates = await findNearestAvailableDrivers(
     info.lat,
     info.lng,
@@ -972,6 +1015,8 @@ export async function startOrderMatchingCycle(orderId: string, attempt = 0): Pro
     MAX_CANDIDATES,
     GEO_FRESHNESS_S,
     'order',
+    null,
+    duenoPedido?.userId ?? null,
   );
   if (candidates.length === 0) {
     console.log(

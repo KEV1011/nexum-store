@@ -129,10 +129,14 @@ export async function getTripOptions(
   // enseña en el selector no las contara, el pasajero elegiría viendo una
   // cifra y pagaría otra al confirmar. El precio que se ve es el que se cobra.
   paradas: Array<{ lat?: number; lng?: number }> = [],
+  // Quién pregunta. Solo se usa para descontar a los conductores bloqueados:
+  // contar uno que el despacho no le va a ofrecer haría que el selector diga
+  // «1 taxi cerca» y la búsqueda termine en «no encontramos conductor».
+  userId: string | null = null,
 ): Promise<OpcionesViaje> {
   const [trayecto, disponibilidad, surge] = await Promise.all([
     medirConParadas(originLat, originLng, destLat, destLng, paradas),
-    disponibilidadPorTipoVehiculo(originLat, originLng),
+    disponibilidadPorTipoVehiculo(originLat, originLng, undefined, undefined, userId),
     getSurgeMultiplier(originLat, originLng),
   ]);
 

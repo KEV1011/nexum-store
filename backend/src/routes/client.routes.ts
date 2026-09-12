@@ -31,6 +31,8 @@ import {
   borrarCuentaCliente,
   motivoBloqueoCliente,
 } from '../services/account-deletion.service';
+import { crearReporte, bloquear, desbloquear, listarBloqueos } from '../services/moderacion.service';
+import { ReporteInvalido, motivosParaApps } from '../lib/reportes';
 import {
   createFreightRequest,
   listClientFreights,
@@ -233,6 +235,66 @@ router.get('/account/deletion', clientAuthMiddleware, async (req, res) => {
     res.json({ success: true, data: { puedeEliminar: bloqueo === null, motivo: bloqueo } });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Moderación: reportar y bloquear ─────────────────────────────────────────
+//
+// Apple 1.2 y la política de contenido de usuario de Play exigen las dos cosas
+// en cualquier app donde la gente se escriba o publique. Ver `lib/reportes.ts`.
+
+// GET /client/reports/reasons — el catálogo, para que la app no lo duplique.
+// Si la lista viviera en las dos apps, cambiar un motivo obligaría a publicar
+// versiones nuevas y durante semanas convivirían tres catálogos distintos.
+router.get('/reports/reasons', clientAuthMiddleware, (_req, res) => {
+  res.json({ success: true, data: motivosParaApps() });
+});
+
+// POST /client/reports — reportar un mensaje, un conductor, una reseña…
+router.post('/reports', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await crearReporte('client', req.clientId!, req.body ?? {}) });
+  } catch (err) {
+    const status = err instanceof ReporteInvalido ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo enviar el reporte',
+    });
+  }
+});
+
+// GET /client/blocks — a quién tengo bloqueado.
+router.get('/blocks', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await listarBloqueos('client', req.clientId!) });
+  } catch {
+    res.status(500).json({ success: false, error: 'No pudimos cargar tu lista.' });
+  }
+});
+
+// POST /client/blocks — no volver a coincidir con este conductor.
+router.post('/blocks', clientAuthMiddleware, async (req, res) => {
+  try {
+    await bloquear('client', req.clientId!, req.body ?? {});
+    res.json({ success: true, data: { ok: true } });
+  } catch (err) {
+    const status = err instanceof ReporteInvalido ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo bloquear',
+    });
+  }
+});
+
+// DELETE /client/blocks/:id — desbloquear. Un bloqueo sin vuelta atrás es una
+// trampa: la gente se arrepiente, y en un pueblo pequeño puede quedarse sin
+// conductores por un malentendido.
+router.delete('/blocks/:id', clientAuthMiddleware, async (req, res) => {
+  try {
+    await desbloquear('client', req.clientId!, String(req.params['id']));
+    res.json({ success: true, data: { ok: true } });
+  } catch {
+    res.status(500).json({ success: false, error: 'No se pudo desbloquear.' });
   }
 });
 
@@ -487,7 +549,9 @@ router.get('/trips/options', clientAuthMiddleware, async (req, res) => {
   try {
     res.json({
       success: true,
-      data: await getTripOptions(originLat, originLng, destLat, destLng, paradas),
+      data: await getTripOptions(
+        originLat, originLng, destLat, destLng, paradas, req.clientId ?? null,
+      ),
     });
   } catch (err) {
     console.error('[Opciones] error calculando opciones de viaje:', err);
