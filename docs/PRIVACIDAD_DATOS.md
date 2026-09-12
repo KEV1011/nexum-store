@@ -23,7 +23,7 @@
 | Dato | ¿Se recolecta? | Propósito | ¿Vinculado? | ¿Tracking? |
 |---|---|---|---|---|
 | Teléfono / nombre / cédula / licencia | Sí | Cuenta, verificación legal del conductor | Sí | No |
-| Ubicación precisa **incl. segundo plano** | Sí (solo EN LÍNEA) | Despacho por cercanía, seguimiento del servicio, seguridad de ruta | Sí | No |
+| Ubicación precisa, también con la app en segundo plano | Sí (solo EN LÍNEA) | Despacho por cercanía, seguimiento del servicio, seguridad de ruta | Sí | No |
 | Documentos e imágenes (cédula, licencia, SOAT, tarjeta, selfie) | Sí | Verificación/KYC, cumplimiento normativo | Sí | No |
 | Datos bancarios (banco, tipo y número de cuenta) | Sí | Pagos/retiros al conductor | Sí | No |
 | Identificadores del dispositivo (token FCM) | Sí | Ofertas de servicio y avisos push | Sí | No |
@@ -32,6 +32,18 @@
 
 ## Notas operativas
 
+- **Cómo se recoge la ubicación del conductor, con precisión** (importa porque
+  el formulario de la tienda y el manifiesto se cruzan): de forma continua
+  mientras está EN LÍNEA, mediante un servicio en primer plano con notificación
+  visible en Android y el modo de fondo `location` con indicador azul en iOS.
+  **No se pide `ACCESS_BACKGROUND_LOCATION` ni el permiso «Siempre» de iOS**, y
+  no hay que marcarlos en ninguna ficha: decir que sí obliga al formulario de
+  declaración de permisos de Play y a un video, por un permiso que la app no
+  tiene.
+- **Divulgación previa**: antes del diálogo del sistema, ambas apps enseñan la
+  hoja de `core/ubicacion/ubicacion_gate.dart` con qué se recoge, para qué, con
+  quién se comparte y cuándo deja de recogerse. Es requisito de Play, y una
+  prueba impide que ningún otro archivo pida el permiso por su cuenta.
 - **Declaración en tiendas**: ambos formularios deben marcar Ubicación (precisa,
   y "background" solo en la app conductor), Info de contacto, Identificadores,
   Fotos, Datos financieros (solo conductor: datos bancarios; el cliente NO,

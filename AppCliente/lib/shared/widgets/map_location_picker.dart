@@ -9,6 +9,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
+import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/map_pin.dart';
 
@@ -109,16 +110,18 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
   Future<void> _irAMiUbicacion({bool silencioso = false}) async {
     setState(() => _ubicando = true);
     try {
-      var permiso = await Geolocator.checkPermission();
-      if (permiso == LocationPermission.denied) {
-        permiso = await Geolocator.requestPermission();
-      }
-      if (permiso == LocationPermission.denied ||
-          permiso == LocationPermission.deniedForever) {
+      // Silencioso = centrado automático al abrir: solo si el permiso ya
+      // está. Con el botón pulsado sí se pide, y `Ubicacion.pedir` enseña
+      // antes la divulgación —además de resolver el GPS apagado y el permiso
+      // bloqueado, que aquí acababan en un aviso sin salida.
+      final hayPermiso = silencioso
+          ? await Ubicacion.concedido()
+          : mounted && await Ubicacion.pedir(context);
+      if (!hayPermiso) {
         if (!silencioso && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Activa el permiso de ubicación o mueve el mapa a mano.'),
+              content: Text('Sin ubicación: mueve el mapa hasta el punto exacto.'),
             ),
           );
         }

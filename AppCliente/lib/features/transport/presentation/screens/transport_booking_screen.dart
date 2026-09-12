@@ -11,6 +11,7 @@ import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
@@ -849,25 +850,19 @@ class _TransportBookingScreenState
   Future<void> _useCurrentLocation({bool silencioso = false}) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        if (!silencioso) {
-          messenger.showSnackBar(const SnackBar(
-              content: Text('Activa la ubicación (GPS) del dispositivo.')));
-        }
-        return;
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (!silencioso) {
-          messenger.showSnackBar(const SnackBar(
-              content: Text('Permiso de ubicación denegado.')));
-        }
-        return;
-      }
+      // El intento automático al abrir NO pide nada: solo aprovecha el
+      // permiso si ya está. Pedirlo sin que nadie lo haya tocado es lo que
+      // Play castiga, y además gasta el único intento que da Android.
+      //
+      // Cuando la persona TOCÓ el botón, `Ubicacion.pedir` enseña primero la
+      // divulgación y solo entonces sale el diálogo del sistema. También se
+      // ocupa del GPS apagado y del permiso bloqueado, que antes eran dos
+      // mensajes sin salida.
+      final hayPermiso = silencioso
+          ? await Ubicacion.concedido()
+          : await Ubicacion.pedir(context);
+      if (!hayPermiso) return;
+      if (!mounted) return;
       final pos = await Geolocator.getCurrentPosition();
       if (!mounted) return;
       setState(() {

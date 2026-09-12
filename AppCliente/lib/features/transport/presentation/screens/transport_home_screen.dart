@@ -12,6 +12,7 @@ import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/shared/services/zona_marca_provider.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
@@ -88,14 +89,16 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
   /// bloquea la pantalla ni muestra un punto falso.
   Future<void> _locateMe() async {
     try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
+      // Aquí NO se pide el permiso. Esto corre desde `initState`, así que
+      // pedirlo era hacer saltar el diálogo del sistema al entrar a la
+      // pantalla, sin que nadie hubiera tocado nada y sin una palabra de
+      // contexto — lo que Play llama pedir sin divulgación previa.
+      //
+      // Si ya está concedido se aprovecha; si no, el mapa se queda en el
+      // centro por defecto y el permiso se pide donde sirve para algo: en
+      // «Usar mi ubicación actual» de la reserva y en el selector de punto,
+      // los dos vía `Ubicacion.pedir`.
+      if (!await Ubicacion.concedido()) return;
       final pos = await Geolocator.getCurrentPosition();
       if (!mounted) return;
       final here = LatLng(pos.latitude, pos.longitude);
