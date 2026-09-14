@@ -145,19 +145,46 @@ describe('preparar-google-services.sh', () => {
     });
   });
 
+  // Esto es lo que pasó de verdad, en los dos secretos a la vez: en la casilla
+  // del valor quedó escrito el nombre de la variable. Un nombre son letras,
+  // dígitos y guiones bajos —todo del alfabeto base64—, así que ningún control
+  // de «parece base64» lo caza, y el build moría diciendo «invalid input».
+  describe('el nombre de la variable pegado en la casilla del valor', () => {
+    it('se nombra tal cual, sin hacer contar caracteres', () => {
+      const r = correr('SECRETO');
+      expect(r.codigo).toBe(1);
+      expect(r.escrito).toBeNull();
+      expect(r.salida).toContain('nombre de la variable');
+    });
+
+    it('y cualquier otra cosa demasiado corta para ser el archivo', () => {
+      const r = correr('GOOGLE_SERVICES_BASE64');
+      expect(r.codigo).toBe(1);
+      expect(r.salida).toMatch(/demasiado corto|nombre de la variable/);
+      expect(r.salida).toContain('2.000');
+    });
+
+    it('un base64 de verdad no lo confunde con algo corto', () => {
+      expect(enBase64(bueno).length).toBeGreaterThan(100);
+      expect(correr(enBase64(bueno)).codigo).toBe(0);
+    });
+  });
+
   describe('cuando no sirve, dice cuál de los dos problemas es', () => {
     // «estonoesnada» son letras del alfabeto base64: `base64` lo decodifica sin
     // rechistar y devuelve basura. Si solo se mirara el código de salida de
     // base64, esto pasaría por bueno.
+    // Largas a propósito: una corta la pararía antes el control de tamaño, y
+    // lo que se quiere probar aquí es el control de CONTENIDO, más adentro.
     it('basura que parece base64 no pasa por buena', () => {
-      const r = correr('estonoesnada');
+      const r = correr('estonoesnada'.repeat(20));
       expect(r.codigo).toBe(1);
       expect(r.escrito).toBeNull();
       expect(r.salida).toContain('Secreto ilegible');
     });
 
     it('algo que no es ni base64 ni JSON', () => {
-      const r = correr('no tengo ni idea de qué pegar aquí!!');
+      const r = correr('no tengo ni idea de qué pegar aquí!! '.repeat(6));
       expect(r.codigo).toBe(1);
       expect(r.salida).toContain('Secreto ilegible');
     });

@@ -48,8 +48,11 @@ pista() {
   if printf '%s' "$VALOR" | grep -qF "$1"; then echo "  · $2"; fi
 }
 
+# El motivo va como título para que GitHub lo enseñe en la pestaña de resumen
+# sin abrir el log; el detalle siempre se imprime debajo, porque el titular solo
+# no basta para saber cuál de los cuatro archivos se pegó.
 diagnostico() {
-  echo "::error title=Secreto ilegible::$VAR no es un google-services.json ni su base64."
+  echo "::error title=${1:-Secreto ilegible}::${2:-El secreto no es un google-services.json ni su base64.}"
   echo "Qué trae el secreto (su forma, no su contenido):"
   echo "  · largo: ${#VALOR} caracteres"
   # Lo que no puede aparecer en un base64. Si esto es mayor que cero y tampoco
@@ -68,6 +71,28 @@ diagnostico() {
   echo "tal cual (Firebase Console → app Android $PAQUETE → descargar), o su base64:"
   echo '  [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\ruta\google-services.json")) | Set-Clipboard'
 }
+
+# ── Los dos errores que de verdad pasan, dichos con todas las letras ─────────
+# Pegar el NOMBRE de la variable en la casilla del valor. Pasa al copiar una
+# lista de variables de un panel a otro, y no lo caza ningún control de «parece
+# base64»: un nombre son letras, dígitos y guiones bajos, todo del alfabeto.
+#
+# Ojo al leer el log: GitHub enmascara el VALOR del secreto donde aparezca, y
+# aquí el valor ES el nombre, así que el nombre sale como ***. Por eso el
+# mensaje no lo repite: se entiende sin él.
+if [ "$VALOR" = "$VAR" ]; then
+  diagnostico 'Está el nombre de la variable, no el archivo' \
+    'En la casilla del VALOR va el CONTENIDO de google-services.json (o su base64). Ahí quedó escrito el nombre de la variable.'
+  exit 1
+fi
+
+# Un google-services.json son unos 2 KB, y su base64 todavía más. Por debajo de
+# 100 caracteres no hay archivo posible: decirlo así ahorra contar caracteres.
+if [ "${#VALOR}" -lt 100 ]; then
+  diagnostico 'El secreto es demasiado corto' \
+    "Tiene ${#VALOR} caracteres; un google-services.json son unos 2.000. Lo que hay ahí no es el archivo."
+  exit 1
+fi
 
 # ── El archivo tal cual, o base64 ────────────────────────────────────────────
 # Se reconoce por el CONTENIDO y no por la llave inicial: un salto de línea

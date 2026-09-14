@@ -23,6 +23,13 @@ Los leen los workflows al construir los APK.
 | `SENTRY_DSN_CLIENTE` · `SENTRY_DSN_DRIVER` | Opcional: ver los errores de las apps en producción | Sentry |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` · `FIREBASE_APP_ID_CLIENTE` · `FIREBASE_APP_ID_DRIVER` | Opcional: repartir los APK por App Distribution | Firebase |
 
+> **En la casilla del valor va el CONTENIDO, no el nombre.** Pasó con los dos
+> secretos de Firebase a la vez: en *Value* quedó escrito `GOOGLE_SERVICES_BASE64`
+> y `GOOGLE_SERVICES_CLIENTE_BASE64`. El nombre son letras, dígitos y guiones
+> bajos —todo del alfabeto base64—, así que no lo caza ningún control de «parece
+> base64»: el build moría con `base64: invalid input` y el valor enmascarado como
+> `***`. Hoy el paso lo dice con esas palabras y se corta en dos segundos.
+
 **Pasar un archivo a base64 en PowerShell** (una línea, sin `&&`):
 
 ```powershell
