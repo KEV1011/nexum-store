@@ -57603,6 +57603,7 @@ $1$isOnline(a){return this.F(this,A.A("call","$1$isOnline",0,[a],["isOnline"],0)
 $1$requestSecondsLeft(a){return this.F(this,A.A("call","$1$requestSecondsLeft",0,[a],["requestSecondsLeft"],0))},
 $2$pendingRequest$requestSecondsLeft(a,b){return this.F(this,A.A("call","$2$pendingRequest$requestSecondsLeft",0,[a,b],["pendingRequest","requestSecondsLeft"],0))},
 $1$locationSettings(a){return this.F(this,A.A("call","$1$locationSettings",0,[a],["locationSettings"],0))},
+$3$tomadoEn(a,b,c){return this.F(this,A.A("call","$3$tomadoEn",0,[a,b,c],["tomadoEn"],0))},
 $1$forceLocationManager(a){return this.F(this,A.A("call","$1$forceLocationManager",0,[a],["forceLocationManager"],0))},
 $2$onDone(a,b){return this.F(this,A.A("call","$2$onDone",0,[a,b],["onDone"],0))},
 $2$clearPending$isOnline(a,b){return this.F(this,A.A("call","$2$clearPending$isOnline",0,[a,b],["clearPending","isOnline"],0))},
@@ -133333,10 +133334,10 @@ aLW(){var s,r=this,q=r.at
 if(q!=null)q.a6(0)
 q=$.wV()
 s=q.c
-if(s!=null)r.a1j(new A.cg(s.a,s.b))
+if(s!=null)r.a1j(new A.cg(s.a,s.b),s.c)
 q=q.f
 r.at=new A.bu(q,A.i(q).h("bu<1>")).dP(new A.aYe(r))},
-a1j(a){var s,r,q,p,o,n,m,l=this
+a1j(a,b){var s,r,q,p,o,n,m,l=this
 if(l.c==null)return
 r=l.as
 if(!l.ax){l.as=a
@@ -133353,7 +133354,7 @@ p=l.c
 p.toString
 A.d2(B.b3,p,B.cJ,n.b===B.cQ?"\xa1Llegando al destino!":"\xa1El pasajero est\xe1 cerca!")}}n=l.gcr().c6(0,$.m9(),t.kz)
 p=n==null
-if(!p)$.ez().a_5(a.a,a.b,n.a.a)
+if(!p)$.ez().a_5(a.a,a.b,b,n.a.a)
 if(l.y){s=(p?null:n.b===B.cQ)===!0?16.5:14
 try{l.w.LY(a,s)}catch(m){}}},
 aEC(a){var s,r,q,p,o,n,m,l,k,j=this
@@ -133924,7 +133925,7 @@ $S:0}
 A.aYe.prototype={
 $1(a){var s=this.a
 if(s.c==null)return
-s.a1j(new A.cg(a.a,a.b))},
+s.a1j(new A.cg(a.a,a.b),a.c)},
 $S:144}
 A.aXH.prototype={
 $0(){},
@@ -137054,7 +137055,7 @@ n=A.a3k(i?B.a8:B.ay,16,k,16)
 m=A.aa(k,B.adp,B.m,k,k,new A.a9(B.xw.ap(0.12),k,k,A.W(8),k,k,B.u),k,38,k,k,k,k,k,38)
 o=o.z
 o=A.as(A.et(A.b([new A.AX("VIAJES",k),new A.fX(B.on,"Inicio",new A.aZo(a),B.p,!1,k),new A.fX(B.abx,"Historial de viajes",new A.aZr(a),B.cn,!1,k),new A.fX(B.ii,"Mis fletes de carga",new A.aZs(a),B.aN,!1,k),new A.fX(B.FN,"Remitos de mercanc\xeda",new A.aZt(a),B.nD,!1,k),new A.fX(B.dl,"Calificaciones",new A.aZu(a),B.c7,!1,k),new A.fX(B.zj,"ZIPA Pro",new A.aZv(a),B.nD,!1,k),new A.fX(B.z9,"Viajes compartidos",new A.aZw(a),B.aG,!1,k),new A.fX(B.dO,"Intermunicipal",new A.aZx(a),B.aG,!1,k),new A.fX(B.ow,"Verificaci\xf3n",new A.aZe(a),B.p,!1,k),new A.AX("FINANZAS",k),new A.fX(B.abO,"Ganancias",new A.aZf(a),B.DJ,!1,k),new A.fX(B.lw,"Billetera",new A.aZg(a),B.a69,!1,k),new A.fX(B.abG,"Promociones",new A.aZh(a),B.a5w,!1,k),new A.AX("HERRAMIENTAS",k),new A.fX(B.abd,"Rendimiento",new A.aZi(a),B.a67,!1,k),new A.fX(B.G6,"Mis documentos",new A.aZj(a),B.a6k,!1,k),new A.fX(B.lA,"Centro de seguridad",new A.aZk(a),B.S,!1,k),new A.AX("CUENTA",k),new A.fX(B.Gg,"Mi perfil",new A.aZl(a),B.DZ,!1,k),new A.fX(B.G8,"Soporte y FAQ",new A.aZm(a),B.xy,!1,k),new A.fX(B.FU,"Configuraci\xf3n",new A.aZn(a),B.a5m,!1,k),n,A.h7(!1,k,k,k,!0,k,12,k,!0,k,m,k,k,k,k,k,!1,k,k,k,k,k,k,A.l("Modo oscuro",k,k,k,k,k,o==null?k:o.cS(B.aE),k,k,k),k,A.bAy(k,k,k,B.p,k,!1,B.F,k,k,k,k,k,k,new A.aZp(b),k,k,k,k,k,k,k,k,g),k),new A.fX(B.zb,"Cerrar sesi\xf3n",new A.aZq(a,b),B.S,!0,k)],p),k,B.dL,k,B.T,!1),1)
-return new A.a3r(h,A.ef(!0,A.a5(A.b([r,q,o,new A.a7(B.Y,A.l("ZIPA Conductor v1.0.0 \xb7 build 190",k,k,k,k,k,s==null?k:s.aB(B.aY),k,k,k),k)],p),B.k,B.f,B.h,0,B.o),B.a0,!0),k)}}
+return new A.a3r(h,A.ef(!0,A.a5(A.b([r,q,o,new A.a7(B.Y,A.l("ZIPA Conductor v1.0.0 \xb7 build 191",k,k,k,k,k,s==null?k:s.aB(B.aY),k,k,k),k)],p),B.k,B.f,B.h,0,B.o),B.a0,!0),k)}}
 A.aZa.prototype={
 $1(a){return a.length===0},
 $S:20}
@@ -144712,13 +144713,14 @@ s.p(0,"status",b)
 if(c!=null)s.p(0,"pin",c)
 return this.ew(s)},
 akx(a,b){return this.On(a,b,null)},
-a_5(a,b,c){var s=A.B(t.N,t.z)
+a_5(a,b,c,d){var s=A.B(t.N,t.z)
 s.p(0,"type","location_update")
 s.p(0,"lat",a)
 s.p(0,"lng",b)
-if(c!=null)s.p(0,"tripId",c)
+if(d!=null)s.p(0,"tripId",d)
+s.p(0,"ts",c.a)
 this.ew(s)},
-akw(a,b){return this.a_5(a,b,null)},
+akw(a,b,c){return this.a_5(a,b,c,null)},
 a7z(a,b){this.z.p(0,a,b)
 this.ew(b)},
 ew(a){var s,r=this.a
@@ -144903,7 +144905,7 @@ if(r.a==null)return
 if(r.k2!=null)return
 s=this.c
 if(s==null)return
-r.akw(s.a,s.b)}}
+r.akw(s.a,s.b,s.c)}}
 A.aFZ.prototype={
 $1(a){var s=this.a
 s.c=a
