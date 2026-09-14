@@ -427,7 +427,7 @@ class _ProfileButton extends ConsumerWidget {
     // Mismo caso que el chip: tenía aspecto de botón y no hacía nada. La cuenta
     // es una pestaña del shell, no una ruta: se cambia el índice.
     return GestureDetector(
-      onTap: () => ref.read(shellTabProvider.notifier).state = 3,
+      onTap: () => ref.read(shellTabProvider.notifier).state = kTabCuenta,
       behavior: HitTestBehavior.opaque,
       child: Container(
       width: 40,
