@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
+import 'package:nexum_client/features/moderacion/presentation/reportar_sheet.dart';
 
 /// Lo que el cliente armó en la hoja: qué eligió, cuántos quiere y qué le
 /// quiere decir a la cocina.
@@ -170,6 +172,40 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
+                  ),
+                ),
+                // Reportar el producto. Es la última superficie de contenido
+                // de usuario que quedaba sin cablear: el nombre, la
+                // descripción y la foto los publica el dueño del comercio, no
+                // nosotros, y Apple 1.2 pide poder reportar todo lo que
+                // publica un tercero.
+                //
+                // `Consumer` porque esta hoja es un StatefulWidget normal y
+                // `mostrarReporte` necesita un `WidgetRef`.
+                Consumer(
+                  builder: (ctx, ref, _) => IconButton(
+                    icon: const Icon(Icons.flag_outlined),
+                    tooltip: 'Reportar este producto',
+                    onPressed: () async {
+                      final enviado = await mostrarReporte(
+                        ctx,
+                        ref,
+                        tipo: 'product',
+                        objetivoId: widget.product.id,
+                        queSeReporta: 'este producto',
+                        // Sin bloqueo: no se vuelve a coincidir con un
+                        // producto, así que la casilla no evitaría nada.
+                      );
+                      if (enviado && ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Gracias. Lo revisa una persona del equipo.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
                   ),
                 ),
                 IconButton(

@@ -364,12 +364,24 @@ class DriverWsService {
       });
 
   /// Send a GPS location update, optionally associated with an active trip.
-  void sendLocationUpdate(double lat, double lng, {String? tripId}) {
+  /// Reporta una posición.
+  ///
+  /// [tomadoEn] es CUÁNDO la tomó el GPS, no cuándo se envía. El servidor mide
+  /// la velocidad entre lecturas para su detector de GPS falso, y si midiera
+  /// entre mensajes bastaría un retraso de red para acusar de teletransporte a
+  /// quien va por la vía a Cúcuta a 120 km/h. Pasa `position.timestamp`.
+  void sendLocationUpdate(
+    double lat,
+    double lng, {
+    String? tripId,
+    DateTime? tomadoEn,
+  }) {
     _send({
       'type': 'location_update',
       'lat': lat,
       'lng': lng,
       if (tripId != null) 'tripId': tripId,
+      if (tomadoEn != null) 'ts': tomadoEn.millisecondsSinceEpoch,
     });
   }
 

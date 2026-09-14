@@ -64,10 +64,10 @@ dónde ir en las apps, porque esa pantalla no existe ahí.
 1. `POST /report` con `{tipo, objetivoId, motivo, detalle}` y una tabla
    `content_reports`. Los motivos son cerrados (contenido ofensivo, acoso,
    fraude, no es real, otro) — un campo libre no se puede triar.
-2. Botón **Reportar** en el chat de las dos apps y en la ficha pública del
-   conductor, con un mismo widget. La reseña y el producto quedan pendientes:
-   la reseña no se enseña en las apps, y el producto es la superficie que
-   falta por cablear.
+2. Botón **Reportar** en el chat de las dos apps, en la ficha pública del
+   conductor y en la hoja del producto, con un mismo widget. La reseña no
+   lleva botón porque no se enseña en las apps: solo la ve su dueño en el
+   portal.
 3. **Bloquear**: una tabla `user_blocks` y, como mínimo, que el despacho no
    vuelva a emparejar a dos personas que se bloquearon. Esto último es lo que
    convierte el bloqueo en algo real y no en un botón decorativo — y es
@@ -220,7 +220,7 @@ configuración y decisiones que no son mías:
 
 | Qué | Estado |
 |---|---|
-| 1. Reportar y bloquear | Hecho. Backend, las dos apps y cola en `/admin`. El bloqueo saca del despacho de verdad, probado contra PostgreSQL |
+| 1. Reportar y bloquear | Hecho, y con las superficies visibles ya cubiertas: chat, conductor y producto. El bloqueo saca del despacho de verdad, probado contra PostgreSQL |
 | 2. Ubicación de fondo en iOS | Hecho. Modo `location` + `allowBackgroundLocationUpdates`, sin pedir «Siempre» |
 | 3. ATS del cliente | Hecho |
 | 4. Divulgación previa | Hecho en las dos apps, con una puerta única que una prueba vigila |

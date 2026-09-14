@@ -7,12 +7,24 @@
 // política es MARCAR y contar, y que el admin/gating decidan.
 
 import { prisma } from '../lib/prisma';
+import {
+  esSaltoImposible,
+  segundosEntreLecturas,
+  velocidadKmh,
+  type Fix,
+} from '../lib/salto-gps';
 
-// Velocidad máxima plausible para un vehículo urbano/carretera (km/h). Por
-// encima de esto entre dos fixes reales = GPS falso o teletransporte.
-const MAX_SPEED_KMH = Number(process.env['FRAUD_MAX_SPEED_KMH'] ?? 200);
-// Distancia mínima para evaluar velocidad (evita ruido de GPS en reposo).
-const MIN_MOVE_M = 120;
+// Los umbrales y la decisión viven en `lib/salto-gps.ts`, sueltos y probados:
+// esto acusa a una persona, y el contador acabó en 444 sobre un conductor con
+// 16 viajes por medir el tiempo entre ESCRITURAS en vez de entre LECTURAS.
+
+// Última lectura de cada conductor, CON la marca de tiempo del teléfono.
+//
+// En memoria a propósito: es una señal best-effort y guardarla costaría una
+// columna y una escritura por latido. Al reiniciar el servidor se pierde y lo
+// único que pasa es que el primer salto de cada conductor no se evalúa, que es
+// justo el lado por el que hay que fallar.
+const _ultimaLectura = new Map<string, Fix>();
 
 function _haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371000;
@@ -37,24 +49,41 @@ export function evaluateGeoJump(
   prev: { lastLat: number | null; lastLng: number | null; lastSeenAt: Date | null },
   newLat: number,
   newLng: number,
+  /** Cuándo tomó el TELÉFONO esta lectura. Las apps viejas no lo mandan. */
+  tomadoEn: number | null = null,
 ): void {
+  const anteriorEnMemoria = _ultimaLectura.get(driverId);
+  _ultimaLectura.set(driverId, { lat: newLat, lng: newLng, tomadoEn });
+
   if (!prev.lastLat || !prev.lastLng || !prev.lastSeenAt) return;
 
   const meters = _haversineMeters(prev.lastLat, prev.lastLng, newLat, newLng);
-  if (meters < MIN_MOVE_M) return;
 
-  const seconds = (Date.now() - prev.lastSeenAt.getTime()) / 1000;
-  if (seconds <= 0) return;
+  // El reloj del servidor mide el hueco entre mensajes, no el recorrido. Se
+  // queda como respaldo para las apps que aún no mandan la marca de tiempo.
+  const segundosDePared = (Date.now() - prev.lastSeenAt.getTime()) / 1000;
+  const segundos = segundosEntreLecturas(
+    anteriorEnMemoria ?? { lat: prev.lastLat, lng: prev.lastLng, tomadoEn: null },
+    { lat: newLat, lng: newLng, tomadoEn },
+    Date.now(),
+    segundosDePared,
+  );
 
-  const kmh = meters / 1000 / (seconds / 3600);
-  if (kmh <= MAX_SPEED_KMH) return;
+  if (!esSaltoImposible(meters, segundos)) return;
 
   void prisma.driver
     .update({ where: { id: driverId }, data: { fraudFlags: { increment: 1 } } })
     .catch(() => undefined);
   console.warn(
-    `[Fraude] GPS imposible driver=${driverId}: ${Math.round(meters)} m en ${Math.round(seconds)} s = ${Math.round(kmh)} km/h`,
+    `[Fraude] GPS imposible driver=${driverId}: ${Math.round(meters)} m en ` +
+      `${segundos!.toFixed(1)} s = ${Math.round(velocidadKmh(meters, segundos!))} km/h ` +
+      `(reloj: ${tomadoEn ? 'teléfono' : 'servidor'})`,
   );
+}
+
+/** Solo para las pruebas y el apagado: la memoria de lecturas no debe crecer sin fin. */
+export function olvidarLecturaDe(driverId: string): void {
+  _ultimaLectura.delete(driverId);
 }
 
 // ── Límite de solicitudes por cliente (ventana deslizante en memoria) ─────────

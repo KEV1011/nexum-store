@@ -380,15 +380,22 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     // Si ya hay una lectura, se coloca sin esperar a la siguiente.
     final ultima = LocationService().lastPosition;
     if (ultima != null) {
-      _aplicarPosicionReal(LatLng(ultima.latitude, ultima.longitude));
+      _aplicarPosicionReal(
+        LatLng(ultima.latitude, ultima.longitude),
+        ultima.timestamp,
+      );
     }
     _posSub = LocationService().positionStream.listen((pos) {
       if (!mounted) return;
-      _aplicarPosicionReal(LatLng(pos.latitude, pos.longitude));
+      _aplicarPosicionReal(LatLng(pos.latitude, pos.longitude), pos.timestamp);
     });
   }
 
-  void _aplicarPosicionReal(LatLng nueva) {
+  /// [tomadoEn] es cuándo lo leyó el GPS, y viaja hasta el servidor: su
+  /// detector de GPS falso mide la velocidad entre lecturas, y medirla entre
+  /// mensajes acusaba de teletransporte a quien iba por carretera con la red
+  /// lenta. Null cuando la posición no viene del stream.
+  void _aplicarPosicionReal(LatLng nueva, [DateTime? tomadoEn]) {
     // Se llama tanto desde el stream como en seco al entrar (si ya había fix),
     // así que el guard va aquí y no solo en quien llama.
     if (!mounted) return;
@@ -434,6 +441,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         nueva.latitude,
         nueva.longitude,
         tripId: current.request.id,
+        tomadoEn: tomadoEn,
       );
     }
 
