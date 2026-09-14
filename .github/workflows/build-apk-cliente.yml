@@ -62,60 +62,18 @@ jobs:
       # ── 6. Decode Firebase google-services.json (opcional) ──────────────────
       # App Android propia en Firebase: package com.nexum.nexum_client.
       # Sin el secret, el build sale sin push (la app lo tolera).
+      # El script acepta el archivo tal cual o su base64, y cuando no sirve
+      # describe qué llegó sin imprimirlo. Vive en tools/ y no aquí porque el
+      # bash de un workflow no lo comprueba nadie hasta que el build se rompe:
+      # lo ejercita `backend/src/lib/google-services.test.ts`.
       - name: Decode google-services.json
-        working-directory: AppCliente/android/app
         env:
           GOOGLE_SERVICES_CLIENTE_BASE64: ${{ secrets.GOOGLE_SERVICES_CLIENTE_BASE64 }}
-        run: |
-          VALOR="$GOOGLE_SERVICES_CLIENTE_BASE64"
-          if [ -z "$VALOR" ]; then
-            echo "No Firebase secret — build will skip Firebase init"
-            exit 0
-          fi
-
-          # Se acepta el JSON tal cual O en base64. Antes solo lo segundo, y
-          # pegar el archivo directamente fallaba con «base64: invalid input»,
-          # que no le dice a nadie qué hacer. Son dos minutos de build y media
-          # hora de buscar por qué.
-          #
-          # Se reconoce por el CONTENIDO, no por la llave inicial: un salto de
-          # línea o un espacio delante del `{` —que cualquier editor mete al
-          # copiar— haría que el JSON se tomara por base64 y muriera ahí.
-          if printf '%s' "$VALOR" | grep -q '"project_info"'; then
-            printf '%s' "$VALOR" > gs.tmp
-            ORIGEN="JSON pegado tal cual"
-          else
-            # `tr -d` quita los saltos de línea que mete cualquier editor al
-            # copiar una cadena larga; sin eso, un base64 correcto se rechaza.
-            if ! printf '%s' "$VALOR" | tr -d '[:space:]' | base64 --decode > gs.tmp; then
-              echo "::error title=Secreto ilegible::GOOGLE_SERVICES_CLIENTE_BASE64 no es base64 ni JSON. Pega el contenido de google-services.json tal cual, o su base64 sin comillas."
-              rm -f gs.tmp
-              exit 1
-            fi
-            ORIGEN="base64"
-          fi
-
-          # Que `base64` no proteste no significa nada: una palabra cualquiera
-          # como «estonoesnada» está en el alfabeto base64 y decodifica a
-          # basura sin error. Así que se comprueba el CONTENIDO, en dos pasos,
-          # para que cada fallo diga lo suyo.
-          if ! grep -q '"project_info"' gs.tmp; then
-            echo "::error title=Secreto ilegible::GOOGLE_SERVICES_CLIENTE_BASE64 no contiene un google-services.json. Pega el archivo tal cual, o su base64 sin comillas."
-            rm -f gs.tmp
-            exit 1
-          fi
-
-          # Y que sea un google-services.json no significa que sea EL de esta
-          # app: el de la otra decodifica perfecto y produce un APK que no
-          # recibe un solo aviso, sin un error por el camino.
-          if ! grep -q '"package_name": *"com.nexum.nexum_client"' gs.tmp; then
-            echo "::error title=google-services.json de otra app::El archivo no menciona com.nexum.nexum_client. Parece el de la otra app: son archivos distintos."
-            rm -f gs.tmp
-            exit 1
-          fi
-
-          mv gs.tmp google-services.json
-          echo "Firebase config loaded ($ORIGEN)"
+        run: >
+          bash tools/preparar-google-services.sh
+          GOOGLE_SERVICES_CLIENTE_BASE64
+          com.nexum.nexum_client
+          AppCliente/android/app/google-services.json
 
       - name: Configure release signing
         working-directory: AppCliente/android
