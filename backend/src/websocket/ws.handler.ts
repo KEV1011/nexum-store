@@ -527,12 +527,18 @@ async function handleBusinessAuth(ws: WebSocket, token: string): Promise<void> {
   }
 }
 
-async function handleLocationUpdate(ws: WebSocket, lat: number, lng: number, tripId: string | null): Promise<void> {
+async function handleLocationUpdate(
+  ws: WebSocket,
+  lat: number,
+  lng: number,
+  tripId: string | null,
+  tomadoEn: number | null = null,
+): Promise<void> {
   // Persist the driver's position into PostGIS first — this powers nearest-driver
   // matching and must happen on every fix, even while the driver is idle/ONLINE
   // (no active trip).
   const driverId = driverIdByWs.get(ws);
-  if (driverId) await updateDriverGeo(driverId, lat, lng);
+  if (driverId) await updateDriverGeo(driverId, lat, lng, tomadoEn);
 
   // Relay the live position to the passenger of the active trip, if any.
   // Prefer the per-driver map (multi-driver matching), fall back to singleton.
@@ -1211,11 +1217,21 @@ function onMessage(ws: WebSocket, raw: string): void {
       const lat = msg['lat'];
       const lng = msg['lng'];
       const tripId = msg['tripId'];
+      // `ts` = cuándo tomó el teléfono la lectura. Es lo que permite medir la
+      // velocidad entre LECTURAS y no entre mensajes; sin él se cae al reloj
+      // del servidor, como hacían las versiones anteriores.
+      const ts = msg['ts'];
       if (typeof lat !== 'number' || typeof lng !== 'number') {
         sendTo(ws, { type: 'error', message: 'lat and lng required as numbers' });
         return;
       }
-      void handleLocationUpdate(ws, lat, lng, typeof tripId === 'string' ? tripId : null);
+      void handleLocationUpdate(
+        ws,
+        lat,
+        lng,
+        typeof tripId === 'string' ? tripId : null,
+        typeof ts === 'number' ? ts : null,
+      );
       break;
     }
 

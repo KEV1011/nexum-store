@@ -264,7 +264,7 @@ class LocationService {
     // pone al conductor en el mapa del cliente donde no está.
     final pos = _lastPosition;
     if (pos == null) return;
-    ws.sendLocationUpdate(pos.latitude, pos.longitude);
+    ws.sendLocationUpdate(pos.latitude, pos.longitude, tomadoEn: pos.timestamp);
   }
 
   /// Cancels any active timer and releases resources.

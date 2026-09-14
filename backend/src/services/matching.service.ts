@@ -39,14 +39,20 @@ import { plazaDeCoordenadas } from './municipality.service';
  * the plain lastLat/lastLng/lastSeenAt columns used for presence/debugging.
  * Safe to call on every location_update, whether or not the driver is on a trip.
  */
-export async function updateDriverGeo(driverId: string, lat: number, lng: number): Promise<void> {
+export async function updateDriverGeo(
+  driverId: string,
+  lat: number,
+  lng: number,
+  /** Cuándo tomó el teléfono la lectura (ms). Las apps viejas no lo mandan. */
+  tomadoEn: number | null = null,
+): Promise<void> {
   // Antifraude: lee la posición previa y evalúa el salto (velocidad imposible)
   // antes de sobrescribirla — marca GPS falso sin bloquear jamás el fix.
   const prev = await prisma.driver.findUnique({
     where: { id: driverId },
     select: { lastLat: true, lastLng: true, lastSeenAt: true },
   });
-  if (prev) evaluateGeoJump(driverId, prev, lat, lng);
+  if (prev) evaluateGeoJump(driverId, prev, lat, lng, tomadoEn);
 
   // La plaza sale de la lista de municipios YA cacheada en memoria: no cuesta
   // una consulta y viaja en el mismo UPDATE que el fix. Sirve para que el panel
