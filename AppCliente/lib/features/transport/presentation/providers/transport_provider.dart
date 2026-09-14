@@ -59,10 +59,26 @@ class TransportNotifier extends StateNotifier<TransportState> {
   StreamSubscription<TripUpdateEvent>? _tripSub;
   StreamSubscription<DriverLocationEvent>? _locationSub;
 
+  /// Se completa cuando los viajes guardados ya están en memoria. Lo espera el
+  /// arranque para saber si hay que devolver al pasajero a su viaje en vez de
+  /// dejarlo en el inicio.
+  final _cargado = Completer<void>();
+  Future<void> get cargado => _cargado.future;
+
+  /// Se avisa SIEMPRE, incluso si el provider murió antes de cargar: quien
+  /// espera este futuro es el arranque de la app, y dejarlo colgado sería
+  /// dejar al pasajero mirando el splash.
+  void _avisarCargado() {
+    if (!_cargado.isCompleted) _cargado.complete();
+  }
+
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_kKey) ?? [];
-    if (!mounted) return;
+    if (!mounted) {
+      _avisarCargado();
+      return;
+    }
     final requests = raw
         .map(
           (s) => TransportRequestEntity.fromJson(
@@ -71,7 +87,22 @@ class TransportNotifier extends StateNotifier<TransportState> {
         )
         .toList();
     state = state.copyWith(requests: requests, isLoading: false);
+    // Después de dejar el estado puesto: quien despierte con este futuro va a
+    // leer `state` acto seguido.
+    _avisarCargado();
     unawaited(_resumeActiveTracking(requests));
+  }
+
+  /// Vuelve a enganchar el seguimiento tras volver del segundo plano.
+  ///
+  /// Android puede cortar el socket —o matar el proceso entero— mientras la
+  /// app está en el fondo. Al volver, lo que se ve en pantalla es lo último
+  /// que llegó antes de salir: un viaje "buscando conductor" que en realidad
+  /// ya tiene uno en la puerta. Esto releé el estado real del servidor y
+  /// reabre el socket sin esperar al backoff.
+  Future<void> reanudar() async {
+    if (!mounted) return;
+    await _resumeActiveTracking(state.requests);
   }
 
   /// Al reabrir la app, reconecta el WS y se resuscribe a los viajes que siguen
@@ -101,7 +132,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
     }
     if (!mounted) return;
 
-    final wsOk = await _wsService.connect();
+    // `reconectarYa` y no `connect`: al volver del segundo plano el socket
+    // puede seguir "abierto" pero muerto, y `connect` lo daría por bueno.
+    final wsOk = await _wsService.reconectarYa();
     if (!wsOk || !mounted) return;
     for (final r in active) {
       if (_wsSubscribed.add(r.id)) {
@@ -114,6 +147,12 @@ class TransportNotifier extends StateNotifier<TransportState> {
     _tripSub = _wsService.tripUpdates.listen(_applyTripUpdate);
     _locationSub = _wsService.driverLocations.listen(_applyLocationUpdate);
   }
+
+  /// Por qué NO se aplicó el cupón del último viaje pedido, o null.
+  ///
+  /// El viaje se crea igual —dejar a alguien sin taxi por un descuento sería un
+  /// mal cambio— pero hay que decirlo: cobrar de más en silencio es peor.
+  String? avisoCupon;
 
   Future<String> request({
     required TransportServiceType serviceType,
@@ -128,6 +167,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
     /// oferta: aceptar esperando efectivo y encontrarse una transferencia le
     /// descuadra la caja y ya no puede rechazarla.
     String? paymentMethod,
+    /// Código del cupón. Va el CÓDIGO, nunca el monto: el descuento lo calcula
+    /// el servidor al canjearlo contra la tarifa que él mismo midió.
+    String? promoCode,
+    /// Para cuándo lo quiere, en ISO UTC. Null = ahora mismo.
+    String? scheduledFor,
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
@@ -152,6 +196,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
     String id;
     String ref;
     String? deliveryPin;
+    // Lo que selló el SERVIDOR con el cupón. La app no vuelve a restar nada:
+    // su validación previa era solo para enseñar el precio.
+    var promoDiscount = 0;
+    double? totalPasajero;
+    avisoCupon = null;
 
     try {
       final res = await _dio.post<Map<String, dynamic>>(
@@ -172,6 +221,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
           if (recipientPhone != null) 'recipientPhone': recipientPhone,
           if (packageDescription != null) 'packageDescription': packageDescription,
           if (paymentMethod != null) 'paymentMethod': paymentMethod,
+          if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
+          if (scheduledFor != null) 'scheduledFor': scheduledFor,
         },
       );
       final data = res.data!['data'] as Map<String, dynamic>;
@@ -182,6 +233,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
       // que las ve también el repartidor). Si se descarta aquí, el cliente no
       // tiene qué dictar y la entrega no se puede cerrar nunca.
       deliveryPin = data['deliveryPin'] as String?;
+      avisoCupon = data['promoError'] as String?;
+      promoDiscount = (data['promoDiscount'] as num?)?.round() ?? 0;
+      totalPasajero = (data['totalPasajero'] as num?)?.toDouble();
       // El precio, la distancia y el tiempo son los que calculó el SERVIDOR.
       // Los de arriba eran una estimación local para poder pintar algo, y
       // guardarlos era lo que hacía que el pasajero viera una cifra al pedir y
@@ -211,13 +265,19 @@ class TransportNotifier extends StateNotifier<TransportState> {
       id: id,
       requestRef: ref,
       deliveryPin: deliveryPin,
+      promoDiscount: promoDiscount,
+      totalPasajero: totalPasajero,
       serviceType: serviceType,
       originAddress: origin,
       destinationAddress: destination,
       estimatedFare: fare,
       distanceKm: distanciaFinal,
       etaMinutes: eta,
-      status: TransportStatus.searching,
+      // Un viaje reservado NO está buscando conductor: lo dice el servidor y
+      // se respeta, o la pantalla enseñaría «buscando» toda la noche.
+      status: scheduledFor != null
+          ? TransportStatus.scheduled
+          : TransportStatus.searching,
       createdAt: DateTime.now(),
       recipientName: recipientName,
       recipientPhone: recipientPhone,
@@ -289,6 +349,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
         // viaje viendo la estimación del principio, que se calcula con otra
         // fórmula y casi nunca coincide con lo que paga.
         finalFare: (payload['finalFare'] as num?)?.toDouble() ?? r.finalFare,
+        driverId: payload['driverId'] as String? ?? r.driverId,
+        promoDiscount:
+            (payload['promoDiscount'] as num?)?.round() ?? r.promoDiscount,
+        totalPasajero:
+            (payload['totalPasajero'] as num?)?.toDouble() ?? r.totalPasajero,
         acceptedAt: acceptedAtStr != null
             ? DateTime.tryParse(acceptedAtStr)
             : r.acceptedAt,
@@ -373,12 +438,23 @@ class TransportNotifier extends StateNotifier<TransportState> {
   /// conductor nunca se enteraba y seguía con el 5,0 de fábrica.
   ///
   /// Devuelve el motivo si el servidor la rechaza, o null si quedó guardada.
-  Future<String?> rateRequest(String id, int stars, {String? comment}) async {
+  /// Califica el viaje. [elogios] son claves del catálogo (`GET /client/config`);
+  /// el servidor descarta lo que no reconozca y corta en su tope.
+  Future<String?> rateRequest(
+    String id,
+    int stars, {
+    String? comment,
+    List<String>? elogios,
+  }) async {
     _update(id, (r) => r.copyWith(rating: stars, ratingComment: comment));
     try {
       await _dio.post<Map<String, dynamic>>(
         '/client/trips/$id/rate',
-        data: {'stars': stars, if (comment != null) 'comment': comment},
+        data: {
+          'stars': stars,
+          if (comment != null) 'comment': comment,
+          if (elogios != null && elogios.isNotEmpty) 'tags': elogios,
+        },
       );
       return null;
     } on DioException catch (e) {

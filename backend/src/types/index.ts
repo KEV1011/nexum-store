@@ -116,8 +116,26 @@ export interface TripRequestDTO {
    * que el precio es el oficial cuando no lo es.
    */
   tarifaRegulada?: boolean;
-  /** Cómo pagará el pasajero: 'efectivo' | 'transferencia' | 'en_linea'. */
+  /** Cómo pagará el pasajero. Los valores los define `lib/metodos-pago`. */
   paymentMethod?: string;
+  /**
+   * Ese método, ya redactado para el conductor («Te paga por Nequi»). Lo
+   * escribe el servidor para que añadir un método no deje un hueco en blanco
+   * en las apps que no se hayan actualizado.
+   */
+  paymentNote?: string;
+  /**
+   * Cupón del pasajero, si lo hay. Va en la OFERTA a propósito.
+   *
+   * `estimatedFare` es lo que el conductor GANA, y no cambia por el cupón: el
+   * descuento lo pone la plataforma. Pero en un viaje en efectivo lo que
+   * recibe en la mano es `cobraAlPasajero`, que es menos. Enterarse de eso al
+   * final del día cuadrando la caja sería una sorpresa desagradable con toda
+   * la razón; verlo antes de aceptar, no.
+   */
+  promoDiscount?: number;
+  /** Lo que el conductor debe cobrarle al pasajero = tarifa − descuento. */
+  cobraAlPasajero?: number;
   /** Paradas intermedias, en orden. Van en la oferta: cambian el viaje. */
   stops?: TripStopDTO[];
 }
@@ -741,6 +759,8 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
 // ─── Client Trips ─────────────────────────────────────────────────────────────
 
 export type ClientTripStatus =
+  /** Reservado para más tarde; todavía no se le ofrece a nadie. */
+  | 'scheduled'
   | 'searching'
   | 'accepted'
   | 'arriving'
@@ -760,6 +780,27 @@ export interface ClientTripDTO {
   estimatedFare: number;
   /** Tarifa final liquidada por el backend (solo al completar). */
   finalFare?: number;
+  /** Para cuándo está reservado, en ISO. Ausente = viaje inmediato. */
+  scheduledFor?: string;
+  /** Cupón aplicado a este viaje, si lo hubo. */
+  promoCode?: string;
+  /**
+   * Lo que se le descuenta al pasajero. NO sale del bolsillo del conductor:
+   * su liquidación es la misma que sin cupón (ver `lib/descuento-viaje`).
+   */
+  promoDiscount?: number;
+  /**
+   * Lo que el pasajero paga de verdad = tarifa − descuento. Se DERIVA, nunca
+   * se guarda: un total guardado y un descuento guardado acaban discrepando y
+   * nadie sabe cuál miente.
+   */
+  totalPasajero?: number;
+  /**
+   * Por qué NO se aplicó el cupón que se pidió. El viaje sale igual —dejar a
+   * alguien sin taxi por un descuento sería un mal cambio— pero se dice, en
+   * vez de cobrar de más en silencio.
+   */
+  promoError?: string;
   /**
    * Cómo acordó pagar el pasajero. El conductor tiene que saberlo ANTES de
    * llegar: con 'transferencia' no puede esperar billetes en la mano.
@@ -768,6 +809,12 @@ export interface ClientTripDTO {
   distanceKm: number;
   etaMinutes: number;
   status: ClientTripStatus;
+  /**
+   * Para poder abrir su perfil público desde la ficha. Es un identificador
+   * opaco y la ruta que lo consume exige sesión del pasajero: no revela nada
+   * que no vea ya en la tarjeta del conductor.
+   */
+  driverId?: string;
   driverName?: string;
   driverPhone?: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
@@ -827,8 +874,19 @@ export interface RequestClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
-  /** 'efectivo' | 'transferencia' | 'en_linea'. Ausente = efectivo. */
+  /** Los valores los define `lib/metodos-pago`. Ausente = efectivo. */
   paymentMethod?: string;
+  /**
+   * Para cuándo lo quiere, en ISO. Ausente = ahora mismo. El servidor valida
+   * la antelación y decide cuándo empezar a buscar (`lib/viaje-programado`).
+   */
+  scheduledFor?: string;
+  /**
+   * Código del cupón, si el pasajero puso uno. Va el CÓDIGO y nunca el monto:
+   * si el teléfono dijera cuánto descontar, sería el mismo agujero que ya se
+   * cerró con la tarifa. El descuento lo calcula el servidor al canjear.
+   */
+  promoCode?: string;
   /**
    * Paradas intermedias (máx. 6). El precio se mide PASANDO por ellas, así que
    * añadirlas encarece el viaje: si no, el pasajero mete tres desvíos y el
@@ -1204,6 +1262,11 @@ export interface DriverDocumentDTO {
 export interface DriverProfileDTO {
   driverId: string;
   fullName: string;
+  /**
+   * Lo que sus pasajeros destacan, de más a menos. Es la parte útil de la
+   * calificación para el conductor: un 4,8 no le enseña qué hizo bien.
+   */
+  elogios?: { clave: string; etiqueta: string; veces: number }[];
   phone: string;
   photoUrl?: string;
   bio?: string;
@@ -1254,10 +1317,43 @@ export interface DriverPublicProfileDTO {
   photoUrl?: string;
   bio?: string;
   rating: number | null;  // null = todavía sin calificaciones
+  /** Sobre cuántas calificaciones. Un 4,9 con dos votos no dice lo mismo. */
+  ratingCount?: number;
   totalTrips: number;
   vehicleDescription: string;
   memberSince: string;
   isVerified: boolean;
+  /** Plaza donde opera. */
+  citySlug?: string;
+  /**
+   * Lo que sus pasajeros destacan, de más a menos, con el número de veces.
+   *
+   * El número va SIEMPRE: «Puntual · 3» dice mucho más que la etiqueta suelta,
+   * y evita que un solo viaje parezca una costumbre. Solo salen los que
+   * alguien marcó — «Buena música · 0» sería ruido y se leería como reproche.
+   */
+  elogios?: { clave: string; etiqueta: string; veces: number }[];
+  /**
+   * Su nivel en Nexum Pro («Plata», «Oro»…). Los beneficios de esos niveles
+   * prometen «insignia visible en tu perfil» desde que existen; hasta ahora el
+   * perfil no enseñaba ninguna.
+   */
+  nivelPro?: string;
+  /**
+   * Hitos alcanzados: «100+ servicios», «1.000+ km recorridos». Solo el
+   * escalón más alto de cada familia, y solo con datos medidos de verdad.
+   */
+  hitos?: { clave: string; etiqueta: string }[];
+  /**
+   * Lo que el pasajero mira antes de subirse al carro de un desconocido.
+   *
+   * Van SIEMPRE las seis, verificadas o no: esconder las que faltan haría que
+   * «3 verificaciones» pareciera la lista completa. La regla de qué cuenta
+   * está en `lib/verificaciones-conductor`.
+   */
+  verificaciones?: { clave: string; etiqueta: string; verificada: boolean }[];
+  verificacionesCumplidas?: number;
+  verificacionesTotal?: number;
 }
 
 // ─── Wompi Payments ───────────────────────────────────────────────────────────

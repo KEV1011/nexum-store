@@ -30,6 +30,7 @@ class TripRequestEntity {
     this.serviceType,
     this.tarifaRegulada = false,
     this.paymentMethod,
+    this.paymentNote,
     this.stops = const [],
   });
 
@@ -78,7 +79,9 @@ class TripRequestEntity {
   /// Tipo de servicio del backend (TAXI | MOTO | PARTICULAR | ENVIOS | MANDADO).
   final String? serviceType;
 
-  /// Cómo pagará el pasajero: 'efectivo' | 'transferencia' | 'en_linea'.
+  /// Cómo pagará el pasajero. Los valores los define el backend en
+  /// `lib/metodos-pago.ts` (efectivo, nequi, daviplata, bancolombia,
+  /// transferencia, en_linea).
   /// Null = efectivo (oferta de un backend anterior a este campo).
   final String? paymentMethod;
 
@@ -126,10 +129,23 @@ class TripRequestEntity {
   /// cuando lo estamos poniendo nosotros.
   final bool tarifaRegulada;
 
+  /// El aviso ya redactado por el servidor, cuando lo manda.
+  ///
+  /// Se prefiere al de aquí abajo porque el catálogo de métodos vive en el
+  /// backend: si allí se añade una billetera, esta app —que puede llevar meses
+  /// sin actualizarse en el teléfono de un conductor— seguiría enseñando un
+  /// hueco en blanco justo donde debería decir cómo le van a pagar.
+  final String? paymentNote;
+
   /// Cómo cobra el conductor, en una línea. Null = no hay nada que aclarar
   /// (efectivo es lo que ya espera cualquiera).
-  String? get avisoDePago => switch (paymentMethod) {
-        'transferencia' => 'Te paga por transferencia o Nequi',
+  String? get avisoDePago =>
+      paymentNote ??
+      switch (paymentMethod) {
+        'nequi' => 'Te paga por Nequi',
+        'daviplata' => 'Te paga por Daviplata',
+        'bancolombia' => 'Te paga por Bancolombia',
+        'transferencia' => 'Te paga por transferencia',
         'en_linea' => 'Ya pagado en la app',
         _ => null,
       };
@@ -151,6 +167,7 @@ class TripRequestEntity {
     String? serviceType,
     bool? tarifaRegulada,
     String? paymentMethod,
+    String? paymentNote,
     List<String>? stops,
   }) {
     return TripRequestEntity(
@@ -170,6 +187,7 @@ class TripRequestEntity {
       serviceType: serviceType ?? this.serviceType,
       tarifaRegulada: tarifaRegulada ?? this.tarifaRegulada,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentNote: paymentNote ?? this.paymentNote,
       stops: stops ?? this.stops,
     );
   }

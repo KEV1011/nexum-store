@@ -1039,6 +1039,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                             builder: (_) => TripChatScreen(
                               tripId: trip.request.id,
                               peerName: trip.request.passenger.name,
+                              passengerId: trip.request.passenger.id,
                             ),
                           ),
                         );

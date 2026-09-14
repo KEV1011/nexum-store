@@ -171,8 +171,11 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                                 padding: EdgeInsets.symmetric(
                                   horizontal: AppConstants.spacingM,
                                 ),
+                                // Sin bandera emoji: el sistema operativo la
+                                // dibuja distinta en cada teléfono y en muchos
+                                // Android sale como dos letras en un recuadro.
                                 child: Text(
-                                  '🇨🇴 +57',
+                                  'CO +57',
                                   style: TextStyle(
                                     fontFamily: 'Inter',
                                     fontSize: 16,

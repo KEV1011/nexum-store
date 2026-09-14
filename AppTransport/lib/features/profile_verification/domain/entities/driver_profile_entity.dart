@@ -94,6 +94,7 @@ class DriverProfileEntity {
     required this.phone,
     required this.rating,
     required this.totalTrips,
+    this.elogios = const [],
     required this.vehicleDescription,
     this.vehicleType,
     required this.memberSince,
@@ -115,6 +116,10 @@ class DriverProfileEntity {
   /// que el backend tampoco había calculado: era el valor de fábrica.
   final double? rating;
   final int totalTrips;
+
+  /// Lo que destacan sus pasajeros, de más a menos, con el número de veces.
+  /// Un 4,8 no le dice qué hizo bien; «Puntual · 3» sí.
+  final List<({String clave, String etiqueta, int veces})> elogios;
   final String vehicleDescription;
 
   /// Tipo REAL del vehículo activo (PARTICULAR|TAXI|MOTO|TURBO|CAMION|MULA)
@@ -144,6 +149,17 @@ class DriverProfileEntity {
         phone: j['phone'] as String? ?? '',
         rating: (j['rating'] as num?)?.toDouble(),
         totalTrips: (j['totalTrips'] as num?)?.toInt() ?? 0,
+        elogios: [
+          for (final e in (j['elogios'] as List<dynamic>?) ?? const [])
+            if (e is Map<String, dynamic> &&
+                e['clave'] is String &&
+                e['etiqueta'] is String)
+              (
+                clave: e['clave'] as String,
+                etiqueta: e['etiqueta'] as String,
+                veces: (e['veces'] as num?)?.toInt() ?? 0,
+              ),
+        ],
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         vehicleType: j['vehicleType'] as String?,
         memberSince: j['memberSince'] as String? ?? '',

@@ -338,7 +338,7 @@ describe('el panel pintando la comisión', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers, loadDiagnostics };`,
+      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers, loadDiagnostics, loadReports };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
     const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
     return { fn, el };
@@ -428,6 +428,70 @@ describe('el panel pintando la comisión', () => {
   // nota nula reventaba la tabla ENTERA de conductores delante del admin, y
   // como el panel es JavaScript dentro de una cadena, ni tsc ni el linter lo
   // ven — solo se descubre ejecutándolo.
+  // ── Cola de moderación ─────────────────────────────────────────────────────
+  //
+  // Es la pieza que Apple 1.2 exige además del botón de reportar: alguien
+  // tiene que MIRAR lo reportado. Y como todo el panel, solo se rompe delante
+  // de un administrador, así que se ejecuta.
+
+  const reporte = {
+    id: 'r1', reporterKind: 'client', reporterId: 'u1', reporterNombre: 'Ana',
+    targetKind: 'chat_message', targetId: 'm9', reason: 'acoso',
+    reasonEtiqueta: 'Acoso o amenazas', detail: 'Me escribió después del viaje',
+    status: 'PENDING', resolution: null, reviewedBy: null,
+    createdAt: '2026-09-12T10:00:00.000Z',
+  };
+
+  it('pinta un reporte pendiente con sus dos acciones', async () => {
+    const { fn, el } = montar(
+      { '/admin/reports': [reporte] },
+      ['reports-body', 'rep-status'],
+    );
+    fn['loadReports']!();
+    await esperar();
+    const html = el['reports-body']!.innerHTML;
+    expect(html).toContain('Ana');
+    expect(html).toContain('Acoso o amenazas');
+    expect(html).toContain('Actué');
+    expect(html).toContain('Desestimar');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('un reporte sin detalle no deja un hueco en blanco', async () => {
+    // `detail` es opcional en todos los motivos menos «otro». Sin la guarda
+    // saldría la palabra «null» en la columna que el admin lee para decidir.
+    const { fn, el } = montar(
+      { '/admin/reports': [{ ...reporte, detail: null, reporterNombre: null }] },
+      ['reports-body', 'rep-status'],
+    );
+    fn['loadReports']!();
+    await esperar();
+    const html = el['reports-body']!.innerHTML;
+    expect(html).toContain('—');
+    expect(html).not.toContain('null');
+    expect(html).not.toContain('undefined');
+    // Sin nombre cae al id, que al menos permite buscarlo.
+    expect(html).toContain('u1');
+  });
+
+  it('uno ya resuelto enseña quién lo revisó, no los botones', async () => {
+    const { fn, el } = montar(
+      {
+        '/admin/reports': [{
+          ...reporte, status: 'ACTIONED', reviewedBy: '+573001112233',
+          resolution: 'Conductor suspendido',
+        }],
+      },
+      ['reports-body', 'rep-status'],
+    );
+    fn['loadReports']!();
+    await esperar();
+    const html = el['reports-body']!.innerHTML;
+    expect(html).toContain('ACTIONED');
+    expect(html).toContain('+573001112233');
+    expect(html).not.toContain('Desestimar');
+  });
+
   it('un conductor SIN calificaciones no revienta la tabla', async () => {
     const base = {
       id: 'd1', name: 'Nelson', phone: '+573001112233', status: 'ONLINE',

@@ -1,20 +1,25 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nexum_client/core/config/app_config_provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/addresses_provider.dart';
 import 'package:nexum_client/features/payments/presentation/payment_checkout.dart';
 import 'package:nexum_client/features/payments/presentation/providers/payment_method_provider.dart';
+import 'package:nexum_client/features/payments/presentation/widgets/icono_metodo_pago.dart';
+import 'package:nexum_client/features/payments/presentation/widgets/fila_cupon.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
@@ -107,6 +112,18 @@ class _TransportBookingScreenState
   /// precio, tal como los cotizó el servidor. Null mientras no haya elección.
   TripOptionEntity? _categoria;
 
+  /// Cupón puesto por el pasajero. El descuento lo dice el SERVIDOR al
+  /// validarlo: aquí solo se guarda para pintarlo y para mandar el código al
+  /// pedir. Quien cobra de verdad vuelve a canjearlo contra la tarifa que él
+  /// mismo midió, así que esto es una vista previa, nunca la cifra que manda.
+  /// Para cuándo lo quiere. Null = ahora mismo.
+  DateTime? _programadoPara;
+
+  String? _cupon;
+  int _descuentoCupon = 0;
+  String? _errorCupon;
+  bool _validandoCupon = false;
+
   /// El selector solo aplica a viajes de pasajero. Los envíos no eligen
   /// categoría (los lleva cualquier vehículo) y conservan su tarjeta.
   bool get _eligeCategoria => !_isEnvios;
@@ -159,11 +176,105 @@ class _TransportBookingScreenState
   String _textoBotonCon({required bool sinVehiculos}) {
     final c = _categoria;
     if (c != null) {
-      return 'Pedir ${c.nombre} · ${CurrencyFormatter.format(c.fare.toDouble())}';
+      // Con cupón el botón enseña lo que se va a pagar de verdad. Dejar la
+      // tarifa completa y que el descuento apareciera solo en el recibo sería
+      // la misma trampa al revés: prometer un precio y cobrar otro.
+      final total = (c.fare - _descuentoCupon).clamp(0, c.fare);
+      return 'Pedir ${c.nombre} · ${CurrencyFormatter.format(total.toDouble())}';
     }
     if (sinVehiculos) return 'No hay vehículos disponibles ahora';
     if (_faltaCategoria) return 'Elige una categoría';
     return 'Solicitar ${widget.serviceType.label}';
+  }
+
+  /// Pregunta al servidor cuánto descuenta este código sobre la tarifa elegida.
+  ///
+  /// Es una VISTA PREVIA. Al pedir el viaje el servidor vuelve a canjearlo
+  /// contra la tarifa que él mismo midió, así que lo que se guarde aquí no
+  /// puede cambiar lo que se cobra — solo lo que se enseña.
+  Future<void> _aplicarCupon(String codigo) async {
+    final c = _categoria;
+    if (c == null) return;
+    setState(() {
+      _validandoCupon = true;
+      _errorCupon = null;
+    });
+    try {
+      final res = await ref.read(apiClientProvider).post<Map<String, dynamic>>(
+        '/client/promos/validate',
+        data: {'code': codigo, 'amount': c.fare, 'context': 'trip'},
+      );
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      final descuento = (data?['discount'] as num?)?.round() ?? 0;
+      if (!mounted) return;
+      setState(() {
+        _validandoCupon = false;
+        if (descuento > 0) {
+          _cupon = (data?['code'] as String?) ?? codigo;
+          _descuentoCupon = descuento;
+        } else {
+          _errorCupon = 'Ese código no descuenta nada en este viaje';
+        }
+      });
+    } on DioException catch (e) {
+      if (!mounted) return;
+      // El motivo del servidor MANDA: dice si venció, si ya se usó o si el
+      // viaje no llega al mínimo. «Código no válido» a secas hace que la
+      // persona lo escriba tres veces.
+      final motivo = (e.response?.data as Map?)?['error'] as String?;
+      setState(() {
+        _validandoCupon = false;
+        _errorCupon = motivo ?? 'No se pudo validar el código';
+      });
+    }
+  }
+
+  /// Pide fecha y hora. Los límites los pone el servidor y los repite aquí la
+  /// pantalla, para que no se pueda ni elegir algo que va a rechazar.
+  Future<void> _elegirCuando() async {
+    final ahora = DateTime.now();
+    // El mínimo lo valida también el servidor (30 min). Aquí se ofrece a
+    // partir de hoy y se comprueba después, porque el selector de fecha no
+    // sabe de horas.
+    final dia = await showDatePicker(
+      context: context,
+      initialDate: ahora,
+      firstDate: DateTime(ahora.year, ahora.month, ahora.day),
+      lastDate: ahora.add(const Duration(days: 7)),
+      helpText: '¿Qué día?',
+    );
+    if (dia == null || !mounted) return;
+
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(ahora.add(const Duration(hours: 1))),
+      helpText: '¿A qué hora?',
+    );
+    if (hora == null || !mounted) return;
+
+    final cuando = DateTime(dia.year, dia.month, dia.day, hora.hour, hora.minute);
+    // Se comprueba ANTES de guardar: dejar elegir una hora que el servidor va
+    // a rechazar y enterarse al tocar «Pedir» es hacerle repetir todo.
+    if (cuando.difference(ahora).inMinutes < 30) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Programa con al menos 30 minutos de anticipación. '
+            'Si lo necesitas ya, pídelo normal.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _programadoPara = cuando);
+  }
+
+  void _quitarCupon() {
+    setState(() {
+      _cupon = null;
+      _descuentoCupon = 0;
+      _errorCupon = null;
+    });
   }
 
   @override
@@ -362,7 +473,16 @@ class _TransportBookingScreenState
                         entroPor: widget.serviceType,
                         onSeleccionar: (o) {
                           if (!mounted) return;
+                          final cambio = _categoria?.categoria != o.categoria;
                           setState(() => _categoria = o);
+                          // Un cupón de porcentaje descuenta distinto sobre una
+                          // tarifa distinta: al cambiar de categoría hay que
+                          // volver a preguntar, o el botón enseñaría el
+                          // descuento de la categoría anterior.
+                          final vigente = _cupon;
+                          if (cambio && vigente != null) {
+                            unawaited(_aplicarCupon(vigente));
+                          }
                         },
                       ),
                     if (_faltaPunto != null) ...[
@@ -375,6 +495,30 @@ class _TransportBookingScreenState
                     // cerraba esa hoja se quedaba con el viaje ya buscando
                     // conductor y sin haber decidido cómo iba a pagar.
                     const _FilaMetodoPago(),
+                    // Programar solo tiene sentido en viajes de pasajero: un
+                    // envío se despacha cuando el paquete está listo.
+                    if (!_isEnvios) ...[
+                      const SizedBox(height: 10),
+                      _FilaProgramar(
+                        para: _programadoPara,
+                        onElegir: _elegirCuando,
+                        onQuitar: () => setState(() => _programadoPara = null),
+                      ),
+                    ],
+                    // El cupón solo se ofrece cuando ya hay un precio contra
+                    // el que aplicarlo: sin tarifa, validar un código no puede
+                    // decir cuánto descuenta.
+                    if (_categoria != null) ...[
+                      const SizedBox(height: 10),
+                      FilaCupon(
+                        codigo: _cupon,
+                        descuento: _descuentoCupon,
+                        error: _errorCupon,
+                        cargando: _validandoCupon,
+                        onAplicar: _aplicarCupon,
+                        onQuitar: _quitarCupon,
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     _botonPedir(sinVehiculos: sinVehiculos),
                   ],
@@ -706,25 +850,19 @@ class _TransportBookingScreenState
   Future<void> _useCurrentLocation({bool silencioso = false}) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        if (!silencioso) {
-          messenger.showSnackBar(const SnackBar(
-              content: Text('Activa la ubicación (GPS) del dispositivo.')));
-        }
-        return;
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (!silencioso) {
-          messenger.showSnackBar(const SnackBar(
-              content: Text('Permiso de ubicación denegado.')));
-        }
-        return;
-      }
+      // El intento automático al abrir NO pide nada: solo aprovecha el
+      // permiso si ya está. Pedirlo sin que nadie lo haya tocado es lo que
+      // Play castiga, y además gasta el único intento que da Android.
+      //
+      // Cuando la persona TOCÓ el botón, `Ubicacion.pedir` enseña primero la
+      // divulgación y solo entonces sale el diálogo del sistema. También se
+      // ocupa del GPS apagado y del permiso bloqueado, que antes eran dos
+      // mensajes sin salida.
+      final hayPermiso = silencioso
+          ? await Ubicacion.concedido()
+          : await Ubicacion.pedir(context);
+      if (!hayPermiso) return;
+      if (!mounted) return;
       final pos = await Geolocator.getCurrentPosition();
       if (!mounted) return;
       setState(() {
@@ -760,6 +898,8 @@ class _TransportBookingScreenState
             serviceType: _categoria?.serviceType ?? widget.serviceType,
             categoria: _categoria?.categoria,
             paymentMethod: ref.read(metodoPagoEfectivoProvider).valorApi,
+            promoCode: _cupon,
+            scheduledFor: _programadoPara?.toUtc().toIso8601String(),
             origin: _originCtrl.text.trim(),
             destination: _destCtrl.text.trim(),
             originLat: _originLat,
@@ -796,10 +936,23 @@ class _TransportBookingScreenState
 
     if (!mounted) return;
 
+    // Si el cupón no se pudo aplicar, el viaje salió igual —dejar a alguien
+    // sin taxi por un descuento sería un mal cambio— pero se dice. Cobrar de
+    // más en silencio es lo que no se puede hacer.
+    final aviso = ref.read(transportProvider.notifier).avisoCupon;
+    if (aviso != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('El cupón no se aplicó: $aviso')),
+      );
+    }
+
     final trip = ref.read(transportByIdProvider(id));
-    // El importe a pagar es el del viaje que creó el servidor; si faltara, el
-    // de la categoría cotizada. La estimación local queda como último recurso.
-    final fare = trip?.estimatedFare ??
+    // Lo que se cobra es lo que el SERVIDOR dice que paga el pasajero: ya trae
+    // restado el cupón que él mismo selló. Cobrar la tarifa completa después de
+    // haber enseñado el precio con descuento sería prometer una cifra y cobrar
+    // otra. La estimación local queda como último recurso.
+    final fare = trip?.totalPasajero ??
+        trip?.estimatedFare ??
         _categoria?.fare.toDouble() ??
         widget.serviceType.estimateFare(4);
 
@@ -1444,32 +1597,21 @@ class _FilaMetodoPago extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final metodo = ref.watch(metodoPagoEfectivoProvider);
-    // Siempre hay al menos dos opciones —efectivo y transferencia—, así que el
-    // selector nunca se apaga. El pago EN LÍNEA es el único que depende de que
-    // haya pasarela configurada: ofrecerlo sin llaves sería un botón que no
-    // cobra.
-    final pagoEnLinea =
-        ref.watch(appConfigProvider).valueOrNull?.pagoEnLinea ?? false;
+    // La lista la manda el servidor; el catálogo local es el respaldo. Siempre
+    // queda al menos el efectivo, así que el selector nunca se apaga.
+    final disponibles = ref.watch(metodosDePagoProvider);
 
     return Material(
       color: context.surfaceVariantColor,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _elegir(context, ref, pagoEnLinea),
+        onTap: () => _elegir(context, ref, disponibles),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Icon(
-                switch (metodo) {
-                  MetodoPago.efectivo => Icons.payments_outlined,
-                  MetodoPago.transferencia => Icons.swap_horiz_rounded,
-                  MetodoPago.enLinea => Icons.credit_card_rounded,
-                },
-                size: 22,
-                color: context.textSecondaryColor,
-              ),
+              IconoMetodoPago(metodo, tamano: 34),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1511,43 +1653,145 @@ class _FilaMetodoPago extends ConsumerWidget {
   Future<void> _elegir(
     BuildContext context,
     WidgetRef ref,
-    bool pagoEnLinea,
+    List<MetodoPago> disponibles,
   ) async {
+    final actual = ref.read(metodoPagoEfectivoProvider);
     final elegido = await showModalBottomSheet<MetodoPago>(
       context: context,
+      // La lista crece y, con la letra grande del sistema, seis filas no caben
+      // en la mitad de la pantalla: sin esto la hoja se desborda.
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 18),
-            const Text(
-              'Método de pago',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-            for (final m in MetodoPago.values)
-              if (m != MetodoPago.enLinea || pagoEnLinea)
-              ListTile(
-                leading: Icon(switch (m) {
-                  MetodoPago.efectivo => Icons.payments_outlined,
-                  MetodoPago.transferencia => Icons.swap_horiz_rounded,
-                  MetodoPago.enLinea => Icons.credit_card_rounded,
-                }),
-                title: Text(m.etiqueta),
-                subtitle: Text(m.detalle),
-                onTap: () => Navigator.of(context).pop(m),
+      builder: (hoja) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(hoja).size.height * 0.8,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 18),
+              Text(
+                'Paga con',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
               ),
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final m in disponibles)
+                      ListTile(
+                        leading: IconoMetodoPago(m),
+                        title: Text(m.etiqueta),
+                        subtitle: Text(m.detalle),
+                        // Se marca el que está puesto: una lista de opciones
+                        // sin señalar la vigente obliga a cerrar y volver a
+                        // abrir para saber cuál estaba.
+                        trailing: m == actual
+                            ? const Icon(Icons.check_circle_rounded)
+                            : null,
+                        onTap: () => Navigator.of(hoja).pop(m),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );
     if (elegido != null) {
       await ref.read(metodoPagoProvider.notifier).elegir(elegido);
     }
+  }
+}
+
+/// Fila para reservar el viaje para más tarde.
+///
+/// El precio que se enseña al reservar es una ESTIMACIÓN y se dice con todas
+/// las letras: el de verdad se calcula cuando el viaje sale a buscar
+/// conductor, con la tarifa vigente en ese momento. En un taxi esa tarifa la
+/// fija el decreto municipal, no nosotros, y sellarla hoy sería prometer un
+/// precio que mañana puede no ser el autorizado.
+class _FilaProgramar extends StatelessWidget {
+  const _FilaProgramar({
+    required this.para,
+    required this.onElegir,
+    required this.onQuitar,
+  });
+
+  final DateTime? para;
+  final Future<void> Function() onElegir;
+  final VoidCallback onQuitar;
+
+  String get _cuando {
+    final d = para!;
+    final hoy = DateTime.now();
+    final esHoy = d.year == hoy.year && d.month == hoy.month && d.day == hoy.day;
+    final hora = DateFormat('h:mm a', 'es_CO').format(d);
+    if (esHoy) return 'Hoy a las $hora';
+    return '${DateFormat('EEEE d \'de\' MMMM', 'es_CO').format(d)} a las $hora';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final programado = para != null;
+    return Material(
+      color: context.surfaceVariantColor,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => onElegir(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                programado
+                    ? Icons.event_available_rounded
+                    : Icons.schedule_rounded,
+                size: 20,
+                color: context.textSecondaryColor,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      programado ? _cuando : 'Programar para más tarde',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                    if (programado)
+                      Text(
+                        'El precio final se calcula al salir a buscar conductor',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (programado)
+                TextButton(onPressed: onQuitar, child: const Text('Quitar')),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

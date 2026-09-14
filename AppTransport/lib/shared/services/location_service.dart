@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
+import 'package:nexum_driver/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_driver/shared/models/location_model.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 
@@ -83,24 +84,16 @@ class LocationService {
 
   // ── Permissions ────────────────────────────────────────────────────────────
 
-  /// Solicita permisos de ubicación al usuario.
+  /// ¿Hay permiso de ubicación y GPS encendido? **No lo pide.**
   ///
-  /// Returns `true` when the app has at least
-  /// [LocationPermission.whileInUse] and the GPS service is enabled.
-  Future<bool> requestPermissions() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return false;
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return false;
-    }
-
-    if (permission == LocationPermission.deniedForever) return false;
-
-    return true;
-  }
+  /// Antes esto llamaba a `Geolocator.requestPermission()` y salía desde
+  /// `_connectWs`, o sea que el diálogo del sistema aparecía sin una palabra
+  /// de por medio. Google Play exige una divulgación destacada ANTES de pedir
+  /// ubicación, y con más razón aquí, que es rastreo continuo.
+  ///
+  /// El permiso se pide en un solo sitio, [Ubicacion.pedir], desde el botón de
+  /// conectarse. Aquí solo se comprueba.
+  Future<bool> hasPermission() => Ubicacion.concedido();
 
   // ── Current position ───────────────────────────────────────────────────────
 
@@ -115,8 +108,7 @@ class LocationService {
   /// pantalla lo dijera. Una coordenada inventada que se ve igual que una real
   /// es peor que un error.
   Future<LocationModel> getCurrentLocation() async {
-    final hasPermission = await requestPermissions();
-    if (!hasPermission) {
+    if (!await hasPermission()) {
       throw const LocationPermissionException();
     }
 
@@ -157,9 +149,19 @@ class LocationService {
       );
     }
     if (!kIsWeb && Platform.isIOS) {
+      // `allowBackgroundLocationUpdates` es el equivalente iOS del foreground
+      // service de Android: sin él, iOS deja de entregar posiciones en cuanto
+      // la app se va al fondo, y el conductor sale del despacho por frescura
+      // con el teléfono en el bolsillo.
+      //
+      // Va emparejado con `UIBackgroundModes: location` en el Info.plist. Si
+      // alguien quita el modo y deja este flag, CLLocationManager LANZA al
+      // arrancar el stream y el conductor no puede conectarse. Los dos, o
+      // ninguno.
       return AppleSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
+        allowBackgroundLocationUpdates: true,
         showBackgroundLocationIndicator: true,
         pauseLocationUpdatesAutomatically: false,
       );

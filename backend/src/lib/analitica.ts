@@ -29,8 +29,23 @@ export function rangoAnterior(
   hastaISO: string,
 ): { desde: string; hasta: string; dias: number } {
   const dia = 86_400_000;
-  const desde = new Date(`${desdeISO}T00:00:00.000Z`);
-  const hasta = new Date(`${hastaISO}T00:00:00.000Z`);
+  // Se recorta a la parte de fecha ANTES de pegar la hora.
+  //
+  // Aquí se pegaba `T00:00:00.000Z` a lo que llegara, dando por supuesto que
+  // era 'AAAA-MM-DD'. Pero quien llama —`getFleetAnalytics`, con lo que
+  // devuelve `getFleetFinance`— manda el ISO completo, así que salía
+  // '2026-09-01T00:00:00.000ZT00:00:00.000Z': fecha inválida, NaN, y
+  // `toISOString()` lanzando `RangeError`. Resultado: la pestaña Rendimiento
+  // del portal devolvía 500 SIEMPRE, para cualquier flota, con datos o sin
+  // ellos. Las pruebas no lo vieron porque le pasaban el formato que el autor
+  // tenía en la cabeza, no el que manda el llamador.
+  const desde = new Date(`${desdeISO.slice(0, 10)}T00:00:00.000Z`);
+  const hasta = new Date(`${hastaISO.slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(desde.getTime()) || Number.isNaN(hasta.getTime())) {
+    // Falla con un motivo legible en vez de un `RangeError` desde las
+    // entrañas de `toISOString`.
+    throw new Error(`Rango de fechas inválido: "${desdeISO}" a "${hastaISO}"`);
+  }
   const dias = Math.max(1, Math.round((hasta.getTime() - desde.getTime()) / dia) + 1);
   const antesHasta = new Date(desde.getTime() - dia);
   const antesDesde = new Date(antesHasta.getTime() - (dias - 1) * dia);

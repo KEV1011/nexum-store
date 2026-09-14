@@ -47,6 +47,7 @@ import { OperatorStatus } from '@prisma/client';
 import { setDriverKycStatus, KycError } from '../services/kyc.service';
 import { motivoParaNoConectar } from '../services/driver-online-guard';
 import { adminClearCompliance } from '../services/document-expiry.service';
+import { listarReportes, resolverReporte } from '../services/moderacion.service';
 import { listSafetyAlerts } from '../services/safety-alerts.service';
 import { checkDriverBackground, BackgroundCheckError } from '../services/background-check.service';
 import { listTakedowns, resolveTakedown } from '../services/legal.service';
@@ -370,6 +371,33 @@ router.post('/takedowns/:id/resolve', async (req: Request, res: Response): Promi
   const data = await resolveTakedown(req.params['id']!, action, req.adminPhone ?? 'admin');
   if (!data) { res.status(404).json({ success: false, error: 'Solicitud no encontrada' }); return; }
   res.json({ success: true, data });
+});
+
+// ─── Moderación de contenido de usuario ─────────────────────────────────────
+//
+// La cuarta pieza que exigen Apple 1.2 y Play: además de poder reportar y
+// bloquear, alguien tiene que MIRAR lo reportado. Un buzón que nadie abre no
+// es un sistema de moderación.
+router.get('/reports', async (req: Request, res: Response): Promise<void> => {
+  const estado = String(req.query['status'] ?? 'PENDING');
+  res.json({ success: true, data: await listarReportes(estado) });
+});
+
+router.post('/reports/:id/resolve', async (req: Request, res: Response): Promise<void> => {
+  const { action, nota } = req.body as { action?: string; nota?: string };
+  if (action !== 'ACTIONED' && action !== 'DISMISSED') {
+    res.status(400).json({ success: false, error: "action debe ser 'ACTIONED' o 'DISMISSED'" });
+    return;
+  }
+  try {
+    await resolverReporte(req.params['id']!, action, req.adminPhone ?? 'admin', nota);
+    res.json({ success: true, data: { ok: true } });
+  } catch (err) {
+    res.status(409).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo resolver',
+    });
+  }
 });
 
 // ─── Soporte con tickets ────────────────────────────────────────────────────────
@@ -832,6 +860,7 @@ const PANEL_HTML = `<!DOCTYPE html>
       <button data-tab="sos" onclick="show('sos')">SOS</button>
       <button data-tab="promos" onclick="show('promos')">Promos</button>
       <button data-tab="payouts" onclick="show('payouts')">Retiros</button>
+      <button data-tab="reports" onclick="show('reports')">Moderación</button>
       <button data-tab="support" onclick="show('support')">Soporte</button>
     </nav>
 
@@ -969,6 +998,22 @@ const PANEL_HTML = `<!DOCTYPE html>
       <p style="font-size:.8rem;color:#64748b;margin:4px 0 10px">Geocerca de destino, detenciones prolongadas y desvíos del corredor de la ruta en servicios EN CURSO. Se reinician con el redeploy.</p>
       <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Conductor</th><th>Servicio</th><th>Detalle</th></tr></thead>
       <tbody id="alerts-body"><tr><td colspan="5" class="empty">Cargando…</td></tr></tbody></table>
+    </section>
+
+    <section id="tab-reports" style="display:none">
+      <p style="font-size:.8rem;color:#64748b;margin:0 0 12px">Contenido reportado por pasajeros y conductores: mensajes del chat, reseñas, perfiles y productos. Apple y Play exigen que alguien lo revise; esta es esa cola.</p>
+      <div class="inline" style="margin-bottom:12px">
+        <div><label>Estado</label>
+          <select id="rep-status" onchange="loadReports()">
+            <option value="PENDING">Por revisar</option>
+            <option value="ACTIONED">Con acción</option>
+            <option value="DISMISSED">Desestimados</option>
+            <option value="ALL">Todos</option>
+          </select>
+        </div>
+      </div>
+      <table><thead><tr><th>Fecha</th><th>Quién reporta</th><th>Qué</th><th>Motivo</th><th>Detalle</th><th>Acciones</th></tr></thead>
+      <tbody id="reports-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-promos" style="display:none">
@@ -1117,7 +1162,7 @@ function show(tab) {
   const sec = document.getElementById('tab-' + tab);
   if (sec) sec.style.display = 'block';
   for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('active', b.dataset.tab === tab);
-  const cargar = ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperatorsTab, businesses: loadBusinesses, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport })[tab];
+  const cargar = ({ metrics: loadMetrics, docs: loadDocs, drivers: loadDrivers, clients: loadClients, operators: loadOperatorsTab, businesses: loadBusinesses, sos: loadSos, promos: loadPromos, payouts: loadPayouts, support: loadSupport, reports: loadReports })[tab];
   // Sin la guarda, añadir una pestaña y olvidar su cargador reventaba show()
   // ENTERO: no se abría ninguna sección y no aparecía ningún mensaje. Ahora
   // la pestaña se abre y dice qué falta.
@@ -1795,6 +1840,32 @@ function loadAlerts() {
       '</td><td>' + esc(a.driverName) + '</td><td>' + esc(a.serviceKind) + ' · ' + esc(a.serviceId.slice(0, 8)) +
       '</td><td>' + esc(a.detail) + '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
+}
+function loadReports() {
+  const estado = (document.getElementById('rep-status') || {}).value || 'PENDING';
+  api('/admin/reports?status=' + encodeURIComponent(estado)).then((rows) => {
+    const tb = document.getElementById('reports-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Nada por revisar.</td></tr>'; return; }
+    tb.innerHTML = rows.map((r) => '<tr><td>' + when(r.createdAt) + '</td><td>' +
+      esc(r.reporterNombre || r.reporterId) + '<br><span style="font-size:.7rem;color:#64748b">' + esc(r.reporterKind) +
+      '</span></td><td>' + esc(r.targetKind) + '<br><span style="font-size:.7rem;color:#64748b">' + esc(r.targetId) +
+      '</span></td><td><span class="badge">' + esc(r.reasonEtiqueta) + '</span></td><td style="max-width:280px">' +
+      esc(r.detail || '—') + '</td><td>' +
+      (r.status === 'PENDING'
+        ? '<button class="btn-sm btn-approve" onclick="resolveReport(\\'' + r.id + '\\', \\'ACTIONED\\')">Actué</button> ' +
+          '<button class="btn-sm btn-reject" onclick="resolveReport(\\'' + r.id + '\\', \\'DISMISSED\\')">Desestimar</button>'
+        : '<span class="badge">' + r.status + '</span>' + (r.reviewedBy ? '<br><span style="font-size:.7rem;color:#64748b">por ' + esc(r.reviewedBy) + '</span>' : '')) +
+      '</td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+function resolveReport(id, action) {
+  // "Actué" pide la nota a propósito: dentro de un mes, un reporte cerrado sin
+  // decir qué se hizo no distingue "se suspendió al conductor" de "se leyó".
+  var nota = action === 'ACTIONED' ? prompt('¿Qué hiciste? (queda como constancia)') : (prompt('Motivo de desestimarlo (opcional)') || '');
+  if (action === 'ACTIONED' && !nota) return;
+  api('/admin/reports/' + id + '/resolve', { method: 'POST', body: JSON.stringify({ action: action, nota: nota }) })
+    .then(() => { showMsg('Reporte actualizado.', false); loadReports(); })
+    .catch((e) => showMsg(e.message, true));
 }
 function loadTakedowns() {
   api('/admin/takedowns').then((rows) => {

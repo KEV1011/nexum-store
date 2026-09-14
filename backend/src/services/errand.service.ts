@@ -9,6 +9,7 @@ import { DriverStatus, ErrandStatus as ErrandStatusDb } from '@prisma/client';
 import { fichaPorConductor, type DriverCardFields } from '../lib/driver-card';
 import { ERRAND_SERVICE_FEE } from '../config/constants';
 import { prisma } from '../lib/prisma';
+import { nuevaReferencia } from '../lib/referencia';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { tasaComision } from './comision.service';
 import { cancelSearchRetry } from './matching.service';
@@ -106,7 +107,7 @@ export async function requestClientErrand(
   clientId: string,
   dto: RequestClientErrandDTO,
 ): Promise<ClientErrandWithPinsDTO> {
-  const requestRef = `NXE-${Math.floor(1000 + Math.random() * 8000)}`;
+  const requestRef = nuevaReferencia('NXE');
   const errand = await prisma.errand.create({
     data: {
       requestRef,

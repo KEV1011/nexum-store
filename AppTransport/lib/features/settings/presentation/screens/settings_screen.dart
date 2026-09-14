@@ -13,6 +13,7 @@ import 'package:nexum_driver/features/settings/presentation/screens/delete_accou
 import 'package:nexum_driver/features/settings/presentation/screens/legal_doc_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/privacy_screen.dart';
 import 'package:nexum_driver/shared/services/navegacion_externa.dart';
+import 'package:nexum_driver/features/moderacion/presentation/bloqueados_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -196,6 +197,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 color: context.textSecondaryColor),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const PrivacyScreen()),
+            ),
+          ),
+          // Ver y deshacer los bloqueos. Aquí el coste de un bloqueo es
+          // directo: cada pasajero bloqueado es un viaje que este conductor ya
+          // no va a recibir, así que tiene que poder revisarlos.
+          _SettingsTile(
+            icon: Icons.block_outlined,
+            iconColor: context.textSecondaryColor,
+            title: 'Pasajeros bloqueados',
+            trailing: Icon(Icons.chevron_right_rounded,
+                color: context.textSecondaryColor),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const BloqueadosScreen()),
             ),
           ),
           _SettingsTile(

@@ -263,3 +263,29 @@ jobs:
           echo "✅ Build complete!"
           ls -lh AppTransport/build/app/outputs/flutter-apk/ 2>/dev/null || true
           ls -lh AppTransport/build/app/outputs/bundle/release/ 2>/dev/null || true
+
+      # Un APK sin Firebase funciona en todo MENOS en avisos, y no se nota:
+      # la app arranca, el conductor entra, trabaja, y simplemente no le suena
+      # nada nunca. Pasó — 36 usuarios sin un solo token registrado y 124
+      # intentos de envío al vacío, descubierto semanas después por la
+      # comprobación del panel. El aviso va al RESUMEN de la ejecución, que es
+      # lo único que alguien mira, y no a la línea 4.000 del log.
+      - name: Avisar si el APK salió sin push
+        if: always()
+        working-directory: AppTransport/android/app
+        run: |
+          if [ -f google-services.json ]; then
+            echo "### Push: activado (google-services.json presente)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### ⚠️ Este APK NO recibe notificaciones"
+              echo ""
+              echo "Se construyó sin \`google-services.json\`, así que Firebase no se inicializa:"
+              echo "la app no obtiene token y el servidor no tiene a dónde mandar los avisos."
+              echo "Al conductor no le suena una sola oferta."
+              echo ""
+              echo "Arreglo: define el secreto \`GOOGLE_SERVICES_BASE64\` y vuelve a construir."
+              echo "Comprobar después en /admin → Métricas → Estado de las integraciones."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=APK sin push::Falta GOOGLE_SERVICES_BASE64; este APK no recibe notificaciones."
+          fi

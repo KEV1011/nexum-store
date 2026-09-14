@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
 
@@ -187,15 +188,12 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
   /// (p. ej. web): en ese caso el backend ancla la búsqueda al centro de Pamplona.
   Future<(double, double)?> _currentCoords() async {
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) return null;
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return null;
-      }
+      // Un provider no tiene `BuildContext`, así que no puede enseñar la
+      // divulgación — y sin divulgación no se pide el permiso. Aquí solo se
+      // aprovecha si ya está concedido; si no, el backend ancla la búsqueda
+      // como ya hacía. El permiso se pide desde la pantalla del mandado,
+      // donde la recogida se elige con el selector de punto.
+      if (!await Ubicacion.concedido()) return null;
       final pos = await Geolocator.getCurrentPosition();
       return (pos.latitude, pos.longitude);
     } catch (_) {

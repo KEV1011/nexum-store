@@ -36,6 +36,7 @@ function migracionesFallaron(): boolean {
 import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.service';
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
+import { despacharProgramados } from './services/client.service';
 import { purgeOldTrackPoints, pruneTrackState } from './services/track.service';
 import { rescatarDespacho, BARRIDO_MS } from './services/dispatch-recovery.service';
 import { warmMunicipalities } from './services/municipality.service';
@@ -274,6 +275,11 @@ server.listen(PORT, () => {
   // puede nacer del heartbeat: aquí el problema es que el heartbeat dejó de
   // llegar, así que hace falta ir a buscarlo.
   setInterval(() => void sweepOfflineDrivers(), 60 * 1000).unref();
+  // Viajes reservados: cada minuto se mira a cuáles les toca salir a buscar.
+  // Es un barrido y no un temporizador por viaje porque un `setTimeout` se
+  // pierde en cada despliegue, y el viaje de mañana a las 8 se quedaría
+  // esperando para siempre.
+  setInterval(() => void despacharProgramados(), 60 * 1000).unref();
   // Rescate del despacho: los ciclos de oferta viven en memoria, así que un
   // redeploy los deja huérfanos y el cliente se queda mirando "buscando
   // conductor" para siempre. Se revisa al arrancar y se repite periódicamente

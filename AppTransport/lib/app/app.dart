@@ -5,6 +5,7 @@ import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/app/theme/app_theme.dart';
 import 'package:nexum_driver/app/theme/theme_provider.dart';
 import 'package:nexum_driver/core/network/interceptors/auth_interceptor.dart';
+import 'package:nexum_driver/core/ui/escala_texto.dart';
 
 class ZIPADriverApp extends ConsumerWidget {
   const ZIPADriverApp({super.key});
@@ -24,6 +25,7 @@ class ZIPADriverApp extends ConsumerWidget {
       darkTheme: AppTheme.darkTheme(),
       themeMode: themeMode,
       routerConfig: router,
+      builder: (context, child) => EscalaTexto.acotar(child ?? const SizedBox()),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

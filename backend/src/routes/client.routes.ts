@@ -31,6 +31,8 @@ import {
   borrarCuentaCliente,
   motivoBloqueoCliente,
 } from '../services/account-deletion.service';
+import { crearReporte, bloquear, desbloquear, listarBloqueos } from '../services/moderacion.service';
+import { ReporteInvalido, motivosParaApps } from '../lib/reportes';
 import {
   createFreightRequest,
   listClientFreights,
@@ -85,6 +87,8 @@ import {
   pagoEnLineaDisponible,
   reconcilePayment,
 } from '../services/payment.service';
+import { metodosDisponibles } from '../lib/metodos-pago';
+import { ELOGIOS_AL_CONDUCTOR, MAX_ELOGIOS_POR_VIAJE } from '../lib/elogios';
 import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
 import {
   getClientPromoOverview,
@@ -175,8 +179,26 @@ router.get('/config', (_req, res) => {
     success: true,
     data: {
       pagoEnLinea: pagoEnLineaDisponible(),
-      // Métodos que la app debe mostrar, en orden. El efectivo siempre está.
-      metodosPago: pagoEnLineaDisponible() ? ['efectivo', 'en_linea'] : ['efectivo'],
+      // Los métodos que la app debe mostrar, en orden, con su texto. Va el
+      // texto y no solo el identificador para que la etiqueta viva en un solo
+      // sitio: si la app trajera la suya, añadir un método aquí dejaría un
+      // hueco en blanco en los teléfonos que no se hayan actualizado.
+      //
+      // `metodosPago` (solo los identificadores) se mantiene para las apps ya
+      // instaladas, que es lo que leen.
+      metodosPago: metodosDisponibles(pagoEnLineaDisponible()).map((m) => m.valor),
+      metodosDePago: metodosDisponibles(pagoEnLineaDisponible()).map((m) => ({
+        valor: m.valor,
+        etiqueta: m.etiqueta,
+        detalle: m.detalle,
+        quienCobra: m.quienCobra,
+      })),
+      // Lo que el pasajero puede destacar del conductor al calificar. Viaja
+      // desde aquí por lo mismo que los métodos de pago: la etiqueta vive en
+      // un solo sitio, así que añadir un elogio no deja un chip sin nombre en
+      // los teléfonos que no se hayan actualizado.
+      elogios: ELOGIOS_AL_CONDUCTOR,
+      maxElogios: MAX_ELOGIOS_POR_VIAJE,
     },
   });
 });
@@ -213,6 +235,66 @@ router.get('/account/deletion', clientAuthMiddleware, async (req, res) => {
     res.json({ success: true, data: { puedeEliminar: bloqueo === null, motivo: bloqueo } });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Moderación: reportar y bloquear ─────────────────────────────────────────
+//
+// Apple 1.2 y la política de contenido de usuario de Play exigen las dos cosas
+// en cualquier app donde la gente se escriba o publique. Ver `lib/reportes.ts`.
+
+// GET /client/reports/reasons — el catálogo, para que la app no lo duplique.
+// Si la lista viviera en las dos apps, cambiar un motivo obligaría a publicar
+// versiones nuevas y durante semanas convivirían tres catálogos distintos.
+router.get('/reports/reasons', clientAuthMiddleware, (_req, res) => {
+  res.json({ success: true, data: motivosParaApps() });
+});
+
+// POST /client/reports — reportar un mensaje, un conductor, una reseña…
+router.post('/reports', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await crearReporte('client', req.clientId!, req.body ?? {}) });
+  } catch (err) {
+    const status = err instanceof ReporteInvalido ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo enviar el reporte',
+    });
+  }
+});
+
+// GET /client/blocks — a quién tengo bloqueado.
+router.get('/blocks', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await listarBloqueos('client', req.clientId!) });
+  } catch {
+    res.status(500).json({ success: false, error: 'No pudimos cargar tu lista.' });
+  }
+});
+
+// POST /client/blocks — no volver a coincidir con este conductor.
+router.post('/blocks', clientAuthMiddleware, async (req, res) => {
+  try {
+    await bloquear('client', req.clientId!, req.body ?? {});
+    res.json({ success: true, data: { ok: true } });
+  } catch (err) {
+    const status = err instanceof ReporteInvalido ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo bloquear',
+    });
+  }
+});
+
+// DELETE /client/blocks/:id — desbloquear. Un bloqueo sin vuelta atrás es una
+// trampa: la gente se arrepiente, y en un pueblo pequeño puede quedarse sin
+// conductores por un malentendido.
+router.delete('/blocks/:id', clientAuthMiddleware, async (req, res) => {
+  try {
+    await desbloquear('client', req.clientId!, String(req.params['id']));
+    res.json({ success: true, data: { ok: true } });
+  } catch {
+    res.status(500).json({ success: false, error: 'No se pudo desbloquear.' });
   }
 });
 
@@ -368,15 +450,17 @@ router.post('/orders/:id/cancel', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true });
 });
 
-// POST /client/trips/:id/rate { stars, comment } — califica un viaje terminado.
+// POST /client/trips/:id/rate { stars, comment, tags } — califica un viaje.
 //
 // La hoja de estrellas ya existía en la app; lo que no existía era esta ruta,
 // así que la nota moría en el teléfono y el conductor seguía con el 5,0 de
 // fábrica que nadie le dio.
 router.post('/trips/:id/rate', clientAuthMiddleware, async (req, res) => {
-  const { stars, comment } = req.body as { stars?: unknown; comment?: unknown };
+  const { stars, comment, tags } = req.body as {
+    stars?: unknown; comment?: unknown; tags?: unknown;
+  };
   try {
-    const data = await rateClientTrip(req.clientId!, req.params['id']!, stars, comment);
+    const data = await rateClientTrip(req.clientId!, req.params['id']!, stars, comment, tags);
     res.status(201).json({ success: true, data });
   } catch (err) {
     res.status(400).json({
@@ -465,7 +549,9 @@ router.get('/trips/options', clientAuthMiddleware, async (req, res) => {
   try {
     res.json({
       success: true,
-      data: await getTripOptions(originLat, originLng, destLat, destLng, paradas),
+      data: await getTripOptions(
+        originLat, originLng, destLat, destLng, paradas, req.clientId ?? null,
+      ),
     });
   } catch (err) {
     console.error('[Opciones] error calculando opciones de viaje:', err);
@@ -499,6 +585,8 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
     originLat?: number; originLng?: number; destLat?: number; destLng?: number;
     recipientName?: string; recipientPhone?: string; packageDescription?: string;
     paymentMethod?: string;
+    promoCode?: string;
+    scheduledFor?: string;
     stops?: import('../types').TripStopDTO[];
   };
 
@@ -513,6 +601,8 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
       originAddress: dto.originAddress,
       destinationAddress: dto.destinationAddress,
       estimatedFare: dto.estimatedFare ?? 0,
+      promoCode: dto.promoCode,
+      scheduledFor: dto.scheduledFor,
       stops: dto.stops,
       distanceKm: dto.distanceKm ?? 0,
       etaMinutes: dto.etaMinutes ?? 0,

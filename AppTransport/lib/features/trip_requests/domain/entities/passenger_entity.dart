@@ -20,10 +20,11 @@ class PassengerEntity {
 
   /// Calificación del pasajero, o null si no la hay.
   ///
-  /// Hoy es SIEMPRE null: no existe calificación de pasajeros (`User` no
-  /// tiene columna de nota y nadie los puntúa). El backend mandaba un 5,0
-  /// escrito a mano y el conductor veía la misma nota perfecta de todo el
-  /// mundo, en la pantalla con la que decide si acepta la carrera.
+  /// Null mientras nadie lo haya calificado, y entonces se enseña «Nuevo».
+  /// Antes el backend mandaba un 5,0 escrito a mano: el conductor veía la
+  /// misma nota perfecta de todo el mundo, justo en la pantalla con la que
+  /// decide si acepta la carrera. Hoy sale de las calificaciones reales que
+  /// deja el conductor al terminar el viaje.
   final double? rating;
 
   /// Total completed trips as a passenger.

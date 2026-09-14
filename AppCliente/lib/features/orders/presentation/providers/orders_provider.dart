@@ -64,6 +64,18 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
   StreamSubscription<OrderUpdateEvent>? _wsSub;
 
+  /// Se completa cuando el historial ya está en memoria (del servidor o de la
+  /// caché local). Lo espera el arranque para saber si hay que devolver al
+  /// pasajero a un pedido en curso en vez de dejarlo en el inicio.
+  final _cargado = Completer<void>();
+  Future<void> get cargado => _cargado.future;
+
+  /// Vuelve a enganchar el seguimiento tras volver del segundo plano.
+  Future<void> reanudar() async {
+    if (!mounted) return;
+    await _resumeActiveTracking(state.orders);
+  }
+
   // ── init ───────────────────────────────────────────────────────────────────
 
   Future<void> _loadHistory() async {
@@ -98,8 +110,14 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       // Sin conexión: historial local (cache).
       history = await _dataSource.fetchOrderHistory();
     }
-    if (!mounted) return;
+    if (!mounted) {
+      // Se avisa igual: quien espera este futuro es el arranque de la app, y
+      // dejarlo colgado sería dejar al pasajero mirando el splash.
+      if (!_cargado.isCompleted) _cargado.complete();
+      return;
+    }
     state = state.copyWith(orders: history, isLoading: false);
+    if (!_cargado.isCompleted) _cargado.complete();
     unawaited(_resumeActiveTracking(history));
   }
 

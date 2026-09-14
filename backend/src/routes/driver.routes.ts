@@ -77,6 +77,8 @@ import {
   borrarCuentaConductor,
   motivoBloqueoConductor,
 } from '../services/account-deletion.service';
+import { crearReporte, bloquear, desbloquear, listarBloqueos } from '../services/moderacion.service';
+import { ReporteInvalido, motivosParaApps } from '../lib/reportes';
 import {
   createTicket,
   listTicketsFor,
@@ -157,6 +159,58 @@ router.get('/account/deletion', async (req: Request, res: Response): Promise<voi
     res.json({ success: true, data: { puedeEliminar: bloqueo === null, motivo: bloqueo } });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Moderación: reportar y bloquear ─────────────────────────────────────────
+//
+// El conductor también publica y recibe contenido: chatea con el pasajero y
+// aparece calificado con comentario. Apple 1.2 pide reporte y bloqueo en las
+// DOS direcciones, no solo en la app del cliente.
+
+router.get('/reports/reasons', (_req: Request, res: Response): void => {
+  res.json({ success: true, data: motivosParaApps() });
+});
+
+router.post('/reports', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await crearReporte('driver', req.driverId!, req.body ?? {}) });
+  } catch (err) {
+    const status = err instanceof ReporteInvalido ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo enviar el reporte',
+    });
+  }
+});
+
+router.get('/blocks', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listarBloqueos('driver', req.driverId!) });
+  } catch {
+    res.status(500).json({ success: false, error: 'No pudimos cargar tu lista.' });
+  }
+});
+
+router.post('/blocks', async (req: Request, res: Response): Promise<void> => {
+  try {
+    await bloquear('driver', req.driverId!, req.body ?? {});
+    res.json({ success: true, data: { ok: true } });
+  } catch (err) {
+    const status = err instanceof ReporteInvalido ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo bloquear',
+    });
+  }
+});
+
+router.delete('/blocks/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    await desbloquear('driver', req.driverId!, String(req.params['id']));
+    res.json({ success: true, data: { ok: true } });
+  } catch {
+    res.status(500).json({ success: false, error: 'No se pudo desbloquear.' });
   }
 });
 

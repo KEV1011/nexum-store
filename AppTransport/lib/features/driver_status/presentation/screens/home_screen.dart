@@ -21,6 +21,7 @@ import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/core/domain/work_mode_provider.dart';
+import 'package:nexum_driver/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
@@ -224,7 +225,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // ── Online toggle ──────────────────────────────────────────────────────
 
-  void _toggleOnline() {
+  Future<void> _toggleOnline() async {
     final goingOnline = !_state.isOnline;
 
     // Block going online when the driver is not yet verified — salvo en modo
@@ -255,6 +256,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             backgroundColor: Color(0xFFF57F17),
           ),
+        );
+        return;
+      }
+
+      // La divulgación va ANTES del diálogo del sistema, y este es el momento
+      // en que se entiende: el conductor acaba de tocar «Conectarse».
+      //
+      // Sin ubicación NO se conecta, y eso es un cambio a propósito: antes se
+      // ponía en línea igual, pero sin latido de GPS el despacho no lo ve
+      // —queda fuera del radio de 5 km y del filtro de frescura—, así que se
+      // quedaba esperando viajes que nunca podían llegarle, sin una pista.
+      final hayUbicacion = await Ubicacion.pedir(context);
+      if (!mounted) return;
+      if (!hayUbicacion) {
+        AppSnackbar.showInfo(
+          context,
+          'Sin ubicación no podemos asignarte viajes cercanos. '
+          'Actívala para conectarte.',
         );
         return;
       }
@@ -316,14 +335,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // Transmite el GPS al backend: alimenta el matching geoespacial para que
     // este conductor sea asignable y, durante un viaje, mueve su punto en el
-    // mapa del pasajero. Arranca el tracking tras resolver el permiso, con o
-    // sin GPS: si se deniega (p. ej. web), LocationService reporta el centro de
-    // Pamplona como heartbeat para que el conductor siga siendo asignable.
-    unawaited(
-      LocationService().requestPermissions().then((_) {
-        LocationService().startTracking();
-      }),
-    );
+    // mapa del pasajero.
+    //
+    // El permiso ya se resolvió en `_toggleOnline` —con su divulgación— y sin
+    // él no se llega hasta aquí. El comentario anterior decía que sin GPS se
+    // reportaba el centro de Pamplona: eso se quitó hace tiempo, porque una
+    // coordenada inventada que se ve igual que una real es peor que un error.
+    LocationService().startTracking();
 
     // Ofertas del servidor. Las ENCADENADAS se ignoran aquí a propósito: llegan
     // mientras el conductor va terminando otro servicio, o sea con la pantalla

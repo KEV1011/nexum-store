@@ -658,12 +658,26 @@ model Trip {
   stops              Json?
   estimatedFare      Float
   surgeMultiplier    Float           @default(1.0)
-  /// Cómo acordó pagar el pasajero: 'efectivo' | 'transferencia' | 'en_linea'.
+  /// Cómo acordó pagar el pasajero. Los valores los define `lib/metodos-pago`.
   /// Null = efectivo (viajes anteriores a este campo). Salvo 'en_linea', que sí
   /// cobra Wompi, el dinero se mueve entre pasajero y conductor y la comisión
   /// se descuenta igual de la billetera del conductor.
   paymentMethod      String?
   finalFare          Float?
+  /// Cupón aplicado, si lo hubo. Se sella el CÓDIGO y el MONTO, no el
+  /// porcentaje: cambiar mañana la promoción no puede reescribir lo que se
+  /// cobró hoy. El descuento sale de NUESTRA comisión — `finalFare`,
+  /// `netEarning` y `commission` son los mismos que sin cupón, y lo que paga
+  /// el pasajero se deriva restando (ver `lib/descuento-viaje`).
+  promoCode          String?
+  promoDiscount      Int?
+  /// Para cuándo lo reservó el pasajero. Null = viaje inmediato.
+  scheduledFor       DateTime?
+  /// Cuándo hay que empezar a buscar conductor: la hora reservada MENOS la
+  /// antelación (ver `lib/viaje-programado`). Se guarda calculado para que el
+  /// barrido sea una consulta indexada y no tenga que hacer aritmética por
+  /// fila.
+  searchFrom         DateTime?
   distanceKm         Float?
   etaMinutes         Int?
   cancelReason       String?
@@ -674,6 +688,11 @@ model Trip {
   packageDescription String?
   passengerName      String?
   passengerRating    Float?
+  /// Lo que el pasajero destacó del conductor («Puntual», «Carro limpio»).
+  /// Claves del catálogo cerrado de `lib/elogios`; máximo tres. Se sellan en
+  /// el viaje que las produjo, que es lo que las hace auditables: el conteo
+  /// del perfil se RECALCULA de aquí, nunca se suma encima.
+  ratingTags         Json?
   netEarning         Float?
   commission         Float?
   tipAmount          Float           @default(0)
@@ -706,6 +725,9 @@ model Trip {
   @@index([status])
   @@index([operatorId])
   @@index([citySlug])
+  /// El barrido de programados corre cada minuto: sin esto sería un recorrido
+  /// completo de la tabla sesenta veces por hora.
+  @@index([status, searchFrom])
   @@map("trips")
   // Custodia del ENVÍO: el PIN lo dicta quien RECIBE el paquete. Sin él, el
   // repartidor no puede cerrar la entrega. Solo se genera para serviceType
@@ -730,6 +752,10 @@ enum WorkMode {
 }
 
 enum TripStatus {
+  /// Reservado para más tarde. Todavía no se le ofrece a nadie: el barrido lo
+  /// pasa a SEARCHING con antelación, para que a la hora acordada el carro
+  /// esté en la puerta y no empezando a buscarse.
+  SCHEDULED
   SEARCHING
   ACCEPTED
   ARRIVING
@@ -1792,4 +1818,68 @@ model SafetyAlertLog {
   @@index([operatorId, createdAt])
   @@index([driverId, createdAt])
   @@map("safety_alerts")
+}
+
+// ─── Moderación de contenido de usuario ──────────────────────────────────────
+//
+// Apple (guía 1.2) y Google Play exigen, en cualquier app con contenido de
+// usuario, poder REPORTAR contenido y BLOQUEAR a quien abusa. Y no valen los
+// tickets de soporte: un canal genérico no está anclado a un mensaje ni a una
+// persona, así que no se puede triar ni actuar sobre lo reportado.
+//
+// La app tiene contenido de usuario en seis sitios: chat de viajes, pedidos y
+// mandados (con fotos), comentario al calificar al conductor, comentario al
+// calificar al negocio —que se publica—, elogios, catálogo del comercio y
+// adjuntos de soporte.
+
+/// Un reporte sobre algo que alguien publicó o dijo.
+model ContentReport {
+  id String @id @default(cuid())
+
+  /// Quién reporta. No es una FK porque puede ser un `User` o un `Driver`, y
+  /// los dos tienen id propio; el par (kind, id) los distingue.
+  reporterKind String // client | driver
+  reporterId   String
+
+  /// Qué se reporta. Mismo motivo para no ser FK: el objetivo es un mensaje,
+  /// una persona, una reseña o un producto.
+  targetKind String // chat_message | driver | passenger | business_review | product | business
+  targetId   String
+
+  /// Motivo del catálogo cerrado de `lib/reportes.ts`. Un campo libre no se
+  /// puede triar, y sin triaje una cola de moderación es un buzón muerto.
+  reason String
+  detail String?
+
+  status     String    @default("PENDING") // PENDING | ACTIONED | DISMISSED
+  resolution String?
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([targetKind, targetId])
+  @@map("content_reports")
+}
+
+/// Alguien no quiere volver a coincidir con alguien.
+///
+/// Esto es lo que convierte el bloqueo en algo real y no en un botón: el
+/// despacho no vuelve a emparejar al par, en las dos direcciones.
+model UserBlock {
+  id String @id @default(cuid())
+
+  blockerKind String // client | driver
+  blockerId   String
+  blockedKind String // driver | client
+  blockedId   String
+
+  /// Se guarda el motivo si vino de un reporte, para que el admin entienda el
+  /// bloqueo sin cruzar tablas.
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@unique([blockerKind, blockerId, blockedKind, blockedId])
+  @@index([blockedKind, blockedId])
+  @@map("user_blocks")
 }

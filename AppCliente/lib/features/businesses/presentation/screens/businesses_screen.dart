@@ -2,30 +2,52 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
-import 'package:nexum_client/app/theme/app_colors.dart';
-import 'package:nexum_client/app/theme/adaptive_colors.dart';
-import 'package:nexum_client/core/constants/app_constants.dart';
-import 'package:nexum_client/core/widgets/empty_state.dart';
-import 'package:nexum_client/core/widgets/error_state.dart';
+import 'package:nexum_client/app/theme/zipa_icon.dart';
+import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/providers/'
     'businesses_provider.dart';
-import 'package:nexum_client/features/businesses/presentation/providers/'
-    'favorites_provider.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
-    'business_card.dart';
+    'fila_comercio.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
-    'business_visuals.dart';
+    'sello_confianza.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
-    'promo_banner.dart';
+    'tarjeta_servicio.dart';
 import 'package:nexum_client/features/shell/presentation/providers/'
     'shell_provider.dart';
-import 'package:nexum_client/shared/widgets/skeleton_loader.dart';
+import 'package:nexum_client/features/transport/domain/entities/'
+    'transport_request_entity.dart';
+import 'package:nexum_client/shared/widgets/estados_zipa.dart';
 
-/// Pestaña principal: catálogo de negocios aliados en Pamplona.
+// ── La home ──────────────────────────────────────────────────────────────────
+//
+// Orden, de arriba abajo: dónde entregar · buscar · qué quieres hacer · por qué
+// confiar · qué hay cerca. Es el orden de las preguntas que se hace quien abre
+// la app, y antes no era ninguno.
+//
+// LO QUE SE FUE, Y POR QUÉ:
+//
+// · El carrusel de promociones. No era solo un carrusel con puntos que se mueve
+//   solo: prometía «Domicilio gratis en tus primeros 3 pedidos del mes», una
+//   promoción que NO EXISTE. Es la segunda de esta clase que se retira (antes
+//   fue el «ZIPA Fest · Domicilios desde $0»). Cuando haya promociones de
+//   verdad saldrán de `promoDeTienda`, que ya es la fuente del banner y de la
+//   caja — y por eso lo que se anuncia es lo que se cobra.
+//
+// · La fila de chips de categoría. Cuatro categorías (restaurante, super,
+//   farmacia, otro) no necesitan un filtro propio ocupando una franja de la
+//   pantalla: con dos docenas de comercios se ven todos de un vistazo, y el
+//   buscador cubre el caso de ir a por algo concreto. El filtro sigue vivo,
+//   pero se activa desde la tarjeta de Restaurantes y se quita con un toque.
+//
+// · Las dos tarjetas de servicio con degradado a sangre. Competían con el
+//   verde de marca y dejaban fuera Envíos e Intermunicipal, que estaban más
+//   abajo o en ninguna parte.
+
+/// Pestaña principal: qué puedo hacer y qué hay cerca de mí.
 class BusinessesScreen extends ConsumerStatefulWidget {
   const BusinessesScreen({super.key});
 
@@ -34,92 +56,70 @@ class BusinessesScreen extends ConsumerStatefulWidget {
 }
 
 class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
-  BusinessCategory? _filter;
-  String _query = '';
-  bool _favoritesSelected = false;
+  BusinessCategory? _filtro;
+  String _busqueda = '';
 
   @override
   Widget build(BuildContext context) {
-    final businessesAsync = ref.watch(businessesProvider);
-    final favorites = ref.watch(favoritesProvider);
-    final address = ref.watch(defaultAddressProvider);
+    final comerciosAsync = ref.watch(businessesProvider);
+    final direccion = ref.watch(defaultAddressProvider);
 
     return Scaffold(
-      backgroundColor: context.backgroundColor,
+      backgroundColor: context.zFondo,
       body: SafeArea(
+        bottom: false,
         child: RefreshIndicator(
-          color: AppColors.primary,
+          color: ZipaTokens.marca,
           onRefresh: () async => ref.refresh(businessesProvider.future),
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
-                child: _LocationHeader(
-                  address: address?.fullAddress ?? 'Tu dirección',
+                child: _BarraDireccion(
+                  direccion: direccion?.fullAddress,
                   onTap: () => context.push(AppRoutes.addresses),
+                  // La campana lleva a Pedidos. No hay pantalla de
+                  // notificaciones y no se va a fingir una: un icono que abre
+                  // una lista vacía «de avisos» es peor que llevar a donde
+                  // está lo que la persona quiere mirar.
+                  onCampana: () =>
+                      ref.read(shellTabProvider.notifier).state = kTabPedidos,
                 ),
               ),
-              // Buscador FIJO al hacer scroll (patrón Rappi): la lupa "sigue"
-              // al usuario en vez de desaparecer con el contenido.
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _PinnedSearchBarDelegate(
-                  background: context.backgroundColor,
-                  child: _ProminentSearchBar(
-                    onChanged: (v) => setState(() => _query = v),
+              SliverToBoxAdapter(
+                child: _Buscador(
+                  onChanged: (v) => setState(() => _busqueda = v),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              SliverToBoxAdapter(child: _RejillaServicios(onFiltrarRestaurantes: () {
+                setState(() => _filtro = BusinessCategory.restaurant);
+              })),
+              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              const SliverPadding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverToBoxAdapter(child: SelloConfianza()),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 22)),
+              SliverToBoxAdapter(
+                child: _TituloSeccion(
+                  texto: _filtro == null ? 'Cerca de ti' : _filtro!.label,
+                  onQuitarFiltro:
+                      _filtro == null ? null : () => setState(() => _filtro = null),
+                ),
+              ),
+              comerciosAsync.when(
+                loading: () => const SliverPadding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  sliver: SliverToBoxAdapter(child: EsqueletoFilas()),
+                ),
+                error: (_, __) => SliverToBoxAdapter(
+                  child: BannerSinConexion(
+                    onReintentar: () => ref.invalidate(businessesProvider),
                   ),
                 ),
+                data: _listaComercios,
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              // Aquí había un "ZIPA Fest 🎉 · Domicilios desde $0 · Solo este
-              // mes" con un botón "Ver promos" que no llevaba a ninguna parte.
-              // No es solo un botón muerto: promete al cliente un descuento
-              // que no existe. Fuera hasta que haya promociones de verdad.
-              SliverToBoxAdapter(
-                child: _ServiceHighlights(
-                  onRestaurantesTap: () => setState(() {
-                    _filter = BusinessCategory.restaurant;
-                    _favoritesSelected = false;
-                  }),
-                  onMobilidadTap: () =>
-                      ref.read(shellTabProvider.notifier).state = 2,
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              const SliverToBoxAdapter(child: PromoBanner()),
-              const SliverToBoxAdapter(child: SizedBox(height: 4)),
-              SliverToBoxAdapter(
-                child: _SectionHeader(title: 'Categorías'),
-              ),
-              SliverToBoxAdapter(
-                child: _CategoryIconRow(
-                  selected: _filter,
-                  favoritesSelected: _favoritesSelected,
-                  onSelected: (c) => setState(() {
-                    _filter = c;
-                    _favoritesSelected = false;
-                  }),
-                  onFavoritesTap: () => setState(() {
-                    _favoritesSelected = !_favoritesSelected;
-                    _filter = null;
-                  }),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: _SectionHeader(title: 'Negocios aliados'),
-              ),
-              businessesAsync.when(
-                loading: _buildLoading,
-                error: (e, _) => _buildError(),
-                data: (all) => _buildList(all, favorites),
-              ),
-              SliverToBoxAdapter(
-                child: _MandadoBanner(
-                  onTap: () => context.push(AppRoutes.errandBooking),
-                ),
-              ),
-              const SliverToBoxAdapter(
-                child: SizedBox(height: AppConstants.spacingXL),
-              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 110)),
             ],
           ),
         ),
@@ -127,171 +127,143 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
     );
   }
 
-  Widget _buildList(List<BusinessEntity> all, Set<String> favorites) {
-    final filtered = all.where((b) {
-      final matchesCategory = _filter == null || b.category == _filter;
-      final matchesQuery = _query.isEmpty ||
-          b.name.toLowerCase().contains(_query.toLowerCase());
-      final matchesFavorites =
-          !_favoritesSelected || favorites.contains(b.id);
-      return matchesCategory && matchesQuery && matchesFavorites;
+  Widget _listaComercios(List<BusinessEntity> todos) {
+    final q = _busqueda.trim().toLowerCase();
+    final filtrados = todos.where((b) {
+      final porCategoria = _filtro == null || b.category == _filtro;
+      final porTexto = q.isEmpty || b.name.toLowerCase().contains(q);
+      return porCategoria && porTexto;
     }).toList();
 
-    if (filtered.isEmpty) {
+    // Los CERRADOS bajan, pero no se van: quien mira a las 2 de la mañana
+    // tiene derecho a saber qué existe en su barrio, y esconderlos hace pensar
+    // que la app está rota o que el sitio cerró para siempre.
+    filtrados.sort((a, b) {
+      if (a.isOpen == b.isOpen) return 0;
+      return a.isOpen ? -1 : 1;
+    });
+
+    if (filtrados.isEmpty) {
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: _EmptyState(
-          favoritesMode: _favoritesSelected,
-          onMandado: () => context.push(AppRoutes.errandBooking),
-        ),
+        child: q.isNotEmpty || _filtro != null
+            ? EstadoZipa(
+                icono: ZipaIconName.sinResultados,
+                titulo: 'Nada coincide con tu búsqueda',
+                mensaje: 'Prueba con otra palabra, o mira todo lo que hay '
+                    'cerca de ti.',
+                accion: 'Ver todo',
+                onAccion: () => setState(() {
+                  _filtro = null;
+                  _busqueda = '';
+                }),
+              )
+            : SinComerciosCerca(
+                onCambiarDireccion: () => context.push(AppRoutes.addresses),
+              ),
       );
     }
 
     return SliverPadding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacingM,
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
       sliver: SliverList.separated(
-        itemCount: filtered.length,
-        separatorBuilder: (_, __) =>
-            const SizedBox(height: AppConstants.spacingM),
-        itemBuilder: (context, i) {
-          final business = filtered[i];
-          return BusinessCard(
-            business: business,
-            onTap: () => context.push(
-              AppRoutes.businessPath(business.id),
-              extra: business,
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildLoading() {
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacingM,
-      ),
-      sliver: SliverList.separated(
-        itemCount: 4,
-        separatorBuilder: (_, __) =>
-            const SizedBox(height: AppConstants.spacingM),
-        itemBuilder: (_, __) =>
-            const SkeletonLoader(child: SkeletonTripTile()),
-      ),
-    );
-  }
-
-  Widget _buildError() {
-    return SliverFillRemaining(
-      hasScrollBody: false,
-      child: ErrorState(
-        title: 'No pudimos cargar los negocios',
-        message: 'Revisa tu conexión e intenta de nuevo.',
-        onRetry: () => ref.invalidate(businessesProvider),
-      ),
-    );
-  }
-}
-
-// ── Location header ───────────────────────────────────────────────────────────
-
-class _LocationHeader extends StatelessWidget {
-  const _LocationHeader({
-    required this.address,
-    required this.onTap,
-  });
-
-  final String address;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.primaryContainer,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.location_on_rounded,
-                color: AppColors.primary,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Entregar en',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: context.textSecondaryColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          address,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: context.textPrimaryColor,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      const Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: AppColors.primary,
-                        size: 22,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: context.surfaceVariantColor,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.notifications_outlined,
-                color: context.textSecondaryColor,
-                size: 20,
-              ),
-            ),
-          ],
+        itemCount: filtrados.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, i) => FilaComercio(
+          comercio: filtrados[i],
+          onTap: () => context.push(
+            AppRoutes.businessPath(filtrados[i].id),
+            extra: filtrados[i],
+          ),
         ),
       ),
     );
   }
 }
 
-// ── Search bar ────────────────────────────────────────────────────────────────
+// ── 1. Dónde entregar ────────────────────────────────────────────────────────
 
-class _ProminentSearchBar extends StatelessWidget {
-  const _ProminentSearchBar({required this.onChanged});
+class _BarraDireccion extends StatelessWidget {
+  const _BarraDireccion({
+    required this.direccion,
+    required this.onTap,
+    required this.onCampana,
+  });
+
+  /// Null = todavía no eligió ninguna. No se inventa una: poner un texto de
+  /// relleno con pinta de dirección hace que alguien pida a un sitio que no es
+  /// el suyo.
+  final String? direccion;
+  final VoidCallback onTap;
+  final VoidCallback onCampana;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Entregar en',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.3,
+                        color: context.zTexto3,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            direccion ?? 'Elige tu dirección',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w700,
+                              color: context.zTexto,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const ZipaIcon(
+                          ZipaIconName.chevron,
+                          size: ZipaIconSize.inline,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onCampana,
+            icon: const ZipaIcon(ZipaIconName.campana),
+            tooltip: 'Tus pedidos',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 2. Buscar ────────────────────────────────────────────────────────────────
+
+class _Buscador extends StatelessWidget {
+  const _Buscador({required this.onChanged});
 
   final ValueChanged<String> onChanged;
 
@@ -299,59 +271,31 @@ class _ProminentSearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: context.surfaceColor,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 12,
-              offset: Offset(0, 3),
-            ),
-          ],
+          // Superficie HUNDIDA, no blanca, y borde de un pelo en vez de
+          // sombra. Sobre un fondo casi blanco, una caja blanca con sombra no
+          // se lee como un campo donde se escribe: se lee como una tarjeta.
+          color: context.zHundida,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: context.zBorde),
         ),
         child: TextField(
           onChanged: onChanged,
-          style: const TextStyle(fontSize: 14),
+          style: TextStyle(fontSize: 14.5, color: context.zTexto),
           decoration: InputDecoration(
-            hintText: 'Restaurantes, tiendas, domicilios...',
-            hintStyle: TextStyle(
-              color: context.textTertiaryColor,
-              fontSize: 14,
-            ),
-            // Lupa alineada y del tamaño del texto (antes sobresalía).
-            prefixIcon: const Padding(
-              padding: EdgeInsets.only(left: 14, right: 10),
-              child: Icon(
-                Icons.search_rounded,
-                size: 20,
-                color: AppColors.primary,
-              ),
-            ),
-            prefixIconConstraints: const BoxConstraints(
-              minWidth: 0,
-              minHeight: 0,
-            ),
             isDense: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 13),
+            hintText: 'Buscar comercio, plato o destino',
+            hintStyle: TextStyle(color: context.zTexto3, fontSize: 14.5),
+            prefixIcon: const Padding(
+              padding: EdgeInsets.only(left: 13, right: 9),
+              child: ZipaIcon(ZipaIconName.buscar),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(
-                color: AppColors.primary,
-                width: 1.5,
-              ),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
           ),
         ),
       ),
@@ -359,314 +303,72 @@ class _ProminentSearchBar extends StatelessWidget {
   }
 }
 
-/// Delegate que mantiene el buscador ANCLADO arriba mientras el usuario
-/// desplaza la lista (la lupa "queda con movimiento": acompaña el scroll).
-class _PinnedSearchBarDelegate extends SliverPersistentHeaderDelegate {
-  _PinnedSearchBarDelegate({required this.child, required this.background});
+// ── 3. Qué quieres hacer ─────────────────────────────────────────────────────
 
-  final Widget child;
-  final Color background;
+class _RejillaServicios extends ConsumerWidget {
+  const _RejillaServicios({required this.onFiltrarRestaurantes});
 
-  // Alto del buscador (TextField denso) + un respiro vertical.
-  static const double _height = 68;
+  final VoidCallback onFiltrarRestaurantes;
 
   @override
-  double get minExtent => _height;
-  @override
-  double get maxExtent => _height;
-
-  @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: background,
-      alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: child,
-    );
-  }
-
-  @override
-  bool shouldRebuild(_PinnedSearchBarDelegate oldDelegate) =>
-      background != oldDelegate.background || child != oldDelegate.child;
-}
-
-// ── Promo teaser ──────────────────────────────────────────────────────────────
-
-// ── Service highlights ────────────────────────────────────────────────────────
-
-class _ServiceHighlights extends StatelessWidget {
-  const _ServiceHighlights({
-    required this.onMobilidadTap,
-    required this.onRestaurantesTap,
-  });
-
-  final VoidCallback onMobilidadTap;
-  final VoidCallback onRestaurantesTap;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Rejilla de dos columnas con las CUATRO puertas. Antes había dos, y
+    // Envíos e Intermunicipal vivían bajo el pliegue o en ninguna parte —
+    // que es la razón por la que «no daba opción de reservar intermunicipal».
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ServiceCard(
-              emoji: '🍔',
-              title: 'Restaurantes',
-              subtitle: 'Domicilio en 30 min',
-              gradient: const [Color(0xFFFF7043), Color(0xFFBF360C)],
-              shadowColor: const Color(0x40FF7043),
-              onTap: onRestaurantesTap,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _ServiceCard(
-              emoji: '🚗',
-              title: 'Movilidad',
-              subtitle: 'Taxi · Moto · Envíos',
-              gradient: const [AppColors.secondary, AppColors.secondaryDark],
-              shadowColor: const Color(0x401565C0),
-              onTap: onMobilidadTap,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ServiceCard extends StatelessWidget {
-  const _ServiceCard({
-    required this.emoji,
-    required this.title,
-    required this.subtitle,
-    required this.gradient,
-    required this.shadowColor,
-    required this.onTap,
-    super.key,
-  });
-
-  final String emoji;
-  final String title;
-  final String subtitle;
-  final List<Color> gradient;
-  final Color shadowColor;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 128,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: gradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: shadowColor,
-              blurRadius: 14,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            Positioned(
-              top: -8,
-              right: -4,
-              child: Text(
-                emoji,
-                style: const TextStyle(fontSize: 56),
-              ),
-            ),
-            Positioned(
-              bottom: 14,
-              left: 14,
-              right: 14,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.82),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Section header ────────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.action, super.key});
-
-  final String title;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: context.textPrimaryColor,
-                letterSpacing: -0.2,
-              ),
-            ),
-          ),
-          if (action != null) action!,
-        ],
-      ),
-    );
-  }
-}
-
-// ── Category icons ────────────────────────────────────────────────────────────
-
-class _CategoryIconRow extends StatelessWidget {
-  const _CategoryIconRow({
-    required this.selected,
-    required this.favoritesSelected,
-    required this.onSelected,
-    required this.onFavoritesTap,
-  });
-
-  final BusinessCategory? selected;
-  final bool favoritesSelected;
-  final ValueChanged<BusinessCategory?> onSelected;
-  final VoidCallback onFavoritesTap;
-
-  @override
-  Widget build(BuildContext context) {
-    const categories = BusinessCategory.values;
-
-    return SizedBox(
-      height: 88,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        children: [
-          _CategoryIcon(
-            icon: Icons.apps_rounded,
-            label: 'Todos',
-            color: AppColors.primary,
-            selected: selected == null && !favoritesSelected,
-            onTap: () => onSelected(null),
-          ),
-          const SizedBox(width: 16),
-          _CategoryIcon(
-            icon: Icons.favorite_rounded,
-            label: 'Favoritos',
-            color: AppColors.error,
-            selected: favoritesSelected,
-            onTap: onFavoritesTap,
-          ),
-          ...categories.map(
-            (cat) => Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: _CategoryIcon(
-                icon: cat.icon,
-                label: cat.label,
-                color: cat.color,
-                selected: selected == cat,
-                onTap: () => onSelected(cat),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryIcon extends StatelessWidget {
-  const _CategoryIcon({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedContainer(
-            duration: AppConstants.shortAnimation,
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: selected ? color : color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-              boxShadow: selected
-                  ? [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Icon(
-              icon,
-              color: selected ? Colors.white : color,
-              size: 24,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: TarjetaServicio(
+                  icono: ZipaIconName.movilidad,
+                  tinte: ZipaTokens.movilidad,
+                  titulo: 'Movilidad',
+                  subtitulo: 'Taxi, moto, carro',
+                  onTap: () =>
+                      ref.read(shellTabProvider.notifier).state = kTabMovilidad,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TarjetaServicio(
+                  icono: ZipaIconName.restaurantes,
+                  tinte: ZipaTokens.restaurantes,
+                  titulo: 'Restaurantes',
+                  subtitulo: 'Comida a domicilio',
+                  onTap: onFiltrarRestaurantes,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight:
-                  selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? color : context.textSecondaryColor,
-            ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: TarjetaServicio(
+                  icono: ZipaIconName.envios,
+                  tinte: ZipaTokens.envios,
+                  titulo: 'Envíos',
+                  subtitulo: 'Paquetes y mandados',
+                  onTap: () => context.push(
+                    AppRoutes.transportBooking,
+                    extra: TransportServiceType.envios,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TarjetaServicio(
+                  icono: ZipaIconName.intermunicipal,
+                  tinte: ZipaTokens.intermunicipal,
+                  titulo: 'Intermunicipal',
+                  subtitulo: 'Viajes entre ciudades',
+                  onTap: () => context.push(AppRoutes.intercityBooking),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -674,120 +376,38 @@ class _CategoryIcon extends StatelessWidget {
   }
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
+// ── 5. Qué hay cerca ─────────────────────────────────────────────────────────
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({this.favoritesMode = false, this.onMandado});
+class _TituloSeccion extends StatelessWidget {
+  const _TituloSeccion({required this.texto, this.onQuitarFiltro});
 
-  final bool favoritesMode;
-
-  /// Buscar y no encontrar es el momento de mayor intención: el cliente ya
-  /// sabe qué quiere. Ofrecerle el mandado justo ahí es la diferencia entre
-  /// que se vaya y que lo pida igual.
-  final VoidCallback? onMandado;
-
-  @override
-  Widget build(BuildContext context) {
-    if (favoritesMode) {
-      return const EmptyState(
-        icon: Icons.favorite_border_rounded,
-        title: 'Aún no tienes favoritos',
-        message: 'Toca el corazón en un negocio para guardarlo.',
-      );
-    }
-    return EmptyState(
-      icon: Icons.search_off_rounded,
-      title: 'No encontramos ese negocio',
-      message: 'Aunque no esté en la app, podemos ir por ti: dinos qué '
-          'necesitas y de dónde, y un mensajero lo recoge y te lo lleva.',
-      actionLabel: onMandado == null ? null : 'Pedir un mandado',
-      onAction: onMandado,
-    );
-  }
-}
-
-/// Una franja al pie de la lista de negocios: "lo que no está aquí, lo
-/// traemos".
-///
-/// Farmacias, papelerías, la ferretería, el gas — nada de eso tiene catálogo
-/// todavía, y el cliente que entra a Negocios y no lo ve concluye que la app
-/// no lo hace. Sí lo hace: se llama mandado y hasta ahora solo se llegaba a él
-/// desde la pantalla de movilidad, que es el último sitio donde alguien lo
-/// busca cuando quiere una farmacia.
-class _MandadoBanner extends StatelessWidget {
-  const _MandadoBanner({required this.onTap});
-
-  final VoidCallback onTap;
+  final String texto;
+  final VoidCallback? onQuitarFiltro;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Ink(
-            decoration: BoxDecoration(
-              color: context.surfaceColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: context.outlineColor),
-            ),
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.secondary.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.shopping_bag_outlined,
-                    color: AppColors.secondary,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '¿No está el negocio que buscas?',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: context.textPrimaryColor,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'Farmacia, papelería, lo que sea: dinos qué necesitas '
-                        'y vamos por ti.',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 12.5,
-                          height: 1.35,
-                          color: context.textSecondaryColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 15,
-                  color: context.textSecondaryColor,
-                ),
-              ],
+      padding: const EdgeInsets.fromLTRB(16, 0, 10, 10),
+      child: Row(
+        children: [
+          Text(
+            texto,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: context.zTexto,
             ),
           ),
-        ),
+          const Spacer(),
+          // Un filtro sin forma de quitarlo deja al usuario encerrado viendo
+          // una parte del catálogo sin saber por qué.
+          if (onQuitarFiltro != null)
+            TextButton.icon(
+              onPressed: onQuitarFiltro,
+              icon: const ZipaIcon(ZipaIconName.cerrar, size: ZipaIconSize.inline),
+              label: const Text('Quitar filtro'),
+            ),
+        ],
       ),
     );
   }

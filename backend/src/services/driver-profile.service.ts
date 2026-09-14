@@ -1,4 +1,4 @@
-import { DocumentType, DocumentStatus as PrismaDocumentStatus } from '@prisma/client';
+import { DocumentType, DocumentStatus as PrismaDocumentStatus, Prisma } from '@prisma/client';
 import {
   DriverProfileDTO,
   DriverPublicProfileDTO,
@@ -8,6 +8,10 @@ import {
   UpsertDriverDocumentDTO,
 } from '../types';
 import { prisma } from '../lib/prisma';
+import { verificacionesDeConductor } from '../lib/verificaciones-conductor';
+import { cuentaElogios } from '../lib/elogios';
+import { hitosDeConductor } from '../lib/hitos';
+import { getDriverProStatus } from './pro.service';
 import { pilotSkipVerification } from './kyc.service';
 import { evaluateDriverCompliance } from './document-expiry.service';
 import { runDocumentOcr } from './ocr.service';
@@ -107,9 +111,22 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
   const approvedCount = docs.filter((d) => d.status === 'APPROVED').length;
   const vehicle = driver.vehicles[0];
 
+  // Lo que sus pasajeros destacan. Para él es la parte útil de la
+  // calificación: un 4,8 no le enseña nada, y «tres pasajeros dicen que llegas
+  // puntual» sí le dice qué está haciendo bien y qué conviene repetir.
+  const elogios = cuentaElogios(
+    (
+      await prisma.trip.findMany({
+        where: { driverId, ratingTags: { not: Prisma.DbNull } },
+        select: { ratingTags: true },
+      })
+    ).map((t) => (Array.isArray(t.ratingTags) ? (t.ratingTags as string[]) : null)),
+  );
+
   return {
     driverId: driver.id,
     fullName: driver.name,
+    elogios,
     phone: driver.phone,
     photoUrl: driver.avatarUrl ?? undefined,
     bio: driver.bio ?? undefined,
@@ -150,9 +167,55 @@ export async function getDriverProfile(driverId: string): Promise<DriverProfileD
 export async function getDriverPublicProfile(driverId: string): Promise<DriverPublicProfileDTO | null> {
   const driver = await prisma.driver.findUnique({
     where: { id: driverId },
-    include: { vehicles: { where: { isActive: true }, take: 1 } },
+    include: {
+      vehicles: { where: { isActive: true }, take: 1 },
+      documents: { select: { type: true, status: true, expiresAt: true } },
+    },
   });
   if (!driver) return null;
+
+  // Las verificaciones que el pasajero mira antes de subirse. Los datos ya
+  // estaban guardados —KYC, antecedentes, documentos, foto— y no los veía
+  // nadie. La regla de qué cuenta como verificado vive suelta y probada en
+  // `lib/verificaciones-conductor`, porque es donde es fácil mentir sin querer:
+  // un SOAT aprobado el año pasado y ya vencido NO es «SOAT vigente».
+  const verificaciones = verificacionesDeConductor({
+    kycStatus: driver.kycStatus,
+    backgroundStatus: driver.backgroundStatus,
+    tieneFotoDePerfil: Boolean(driver.avatarUrl),
+    tieneSelfie: Boolean(driver.selfieUrl),
+    documentos: driver.documents.map((d) => ({
+      tipo: d.type,
+      estado: d.status as 'PENDING' | 'APPROVED' | 'REJECTED',
+      venceEl: d.expiresAt,
+    })),
+  });
+
+  // Los elogios se RECALCULAN de los viajes, nunca se suman encima de un
+  // contador: un acumulado y unas filas acaban discrepando y nadie sabe cuál
+  // miente. Es la misma regla que ya siguen la nota del conductor y la del
+  // negocio.
+  const calificados = await prisma.trip.findMany({
+    where: { driverId, ratingTags: { not: Prisma.DbNull } },
+    select: { ratingTags: true },
+  });
+  const elogios = cuentaElogios(
+    calificados.map((t) => (Array.isArray(t.ratingTags) ? (t.ratingTags as string[]) : null)),
+  );
+
+  // Kilómetros REALMENTE medidos por el servidor. Los viajes anteriores a esa
+  // medición tienen la distancia en null y no se estiman: quedarse corto es
+  // seguro, inventar kilómetros en un perfil público no.
+  const km = await prisma.trip.aggregate({
+    where: { driverId, status: 'COMPLETED', distanceKm: { not: null } },
+    _sum: { distanceKm: true },
+  });
+
+  // La insignia de Nexum Pro. Sus beneficios llevaban tiempo prometiendo
+  // «insignia visible en tu perfil» y el perfil no enseñaba ninguna. Se reusa
+  // esa escalera en vez de inventar otra: medir dos veces lo mismo obligaría
+  // al conductor a entender dos sistemas que dicen casi igual.
+  const pro = await getDriverProStatus(driverId).catch(() => null);
 
   return {
     driverId: driver.id,
@@ -160,10 +223,19 @@ export async function getDriverPublicProfile(driverId: string): Promise<DriverPu
     photoUrl: driver.avatarUrl ?? undefined,
     bio: driver.bio ?? undefined,
     rating: driver.rating,
+    // Un 4,9 con dos votos y otro con doscientos no son la misma información.
+    ratingCount: driver.ratingCount,
     totalTrips: driver.totalTrips,
     vehicleDescription: _vehicleDescription(driver.vehicles[0]),
     memberSince: driver.createdAt.toISOString(),
     isVerified: driver.isVerified,
+    citySlug: driver.citySlug ?? undefined,
+    elogios,
+    nivelPro: pro?.levelLabel,
+    hitos: hitosDeConductor(driver.totalTrips, km._sum.distanceKm ?? null),
+    verificaciones: verificaciones.items,
+    verificacionesCumplidas: verificaciones.cumplidas,
+    verificacionesTotal: verificaciones.total,
   };
 }
 

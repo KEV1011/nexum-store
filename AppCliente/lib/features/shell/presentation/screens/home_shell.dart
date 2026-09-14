@@ -3,11 +3,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/zipa_icon.dart';
+import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/features/account/presentation/screens/'
     'account_screen.dart';
 import 'package:nexum_client/features/businesses/presentation/screens/'
     'businesses_screen.dart';
+import 'package:nexum_client/features/businesses/presentation/screens/'
+    'favoritos_screen.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
 import 'package:nexum_client/features/orders/presentation/screens/'
@@ -25,12 +28,23 @@ import 'package:nexum_client/features/transport/presentation/screens/'
 class HomeShell extends ConsumerWidget {
   const HomeShell({super.key});
 
-  static const _tabs = [
-    BusinessesScreen(),
-    OrdersScreen(),
-    TransportHomeScreen(),
-    AccountScreen(),
+  /// Las pantallas, en el orden de `shell_provider.dart`.
+  ///
+  /// MOVILIDAD VA LA ÚLTIMA Y NO SALE EN LA BARRA. No es un descuido: se entra
+  /// por la tarjeta de la rejilla de la home, que es donde alguien va a
+  /// buscarla, y sigue en la pila porque tiene mapa, WebSocket y a veces un
+  /// viaje en curso — sacarla la destruiría al salir y volver costaría recargar
+  /// el mapa y reconectar.
+  static const _pantallas = [
+    BusinessesScreen(),     // kTabInicio
+    OrdersScreen(),         // kTabPedidos
+    FavoritosScreen(),      // kTabFavoritos
+    AccountScreen(),        // kTabCuenta
+    TransportHomeScreen(),  // kTabMovilidad — fuera de la barra
   ];
+
+  /// Qué índices de la pila tienen botón en la barra, en su orden.
+  static const _enLaBarra = [kTabInicio, kTabPedidos, kTabFavoritos, kTabCuenta];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,36 +60,32 @@ class HomeShell extends ConsumerWidget {
       // El cuerpo se extiende bajo la barra: es lo que crea el efecto de
       // contenido deslizándose tras el vidrio.
       extendBody: true,
-      body: IndexedStack(index: index, children: _tabs),
+      body: IndexedStack(index: index, children: _pantallas),
       bottomNavigationBar: _GlassNavBar(
-        index: index,
-        onSelect: (i) {
+        // Posición DENTRO de la barra, no índice de la pila: con Movilidad
+        // fuera, los dos dejaron de coincidir. -1 = estamos en una pantalla
+        // que no tiene botón, y entonces no se ilumina ninguno.
+        activo: _enLaBarra.indexOf(index),
+        onSelect: (posicion) {
           HapticFeedback.selectionClick();
-          ref.read(shellTabProvider.notifier).state = i;
+          ref.read(shellTabProvider.notifier).state = _enLaBarra[posicion];
         },
         items: [
-          const _GlassNavItem(
-            icon: Icons.storefront_outlined,
-            activeIcon: Icons.storefront_rounded,
-            label: 'Inicio',
-          ),
+          const _GlassNavItem(icono: ZipaIconName.inicio, label: 'Inicio'),
+          // El badge suma pedidos Y viajes. Con Movilidad fuera de la barra,
+          // dejar el contador de viajes donde estaba lo habría hecho
+          // desaparecer: alguien con un viaje en curso no tendría ni una señal
+          // de que sigue abierto.
           _GlassNavItem(
-            icon: Icons.receipt_long_outlined,
-            activeIcon: Icons.receipt_long_rounded,
+            icono: ZipaIconName.pedidos,
             label: 'Pedidos',
-            badge: ordersActive,
-          ),
-          _GlassNavItem(
-            icon: Icons.directions_car_outlined,
-            activeIcon: Icons.directions_car_rounded,
-            label: 'Movilidad',
-            badge: transportActive,
+            badge: ordersActive + transportActive,
           ),
           const _GlassNavItem(
-            icon: Icons.person_outline_rounded,
-            activeIcon: Icons.person_rounded,
-            label: 'Cuenta',
+            icono: ZipaIconName.favoritos,
+            label: 'Favoritos',
           ),
+          const _GlassNavItem(icono: ZipaIconName.cuenta, label: 'Cuenta'),
         ],
       ),
     );
@@ -86,26 +96,27 @@ class HomeShell extends ConsumerWidget {
 
 class _GlassNavItem {
   const _GlassNavItem({
-    required this.icon,
-    required this.activeIcon,
+    required this.icono,
     required this.label,
     this.badge = 0,
   });
 
-  final IconData icon;
-  final IconData activeIcon;
+  /// Un nombre del catálogo, no un `IconData`: así no se puede colar un glifo
+  /// suelto ni una variante rellena.
+  final ZipaIconName icono;
   final String label;
   final int badge;
 }
 
 class _GlassNavBar extends StatelessWidget {
   const _GlassNavBar({
-    required this.index,
+    required this.activo,
     required this.onSelect,
     required this.items,
   });
 
-  final int index;
+  /// Posición iluminada, o -1 si la pantalla actual no está en la barra.
+  final int activo;
   final ValueChanged<int> onSelect;
   final List<_GlassNavItem> items;
 
@@ -149,41 +160,49 @@ class _GlassNavBar extends StatelessWidget {
                   // debajo, y en la parte baja de un círculo no cabe una
                   // palabra como "Movilidad" — se salía por los lados. La
                   // píldora se ajusta al ancho del ítem y contiene las dos.
-                  AnimatedAlign(
-                    duration: const Duration(milliseconds: 420),
-                    curve: Curves.easeOutBack,
-                    alignment: Alignment(
-                      items.length <= 1
-                          ? 0
-                          : -1 + (2 * index / (items.length - 1)),
-                      0,
-                    ),
-                    child: FractionallySizedBox(
-                      widthFactor: 1 / items.length,
-                      // Padding + SizedBox.expand en vez de Center+Container
-                      // sin hijo: así el alto y los márgenes son explícitos y
-                      // no dependen de cómo resuelve Container un tamaño sin
-                      // contenido. (66 de barra − 52 de píldora) / 2 = 7.
-                      child: Padding(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(26),
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.white.withValues(alpha: 0.22),
-                                Colors.white.withValues(alpha: 0.05),
-                              ],
+                  // Con -1 (estamos en Movilidad, que no tiene botón) la lupa
+                  // se desvanece en vez de irse al primer ítem: iluminar
+                  // «Inicio» estando en otra pantalla es mentir sobre dónde
+                  // está uno.
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: activo < 0 ? 0 : 1,
+                    child: AnimatedAlign(
+                      duration: const Duration(milliseconds: 420),
+                      curve: Curves.easeOutBack,
+                      alignment: Alignment(
+                        items.length <= 1 || activo < 0
+                            ? 0
+                            : -1 + (2 * activo / (items.length - 1)),
+                        0,
+                      ),
+                      child: FractionallySizedBox(
+                        widthFactor: 1 / items.length,
+                        // Padding + SizedBox.expand en vez de Center+Container
+                        // sin hijo: así el alto y los márgenes son explícitos y
+                        // no dependen de cómo resuelve Container un tamaño sin
+                        // contenido. (66 de barra − 52 de píldora) / 2 = 7.
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(26),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.22),
+                                  Colors.white.withValues(alpha: 0.05),
+                                ],
+                              ),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.30),
+                                width: 1.2,
+                              ),
                             ),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.30),
-                              width: 1.2,
-                            ),
+                            child: const SizedBox.expand(),
                           ),
-                          child: const SizedBox.expand(),
                         ),
                       ),
                     ),
@@ -205,16 +224,18 @@ class _GlassNavBar extends StatelessWidget {
 
   Widget _buildItem(BuildContext context, int i) {
     final item = items[i];
-    final active = i == index;
-    final color = active ? AppColors.primary : const Color(0xFF94A3B8);
+    final active = i == activo;
+    final color = active ? ZipaTokens.marca : const Color(0xFF94A3B8);
 
-    Widget icon = Icon(active ? item.activeIcon : item.icon,
-        size: 23, color: color);
+    // EL GLIFO NO CAMBIA AL ACTIVARSE. Antes pasaba de línea a relleno, que
+    // cambia el peso visual y hace saltar la fila entera al moverse de
+    // pestaña. El estado se expresa con el color y con la píldora de vidrio.
+    Widget icono = ZipaIcon(item.icono, color: color);
     if (item.badge > 0) {
-      icon = Badge.count(
+      icono = Badge.count(
         count: item.badge,
-        backgroundColor: AppColors.primary,
-        child: icon,
+        backgroundColor: ZipaTokens.marca,
+        child: icono,
       );
     }
 
@@ -224,7 +245,7 @@ class _GlassNavBar extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          icon,
+          icono,
           const SizedBox(height: 3),
           Text(
             item.label,

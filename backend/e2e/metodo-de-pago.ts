@@ -52,6 +52,29 @@ async function main(): Promise<void> {
     );
   }
 
+  console.log('\n═══ Las billeteras se sellan con su nombre ═══');
+  {
+    // Importa CUÁL: el conductor abre esa app antes de llegar, y si no la
+    // tiene puede rechazar la carrera. Guardarlas todas como "transferencia"
+    // le quitaría esa información.
+    const { metodoPorValor } = await import('../src/lib/metodos-pago');
+    for (const metodo of ['nequi', 'daviplata', 'bancolombia']) {
+      const v = await pedir(metodo);
+      const g = await guardado(v.id);
+      comprobar(`se guarda "${metodo}"`, g?.paymentMethod === metodo, String(g?.paymentMethod));
+      comprobar(
+        `y el aviso al conductor lo nombra`,
+        Boolean(metodoPorValor(metodo)?.avisoAlConductor?.toLowerCase().includes(metodo)),
+        String(metodoPorValor(metodo)?.avisoAlConductor),
+      );
+      comprobar(
+        `sin decir que ya está pagado`,
+        !metodoPorValor(metodo)!.avisoAlConductor!.toLowerCase().includes('pagado'),
+        String(metodoPorValor(metodo)?.avisoAlConductor),
+      );
+    }
+  }
+
   console.log('\n═══ Lo que manda el teléfono no se guarda a ciegas ═══');
   {
     const v = await pedir('bitcoin-en-efectivo');

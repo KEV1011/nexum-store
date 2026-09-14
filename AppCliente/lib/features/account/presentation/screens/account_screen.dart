@@ -25,6 +25,7 @@ import 'package:nexum_client/features/account/presentation/screens/delete_accoun
 import 'package:nexum_client/features/account/presentation/screens/legal_doc_screen.dart';
 import 'package:nexum_client/features/account/presentation/screens/privacy_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
+import 'package:nexum_client/features/moderacion/presentation/bloqueados_screen.dart';
 
 /// Pestaña "Cuenta": perfil del cliente y preferencias.
 class AccountScreen extends ConsumerWidget {
@@ -99,6 +100,16 @@ class AccountScreen extends ConsumerWidget {
           const SizedBox(height: AppConstants.spacingM),
           _SettingsGroup(
             children: [
+              // Ver y deshacer los bloqueos. Un bloqueo sin vuelta atrás es
+              // una trampa: la gente se arrepiente, y en un pueblo con pocos
+              // conductores un malentendido deja a alguien sin servicio.
+              _SettingTile(
+                icon: Icons.block_outlined,
+                title: 'Personas bloqueadas',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const BloqueadosScreen()),
+                ),
+              ),
               _SettingTile(
                 icon: Icons.help_outline_rounded,
                 title: 'Ayuda y soporte',

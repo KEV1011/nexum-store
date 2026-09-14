@@ -10,6 +10,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
+import 'package:nexum_client/features/moderacion/presentation/reportar_sheet.dart';
 
 /// Chat en vivo del viaje normal (pasajero ↔ conductor). Reutiliza el WS
 /// singleton (`client_auth`) y el canal persistente `subscribe_trip_chat`.
@@ -223,6 +224,31 @@ class _TripChatScreenState extends ConsumerState<TripChatScreen> {
         foregroundColor: context.textPrimaryColor,
         elevation: 0,
         title: Text(widget.peerName),
+        actions: [
+          // El botón va AQUÍ, en la pantalla del chat, y no escondido en los
+          // ajustes de la cuenta: es donde está el contenido y donde lo busca
+          // quien acaba de recibir algo que no debería.
+          IconButton(
+            icon: const Icon(Icons.flag_outlined),
+            tooltip: 'Reportar',
+            onPressed: () async {
+              final enviado = await mostrarReporte(
+                context,
+                ref,
+                tipo: 'chat_message',
+                objetivoId: widget.tripId,
+                queSeReporta: 'esta conversación',
+              );
+              if (enviado && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Gracias. Lo revisa una persona del equipo.'),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [

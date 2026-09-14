@@ -36,6 +36,29 @@ describe('analítica de la flota', () => {
       expect(desde).toBe('2026-07-25');
     });
 
+    it('ACEPTA EL ISO COMPLETO, que es lo que manda quien la llama', () => {
+      // `getFleetFinance` devuelve '2026-09-01T00:00:00.000Z', no '2026-09-01'.
+      // Pegarle la hora otra vez daba una fecha inválida y la pestaña
+      // Rendimiento del portal respondía 500 SIEMPRE. Las pruebas de aquí
+      // arriba pasaban porque le daban el formato equivocado.
+      const { desde, hasta, dias } = rangoAnterior(
+        '2026-08-01T00:00:00.000Z',
+        '2026-08-07T23:59:59.999Z',
+      );
+      expect(dias).toBe(7);
+      expect(hasta).toBe('2026-07-31');
+      expect(desde).toBe('2026-07-25');
+    });
+
+    it('mezclar los dos formatos tampoco la rompe', () => {
+      const r = rangoAnterior('2026-08-01', '2026-08-07T23:59:59.999Z');
+      expect(r.dias).toBe(7);
+    });
+
+    it('una fecha ilegible falla diciendo cuál, no con un RangeError', () => {
+      expect(() => rangoAnterior('el lunes', '2026-08-07')).toThrow(/inválido/);
+    });
+
     it('un solo día se compara con el día anterior', () => {
       const { desde, hasta, dias } = rangoAnterior('2026-08-10', '2026-08-10');
       expect(dias).toBe(1);

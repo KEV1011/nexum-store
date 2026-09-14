@@ -28,8 +28,60 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>ZIPA Conductor usa tu ubicación para recibir viajes cercanos y compartir tu posición con el pasajero durante el servicio.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>ZIPA Conductor usa tu ubicación en segundo plano para mantenerte visible mientras estás en línea.</string>
+	<!--
+		NO se pide «Siempre», a propósito.
+
+		Aquí estaba `NSLocationAlwaysAndWhenInUseUsageDescription`. Se retira
+		porque no hace falta: con «mientras se usa» MÁS el modo de fondo
+		`location` de abajo y `allowBackgroundLocationUpdates`, iOS sigue
+		entregando posiciones con la app minimizada y la pantalla apagada,
+		mostrando el indicador azul. Eso es todo lo que necesita el despacho.
+
+		«Siempre» solo añadiría relanzar la app después de que el sistema la
+		cierre del todo, y a cambio pide el permiso más sensible que hay: es de
+		los que Apple cuestiona y de los que el conductor deniega. Si algún día
+		se necesita, hay que volver a poner esta clave Y la pantalla que
+		explique el porqué ANTES de pedirlo.
+
+		Ojo con el orden: geolocator mira el plist para decidir qué pide. Con
+		esta clave presente pide «Siempre»; sin ella, «mientras se usa». O sea
+		que borrarla no es cosmética, cambia el diálogo que ve el conductor.
+	-->
+	<!--
+		UIBackgroundModes: `location` es la mitad que faltaba.
+
+		El texto de arriba prometía ubicación en segundo plano y esta clave no
+		existía, así que iOS suspendía la app al minimizarla: el latido de GPS
+		se cortaba y a los 120 s el conductor salía del despacho por frescura,
+		con el teléfono en el bolsillo y sin una sola pista en pantalla. En
+		Android eso no pasa porque hay foreground service.
+
+		Va emparejada con `allowBackgroundLocationUpdates: true` en
+		`location_service.dart`. Las dos, o ninguna: poner el flag de
+		CLLocationManager sin este modo declarado hace que iOS LANCE una
+		excepción al arrancar el stream, y quitar el modo dejando el flag
+		rompería la app del conductor entera.
+
+		`remote-notification` es para los avisos de servicio: ambas apps
+		registran `FirebaseMessaging.onBackgroundMessage`, y sin este modo iOS
+		nunca despierta la app para ejecutarlo.
+
+		Para la revisión de Apple: el uso está a la vista (indicador azul
+		activado) y se limita al tiempo en línea. Es el mismo patrón de
+		cualquier app de conductores.
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>remote-notification</string>
+	</array>
+	<!--
+		Solo usamos HTTPS estándar del sistema, que está exento de la
+		declaración de cifrado. Sin esta clave, CADA subida a TestFlight se
+		para a preguntarlo a mano.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>ZIPA Conductor usa la cámara para subir tus documentos y pruebas de entrega.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
