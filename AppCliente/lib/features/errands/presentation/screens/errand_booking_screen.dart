@@ -14,7 +14,12 @@ import 'package:nexum_client/features/errands/presentation/providers/errand_prov
 const double _kBaseServiceFee = 6000;
 
 class ErrandBookingScreen extends ConsumerStatefulWidget {
-  const ErrandBookingScreen({super.key});
+  const ErrandBookingScreen({super.key, this.categoriaInicial});
+
+  /// Categoría con la que se entra cuando se llega desde el carrusel del home.
+  /// Null cuando se entra sin elegir (desde la hoja de envíos): ahí manda el
+  /// valor por defecto de siempre.
+  final ErrandCategory? categoriaInicial;
 
   @override
   ConsumerState<ErrandBookingScreen> createState() =>
@@ -22,7 +27,8 @@ class ErrandBookingScreen extends ConsumerStatefulWidget {
 }
 
 class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
-  ErrandCategory _category = ErrandCategory.pharmacy;
+  late ErrandCategory _category =
+      widget.categoriaInicial ?? ErrandCategory.pharmacy;
   final _descCtrl = TextEditingController();
   final _pickupCtrl = TextEditingController();
   final _dropoffCtrl = TextEditingController();

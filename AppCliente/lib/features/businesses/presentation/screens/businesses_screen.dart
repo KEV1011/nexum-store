@@ -16,17 +16,19 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'sello_confianza.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'tarjeta_servicio.dart';
+import 'package:nexum_client/features/errands/presentation/widgets/'
+    'fila_categorias_mandado.dart';
+import 'package:nexum_client/features/errands/presentation/widgets/'
+    'hoja_envios.dart';
 import 'package:nexum_client/features/shell/presentation/providers/'
     'shell_provider.dart';
-import 'package:nexum_client/features/transport/domain/entities/'
-    'transport_request_entity.dart';
 import 'package:nexum_client/shared/widgets/estados_zipa.dart';
 
 // ── La home ──────────────────────────────────────────────────────────────────
 //
-// Orden, de arriba abajo: dónde entregar · buscar · qué quieres hacer · por qué
-// confiar · qué hay cerca. Es el orden de las preguntas que se hace quien abre
-// la app, y antes no era ninguno.
+// Orden, de arriba abajo: dónde entregar · buscar · qué quieres hacer · qué te
+// traemos · por qué confiar · qué hay cerca. Es el orden de las preguntas que
+// se hace quien abre la app, y antes no era ninguno.
 //
 // LO QUE SE FUE, Y POR QUÉ:
 //
@@ -94,7 +96,11 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
               SliverToBoxAdapter(child: _RejillaServicios(onFiltrarRestaurantes: () {
                 setState(() => _filtro = BusinessCategory.restaurant);
               })),
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
+              const SliverToBoxAdapter(child: SizedBox(height: 22)),
+              // Va ARRIBA del sello y de los comercios porque es la oferta que
+              // nadie descubría: estaba a cinco toques dentro de dos hojas.
+              const SliverToBoxAdapter(child: FilaCategoriasMandado()),
+              const SliverToBoxAdapter(child: SizedBox(height: 20)),
               const SliverPadding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverToBoxAdapter(child: SelloConfianza()),
@@ -352,10 +358,10 @@ class _RejillaServicios extends ConsumerWidget {
                   tinte: ZipaTokens.envios,
                   titulo: 'Envíos',
                   subtitulo: 'Paquetes y mandados',
-                  onTap: () => context.push(
-                    AppRoutes.transportBooking,
-                    extra: TransportServiceType.envios,
-                  ),
+                  // Decía «Paquetes y mandados» y abría SOLO el formulario de
+                  // paquetes: el botón prometía la mitad que no daba. Ahora
+                  // pregunta cuál de los dos, que son flujos distintos.
+                  onTap: () => mostrarHojaEnvios(context),
                 ),
               ),
               const SizedBox(width: 12),

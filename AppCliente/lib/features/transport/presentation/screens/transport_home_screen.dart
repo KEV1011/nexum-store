@@ -16,6 +16,7 @@ import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
+import 'package:nexum_client/features/errands/presentation/widgets/hoja_envios.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
@@ -579,7 +580,8 @@ class _BottomPanel extends StatelessWidget {
                 // Envíos es el paraguas: paquete punto a punto o un encargo
                 // (compra/diligencia, antes "mandados").
                 if (selected == TransportServiceType.envios) {
-                  _showEnviosOptions(context);
+                  // Sobre el mapa: la hoja va oscura en los dos temas.
+                  mostrarHojaEnvios(context, sobreMapa: true);
                 } else {
                   context.push(AppRoutes.transportBooking, extra: selected);
                 }
@@ -1177,149 +1179,6 @@ class _IntercityActiveBanner extends StatelessWidget {
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Selector de subtipos de Envíos ────────────────────────────────────────────
-//
-// "Envíos" cubre tanto el paquete punto a punto como los encargos
-// (compra/recogida/diligencia, el motor errands del backend).
-
-void _showEnviosOptions(BuildContext context) {
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: AppColors.surfaceDark,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-    ),
-    builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: AppColors.outlineDark,
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              '¿Qué necesitas enviar?',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _EnviosOption(
-              icon: Icons.inventory_2_rounded,
-              title: 'Enviar un paquete',
-              subtitle: 'De una dirección a otra, ya tienes el paquete listo',
-              onTap: () {
-                Navigator.of(ctx).pop();
-                context.push(
-                  AppRoutes.transportBooking,
-                  extra: TransportServiceType.envios,
-                );
-              },
-            ),
-            const SizedBox(height: 10),
-            _EnviosOption(
-              icon: Icons.shopping_bag_rounded,
-              title: 'Compra o diligencia',
-              subtitle: 'Farmacia, mercado, pagos, recoger algo por ti...',
-              onTap: () {
-                Navigator.of(ctx).pop();
-                context.push(AppRoutes.errandBooking);
-              },
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-class _EnviosOption extends StatelessWidget {
-  const _EnviosOption({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  static const _cardBg = AppColors.surfaceVariantDark;
-  static const _subText = AppColors.textSecondaryDark;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = AppColors.serviceEnvios;
-    return Material(
-      color: _cardBg,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(9),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(color: _subText, fontSize: 11.5),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: _subText,
-                size: 20,
-              ),
-            ],
-          ),
         ),
       ),
     );

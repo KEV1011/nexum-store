@@ -27,6 +27,8 @@ import 'package:nexum_client/features/cart/presentation/screens/'
     'cart_screen.dart';
 import 'package:nexum_client/features/cart/presentation/screens/'
     'checkout_screen.dart';
+import 'package:nexum_client/features/errands/domain/entities/'
+    'errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/screens/'
     'errand_booking_screen.dart';
 import 'package:nexum_client/features/errands/presentation/screens/'
@@ -287,9 +289,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.errandBooking,
+        // El carrusel del home manda la categoría ya elegida; la hoja de
+        // envíos entra sin nada y la pantalla usa su valor por defecto.
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
-          child: const ErrandBookingScreen(),
+          child: ErrandBookingScreen(
+            categoriaInicial:
+                state.extra is ErrandCategory ? state.extra! as ErrandCategory : null,
+          ),
         ),
       ),
       GoRoute(
