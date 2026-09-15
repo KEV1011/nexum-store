@@ -35,7 +35,6 @@ class VehicleSideViewPainter extends CustomPainter {
   void paint(Canvas lienzo, Size s) {
     final llanta = Color.lerp(body, Colors.black, 0.62)!;
     final cristal = Color.lerp(body, Colors.white, 0.68)!;
-    final sombreado = Color.lerp(body, Colors.black, 0.18)!;
 
     // Sombra de contacto: sin ella el vehículo flota y se nota.
     lienzo.drawOval(
@@ -51,24 +50,20 @@ class VehicleSideViewPainter extends CustomPainter {
       case VehicleSideKind.moto:
         _moto(lienzo, s, body, llanta, cristal);
       case VehicleSideKind.truck:
-        _camion(lienzo, s, body, llanta, cristal, sombreado);
+        _camion(lienzo, s, body, llanta, cristal,
+            Color.lerp(body, Colors.black, 0.22)!);
       case VehicleSideKind.car:
       case VehicleSideKind.taxi:
-        _carro(lienzo, s, body, llanta, cristal, sombreado);
-        if (kind == VehicleSideKind.taxi) _letreroTaxi(lienzo, s, sombreado);
+        _carro(lienzo, s, body, llanta, cristal);
+        if (kind == VehicleSideKind.taxi) {
+          _letreroTaxi(lienzo, s, Color.lerp(body, Colors.black, 0.30)!);
+        }
     }
   }
 
   // ── Carro y taxi ───────────────────────────────────────────────────────────
 
-  void _carro(
-    Canvas c,
-    Size s,
-    Color cuerpo,
-    Color llanta,
-    Color cristal,
-    Color sombreado,
-  ) {
+  void _carro(Canvas c, Size s, Color cuerpo, Color llanta, Color cristal) {
     double x(double v) => s.width * v;
     double y(double v) => s.height * v;
 
@@ -84,14 +79,11 @@ class VehicleSideViewPainter extends CustomPainter {
       ..close();
     c.drawPath(silueta, Paint()..color = cuerpo);
 
-    // Faldón inferior: una franja algo más oscura da volumen sin degradados.
-    c.save();
-    c.clipPath(silueta);
-    c.drawRect(
-      Rect.fromLTRB(0, y(0.690), s.width, s.height),
-      Paint()..color = sombreado,
-    );
-    c.restore();
+    // SIN faldón. Se probó una franja más oscura en los bajos para dar volumen
+    // y el resultado, sobre el amarillo del taxi, se lee como un estribo
+    // pegado al carro: una pieza que no existe. Las siluetas de Uber y DiDi
+    // son de un solo color por esto mismo — el volumen lo dan la forma y las
+    // ruedas, no las franjas.
 
     // Cristales. Dos, con el montante en medio: uno solo se lee como una
     // ventanilla de autobús.
@@ -136,30 +128,45 @@ class VehicleSideViewPainter extends CustomPainter {
     double x(double v) => s.width * v;
     double y(double v) => s.height * v;
 
+    // Una moto se reconoce por su ESQUELETO —dos ruedas separadas, un cuadro
+    // que las une y una horquilla que sube al manillar—, no por su volumen. El
+    // primer intento la dibujó como una mancha con un manillar flotando al
+    // lado, y a ese tamaño no se entendía qué era.
     final trazo = Paint()
       ..color = cuerpo
       ..style = PaintingStyle.stroke
-      ..strokeWidth = s.width * 0.055
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = s.width * 0.052
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
 
-    // Horquilla delantera y manillar.
-    c.drawLine(Offset(x(0.700), y(0.560)), Offset(x(0.800), y(0.762)), trazo);
-    c.drawLine(Offset(x(0.700), y(0.560)), Offset(x(0.735), y(0.390)), trazo);
-    c.drawLine(Offset(x(0.660), y(0.372)), Offset(x(0.812), y(0.372)), trazo);
+    // Basculante y cuadro: del buje trasero al eje de dirección.
+    c.drawPath(
+      Path()
+        ..moveTo(x(0.195), y(0.765))
+        ..lineTo(x(0.395), y(0.640))
+        ..lineTo(x(0.610), y(0.618))
+        ..lineTo(x(0.690), y(0.480)),
+      trazo,
+    );
+    // Horquilla delantera, del eje de dirección al buje de la rueda.
+    c.drawLine(Offset(x(0.690), y(0.480)), Offset(x(0.805), y(0.765)), trazo);
+    // Manillar.
+    c.drawLine(Offset(x(0.618), y(0.408)), Offset(x(0.772), y(0.392)), trazo);
+    c.drawLine(Offset(x(0.690), y(0.480)), Offset(x(0.700), y(0.400)), trazo);
 
-    // Cuerpo: plataforma para los pies y asiento.
-    final chasis = Path()
-      ..moveTo(x(0.190), y(0.612))
-      ..cubicTo(x(0.255), y(0.500), x(0.360), y(0.482), x(0.470), y(0.512))
-      ..lineTo(x(0.600), y(0.560))
-      ..cubicTo(x(0.640), y(0.600), x(0.610), y(0.672), x(0.540), y(0.680))
-      ..lineTo(x(0.340), y(0.700))
-      ..cubicTo(x(0.250), y(0.712), x(0.190), y(0.690), x(0.190), y(0.612))
+    // Asiento y tanque, en una pieza: es la línea que remata la silueta.
+    final sillin = Path()
+      ..moveTo(x(0.232), y(0.586))
+      ..cubicTo(x(0.250), y(0.522), x(0.362), y(0.506), x(0.458), y(0.522))
+      ..cubicTo(x(0.532), y(0.534), x(0.590), y(0.474), x(0.662), y(0.482))
+      ..cubicTo(x(0.702), y(0.508), x(0.690), y(0.582), x(0.630), y(0.600))
+      ..lineTo(x(0.332), y(0.626))
+      ..cubicTo(x(0.266), y(0.634), x(0.226), y(0.620), x(0.232), y(0.586))
       ..close();
-    c.drawPath(chasis, Paint()..color = cuerpo);
+    c.drawPath(sillin, Paint()..color = cuerpo);
 
-    _rueda(c, Offset(x(0.212), y(0.762)), s.width * 0.140, llanta, cristal);
-    _rueda(c, Offset(x(0.800), y(0.762)), s.width * 0.140, llanta, cristal);
+    _rueda(c, Offset(x(0.195), y(0.772)), s.width * 0.126, llanta, cristal);
+    _rueda(c, Offset(x(0.805), y(0.772)), s.width * 0.126, llanta, cristal);
   }
 
   // ── Camión ─────────────────────────────────────────────────────────────────
@@ -202,15 +209,19 @@ class VehicleSideViewPainter extends CustomPainter {
       ..close();
     c.drawPath(ventana, Paint()..color = cristal);
 
-    _rueda(c, Offset(x(0.230), y(0.762)), s.width * 0.112, llanta, cristal);
-    _rueda(c, Offset(x(0.760), y(0.762)), s.width * 0.112, llanta, cristal);
+    _rueda(c, Offset(x(0.180), y(0.766)), s.width * 0.116, llanta, cristal);
+    _rueda(c, Offset(x(0.775), y(0.766)), s.width * 0.116, llanta, cristal);
   }
 
   // ── Común ──────────────────────────────────────────────────────────────────
 
   void _rueda(Canvas c, Offset centro, double radio, Color llanta, Color buje) {
     c.drawCircle(centro, radio, Paint()..color = llanta);
-    c.drawCircle(centro, radio * 0.42, Paint()..color = buje);
+    c.drawCircle(
+      centro,
+      radio * 0.32,
+      Paint()..color = Color.lerp(llanta, buje, 0.55)!,
+    );
   }
 
   @override
