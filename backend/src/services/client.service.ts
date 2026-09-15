@@ -1407,11 +1407,25 @@ export async function getActiveClientTrip(clientId: string): Promise<ClientTripW
   const trip = await prisma.trip.findFirst({
     where: { passengerId: clientId, status: { in: active as never[] } },
     orderBy: { createdAt: 'desc' },
+    // Con la ficha del conductor. Sin esto, al abrir la app en frío el viaje
+    // salía sin conductor aunque lo tuviera: el WS sí la manda, pero esta es la
+    // consulta que contesta al arrancar. Se nota sobre todo en una reserva
+    // apartada —el pasajero abre la app justamente para comprobar que tiene
+    // taxi— y se notaba ya en cualquier viaje aceptado tras cerrar la app.
+    include: {
+      driver: { include: { vehicles: { where: { isActive: true }, take: 1 } } },
+    },
   });
   if (!trip) return null;
   // Vista propia del cliente: aquí sí va el PIN (así lo recupera si reinstala
   // la app o pierde el estado local con un envío en curso).
-  return _conPin(_toTripDTO(trip, clientId), trip.deliveryPin);
+  return _conPin(
+    _toTripDTO(trip, clientId, {
+      driver: trip.driver,
+      vehicle: trip.driver?.vehicles[0],
+    }),
+    trip.deliveryPin,
+  );
 }
 
 /**
@@ -1430,7 +1444,11 @@ export async function getActiveClientTrip(clientId: string): Promise<ClientTripW
  */
 export async function despacharProgramados(): Promise<number> {
   const pendientes = await prisma.trip.findMany({
-    where: { status: 'SCHEDULED', searchFrom: { lte: new Date() } },
+    // `driverId: null`: las que un conductor ya apartó NO salen a buscar a
+    // nadie — ya tienen a quien las atienda, y sacarlas aquí le daría al
+    // pasajero un segundo conductor. Esas las activa `activarReservas` en
+    // `reservas.service`, que avisa al que se comprometió.
+    where: { status: 'SCHEDULED', driverId: null, searchFrom: { lte: new Date() } },
     select: {
       id: true, serviceType: true, originLat: true, originLng: true,
       distanceKm: true, etaMinutes: true,

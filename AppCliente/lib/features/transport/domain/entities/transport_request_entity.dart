@@ -156,6 +156,7 @@ class TransportRequestEntity {
     this.driverVehicleType,
     this.stops = const [],
     this.driverCard,
+    this.scheduledFor,
     this.acceptedAt,
     this.completedAt,
     this.recipientName,
@@ -214,6 +215,9 @@ class TransportRequestEntity {
             .where((n) => n.isNotEmpty)
             .toList(),
         driverCard: DriverCardInfo.fromJson(json),
+        scheduledFor: json['scheduledFor'] != null
+            ? DateTime.parse(json['scheduledFor'] as String)
+            : null,
         acceptedAt: json['acceptedAt'] != null
             ? DateTime.parse(json['acceptedAt'] as String)
             : null,
@@ -292,6 +296,13 @@ class TransportRequestEntity {
   /// Foto, calificación, verificación y placa del conductor asignado.
   /// Null mientras se busca conductor.
   final DriverCardInfo? driverCard;
+  /// Para cuándo lo reservó el pasajero. Null = viaje inmediato.
+  ///
+  /// El servidor siempre lo mandó y la app lo tiraba: sin esto, quien
+  /// reservaba un taxi para las 6:00 no podía ver a qué hora era su propio
+  /// viaje en ninguna pantalla.
+  final DateTime? scheduledFor;
+
   final DateTime? acceptedAt;
   final DateTime? completedAt;
   final String? recipientName;
@@ -338,6 +349,7 @@ class TransportRequestEntity {
     String? driverVehicleType,
     List<String>? stops,
     DriverCardInfo? driverCard,
+    DateTime? scheduledFor,
     DateTime? acceptedAt,
     DateTime? completedAt,
     String? recipientName,
@@ -376,6 +388,7 @@ class TransportRequestEntity {
       driverVehicleType: driverVehicleType ?? this.driverVehicleType,
       stops: stops ?? this.stops,
       driverCard: driverCard ?? this.driverCard,
+      scheduledFor: scheduledFor ?? this.scheduledFor,
       acceptedAt: acceptedAt ?? this.acceptedAt,
       completedAt: completedAt ?? this.completedAt,
       recipientName: recipientName ?? this.recipientName,
@@ -419,6 +432,8 @@ class TransportRequestEntity {
         // La ficha se aplana en las MISMAS claves del backend, para que
         // `fromJson` la reconstruya igual venga de la API o del disco.
         if (driverCard != null) ...driverCard!.toJson(),
+        if (scheduledFor != null)
+          'scheduledFor': scheduledFor!.toIso8601String(),
         if (acceptedAt != null) 'acceptedAt': acceptedAt!.toIso8601String(),
         if (completedAt != null) 'completedAt': completedAt!.toIso8601String(),
         if (recipientName != null) 'recipientName': recipientName,

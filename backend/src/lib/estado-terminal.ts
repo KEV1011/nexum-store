@@ -56,3 +56,25 @@ export function guardaNoTerminal(tipo: ServicioCerrable): {
 } {
   return { notIn: POR_TIPO[tipo] };
 }
+
+/**
+ * Estados que no ocupan al conductor AHORA, para el `where` de Prisma.
+ *
+ * Es distinto de `guardaNoTerminal` por una sola razón, y es la que importa:
+ * un viaje SCHEDULED es una reserva apartada para mañana. Está abierto —no es
+ * terminal— pero el conductor no está atendiéndolo, está trabajando
+ * normalmente. Contarlo como servicio en curso tiene dos consecuencias feas y
+ * silenciosas: lo deja ON_TRIP para siempre al terminar su carrera de hoy
+ * (`liberarConductorSiNoTieneMas`) y lo saca del encadenado mientras tenga
+ * cualquier reserva en la agenda.
+ *
+ * Solo el viaje tiene reservas; pedidos y mandados no se programan, así que
+ * para ellos esto es exactamente `guardaNoTerminal`.
+ */
+export function guardaNoOcupa(tipo: ServicioCerrable): {
+  notIn: readonly string[];
+} {
+  return {
+    notIn: tipo === 'trip' ? [...POR_TIPO.trip, 'SCHEDULED'] : POR_TIPO[tipo],
+  };
+}

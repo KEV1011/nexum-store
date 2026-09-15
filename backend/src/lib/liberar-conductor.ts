@@ -9,7 +9,7 @@
 import type { ErrandStatus, OrderStatus, TripStatus } from '@prisma/client';
 
 import { prisma } from './prisma';
-import { guardaNoTerminal } from './estado-terminal';
+import { guardaNoOcupa } from './estado-terminal';
 
 /**
  * Pone al conductor ONLINE **solo si no le queda ningún otro servicio abierto**.
@@ -33,13 +33,16 @@ export async function liberarConductorSiNoTieneMas(driverId: string): Promise<vo
   try {
     const [viajes, pedidos, mandados] = await Promise.all([
       prisma.trip.count({
-        where: { driverId, status: guardaNoTerminal('trip') as { notIn: TripStatus[] } },
+        // `guardaNoOcupa` y no `guardaNoTerminal`: una reserva apartada para
+        // mañana está abierta pero no lo tiene ocupado hoy, y contarla lo
+        // dejaría ON_TRIP —o sea, fuera del despacho— hasta que la cumpla.
+        where: { driverId, status: guardaNoOcupa('trip') as { notIn: TripStatus[] } },
       }),
       prisma.order.count({
-        where: { driverId, status: guardaNoTerminal('order') as { notIn: OrderStatus[] } },
+        where: { driverId, status: guardaNoOcupa('order') as { notIn: OrderStatus[] } },
       }),
       prisma.errand.count({
-        where: { driverId, status: guardaNoTerminal('errand') as { notIn: ErrandStatus[] } },
+        where: { driverId, status: guardaNoOcupa('errand') as { notIn: ErrandStatus[] } },
       }),
     ]);
     if (viajes + pedidos + mandados > 0) return; // sigue ocupado: se queda ON_TRIP

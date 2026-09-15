@@ -269,7 +269,10 @@ function _sqlEncadenado(): Prisma.Sql {
     AND NOT EXISTS (
       SELECT 1 FROM "trips" t2
       WHERE t2."driverId" = d."id"
-        AND t2."status" NOT IN ('IN_PROGRESS', 'COMPLETED', 'CANCELLED')
+        -- SCHEDULED entra en la lista de lo que NO cuenta: es una reserva que
+        -- apartó para mañana, no un servicio en curso. Sin esto, un taxista con
+        -- la semana cuadrada no volvería a encadenar un solo viaje.
+        AND t2."status" NOT IN ('IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'SCHEDULED')
     )
     AND NOT EXISTS (
       SELECT 1 FROM "orders" o
@@ -499,7 +502,15 @@ export async function getNearbyDriverPositions(
 
 // ─── TripRequestDTO builder ───────────────────────────────────────────────────
 
-async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | null> {
+/**
+ * La oferta tal y como la ve el conductor.
+ *
+ * Exportada porque las RESERVAS la necesitan igual: cuando llega la hora de una
+ * reserva apartada no hay ciclo de oferta —el conductor ya se comprometió—,
+ * pero su app construye el viaje activo a partir de exactamente esta forma. Si
+ * se armara otra parecida, las dos se separarían en cuanto se tocara una.
+ */
+export async function buildTripRequestDTO(tripId: string): Promise<TripRequestDTO | null> {
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     include: { passenger: true },

@@ -26,6 +26,7 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
+import 'package:nexum_driver/features/reservas/presentation/widgets/reservas_panel_card.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/demand_zones_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/service_prefs_provider.dart';
@@ -126,6 +127,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   StreamSubscription<String>? _wsBlockedSub;
   StreamSubscription<String>? _wsErrandCancelSub;
   StreamSubscription<String>? _wsOrderCancelSub;
+  StreamSubscription<Map<String, dynamic>>? _wsReservaSub;
 
   /// Encuadre inicial mientras el GPS todavía no ha dado la primera lectura.
   /// No es la posición del conductor y no se dibuja ningún vehículo sobre él:
@@ -218,6 +220,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _wsBlockedSub?.cancel();
     _wsErrandCancelSub?.cancel();
     _wsOrderCancelSub?.cancel();
+    _wsReservaSub?.cancel();
     _posSub?.cancel();
     _mapController.dispose();
     super.dispose();
@@ -298,6 +301,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _wsBlockedSub?.cancel();
       _wsErrandCancelSub?.cancel();
       _wsOrderCancelSub?.cancel();
+    _wsReservaSub?.cancel();
       LocationService().stopTracking();
       DriverWsService().disconnect();
       AppSnackbar.showInfo(context, 'Desconectado. No recibirás solicitudes.');
@@ -424,6 +428,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() => _state = _state.copyWith(clearPending: true));
         AppSnackbar.showInfo(context, 'El cliente canceló el pedido.');
       }
+    });
+
+    // Reservas apartadas con antelación. Le llegó la hora a una (o se le
+    // liberó por no dar señales). NO se le mete la pantalla encima: puede ir
+    // conduciendo. Se le avisa y él decide cuándo abrirla.
+    _wsReservaSub = DriverWsService().reservaEventos.listen((msg) {
+      if (!mounted) return;
+      final activa = msg['type'] == 'reserva_activa';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 8),
+        backgroundColor:
+            activa ? const Color(0xFF059669) : const Color(0xFFDC2626),
+        content: Text(activa
+            ? 'Tu reserva empieza ahora. Recoge en '
+                '${msg['originAddress'] ?? 'el punto acordado'}.'
+            : 'Se liberó una de tus reservas: no dimos contigo a la hora.'),
+        action: SnackBarAction(
+          label: 'Ver',
+          textColor: Colors.white,
+          onPressed: () => context.push('/reservas'),
+        ),
+      ));
     });
   }
 
@@ -958,6 +984,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // directo a las reservas (antes vivía escondido en el drawer).
           _IntercityPanelCard(
             onOpen: () => context.push('/intercity-requests'),
+          ),
+          const SizedBox(height: AppConstants.spacingS),
+
+          // Reservas: viajes que alguien programó para más tarde y que el
+          // conductor puede apartar desde ahora. Va en el panel por lo mismo
+          // que la tarjeta de arriba — en el menú lateral no lo encontraría.
+          ReservasPanelCard(
+            onOpen: () => context.push('/reservas'),
           ),
           const SizedBox(height: AppConstants.spacingS),
 
@@ -1934,6 +1968,15 @@ class _AppDrawer extends ConsumerWidget {
                     onTap: () {
                       Navigator.of(context).pop();
                       context.push('/trip-history');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.event_available_rounded,
+                    label: 'Reservas',
+                    iconColor: const Color(0xFF38BDF8),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      context.push('/reservas');
                     },
                   ),
                   _DrawerItem(

@@ -38,6 +38,7 @@ import {
   registerErrandSendToDriver,
 } from '../services/errand.service';
 import { registerComplianceSendToDriver } from '../services/document-expiry.service';
+import { registerReservaSendToDriver } from '../services/reservas.service';
 import { CustodyPinError } from '../lib/custody-pin';
 import {
   subscribeIntercityBooking,
@@ -1500,6 +1501,8 @@ export function setupWebSocket(wss: WebSocketServer): void {
   registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   // Kill-switch documental: aviso en vivo al conductor bloqueado/reactivado.
   registerComplianceSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+  // Reservas: «tu reserva empieza ahora» y «se te liberó por no aparecer».
+  registerReservaSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
 
   // Bus de entrega entre instancias. Con REDIS_URL propaga las entregas por id
   // (sendToClient / sendToDriverById) a las demás instancias; sin él, entrega

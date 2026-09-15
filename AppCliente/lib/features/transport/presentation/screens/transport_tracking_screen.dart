@@ -277,7 +277,7 @@ class _StatusCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      request.status.label,
+                      _titulo(request),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 17,
@@ -286,7 +286,7 @@ class _StatusCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      request.serviceType.label,
+                      _detalle(request),
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.8),
                         fontSize: 13,
@@ -329,6 +329,36 @@ class _StatusCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Un viaje reservado que YA tiene conductor no se anuncia igual que uno que
+  /// todavía no lo tiene. Es la diferencia entre «pedí un taxi para mañana» y
+  /// «tengo un taxi para mañana», y es justamente lo que el pasajero abre la
+  /// app a comprobar la noche antes.
+  String _titulo(TransportRequestEntity r) =>
+      r.status == TransportStatus.scheduled && r.driverName != null
+          ? 'Conductor apartado'
+          : r.status.label;
+
+  String _detalle(TransportRequestEntity r) {
+    if (r.status != TransportStatus.scheduled || r.scheduledFor == null) {
+      return r.serviceType.label;
+    }
+    final f = r.scheduledFor!.toLocal();
+    final hora =
+        '${f.hour.toString().padLeft(2, '0')}:${f.minute.toString().padLeft(2, '0')}';
+    final ahora = DateTime.now();
+    final faltan = DateTime(f.year, f.month, f.day)
+        .difference(DateTime(ahora.year, ahora.month, ahora.day))
+        .inDays;
+    final dia = faltan == 0
+        ? 'hoy'
+        : faltan == 1
+            ? 'mañana'
+            : '${f.day}/${f.month}';
+    return r.driverName != null
+        ? 'Te recoge $dia a las $hora'
+        : 'Reservado para $dia a las $hora';
   }
 
   IconData _statusIcon(TransportStatus status) => switch (status) {

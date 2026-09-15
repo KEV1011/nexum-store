@@ -13,6 +13,7 @@ import 'package:nexum_driver/features/auth/presentation/screens/register_screen.
 import 'package:nexum_driver/features/driver_status/presentation/screens/home_screen.dart';
 import 'package:nexum_driver/features/earnings/presentation/screens/earnings_screen.dart';
 import 'package:nexum_driver/features/freight/presentation/screens/driver_freights_screen.dart';
+import 'package:nexum_driver/features/reservas/presentation/screens/reservas_screen.dart';
 import 'package:nexum_driver/features/freight/presentation/screens/manifests_screen.dart';
 import 'package:nexum_driver/features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'package:nexum_driver/features/performance/presentation/screens/performance_screen.dart';
@@ -46,6 +47,7 @@ abstract final class AppRoutes {
   static const String tripSummary = '/trip-summary';
   static const String earnings = '/earnings';
   static const String driverFreights = '/freights';
+  static const String reservas = '/reservas';
   static const String manifests = '/remitos';
   static const String profile = '/profile';
   static const String wallet = '/wallet';
@@ -84,6 +86,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.fade(
           pageKey: state.pageKey,
           child: const SplashScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.reservas,
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: const ReservasScreen(),
         ),
       ),
       GoRoute(

@@ -79,6 +79,8 @@ class DriverWsService {
   final _orderCancelCtrl = StreamController<String>.broadcast();
   /// Rechazos del PIN de custodia (mensaje en español listo para mostrar).
   final _custodyPinErrorCtrl = StreamController<String>.broadcast();
+  /// Reservas: «tu reserva empieza ahora» y «se te liberó por no aparecer».
+  final _reservaCtrl = StreamController<Map<String, dynamic>>.broadcast();
 
   /// El servidor rechazó ponerlo EN LÍNEA (identidad sin verificar o documentos
   /// vencidos). Llega el motivo listo para enseñar.
@@ -123,6 +125,10 @@ class DriverWsService {
 
   /// Emite cuando el backend rechaza el PIN: el servicio no avanzó de estado.
   Stream<String> get custodyPinErrors => _custodyPinErrorCtrl.stream;
+
+  /// Avisos del tablero de reservas. El mapa trae `type`
+  /// (`reserva_activa` | `reserva_liberada`) y `tripId`.
+  Stream<Map<String, dynamic>> get reservaEventos => _reservaCtrl.stream;
 
   /// Motivo por el que el servidor no lo dejó ponerse en línea.
   Stream<String> get blockedReasons => _blockedCtrl.stream;
@@ -569,6 +575,13 @@ class DriverWsService {
         case 'order_cancelled':
           final orderId = msg['orderId'] as String?;
           if (orderId != null) _orderCancelCtrl.add(orderId);
+
+        // La reserva que apartó con antelación llegó a su hora (o se le
+        // liberó por no dar señales). El servidor ya la pasó a viaje aceptado;
+        // aquí solo hay que avisarle, que es lo que no ocurría antes.
+        case 'reserva_activa':
+        case 'reserva_liberada':
+          _reservaCtrl.add(msg);
 
         // El PIN de custodia faltó o no coincide: el servicio NO avanzó. El
         // mensaje ya viene en español y listo para mostrar al conductor.

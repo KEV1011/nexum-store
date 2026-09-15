@@ -71,6 +71,13 @@ import {
   addFreightEvent,
   listFreightEventsForDriver,
 } from '../services/freight.service';
+import {
+  listarReservasLibres,
+  listarMisReservas,
+  apartarReserva,
+  soltarReserva,
+  ReservaError,
+} from '../services/reservas.service';
 import { getTripChat, postTripChatPhoto, TripChatError } from '../services/trip-chat.service';
 import {
   AccountDeletionError,
@@ -818,6 +825,62 @@ router.post('/payouts', async (req: Request, res: Response): Promise<void> => {
   } catch (err) {
     const status = err instanceof PayoutError ? 400 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ── Reservas (viajes programados que el conductor aparta con antelación) ─────
+//
+// El tablero: el pasajero reservó para mañana a las 6:00 y aquí el conductor lo
+// ve, lo aparta y llega a casa con la mañana cuadrada. Ver `reservas.service`
+// para las reglas (toma atómica, tope por conductor y liberación si no aparece).
+
+// GET /driver/reservas — reservas libres que puede atender su vehículo
+router.get('/reservas', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listarReservasLibres(req.driverId!) });
+  } catch (err) {
+    const status = err instanceof ReservaError ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos cargar las reservas',
+    });
+  }
+});
+
+// GET /driver/reservas/mias — las que ya apartó, con los datos del pasajero
+router.get('/reservas/mias', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listarMisReservas(req.driverId!) });
+});
+
+// POST /driver/reservas/:id/apartar — se compromete a esa reserva
+router.post('/reservas/:id/apartar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const reserva = await apartarReserva(req.driverId!, req.params['id']!);
+    res.json({ success: true, data: reserva });
+  } catch (err) {
+    // 409 y no 400 cuando otro llegó antes: la app lo usa para recargar el
+    // tablero en vez de solo enseñar el error.
+    const conflicto =
+      err instanceof ReservaError && /tomó esa reserva primero/.test(err.message);
+    const status = conflicto ? 409 : err instanceof ReservaError ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos apartar la reserva',
+    });
+  }
+});
+
+// POST /driver/reservas/:id/soltar — la devuelve al tablero
+router.post('/reservas/:id/soltar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    await soltarReserva(req.driverId!, req.params['id']!);
+    res.json({ success: true });
+  } catch (err) {
+    const status = err instanceof ReservaError ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos soltar la reserva',
+    });
   }
 });
 

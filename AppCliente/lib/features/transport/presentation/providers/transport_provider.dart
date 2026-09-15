@@ -278,6 +278,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
       status: scheduledFor != null
           ? TransportStatus.scheduled
           : TransportStatus.searching,
+      scheduledFor:
+          scheduledFor != null ? DateTime.tryParse(scheduledFor) : null,
       createdAt: DateTime.now(),
       recipientName: recipientName,
       recipientPhone: recipientPhone,
@@ -326,6 +328,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
 
       final acceptedAtStr = payload['acceptedAt'] as String?;
       final completedAtStr = payload['completedAt'] as String?;
+      final scheduledForStr = payload['scheduledFor'] as String?;
 
       return r.copyWith(
         status: status,
@@ -354,6 +357,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
             (payload['promoDiscount'] as num?)?.round() ?? r.promoDiscount,
         totalPasajero:
             (payload['totalPasajero'] as num?)?.toDouble() ?? r.totalPasajero,
+        scheduledFor: scheduledForStr != null
+            ? DateTime.tryParse(scheduledForStr)
+            : r.scheduledFor,
         acceptedAt: acceptedAtStr != null
             ? DateTime.tryParse(acceptedAtStr)
             : r.acceptedAt,

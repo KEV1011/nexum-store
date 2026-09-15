@@ -37,6 +37,7 @@ import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.servi
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
 import { despacharProgramados } from './services/client.service';
+import { activarReservas, liberarReservasIncumplidas } from './services/reservas.service';
 import { purgeOldTrackPoints, pruneTrackState } from './services/track.service';
 import { rescatarDespacho, BARRIDO_MS } from './services/dispatch-recovery.service';
 import { warmMunicipalities } from './services/municipality.service';
@@ -280,6 +281,15 @@ server.listen(PORT, () => {
   // pierde en cada despliegue, y el viaje de mañana a las 8 se quedaría
   // esperando para siempre.
   setInterval(() => void despacharProgramados(), 60 * 1000).unref();
+  // Y su gemelo para las reservas que un conductor ya apartó: a esas no se les
+  // busca a nadie, se le avisa al que se comprometió. El segundo barrido es la
+  // red de seguridad — pasada la hora, el que no apareció pierde la reserva y
+  // el viaje sale a buscar como uno normal, que es lo único honesto que se
+  // puede hacer con un pasajero que se confió.
+  setInterval(() => {
+    void activarReservas();
+    void liberarReservasIncumplidas();
+  }, 60 * 1000).unref();
   // Rescate del despacho: los ciclos de oferta viven en memoria, así que un
   // redeploy los deja huérfanos y el cliente se queda mirando "buscando
   // conductor" para siempre. Se revisa al arrancar y se repite periódicamente
