@@ -88,73 +88,56 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
               // un montón de cajas flotando.
               border: Border.all(color: context.zBorde),
             ),
-            child: Stack(
-              children: [
-                // Marca de agua: el mismo glifo, enorme y casi transparente,
-                // asomando por la esquina. Se escala desde el tamaño del
-                // catálogo en vez de añadir una medida nueva al enum —
-                // `ZipaIconSize` tiene DOS tamaños y una prueba lo vigila,
-                // porque son los tamaños de los iconos que se tocan. Esto no
-                // es un icono: es decoración, y no se puede pulsar.
-                Positioned(
-                  right: -16,
-                  bottom: -18,
-                  child: IgnorePointer(
-                    child: Transform.scale(
-                      scale: 4.4,
-                      child: ZipaIcon(
-                        widget.icono,
-                        color: glifo.withValues(alpha: oscuro ? 0.10 : 0.09),
+            // Sin marca de agua. Se probó un glifo enorme y casi transparente
+            // asomando por la esquina y en pantalla NO se lee como decoración:
+            // se lee como una mancha recortada, como si algo se hubiera
+            // dibujado mal. Un adorno que hace dudar de si la app está rota
+            // resta más de lo que suma, y el velo del tinte ya da el cuerpo
+            // que buscaba.
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      // El cuadro con volumen: el mismo tinte, más denso
+                      // arriba. Es lo que lo despega del velo de la tarjeta,
+                      // que ahora es del mismo color.
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          fondoIcono,
+                          Color.lerp(fondoIcono, glifo, 0.16)!,
+                        ],
                       ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    alignment: Alignment.center,
+                    child: ZipaIcon(widget.icono, color: glifo),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    widget.titulo,
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      color: context.zTexto,
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          // El cuadro con volumen: el mismo tinte, más denso
-                          // arriba. Es lo que lo despega del velo de la
-                          // tarjeta, que ahora es del mismo color.
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              fondoIcono,
-                              Color.lerp(fondoIcono, glifo, 0.16)!,
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        alignment: Alignment.center,
-                        child: ZipaIcon(widget.icono, color: glifo),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        widget.titulo,
-                        style: TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w800,
-                          color: context.zTexto,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        widget.subtitulo,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12.5, color: context.zTexto2),
-                      ),
-                    ],
+                  const SizedBox(height: 2),
+                  Text(
+                    widget.subtitulo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.5, color: context.zTexto2),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

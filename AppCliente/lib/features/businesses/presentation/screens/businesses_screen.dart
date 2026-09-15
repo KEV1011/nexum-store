@@ -309,7 +309,16 @@ class _Buscador extends StatelessWidget {
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(vertical: 13),
-            hintText: 'Buscar comercio, plato o destino',
+            // Dice lo que BUSCA, ni una palabra más. Ponía «plato o destino» y
+            // no busca ninguna de las dos: el filtro es `b.name.contains(q)`,
+            // solo el nombre del comercio. Escribir un destino aquí devolvía
+            // una lista vacía, que se lee como que la app está rota.
+            //
+            // Y un destino no se busca en el catálogo: se busca en Movilidad,
+            // con su autocompletado de direcciones. Son dos buscadores
+            // distintos y mezclarlos es lo que hacía que esto pareciera
+            // improvisado.
+            hintText: 'Buscar restaurantes y tiendas',
             hintStyle: TextStyle(color: context.zTexto3, fontSize: 14.5),
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 13, right: 9),

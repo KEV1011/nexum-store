@@ -26,7 +26,7 @@ import 'package:nexum_client/features/transport/presentation/providers/transport
 import 'package:nexum_client/features/transport/presentation/widgets/route_preview_map.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
-import 'package:nexum_client/shared/widgets/vehicle_top_down.dart';
+import 'package:nexum_client/shared/widgets/vehicle_side_view.dart';
 
 /// Pantalla de reserva de servicio de transporte o envío.
 class TransportBookingScreen extends ConsumerStatefulWidget {
@@ -1075,15 +1075,21 @@ class _AvisoPunto extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.place_outlined, size: 20, color: AppColors.warning),
+          const Icon(Icons.place_outlined, size: 20, color: Color(0xFFB45309)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               texto,
-              style: TextStyle(
+              // Texto FIJO oscuro, no adaptativo. `warningContainer` es un
+              // ámbar claro en los DOS temas, así que con
+              // `context.textPrimaryColor` el aviso salía claro sobre claro y
+              // en modo oscuro no se leía una palabra. La regla del proyecto:
+              // sobre un fondo fijo, el texto también va fijo.
+              style: const TextStyle(
                 fontSize: 13,
                 height: 1.35,
-                color: context.textPrimaryColor,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF7C2D12),
               ),
             ),
           ),
@@ -1291,57 +1297,52 @@ class _CategorySelector extends ConsumerWidget {
   }
 }
 
-/// El vehículo de la categoría, dibujado.
+/// El vehículo de la categoría, de PERFIL.
 ///
-/// Antes era un icono plano de catálogo (`Icons.directions_car`), que es lo que
-/// distingue a simple vista una app hecha a medias de una terminada. El dibujo
-/// cenital ya existía para el mapa y es un VECTOR pintado a mano
-/// (`VehicleTopDownPainter`): se puede usar aquí sin exportar nada, se ve
-/// nítido a cualquier tamaño y no depende de la licencia de nadie.
+/// Aquí estaba el dibujo CENITAL del mapa, girado 24° y metido en un cuadro de
+/// color. En el mapa esa vista es la correcta —es la vista del mapa—, pero en
+/// una fila de 46 px un carro visto desde arriba se lee como una ficha de
+/// juego. Ese es el detalle que hacía que la pantalla pareciera de juguete.
 ///
-/// Va girado 24°: de frente, un coche visto desde arriba se lee como una
-/// mancha; en diagonal se reconoce al instante.
+/// De perfil se reconoce al instante, porque es como vemos un carro en la
+/// calle, y es lo que hacen Uber, DiDi y Cabify. Y sin cuadro detrás: el
+/// recuadro de color competía con la tarjeta y encajonaba el dibujo.
 class _IlustracionVehiculo extends StatelessWidget {
   const _IlustracionVehiculo({required this.glyph, required this.resaltada});
 
   final VehicleGlyphKind glyph;
+
+  /// La seleccionada va a color pleno; las demás, algo apagadas, para que la
+  /// elección se vea sin leer.
   final bool resaltada;
 
   @override
   Widget build(BuildContext context) {
     final dibujo = switch (glyph) {
-      VehicleGlyphKind.taxi => VehicleTopDownKind.taxi,
-      VehicleGlyphKind.moto => VehicleTopDownKind.moto,
-      VehicleGlyphKind.delivery => VehicleTopDownKind.delivery,
-      VehicleGlyphKind.truck => VehicleTopDownKind.truck,
-      VehicleGlyphKind.car => VehicleTopDownKind.car,
-    };
-    final carroceria = switch (glyph) {
-      VehicleGlyphKind.taxi => const Color(0xFFF6C445),
-      VehicleGlyphKind.moto => const Color(0xFF37474F),
-      VehicleGlyphKind.delivery => const Color(0xFF37474F),
-      VehicleGlyphKind.truck => const Color(0xFF546E7A),
-      VehicleGlyphKind.car => const Color(0xFF2F3640),
+      VehicleGlyphKind.taxi => VehicleSideKind.taxi,
+      VehicleGlyphKind.moto => VehicleSideKind.moto,
+      VehicleGlyphKind.delivery => VehicleSideKind.moto,
+      VehicleGlyphKind.truck => VehicleSideKind.truck,
+      VehicleGlyphKind.car => VehicleSideKind.car,
     };
 
-    return Container(
-      width: 54,
+    // El taxi conserva el amarillo: en Colombia eso ES el servicio público y
+    // distingue la categoría regulada de un vistazo. El resto va en grafito,
+    // como en las apps grandes — el color de la carrocería no aporta nada y
+    // compite con el precio, que es lo que de verdad se compara.
+    final carroceria = switch (glyph) {
+      VehicleGlyphKind.taxi => const Color(0xFFF2B705),
+      VehicleGlyphKind.truck => const Color(0xFF4B5563),
+      _ => const Color(0xFF2B303B),
+    };
+
+    return SizedBox(
+      width: 62,
       height: 46,
-      decoration: BoxDecoration(
-        color: resaltada
-            ? Colors.white.withValues(alpha: 0.65)
-            : context.surfaceColor.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(11),
-      ),
-      alignment: Alignment.center,
-      child: Transform.rotate(
-        angle: 0.42, // ~24°
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: CustomPaint(
-            painter: VehicleTopDownPainter(kind: dibujo, body: carroceria),
-          ),
+      child: Opacity(
+        opacity: resaltada ? 1 : 0.62,
+        child: CustomPaint(
+          painter: VehicleSideViewPainter(kind: dibujo, body: carroceria),
         ),
       ),
     );
