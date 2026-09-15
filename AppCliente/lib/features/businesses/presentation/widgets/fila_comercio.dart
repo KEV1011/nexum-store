@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nexum_client/app/theme/zipa_icon.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/core/config/api_config.dart';
@@ -36,7 +37,14 @@ class FilaComercio extends StatelessWidget {
       color: context.zSuperficie,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        onTap: onTap,
+        // Sin escala al pulsar, a diferencia del resto: esto vive dentro de
+        // una lista que se desplaza, y una fila que se encoge mientras el dedo
+        // arrastra se lee como un fallo. La onda del InkWell y la háptica ya
+        // confirman el toque.
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(14),
         child: Ink(
           decoration: BoxDecoration(

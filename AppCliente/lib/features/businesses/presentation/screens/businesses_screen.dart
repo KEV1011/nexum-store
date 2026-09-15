@@ -11,6 +11,8 @@ import 'package:nexum_client/features/businesses/domain/entities/'
 import 'package:nexum_client/features/businesses/presentation/providers/'
     'businesses_provider.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'carrusel_destacados.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
     'fila_comercio.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'sello_confianza.dart';
@@ -106,6 +108,21 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                 sliver: SliverToBoxAdapter(child: SelloConfianza()),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 22)),
+              // Foto grande para los que la tienen; la lista de abajo sigue
+              // siendo de filas porque comparar pide densidad. Si ningún
+              // comercio tiene portada, esto no se dibuja — ni un marco gris.
+              if (comerciosAsync.valueOrNull != null) ...[
+                SliverToBoxAdapter(
+                  child: CarruselDestacados(
+                    comercios: comerciosAsync.valueOrNull!,
+                    onAbrir: (c) => context.push(
+                      AppRoutes.businessPath(c.id),
+                      extra: c,
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              ],
               SliverToBoxAdapter(
                 child: _TituloSeccion(
                   texto: _filtro == null ? 'Cerca de ti' : _filtro!.label,
