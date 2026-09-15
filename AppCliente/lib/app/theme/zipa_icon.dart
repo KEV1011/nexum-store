@@ -73,6 +73,11 @@ enum ZipaIconName {
   fueraDeCobertura,
   cerrado,
   verificado,
+
+  /// La nota de un comercio. Entró porque el carrusel la pintaba con «★», y
+  /// un emoji lo dibuja el sistema operativo: se ve distinto en cada teléfono
+  /// y no es de la marca. Hay una prueba que lo prohíbe en toda la app.
+  estrella,
 }
 
 /// El glifo de cada nombre. Es el ÚNICO sitio donde vive la familia de iconos.
@@ -100,6 +105,7 @@ const Map<ZipaIconName, IconData> _glifos = {
   ZipaIconName.fueraDeCobertura: Icons.location_off_rounded,
   ZipaIconName.cerrado: Icons.schedule_rounded,
   ZipaIconName.verificado: Icons.shield_outlined,
+  ZipaIconName.estrella: Icons.star_rounded,
 };
 
 /// Un icono de sistema: de línea, monocromo, en uno de los dos tamaños.

@@ -17,6 +17,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:nexum_client/app/theme/zipa_icon.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -277,13 +278,26 @@ class _Nota extends StatelessWidget {
         ),
       );
     }
-    return Text(
-      '★ ${rating!.toStringAsFixed(1)} ($votos)',
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w700,
-        color: context.zTexto,
-      ),
+    // La estrella va como ZipaIcon y no como «★»: el emoji lo dibuja el
+    // sistema operativo, se ve distinto en cada teléfono y no es de la marca.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ZipaIcon(
+          ZipaIconName.estrella,
+          size: ZipaIconSize.inline,
+          color: context.zTexto,
+        ),
+        const SizedBox(width: 2),
+        Text(
+          '${rating!.toStringAsFixed(1)} ($votos)',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: context.zTexto,
+          ),
+        ),
+      ],
     );
   }
 }
