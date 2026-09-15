@@ -43,3 +43,16 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Credenciales de Firebase y de firma.
+#
+# Estaban en el .gitignore del conductor y NO aquí: una copia local del
+# google-services.json para probar un build se habría commiteado sin que
+# nadie lo notara. El archivo viaja dentro del APK, así que no es la llave
+# del reino, pero un repositorio no es sitio para credenciales de nadie.
+android/app/google-services.json
+android/key.properties
+*.jks
+*.keystore
+ios/Runner/GoogleService-Info.plist
+!ios/Runner/GoogleService-Info.plist.example

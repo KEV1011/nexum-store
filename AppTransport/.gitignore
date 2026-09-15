@@ -20,6 +20,11 @@ android/app/google-services.json
 android/key.properties
 *.jks
 *.keystore
+
+# iOS: el equivalente del google-services.json. Faltaba, así que una copia
+# local para probar un build se habría commiteado sin que nadie lo viera.
+ios/Runner/GoogleService-Info.plist
+!ios/Runner/GoogleService-Info.plist.example
 local.properties
 android/.gradle/
 android/captures/
