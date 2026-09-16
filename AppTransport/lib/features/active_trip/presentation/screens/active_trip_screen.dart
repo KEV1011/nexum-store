@@ -697,16 +697,24 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
     return [
       // Pickup (origen) — pin gota Google Maps.
-      Marker(
-        point: originLatLng,
-        width: MapPin.markerWidth,
-        height: MapPin.markerHeight,
-        alignment: Alignment.topCenter,
-        child: const MapPin(
-          color: AppColors.pickupMarker,
-          icon: Icons.person_rounded,
+      //
+      // SOLO mientras va a recoger. Con el pasajero ya a bordo, ese punto
+      // quedó atrás y no está en la ruta: se veía una gota suelta en mitad
+      // del mapa, lejos del trayecto, y quien conduce no tiene por qué
+      // adivinar que es el sitio donde recogió hace diez minutos. Es
+      // exactamente lo que hacen Uber y DiDi — el pin de recogida
+      // desaparece al arrancar.
+      if (!trip.isInProgress)
+        Marker(
+          point: originLatLng,
+          width: MapPin.markerWidth,
+          height: MapPin.markerHeight,
+          alignment: Alignment.topCenter,
+          child: const MapPin(
+            color: AppColors.pickupMarker,
+            icon: Icons.person_rounded,
+          ),
         ),
-      ),
       // Destino — pin gota.
       Marker(
         point: trip.request.destination.latLng,
@@ -833,9 +841,16 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     if (!destino.esValido) return const SizedBox.shrink();
     final aRecoger = !trip.isInProgress;
 
+    // A la IZQUIERDA, no a la derecha.
+    //
+    // A la derecha caía justo debajo del chat y del SOS, y encima del propio
+    // vehículo del conductor — que en el mapa vive cerca del borde superior
+    // mientras sube por la ruta. Tapaba lo único que él necesita ver y además
+    // el texto llegaba pegado al borde de la pantalla. La franja de la
+    // izquierda, bajo el avatar, está libre en todos los estados.
     return Positioned(
       top: MediaQuery.of(context).padding.top + 62,
-      right: AppConstants.spacingM,
+      left: AppConstants.spacingM,
       child: Material(
         color: AppColors.textPrimary,
         borderRadius: BorderRadius.circular(24),

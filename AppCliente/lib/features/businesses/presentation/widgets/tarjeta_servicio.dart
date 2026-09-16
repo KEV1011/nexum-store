@@ -118,7 +118,17 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     alignment: Alignment.center,
-                    child: ZipaIcon(widget.icono, color: glifo),
+                    // El glifo, agrandado dentro del cuadro.
+                    //
+                    // A 20 px dentro de un cuadro de 54 ocupaba poco más de un
+                    // tercio, y por eso las cuatro puertas se leían flojas: un
+                    // trazo fino perdido en mucho aire. Se escala desde el
+                    // tamaño del catálogo en vez de añadir una medida nueva a
+                    // `ZipaIconSize`, que tiene dos y una prueba lo vigila.
+                    child: Transform.scale(
+                      scale: 1.45,
+                      child: ZipaIcon(widget.icono, color: glifo),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(

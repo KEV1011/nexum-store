@@ -35,6 +35,9 @@ class ReservasScreen extends ConsumerStatefulWidget {
 class _ReservasScreenState extends ConsumerState<ReservasScreen> {
   bool _loading = true;
   bool _fallo = false;
+  /// Por qué el tablero está vacío, cuando el backend lo sabe (sin vehículo
+  /// registrado, tipo de vehículo que no atiende reservas).
+  String? _motivoVacio;
   String? _ocupado;
   List<Map<String, dynamic>> _mias = const [];
   List<Map<String, dynamic>> _libres = const [];
@@ -68,6 +71,7 @@ class _ReservasScreenState extends ConsumerState<ReservasScreen> {
         _libres =
             (libres.data?['data'] as List?)?.cast<Map<String, dynamic>>() ??
                 const [];
+        _motivoVacio = libres.data?['aviso'] as String?;
         _fallo = false;
       });
     } catch (_) {
@@ -189,7 +193,11 @@ class _ReservasScreenState extends ConsumerState<ReservasScreen> {
                 children: [
                   if (_fallo) const _AvisoSinConexion(),
                   _Seccion('Mis reservas', _mias.length),
-                  if (_mias.isEmpty)
+                  // El estado vacío SOLO cuando de verdad se pudo preguntar.
+                  // Con la carga fallida, «todavía no has apartado ninguna»
+                  // contradice al aviso de arriba y le afirma al conductor
+                  // algo que no sabemos.
+                  if (_mias.isEmpty && !_fallo)
                     const _Vacio(
                       'Todavía no has apartado ninguna.',
                       'Las que apartes salen aquí con los datos del pasajero.',
@@ -204,11 +212,17 @@ class _ReservasScreenState extends ConsumerState<ReservasScreen> {
                     ),
                   const SizedBox(height: 24),
                   _Seccion('Disponibles', _libres.length),
-                  if (_libres.isEmpty)
-                    const _Vacio(
-                      'No hay reservas libres ahora mismo.',
-                      'Aquí aparecen los viajes que la gente programa para más '
-                          'tarde y que tu vehículo puede atender.',
+                  if (_libres.isEmpty && !_fallo)
+                    // El motivo del backend manda sobre el texto genérico: «no
+                    // hay reservas» y «no puedes ver reservas» son dos cosas
+                    // muy distintas para quien revisa el tablero cada mañana.
+                    _Vacio(
+                      _motivoVacio ?? 'No hay reservas libres ahora mismo.',
+                      _motivoVacio != null
+                          ? 'Cuando lo tengas listo, aquí verás los viajes que '
+                              'la gente programa para más tarde.'
+                          : 'Aquí aparecen los viajes que la gente programa '
+                              'para más tarde y que tu vehículo puede atender.',
                     ),
                   for (final r in _libres)
                     _TarjetaReserva(

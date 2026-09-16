@@ -94,10 +94,10 @@ const Map<ZipaIconName, IconData> _glifos = {
   ZipaIconName.cerrar: Icons.close_rounded,
   ZipaIconName.reintentar: Icons.refresh_rounded,
 
-  ZipaIconName.movilidad: Icons.directions_car_outlined,
-  ZipaIconName.restaurantes: Icons.restaurant_menu_rounded,
-  ZipaIconName.envios: Icons.inventory_2_outlined,
-  ZipaIconName.intermunicipal: Icons.map_outlined,
+  ZipaIconName.movilidad: Icons.local_taxi_rounded,
+  ZipaIconName.restaurantes: Icons.restaurant_rounded,
+  ZipaIconName.envios: Icons.inventory_2_rounded,
+  ZipaIconName.intermunicipal: Icons.airport_shuttle_rounded,
 
   ZipaIconName.sinFoto: Icons.image_outlined,
   ZipaIconName.sinConexion: Icons.wifi_off_rounded,

@@ -40,16 +40,17 @@ class CarruselDestacados extends StatelessWidget {
   static bool _tieneFoto(BusinessEntity b) =>
       b.imageUrl != null && b.imageUrl!.isNotEmpty;
 
-  /// Los que se pintan: con foto, y los abiertos primero. Un sitio cerrado con
-  /// buena foto sigue siendo un descubrimiento, pero no le gana el sitio a uno
-  /// al que se le puede pedir ahora.
+  /// Los que se pintan: con foto y ABIERTOS.
+  ///
+  /// Antes entraban también los cerrados, ordenados detrás, con el argumento
+  /// de que un sitio cerrado con buena foto sigue siendo un descubrimiento.
+  /// En pantalla no se sostiene: la sección se llama «Para pedir ya» y salía
+  /// un local con la insignia «No está recibiendo pedidos» debajo de ese
+  /// título. Un encabezado que contradice a su propio contenido es peor que
+  /// una sección más corta — y para descubrir están la lista de abajo y el
+  /// buscador, donde un cerrado sí tiene sentido.
   static List<BusinessEntity> seleccion(List<BusinessEntity> todos) {
-    final conFoto = todos.where(_tieneFoto).toList()
-      ..sort((a, b) {
-        if (a.isOpen == b.isOpen) return 0;
-        return a.isOpen ? -1 : 1;
-      });
-    return conFoto.take(_maximo).toList();
+    return todos.where((b) => _tieneFoto(b) && b.isOpen).take(_maximo).toList();
   }
 
   @override
@@ -139,8 +140,14 @@ class _TarjetaDestacadoState extends State<_TarjetaDestacado> {
                         child: Image.network(
                           ApiConfig.resolveUrl(c.imageUrl!),
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) =>
-                              ColoredBox(color: context.zHundida),
+                          // Con la foto caída se dibujaba un rectángulo
+                          // oscuro vacío: una tarjeta de 136 px en blanco
+                          // dentro del carrusel, que se lee como que la app
+                          // se rompió. Pasa de verdad — sin S3 configurado
+                          // las fotos viven en disco efímero y desaparecen
+                          // en cada despliegue. Al menos se enseña de qué
+                          // negocio se trata.
+                          errorBuilder: (_, __, ___) => _SinFoto(nombre: c.name),
                           loadingBuilder: (_, hijo, progreso) => progreso == null
                               ? hijo
                               : ColoredBox(color: context.zHundida),
@@ -298,6 +305,44 @@ class _Nota extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Respaldo cuando la portada no carga: el nombre del local sobre el fondo
+/// hundido, en vez de un rectángulo vacío.
+class _SinFoto extends StatelessWidget {
+  const _SinFoto({required this.nombre});
+
+  final String nombre;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: context.zHundida,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ZipaIcon(ZipaIconName.sinFoto, color: context.zTexto3),
+              const SizedBox(height: 8),
+              Text(
+                nombre,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: context.zTexto2,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

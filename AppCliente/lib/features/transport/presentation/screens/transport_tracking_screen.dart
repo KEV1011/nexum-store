@@ -295,7 +295,11 @@ class _StatusCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (request.isActive)
+              // En una reserva NO: ese número son los minutos que dura el
+              // trayecto, y puesto junto a «mañana a las 06:00» se lee como
+              // «llega en 12 minutos». La duración ya sale abajo, en el
+              // detalle del viaje, donde sí significa lo que dice.
+              if (request.isActive && request.status != TransportStatus.scheduled)
                 _EtaBadge(eta: request.etaVivoMin),
             ],
           ),
@@ -966,17 +970,30 @@ class _StatusTimeline extends StatelessWidget {
 
   final TransportRequestEntity request;
 
-  static const _steps = [
-    (Icons.search_rounded, 'Buscando conductor'),
-    (Icons.person_pin_rounded, 'Conductor asignado'),
-    (Icons.location_on_rounded, 'Conductor llegó'),
-    (Icons.near_me_rounded, 'En trayecto'),
-    (Icons.check_circle_rounded, 'Completado'),
-  ];
+  /// El primer paso cambia de nombre en una reserva.
+  ///
+  /// `scheduled` y `searching` comparten el paso 0, así que un viaje
+  /// reservado para mañana a las 6:00 encendía «Buscando conductor» toda la
+  /// noche — y no se está buscando a nadie: la reserva ni siquiera ha salido
+  /// al despacho todavía. Decirle al pasajero que se busca cuando no se busca
+  /// es el tipo de mentira que le hace desconfiar de todo lo demás.
+  static List<(IconData, String)> _pasos({required bool reservado}) => [
+        reservado
+            ? (Icons.event_available_rounded, 'Reservado')
+            : (Icons.search_rounded, 'Buscando conductor'),
+        (Icons.person_pin_rounded, 'Conductor asignado'),
+        (Icons.location_on_rounded, 'Conductor llegó'),
+        (Icons.near_me_rounded, 'En trayecto'),
+        (Icons.check_circle_rounded, 'Completado'),
+      ];
 
   @override
   Widget build(BuildContext context) {
     final currentStep = request.status.step;
+    // Una reserva que YA tiene conductor apartado no está en el paso 0: el
+    // pasajero tiene carro, aunque el viaje no haya empezado.
+    final reservado = request.status == TransportStatus.scheduled;
+    final steps = _pasos(reservado: reservado);
     final color = _colorOf(request.serviceType);
 
     return Container(
@@ -989,14 +1006,19 @@ class _StatusTimeline extends StatelessWidget {
       ),
       child: Column(
         children: [
-          for (var i = 0; i < _steps.length; i++) ...[
+          for (var i = 0; i < steps.length; i++) ...[
             _TimelineStep(
-              icon: _steps[i].$1,
-              label: _steps[i].$2,
-              done: i < currentStep,
-              active: i == currentStep && request.isActive,
+              icon: steps[i].$1,
+              label: steps[i].$2,
+              // En una reserva con conductor apartado el primer paso está
+              // CUMPLIDO y el segundo activo: ya hay quien la atienda.
+              done: i < currentStep ||
+                  (reservado && request.driverName != null && i == 0),
+              active: reservado && request.driverName != null
+                  ? i == 1
+                  : i == currentStep && request.isActive,
               color: color,
-              isLast: i == _steps.length - 1,
+              isLast: i == steps.length - 1,
             ),
           ],
         ],

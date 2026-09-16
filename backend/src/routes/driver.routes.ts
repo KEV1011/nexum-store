@@ -837,7 +837,8 @@ router.post('/payouts', async (req: Request, res: Response): Promise<void> => {
 // GET /driver/reservas — reservas libres que puede atender su vehículo
 router.get('/reservas', async (req: Request, res: Response): Promise<void> => {
   try {
-    res.json({ success: true, data: await listarReservasLibres(req.driverId!) });
+    const { reservas, aviso } = await listarReservasLibres(req.driverId!);
+    res.json({ success: true, data: reservas, ...(aviso ? { aviso } : {}) });
   } catch (err) {
     const status = err instanceof ReservaError ? 400 : 500;
     res.status(status).json({

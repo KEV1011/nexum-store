@@ -273,6 +273,17 @@ export function LocationPicker({
                 mapa hasta tu negocio, o usa «Estoy aquí» si estás en el local.
               </p>
             ) : null}
+            {/* Buscó, funcionó, y no hay nada. Callarlo deja el mismo callejón
+                sin salida que el error: el dueño escribe su dirección, no sale
+                nada, y no sabe si es que su calle no existe o que la app está
+                rota. */}
+            {!sinBuscador && !buscando && consulta.trim().length >= 3
+              && sugerencias.length === 0 ? (
+              <p className="mb-2 text-xs text-slate-500">
+                No encontramos esa dirección. Prueba con la calle y el número
+                («Calle 5 # 3-40»), o arrastra el mapa hasta tu puerta.
+              </p>
+            ) : null}
             {sugerencias.length > 0 && (
               <ul className="mb-2 rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden">
                 {sugerencias.map((sug) => (

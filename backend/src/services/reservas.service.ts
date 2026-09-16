@@ -179,11 +179,29 @@ export function serviciosQuePuedeTomar(tipoVehiculo: string | null): TransportTy
   });
 }
 
-/** Reservas sin conductor que este conductor podría atender. */
-export async function listarReservasLibres(driverId: string): Promise<ReservaDTO[]> {
+/**
+ * Reservas sin conductor que este conductor podría atender.
+ *
+ * Devuelve también un `aviso` cuando la lista está vacía POR UN MOTIVO y no
+ * porque no haya trabajo. Sin esto, un conductor sin vehículo activo veía «no
+ * hay reservas libres ahora mismo» para siempre, revisaba cada mañana, y nunca
+ * se enteraba de que el tablero no le iba a enseñar nada hasta registrar su
+ * carro. Un estado vacío que esconde su causa es el mismo error que ya se
+ * corrigió en media plataforma.
+ */
+export async function listarReservasLibres(
+  driverId: string,
+): Promise<{ reservas: ReservaDTO[]; aviso?: string }> {
   const d = await _conductor(driverId);
   const servicios = serviciosQuePuedeTomar(d.vehicles[0]?.type ?? null);
-  if (servicios.length === 0) return [];
+  if (servicios.length === 0) {
+    return {
+      reservas: [],
+      aviso: d.vehicles.length === 0
+        ? 'Registra tu vehículo para poder apartar reservas.'
+        : 'Tu tipo de vehículo no atiende ninguno de los servicios que se reservan.',
+    };
+  }
 
   const hasta = new Date(Date.now() + VENTANA_DIAS * 24 * 60 * 60 * 1000);
   const libres = await prisma.trip.findMany({
@@ -201,7 +219,7 @@ export async function listarReservasLibres(driverId: string): Promise<ReservaDTO
     take: 50,
     select: _CAMPOS,
   });
-  return libres.map(_aDTO);
+  return { reservas: libres.map(_aDTO) };
 }
 
 /**
