@@ -932,9 +932,22 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                       ? _showCannotLeaveDialog
                       : _confirmGoBack,
                   customBorder: const CircleBorder(),
+                  // Color FIJO, no el del tema.
+                  //
+                  // Sin color, el icono toma el del `IconTheme` ambiente: en
+                  // modo oscuro sale casi blanco, y el círculo es blanco fijo
+                  // — o sea, el botón de atrás desaparecía. Es la
+                  // co-ocurrencia que la regla de contraste prohíbe (fondo
+                  // fijo con primer plano adaptativo), y aquí manda el fondo
+                  // porque esto flota sobre el mapa, que es claro en los dos
+                  // temas.
                   child: const Padding(
                     padding: EdgeInsets.all(8),
-                    child: Icon(Icons.arrow_back_rounded, size: 24),
+                    child: Icon(
+                      Icons.arrow_back_rounded,
+                      size: 24,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
               ),
