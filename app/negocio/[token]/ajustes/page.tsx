@@ -17,6 +17,7 @@ import {
   Star,
 } from 'lucide-react'
 
+import { formatCOP } from '../../../moneda'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const BACKEND_URL =
@@ -72,10 +73,6 @@ interface Stats {
 /** El ISO que devuelve el backend, en el «AAAA-MM-DD» que quiere un <input date>. */
 function soloFecha(iso?: string | null): string {
   return iso ? iso.slice(0, 10) : ''
-}
-
-function formatCOP(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
 
 const INPUT =

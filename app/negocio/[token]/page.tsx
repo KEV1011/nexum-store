@@ -22,6 +22,7 @@ import {
   Settings,
 } from 'lucide-react'
 
+import { formatCOP } from '../../moneda'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DeliveryOrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
@@ -118,10 +119,6 @@ function resolveImg(url?: string): string | undefined {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatCOP(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
-}
 
 function formatTime(iso: string) {
   return new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(iso))

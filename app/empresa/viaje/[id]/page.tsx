@@ -5,7 +5,9 @@ import { useParams } from 'next/navigation'
 import TrackMap, { type TrackPoint } from '../../TrackMap'
 import type { CargoTrip } from '../../CargoTripsManager'
 import { leerToken } from '../../session'
+import { formatCOP as cop } from '../../../moneda'
 
+import { formatNumero as num } from '../../../moneda'
 /**
  * Informe final del viaje — lo que se revisa al cerrar cada viaje y entrega.
  *
@@ -53,13 +55,6 @@ const EVENT_LABEL: Record<string, string> = {
   MAINTENANCE: 'Mantenimiento', STOP: 'Parada', NOTE: 'Nota',
 }
 
-function cop(n: number | undefined): string {
-  if (!n) return '$0'
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
-}
-function num(n: number | undefined): string {
-  return (n ?? 0).toLocaleString('es-CO', { maximumFractionDigits: 1 })
-}
 function dur(min: number | null | undefined): string {
   if (min == null) return '—'
   if (min < 60) return `${min} min`

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ClipboardList, Plus, Send, Printer, XCircle, Loader2, AlertTriangle, CheckCircle2, Pencil,
 } from 'lucide-react'
+import { formatNumero as fmt } from '../moneda'
 import type { OperatorApi } from './api'
 
 /**
@@ -69,10 +70,6 @@ const ITEM_ESTADO: Record<string, { label: string; cls: string }> = {
   MISSING: { label: 'No llegó', cls: 'text-red-700' },
   DAMAGED: { label: 'Averiado', cls: 'text-red-700' },
   PENDING: { label: 'Sin conciliar', cls: 'text-slate-400' },
-}
-
-function fmt(n: number): string {
-  return n.toLocaleString('es-CO', { maximumFractionDigits: 1 })
 }
 
 /**

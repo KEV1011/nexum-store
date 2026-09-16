@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Truck, Plus, X } from 'lucide-react'
 import type { OperatorApi } from './api'
+import { formatCOP as cop } from '../moneda'
 
+import { formatNumero as num } from '../moneda'
 // Viajes de carga: un camión sale con mercancía de VARIOS clientes, cada uno
 // con su referencia, su destino y su fecha de entrega. Cada línea del viaje es
 // un remito, así que el mismo documento sirve para la bodega, para el conductor
@@ -57,14 +59,6 @@ const STATUS_TONE: Record<string, string> = {
   DISPATCHED: 'bg-amber-100 text-amber-700',
   COMPLETED: 'bg-emerald-100 text-emerald-700',
   CANCELLED: 'bg-red-100 text-red-700',
-}
-
-function cop(n: number): string {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
-}
-
-function num(n: number): string {
-  return n.toLocaleString('es-CO', { maximumFractionDigits: 1 })
 }
 
 function fecha(iso?: string): string {

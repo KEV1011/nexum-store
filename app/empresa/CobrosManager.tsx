@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { FileText, Plus, Printer, Download } from 'lucide-react'
 import type { OperatorApi } from './api'
 import type { CargoTrip } from './CargoTripsManager'
+import { formatCOP as cop } from '../moneda'
 
+import { formatNumero as num } from '../moneda'
 // Cuenta de cobro: el documento con el que la empresa le factura a su cliente
 // un período. Agrupa viajes y, viaje por viaje, lista cada línea con su
 // referencia, rollos, metros, destinatario y fecha de entrega.
@@ -53,10 +55,6 @@ const BALANCE_LABEL: Record<string, string> = {
   SIN_PAGOS: 'Sin pagos', PARCIAL: 'Pago parcial', PAGADA: 'Pagada', SOBREPAGADA: 'Pagada de más',
 }
 
-function cop(n: number): string {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
-}
-
 export interface Cobro {
   id: string
   number: string
@@ -82,9 +80,6 @@ const STATUS_TONE: Record<string, string> = {
   VOID: 'bg-red-100 text-red-700',
 }
 
-function num(n: number): string {
-  return n.toLocaleString('es-CO', { maximumFractionDigits: 1 })
-}
 function fecha(iso: string): string {
   return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium' }).format(new Date(iso))
 }

@@ -5,6 +5,7 @@ import { CalendarClock, Plus, XCircle, Loader2, Users, Bus } from 'lucide-react'
 import type { OperatorApi } from './api'
 import { useMunicipios } from './useMunicipios'
 import CityInput from './CityInput'
+import { formatCOP as formatCOP } from '../moneda'
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   open: { label: 'Abierta', cls: 'bg-emerald-100 text-emerald-700' },
@@ -46,10 +47,6 @@ interface OperatorDriverRow {
   name: string
   phone: string
   isVerified: boolean
-}
-
-function formatCOP(v: number): string {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v)
 }
 
 function formatWhen(iso: string): string {

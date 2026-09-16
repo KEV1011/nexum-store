@@ -19,6 +19,7 @@ import {
   Banknote,
 } from 'lucide-react'
 
+import { formatCOP } from '../../../../moneda'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type OrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
@@ -69,14 +70,6 @@ function resolveImg(url?: string): string | undefined {
   if (!url) return undefined
   if (url.startsWith('http')) return url
   return `${BACKEND_URL}${url}`
-}
-
-function formatCOP(amount: number): string {
-  return new Intl.NumberFormat('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    minimumFractionDigits: 0,
-  }).format(amount)
 }
 
 function formatDateTime(iso: string): string {

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { Upload, Download, AlertTriangle, Check, X } from 'lucide-react'
 
+import { formatCOP } from '../../../moneda'
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://nexum-api-trxr.onrender.com'
 
@@ -18,10 +19,6 @@ interface Preview {
   actualizaciones: Array<FilaPreview & { nombreActual: string }>
   errores: Array<{ linea: number; motivo: string; contenido: string }>
 }
-
-const formatCOP = (v: number) =>
-  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
-    .format(v)
 
 /**
  * Carga masiva del catálogo. El dueño sube el archivo, ve exactamente qué se va

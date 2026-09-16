@@ -5,6 +5,7 @@ import { Truck, Loader2, PackageSearch, Wifi } from 'lucide-react'
 import type { OperatorApi } from './api'
 import TrackMap, { type TrackPoint } from './TrackMap'
 import { momento } from './fechas'
+import { formatCOP as cop } from '../moneda'
 
 // Recorrido real del flete (rastro GPS): resumen + traza.
 interface TrackSummary {
@@ -81,9 +82,6 @@ const STATUS_LABEL: Record<string, string> = {
 }
 const TYPE_LABEL: Record<string, string> = { TURBO: 'Turbo', CAMION: 'Camión', MULA: 'Mula' }
 
-function cop(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
-}
 function when(f: Freight) {
   if (!f.scheduledFor) return 'Lo antes posible'
   return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(f.scheduledFor))

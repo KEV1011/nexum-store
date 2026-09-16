@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import type { Cobro } from '../../CobrosManager'
 import { leerToken } from '../../session'
+import { formatCOP as cop } from '../../../moneda'
 
+import { formatNumero as num } from '../../../moneda'
 /**
  * Cuenta de cobro imprimible — reproduce el formato en papel del cliente:
  * «DETALLE DE ENTREGA CUENTA DE COBRO NNN · DETALLE VIAJES NACIONALES».
@@ -19,16 +21,6 @@ const BACKEND_URL =
   (process.env.NODE_ENV === 'development'
     ? 'http://localhost:3000'
     : 'https://nexum-api-trxr.onrender.com')
-
-function num(n: number | undefined): string {
-  if (n == null) return ''
-  return n.toLocaleString('es-CO', { maximumFractionDigits: 1 })
-}
-
-function cop(n: number | undefined): string {
-  if (!n) return ''
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
-}
 
 function fecha(iso?: string): string {
   if (!iso) return ''

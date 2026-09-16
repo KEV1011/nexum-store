@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import type { Manifest } from '../../ManifestsManager'
 import { leerToken } from '../../session'
 
+import { formatNumero as fmt } from '../../../moneda'
 /**
  * Remito imprimible — misma estructura que el formato en papel del cliente.
  *
@@ -21,10 +22,6 @@ const BACKEND_URL =
 
 /** El papel tiene 100 casillas numeradas; se conserva la retícula. */
 const CASILLAS = 100
-
-function fmt(n: number): string {
-  return n.toLocaleString('es-CO', { maximumFractionDigits: 1 })
-}
 
 export default function RemitoImprimible() {
   const params = useParams<{ id: string }>()

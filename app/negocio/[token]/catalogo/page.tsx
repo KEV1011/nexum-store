@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react'
 
+import { formatCOP } from '../../../moneda'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const BACKEND_URL =
@@ -155,10 +156,6 @@ function cartaMovida(
   return secciones
     .flatMap((c) => porSeccion.get(c)!)
     .map((p, k) => ({ ...p, sortOrder: (k + 1) * 10 }))
-}
-
-function formatCOP(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
 
 const INPUT =

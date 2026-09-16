@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Trophy, Star, Car, TrendingUp } from 'lucide-react'
 import type { OperatorApi } from './api'
+import { formatCOP as cop } from '../moneda'
 
 // Flota-3: rendimiento de la flota — ranking de conductores y vehículos por
 // facturación, con rating, neto y ticket promedio. Datos 100% de viajes sellados.
@@ -35,10 +36,6 @@ const SERVICE_LABEL: Record<string, string> = {
 }
 const TYPE_LABEL: Record<string, string> = {
   TAXI: 'Taxi', PARTICULAR: 'Particular', MOTO: 'Moto', TURBO: 'Turbo', CAMION: 'Camión', MULA: 'Mula',
-}
-
-function cop(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
 
 const RANK_TONE = ['bg-amber-400', 'bg-slate-300', 'bg-amber-700']

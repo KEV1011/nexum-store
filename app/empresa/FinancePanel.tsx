@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import type { OperatorApi } from './api'
+import { formatCOP as cop } from '../moneda'
 
 // Fase C del modelo de carga: control financiero total de la flota.
 // Consolida TODOS los servicios sellados a la empresa (viajes, intermunicipal,
@@ -54,10 +55,6 @@ interface VehicleEfficiency {
 const SERVICE_LABEL: Record<string, string> = {
   VIAJE: 'Viajes', INTERMUNICIPAL: 'Intermunicipal', MANDADO: 'Mandados',
   PEDIDO: 'Pedidos', FLETE: 'Fletes', CARGA: 'Carga',
-}
-
-function cop(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n)
 }
 
 export default function FinancePanel({ api }: { api: OperatorApi }) {
