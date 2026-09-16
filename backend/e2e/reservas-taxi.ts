@@ -98,14 +98,51 @@ async function main(): Promise<void> {
   console.log('\n═══ El tablero: cada conductor ve lo que puede atender ═══');
   const reserva = await pedir(enMin(180));
   {
-    const paraTaxi = await reservas.listarReservasLibres(taxi.id);
+    const paraTaxi = (await reservas.listarReservasLibres(taxi.id)).reservas;
     comprobar('el taxi ve la reserva de taxi',
       paraTaxi.some((r) => r.id === reserva.id), JSON.stringify(paraTaxi.map((r) => r.id)));
     comprobar('y la ve como todavía no activa', paraTaxi.find((r) => r.id === reserva.id)?.enCurso === false);
 
-    const paraMoto = await reservas.listarReservasLibres(moto.id);
+    const paraMoto = (await reservas.listarReservasLibres(moto.id)).reservas;
     comprobar('la moto NO ve la carrera de taxi',
       !paraMoto.some((r) => r.id === reserva.id));
+  }
+
+  console.log('\n═══ Una reserva sin plaza NO se le esconde a nadie ═══');
+  {
+    // El defecto que dejaba el tablero vacío en el teléfono del usuario: el
+    // conductor recibe `citySlug` en CADA latido, pero el viaje solo lo tiene
+    // si `plazaDeCoordenadas` resolvió al crearlo. Con una igualdad estricta,
+    // una reserva con la plaza en nulo desaparecía para todo el mundo y sin un
+    // solo mensaje.
+    await prisma.driver.update({
+      where: { id: taxi.id }, data: { citySlug: 'pamplona' },
+    });
+    const base = {
+      passengerId: cliente.id, serviceType: 'TAXI' as const,
+      status: 'SCHEDULED' as const,
+      originAddress: 'Parque principal', originLat: ORIGEN.lat, originLng: ORIGEN.lng,
+      destAddress: 'Universidad', destLat: DESTINO.lat, destLng: DESTINO.lng,
+      estimatedFare: 8000, scheduledFor: enMin(200), searchFrom: enMin(185),
+    };
+    const sinPlaza = await prisma.trip.create({
+      data: { ...base, requestRef: `SP${Date.now()}` },
+    });
+    const otraPlaza = await prisma.trip.create({
+      data: { ...base, requestRef: `OP${Date.now()}`, citySlug: 'cucuta' },
+    });
+
+    const libres = (await reservas.listarReservasLibres(taxi.id)).reservas;
+    comprobar('la reserva SIN plaza sí se ve',
+      libres.some((r) => r.id === sinPlaza.id));
+    // Y lo que sí debe excluirse sigue excluido: un dato presente y distinto.
+    comprobar('la reserva de OTRA ciudad no se ve',
+      !libres.some((r) => r.id === otraPlaza.id));
+
+    await prisma.trip.deleteMany({
+      where: { id: { in: [sinPlaza.id, otraPlaza.id] } },
+    });
+    await prisma.driver.update({ where: { id: taxi.id }, data: { citySlug: null } });
   }
 
   console.log('\n═══ Apartar: la toma es atómica ═══');
@@ -177,7 +214,7 @@ async function main(): Promise<void> {
 
   console.log('\n═══ Y el otro taxista ya no la ve libre ═══');
   {
-    const libres = await reservas.listarReservasLibres(otro);
+    const libres = (await reservas.listarReservasLibres(otro)).reservas;
     comprobar('fuera del tablero', !libres.some((r) => r.id === reserva.id));
     const mias = await reservas.listarMisReservas(dueno);
     comprobar('en «mis reservas» del que la apartó',
@@ -225,7 +262,8 @@ async function main(): Promise<void> {
     comprobar('vuelve al tablero sin conductor',
       t?.driverId === null && t?.status === 'SCHEDULED', `${t?.status}/${t?.driverId}`);
     comprobar('y otro la vuelve a ver libre',
-      (await reservas.listarReservasLibres(taxi.id)).some((r) => r.id === futura.id));
+      (await reservas.listarReservasLibres(taxi.id)).reservas
+        .some((r) => r.id === futura.id));
     await prisma.trip.update({ where: { id: futura.id }, data: { status: 'CANCELLED' } });
   }
 

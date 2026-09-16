@@ -210,10 +210,23 @@ export async function listarReservasLibres(
       driverId: null,
       scheduledFor: { gt: new Date(), lte: hasta },
       serviceType: { in: servicios },
-      // Mismo criterio de plaza que el resto de la operación. Sin ciudad en la
-      // ficha del conductor no se filtra: es mejor enseñarle de más que dejarle
-      // el tablero vacío por un dato que quizá nunca se le pidió.
-      ...(d.citySlug ? { citySlug: d.citySlug } : {}),
+      // Plaza: se excluye lo que es de OTRA ciudad, nunca lo que no tiene
+      // ciudad.
+      //
+      // La asimetría es el defecto que dejaba el tablero vacío: el conductor
+      // recibe `citySlug` en CADA latido, pero el viaje solo lo tiene si
+      // `plazaDeCoordenadas` resolvió al crearlo (fuera de rango, lista de
+      // municipios aún sin cargar, o viajes anteriores a esa columna). Con
+      // una igualdad estricta, esos viajes desaparecían para todo el mundo y
+      // sin un solo mensaje — comprobado contra PostgreSQL real: reserva con
+      // `citySlug` nulo, conductor en Pamplona, tablero en blanco.
+      //
+      // Un dato que falta no puede excluir. Lo que sí excluye es un dato
+      // presente y distinto: una reserva de Cúcuta no le sirve a un taxista
+      // de Pamplona.
+      ...(d.citySlug
+        ? { OR: [{ citySlug: d.citySlug }, { citySlug: null }] }
+        : {}),
     },
     orderBy: { scheduledFor: 'asc' },
     take: 50,
