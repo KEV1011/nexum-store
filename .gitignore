@@ -45,3 +45,6 @@ yarn-error.log*
 # ── Claude Code worktrees ─────────────────────────
 .claude/
 backend/uploads/
+
+# Caché de los scripts de tools/
+__pycache__/

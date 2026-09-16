@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_client/app/theme/zipa_glifos.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
+
+export 'package:nexum_client/app/theme/zipa_glifos.dart' show ZipaGlifo;
 
 // ── Iconos de sistema de ZIPA ────────────────────────────────────────────────
 //
@@ -31,6 +34,19 @@ import 'package:nexum_client/app/theme/zipa_tokens.dart';
 //
 // Cambiar de familia después es tocar UN mapa, el de aquí abajo. Ese es
 // justamente el motivo de que exista este archivo.
+//
+// LOS CUATRO SERVICIOS SON GLIFOS PROPIOS
+//
+// Taxi, campana de servir, caja y buseta están DIBUJADOS por nosotros
+// (`zipa_glifos.dart`), no traídos de ninguna familia. Son las cuatro puertas
+// de la home: lo primero que se ve al abrir la app, y con los iconos de
+// catálogo esa pantalla era la de todo el mundo. El resto del catálogo sigue en
+// Material a propósito — en una lupa o un chevron, un glifo propio no aporta
+// nada y solo sería deuda.
+//
+// Eso no rompe el punto de entrada único: quien los usa sigue pidiendo un
+// [ZipaIconName] y sigue sin poder elegir tamaño ni relleno. El que decide si
+// un nombre se dibuja o se toma de Material es este archivo, y nadie más.
 
 /// Los dos únicos tamaños. No hay un tercero ni valores libres.
 enum ZipaIconSize {
@@ -108,7 +124,25 @@ const Map<ZipaIconName, IconData> _glifos = {
   ZipaIconName.estrella: Icons.star_rounded,
 };
 
-/// Un icono de sistema: de línea, monocromo, en uno de los dos tamaños.
+/// Los nombres que se dibujan con glifo PROPIO en vez de con el de Material.
+///
+/// Son las cuatro puertas de la home: lo primero que se ve al abrir la app y lo
+/// único que la distingue de cualquier otra. El resto del catálogo sigue en
+/// Material a propósito — en un chevron o una lupa, un icono propio no aporta
+/// nada y solo sería deuda que mantener.
+///
+/// Los cuatro conservan además su entrada en `_glifos`, y no por descuido: es
+/// la red de seguridad. Si mañana se retira un glifo pintado, el icono no
+/// desaparece de la pantalla, vuelve al de Material. Y es lo que deja que la
+/// prueba del catálogo siga exigiendo que TODO nombre tenga glifo.
+const Map<ZipaIconName, ZipaGlifo> _pintados = {
+  ZipaIconName.movilidad: ZipaGlifo.movilidad,
+  ZipaIconName.restaurantes: ZipaGlifo.restaurantes,
+  ZipaIconName.envios: ZipaGlifo.envios,
+  ZipaIconName.intermunicipal: ZipaGlifo.intermunicipal,
+};
+
+/// Un icono de sistema: monocromo, en uno de los dos tamaños.
 class ZipaIcon extends StatelessWidget {
   const ZipaIcon(
     this.nombre, {
@@ -126,14 +160,28 @@ class ZipaIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Icon(
-      _glifos[nombre]!,
-      size: size.px,
-      color: color ?? context.zTexto2,
-    );
+    final tinta = color ?? context.zTexto2;
+    final propio = _pintados[nombre];
+    if (propio != null) {
+      return SizedBox(
+        width: size.px,
+        height: size.px,
+        child: CustomPaint(
+          painter: ZipaGlifoPainter(glifo: propio, color: tinta),
+          // El glifo es lo único que hay dentro: sin esto, `CustomPaint` se
+          // estira a lo que le den en vez de al cuadro que se le pidió.
+          size: Size.square(size.px),
+        ),
+      );
+    }
+    return Icon(_glifos[nombre]!, size: size.px, color: tinta);
   }
 }
 
 /// Solo para las pruebas: permite recorrer el catálogo sin exponer el mapa.
 @visibleForTesting
 Map<ZipaIconName, IconData> get glifosParaPruebas => _glifos;
+
+/// Solo para las pruebas: qué nombres llevan glifo propio.
+@visibleForTesting
+Map<ZipaIconName, ZipaGlifo> get pintadosParaPruebas => _pintados;
