@@ -24,6 +24,7 @@ import VehiclesManager from './VehiclesManager'
 import DocumentsManager from './DocumentsManager'
 import MembersManager from './MembersManager'
 import ProfileForm from './ProfileForm'
+import { EncomiendasPanel } from './EncomiendasPanel'
 import { leerToken, leerInfo, guardarSesion, borrarSesion } from './session'
 
 const BACKEND_URL =
@@ -705,6 +706,7 @@ function Dashboard({ token, operator, onLogout }: {
                   recorrido, gastos, tiempos y cobro. Las cuentas son de período,
                   no de viaje, así que van aparte. El tablero del marketplace y
                   los remitos sueltos quedan al final, plegados. */}
+              <EncomiendasPanel api={api} />
               <CargoTripsManager api={api} />
               <CobrosManager api={api} token={token ?? ''} />
               <Plegable titulo="Tablero de fletes del marketplace">
@@ -720,6 +722,10 @@ function Dashboard({ token, operator, onLogout }: {
           {section === 'intermunicipal' && isIntercity && (
             <>
               <h1 className="font-bold text-slate-900 text-lg">Intermunicipal</h1>
+              {/* La encomienda va primero: es plata que ya está esperando en la
+                  bodega de un comercio, y lo que se pierde si nadie la sube al
+                  bus de esta noche. */}
+              <EncomiendasPanel api={api} />
               <SchedulesManager api={api} />
               <RoutesManager api={api} />
             </>

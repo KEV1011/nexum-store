@@ -12,6 +12,7 @@
 import { CargoTripStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { createManifest, toManifestDTO, type CreateManifestDTO } from './manifest.service';
+import { marcarEncomiendasEnTransito } from './encomiendas.service';
 import { getTrackForAny, type ServiceTrack } from './track.service';
 import { costBreakdown, type CostBreakdown } from '../lib/freight-costs';
 import { freightTimes, type FreightTimes } from '../lib/freight-times';
@@ -339,6 +340,11 @@ export async function setCargoTripStatus(
         vehiclePlate: v?.plate ?? t.vehiclePlate,
       },
     });
+    // El bus salió: las encomiendas que lleva pasan a tránsito intermunicipal
+    // y su cliente recibe el aviso. Se ESPERA (no fire-and-forget) porque es
+    // una transición de estado y no un aviso: si falla, el despachador tiene
+    // que saberlo antes de darla por buena.
+    await marcarEncomiendasEnTransito(tripId);
   } else if (status === 'completed') {
     const res = await prisma.cargoTrip.updateMany({
       where: { id: tripId, status: { in: ['DRAFT', 'DISPATCHED'] } },

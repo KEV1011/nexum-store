@@ -13,6 +13,12 @@ import {
 } from '../services/intercity-pool.service';
 import { IntercityCity } from '../types';
 import {
+  listarEncomiendasPendientes,
+  adjuntarEncomienda,
+  soltarEncomienda,
+  EncomiendaError,
+} from '../services/encomiendas.service';
+import {
   signOperatorToken,
   requireOperator,
   requireOperatorRole,
@@ -842,6 +848,19 @@ function _errorViaje(res: Response, err: unknown): void {
   });
 }
 
+/**
+ * Los rechazos de una encomienda son de negocio y llevan el motivo concreto: el
+ * despachador tiene el bus a punto de salir y «no se puede» le obliga a
+ * adivinar. 400 con el mensaje, no 500.
+ */
+function _errorEncomienda(res: Response, err: unknown): void {
+  const status = err instanceof EncomiendaError ? 400 : 500;
+  res.status(status).json({
+    success: false,
+    error: err instanceof Error ? err.message : 'No se pudo procesar la encomienda',
+  });
+}
+
 router.get('/cargo-trips', async (req: Request, res: Response): Promise<void> => {
   try {
     const data = await listCargoTrips(req.operatorId!, {
@@ -889,6 +908,42 @@ router.post('/cargo-trips/:id/lines/:manifestId', requireOperatorRole('OWNER', '
   try {
     res.json({ success: true, data: await attachTripLine(req.operatorId!, req.params['id']!, req.params['manifestId']!) });
   } catch (err) { _errorViaje(res, err); }
+});
+
+// ─── Encomiendas: pedidos intermunicipales esperando bus ──────────────────────
+//
+// El tablero NO se filtra por empresa: una encomienda no pertenece a ninguna
+// hasta que alguien la sube a su despacho, igual que el tablero de fletes. Se
+// filtra por RUTA, que es lo que decide si a esta empresa le sirve.
+
+// GET /operator/encomiendas?origen=cucuta&destino=bucaramanga
+router.get('/encomiendas', async (req: Request, res: Response): Promise<void> => {
+  const { origen, destino } = req.query as { origen?: string; destino?: string };
+  try {
+    const data = await listarEncomiendasPendientes({ origen, destino });
+    res.json({ success: true, data });
+  } catch (err) { _errorEncomienda(res, err); }
+});
+
+// POST /operator/cargo-trips/:id/encomiendas { orderId } — sube una al despacho.
+router.post('/cargo-trips/:id/encomiendas', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const { orderId } = req.body as { orderId?: string };
+  if (!orderId) {
+    res.status(400).json({ success: false, error: 'Falta el pedido.' });
+    return;
+  }
+  try {
+    const data = await adjuntarEncomienda(req.operatorId!, orderId, req.params['id']!);
+    res.status(201).json({ success: true, data });
+  } catch (err) { _errorEncomienda(res, err); }
+});
+
+// DELETE /operator/encomiendas/:orderId — la baja del despacho (solo en borrador).
+router.delete('/encomiendas/:orderId', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    await soltarEncomienda(req.operatorId!, req.params['orderId']!);
+    res.json({ success: true, data: { soltada: true } });
+  } catch (err) { _errorEncomienda(res, err); }
 });
 
 router.post('/cargo-trips/:id/status', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {

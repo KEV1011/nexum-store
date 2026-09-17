@@ -611,6 +611,8 @@ model Order {
   pickedUpAt       DateTime?
   deliveredAt      DateTime?
 
+  /// Remito con el que viaja, si es una encomienda ya subida a un despacho.
+  manifest         FreightManifest?
   user             User?       @relation(fields: [userId], references: [id])
   business         Business    @relation(fields: [businessId], references: [id])
   lines            OrderLine[]
@@ -628,6 +630,9 @@ enum OrderStatus {
   PREPARING
   DRIVER_TO_PICKUP
   AT_PICKUP
+  /// Va en el despacho de una empresa intermunicipal, camino a la otra ciudad.
+  /// Distinto de IN_TRANSIT, que es un repartidor urbano con la caja en la moto.
+  IN_INTERCITY_TRANSIT
   IN_TRANSIT
   DELIVERED
   CANCELLED
@@ -1468,6 +1473,12 @@ model FreightManifest {
   // conciliación (`receivedAt`), pero se puede fijar a mano al cargar
   // despachos ya entregados en papel.
   deliveredOn    DateTime?
+
+  /// El pedido que viaja en este remito, si el remito nació de una encomienda.
+  /// ÚNICO: un pedido no puede ir en dos despachos — si pudiera, dos empresas
+  /// cobrarían el mismo envío y nadie sabría en qué bus va la caja.
+  orderId        String?  @unique
+  order          Order?   @relation(fields: [orderId], references: [id])
 
   @@unique([operatorId, code])
   @@index([operatorId])

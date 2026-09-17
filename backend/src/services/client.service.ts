@@ -495,8 +495,14 @@ export async function acceptOrderByBusiness(
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
   for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
 
-  // Ahora sí buscamos repartidor (antes esperaba en la puerta del negocio).
-  void startOrderMatchingCycle(orderId);
+  // Un pedido a OTRA ciudad no se le ofrece a un repartidor urbano: mandaría
+  // una moto de Cúcuta a llevar la caja a Bucaramanga. Su transporte lo resuelve
+  // una empresa intermunicipal desde el tablero de encomiendas, y el pedido
+  // espera en PREPARING hasta que alguien lo suba a un despacho.
+  if (!updated.isIntercity) {
+    // Ahora sí buscamos repartidor (antes esperaba en la puerta del negocio).
+    void startOrderMatchingCycle(orderId);
+  }
   return summary;
 }
 

@@ -19,6 +19,10 @@ enum CustomerOrderStatus {
   /// Conductor en el local recogiendo (y fotografiando) el pedido.
   atPickup,
 
+  /// Va en el bus de una empresa intermunicipal, camino a la otra ciudad.
+  /// Distinto de [inTransit], que es un repartidor urbano con la caja encima.
+  inIntercityTransit,
+
   /// Pedido recogido con foto, en camino al cliente.
   inTransit,
 
@@ -36,6 +40,7 @@ extension CustomerOrderStatusX on CustomerOrderStatus {
         CustomerOrderStatus.preparing => 'Preparando tu pedido',
         CustomerOrderStatus.driverToPickup => 'Conductor en camino al local',
         CustomerOrderStatus.atPickup => 'Recogiendo tu pedido',
+        CustomerOrderStatus.inIntercityTransit => 'Va en camino a tu ciudad',
         CustomerOrderStatus.inTransit => 'En camino hacia ti',
         CustomerOrderStatus.delivered => 'Entregado',
         CustomerOrderStatus.cancelled => 'Pedido cancelado',
@@ -48,6 +53,9 @@ extension CustomerOrderStatusX on CustomerOrderStatus {
         CustomerOrderStatus.preparing => 1,
         CustomerOrderStatus.driverToPickup => 2,
         CustomerOrderStatus.atPickup => 2,
+        // Comparte paso con el reparto urbano: para el cliente las dos cosas
+        // son «va en camino», y la diferencia ya la dice la etiqueta.
+        CustomerOrderStatus.inIntercityTransit => 3,
         CustomerOrderStatus.inTransit => 3,
         CustomerOrderStatus.delivered => 4,
         CustomerOrderStatus.cancelled => 0,
@@ -138,8 +146,13 @@ class CustomerOrderEntity {
         businessName: j['businessName'] as String,
         businessAddress: j['businessAddress'] as String,
         deliveryAddress: j['deliveryAddress'] as String,
-        status: CustomerOrderStatus.values
-            .firstWhere((s) => s.name == j['status']),
+        // `orElse` obligatorio: sin él, un estado que esta versión no conozca
+        // lanza, y el `try` del datasource descarta la caché ENTERA — el
+        // usuario perdería todo su historial por un pedido.
+        status: CustomerOrderStatus.values.firstWhere(
+          (s) => s.name == j['status'],
+          orElse: () => CustomerOrderStatus.confirmed,
+        ),
         lines: (j['lines'] as List)
             .map((l) => OrderLineEntity.fromJson(l as Map<String, dynamic>))
             .toList(),

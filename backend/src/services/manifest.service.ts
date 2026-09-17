@@ -12,6 +12,9 @@
 // foto en el momento de la entrega.
 
 import { Prisma, ManifestStatus, ManifestItemStatus } from '@prisma/client';
+import {
+  marcarEncomiendaEntregada, marcarEncomiendaEnTransito,
+} from './encomiendas.service';
 import { prisma } from '../lib/prisma';
 
 export class ManifestError extends Error {
@@ -343,6 +346,12 @@ export async function dispatchManifest(
     },
     include: _incluirItems,
   });
+
+  // Si el remito es una encomienda, el bus ya lleva la caja: el pedido entra en
+  // tránsito intermunicipal. Se hace aquí Y al despachar el viaje porque son
+  // dos acciones del portal y cualquiera puede ir primero.
+  await marcarEncomiendaEnTransito(id);
+
   return toManifestDTO(actualizado);
 }
 
@@ -489,6 +498,11 @@ export async function receiveManifest(
       include: _incluirItems,
     });
   });
+  // Si este remito nació de una encomienda, recibirlo ES entregar el pedido:
+  // el destinatario está en la taquilla, mostró su cédula y firmó. El acta
+  // queda en el remito, que es la constancia.
+  await marcarEncomiendaEntregada(id);
+
   return toManifestDTO(actualizado);
 }
 
