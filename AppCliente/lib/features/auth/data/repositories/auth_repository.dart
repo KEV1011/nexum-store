@@ -48,22 +48,7 @@ class AuthRepository {
         otpCode: otpCode,
       );
 
-      final token = data['token'] as String;
-      await _storage.write(key: AppConstants.authTokenKey, value: token);
-
-      final c = data['client'] as Map<String, dynamic>;
-      final client = ClientEntity(
-        id: c['id'] as String,
-        phone: c['phone'] as String,
-        name: c['name'] as String? ?? 'Usuario ZIPA',
-      );
-
-      // Persist profile so checkAuth() can restore it without an API call.
-      await _storage.write(
-        key: _clientJsonKey,
-        value: jsonEncode({'id': client.id, 'phone': client.phone, 'name': client.name}),
-      );
-
+      final client = await _persistirSesion(data);
       return (client: client, failure: null);
     } on InvalidOtpException {
       return (client: null, failure: const InvalidOtpFailure());
@@ -81,6 +66,48 @@ class AuthRepository {
         client: null,
         failure: UnexpectedFailure(message: e.toString()),
       );
+    }
+  }
+
+  /// Guarda token y perfil a partir de la respuesta `{token, client}`.
+  ///
+  /// Lo comparten el login por OTP y el canje del enlace de WhatsApp: son dos
+  /// puertas a la MISMA sesión, y duplicar este guardado sería la forma más
+  /// fácil de que una de las dos dejara de persistir el perfil.
+  Future<ClientEntity> _persistirSesion(Map<String, dynamic> data) async {
+    final token = data['token'] as String;
+    await _storage.write(key: AppConstants.authTokenKey, value: token);
+
+    final c = data['client'] as Map<String, dynamic>;
+    final client = ClientEntity(
+      id: c['id'] as String,
+      phone: c['phone'] as String,
+      name: c['name'] as String? ?? 'Usuario ZIPA',
+    );
+
+    // Se guarda el perfil para que checkAuth() lo restaure sin ir a la API.
+    await _storage.write(
+      key: _clientJsonKey,
+      value: jsonEncode({'id': client.id, 'phone': client.phone, 'name': client.name}),
+    );
+    return client;
+  }
+
+  /// Entra con el código del enlace que llegó por WhatsApp.
+  Future<({ClientEntity? client, Failure? failure})> redeemMagicLink(
+    String code,
+  ) async {
+    try {
+      final data = await _dataSource.redeemMagicLink(code);
+      return (client: await _persistirSesion(data), failure: null);
+    } on NetworkException catch (e) {
+      return (client: null, failure: NetworkFailure(message: e.message));
+    } on StorageException catch (e) {
+      return (client: null, failure: StorageFailure(message: e.message));
+    } on AppException catch (e) {
+      return (client: null, failure: UnexpectedFailure(message: e.message));
+    } catch (e) {
+      return (client: null, failure: UnexpectedFailure(message: e.toString()));
     }
   }
 

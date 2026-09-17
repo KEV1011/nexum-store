@@ -44,6 +44,8 @@ import { warmMunicipalities } from './services/municipality.service';
 import { ocrProviderName } from './services/ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
+import { whatsappMode } from './services/whatsapp.service';
+import { purgarEnlacesMagicos } from './services/enlace-magico.service';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -92,6 +94,13 @@ app.use(cors({ origin: CORS_ORIGIN }));
 // del JSON y un supermercado con miles de productos pasa del megabyte. Se le da
 // su propio límite en vez de subir el de toda la API, que es lo que convierte
 // un límite en un adorno.
+// El webhook de WhatsApp necesita el cuerpo CRUDO: su firma se calcula sobre
+// los bytes exactos que mandó Meta, y volver a serializar el JSON ya parseado
+// daría otra firma (cambia un espacio, cambia el hash). Va montado ANTES del
+// parser JSON global; express.json() se salta la petición al ver que el cuerpo
+// ya fue leído.
+app.use('/webhooks/whatsapp', express.raw({ type: 'application/json', limit: '256kb' }));
+
 const CSV_CATALOGO = /^\/business\/[^/]+\/products\/csv-(preview|import)$/;
 const jsonNormal = express.json({ limit: process.env['JSON_BODY_LIMIT'] ?? '64kb' });
 const jsonCatalogo = express.json({ limit: process.env['JSON_CSV_LIMIT'] ?? '4mb' });
@@ -156,6 +165,11 @@ app.get('/health', async (_req, res) => {
     // al redeploy y si los push llegan con la app cerrada.
     uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',
     push: process.env['FIREBASE_SERVICE_ACCOUNT'] ? 'firebase' : 'apagado',
+    // Entrada por WhatsApp: 'cloud-api' = el pasajero puede escribir al número
+    // y recibe el enlace para pedir. 'configuracion-incompleta' avisa del caso
+    // más fácil de dejar a medias — poder mandar pero no poder recibir (o al
+    // revés), que se ve como un canal muerto sin ningún error en los registros.
+    whatsapp: whatsappMode(),
     // ¿Se aplicaron las migraciones al arrancar? 'fallaron' significa que el
     // servidor está corriendo con un esquema que NO coincide con el código: la
     // app pedirá columnas que no existen y el usuario verá errores de Prisma.
@@ -272,6 +286,9 @@ server.listen(PORT, () => {
   // el proceso se reinicia a diario y el timer nunca llega a cumplirse.
   void purgeOldTrackPoints();
   setInterval(() => void purgeOldTrackPoints(), 24 * 60 * 60 * 1000).unref();
+  // Enlaces de WhatsApp ya vencidos: un código gastado no prueba nada que no
+  // esté en el registro del mensaje, y la tabla crecería con cada «hola».
+  setInterval(() => void purgarEnlacesMagicos(), 24 * 60 * 60 * 1000).unref();
   // Conductor que desaparece con mercancía en curso. Es la ÚNICA alerta que no
   // puede nacer del heartbeat: aquí el problema es que el heartbeat dejó de
   // llegar, así que hace falta ir a buscarlo.

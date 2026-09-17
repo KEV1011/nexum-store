@@ -3,6 +3,7 @@ import { clientAuthMiddleware } from '../middleware/client-auth.middleware';
 import { clientRequestRateLimit } from '../middleware/client-rate-limit.middleware';
 import { legalConsentEnforced, recordConsent, hasCurrentConsent } from '../services/legal.service';
 import { OtpRateLimitError } from '../services/otp.service';
+import { canjearEnlaceMagico, EnlaceMagicoError } from '../services/enlace-magico.service';
 import {
   sendClientOtp,
   verifyClientOtp,
@@ -163,6 +164,35 @@ router.post('/auth/verify-otp', async (req, res) => {
     res.json({ success: true, data: result });
   } catch (err) {
     res.status(401).json({ success: false, error: err instanceof Error ? err.message : 'Verification failed' });
+  }
+});
+
+/**
+ * Canje del enlace que llegó por WhatsApp.
+ *
+ * El código NO es una sesión: es un vale de un solo uso y de quince minutos
+ * que la app cambia aquí por el token de siempre. Por eso puede viajar en una
+ * URL de un chat — y aun así va detrás del `#`, que no llega al servidor.
+ *
+ * Va bajo `/client/auth`, así que hereda el `authLimiter` que index.ts monta
+ * sobre ese prefijo: probar códigos a lo bruto se corta ahí.
+ */
+router.post('/auth/magic-link', async (req, res) => {
+  const { code } = req.body as { code?: string };
+  if (!code) {
+    res.status(400).json({ success: false, error: 'Falta el código del enlace' });
+    return;
+  }
+  try {
+    const result = await canjearEnlaceMagico(code);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    const codigo = err instanceof EnlaceMagicoError ? err.codigo : 'enlace-inexistente';
+    res.status(401).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Enlace no válido',
+      code: codigo,
+    });
   }
 });
 

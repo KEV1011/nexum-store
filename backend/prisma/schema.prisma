@@ -68,6 +68,7 @@ model User {
   seatBookings      SeatBooking[]
   emergencyEvents   EmergencyEvent[]
   promoRedemptions  PromoRedemption[]
+  magicLinks        MagicLink[]
 
   @@map("users")
 }
@@ -1920,4 +1921,63 @@ model UserBlock {
   @@unique([blockerKind, blockerId, blockedKind, blockedId])
   @@index([blockedKind, blockedId])
   @@map("user_blocks")
+}
+
+// ─── WhatsApp: entrada por chat sin instalar la app ──────────────────────────
+
+/// Un mensaje entrante de WhatsApp que ya procesamos.
+///
+/// Existe por UNA razón: Meta reintenta el webhook cuando no recibe un 200 a
+/// tiempo, y un reintento significaría mandarle al pasajero un segundo enlace
+/// (confuso, y cada mensaje saliente se paga desde octubre de 2026). El índice
+/// único sobre `waMessageId` es la toma atómica: el segundo intento choca
+/// contra el índice en vez de duplicar la respuesta.
+///
+/// De paso es el contador que permite topar cuántas respuestas se le mandan a
+/// un mismo teléfono al día: sin eso, quien escriba cien veces se gasta el
+/// presupuesto mensual de mensajes de toda la operación.
+model WhatsappInbound {
+  id String @id @default(cuid())
+
+  /// El id que asigna Meta al mensaje (`wamid...`). Único = antirreintento.
+  waMessageId String @unique
+  /// Teléfono del remitente en E.164, ya normalizado.
+  fromPhone   String
+  /// Qué se decidió hacer: respondido | ignorado:<motivo>. Deja rastro de por
+  /// qué un mensaje no tuvo respuesta, que si no es imposible de diagnosticar.
+  outcome     String
+
+  receivedAt DateTime @default(now())
+
+  @@index([fromPhone, receivedAt])
+  @@map("whatsapp_inbound")
+}
+
+/// Enlace de un solo uso para entrar a la app web sin escribir el código OTP.
+///
+/// El teléfono ya viene verificado por Meta (nadie escribe desde un número que
+/// no controla), así que repetir el OTP sería pedirle al pasajero que pruebe
+/// algo que ya está probado. Lo que NO se hace es meter el token de sesión en
+/// la URL: un enlace de chat se reenvía, se ve en la vista previa y queda en el
+/// historial. Va un código opaco de un solo uso y con caducidad corta, que se
+/// canjea por el token real contra el backend.
+model MagicLink {
+  id String @id @default(cuid())
+
+  /// Código opaco que viaja en la URL. Único: el canje es un updateMany con
+  /// guarda sobre `usedAt`, así que dos pestañas abiertas no dan dos sesiones.
+  code   String @unique
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Por dónde se emitió (hoy siempre `whatsapp`).
+  channel String
+
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("magic_links")
 }

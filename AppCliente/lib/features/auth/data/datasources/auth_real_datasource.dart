@@ -70,4 +70,22 @@ class AuthRealDataSource implements AuthDataSource {
       throw NetworkException(message: _describe(e));
     }
   }
+
+  @override
+  Future<Map<String, dynamic>> redeemMagicLink(String code) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/client/auth/magic-link',
+        data: {'code': code},
+      );
+      if (res.data?['success'] != true) {
+        throw const NetworkException(message: 'El enlace no es válido.');
+      }
+      return res.data!['data'] as Map<String, dynamic>;
+    } on DioException catch (e) {
+      // El backend distingue inexistente / vencido / ya usado, y cada uno se le
+      // dice distinto al pasajero: `_describe` ya devuelve su mensaje.
+      throw NetworkException(message: _describe(e));
+    }
+  }
 }

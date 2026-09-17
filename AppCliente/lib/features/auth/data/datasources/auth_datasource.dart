@@ -10,4 +10,10 @@ abstract class AuthDataSource {
     required String phoneNumber,
     required String otpCode,
   });
+
+  /// Canjea el código del enlace que llegó por WhatsApp.
+  ///
+  /// El teléfono ya lo verificó Meta, así que no hay OTP que pedir. Devuelve
+  /// `{token, client}` igual que [verifyOtp].
+  Future<Map<String, dynamic>> redeemMagicLink(String code);
 }

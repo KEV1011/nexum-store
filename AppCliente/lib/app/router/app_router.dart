@@ -19,6 +19,8 @@ import 'package:nexum_client/features/auth/presentation/screens/'
     'otp_screen.dart';
 import 'package:nexum_client/features/auth/presentation/screens/'
     'phone_input_screen.dart';
+import 'package:nexum_client/features/auth/presentation/screens/'
+    'entrar_con_enlace_screen.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/screens/'
@@ -71,6 +73,9 @@ abstract final class AppRoutes {
   static const String onboarding = '/onboarding';
   static const String login = '/login';
   static const String otp = '/otp';
+
+  /// Entrada desde el enlace de WhatsApp: `#/entrar?c=<código>`.
+  static const String entrar = '/entrar';
   static const String home = '/home';
   static const String cart = '/cart';
   static const String checkout = '/checkout';
@@ -145,6 +150,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: OtpScreen(phone: state.extra as String? ?? ''),
+        ),
+      ),
+      // Enlace de WhatsApp. El código llega como query DETRÁS del `#`, que es
+      // lo que hace que no viaje al servidor que sirve la web ni al robot que
+      // arma la vista previa del chat.
+      GoRoute(
+        path: AppRoutes.entrar,
+        pageBuilder: (context, state) => AppTransitions.fade(
+          pageKey: state.pageKey,
+          child: EntrarConEnlaceScreen(codigo: state.uri.queryParameters['c']),
         ),
       ),
       GoRoute(

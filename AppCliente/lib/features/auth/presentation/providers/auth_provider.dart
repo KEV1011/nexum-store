@@ -107,6 +107,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
     _registerPushToken();
   }
 
+  /// Entra con el código del enlace de WhatsApp.
+  ///
+  /// Devuelve el motivo del fallo en vez de tragárselo: el pasajero tiene que
+  /// saber si el enlace venció, si ya lo usó o si está mal copiado — son tres
+  /// arreglos distintos.
+  Future<String?> entrarConEnlace(String code) async {
+    state = const AuthLoading();
+    final result = await _repository.redeemMagicLink(code);
+    if (result.failure != null) {
+      state = const AuthUnauthenticated();
+      return result.failure!.message;
+    }
+    state = AuthAuthenticated(client: result.client!);
+    _registerPushToken();
+    return null;
+  }
+
   Future<void> logout() async {
     await _repository.logout();
     state = const AuthUnauthenticated();
