@@ -16,9 +16,45 @@ on:
   workflow_dispatch:   # Permite ejecución manual desde GitHub UI
 
 jobs:
+  # ── Puerta ────────────────────────────────────────────────────────────────
+  # El build corría EN PARALELO con el CI, no después. Una app que compila pero
+  # con pruebas en rojo producía APK y AAB igual, y de ahí salen los artefactos
+  # que van a los probadores y a Play. Con `main` sin proteger, eso significaba
+  # que un fallo que el CI sí cazaba podía llegar a los teléfonos de la gente.
+  #
+  # Esta puerta repite analyze + test aquí mismo, en vez de depender de otro
+  # workflow: así el propio artefacto no puede nacer de un árbol en rojo, sin
+  # importar cómo se haya disparado (push, PR o a mano).
+  verificar:
+    name: Pruebas antes de construir
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      - name: Pub get
+        working-directory: AppTransport
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: AppTransport
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test
+        working-directory: AppTransport
+        run: flutter test
+
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
+    # Sin esto, un árbol con pruebas en rojo sigue produciendo artefacto.
+    needs: verificar
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
