@@ -23,6 +23,11 @@ enum CustomerOrderStatus {
   /// Distinto de [inTransit], que es un repartidor urbano con la caja encima.
   inIntercityTransit,
 
+  /// Llegó a tu ciudad y espera al repartidor que la lleva a la puerta.
+  /// Solo pasa por aquí quien pidió entrega a domicilio en destino; quien
+  /// recoge en taquilla salta directo a [delivered].
+  atDestinationHub,
+
   /// Pedido recogido con foto, en camino al cliente.
   inTransit,
 
@@ -41,6 +46,7 @@ extension CustomerOrderStatusX on CustomerOrderStatus {
         CustomerOrderStatus.driverToPickup => 'Conductor en camino al local',
         CustomerOrderStatus.atPickup => 'Recogiendo tu pedido',
         CustomerOrderStatus.inIntercityTransit => 'Va en camino a tu ciudad',
+        CustomerOrderStatus.atDestinationHub => 'Llegó a tu ciudad, buscamos quién te lo lleve',
         CustomerOrderStatus.inTransit => 'En camino hacia ti',
         CustomerOrderStatus.delivered => 'Entregado',
         CustomerOrderStatus.cancelled => 'Pedido cancelado',
@@ -56,6 +62,7 @@ extension CustomerOrderStatusX on CustomerOrderStatus {
         // Comparte paso con el reparto urbano: para el cliente las dos cosas
         // son «va en camino», y la diferencia ya la dice la etiqueta.
         CustomerOrderStatus.inIntercityTransit => 3,
+        CustomerOrderStatus.atDestinationHub => 3,
         CustomerOrderStatus.inTransit => 3,
         CustomerOrderStatus.delivered => 4,
         CustomerOrderStatus.cancelled => 0,

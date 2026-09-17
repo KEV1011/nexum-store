@@ -151,7 +151,8 @@ async function main(): Promise<void> {
   comprobar('el tiempo prometido es el del local',
     localBD.etaMinutes === 40, String(localBD.etaMinutes));
 
-  // (2) Otra ciudad DECLARADA: flete sellado, aparte del domicilio.
+  // (2) Otra ciudad DECLARADA: flete sellado; el domicilio NO se cobra porque
+  //     la recoge en la taquilla de destino.
   const lejos = await placeClientOrder(cliente.id, cliente.phone, {
     businessId: negocio.id,
     deliveryAddress: 'Cabecera, Bucaramanga',
@@ -164,11 +165,18 @@ async function main(): Promise<void> {
   comprobar('sella las dos plazas',
     lejosBD.originCitySlug === 'cucuta' && lejosBD.destCitySlug === 'bucaramanga',
     `${lejosBD.originCitySlug} → ${lejosBD.destCitySlug}`);
-  comprobar('cobra el flete declarado, APARTE del domicilio',
-    lejosBD.intercityFee === 15000 && lejosBD.deliveryFee === 4000,
+  // CORREGIDO en la pieza 5: esta comprobación afirmaba que se cobraba el
+  // flete «APARTE del domicilio», y eso era el defecto — en un envío a otra
+  // ciudad nadie hace un domicilio urbano: el comercio deja la caja en la
+  // terminal y el cliente la recoge en la taquilla de destino. Se le estaba
+  // cobrando un servicio que no existía. El domicilio solo se cobra si pide
+  // que se la lleven a la puerta (`lastMile`), y entonces paga al repartidor
+  // de DESTINO. La regla vive en lib/ultima-milla.ts.
+  comprobar('cobra el flete declarado y NO el domicilio (recoge en taquilla)',
+    lejosBD.intercityFee === 15000 && lejosBD.deliveryFee === 0,
     `flete=${lejosBD.intercityFee} domicilio=${lejosBD.deliveryFee}`);
-  comprobar('el total suma producto + domicilio + flete',
-    lejosBD.total === 200000 + 4000 + 15000, String(lejosBD.total));
+  comprobar('el total suma producto + flete, sin domicilio',
+    lejosBD.total === 200000 + 15000, String(lejosBD.total));
   comprobar('promete las horas que declaró el comercio, no 40 minutos',
     lejosBD.etaMinutes === 24 * 60, String(lejosBD.etaMinutes));
 

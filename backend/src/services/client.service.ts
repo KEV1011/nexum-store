@@ -37,6 +37,14 @@ import {
 import { sendPushToClient, sendPushToDriver } from './push.service';
 import { plazaDeCoordenadas } from './municipality.service';
 import { destinoPara, esEnvioAOtraCiudad } from '../lib/destinos-envio';
+import { desgloseEnvio, motivoParaNoLlevarAPuerta } from '../lib/ultima-milla';
+import { estimaLlegada } from '../lib/corte-bodega';
+import {
+  nombreEstadoPedido,
+  esDespachable,
+  ESTADOS_DESPACHABLES,
+} from '../lib/estado-pedido';
+import type { Franja } from '../lib/horario-tienda';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
 import { saneaMetodoPago } from '../lib/metodos-pago';
@@ -221,6 +229,43 @@ export async function placeClientOrder(
     );
   }
 
+  // ── ¿Se la llevamos hasta la puerta en destino? ────────────────────────────
+  //
+  // Solo si el cliente lo pidió Y hay coordenadas de entrega: el despacho de
+  // última milla es PostGIS sobre un radio, y sin punto no hay a dónde mandar
+  // a nadie. Se decide aquí y se SELLA, porque de ello depende el cobro.
+  const ultimaMilla =
+    !!destino &&
+    dto.lastMile === true &&
+    motivoParaNoLlevarAPuerta({
+      intercity: true,
+      deliveryLat: dto.deliveryLat,
+      deliveryLng: dto.deliveryLng,
+    }) === null;
+
+  // Cuánto se cobra por mover la caja. La regla vive en lib/ultima-milla.ts
+  // porque decide plata: en un envío a otra ciudad SIN última milla no se cobra
+  // el domicilio, que es lo que se estaba cobrando por un servicio que nadie
+  // prestaba (el comercio deja la caja en la terminal y el cliente la recoge).
+  const envio = desgloseEnvio({
+    deliveryFee: biz.deliveryFee,
+    intercityFee: destino?.fee ?? null,
+    intercity: !!destino,
+    lastMile: ultimaMilla,
+  });
+
+  // La promesa, como instante concreto. Con hora de corte declarada, un pedido
+  // hecho después de que salió el bus se promete para el despacho siguiente.
+  const ahoraPedido = new Date();
+  const promisedAt = destino
+    ? estimaLlegada(
+        ahoraPedido,
+        destino.cutoff ?? null,
+        destino.etaHours,
+        (biz.hours ?? []) as Franja[],
+      )
+    : null;
+
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
   // ── Validación contra la BD ────────────────────────────────────────────────
@@ -360,16 +405,20 @@ export async function placeClientOrder(
       originCitySlug,
       destCitySlug,
       isIntercity: !!destino,
-      intercityFee: destino?.fee ?? null,
+      intercityFee: envio.flete || null,
+      lastMile: ultimaMilla,
+      promisedAt,
       subtotal,
       promoDiscount: descuentoPromo > 0 ? descuentoPromo : null,
-      deliveryFee: biz.deliveryFee,
+      // Cero cuando cruza de ciudad y el cliente recoge en taquilla: ahí no hay
+      // repartidor urbano a quien pagarle.
+      deliveryFee: envio.domicilio,
       // El descuento se resta del subtotal, NUNCA del domicilio: ese es el pago
       // del repartidor y no lo financia una promoción del restaurante. El flete
       // intermunicipal se SUMA aparte por la misma razón invertida: es plata de
       // la transportadora, no del repartidor, y mezclarlos descuadraría las dos
       // liquidaciones.
-      total: subtotal - descuentoPromo + biz.deliveryFee + (destino?.fee ?? 0),
+      total: subtotal - descuentoPromo + envio.total,
       // Un envío a otra ciudad no llega en 30 minutos. La promesa que se enseña
       // es la que declaró el comercio para ESE destino.
       etaMinutes: destino ? destino.etaHours * 60 : biz.etaMinutes,
@@ -695,8 +744,12 @@ export async function acceptClientOrder(
   driverId: string,
 ): Promise<ClientOrderSummaryDTO | null> {
   const existing = await prisma.order.findUnique({ where: { id: orderId } });
-  // El pedido llega al matching en PREPARING (el restaurante ya lo aceptó).
-  if (!existing || existing.status !== 'PREPARING' || existing.driverId) return null;
+  // Dos puntos de partida legítimos, y solo dos:
+  //  · PREPARING — pedido urbano normal, el restaurante ya lo aceptó.
+  //  · AT_DESTINATION_HUB — encomienda que llegó a la otra ciudad y espera a
+  //    quien la lleve hasta la puerta. Sin este caso la última milla estaría
+  //    muerta: la oferta saldría y todo «aceptar» devolvería null.
+  if (!existing || !esDespachable(existing.status) || existing.driverId) return null;
 
   const d = await prisma.driver.findUnique({
     where: { id: driverId },
@@ -708,7 +761,7 @@ export async function acceptClientOrder(
   // la asignación del primero: dos repartidores camino del mismo restaurante y
   // solo uno con el pedido de verdad.
   const tomado = await prisma.order.updateMany({
-    where: { id: orderId, status: 'PREPARING', driverId: null },
+    where: { id: orderId, status: { in: ESTADOS_DESPACHABLES }, driverId: null },
     data: {
       status: 'DRIVER_TO_PICKUP',
       driverId,
@@ -978,7 +1031,19 @@ export async function updateOrderStatusByDriver(
   // Cadena de custodia: recoger exige el PIN del negocio y entregar el del
   // cliente. Lanza CustodyPinError (mensaje en español) si falta o no coincide.
   if (status === 'in_transit') {
-    assertCustodyPin(existing.pickupPin, pin, 'recogida');
+    // Última milla: el repartidor recoge en la taquilla de destino, y allí NO
+    // hay nadie con el PIN de recogida — ese lo guarda el comercio de origen,
+    // que está en otra ciudad. Exigirlo dejaría la función muerta al nacer: el
+    // repartidor no podría arrancar nunca. La custodia en ese punto ya quedó
+    // probada con el acta firmada del remito; el PIN de entrega en la puerta,
+    // que es el que protege al cliente, se sigue pidiendo igual.
+    // Se mira `hubAt` y NO el estado: para cuando el repartidor dice «recogí»,
+    // `acceptClientOrder` ya movió el pedido a DRIVER_TO_PICKUP, así que la
+    // condición sobre el estado nunca se cumplía y el PIN se seguía pidiendo.
+    // `hubAt` es una marca durable: este pedido pasó por una taquilla.
+    if (existing.hubAt == null) {
+      assertCustodyPin(existing.pickupPin, pin, 'recogida');
+    }
   } else if (status === 'delivered') {
     assertCustodyPin(existing.deliveryPin, pin, 'entrega');
   }
@@ -1775,6 +1840,9 @@ type PrismaOrder = {
   driverName: string | null; driverPhone: string | null; customerName: string | null;
   prepMinutes: number | null; acceptedAt: Date | null; readyAt: Date | null;
   deliveryLat?: number | null; deliveryLng?: number | null;
+  // Opcionales porque no todas las consultas los piden en su `select`: donde
+  // no vengan, el DTO simplemente no los lleva.
+  promisedAt?: Date | null; lastMile?: boolean | null;
 };
 
 type PrismaOrderLine = {
@@ -1789,22 +1857,12 @@ function _toSummary(
   lines: PrismaOrderLine[],
   ficha: DriverCardFields = {},
 ): ClientOrderSummaryDTO {
-  const statusMap: Record<string, string> = {
-    PENDING: 'pending',
-    CONFIRMED: 'confirmed',
-    PREPARING: 'preparing',
-    DRIVER_TO_PICKUP: 'driverToPickup',
-    AT_PICKUP: 'atPickup',
-    IN_TRANSIT: 'inTransit',
-    DELIVERED: 'delivered',
-    CANCELLED: 'cancelled',
-  };
   return {
     id: o.id,
     orderRef: o.orderRef,
     businessId: o.businessId,
     businessName,
-    status: statusMap[o.status] ?? o.status.toLowerCase(),
+    status: nombreEstadoPedido(o.status),
     subtotal: o.subtotal,
     // El descuento que SÍ se aplicó a este pedido. Sin él, el cliente ve un
     // total menor que la suma de sus productos y no sabe por qué.
@@ -1812,6 +1870,8 @@ function _toSummary(
     deliveryFee: o.deliveryFee,
     total: o.total,
     etaMinutes: o.etaMinutes ?? 30,
+    promisedAt: o.promisedAt?.toISOString(),
+    lastMile: o.lastMile || undefined,
     items: lines.map((l) => ({
       productName: l.productName,
       quantity: l.quantity,

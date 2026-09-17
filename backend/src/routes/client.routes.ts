@@ -429,6 +429,10 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
     // sugerencias o la marcó en el mapa. Sin ellas el pedido se crea igual.
     deliveryLat?: number;
     deliveryLng?: number;
+    // Solo pesa en envíos a otra ciudad: pedir que se la lleven a la puerta en
+    // destino. Sin él, el cliente la recoge en la taquilla y no se le cobra
+    // domicilio.
+    lastMile?: boolean;
   };
 
   if (!dto.businessId || !dto.deliveryAddress || !Array.isArray(dto.items) || dto.items.length === 0) {
@@ -442,6 +446,7 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
       deliveryAddress: dto.deliveryAddress,
       deliveryLat: typeof dto.deliveryLat === 'number' ? dto.deliveryLat : undefined,
       deliveryLng: typeof dto.deliveryLng === 'number' ? dto.deliveryLng : undefined,
+      lastMile: dto.lastMile === true,
       // `optionIds` y `notes` viajan hasta el servicio: con los ids se
       // recalcula el precio contra el catálogo y se compone la comanda.
       items: dto.items as Array<{

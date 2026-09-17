@@ -167,3 +167,41 @@ describe('si el pedido cruza de plaza', () => {
     expect(esEnvioAOtraCiudad(null, null)).toBe(false);
   });
 });
+
+describe('la hora de corte del destino', () => {
+  it('se guarda normalizada', () => {
+    const [d] = saneaDestinos(
+      [{ city: 'bogota', fee: 25000, etaHours: 24, cutoff: '9:30' }],
+      'cucuta',
+    );
+    expect(d?.cutoff).toBe('09:30');
+  });
+
+  it('es opcional: sin ella el destino sigue siendo válido', () => {
+    const [d] = saneaDestinos([{ city: 'bogota', fee: 25000, etaHours: 24 }], 'cucuta');
+    expect(d?.cutoff).toBeUndefined();
+    // La cadena vacía del formulario tampoco es un error.
+    const [e] = saneaDestinos(
+      [{ city: 'bogota', fee: 25000, etaHours: 24, cutoff: '  ' }],
+      'cucuta',
+    );
+    expect(e?.cutoff).toBeUndefined();
+  });
+
+  it('una hora que no se entiende se RECHAZA en vez de ignorarse', () => {
+    // Guardarla en silencio dejaría al comercio creyendo que declaró un corte
+    // que no existe, y a los clientes viendo plazos de otro día.
+    expect(() =>
+      saneaDestinos([{ city: 'bogota', fee: 25000, etaHours: 24, cutoff: '4pm' }], 'cucuta'),
+    ).toThrow(/hora de corte/i);
+    expect(() =>
+      saneaDestinos([{ city: 'bogota', fee: 25000, etaHours: 24, cutoff: '25:00' }], 'cucuta'),
+    ).toThrow(/hora de corte/i);
+  });
+
+  it('al LEER de la base, una hora corrupta se descarta sin tumbar el destino', () => {
+    const [d] = destinosDesdeBD([{ city: 'bogota', fee: 25000, etaHours: 24, cutoff: 'tarde' }]);
+    expect(d?.city).toBe('bogota');
+    expect(d?.cutoff).toBeUndefined();
+  });
+});

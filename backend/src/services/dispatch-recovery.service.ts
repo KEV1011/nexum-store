@@ -26,6 +26,7 @@
 // con el aviso que el propio despacho habría dado.
 
 import { prisma } from '../lib/prisma';
+import { ESTADOS_DESPACHABLES } from '../lib/estado-pedido';
 import {
   startMatchingCycle,
   startErrandMatchingCycle,
@@ -131,10 +132,13 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
 
   // ── Pedidos ────────────────────────────────────────────────────────────────
   // El negocio ya aceptó y está cocinando: PREPARING sin repartidor es
-  // exactamente el estado en el que se dispara la búsqueda.
+  // exactamente el estado en el que se dispara la búsqueda. Y con él,
+  // AT_DESTINATION_HUB: la encomienda que llegó a la otra ciudad y espera a
+  // quien la lleve a la puerta. Sin esto, una caja cuyo primer ciclo se agotó
+  // se quedaría en la taquilla para siempre y nadie se enteraría.
   try {
     const pedidos = await prisma.order.findMany({
-      where: { status: 'PREPARING', driverId: null },
+      where: { status: { in: ESTADOS_DESPACHABLES }, driverId: null },
       select: { id: true, createdAt: true },
       take: 200,
     });
@@ -287,7 +291,9 @@ export async function contarDespachoAtascado(ciudad?: string | null): Promise<{
   }
   const [mandado, pedido, intermunicipal] = await Promise.all([
     prisma.errand.count({ where: { status: 'SEARCHING', driverId: null, createdAt: { lt: corte } } }),
-    prisma.order.count({ where: { status: 'PREPARING', driverId: null, createdAt: { lt: corte } } }),
+    prisma.order.count({
+      where: { status: { in: ESTADOS_DESPACHABLES }, driverId: null, createdAt: { lt: corte } },
+    }),
     prisma.intercityBooking.count({
       where: { status: 'SEARCHING', driverId: null, createdAt: { lt: corte } },
     }),

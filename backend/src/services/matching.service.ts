@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { DriverStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { esDespachable } from '../lib/estado-pedido';
 import { stopsFromDb } from '../lib/trip-stops';
 import { TripRequestDTO } from '../types';
 import { sendPushToDriver, sendPushToClient } from '../services/push.service';
@@ -1016,7 +1017,10 @@ export async function startOrderMatchingCycle(orderId: string, attempt = 0): Pro
   if (!info) return;
   // El pedido pudo cancelarse o conseguir repartidor entre reintento y
   // reintento: no hay nada que buscar.
-  if (info.status !== 'PREPARING' || info.hasDriver) {
+  // Los estados desde los que se despacha viven en lib/estado-pedido.ts: la
+  // última milla entra en juego desde AT_DESTINATION_HUB, y con la comparación
+  // escrita aquí a mano la oferta no salía nunca.
+  if (!esDespachable(info.status) || info.hasDriver) {
     cancelSearchRetry(`order:${orderId}`);
     return;
   }
@@ -1103,9 +1107,11 @@ async function _offerOrderToCandidate(
   const candidate = candidates[index]!;
 
   // El pedido debe seguir disponible (pudo aceptarse o cancelarse entretanto).
-  // Llega al matching en PREPARING (el restaurante ya lo aceptó y cocina).
+  // MISMA lista que la entrada del ciclo: esta era una cuarta copia de la
+  // comparación, y con ella la oferta de última milla se calculaba, encontraba
+  // candidato y se descartaba aquí en silencio, sin un solo registro.
   const info = await getOrderOfferInfo(orderId);
-  if (!info || info.status !== 'PREPARING' || info.hasDriver) return;
+  if (!info || !esDespachable(info.status) || info.hasDriver) return;
 
   const timeout = setTimeout(() => {
     void onOrderDeclineOrTimeout(orderId);

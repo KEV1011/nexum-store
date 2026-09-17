@@ -22,6 +22,8 @@
  * restaurantes ofreciendo almuerzos a Bogotá.
  */
 
+import { saneaCorte } from './corte-bodega';
+
 /** Un destino declarado por el comercio. */
 export interface DestinoEnvio {
   /** Slug del municipio, tal como lo guarda `municipalities`. */
@@ -30,6 +32,14 @@ export interface DestinoEnvio {
   fee: number;
   /** Horas que promete. 24 = «al día siguiente». */
   etaHours: number;
+  /**
+   * Hasta qué hora se recibe para que salga HOY, «HH:MM» en hora de Colombia.
+   *
+   * Va por destino y no por comercio porque el bus a Bogotá no sale a la misma
+   * hora que el de Bucaramanga. Es opcional: sin corte, el plazo se cuenta
+   * desde el momento del pedido, que es como funcionaba antes.
+   */
+  cutoff?: string;
 }
 
 /**
@@ -139,6 +149,20 @@ export function saneaDestinos(
       );
     }
 
+    // El corte es opcional, pero si se escribe algo tiene que ser una hora:
+    // guardar «4pm» como si nada dejaría al comercio creyendo que declaró un
+    // corte que no existe, y los clientes viendo plazos de otro día.
+    let cutoff: string | undefined;
+    if (d.cutoff != null && String(d.cutoff).trim() !== '') {
+      const c = saneaCorte(d.cutoff);
+      if (!c) {
+        throw new Error(
+          `La hora de corte de «${city}» debe ir como HH:MM (por ejemplo 16:00).`,
+        );
+      }
+      cutoff = c;
+    }
+
     vistos.add(city);
     salida.push({
       city,
@@ -146,6 +170,7 @@ export function saneaDestinos(
       // deja saldos fantasma en la conciliación.
       fee: Math.round(fee),
       etaHours: Math.round(etaHours),
+      ...(cutoff ? { cutoff } : {}),
     });
   }
 
@@ -174,7 +199,13 @@ export function destinosDesdeBD(valor: unknown): DestinoEnvio[] {
     if (fee == null || fee <= 0) continue;
     if (etaHours == null || etaHours < 1) continue;
     vistos.add(city);
-    salida.push({ city, fee: Math.round(fee), etaHours: Math.round(etaHours) });
+    const cutoff = saneaCorte(d.cutoff);
+    salida.push({
+      city,
+      fee: Math.round(fee),
+      etaHours: Math.round(etaHours),
+      ...(cutoff ? { cutoff } : {}),
+    });
   }
   return salida;
 }

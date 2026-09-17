@@ -15,6 +15,8 @@ export interface Destino {
   city: string
   fee: number
   etaHours: number
+  /** Hasta qué hora se recibe para que salga hoy, «HH:MM». Opcional. */
+  cutoff?: string
 }
 
 /**
@@ -68,15 +70,19 @@ export function DestinosEnvio({
   const [nueva, setNueva] = useState('')
   const [precio, setPrecio] = useState('')
   const [horas, setHoras] = useState('24')
+  const [corte, setCorte] = useState('')
 
   const agregar = useCallback(() => {
     const fee = Number(precio.replace(/\D/g, ''))
     const etaHours = Number(horas)
     if (!nueva || !Number.isFinite(fee) || fee <= 0) return
-    setDestinos((prev) => [...prev, { city: nueva, fee, etaHours }])
-    setNueva(''); setPrecio(''); setHoras('24')
+    setDestinos((prev) => [
+      ...prev,
+      { city: nueva, fee, etaHours, ...(corte ? { cutoff: corte } : {}) },
+    ])
+    setNueva(''); setPrecio(''); setHoras('24'); setCorte('')
     setGuardado(false)
-  }, [nueva, precio, horas])
+  }, [nueva, precio, horas, corte])
 
   const quitar = (city: string) => {
     setDestinos((prev) => prev.filter((d) => d.city !== city))
@@ -158,6 +164,7 @@ export function DestinosEnvio({
                     <p className="text-sm font-semibold text-slate-800">{nombre(d.city)}</p>
                     <p className="text-xs text-slate-500">
                       {formatCOP(d.fee)} · llega en {d.etaHours} h
+                      {d.cutoff ? ` · corte ${d.cutoff}` : ''}
                     </p>
                   </div>
                   <button
@@ -209,6 +216,21 @@ export function DestinosEnvio({
               <option value="48">En 2 días</option>
               <option value="72">En 3 días</option>
             </select>
+            {/* La hora de corte es lo que convierte la promesa en una fecha
+                real: sin ella, a las cinco de la tarde se le sigue diciendo al
+                cliente «llega en 12 horas» con el bus de las cuatro ya ido. */}
+            <label className="col-span-2 flex items-center gap-2 text-xs text-slate-600">
+              <span className="shrink-0">Recibo hasta las</span>
+              <input
+                type="time"
+                value={corte}
+                onChange={(e) => setCorte(e.target.value)}
+                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600 outline-none"
+              />
+              <span className="text-slate-400">
+                para que salga el mismo día (opcional)
+              </span>
+            </label>
           </div>
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}

@@ -6,6 +6,7 @@ import {
   totalBultos,
 } from '../lib/encomiendas';
 import { sendPushToClient } from './push.service';
+import { puntoDeEntrega } from '../lib/ultima-milla';
 
 /**
  * Encomiendas: pedidos intermunicipales que viajan en el despacho de una
@@ -304,9 +305,26 @@ async function _ponerEnTransito(ids: string[]): Promise<number> {
 export async function marcarEncomiendaEntregada(manifestId: string): Promise<boolean> {
   const m = await prisma.freightManifest.findUnique({
     where: { id: manifestId },
-    select: { orderId: true, discrepancyCount: true },
+    select: { orderId: true, discrepancyCount: true, driverId: true },
   });
   if (!m?.orderId) return false;
+
+  const pedido = await prisma.order.findUnique({
+    where: { id: m.orderId },
+    select: { lastMile: true },
+  });
+
+  // ── Última milla: la caja llegó a la ciudad, pero no a la puerta ──────────
+  //
+  // Solo si el cliente la pidió. Para los demás, recibir en la taquilla ES la
+  // entrega: así opera una encomienda en bus y así se cierra.
+  if (pedido?.lastMile) {
+    const entregada = await _arrancarUltimaMilla(m.orderId, m.driverId);
+    if (entregada) return true;
+    // Si no se pudo (sin posición del conductor), se sigue al cierre normal:
+    // más vale un pedido cerrado en taquilla que uno colgado esperando a un
+    // repartidor que nunca se va a buscar.
+  }
 
   const avance = await prisma.order.updateMany({
     where: { id: m.orderId, status: 'IN_INTERCITY_TRANSIT' },
@@ -329,5 +347,69 @@ export async function marcarEncomiendaEntregada(manifestId: string): Promise<boo
       data: { type: 'order_delivered', orderId: m.orderId },
     });
   }
+  return true;
+}
+
+/**
+ * Pone el pedido a esperar repartidor en la ciudad de destino.
+ *
+ * El punto de recogida es **dónde estaba el conductor del bus al firmar el
+ * acta**, no una dirección de terminal que nadie declaró. Si no hay posición no
+ * se arranca: mandar al repartidor al centroide del municipio sería mandarlo a
+ * un sitio donde la caja no está.
+ *
+ * Devuelve `true` si el pedido quedó esperando última milla.
+ */
+async function _arrancarUltimaMilla(
+  orderId: string,
+  driverId: string | null,
+): Promise<boolean> {
+  const conductor = driverId
+    ? await prisma.driver.findUnique({
+        where: { id: driverId },
+        select: { lastLat: true, lastLng: true },
+      })
+    : null;
+
+  const punto = puntoDeEntrega(conductor?.lastLat, conductor?.lastLng);
+  if (!punto) {
+    console.warn(
+      `[Encomienda] ${orderId} pidió última milla pero el conductor no reportó ` +
+        'posición al recibir: se cierra en taquilla.',
+    );
+    return false;
+  }
+
+  // Transición atómica con guarda: dos recepciones a la vez no pueden lanzar
+  // dos ciclos de despacho para la misma caja.
+  const avance = await prisma.order.updateMany({
+    where: { id: orderId, status: 'IN_INTERCITY_TRANSIT' },
+    data: {
+      status: 'AT_DESTINATION_HUB',
+      hubLat: punto.lat,
+      hubLng: punto.lng,
+      hubAt: new Date(),
+      // El repartidor de origen no existe en este pedido; el que viene es el de
+      // destino y todavía no hay ninguno asignado.
+      driverId: null,
+    },
+  });
+  if (avance.count === 0) return false;
+
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { userId: true, orderRef: true },
+  });
+  if (o?.userId) {
+    void sendPushToClient(o.userId, {
+      title: 'Tu envío llegó a tu ciudad',
+      body: `El pedido ${o.orderRef} ya está en destino. Buscamos quién te lo lleve.`,
+      data: { type: 'order_at_hub', orderId },
+    });
+  }
+
+  // El despacho urbano de siempre, anclado al punto donde quedó la caja.
+  const { startOrderMatchingCycle } = await import('./matching.service');
+  void startOrderMatchingCycle(orderId);
   return true;
 }

@@ -369,7 +369,7 @@ export interface Business {
   /** Plaza del comercio (`plazaDeCoordenadas`), null si su punto no cayó en una. */
   citySlug?: string | null;
   /** A qué otras ciudades despacha. Vacía = solo la suya. */
-  shipsTo?: Array<{ city: string; fee: number; etaHours: number }>;
+  shipsTo?: Array<{ city: string; fee: number; etaHours: number; cutoff?: string }>;
 }
 
 export interface RegisterBusinessDTO {
@@ -644,7 +644,7 @@ export interface BusinessPublicDTO {
    * Lista vacía = solo entrega en su propia ciudad, que es como está todo
    * comercio hasta que su dueño declare destinos.
    */
-  shipsTo?: Array<{ city: string; fee: number; etaHours: number }>;
+  shipsTo?: Array<{ city: string; fee: number; etaHours: number; cutoff?: string }>;
   products: ProductDTO[];
 }
 
@@ -716,6 +716,13 @@ export interface ClientPlaceOrderDTO {
   // igual, pero su seguimiento no puede dibujarse en el mapa.
   deliveryLat?: number;
   deliveryLng?: number;
+  /**
+   * Solo para envíos a otra ciudad: que un repartidor la lleve hasta la puerta
+   * en destino, en vez de recogerla el cliente en la taquilla.
+   *
+   * Ausente o false = recoge en taquilla, y entonces NO se le cobra domicilio.
+   */
+  lastMile?: boolean;
 }
 
 export interface ClientOrderSummaryDTO extends DriverCardFields {
@@ -730,6 +737,16 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   deliveryFee: number;
   total: number;
   etaMinutes: number;
+  /**
+   * Cuándo se prometió la entrega, en ISO. Solo en envíos a otra ciudad.
+   *
+   * Es un instante y no unas horas a propósito: «doce horas» dicho a las cinco
+   * de la tarde, con el bus de las cuatro ya ido, es mentira. `etaMinutes`
+   * sigue ahí para las apps instaladas que no lo leen.
+   */
+  promisedAt?: string;
+  /** Si se la llevan hasta la puerta en destino o la recoge en la taquilla. */
+  lastMile?: boolean;
   items: Array<{
     productName: string;
     quantity: number;

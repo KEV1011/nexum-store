@@ -43,8 +43,16 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
     },
   });
   if (!o) return null;
-  const businessLat = o.business.lat ?? PAMPLONA.lat;
-  const businessLng = o.business.lng ?? PAMPLONA.lng;
+
+  // ── ¿De dónde recoge el repartidor? ────────────────────────────────────────
+  //
+  // Normalmente del comercio. Pero en la última milla de una encomienda el
+  // comercio está en OTRA CIUDAD: la caja quedó en la taquilla de destino, en el
+  // punto donde el conductor del bus firmó el acta. Anclar al comercio buscaría
+  // repartidores a cientos de kilómetros y no encontraría a ninguno.
+  const enDestino = o.status === 'AT_DESTINATION_HUB' && o.hubLat != null && o.hubLng != null;
+  const businessLat = enDestino ? o.hubLat! : (o.business.lat ?? PAMPLONA.lat);
+  const businessLng = enDestino ? o.hubLng! : (o.business.lng ?? PAMPLONA.lng);
   return {
     status: o.status,
     hasDriver: o.driverId != null,
@@ -52,7 +60,11 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
       id: o.id,
       orderRef: o.orderRef,
       businessName: o.business.name,
-      businessAddress: o.business.address,
+      // Al repartidor de última milla no se le dice la dirección del comercio
+      // de origen —que está en otra ciudad— sino dónde está la caja.
+      businessAddress: enDestino
+        ? `Encomienda recibida en ${o.destCitySlug ?? 'destino'}`
+        : o.business.address,
       deliveryAddress: o.deliveryAddress,
       deliveryFee: o.deliveryFee,
       itemsCount: o.lines.reduce((sum, l) => sum + l.quantity, 0),

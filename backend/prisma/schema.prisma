@@ -574,6 +574,27 @@ model Order {
   /// mezclarse con el flete.
   intercityFee     Float?
 
+  /// El cliente pidió que se la lleven hasta la puerta en la ciudad de destino,
+  /// en vez de recogerla él en la taquilla.
+  ///
+  /// Es una decisión del cliente y se sella: de ella depende si se le cobra
+  /// `deliveryFee` (que en un envío intermunicipal paga al repartidor de
+  /// DESTINO, no al de origen — en origen el comercio lleva la caja a la
+  /// terminal y no hay repartidor que pagar).
+  lastMile         Boolean     @default(false)
+  /// Dónde se entregó la encomienda en la ciudad de destino: el punto real
+  /// donde el conductor del bus firmó el acta, tomado de su GPS. Es el origen
+  /// del repartidor de última milla — no se inventa una dirección de terminal
+  /// que nadie declaró.
+  hubLat           Float?
+  hubLng           Float?
+  hubAt            DateTime?
+
+  /// Cuándo se prometió la entrega, calculado al crear con la hora de corte de
+  /// bodega del destino. `etaMinutes` no sirve para esto: «doce horas» dicho a
+  /// las cinco de la tarde, con el bus de las cuatro ya ido, es mentira.
+  promisedAt       DateTime?
+
   subtotal         Float
   /// Descuento de la promoción de la tienda, SELLADO al crear el pedido: se
   /// guarda en vez de recalcularse, porque cambiar la promoción mañana no
@@ -634,6 +655,10 @@ enum OrderStatus {
   /// Va en el despacho de una empresa intermunicipal, camino a la otra ciudad.
   /// Distinto de IN_TRANSIT, que es un repartidor urbano con la caja en la moto.
   IN_INTERCITY_TRANSIT
+  /// Llegó a la ciudad de destino y espera al repartidor de última milla.
+  /// Solo lo usan los pedidos con `lastMile`: los demás se cierran como
+  /// entregados cuando el destinatario firma en la taquilla.
+  AT_DESTINATION_HUB
   IN_TRANSIT
   DELIVERED
   CANCELLED
