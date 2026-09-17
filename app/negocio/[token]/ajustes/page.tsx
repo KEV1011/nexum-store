@@ -4,6 +4,7 @@ import { use, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { PortalTabs } from '../PortalTabs'
 import { LocationPicker } from './LocationPicker'
+import { DestinosEnvio, type Destino } from './DestinosEnvio'
 import { HorarioEditor, type Franja } from './HorarioEditor'
 import {
   ArrowLeft,
@@ -93,6 +94,9 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
   const [saved, setSaved] = useState(false)
   // Punto del negocio: viene de /info, no de /settings (son datos distintos).
   const [geo, setGeo] = useState<{ lat?: number; lng?: number } | null>(null)
+  // Plaza y destinos declarados: vienen de /info, junto al punto del mapa.
+  const [citySlug, setCitySlug] = useState<string | null>(null)
+  const [shipsTo, setShipsTo] = useState<Destino[]>([])
   // El motivo de la pausa se escribe ANTES de elegir cuánto dura, así que no
   // puede vivir en `settings`: todavía no se ha guardado nada.
   const [pausaMotivo, setPausaMotivo] = useState('')
@@ -108,9 +112,17 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
       const rJson = (await rRes.json().catch(() => ({}))) as { data?: Reviews }
       if (rJson.data) setReviews(rJson.data)
       const iJson = (await iRes.json().catch(() => ({}))) as {
-        data?: { lat?: number; lng?: number }
+        data?: {
+          lat?: number; lng?: number
+          citySlug?: string | null
+          shipsTo?: Destino[]
+        }
       }
-      if (iJson.data) setGeo({ lat: iJson.data.lat, lng: iJson.data.lng })
+      if (iJson.data) {
+        setGeo({ lat: iJson.data.lat, lng: iJson.data.lng })
+        setCitySlug(iJson.data.citySlug ?? null)
+        setShipsTo(iJson.data.shipsTo ?? [])
+      }
       if (sRes.status === 404) {
         setError('Este negocio no existe en el servidor. Verifica tu enlace.')
         return
@@ -484,6 +496,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                 lng={geo?.lng}
                 onSaved={(la, ln) => setGeo({ lat: la, lng: ln })}
               />
+              <DestinosEnvio token={token} citySlug={citySlug} inicial={shipsTo} />
               <HorarioEditor franjas={settings.hours} onChange={(hours) => set({ hours })} />
               <button
                 onClick={() => void patch({

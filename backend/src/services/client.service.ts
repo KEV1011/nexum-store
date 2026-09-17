@@ -36,6 +36,7 @@ import {
 } from '../lib/driver-card';
 import { sendPushToClient, sendPushToDriver } from './push.service';
 import { plazaDeCoordenadas } from './municipality.service';
+import { destinoPara, esEnvioAOtraCiudad } from '../lib/destinos-envio';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
 import { saneaMetodoPago } from '../lib/metodos-pago';
@@ -195,6 +196,31 @@ export async function placeClientOrder(
         : 'El negocio no está recibiendo pedidos en este momento.',
     );
   }
+  // ── ¿Este pedido cruza de ciudad? ──────────────────────────────────────────
+  //
+  // La plaza de la entrega sale del MISMO resolutor que la del comercio y la de
+  // los viajes. Sin coordenadas de entrega no hay plaza, y entonces el pedido
+  // es local: **un dato que falta no puede convertirlo en intermunicipal y
+  // cobrarle un flete de más al cliente.**
+  const destCitySlug = await plazaDeCoordenadas(dto.deliveryLat, dto.deliveryLng);
+  const originCitySlug = biz.citySlug ?? null;
+  const cruzaDeCiudad = esEnvioAOtraCiudad(originCitySlug, destCitySlug);
+  const destino = cruzaDeCiudad
+    ? destinoPara(biz.shipsTo ?? [], destCitySlug)
+    : null;
+
+  if (cruzaDeCiudad && !destino) {
+    // Se dice A DÓNDE sí despacha, no solo que no puede. Un «no disponible» a
+    // secas deja al cliente sin saber si el problema es su dirección, la
+    // tienda, o que se equivocó de ciudad.
+    const declarados = (biz.shipsTo ?? []).map((d) => d.city);
+    throw new Error(
+      declarados.length === 0
+        ? `${biz.name} solo entrega dentro de su ciudad.`
+        : `${biz.name} no despacha a esa ciudad. Despacha a: ${declarados.join(', ')}.`,
+    );
+  }
+
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
   // ── Validación contra la BD ────────────────────────────────────────────────
@@ -329,13 +355,24 @@ export async function placeClientOrder(
       // tiempo de preparación. El despacho al repartidor ya NO es inmediato — se
       // dispara cuando el negocio acepta (así el conductor no espera en la puerta).
       status: 'PENDING',
+      // Las dos plazas y la decisión, SELLADAS: si mañana el dueño corrige su
+      // ubicación, este pedido no puede cambiar de ciudad ni de precio.
+      originCitySlug,
+      destCitySlug,
+      isIntercity: !!destino,
+      intercityFee: destino?.fee ?? null,
       subtotal,
       promoDiscount: descuentoPromo > 0 ? descuentoPromo : null,
       deliveryFee: biz.deliveryFee,
       // El descuento se resta del subtotal, NUNCA del domicilio: ese es el pago
-      // del repartidor y no lo financia una promoción del restaurante.
-      total: subtotal - descuentoPromo + biz.deliveryFee,
-      etaMinutes: biz.etaMinutes,
+      // del repartidor y no lo financia una promoción del restaurante. El flete
+      // intermunicipal se SUMA aparte por la misma razón invertida: es plata de
+      // la transportadora, no del repartidor, y mezclarlos descuadraría las dos
+      // liquidaciones.
+      total: subtotal - descuentoPromo + biz.deliveryFee + (destino?.fee ?? 0),
+      // Un envío a otra ciudad no llega en 30 minutos. La promesa que se enseña
+      // es la que declaró el comercio para ESE destino.
+      etaMinutes: destino ? destino.etaHours * 60 : biz.etaMinutes,
       // Cadena de custodia: el negocio guarda el PIN de recogida y el cliente
       // el de entrega. El repartidor los pide de viva voz en cada paso.
       ...generateCustodyPins(),

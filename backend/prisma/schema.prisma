@@ -418,6 +418,18 @@ model Business {
   acceptingOrders Boolean       @default(true)
   // Horario de atención en texto libre (ej: "Lun-Sáb 8am-9pm"). Informativo.
   openingHours String?
+
+  /// La plaza del comercio, con EL MISMO criterio que la de viajes y
+  /// conductores (`plazaDeCoordenadas`: centroide más cercano, 40 km). Si aquí
+  /// se usara otro, un pedido podría ser «de Cúcuta» para el comercio y «de
+  /// otra parte» para el tablero.
+  citySlug     String?
+  /// A qué otras ciudades despacha, a qué precio y en cuánto tiempo.
+  /// `[{city, fee, etaHours}]` — ver `lib/destinos-envio.ts`.
+  /// VACÍA SIGNIFICA «A NINGUNA», que es como nacen todos los comercios ya
+  /// registrados: lo contrario habría abierto de golpe el catálogo local a
+  /// todo el país el día del despliegue.
+  shipsTo      Json?
   // Foto de portada del local (subida por el dueño desde el portal). Null = sin
   // portada (el cliente cae al color/ícono de la categoría).
   imageUrl     String?
@@ -546,6 +558,21 @@ model Order {
   deliveryAddress  String
   deliveryLat      Float?
   deliveryLng      Float?
+
+  /// Plaza del comercio y plaza de la dirección de entrega, SELLADAS al crear.
+  /// Se guardan en vez de leerse del comercio al consultar porque si mañana el
+  /// dueño corrige su ubicación, el pedido de ayer no puede cambiar de ciudad.
+  originCitySlug   String?
+  destCitySlug     String?
+  /// Si este pedido se VENDIÓ como envío a otra ciudad. Es una decisión sellada,
+  /// no una derivación: con `destCitySlug` sin resolver, un pedido cobrado como
+  /// intermunicipal se convertiría en local al recargarlo.
+  isIntercity      Boolean     @default(false)
+  /// Lo que el comercio cobró por el tramo intermunicipal. Va aparte de
+  /// `deliveryFee` a propósito: ese es el pago del repartidor urbano y no puede
+  /// mezclarse con el flete.
+  intercityFee     Float?
+
   subtotal         Float
   /// Descuento de la promoción de la tienda, SELLADO al crear el pedido: se
   /// guarda en vez de recalcularse, porque cambiar la promoción mañana no

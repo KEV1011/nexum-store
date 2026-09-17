@@ -17,6 +17,10 @@ import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { normalizeColombianPhone } from './auth.service';
 import { geocodeAddress } from './geo.service';
+import { plazaDeCoordenadas } from './municipality.service';
+import {
+  saneaDestinos, destinosDesdeBD, type DestinoEnvio,
+} from '../lib/destinos-envio';
 import { porcentajeDescuento, rankingMasPedido, saneaPrecioAntes, saneaPromoTienda } from '../lib/vitrina';
 import { promedioReputacion } from '../lib/reputacion';
 import {
@@ -54,6 +58,7 @@ function _dbToBusinessInterface(b: {
   address: string; category: string; token: string; whatsapp: string | null;
   createdAt: Date; isOpen: boolean; imageUrl: string | null;
   lat?: number | null; lng?: number | null;
+  citySlug?: string | null; shipsTo?: unknown;
 }): Business {
   return {
     id: b.id,
@@ -69,6 +74,8 @@ function _dbToBusinessInterface(b: {
     isActive: b.isOpen,
     lat: b.lat ?? undefined,
     lng: b.lng ?? undefined,
+    citySlug: b.citySlug ?? null,
+    shipsTo: destinosDesdeBD(b.shipsTo),
   };
 }
 
@@ -120,6 +127,10 @@ const service = {
     // dirección no se resuelve, el registro continúa igual (el dueño puede
     // fijar el punto después desde Ajustes).
     const geo = await geocodeAddress(dto.address).catch(() => null);
+    // La plaza sale del MISMO resolutor que la de viajes y conductores. Si el
+    // comercio usara otro criterio, un pedido podría ser «de Cúcuta» para la
+    // tienda y de otra plaza para el tablero, y nadie sabría cuál miente.
+    const citySlug = await plazaDeCoordenadas(geo?.lat, geo?.lng);
     const biz = await prisma.business.create({
       data: {
         name: dto.name,
@@ -130,6 +141,7 @@ const service = {
         whatsapp: dto.whatsapp ?? null,
         lat: geo?.lat ?? null,
         lng: geo?.lng ?? null,
+        citySlug,
         token,
         isOpen: true,
       },
@@ -983,6 +995,8 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     deliveryFee: b.deliveryFee,
     ..._estadoVitrina(b),
     imageUrl: b.imageUrl ?? undefined,
+    citySlug: b.citySlug,
+    shipsTo: destinosDesdeBD(b.shipsTo),
     products: await _conMasPedido(b.id, b.products.map(_productToDTO)),
   };
 }
@@ -1055,6 +1069,55 @@ export async function updateBusinessLocation(
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     throw new Error('Coordenadas inválidas.');
   }
-  await prisma.business.update({ where: { id: businessId }, data: { lat, lng } });
+  // Mover el punto mueve la plaza: es la única vía por la que un comercio ya
+  // registrado consigue ciudad, porque al registrarse puede que la dirección no
+  // se resolviera (sin llave de Google, o escrita de forma rara).
+  const citySlug = await plazaDeCoordenadas(lat, lng);
+  await prisma.business.update({
+    where: { id: businessId },
+    data: { lat, lng, citySlug },
+  });
   return { lat, lng };
+}
+
+/**
+ * Declara a qué otras ciudades despacha el comercio, a qué precio y en cuánto.
+ *
+ * Se valida contra `municipalities`: un destino que no existe o está inactivo se
+ * rechaza aquí y no cuando un cliente intente comprar. El resto de reglas —el
+ * auto-destino, el cero de más, la ciudad repetida— vive en `lib/destinos-envio`
+ * con sus pruebas.
+ */
+export async function updateBusinessShipping(
+  businessId: string,
+  destinosCrudos: unknown,
+): Promise<DestinoEnvio[]> {
+  const biz = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { citySlug: true },
+  });
+  if (!biz) throw new Error('El negocio no existe.');
+
+  const destinos = saneaDestinos(destinosCrudos, biz.citySlug);
+
+  if (destinos.length > 0) {
+    const encontrados = await prisma.municipality.findMany({
+      where: { slug: { in: destinos.map((d) => d.city) }, isActive: true },
+      select: { slug: true },
+    });
+    const validos = new Set(encontrados.map((m) => m.slug));
+    const faltan = destinos.filter((d) => !validos.has(d.city)).map((d) => d.city);
+    if (faltan.length > 0) {
+      throw new Error(
+        `No conocemos estos municipios: ${faltan.join(', ')}. ` +
+          'Elígelos del buscador para que queden bien escritos.',
+      );
+    }
+  }
+
+  await prisma.business.update({
+    where: { id: businessId },
+    data: { shipsTo: destinos as unknown as Prisma.InputJsonValue },
+  });
+  return destinos;
 }

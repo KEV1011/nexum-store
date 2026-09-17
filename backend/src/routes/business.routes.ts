@@ -20,6 +20,7 @@ import {
   getBusinessReviews,
   findBusinessesByPhone,
   updateBusinessLocation,
+  updateBusinessShipping,
 } from '../services/business.service';
 import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
 import { isSmsConfigured } from '../services/sms.service';
@@ -154,6 +155,8 @@ router.get('/:token/info', async (req: Request, res: Response): Promise<void> =>
         imageUrl: business.imageUrl,
         lat: business.lat,
         lng: business.lng,
+        citySlug: business.citySlug,
+        shipsTo: business.shipsTo,
       },
     });
   } catch (err) {
@@ -204,6 +207,23 @@ router.put('/:token/location', async (req: Request, res: Response): Promise<void
     res.json({ success: true, data });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo guardar la ubicación';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// PUT /business/:token/shipping { destinos: [{city, fee, etaHours}] }
+//
+// El dueño declara a qué otras ciudades despacha. Lista vacía = solo su ciudad,
+// que es donde está todo comercio hasta que declare lo contrario.
+router.put('/:token/shipping', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { destinos } = req.body as { destinos?: unknown };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await updateBusinessShipping(business.id, destinos ?? []);
+    res.json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron guardar los destinos';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });

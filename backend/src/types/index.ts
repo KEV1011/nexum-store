@@ -366,6 +366,10 @@ export interface Business {
   /** Punto del negocio en el mapa (null si aún no se ha fijado). */
   lat?: number;
   lng?: number;
+  /** Plaza del comercio (`plazaDeCoordenadas`), null si su punto no cayó en una. */
+  citySlug?: string | null;
+  /** A qué otras ciudades despacha. Vacía = solo la suya. */
+  shipsTo?: Array<{ city: string; fee: number; etaHours: number }>;
 }
 
 export interface RegisterBusinessDTO {
@@ -632,6 +636,15 @@ export interface BusinessPublicDTO {
   /** Promoción de la tienda. Ausentes = no tiene ninguna que anunciar. */
   promoMinAmount?: number;
   promoDiscount?: number;
+  /** La plaza del comercio, o null si su dirección no cayó en ninguna. */
+  citySlug?: string | null;
+  /**
+   * A qué otras ciudades despacha, con su precio y su promesa.
+   *
+   * Lista vacía = solo entrega en su propia ciudad, que es como está todo
+   * comercio hasta que su dueño declare destinos.
+   */
+  shipsTo?: Array<{ city: string; fee: number; etaHours: number }>;
   products: ProductDTO[];
 }
 
