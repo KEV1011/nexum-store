@@ -141,8 +141,15 @@ export function LocationPicker({
   // era que su dirección no existe o que el buscador no funciona.
   const [sinBuscador, setSinBuscador] = useState(false)
 
+  // Respaldo cuando el autocompletado no predice nada: Places está afinado para
+  // sitios con nombre, y la nomenclatura colombiana tal como está en un recibo
+  // («carrera 4a#10-53») no la predice casi nunca. Geocoding sí la resuelve.
+  const [escrita, setEscrita] = useState<
+    { lat: number; lng: number; normalizada: string } | null
+  >(null)
+
   const buscar = useCallback(async (texto: string) => {
-    if (texto.trim().length < 3) { setSugerencias([]); return }
+    if (texto.trim().length < 3) { setSugerencias([]); setEscrita(null); return }
     setBuscando(true)
     try {
       const c = centroRef.current
@@ -153,10 +160,27 @@ export function LocationPicker({
       if (!res.ok) { setSinBuscador(true); setSugerencias([]); return }
       const json = (await res.json()) as { data?: { placeId: string; description: string }[] }
       setSinBuscador(false)
-      setSugerencias(json.data?.slice(0, 5) ?? [])
+      const encontradas = json.data?.slice(0, 5) ?? []
+      setSugerencias(encontradas)
+
+      // Solo si el autocompletado se quedó en blanco: una petición más por
+      // tecleo sería tirar cuota de Google para nada.
+      if (encontradas.length === 0) {
+        const g = await fetch(
+          `${BACKEND_URL}/geo/geocode?address=${encodeURIComponent(texto)}`,
+          { headers: { 'x-business-token': token } },
+        )
+        const gj = (await g.json().catch(() => ({}))) as {
+          data?: { lat: number; lng: number; normalizada: string } | null
+        }
+        setEscrita(gj.data ?? null)
+      } else {
+        setEscrita(null)
+      }
     } catch {
       setSinBuscador(true)
       setSugerencias([])
+      setEscrita(null)
     } finally {
       setBuscando(false)
     }
@@ -277,7 +301,26 @@ export function LocationPicker({
                 sin salida que el error: el dueño escribe su dirección, no sale
                 nada, y no sabe si es que su calle no existe o que la app está
                 rota. */}
-            {!sinBuscador && !buscando && consulta.trim().length >= 3
+            {/* El autocompletado no predijo nada pero Geocoding SÍ resolvió la
+                dirección escrita. Se ofrece como una opción más, enseñando
+                cómo la entendió: así el dueño ve que «carrera 4a#10-53» se leyó
+                como «Carrera 4A # 10-53» y puede corregir si no es eso. */}
+            {escrita && sugerencias.length === 0 ? (
+              <button
+                onClick={() => {
+                  centroRef.current = { lat: escrita.lat, lng: escrita.lng }
+                  mapRef.current?.setView([escrita.lat, escrita.lng], 18)
+                  setEscrita(null)
+                }}
+                className="mb-2 w-full rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-left text-sm text-teal-900 hover:bg-teal-100"
+              >
+                Ir a <strong>{escrita.normalizada}</strong>
+                <span className="block text-xs text-teal-700">
+                  Comprueba en el mapa que el pin cae en tu puerta.
+                </span>
+              </button>
+            ) : null}
+            {!sinBuscador && !buscando && !escrita && consulta.trim().length >= 3
               && sugerencias.length === 0 ? (
               <p className="mb-2 text-xs text-slate-500">
                 No encontramos esa dirección. Prueba con la calle y el número
@@ -302,8 +345,16 @@ export function LocationPicker({
                 buscador queda fuera de este contenedor relativo. */}
             <div className="relative">
               <div ref={divRef} className="h-64 w-full rounded-lg overflow-hidden bg-slate-100" />
-              {/* Pin fijo al centro: se mueve el mapa, no el pin. */}
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              {/* Pin fijo al centro: se mueve el mapa, no el pin.
+
+                  EL z-index NO ES DECORATIVO. Leaflet le pone z-index positivo
+                  a sus propios paneles, así que una superposición sin z-index
+                  —que cuenta como 0— se pinta DEBAJO de las teselas y el pin
+                  desaparece: el dueño movía el mapa a ciegas sin saber qué
+                  punto iba a guardar. `FleetMap` ya lo tenía puesto; a este se
+                  le olvidó. 500 queda por encima de los paneles y por debajo
+                  de los controles de zoom. */}
+              <div className="pointer-events-none absolute inset-0 z-[500] flex items-center justify-center">
                 <MapPin className="w-8 h-8 text-teal-700 drop-shadow" style={{ transform: 'translateY(-14px)' }} />
               </div>
             </div>

@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { LruCache } from '../lib/lru-cache';
+import { normalizaDireccion } from '../lib/direccion-colombiana';
 import { ESTILO_MAPA_OSCURO } from '../config/estilo-mapa';
 
 const GOOGLE_MAPS_API_KEY = process.env['GOOGLE_MAPS_API_KEY'] ?? '';
@@ -351,10 +352,16 @@ export async function geocodeAddress(
   city?: string,
 ): Promise<{ lat: number; lng: number } | null> {
   if (!isGeoConfigured() || !address.trim()) return null;
+  // La dirección va en forma canónica: el dueño la escribe como está en el
+  // recibo («carrera 4a#10-53») y así Google la resuelve mucho peor.
+  const normalizada = normalizaDireccion(address);
   const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
   // La ciudad y el país acotan la búsqueda: "Cra 6 #5-20" existe en media
   // Colombia, y sin contexto Google devuelve cualquiera.
-  url.searchParams.set('address', city ? `${address}, ${city}, Colombia` : `${address}, Colombia`);
+  url.searchParams.set(
+    'address',
+    city ? `${normalizada}, ${city}, Colombia` : `${normalizada}, Colombia`,
+  );
   url.searchParams.set('language', 'es');
   url.searchParams.set('region', 'co');
   url.searchParams.set('key', GOOGLE_MAPS_API_KEY);

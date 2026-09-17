@@ -7,6 +7,7 @@ import { emitirTilePase, verificarTilePase, TILE_TICKET_TTL_S } from '../lib/til
 import { verifyClientToken } from '../services/client.service';
 import {
   autocomplete,
+  geocodeAddress,
   placeDetails,
   reverseGeocode,
   directions,
@@ -15,6 +16,7 @@ import {
   isGeoConfigured,
   GeoError,
 } from '../services/geo.service';
+import { normalizaDireccion } from '../lib/direccion-colombiana';
 
 const router = Router();
 
@@ -241,6 +243,39 @@ router.get('/autocomplete', async (req, res) => {
   try {
     const suggestions = await autocomplete(input, lat, lng);
     res.json({ success: true, data: suggestions });
+  } catch (err) {
+    handleGeoError(res, err);
+  }
+});
+
+/**
+ * GET /geo/geocode?address=&city= — resuelve una dirección ESCRITA.
+ *
+ * Es el respaldo del autocompletado, no un duplicado. Places predice sitios con
+ * nombre y direcciones ya conocidas; la nomenclatura colombiana tal como está
+ * en un recibo («carrera 4a#10-53») no la predice casi nunca, y el buscador del
+ * portal respondía «no encontramos esa dirección» con una que sí existe.
+ * Geocoding sí la resuelve, sobre todo en forma canónica — que es lo que hace
+ * `normalizaDireccion` antes de preguntar.
+ */
+router.get('/geocode', async (req, res) => {
+  const address = (req.query['address'] as string | undefined)?.trim();
+  const city = (req.query['city'] as string | undefined)?.trim();
+  if (!address || address.length < 5) {
+    res.json({ success: true, data: null });
+    return;
+  }
+  try {
+    const punto = await geocodeAddress(address, city);
+    res.json({
+      success: true,
+      data: punto
+        // Se devuelve también la forma normalizada para poder ENSEÑÁRSELA al
+        // dueño: es lo que deja claro qué entendió el buscador, en vez de mover
+        // el mapa sin explicar por qué.
+        ? { ...punto, normalizada: normalizaDireccion(address) }
+        : null,
+    });
   } catch (err) {
     handleGeoError(res, err);
   }
