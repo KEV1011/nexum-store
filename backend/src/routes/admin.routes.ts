@@ -20,6 +20,12 @@ import {
 import { probeUploads } from '../lib/upload';
 import { PORTAL_BASE_URL } from '../config/constants';
 import { probeSms } from '../services/sms.service';
+import {
+  getActiveLegalDoc,
+  publishLegalDoc,
+  versionDelDia,
+} from '../services/legal.service';
+import { contactoLegalConfigurado, contactos } from '../lib/contacto';
 import { probePush, enviarPushDePrueba } from '../services/push.service';
 import {
   getAdminMetrics,
@@ -354,6 +360,44 @@ router.post('/drivers/:id/kyc', async (req: Request, res: Response): Promise<voi
 // de TODA la plataforma, para la pestaña SOS del panel.
 router.get('/alerts', async (_req: Request, res: Response): Promise<void> => {
   res.json({ success: true, data: await listSafetyAlerts() });
+});
+
+// GET /admin/legal — qué versión está publicada y si hay canal de contacto.
+// POST /admin/legal/:kind/publish — publica una versión nueva. Es una acción
+// EXPLÍCITA y no algo que pase al desplegar: obliga a todos los usuarios a
+// volver a aceptar, porque el consentimiento se guarda por versión.
+router.get('/legal', async (_req: Request, res: Response): Promise<void> => {
+  const [terms, privacy] = await Promise.all([
+    getActiveLegalDoc('TERMS'),
+    getActiveLegalDoc('PRIVACY'),
+  ]);
+  res.json({
+    success: true,
+    data: {
+      terms: { version: terms.version, publishedAt: terms.publishedAt },
+      privacy: { version: privacy.version, publishedAt: privacy.publishedAt },
+      versionDelDia: versionDelDia(),
+      contactoConfigurado: contactoLegalConfigurado(),
+      contactos: contactos(),
+    },
+  });
+});
+
+router.post('/legal/:kind/publish', async (req: Request, res: Response): Promise<void> => {
+  const kind = String(req.params['kind'] ?? '').toUpperCase();
+  if (kind !== 'TERMS' && kind !== 'PRIVACY') {
+    res.status(400).json({ success: false, error: 'Documento desconocido.' });
+    return;
+  }
+  const { version, body, title } = req.body as {
+    version?: string; body?: string; title?: string;
+  };
+  try {
+    const r = await publishLegalDoc(kind, { version, body, title });
+    res.json({ success: true, data: r });
+  } catch (e) {
+    res.status(400).json({ success: false, error: e instanceof Error ? e.message : 'Error' });
+  }
 });
 
 // GET /admin/takedowns — solicitudes de retiro DMCA. POST .../:id/resolve
@@ -991,6 +1035,9 @@ const PANEL_HTML = `<!DOCTYPE html>
     <section id="tab-sos" style="display:none">
       <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Quién</th><th>Teléfono</th><th>Viaje</th><th>Ubicación</th></tr></thead>
       <tbody id="sos-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
+      <h3 style="margin-top:22px;color:#0f172a">Documentos legales</h3>
+      <p style="font-size:.8rem;color:#64748b;margin:4px 0 10px">Publicar una versión nueva obliga a TODOS los usuarios a volver a aceptar. Hazlo cuando cambie el texto o el canal de contacto, no por rutina.</p>
+      <div id="legal-box" class="empty">Cargando…</div>
       <h3 style="margin-top:22px;color:#0f172a">Retiros DMCA</h3>
       <table><thead><tr><th>Fecha</th><th>Reportante</th><th>Contenido</th><th>Motivo</th><th>Estado</th><th>Acciones</th></tr></thead>
       <tbody id="takedowns-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
@@ -1887,9 +1934,36 @@ function resolveTakedown(id, action) {
     .then(() => { showMsg('Solicitud actualizada.', false); loadTakedowns(); })
     .catch((e) => showMsg(e.message, true));
 }
+function loadLegal() {
+  api('/admin/legal').then((d) => {
+    const box = document.getElementById('legal-box');
+    const aviso = d.contactoConfigurado
+      ? '<span style="color:#059669">Canal de contacto publicado: ' + esc(d.contactos.privacidad) + '</span>'
+      : '<span style="color:#b45309">SIN canal de contacto. La politica dice que el soporte esta dentro de la app, y eso no sirve para quien la desinstalo. Define SUPPORT_EMAIL y vuelve a publicar.</span>';
+    box.className = '';
+    box.innerHTML = '<p style="font-size:.85rem;margin:0 0 8px">' + aviso + '</p>' +
+      '<table><thead><tr><th>Documento</th><th>Version publicada</th><th>Fecha</th><th></th></tr></thead><tbody>' +
+      ['TERMS', 'PRIVACY'].map(function (k) {
+        const d2 = k === 'TERMS' ? d.terms : d.privacy;
+        const nombre = k === 'TERMS' ? 'Terminos' : 'Privacidad';
+        return '<tr><td>' + nombre + '</td><td>' + esc(d2.version) + '</td><td>' + when(d2.publishedAt) +
+          '</td><td><button onclick="publicarLegal(\\'' + k + '\\')">Publicar version nueva</button></td></tr>';
+      }).join('') + '</tbody></table>';
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function publicarLegal(kind) {
+  const v = prompt('Etiqueta de la version nueva (por ejemplo la fecha de hoy). Publicar obliga a TODOS a volver a aceptar.');
+  if (!v) return;
+  api('/admin/legal/' + kind + '/publish', { method: 'POST', body: JSON.stringify({ version: v }) })
+    .then(() => { showMsg('Version ' + v + ' publicada.'); loadLegal(); })
+    .catch((e) => showMsg(e.message, true));
+}
+
 function loadSos() {
   loadAlerts();
   loadTakedowns();
+  loadLegal();
   api('/admin/sos').then((rows) => {
     const tb = document.getElementById('sos-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin eventos SOS. 🎉</td></tr>'; return; }

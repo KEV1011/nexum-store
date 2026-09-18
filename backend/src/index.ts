@@ -44,6 +44,7 @@ import { warmMunicipalities } from './services/municipality.service';
 import { ocrProviderName } from './services/ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
+import { contactoLegalConfigurado } from './lib/contacto';
 import { whatsappMode } from './services/whatsapp.service';
 import { purgarEnlacesMagicos } from './services/enlace-magico.service';
 
@@ -190,6 +191,11 @@ app.get('/health', async (_req, res) => {
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),
     // Clickwrap legal: 'activo' = el registro exige aceptar términos.
     legalConsent: legalConsentEnforced() ? 'activo' : 'apagado',
+    // Canal de atención al titular. 'sin-configurar' significa que la política
+    // de privacidad publicada remite al soporte DENTRO de la app, y eso es
+    // circular: quien la desinstaló no puede pedir que borremos sus datos.
+    // Play lo exige accesible sin instalar y la Ley 1581 obliga a publicarlo.
+    contactoLegal: contactoLegalConfigurado() ? 'publicado' : 'sin-configurar',
     // Piloto: si está activo, el despacho ignora la verificación. Caduca solo
     // — la fecha y los días restantes van aquí para que no se olvide encendido.
     pilotSkipVerification: piloto.activo,
