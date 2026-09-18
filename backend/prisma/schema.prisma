@@ -1998,6 +1998,18 @@ model MagicLink {
   /// Por dónde se emitió (hoy siempre `whatsapp`).
   channel String
 
+  /// Punto de recogida que el pasajero mandó con el botón de ubicación de
+  /// WhatsApp, para que llegue a la app ya puesto y solo tenga que elegir el
+  /// destino. Escribir una dirección en un teclado es la parte que más gente
+  /// abandona; tocar un botón, no.
+  ///
+  /// Va AQUÍ y no en la URL: un enlace de chat se reenvía, y con las
+  /// coordenadas dentro se estaría reenviando dónde está esa persona.
+  originLat   Float?
+  originLng   Float?
+  /// Nombre o dirección que WhatsApp adjunta a veces. Solo para mostrar.
+  originLabel String?
+
   createdAt DateTime  @default(now())
   expiresAt DateTime
   usedAt    DateTime?

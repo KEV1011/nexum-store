@@ -6,6 +6,7 @@ import 'package:nexum_client/core/errors/exceptions.dart';
 import 'package:nexum_client/core/errors/failures.dart';
 import 'package:nexum_client/features/auth/data/datasources/auth_datasource.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
+import 'package:nexum_client/shared/providers/origen_sugerido_provider.dart';
 
 /// Repositorio de autenticación — traduce excepciones en [Failure].
 class AuthRepository {
@@ -94,20 +95,24 @@ class AuthRepository {
   }
 
   /// Entra con el código del enlace que llegó por WhatsApp.
-  Future<({ClientEntity? client, Failure? failure})> redeemMagicLink(
-    String code,
-  ) async {
+  ///
+  /// Devuelve también el punto de recogida si el pasajero lo mandó con el botón
+  /// de ubicación del chat, para que la pantalla de pedir se estrene con él
+  /// puesto.
+  Future<({ClientEntity? client, OrigenSugerido? origen, Failure? failure})>
+      redeemMagicLink(String code) async {
     try {
       final data = await _dataSource.redeemMagicLink(code);
-      return (client: await _persistirSesion(data), failure: null);
+      final client = await _persistirSesion(data);
+      return (client: client, origen: OrigenSugerido.fromJson(data['origen']), failure: null);
     } on NetworkException catch (e) {
-      return (client: null, failure: NetworkFailure(message: e.message));
+      return (client: null, origen: null, failure: NetworkFailure(message: e.message));
     } on StorageException catch (e) {
-      return (client: null, failure: StorageFailure(message: e.message));
+      return (client: null, origen: null, failure: StorageFailure(message: e.message));
     } on AppException catch (e) {
-      return (client: null, failure: UnexpectedFailure(message: e.message));
+      return (client: null, origen: null, failure: UnexpectedFailure(message: e.message));
     } catch (e) {
-      return (client: null, failure: UnexpectedFailure(message: e.toString()));
+      return (client: null, origen: null, failure: UnexpectedFailure(message: e.toString()));
     }
   }
 
