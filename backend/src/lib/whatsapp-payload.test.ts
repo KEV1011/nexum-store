@@ -119,6 +119,68 @@ describe('leer el webhook de WhatsApp', () => {
   });
 });
 
+describe('la ubicación del botón nativo', () => {
+  /** Lo que manda Meta cuando el usuario toca «enviar ubicación». */
+  function conUbicacion(loc: Record<string, unknown>): unknown {
+    return payloadTexto({ type: 'location', text: undefined, location: loc });
+  }
+
+  it('lee lat y lng aunque vengan como CADENA', () => {
+    // Meta las manda en decimal y como texto. Un `as number` las dejaría pasar
+    // como cadena y acabarían en la base de datos convertidas en cualquier cosa.
+    const [m] = mensajesDe(conUbicacion({ latitude: '7.3754', longitude: '-72.6486' }));
+    expect(m?.tipo).toBe('location');
+    expect(m?.ubicacion).toEqual({ lat: 7.3754, lng: -72.6486, etiqueta: null });
+  });
+
+  it('toma el nombre del sitio, o la dirección si no hay nombre', () => {
+    const [conNombre] = mensajesDe(
+      conUbicacion({
+        latitude: '7.37',
+        longitude: '-72.64',
+        name: 'Universidad de Pamplona',
+        address: 'Cra 1',
+      }),
+    );
+    expect(conNombre?.ubicacion?.etiqueta).toBe('Universidad de Pamplona');
+
+    const [soloDir] = mensajesDe(
+      conUbicacion({ latitude: '7.37', longitude: '-72.64', address: 'Calle 5 # 3-40' }),
+    );
+    expect(soloDir?.ubicacion?.etiqueta).toBe('Calle 5 # 3-40');
+  });
+
+  it('(0, 0) NO es un punto: es el dato que falta', () => {
+    // El Golfo de Guinea es lo que sale cuando algo se inicializó en cero.
+    // Mandar allí a un taxi es el pasajero esperando en la calle mientras el
+    // conductor recibe una recogida en mitad del Atlántico.
+    const [m] = mensajesDe(conUbicacion({ latitude: '0', longitude: '0' }));
+    expect(m?.ubicacion).toBeNull();
+  });
+
+  it('fuera de rango o sin número, se descarta', () => {
+    for (const loc of [
+      { latitude: '91', longitude: '0' },
+      { latitude: '0', longitude: '181' },
+      { latitude: 'aquí', longitude: 'allá' },
+      { latitude: '7,3754', longitude: '-72,6486' }, // coma decimal: no es número
+      {},
+    ]) {
+      expect(mensajesDe(conUbicacion(loc))[0]?.ubicacion).toBeNull();
+    }
+  });
+
+  it('un mensaje de texto no trae ubicación', () => {
+    expect(mensajesDe(payloadTexto())[0]?.ubicacion).toBeNull();
+  });
+
+  it('un tipo `location` sin el objeto `location` no revienta', () => {
+    const [m] = mensajesDe(payloadTexto({ type: 'location', text: undefined }));
+    expect(m?.ubicacion).toBeNull();
+    expect(m?.waMessageId).toBe('wamid.ABC');
+  });
+});
+
 describe('aceptar solo teléfonos colombianos', () => {
   it('con y sin indicativo', () => {
     expect(telefonoColombiano('573001234567')).toBe('+573001234567');

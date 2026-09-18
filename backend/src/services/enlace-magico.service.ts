@@ -78,27 +78,54 @@ export async function tokenParaTelefonoVerificado(
   return firmar(await usuarioParaTelefonoVerificado(telefono, nombreSugerido));
 }
 
+/** Punto de recogida que viaja con el enlace, si el canal lo consiguió. */
+export interface OrigenEnlace {
+  lat: number;
+  lng: number;
+  etiqueta: string | null;
+}
+
 /**
  * Emite un código de un solo uso para ese usuario.
  *
  * Si ya tiene uno vivo y sin usar se reutiliza en vez de emitir otro: el
  * pasajero que escribe dos veces seguidas recibe el MISMO enlace, y el que
  * abrió el primero no se encuentra con que dejó de servir.
+ *
+ * ⚠ AL REUTILIZAR, EL ORIGEN SE ACTUALIZA. Sin esto habría un fallo silencioso
+ * y caro: alguien escribe, recibe el botón, manda su ubicación, camina dos
+ * cuadras, manda otra — y el segundo enlace seguiría llevando la primera, así
+ * que el taxi iría a donde estuvo, no a donde está. El código puede ser el
+ * mismo; el punto de recogida tiene que ser el último que mandó.
  */
 export async function emitirEnlaceMagico(
   userId: string,
   canal: string,
   ahora: Date = new Date(),
+  origen: OrigenEnlace | null = null,
 ): Promise<{ codigo: string; expiraEn: Date }> {
+  const datosOrigen = {
+    originLat: origen?.lat ?? null,
+    originLng: origen?.lng ?? null,
+    originLabel: origen?.etiqueta ?? null,
+  };
+
   const vivo = await prisma.magicLink.findFirst({
     where: { userId, channel: canal, usedAt: null, expiresAt: { gt: ahora } },
     orderBy: { createdAt: 'desc' },
   });
-  if (vivo) return { codigo: vivo.code, expiraEn: vivo.expiresAt };
+  if (vivo) {
+    // Solo se pisa si ahora traemos punto: un segundo mensaje de texto no puede
+    // borrar la ubicación que el pasajero ya se tomó el trabajo de mandar.
+    if (origen) {
+      await prisma.magicLink.update({ where: { id: vivo.id }, data: datosOrigen });
+    }
+    return { codigo: vivo.code, expiraEn: vivo.expiresAt };
+  }
 
   const expiraEn = venceEn(ahora, VIGENCIA_MIN);
   const creado = await prisma.magicLink.create({
-    data: { code: nuevoCodigo(), userId, channel: canal, expiresAt: expiraEn },
+    data: { code: nuevoCodigo(), userId, channel: canal, expiresAt: expiraEn, ...datosOrigen },
   });
   return { codigo: creado.code, expiraEn };
 }
@@ -130,7 +157,7 @@ export class EnlaceMagicoError extends Error {
 export async function canjearEnlaceMagico(
   codigo: string,
   ahora: Date = new Date(),
-): Promise<{ token: string; client: ClientDTO }> {
+): Promise<{ token: string; client: ClientDTO; origen: OrigenEnlace | null }> {
   if (!codigoBienFormado(codigo)) {
     throw new EnlaceMagicoError('enlace-inexistente', MOTIVOS['enlace-inexistente']!);
   }
@@ -151,7 +178,13 @@ export async function canjearEnlaceMagico(
     throw new EnlaceMagicoError('enlace-ya-usado', MOTIVOS['enlace-ya-usado']!);
   }
 
-  return firmar(enlace!.user);
+  const { originLat, originLng, originLabel } = enlace!;
+  const origen: OrigenEnlace | null =
+    originLat !== null && originLng !== null
+      ? { lat: originLat, lng: originLng, etiqueta: originLabel }
+      : null;
+
+  return { ...firmar(enlace!.user), origen };
 }
 
 /**

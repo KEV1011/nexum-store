@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
+import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
+import 'package:nexum_client/shared/providers/origen_sugerido_provider.dart';
 import 'package:nexum_client/shared/widgets/zipa_logo.dart';
 
 /// Entrada desde el enlace que llegó por WhatsApp.
@@ -42,14 +44,34 @@ class _EntrarConEnlaceScreenState extends ConsumerState<EntrarConEnlaceScreen> {
       return;
     }
 
-    final motivo = await ref.read(authProvider.notifier).entrarConEnlace(codigo);
+    final r = await ref.read(authProvider.notifier).entrarConEnlace(codigo);
     if (!mounted) return;
 
-    if (motivo != null) {
-      setState(() => _error = motivo);
+    if (r.motivo != null) {
+      setState(() => _error = r.motivo);
       return;
     }
+
+    // Sin punto de recogida —escribió en vez de tocar el botón— se entra al
+    // inicio de siempre y elige el servicio que quiera.
+    if (r.origen == null) {
+      context.go(AppRoutes.home);
+      return;
+    }
+
+    // Con punto, se va derecho a pedir el viaje con la recogida puesta: mandó
+    // su ubicación porque quiere un servicio ahora, y hacerle tocar dos cosas
+    // más sería deshacer lo que el botón vino a ahorrar.
+    //
+    // `go` al inicio y luego `push`: así el botón de atrás vuelve al inicio en
+    // vez de cerrar la app. La pantalla de pedir toma el punto de
+    // `origenSugeridoProvider` y lo consume.
+    ref.read(origenSugeridoProvider.notifier).state = r.origen;
     context.go(AppRoutes.home);
+    context.push(
+      AppRoutes.transportBooking,
+      extra: TransportServiceType.transporte,
+    );
   }
 
   @override

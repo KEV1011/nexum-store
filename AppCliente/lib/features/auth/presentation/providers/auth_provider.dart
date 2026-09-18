@@ -13,6 +13,7 @@ import 'package:nexum_client/features/auth/data/datasources/'
     'auth_real_datasource.dart';
 import 'package:nexum_client/features/auth/data/repositories/auth_repository.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
+import 'package:nexum_client/shared/providers/origen_sugerido_provider.dart';
 
 // ── Estado sellado ───────────────────────────────────────────────────────────
 
@@ -112,16 +113,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   /// Devuelve el motivo del fallo en vez de tragárselo: el pasajero tiene que
   /// saber si el enlace venció, si ya lo usó o si está mal copiado — son tres
   /// arreglos distintos.
-  Future<String?> entrarConEnlace(String code) async {
+  /// Devuelve el motivo del fallo, o el punto de recogida si el pasajero lo
+  /// mandó con el botón de ubicación del chat (puede venir en null: entrar sin
+  /// origen es lo normal cuando escribió en vez de tocar el botón).
+  Future<({String? motivo, OrigenSugerido? origen})> entrarConEnlace(
+    String code,
+  ) async {
     state = const AuthLoading();
     final result = await _repository.redeemMagicLink(code);
     if (result.failure != null) {
       state = const AuthUnauthenticated();
-      return result.failure!.message;
+      return (motivo: result.failure!.message, origen: null);
     }
     state = AuthAuthenticated(client: result.client!);
     _registerPushToken();
-    return null;
+    return (motivo: null, origen: result.origen);
   }
 
   Future<void> logout() async {

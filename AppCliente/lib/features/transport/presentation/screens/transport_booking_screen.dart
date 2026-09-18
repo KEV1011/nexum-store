@@ -24,6 +24,7 @@ import 'package:nexum_client/features/transport/domain/entities/transport_reques
 import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
 import 'package:nexum_client/features/transport/presentation/widgets/route_preview_map.dart';
+import 'package:nexum_client/shared/providers/origen_sugerido_provider.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/vehicle_side_view.dart';
@@ -280,6 +281,25 @@ class _TransportBookingScreenState
   @override
   void initState() {
     super.initState();
+
+    // El punto que el pasajero mandó con el botón de ubicación de WhatsApp
+    // manda sobre todo lo demás: es de hace segundos y lo eligió a propósito
+    // para ESTE viaje, mientras que la dirección guardada es «mi casa» y el GPS
+    // puede tardar o fallar. Se consume aquí para que no se vuelva a aplicar si
+    // regresa a esta pantalla más tarde, cuando ya no sería donde está.
+    final sugerido = ref.read(origenSugeridoProvider);
+    if (sugerido != null) {
+      _originLat = sugerido.lat;
+      _originLng = sugerido.lng;
+      // Sin etiqueta no se inventa una dirección: se dice de dónde salió el
+      // punto, que es verdad y además explica por qué el campo viene lleno.
+      _originCtrl.text = sugerido.etiqueta ?? 'Ubicación que enviaste por WhatsApp';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) ref.read(origenSugeridoProvider.notifier).state = null;
+      });
+      return;
+    }
+
     final defaultAddr = ref.read(defaultAddressProvider);
     if (defaultAddr != null) {
       _originCtrl.text = defaultAddr.fullAddress;

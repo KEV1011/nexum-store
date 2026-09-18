@@ -22,6 +22,14 @@
  *    reintenta durante horas. Lo desconocido se devuelve como lista vacía.
  */
 
+/** Punto que el pasajero mandó con el botón de ubicación. */
+export interface UbicacionWhatsapp {
+  lat: number;
+  lng: number;
+  /** Nombre del sitio o dirección, si WhatsApp los adjunta. Suele faltar. */
+  etiqueta: string | null;
+}
+
 /** Un mensaje entrante ya interpretado. */
 export interface MensajeWhatsapp {
   /** Id que asigna Meta (`wamid...`). Es la clave contra los reintentos. */
@@ -32,6 +40,8 @@ export interface MensajeWhatsapp {
   tipo: string;
   /** Texto si lo trae (cuerpo, título del botón o respuesta de lista); si no, ''. */
   texto: string;
+  /** El punto, si el mensaje es una ubicación válida. Si no, `null`. */
+  ubicacion: UbicacionWhatsapp | null;
   /** Nombre del perfil de WhatsApp, si Meta lo incluye. */
   nombre: string | null;
   /** Cuándo lo envió el usuario (Meta manda epoch en segundos, como texto). */
@@ -42,14 +52,19 @@ export interface MensajeWhatsapp {
 export const MAX_EDAD_MIN = 10;
 
 /**
- * Respuestas que se le mandan como mucho a un mismo teléfono en un día.
+ * Mensajes salientes que se le mandan como mucho a un mismo teléfono en un día.
  *
  * Desde el 1 de octubre de 2026 cada mensaje saliente se paga pasados los 1.000
  * gratis del mes. Sin tope, alguien escribiendo en bucle se gasta el
  * presupuesto de toda la operación; y al que escribe cien veces, la respuesta
  * ciento uno no le aporta nada.
+ *
+ * Eran 10 cuando la única respuesta posible era el enlace. Con el botón de
+ * ubicación son DOS salientes por carrera —pedir el punto y mandar el enlace—,
+ * así que 10 dejaba a un pasajero frecuente en cinco viajes al día. Veinte
+ * sigue siendo un techo que ningún uso normal roza y mantiene la protección.
  */
-export const TOPE_DIARIO = 10;
+export const TOPE_DIARIO = 20;
 
 function esObjeto(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
@@ -84,6 +99,43 @@ export function telefonoColombiano(crudo: string): string | null {
   // Un móvil colombiano empieza por 3. Los fijos a diez dígitos empiezan por 6.
   if (!/^[36]\d{9}$/.test(local)) return null;
   return `+57${local}`;
+}
+
+/**
+ * Lee la ubicación de un mensaje de tipo `location`, o `null` si no sirve.
+ *
+ * TRES GUARDAS, Y NINGUNA ES TEÓRICA
+ * ----------------------------------
+ * 1. **Meta manda lat y lng como CADENAS** en decimal. Un `as number` las
+ *    dejaría pasar como texto y acabarían en la base de datos convertidas en
+ *    cualquier cosa. Se parsean a número y lo que no lo sea se descarta.
+ * 2. **Fuera de rango no es un punto.** Latitud fuera de [-90, 90] o longitud
+ *    fuera de [-180, 180] es un dato corrupto, no un sitio.
+ * 3. **(0, 0) es el Golfo de Guinea**, o sea «falta el dato». Es el valor que
+ *    sale cuando algo se inicializó en cero, y mandar a un taxi allí no es un
+ *    error gracioso: es el pasajero esperando en la calle mientras el conductor
+ *    recibe una recogida en mitad del Atlántico. Misma regla que ya aplica
+ *    `puntoDeEntrega` en la última milla.
+ */
+function ubicacionDelMensaje(
+  m: Record<string, unknown>,
+  tipo: string,
+): UbicacionWhatsapp | null {
+  if (tipo !== 'location') return null;
+  const loc = m['location'];
+  if (!esObjeto(loc)) return null;
+
+  const lat = Number(loc['latitude']);
+  const lng = Number(loc['longitude']);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  if (lat === 0 && lng === 0) return null;
+
+  // `name` es el sitio («Universidad de Pamplona») y `address` la dirección.
+  // Los dos son opcionales y a menudo no vienen.
+  const etiqueta = (texto(loc['name']).trim() || texto(loc['address']).trim() || '').slice(0, 120);
+
+  return { lat, lng, etiqueta: etiqueta || null };
 }
 
 /** Saca el texto útil según el tipo de mensaje. */
@@ -155,6 +207,7 @@ export function mensajesDe(payload: unknown): MensajeWhatsapp[] {
           telefono,
           tipo,
           texto: textoDelMensaje(crudo, tipo),
+          ubicacion: ubicacionDelMensaje(crudo, tipo),
           nombre: nombres.get(desde) ?? null,
           enviadoEn,
         });
