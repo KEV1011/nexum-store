@@ -49,6 +49,15 @@ void main() {
       expect(OrigenSugerido.fromJson({'lng': -72.64}), isNull);
       expect(OrigenSugerido.fromJson('7.37,-72.64'), isNull);
       expect(OrigenSugerido.fromJson({'lat': 'siete', 'lng': 'menos setenta'}), isNull);
+      expect(OrigenSugerido.fromJson({'lat': 7.37, 'lng': null}), isNull);
+    });
+
+    test('una etiqueta que no es texto no tira el punto a la basura', () {
+      // `as String?` habría lanzado aquí, y se perdería una recogida válida por
+      // culpa del campo menos importante de los tres.
+      final o = OrigenSugerido.fromJson({'lat': 7.37, 'lng': -72.64, 'etiqueta': 42});
+      expect(o, isNotNull);
+      expect(o!.etiqueta, isNull);
     });
 
     test('(0, 0) no es un punto: es el dato que falta', () {
