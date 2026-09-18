@@ -22,11 +22,25 @@ export function legalConsentEnforced(): boolean {
   return (process.env['LEGAL_CONSENT_ENFORCE'] ?? 'false').toLowerCase() === 'true';
 }
 
-// ── Textos base v1 (es-CO). El abogado ajusta; el versionado hace el resto. ──
+import {
+  canalDelTitular,
+  canalDeSoporte,
+  canalDeRetiros,
+  contactos,
+} from '../lib/contacto';
+
+// ── Textos base (es-CO). El abogado ajusta; el versionado hace el resto. ──
+//
+// Son FUNCIONES y no constantes porque los canales de contacto salen del
+// entorno: como constante, el texto quedaría congelado con lo que hubiera al
+// arrancar el proceso, y publicar una versión nueva después de configurar el
+// correo no cambiaría nada.
 
 const V1 = '2026-07-19';
 
-const TERMS_V1 = `TÉRMINOS Y CONDICIONES DE USO — ZIPA (v ${V1})
+function textoTerminos(version: string): string {
+  const c = contactos();
+  return `TÉRMINOS Y CONDICIONES DE USO — ZIPA (v ${version})
 
 1. OBJETO. ZIPA es una plataforma tecnológica que conecta usuarios con
 conductores, mensajeros y empresas de transporte habilitadas para servicios de
@@ -49,7 +63,7 @@ pueden ser revisadas por personas a solicitud del usuario.
 único responsable del contenido que sube (documentos, fotografías, imágenes de
 catálogo, pruebas de entrega, mensajes). Al subirlo declara tener los derechos
 necesarios. ZIPA dispone de un procedimiento de notificación y retiro: los
-titulares de derechos pueden reportar contenido en /legal/takedown; ZIPA podrá
+${canalDeRetiros(c)}; ZIPA podrá
 retirar el contenido reportado y suspender cuentas reincidentes. La
 responsabilidad por contenido infractor recae en quien lo subió.
 
@@ -72,13 +86,17 @@ conductor o la empresa habilitada.
 8. MODIFICACIONES. ZIPA puede publicar nuevas versiones de estos términos; el
 uso posterior de la plataforma tras la notificación implica la aceptación de
 la versión vigente, y el registro exigirá re-aceptación cuando aplique.`;
+}
 
-const PRIVACY_V1 = `POLÍTICA DE PRIVACIDAD Y TRATAMIENTO DE DATOS — ZIPA (v ${V1})
+function textoPrivacidad(version: string): string {
+  const c = contactos();
+  return `POLÍTICA DE PRIVACIDAD Y TRATAMIENTO DE DATOS — ZIPA (v ${version})
 
 Conforme a la Ley 1581 de 2012 y sus decretos reglamentarios (Colombia).
 
-1. RESPONSABLE. ZIPA, plataforma de movilidad y envíos. Contacto: el canal de
-soporte dentro de la app.
+1. RESPONSABLE Y CANAL DE ATENCIÓN. ZIPA, plataforma de movilidad y envíos.
+${canalDeSoporte(c)}
+${canalDelTitular(c)}
 
 2. DATOS QUE RECOLECTAMOS Y SU FINALIDAD.
  • Identificación (nombre, teléfono, correo): crear y operar tu cuenta.
@@ -116,6 +134,7 @@ control de acceso interno.
 
 8. CAMBIOS. Publicaremos las nuevas versiones en la app y la web; el registro
 exigirá re-aceptación cuando la versión cambie.`;
+}
 
 // ── Documentos ────────────────────────────────────────────────────────────────
 
@@ -129,12 +148,7 @@ export async function getActiveLegalDoc(kind: LegalDocKind): Promise<{
   });
   if (!doc) {
     doc = await prisma.legalDocument.create({
-      data: {
-        kind,
-        version: V1,
-        title: kind === 'TERMS' ? 'Términos y Condiciones de Uso' : 'Política de Privacidad',
-        body: kind === 'TERMS' ? TERMS_V1 : PRIVACY_V1,
-      },
+      data: { kind, version: V1, title: _titulo(kind), body: _cuerpo(kind, V1) },
     });
   }
   return {
@@ -143,6 +157,78 @@ export async function getActiveLegalDoc(kind: LegalDocKind): Promise<{
     title: doc.title,
     body: doc.body,
     publishedAt: doc.publishedAt.toISOString(),
+  };
+}
+
+function _titulo(kind: LegalDocKind): string {
+  return kind === 'TERMS' ? 'Términos y Condiciones de Uso' : 'Política de Privacidad';
+}
+
+function _cuerpo(kind: LegalDocKind, version: string): string {
+  return kind === 'TERMS' ? textoTerminos(version) : textoPrivacidad(version);
+}
+
+/** Versión que hoy produciría el código, para compararla con la publicada. */
+export function versionDelDia(ahora: Date = new Date()): string {
+  return ahora.toISOString().slice(0, 10);
+}
+
+/**
+ * Publica una versión NUEVA y desactiva la anterior.
+ *
+ * Esto no existía. `getActiveLegalDoc` solo sembraba la v1 si no había
+ * ninguna, así que en cuanto producción sembró la suya **la política de
+ * privacidad dejó de poder corregirse**: cambiar el texto en el código no hacía
+ * nada. Un documento legal que no se puede actualizar es un problema, no un
+ * detalle — el abogado va a querer ajustarlo, y el canal de atención al titular
+ * puede cambiar.
+ *
+ * OJO, y por eso es una acción explícita y no algo que pase al desplegar: el
+ * consentimiento se guarda POR VERSIÓN, así que publicar una nueva obliga a
+ * **todos** los usuarios a volver a aceptar (con `LEGAL_CONSENT_ENFORCE`
+ * activo). Es barato hoy y caro con la app llena de gente.
+ *
+ * Sin `body` se publica el texto que está en el código, que es lo normal: así
+ * el documento vive en git, revisable en un diff, y publicar es apretar un
+ * botón. Con `body` se puede pegar la redacción del abogado sin desplegar.
+ */
+export async function publishLegalDoc(
+  kind: LegalDocKind,
+  opts: { version?: string; title?: string; body?: string } = {},
+): Promise<{ kind: LegalDocKind; version: string; publishedAt: string }> {
+  const version = (opts.version ?? versionDelDia()).trim();
+  if (!version) throw new LegalError('La versión no puede ir vacía.');
+
+  const yaExiste = await prisma.legalDocument.findUnique({
+    where: { kind_version: { kind, version } },
+  });
+  if (yaExiste) {
+    // Reutilizar un número de versión rompería la constancia: dos textos
+    // distintos bajo la misma etiqueta y nadie sabría cuál aceptó cada quien.
+    throw new LegalError(
+      `Ya existe una versión ${version} de ese documento. Usa otra etiqueta.`,
+    );
+  }
+
+  const body = opts.body?.trim() || _cuerpo(kind, version);
+  if (body.length < 200) {
+    throw new LegalError('El texto es demasiado corto para ser un documento legal.');
+  }
+
+  // Desactivar y crear en una transacción: si quedaran dos activos,
+  // `getActiveLegalDoc` devolvería uno u otro según el orden y el usuario
+  // aceptaría un documento distinto del que lee el siguiente.
+  const [, creado] = await prisma.$transaction([
+    prisma.legalDocument.updateMany({ where: { kind, active: true }, data: { active: false } }),
+    prisma.legalDocument.create({
+      data: { kind, version, title: opts.title?.trim() || _titulo(kind), body },
+    }),
+  ]);
+
+  return {
+    kind: creado.kind,
+    version: creado.version,
+    publishedAt: creado.publishedAt.toISOString(),
   };
 }
 

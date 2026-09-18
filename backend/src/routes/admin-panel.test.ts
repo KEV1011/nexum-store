@@ -338,7 +338,7 @@ describe('el panel pintando la comisión', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers, loadDiagnostics, loadReports };`,
+      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers, loadDiagnostics, loadReports, loadLegal };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
     const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
     return { fn, el };
@@ -490,6 +490,49 @@ describe('el panel pintando la comisión', () => {
     expect(html).toContain('ACTIONED');
     expect(html).toContain('+573001112233');
     expect(html).not.toContain('Desestimar');
+  });
+
+  // El bloque de documentos legales avisa de algo que no se ve en ninguna otra
+  // pantalla: que la política publicada remite al soporte DENTRO de la app, o
+  // sea que quien la desinstaló no puede pedir que borren sus datos. Si ese
+  // aviso no sale, nadie se entera hasta que llegue un requerimiento.
+  const legalBase = {
+    terms: { version: '2026-07-19', publishedAt: '2026-07-19T00:00:00.000Z' },
+    privacy: { version: '2026-07-19', publishedAt: '2026-07-19T00:00:00.000Z' },
+    versionDelDia: '2026-09-18',
+    contactoConfigurado: true,
+    contactos: { soporte: 'soporte@zipa.co', privacidad: 'privacidad@zipa.co', legal: 'legal@zipa.co' },
+  };
+
+  it('con canal publicado muestra la dirección y los botones de publicar', async () => {
+    const { fn, el } = montar({ '/admin/legal': legalBase }, ['legal-box']);
+    fn['loadLegal']!();
+    await esperar();
+    const html = el['legal-box']!.innerHTML;
+    expect(html).toContain('privacidad@zipa.co');
+    expect(html).toContain('2026-07-19');
+    // Dos botones: términos y privacidad.
+    expect(html.match(/publicarLegal\(/g)?.length).toBe(2);
+  });
+
+  it('SIN canal publicado avisa, en vez de callarse', async () => {
+    const { fn, el } = montar(
+      {
+        '/admin/legal': {
+          ...legalBase,
+          contactoConfigurado: false,
+          contactos: { soporte: null, privacidad: null, legal: null },
+        },
+      },
+      ['legal-box'],
+    );
+    fn['loadLegal']!();
+    await esperar();
+    const html = el['legal-box']!.innerHTML;
+    expect(html).toMatch(/SIN canal de contacto/i);
+    expect(html).toContain('SUPPORT_EMAIL');
+    // Y no imprime «null» donde debería ir una dirección.
+    expect(html).not.toContain('null');
   });
 
   it('un conductor SIN calificaciones no revienta la tabla', async () => {
