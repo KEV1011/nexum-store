@@ -1317,16 +1317,27 @@ class _CategorySelector extends ConsumerWidget {
   }
 }
 
-/// El vehículo de la categoría, de PERFIL.
+/// El vehículo de la categoría: ilustración a color, de FRENTE.
 ///
-/// Aquí estaba el dibujo CENITAL del mapa, girado 24° y metido en un cuadro de
-/// color. En el mapa esa vista es la correcta —es la vista del mapa—, pero en
-/// una fila de 46 px un carro visto desde arriba se lee como una ficha de
-/// juego. Ese es el detalle que hacía que la pantalla pareciera de juguete.
+/// Historia de esta esquina, porque ya cambió dos veces y conviene no volver
+/// atrás por descuido:
 ///
-/// De perfil se reconoce al instante, porque es como vemos un carro en la
-/// calle, y es lo que hacen Uber, DiDi y Cabify. Y sin cuadro detrás: el
-/// recuadro de color competía con la tarjeta y encajonaba el dibujo.
+///  1. Estaba el dibujo CENITAL del mapa, girado 24°. En el mapa esa vista es
+///     la correcta —es la vista del mapa— pero a 46 px un carro visto desde
+///     arriba se lee como una ficha de juego.
+///  2. Se pasó a una silueta de PERFIL pintada a mano, casi monocroma.
+///  3. Ahora son ilustraciones a color de frente. De frente el taxi se
+///     distingue del particular por el cartel del techo y el amarillo, la moto
+///     por lo angosta y el bus por lo grande — la misma decisión que toma el
+///     pasajero, resuelta sin leer.
+///
+/// Los tamaños son RELATIVOS entre sí: la moto ocupa menos que el carro y el
+/// bus más, y eso lo fija `tools/procesar-categorias.py` al generar los PNG, no
+/// esta pantalla. Aquí solo se elige el archivo.
+///
+/// La caja es EXACTAMENTE la de antes (62x46) y las imágenes entran con
+/// `contain`: cambiar la medida movería la altura de toda la fila, y sin
+/// Flutter local eso se descubriría en el teléfono.
 class _IlustracionVehiculo extends StatelessWidget {
   const _IlustracionVehiculo({required this.glyph, required this.resaltada});
 
@@ -1336,34 +1347,37 @@ class _IlustracionVehiculo extends StatelessWidget {
   /// elección se vea sin leer.
   final bool resaltada;
 
+  /// Ilustración de esa categoría, o `null` si no hay y toca el vector.
+  ///
+  /// Hoy el servidor solo cotiza tres categorías (taxi, particular, moto), así
+  /// que el camión no llega nunca por aquí; el respaldo existe para que añadir
+  /// una categoría no deje un hueco en pantalla mientras se dibuja su
+  /// ilustración.
+  static String? _ilustracion(VehicleGlyphKind g) => switch (g) {
+        VehicleGlyphKind.taxi => 'assets/categorias/taxi.png',
+        VehicleGlyphKind.car => 'assets/categorias/particular.png',
+        VehicleGlyphKind.moto || VehicleGlyphKind.delivery =>
+          'assets/categorias/moto.png',
+        VehicleGlyphKind.truck => null,
+      };
+
   @override
   Widget build(BuildContext context) {
-    final dibujo = switch (glyph) {
-      VehicleGlyphKind.taxi => VehicleSideKind.taxi,
-      VehicleGlyphKind.moto => VehicleSideKind.moto,
-      VehicleGlyphKind.delivery => VehicleSideKind.moto,
-      VehicleGlyphKind.truck => VehicleSideKind.truck,
-      VehicleGlyphKind.car => VehicleSideKind.car,
-    };
-
-    // El taxi conserva el amarillo: en Colombia eso ES el servicio público y
-    // distingue la categoría regulada de un vistazo. El resto va en grafito,
-    // como en las apps grandes — el color de la carrocería no aporta nada y
-    // compite con el precio, que es lo que de verdad se compara.
-    final carroceria = switch (glyph) {
-      VehicleGlyphKind.taxi => const Color(0xFFF2B705),
-      VehicleGlyphKind.truck => const Color(0xFF4B5563),
-      _ => const Color(0xFF2B303B),
-    };
+    final ruta = _ilustracion(glyph);
 
     return SizedBox(
       width: 62,
       height: 46,
       child: Opacity(
         opacity: resaltada ? 1 : 0.62,
-        child: CustomPaint(
-          painter: VehicleSideViewPainter(kind: dibujo, body: carroceria),
-        ),
+        child: ruta != null
+            ? Image.asset(ruta, fit: BoxFit.contain)
+            : CustomPaint(
+                painter: VehicleSideViewPainter(
+                  kind: VehicleSideKind.truck,
+                  body: const Color(0xFF4B5563),
+                ),
+              ),
       ),
     );
   }

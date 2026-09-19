@@ -381,6 +381,7 @@ class _RejillaServicios extends ConsumerWidget {
               Expanded(
                 child: TarjetaServicio(
                   icono: ZipaIconName.envios,
+                  ilustracion: 'assets/servicios/repartidor.png',
                   tinte: ZipaTokens.envios,
                   titulo: 'Envíos',
                   subtitulo: 'Paquetes y mandados',
