@@ -81,6 +81,15 @@ flutter:
     - assets/vehicles/
     - assets/vehicles/2.0x/
     - assets/vehicles/3.0x/
+    # Ilustraciones frontales del selector de categorías y de las puertas del
+    # home. Separadas de `vehicles/`, que son los cenitales del mapa: mismo
+    # vehículo, dibujo distinto para un sitio distinto.
+    - assets/categorias/
+    - assets/categorias/2.0x/
+    - assets/categorias/3.0x/
+    - assets/servicios/
+    - assets/servicios/2.0x/
+    - assets/servicios/3.0x/
 
   fonts:
     - family: Inter

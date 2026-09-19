@@ -28,10 +28,23 @@ class TarjetaServicio extends StatefulWidget {
     required this.titulo,
     required this.subtitulo,
     required this.onTap,
+    this.ilustracion,
     super.key,
   });
 
   final ZipaIconName icono;
+
+  /// Ilustración a color que reemplaza al glifo dentro del cuadro.
+  ///
+  /// El glifo sigue siendo obligatorio aunque haya ilustración: si el archivo
+  /// falta o no carga, la puerta se dibuja igual en vez de dejar un cuadro
+  /// vacío en la primera pantalla de la app.
+  ///
+  /// OJO con mezclar: un dibujo a color al lado de tres glifos monocromos se
+  /// nota. Mientras no las tengan todas, la que lo lleve debe ganarse la
+  /// diferencia.
+  final String? ilustracion;
+
   final ZipaTinte tinte;
   final String titulo;
 
@@ -118,17 +131,33 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     alignment: Alignment.center,
-                    // El glifo, agrandado dentro del cuadro.
+                    // Con ilustración: entra casi llenando el cuadro, porque
+                    // un dibujo a color reducido a un tercio se convierte en
+                    // una mancha. `errorBuilder` vuelve al glifo si el archivo
+                    // falta — una puerta sin icono en la primera pantalla es
+                    // peor que un icono monocromo.
                     //
-                    // A 20 px dentro de un cuadro de 54 ocupaba poco más de un
-                    // tercio, y por eso las cuatro puertas se leían flojas: un
-                    // trazo fino perdido en mucho aire. Se escala desde el
-                    // tamaño del catálogo en vez de añadir una medida nueva a
-                    // `ZipaIconSize`, que tiene dos y una prueba lo vigila.
-                    child: Transform.scale(
-                      scale: 1.45,
-                      child: ZipaIcon(widget.icono, color: glifo),
-                    ),
+                    // Sin ella: el glifo agrandado dentro del cuadro. A 20 px
+                    // en un cuadro de 54 ocupaba poco más de un tercio y las
+                    // puertas se leían flojas. Se escala desde el tamaño del
+                    // catálogo en vez de añadir una medida a `ZipaIconSize`,
+                    // que tiene dos y una prueba lo vigila.
+                    child: widget.ilustracion != null
+                        ? Padding(
+                            padding: const EdgeInsets.all(3),
+                            child: Image.asset(
+                              widget.ilustracion!,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => Transform.scale(
+                                scale: 1.45,
+                                child: ZipaIcon(widget.icono, color: glifo),
+                              ),
+                            ),
+                          )
+                        : Transform.scale(
+                            scale: 1.45,
+                            child: ZipaIcon(widget.icono, color: glifo),
+                          ),
                   ),
                   const SizedBox(height: 12),
                   Text(
