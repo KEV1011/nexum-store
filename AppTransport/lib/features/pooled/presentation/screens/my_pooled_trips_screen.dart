@@ -288,12 +288,36 @@ class _PooledTripCard extends StatelessWidget {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '${b.passengerName} · ${b.seatsBooked} puesto(s)'
+                          '${b.passengerName}'
                           '${b.pickupAddress != null && b.pickupAddress!.isNotEmpty ? " · ${b.pickupAddress}" : ""}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               fontSize: 12.5, color: context.textSecondaryColor),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      // La silla va fuera del texto que se recorta: es lo que
+                      // el conductor busca en la puerta, y con la dirección
+                      // larga se la comía el ellipsis.
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: b.seats.isEmpty
+                              ? context.surfaceVariantColor
+                              : _kPooledColor.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          b.seatLabel,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: b.seats.isEmpty
+                                ? context.textSecondaryColor
+                                : _kPooledColor,
+                          ),
                         ),
                       ),
                     ],

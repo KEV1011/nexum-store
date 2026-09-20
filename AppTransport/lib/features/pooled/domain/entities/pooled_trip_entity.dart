@@ -124,6 +124,7 @@ class PooledSeatBooking {
     required this.seatsBooked,
     this.pickupAddress,
     this.notes,
+    this.seats = const [],
   });
 
   final String id;
@@ -133,6 +134,19 @@ class PooledSeatBooking {
   final String? pickupAddress;
   final String? notes;
 
+  /// Sillas numeradas de esta reserva, en orden. Vacía en las salidas por
+  /// cupos, que son las de siempre: ahí no hay dónde sentar a nadie en
+  /// concreto y lo único cierto es cuántos puestos compró.
+  final List<int> seats;
+
+  /// Lo que el conductor necesita leer en la puerta del vehículo: «Silla 3» o
+  /// «Sillas 3, 4». Sin numeración cae a los puestos, que es la información
+  /// que de verdad hay — inventar un número aquí sentaría a alguien donde no
+  /// le corresponde.
+  String get seatLabel => seats.isEmpty
+      ? '$seatsBooked puesto${seatsBooked == 1 ? '' : 's'}'
+      : '${seats.length == 1 ? 'Silla' : 'Sillas'} ${seats.join(', ')}';
+
   factory PooledSeatBooking.fromJson(Map<String, dynamic> j) => PooledSeatBooking(
         id: j['id'] as String? ?? '',
         passengerName: j['passengerName'] as String? ?? '',
@@ -140,6 +154,10 @@ class PooledSeatBooking {
         seatsBooked: (j['seatsBooked'] as num?)?.toInt() ?? 1,
         pickupAddress: j['pickupAddress'] as String?,
         notes: j['notes'] as String?,
+        seats: [
+          for (final s in (j['seats'] as List<dynamic>? ?? const []))
+            if (s is num) s.toInt(),
+        ],
       );
 }
 

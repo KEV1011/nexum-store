@@ -1130,6 +1130,13 @@ export interface SeatBookingDTO {
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
   seatsBooked: number;
+  /**
+   * Qué sillas le tocaron, ordenadas. Vacío en las salidas sin numerar.
+   *
+   * Sin esto el conductor tiene el nombre y «2 puestos» pero no sabe a quién
+   * sentar dónde, que es justo para lo que se numeró.
+   */
+  seats?: number[];
   pickupAddress?: string;
   notes?: string;
   status: SeatBookingStatus;

@@ -9,6 +9,7 @@ import {
   publishPooledTrip,
   getOperatorPooledTrips,
   cancelPooledTripByOperator,
+  numerarPooledTrip,
   PooledTripError,
 } from '../services/intercity-pool.service';
 import { IntercityCity } from '../types';
@@ -715,6 +716,36 @@ router.post(
       res.status(status).json({
         success: false,
         error: err instanceof Error ? err.message : 'No se pudo publicar la salida',
+      });
+    }
+  },
+);
+
+// POST /operator/pool/:id/numerar — pasa una salida por cupos a silla numerada
+// (o corrige el vehículo de una numerada que aún nadie compró).
+router.post(
+  '/pool/:id/numerar',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    const b = req.body as { seatType?: string; seatRows?: number };
+    const operator = await prisma.operator.findUnique({
+      where: { id: req.operatorId! },
+      select: { isVerified: true },
+    });
+    try {
+      const trip = await numerarPooledTrip(
+        req.operatorId!,
+        req.params['id']!,
+        b.seatType,
+        b.seatRows,
+        { licensedOperator: operator?.isVerified === true },
+      );
+      res.json({ success: true, data: trip });
+    } catch (err) {
+      const status = err instanceof PooledTripError ? 400 : 500;
+      res.status(status).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'No se pudo numerar la salida',
       });
     }
   },

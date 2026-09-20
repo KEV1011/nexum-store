@@ -20,6 +20,8 @@ interface SeatBookingRow {
   passengerName: string
   maskedPhone?: string
   seatsBooked: number
+  /** Sillas asignadas. Vacío en las salidas sin numerar. */
+  seats?: number[]
   pickupAddress?: string
   notes?: string
 }
@@ -40,6 +42,8 @@ interface PooledTripRow {
   farePerSeat: number
   status: string
   bookings?: SeatBookingRow[]
+  /** Presente solo en las salidas con silla numerada. */
+  seatMap?: { etiqueta: string }
 }
 
 interface OperatorDriverRow {
@@ -83,6 +87,12 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   // Paradas intermedias ("pasa por"): nombres de lugar, máx. 6.
   const [stops, setStops] = useState<string[]>([])
   const [stopDraft, setStopDraft] = useState('')
+
+  // Numerar una salida ya publicada: qué salida se está editando y con qué.
+  const [numerarId, setNumerarId] = useState<string | null>(null)
+  const [numerarTipo, setNumerarTipo] = useState<'VAN' | 'BUSETA' | 'BUS'>('BUSETA')
+  const [numerarFilas, setNumerarFilas] = useState('5')
+  const [numerando, setNumerando] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -150,6 +160,26 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cancelar la salida.')
+    }
+  }
+
+  // Numerar una salida ya publicada. El backend rechaza si alguien ya compró
+  // por cupo (no se le puede asignar una silla que no eligió) y ese motivo se
+  // muestra tal cual: es lo único que la empresa puede accionar.
+  async function numerar(id: string, tipo: string, filas: string) {
+    setError(null)
+    setNumerando(id)
+    try {
+      await api(`/operator/pool/${id}/numerar`, {
+        method: 'POST',
+        body: JSON.stringify({ seatType: tipo, seatRows: Number(filas) || undefined }),
+      })
+      setNumerarId(null)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo numerar la salida.')
+    } finally {
+      setNumerando(null)
     }
   }
 
@@ -328,6 +358,14 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                     <Users className="w-3.5 h-3.5" />
                     {soldSeats}/{t.totalSeats} vendidos
                   </span>
+                  {t.seatMap && (
+                    <span
+                      title="El pasajero elige su silla en el plano del vehículo"
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-emerald-50 text-emerald-700"
+                    >
+                      {t.seatMap.etiqueta} numerada
+                    </span>
+                  )}
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${st.cls}`}>{st.label}</span>
                   {cancellable && (
                     <button onClick={() => cancel(t.id)} title="Cancelar salida"
@@ -336,6 +374,56 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                     </button>
                   )}
                 </div>
+
+                {/* Pasar a silla numerada una salida que se publicó por cupos.
+                    Solo mientras nadie haya comprado: quien pagó un cupo no
+                    eligió silla, y asignársela sería inventarle el sitio. */}
+                {t.status === 'open' && !t.seatMap && bookings.length === 0 && (
+                  <div className="mt-2 pl-7">
+                    {numerarId === t.id ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={numerarTipo}
+                          onChange={(e) => setNumerarTipo(e.target.value as typeof numerarTipo)}
+                          className="text-[11px] border border-slate-200 rounded-lg px-2 py-1"
+                        >
+                          <option value="VAN">Van</option>
+                          <option value="BUSETA">Buseta</option>
+                          <option value="BUS">Bus</option>
+                        </select>
+                        <label className="text-[11px] text-slate-500">
+                          Filas{' '}
+                          <input
+                            type="number" min={2} max={15}
+                            value={numerarFilas}
+                            onChange={(e) => setNumerarFilas(e.target.value)}
+                            className="w-14 text-[11px] border border-slate-200 rounded-lg px-2 py-1"
+                          />
+                        </label>
+                        <button
+                          onClick={() => numerar(t.id, numerarTipo, numerarFilas)}
+                          disabled={numerando === t.id}
+                          className="text-[11px] font-semibold bg-emerald-600 text-white px-2.5 py-1 rounded-lg disabled:opacity-50"
+                        >
+                          {numerando === t.id ? 'Numerando…' : 'Numerar'}
+                        </button>
+                        <button
+                          onClick={() => setNumerarId(null)}
+                          className="text-[11px] text-slate-400 hover:text-slate-600"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setNumerarId(t.id)}
+                        className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700"
+                      >
+                        Numerar sillas…
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Manifiesto de pasajeros: quién reservó, cuántos puestos y
                     dónde recogerlos — el trámite que necesita el operador. */}
@@ -352,7 +440,13 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                         {bookings.map((b) => (
                           <li key={b.id} className="text-[11px] text-slate-600 border-l-2 border-emerald-200 pl-2">
                             <span className="font-semibold text-slate-800">{b.passengerName}</span>
-                            {' · '}{b.seatsBooked} {b.seatsBooked === 1 ? 'puesto' : 'puestos'}
+                            {b.seats && b.seats.length > 0 ? (
+                              <> · <span className="font-semibold text-emerald-700">
+                                {b.seats.length === 1 ? 'Silla' : 'Sillas'} {b.seats.join(', ')}
+                              </span></>
+                            ) : (
+                              <>{' · '}{b.seatsBooked} {b.seatsBooked === 1 ? 'puesto' : 'puestos'}</>
+                            )}
                             {b.maskedPhone ? ` · ${b.maskedPhone}` : ''}
                             {b.pickupAddress ? <span className="block text-slate-400">Recoge en: {b.pickupAddress}</span> : null}
                             {b.notes ? <span className="block text-slate-400">Nota: {b.notes}</span> : null}

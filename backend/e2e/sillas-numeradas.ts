@@ -24,6 +24,7 @@ import {
   bookSeats,
   cancelSeatBooking,
   getPooledTripById,
+  numerarPooledTrip,
   PooledTripError,
 } from '../src/services/intercity-pool.service';
 import { plantillaDe } from '../src/lib/mapa-asientos';
@@ -228,6 +229,81 @@ async function main(): Promise<void> {
   comprobar(
     'y no crea asignaciones',
     (await prisma.seatAssignment.count({ where: { tripId: vieja.id } })) === 0,
+  );
+
+  // ── 7. Numerar una salida ya publicada ────────────────────────────────
+  // Lo que había publicado antes de la numeración se vendería por cupos para
+  // siempre; la empresa tendría que cancelar y republicar, y cancelar es un
+  // aviso a quien ya compró.
+  console.log('\n7. Pasar una salida de cupos a silla numerada');
+  const empresa = await prisma.operator.create({
+    data: {
+      legalName: `Sillas ${Date.now()} S.A.S.`,
+      nit: `902${Date.now() % 1000000}`,
+      type: 'INTERCITY', status: 'ACTIVE', isVerified: true,
+      contactName: 'Gerente', contactPhone: tel(),
+    },
+  });
+  const porCupos = await publishPooledTrip(conductor.id, conductor.name, conductor.phone, {
+    origin: 'pamplona', destination: 'cucuta',
+    departureTime: new Date(Date.now() + 60 * 3600_000).toISOString(),
+    totalSeats: 4, farePerSeat: 25000, vehicleDescription: 'Buseta • NUM 001',
+  }, { operatorId: empresa.id, licensedOperator: true });
+  comprobar('nace sin mapa', porCupos.seatMap === undefined);
+
+  await rechaza(
+    'un particular NO puede numerarla (sería operar sin habilitación)',
+    () => numerarPooledTrip(empresa.id, porCupos.id, 'BUSETA', 5, { licensedOperator: false }),
+    /habilitadas/i,
+  );
+  await rechaza(
+    'ni la empresa vecina, que no es suya',
+    () => numerarPooledTrip('otro-operador', porCupos.id, 'BUSETA', 5, { licensedOperator: true }),
+    /no encontrada/i,
+  );
+  await rechaza(
+    'ni sin decir el vehículo',
+    () => numerarPooledTrip(empresa.id, porCupos.id, undefined, 5, { licensedOperator: true }),
+    /van, buseta o bus/i,
+  );
+
+  const numerada = await numerarPooledTrip(empresa.id, porCupos.id, 'BUSETA', 5, {
+    licensedOperator: true,
+  });
+  const plantillaBuseta = plantillaDe('BUSETA', 5);
+  comprobar('ahora trae mapa', numerada.seatMap !== undefined);
+  comprobar(
+    'y los puestos los dice el vehículo, no el formulario',
+    numerada.totalSeats === plantillaBuseta.sillas,
+    `${numerada.totalSeats} vs ${plantillaBuseta.sillas}`,
+  );
+  comprobar(
+    'todas libres: no había nadie a quien sentar',
+    numerada.seatMap!.libres === plantillaBuseta.sillas,
+  );
+  comprobar(
+    'y el pasajero YA puede elegir silla',
+    (await bookSeats(ana.id, 'Ana', ana.phone, numerada.id, { seatsBooked: 1, seats: [4] }))
+      .booking.status === 'confirmed',
+  );
+
+  // La guarda que de verdad importa: con alguien ya comprado por cupo no hay
+  // forma honesta de numerar — esa persona no eligió silla y asignarle una
+  // sería inventarle el sitio y marcarla vendida sin que lo sepa.
+  const conGente = await publishPooledTrip(conductor.id, conductor.name, conductor.phone, {
+    origin: 'pamplona', destination: 'chitaga',
+    departureTime: new Date(Date.now() + 70 * 3600_000).toISOString(),
+    totalSeats: 4, farePerSeat: 9000, vehicleDescription: 'Buseta • NUM 002',
+  }, { operatorId: empresa.id, licensedOperator: true });
+  await bookSeats(beto.id, 'Beto', beto.phone, conGente.id, { seatsBooked: 2 });
+  await rechaza(
+    'una salida con pasajeros por cupo NO se numera',
+    () => numerarPooledTrip(empresa.id, conGente.id, 'BUSETA', 5, { licensedOperator: true }),
+    /compraron por cupo/i,
+  );
+  comprobar(
+    'y se queda exactamente como estaba',
+    (await getPooledTripById(conGente.id))!.totalSeats === 4,
   );
 
   await prisma.$disconnect();
