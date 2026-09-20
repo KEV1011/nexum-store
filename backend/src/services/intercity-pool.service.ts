@@ -7,6 +7,7 @@ import {
   PooledTripDTO,
   SeatBookingDTO,
   SeatBookingStatus,
+  MapaAsientosDTO,
 } from '../types';
 import {
   getIntercityRoute,
@@ -14,7 +15,15 @@ import {
   INTERCITY_REMOVE_CAP,
   INTERCITY_DUAL_MODEL,
 } from '../config/constants';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import {
+  esTipoConSillas,
+  motivoParaNoReservar,
+  plantillaDe,
+  sillasLibres,
+  type TipoConSillas,
+} from '../lib/mapa-asientos';
 import { maskPhone } from './safe-contact.service';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
@@ -55,7 +64,10 @@ type DbPooledTrip = {
   status: string; notes: string | null; createdAt: Date;
   stops?: unknown;
   operatorId?: string | null;
+  seatType?: string | null;
+  seatRows?: number | null;
   bookings?: DbSeatBooking[];
+  seatAssignments?: { seatNumber: number; bookingId: string }[];
 };
 
 type DbSeatBooking = {
@@ -77,6 +89,43 @@ function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
     notes: b.notes ?? undefined,
     status: (b.status === 'CONFIRMED' ? 'confirmed' : 'cancelled') as SeatBookingStatus,
     bookedAt: b.bookedAt.toISOString(),
+  };
+}
+
+/**
+ * El mapa de sillas de la salida, o `undefined` si no va numerada.
+ *
+ * Se arma desde la plantilla del tipo de vehículo y se marcan las vendidas.
+ * Las libres se CALCULAN de las ocupadas en vez de guardarse: un contador y
+ * unas filas acaban discrepando y nadie sabe cuál miente.
+ *
+ * Si la consulta no trajo `seatAssignments` no se inventa que todo está libre
+ * —eso invitaría a comprar una silla ya vendida— y se devuelve `undefined`,
+ * que la app entiende como «esta salida no pide silla».
+ */
+function _mapaDe(t: DbPooledTrip): MapaAsientosDTO | undefined {
+  if (!esTipoConSillas(t.seatType) || !t.seatAssignments) return undefined;
+
+  const tipo = t.seatType as TipoConSillas;
+  const filas = t.seatRows ?? undefined;
+  const ocupadas = t.seatAssignments.map((a) => a.seatNumber);
+  const tomadas = new Set(ocupadas);
+  const plantilla = plantillaDe(tipo, filas);
+
+  return {
+    tipo,
+    etiqueta: plantilla.etiqueta,
+    columnas: plantilla.columnas,
+    filas: plantilla.filas.map((fila) =>
+      fila.map((c) =>
+        c.tipo === 'silla'
+          ? { tipo: 'silla' as const, numero: c.numero, ocupada: tomadas.has(c.numero) }
+          : { tipo: c.tipo },
+      ),
+    ),
+    sillas: plantilla.sillas,
+    libres: sillasLibres(tipo, ocupadas, filas),
+    ocupadas,
   };
 }
 
@@ -109,6 +158,7 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     status: (STATUS_FROM_PRISMA[t.status] ?? 'open') as PooledTripStatus,
     notes: t.notes ?? undefined,
     stops: stopsFromDb(t.stops),
+    seatMap: _mapaDe(t),
     distanceKm: route?.distanceKm,
     durationMinutes: route?.durationMinutes,
     createdAt: t.createdAt.toISOString(),
@@ -124,7 +174,7 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
 async function _fetchWithBookings(id: string): Promise<DbPooledTrip | null> {
   return prisma.pooledTrip.findUnique({
     where: { id },
-    include: { bookings: true },
+    include: { bookings: true, seatAssignments: true },
   }) as Promise<DbPooledTrip | null>;
 }
 
@@ -164,7 +214,15 @@ export async function publishPooledTrip(
     );
   }
 
-  if (!Number.isInteger(dto.totalSeats) || dto.totalSeats < 1 || dto.totalSeats > MAX_SEATS) {
+  // El tope de 7 es del GASTO COMPARTIDO: un particular repartiendo gasolina
+  // en su carro. No aplica a una buseta de 19 ni a un bus de 40, que es
+  // transporte de pasajeros de una empresa habilitada — y ahí los puestos no
+  // los pone el formulario sino el mapa del vehículo, así que no hay número
+  // que validar.
+  if (
+    !esTipoConSillas(dto.seatType) &&
+    (!Number.isInteger(dto.totalSeats) || dto.totalSeats < 1 || dto.totalSeats > MAX_SEATS)
+  ) {
     throw new PooledTripError(`Los puestos deben estar entre 1 y ${MAX_SEATS}`);
   }
   const departure = new Date(dto.departureTime);
@@ -173,14 +231,38 @@ export async function publishPooledTrip(
   }
   if (dto.farePerSeat < 0) throw new PooledTripError('La tarifa por puesto no puede ser negativa');
 
+  // Una buseta o un bus NO son gasto compartido: son transporte público de
+  // pasajeros, y eso solo lo puede prestar una empresa habilitada. Dejar que
+  // un particular publique una salida de 19 puestos sería ayudarle a operar
+  // sin habilitación, que es exactamente lo que el modelo dual existe para
+  // impedir.
+  if (esTipoConSillas(dto.seatType) && !opts?.licensedOperator) {
+    throw new PooledTripError(
+      'Las salidas con silla numerada en van, buseta o bus solo las pueden ' +
+        'publicar empresas de transporte habilitadas y verificadas.',
+    );
+  }
+
   // Cost-share reference value (always computed). Enforcement (Option A) is
   // skipped only when Option C (INTERCITY_REMOVE_CAP) is explicitly enabled.
+  //
+  // El tope tampoco aplica a una empresa habilitada: su tarifa es comercial y
+  // la regula el Ministerio, no el reparto de gasolina entre compañeros de
+  // viaje. Aplicárselo dejaría el puesto de Pamplona a Cúcuta en $3.000.
   const maxFare = getMaxFarePerSeat(dto.origin, dto.destination, dto.totalSeats);
-  if (!INTERCITY_REMOVE_CAP && dto.farePerSeat > maxFare) {
+  if (!INTERCITY_REMOVE_CAP && !opts?.licensedOperator && dto.farePerSeat > maxFare) {
     throw new PooledTripError(
       `La tarifa por puesto ($${dto.farePerSeat.toLocaleString('es-CO')}) supera el máximo legal de gasto compartido para esta ruta ($${maxFare.toLocaleString('es-CO')}).`,
     );
   }
+
+  // Con vehículo declarado, los puestos los dice el MAPA, no el formulario:
+  // si la empresa escribiera 20 en una van de 12, se venderían ocho sillas que
+  // no existen y la pelea sería en la terminal.
+  const numerada = esTipoConSillas(dto.seatType);
+  const totalSeats = numerada
+    ? plantillaDe(dto.seatType as TipoConSillas, dto.seatRows).sillas
+    : dto.totalSeats;
 
   const tripRef = `NXP-${Math.floor(1000 + Math.random() * 8000)}`;
   const trip = await prisma.pooledTrip.create({
@@ -193,7 +275,9 @@ export async function publishPooledTrip(
       origin: CITY_TO_PRISMA[dto.origin] ?? dto.origin.toUpperCase(),
       destination: CITY_TO_PRISMA[dto.destination] ?? dto.destination.toUpperCase(),
       departureTime: departure,
-      totalSeats: dto.totalSeats,
+      totalSeats,
+      seatType: numerada ? (dto.seatType as TipoConSillas) : null,
+      seatRows: numerada ? (dto.seatRows ?? null) : null,
       farePerSeat: dto.farePerSeat,
       maxFarePerSeat: maxFare,
       allowFleet: dto.allowFleet ?? false,
@@ -202,7 +286,7 @@ export async function publishPooledTrip(
       stops: sanitizeStops(dto.stops),
       operatorId: opts?.operatorId ?? null,
     },
-    include: { bookings: true },
+    include: { bookings: true, seatAssignments: true },
   });
   return _toDTO(trip as DbPooledTrip, true);
 }
@@ -210,7 +294,7 @@ export async function publishPooledTrip(
 export async function getDriverPooledTrips(driverId: string): Promise<PooledTripDTO[]> {
   const trips = await prisma.pooledTrip.findMany({
     where: { driverId },
-    include: { bookings: true },
+    include: { bookings: true, seatAssignments: true },
     orderBy: { createdAt: 'desc' },
   });
   return trips.map((t) => _toDTO(t as DbPooledTrip, true));
@@ -221,7 +305,7 @@ export async function getDriverPooledTrips(driverId: string): Promise<PooledTrip
 export async function getOperatorPooledTrips(operatorId: string): Promise<PooledTripDTO[]> {
   const trips = await prisma.pooledTrip.findMany({
     where: { operatorId },
-    include: { bookings: true },
+    include: { bookings: true, seatAssignments: true },
     orderBy: { departureTime: 'desc' },
   });
   return trips.map((t) => _toDTO(t as DbPooledTrip, true));
@@ -237,7 +321,7 @@ export async function cancelPooledTripByOperator(
   if (t.status === 'COMPLETED' || t.status === 'CANCELLED') return null;
 
   const updated = await prisma.pooledTrip.update({
-    where: { id: tripId }, data: { status: 'CANCELLED' }, include: { bookings: true },
+    where: { id: tripId }, data: { status: 'CANCELLED' }, include: { bookings: true, seatAssignments: true },
   });
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
@@ -250,7 +334,7 @@ export async function departPooledTrip(driverId: string, tripId: string): Promis
   if (t.status !== 'OPEN' && t.status !== 'FULL') return null;
 
   const updated = await prisma.pooledTrip.update({
-    where: { id: tripId }, data: { status: 'DEPARTED' }, include: { bookings: true },
+    where: { id: tripId }, data: { status: 'DEPARTED' }, include: { bookings: true, seatAssignments: true },
   });
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
@@ -263,7 +347,7 @@ export async function completePooledTrip(driverId: string, tripId: string): Prom
   if (t.status !== 'DEPARTED') return null;
 
   const updated = await prisma.pooledTrip.update({
-    where: { id: tripId }, data: { status: 'COMPLETED' }, include: { bookings: true },
+    where: { id: tripId }, data: { status: 'COMPLETED' }, include: { bookings: true, seatAssignments: true },
   });
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
@@ -276,7 +360,7 @@ export async function cancelPooledTrip(driverId: string, tripId: string): Promis
   if (t.status === 'COMPLETED' || t.status === 'CANCELLED') return null;
 
   const updated = await prisma.pooledTrip.update({
-    where: { id: tripId }, data: { status: 'CANCELLED' }, include: { bookings: true },
+    where: { id: tripId }, data: { status: 'CANCELLED' }, include: { bookings: true, seatAssignments: true },
   });
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
@@ -308,7 +392,7 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
 
   const trips = await prisma.pooledTrip.findMany({
     where: where as NonNullable<Parameters<typeof prisma.pooledTrip.findMany>[0]>['where'],
-    include: { bookings: { where: { status: 'CONFIRMED' } } },
+    include: { bookings: { where: { status: 'CONFIRMED' } }, seatAssignments: true },
     orderBy: { departureTime: 'asc' },
   });
 
@@ -347,7 +431,10 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
 export async function getPooledTripById(tripId: string, includeBookings = false): Promise<PooledTripDTO | null> {
   const t = await prisma.pooledTrip.findUnique({
     where: { id: tripId },
-    include: { bookings: includeBookings },
+    // Las sillas van SIEMPRE, aunque no se pidan las reservas: sin ellas el
+    // DTO sale sin mapa y la salida parecería no numerada, con el pasajero
+    // comprando un cupo sin poder elegir dónde se sienta.
+    include: { bookings: includeBookings, seatAssignments: true },
   });
   return t ? _toDTO(t as DbPooledTrip, includeBookings) : null;
 }
@@ -362,7 +449,7 @@ export async function bookSeats(
   return prisma.$transaction(async (tx) => {
     const t = await tx.pooledTrip.findUnique({
       where: { id: tripId },
-      include: { bookings: { where: { status: 'CONFIRMED' } } },
+      include: { bookings: { where: { status: 'CONFIRMED' } }, seatAssignments: true },
     });
     if (!t) throw new PooledTripError('El viaje no existe');
     if (t.status !== 'OPEN') throw new PooledTripError('Este viaje ya no acepta reservas');
@@ -373,7 +460,31 @@ export async function bookSeats(
 
     const takenSeats = (t.bookings as DbSeatBooking[]).reduce((sum, b) => sum + b.seatsBooked, 0);
     const available = t.totalSeats - takenSeats;
-    const requested = dto.seatsBooked;
+
+    // ── Salida NUMERADA: manda la lista de sillas ─────────────────────────
+    // `seatsBooked` deja de ser el dato de entrada y pasa a derivarse de
+    // cuántas sillas eligió. Si se confiara en el número que manda la app, se
+    // podría pagar un puesto y ocupar tres.
+    const numerada = esTipoConSillas(t.seatType);
+    const sillas = numerada ? (dto.seats ?? []) : [];
+    if (numerada) {
+      const ocupadas = (
+        await tx.seatAssignment.findMany({
+          where: { tripId },
+          select: { seatNumber: true },
+        })
+      ).map((a) => a.seatNumber);
+
+      const motivo = motivoParaNoReservar({
+        tipo: t.seatType as TipoConSillas,
+        filas: t.seatRows ?? undefined,
+        pedidas: sillas,
+        ocupadas,
+      });
+      if (motivo) throw new PooledTripError(motivo);
+    }
+
+    const requested = numerada ? sillas.length : dto.seatsBooked;
 
     if (!Number.isInteger(requested) || requested < 1) throw new PooledTripError('Debes reservar al menos un puesto');
     if (requested > available) throw new PooledTripError(`Solo quedan ${available} puesto(s) disponible(s)`);
@@ -394,13 +505,33 @@ export async function bookSeats(
       },
     });
 
+    if (numerada) {
+      // Aquí es donde de verdad se decide quién se queda la silla. Dos
+      // compras simultáneas pasan las dos la validación de arriba —entre
+      // mirar y escribir hay milisegundos—, y es el índice único
+      // (tripId, seatNumber) el que deja fuera a la segunda. La transacción
+      // revierte entera, así que no queda una reserva sin sillas.
+      try {
+        await tx.seatAssignment.createMany({
+          data: sillas.map((n) => ({ tripId, seatNumber: n, bookingId: booking.id })),
+        });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          throw new PooledTripError(
+            'Alguien acaba de tomar una de esas sillas. Actualiza y elige otra.',
+          );
+        }
+        throw e;
+      }
+    }
+
     const newAvailable = available - requested;
     let updatedTrip = t;
     if (newAvailable <= 0) {
       updatedTrip = await tx.pooledTrip.update({
         where: { id: tripId },
         data: { status: 'FULL' },
-        include: { bookings: { where: { status: 'CONFIRMED' } } },
+        include: { bookings: { where: { status: 'CONFIRMED' } }, seatAssignments: true },
       });
     }
 
@@ -433,6 +564,15 @@ export async function cancelSeatBooking(clientId: string, bookingId: string): Pr
 
   await prisma.seatBooking.update({ where: { id: bookingId }, data: { status: 'CANCELLED' } });
 
+  // Y las SILLAS vuelven al mapa.
+  //
+  // La reserva se marca cancelada, no se borra —hay que poder auditar quién
+  // reservó y canceló—, pero las asignaciones sí se eliminan: si se quedaran,
+  // el cupo se liberaría (se cuenta por reservas CONFIRMED) mientras la silla
+  // seguiría pintada como vendida. La salida diría «quedan 3 libres» y no
+  // habría forma de comprar ninguna de las tres.
+  await prisma.seatAssignment.deleteMany({ where: { bookingId } });
+
   // Reopen if full trip now has freed seats
   let updatedTrip = trip;
   if (trip.status === 'FULL') {
@@ -446,7 +586,7 @@ export async function cancelSeatBooking(clientId: string, bookingId: string): Pr
   }
 
   const t = await prisma.pooledTrip.findUnique({
-    where: { id: b.tripId }, include: { bookings: true },
+    where: { id: b.tripId }, include: { bookings: true, seatAssignments: true },
   });
   if (!t) return null;
   const dto = _toDTO({ ...updatedTrip, ...t, bookings: t.bookings } as DbPooledTrip, false);
@@ -457,7 +597,7 @@ export async function cancelSeatBooking(clientId: string, bookingId: string): Pr
 export async function getClientBookings(clientId: string): Promise<Array<PooledTripDTO & { myBooking: SeatBookingDTO }>> {
   const bookings = await prisma.seatBooking.findMany({
     where: { userId: clientId, status: 'CONFIRMED' },
-    include: { trip: { include: { bookings: true } } },
+    include: { trip: { include: { bookings: true, seatAssignments: true } } },
     orderBy: { bookedAt: 'desc' },
   });
 

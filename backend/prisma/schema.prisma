@@ -372,6 +372,12 @@ enum VehicleType {
   TURBO   // camión mediano (NPR y similares)
   CAMION  // camión sencillo
   MULA    // tractocamión / articulado
+  // Pasajeros intermunicipal. Antes no existían: una empresa que mueve gente
+  // entre municipios no podía ni declarar con qué viaja, y sin eso no hay
+  // mapa de sillas que dibujar (ver `lib/mapa-asientos.ts`).
+  VAN     // tipo Hiace: 3 por fila, pasillo lateral
+  BUSETA  // 2+2 con la puerta partiendo la primera fila
+  BUS     // 2+2 corridas
 }
 
 // ── Negocios aliados ──────────────────────────────────────────────────────────
@@ -1045,6 +1051,15 @@ model PooledTrip {
   destination        String
   departureTime      DateTime
   totalSeats         Int
+  /// Con qué vehículo viaja, para dibujar el mapa de sillas. NULL = salida sin
+  /// numeración: se vende por cantidad de cupos, como se hacía antes de que
+  /// existiera la selección de silla. Las salidas ya publicadas se quedan así
+  /// a propósito — cambiarles el modo a mitad de venta dejaría a los que ya
+  /// compraron sin saber dónde se sientan.
+  seatType           VehicleType?
+  /// Filas de pasajeros del vehículo, que la empresa ajusta a su flota. NULL =
+  /// las del vehículo típico de ese tipo.
+  seatRows           Int?
   farePerSeat        Float
   maxFarePerSeat     Float
   allowFleet         Boolean          @default(false)
@@ -1059,12 +1074,40 @@ model PooledTrip {
   updatedAt          DateTime         @updatedAt
 
   bookings           SeatBooking[]
+  seatAssignments    SeatAssignment[]
 
   @@index([driverId])
   @@index([status])
   @@index([origin, destination])
   @@index([operatorId])
   @@map("pooled_trips")
+}
+
+/// Una silla vendida de una salida.
+///
+/// ⚠ ESTA TABLA ES LA GARANTÍA CONTRA LA DOBLE VENTA, no la comprobación en
+/// código. Dos personas comprando a la vez pasan las dos la validación —entre
+/// mirar y escribir hay milisegundos— y sin el índice único las dos se llevan
+/// la silla 7, se presentan al bus y la pelea es a bordo. Con él, la segunda
+/// choca contra la base y se le dice que elija otra.
+///
+/// Es una fila por silla, no un array en la reserva: un `String[]` no se puede
+/// hacer único por elemento en PostgreSQL, y esa es justo la garantía que hace
+/// falta. Mismo patrón que `FreightManifest.orderId`.
+model SeatAssignment {
+  id         String      @id @default(cuid())
+  tripId     String
+  seatNumber Int
+  bookingId  String
+
+  trip       PooledTrip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  booking    SeatBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime    @default(now())
+
+  @@unique([tripId, seatNumber])
+  @@index([bookingId])
+  @@map("seat_assignments")
 }
 
 model SeatBooking {
@@ -1081,6 +1124,9 @@ model SeatBooking {
 
   trip          PooledTrip        @relation(fields: [tripId], references: [id])
   user          User              @relation(fields: [userId], references: [id])
+  /// Qué sillas concretas le tocaron. Vacío en las salidas sin numeración,
+  /// donde `seatsBooked` sigue siendo todo lo que se sabe.
+  seats         SeatAssignment[]
 
   @@index([tripId])
   @@index([userId])

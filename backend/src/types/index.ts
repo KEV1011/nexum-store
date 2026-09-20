@@ -1112,6 +1112,13 @@ export interface PublishPooledTripDTO {
   allowFleet?: boolean; // passenger may book the whole vehicle at once
   /** Paradas intermedias opcionales (máx. 6). */
   stops?: TripStopDTO[];
+  /**
+   * Vehículo con el que viaja, para vender SILLA NUMERADA en vez de cupos.
+   * Omitirlo deja la salida como siempre: se venden puestos sin número.
+   */
+  seatType?: 'VAN' | 'BUSETA' | 'BUS';
+  /** Filas de pasajeros del vehículo. Sin él, las del típico de ese tipo. */
+  seatRows?: number;
 }
 
 /** A single passenger's booking on a pooled trip. */
@@ -1132,8 +1139,35 @@ export interface SeatBookingDTO {
 /** Client-supplied payload when reserving seats on a pooled trip. */
 export interface BookSeatsDTO {
   seatsBooked: number;
+  /**
+   * Sillas concretas, cuando la salida va numerada.
+   *
+   * Obligatorio si `PooledTrip.seatType` está puesto; ignorado si no, que es
+   * como siguen funcionando las salidas publicadas antes de que existiera la
+   * numeración. `seatsBooked` debe cuadrar con la cantidad.
+   */
+  seats?: number[];
   pickupAddress?: string;
   notes?: string;
+}
+
+/** Una celda del mapa de sillas, tal como la pinta la app. */
+export interface CeldaAsientoDTO {
+  tipo: 'silla' | 'pasillo' | 'vacio' | 'conductor' | 'puerta';
+  numero?: number;
+  /** Solo en las sillas: si ya se vendió. */
+  ocupada?: boolean;
+}
+
+/** El mapa completo de una salida numerada. */
+export interface MapaAsientosDTO {
+  tipo: string;
+  etiqueta: string;
+  columnas: number;
+  filas: CeldaAsientoDTO[][];
+  sillas: number;
+  libres: number;
+  ocupadas: number[];
 }
 
 /** Full pooled-trip view returned to drivers and passengers. */
@@ -1158,6 +1192,11 @@ export interface PooledTripDTO {
   notes?: string;
   /** Paradas intermedias de la salida ("pasa por"). */
   stops?: TripStopDTO[];
+  /**
+   * Mapa de sillas, solo si la salida va numerada. Ausente = se vende por
+   * cantidad de cupos y la app no debe pedir silla.
+   */
+  seatMap?: MapaAsientosDTO;
   distanceKm?: number;
   durationMinutes?: number;
   createdAt: string;
