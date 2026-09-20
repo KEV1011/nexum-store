@@ -13,10 +13,13 @@ import 'package:nexum_client/app/theme/zipa_tokens.dart';
 ///
 /// Lo que sí cambió: eran cuatro cajas blancas idénticas con un borde de un
 /// pelo, y de lejos la home se leía como un formulario. Ahora cada puerta
-/// tiene cuerpo —un velo de su propio tinte, la marca de agua de su glifo
-/// asomando por la esquina y el cuadro del icono con volumen— sin salirse de
-/// la paleta y sin un solo archivo de imagen. Todo es pintado: no hay
-/// ilustración que licenciar ni peso que descargar.
+/// tiene cuerpo —un velo de su propio tinte y el cuadro del icono con
+/// volumen— sin salirse de la paleta.
+///
+/// Dentro del cuadro va una ILUSTRACIÓN a color, no el glifo pintado. Se
+/// empezó con todo dibujado a mano para no depender de archivos, y el glifo
+/// sigue ahí como respaldo, pero en pantalla un taxi ilustrado se reconoce
+/// antes que una silueta de un solo tono y comunica a qué huele cada puerta.
 ///
 /// El subtítulo va acotado a tres palabras a propósito. En una rejilla de dos
 /// columnas, una frase más larga parte en tres líneas y descuadra la fila
@@ -40,9 +43,9 @@ class TarjetaServicio extends StatefulWidget {
   /// falta o no carga, la puerta se dibuja igual en vez de dejar un cuadro
   /// vacío en la primera pantalla de la app.
   ///
-  /// OJO con mezclar: un dibujo a color al lado de tres glifos monocromos se
-  /// nota. Mientras no las tengan todas, la que lo lleve debe ganarse la
-  /// diferencia.
+  /// Hoy las cuatro puertas la llevan, y así debe seguir: una ilustración a
+  /// color al lado de un glifo monocromo canta, y se vio en cuanto se montó
+  /// solo la de Envíos. O todas, o ninguna.
   final String? ilustracion;
 
   final ZipaTinte tinte;
