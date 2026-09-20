@@ -93,6 +93,10 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   const [numerarTipo, setNumerarTipo] = useState<'VAN' | 'BUSETA' | 'BUS'>('BUSETA')
   const [numerarFilas, setNumerarFilas] = useState('5')
   const [numerando, setNumerando] = useState<string | null>(null)
+  // El error de numerar va JUNTO a la fila: el `error` general se pinta arriba
+  // del todo, junto a «Publicar salida», y con la lista larga el operador
+  // pulsa y no ve nada.
+  const [numerarError, setNumerarError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -153,7 +157,13 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
     }
   }
 
-  async function cancel(id: string) {
+  async function cancel(id: string, pasajeros: number) {
+    // Cancelar es irreversible y le llega al pasajero. Sin preguntar, un clic
+    // de más en la fila equivocada deja gente sin viaje y sin explicación.
+    const aviso = pasajeros > 0
+      ? `Vas a cancelar esta salida. ${pasajeros} ${pasajeros === 1 ? 'pasajero ya compró' : 'pasajeros ya compraron'} su puesto y se les avisará. ¿Seguro?`
+      : 'Vas a cancelar esta salida. ¿Seguro?'
+    if (!confirm(aviso)) return
     setError(null)
     try {
       await api(`/operator/pool/${id}/cancel`, { method: 'POST' })
@@ -167,7 +177,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   // por cupo (no se le puede asignar una silla que no eligió) y ese motivo se
   // muestra tal cual: es lo único que la empresa puede accionar.
   async function numerar(id: string, tipo: string, filas: string) {
-    setError(null)
+    setNumerarError(null)
     setNumerando(id)
     try {
       await api(`/operator/pool/${id}/numerar`, {
@@ -177,7 +187,9 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
       setNumerarId(null)
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo numerar la salida.')
+      // El formulario se queda abierto con el motivo debajo: cerrarlo obligaría
+      // a volver a elegir el vehículo para leer por qué no se pudo.
+      setNumerarError(e instanceof Error ? e.message : 'No se pudo numerar la salida.')
     } finally {
       setNumerando(null)
     }
@@ -368,7 +380,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                   )}
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${st.cls}`}>{st.label}</span>
                   {cancellable && (
-                    <button onClick={() => cancel(t.id)} title="Cancelar salida"
+                    <button onClick={() => cancel(t.id, bookings.length)} title="Cancelar salida"
                       className="text-red-400 hover:text-red-600 transition-colors shrink-0">
                       <XCircle className="w-4 h-4" />
                     </button>
@@ -408,15 +420,18 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                           {numerando === t.id ? 'Numerando…' : 'Numerar'}
                         </button>
                         <button
-                          onClick={() => setNumerarId(null)}
+                          onClick={() => { setNumerarId(null); setNumerarError(null) }}
                           className="text-[11px] text-slate-400 hover:text-slate-600"
                         >
                           Cancelar
                         </button>
+                        {numerarError && (
+                          <p className="basis-full text-[11px] text-red-600">{numerarError}</p>
+                        )}
                       </div>
                     ) : (
                       <button
-                        onClick={() => setNumerarId(t.id)}
+                        onClick={() => { setNumerarId(t.id); setNumerarError(null) }}
                         className="text-[11px] font-semibold text-slate-500 hover:text-emerald-700"
                       >
                         Numerar sillas…

@@ -17,6 +17,7 @@ class PooledState {
     this.isLoadingBookings = false,
     this.hasSearched = false,
     this.error,
+    this.bookingsError,
   });
 
   final List<PooledTripEntity> searchResults;
@@ -26,6 +27,12 @@ class PooledState {
   final bool hasSearched;
   final String? error;
 
+  /// Por qué falló la última carga de «Mis reservas». Separado de `error`
+  /// —el de la búsqueda— porque si no, una lista vacía por fallo de red se
+  /// ve igual que no tener ninguna reserva, y quien SÍ compró creería que
+  /// se perdió.
+  final String? bookingsError;
+
   PooledState copyWith({
     List<PooledTripEntity>? searchResults,
     List<PooledTripEntity>? myBookings,
@@ -33,6 +40,7 @@ class PooledState {
     bool? isLoadingBookings,
     bool? hasSearched,
     String? error,
+    String? bookingsError,
   }) =>
       PooledState(
         searchResults: searchResults ?? this.searchResults,
@@ -41,6 +49,7 @@ class PooledState {
         isLoadingBookings: isLoadingBookings ?? this.isLoadingBookings,
         hasSearched: hasSearched ?? this.hasSearched,
         error: error,
+        bookingsError: bookingsError,
       );
 }
 
@@ -125,6 +134,30 @@ class PooledNotifier extends StateNotifier<PooledState> {
     }
   }
 
+  /// Relee UNA salida. Hace falta cuando el servidor rechaza la compra porque
+  /// alguien se adelantó con la silla: el mensaje dice «actualiza y elige
+  /// otra», y sin esto no hay nada que actualizar — el plano seguiría pintando
+  /// libre la silla que acaban de vender y el pasajero volvería a fallar.
+  Future<PooledTripEntity?> fetchTrip(String tripId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/client/intercity/pool/$tripId',
+      );
+      final data = res.data?['data'];
+      if (data is! Map<String, dynamic>) return null;
+      final trip = PooledTripEntity.fromJson(data);
+      // Se refresca también la lista de resultados: si el pasajero vuelve
+      // atrás, la tarjeta no puede seguir prometiendo los cupos de antes.
+      state = state.copyWith(searchResults: [
+        for (final t in state.searchResults)
+          if (t.id == trip.id) trip else t,
+      ]);
+      return trip;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── My bookings ────────────────────────────────────────────────────────────
 
   Future<void> loadMyBookings() async {
@@ -138,8 +171,19 @@ class PooledNotifier extends StateNotifier<PooledState> {
           .map(PooledTripEntity.fromJson)
           .toList();
       state = state.copyWith(myBookings: list, isLoadingBookings: false);
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      state = state.copyWith(
+        isLoadingBookings: false,
+        bookingsError: body is Map && body['error'] is String
+            ? body['error'] as String
+            : 'No pudimos cargar tus reservas. Revisa tu conexión.',
+      );
     } catch (_) {
-      state = state.copyWith(isLoadingBookings: false);
+      state = state.copyWith(
+        isLoadingBookings: false,
+        bookingsError: 'No pudimos cargar tus reservas.',
+      );
     }
   }
 

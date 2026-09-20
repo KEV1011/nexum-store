@@ -240,17 +240,24 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
   }
 
   Future<void> _openBookSheet(PooledTripEntity trip) async {
-    final booked = await showModalBottomSheet<bool>(
+    // `null` = cerró sin comprar. Una lista (aunque vacía) = compró; vacía
+    // significa salida por cupos, donde no hay silla que nombrar.
+    final compradas = await showModalBottomSheet<List<int>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _BookSeatsSheet(trip: trip),
     );
-    if (booked == true && mounted) {
+    if (compradas != null && mounted) {
       _runSearch();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('¡Reserva confirmada! La verás en "Mis reservas".'),
+        SnackBar(
+          content: Text(
+            compradas.isEmpty
+                ? '¡Reserva confirmada! La verás en "Mis reservas".'
+                : '¡Listo! ${compradas.length == 1 ? "Silla" : "Sillas"} '
+                    '${compradas.join(', ')}. Las verás en "Mis reservas".',
+          ),
           backgroundColor: AppColors.success,
         ),
       );
@@ -444,8 +451,15 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   /// único que se decide es CUÁNTOS puestos.
   final Set<int> _sillas = <int>{};
 
+  /// La salida releída tras un choque de sillas. Mientras es null se usa la
+  /// que llegó de la búsqueda; el `widget.trip` es una foto del momento en que
+  /// se abrió la hoja y no puede quedarse como única verdad.
+  PooledTripEntity? _fresco;
+
+  PooledTripEntity get _trip => _fresco ?? widget.trip;
+
   int get _maxSelectable {
-    final t = widget.trip;
+    final t = _trip;
     // Booking the whole vehicle is only allowed if the driver enabled fleet.
     if (t.allowFleet) return t.availableSeats;
     return t.availableSeats == t.totalSeats
@@ -464,9 +478,9 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
 
   Future<void> _confirm() async {
     setState(() => _submitting = true);
-    final mapa = widget.trip.seatMap;
+    final mapa = _trip.seatMap;
     final err = await ref.read(pooledProvider.notifier).bookSeats(
-          tripId: widget.trip.id,
+          tripId: _trip.id,
           // Con mapa, los puestos son las sillas elegidas: mandar otro número
           // sería pagar uno y ocupar tres.
           seats: mapa != null ? _sillas.length : _seats,
@@ -479,18 +493,43 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
     if (!mounted) return;
     if (err == null) {
       HapticFeedback.mediumImpact();
-      Navigator.of(context).pop(true);
-    } else {
-      setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err), backgroundColor: AppColors.error),
-      );
+      // Devuelve las sillas compradas (vacío = salida por cupos) para que la
+      // pantalla pueda decir CUÁL se llevó: es lo que va a buscar al subir.
+      final compradas = _sillas.toList()..sort();
+      Navigator.of(context).pop(compradas);
+      return;
     }
+
+    // Rechazo: en una salida numerada el motivo casi siempre es que alguien se
+    // adelantó, así que se relee el plano y se sueltan las sillas que ya no
+    // están. Sin esto el mensaje pide actualizar algo que no se puede.
+    if (mapa != null) {
+      final fresco = await ref.read(pooledProvider.notifier).fetchTrip(_trip.id);
+      if (!mounted) return;
+      if (fresco != null) {
+        // Las ocupadas se leen del propio plano en vez de guardarse aparte:
+        // un segundo listado acabaría discrepando del dibujo.
+        final ocupadas = <int>{
+          for (final fila in fresco.seatMap?.filas ?? const <List<CeldaAsiento>>[])
+            for (final c in fila)
+              if (c.ocupada && c.numero != null) c.numero!,
+        };
+        setState(() {
+          _fresco = fresco;
+          _sillas.removeWhere(ocupadas.contains);
+        });
+      }
+    }
+
+    setState(() => _submitting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(err), backgroundColor: AppColors.error),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final trip = widget.trip;
+    final trip = _trip;
     final puestos = trip.seatMap != null ? _sillas.length : _seats;
     final total = trip.farePerSeat * puestos;
     final maxSel = _maxSelectable;

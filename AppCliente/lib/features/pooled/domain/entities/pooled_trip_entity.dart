@@ -60,6 +60,7 @@ class SeatBookingEntity {
     required this.status,
     this.pickupAddress,
     this.notes,
+    this.seats = const [],
   });
 
   final String id;
@@ -70,6 +71,16 @@ class SeatBookingEntity {
   final String? pickupAddress;
   final String? notes;
 
+  /// Las sillas que le tocaron, en orden. Vacía en las salidas por cupos.
+  final List<int> seats;
+
+  /// Lo que hay que enseñarle al subir: «Silla 4» o «Sillas 3, 4». Sin
+  /// numeración cae a los puestos, que es lo único cierto ahí — un número
+  /// inventado lo sentaría donde no le toca.
+  String get seatLabel => seats.isEmpty
+      ? '$seatsBooked puesto${seatsBooked == 1 ? '' : 's'}'
+      : '${seats.length == 1 ? 'Silla' : 'Sillas'} ${seats.join(', ')}';
+
   factory SeatBookingEntity.fromJson(Map<String, dynamic> j) => SeatBookingEntity(
         id: j['id'] as String? ?? '',
         tripId: j['tripId'] as String? ?? '',
@@ -78,6 +89,10 @@ class SeatBookingEntity {
         status: j['status'] as String? ?? 'confirmed',
         pickupAddress: j['pickupAddress'] as String?,
         notes: j['notes'] as String?,
+        seats: [
+          for (final s in (j['seats'] as List<dynamic>? ?? const []))
+            if (s is num) s.toInt(),
+        ],
       );
 }
 

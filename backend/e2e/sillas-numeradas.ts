@@ -24,6 +24,7 @@ import {
   bookSeats,
   cancelSeatBooking,
   getPooledTripById,
+  getClientBookings,
   numerarPooledTrip,
   PooledTripError,
 } from '../src/services/intercity-pool.service';
@@ -197,6 +198,25 @@ async function main(): Promise<void> {
       });
       return r.booking.status === 'confirmed';
     })(),
+  );
+
+  // ── 4b. La silla LLEGA a quien la compró ──────────────────────────────
+  // El número se guardaba bien y no salía por ningún lado: ni en el recibo de
+  // la compra ni en «Mis reservas». El pasajero eligió ventana y en la
+  // terminal no tenía forma de saber cuál le tocó.
+  console.log('\n4b. El pasajero puede VER la silla que compró');
+  comprobar(
+    'la confirmación de compra trae las sillas',
+    JSON.stringify(r1.booking.seats) === JSON.stringify([3, 4]),
+    JSON.stringify(r1.booking.seats),
+  );
+  const misReservas = await getClientBookings(ana.id);
+  const reserva = misReservas.find((x) => x.myBooking.id === r1.booking.id);
+  comprobar('la reserva aparece en «Mis reservas»', reserva !== undefined);
+  comprobar(
+    'y ahí también trae las sillas, ordenadas',
+    JSON.stringify(reserva?.myBooking.seats) === JSON.stringify([3, 4]),
+    JSON.stringify(reserva?.myBooking.seats),
   );
 
   // ── 5. Cancelar devuelve la silla ─────────────────────────────────────

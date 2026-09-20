@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
@@ -27,9 +26,56 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
     );
   }
 
-  Future<void> _callDriver(String phone) async {
-    final uri = Uri.parse('tel:$phone');
-    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  /// Antes marcaba `tel:` con el teléfono que manda el backend, que viene
+  /// ENMASCARADO (`+57 •••• ••• 34`): el marcador se abría con un número que
+  /// no existe. El mismo barrido ya se hizo en intermunicipal y mandados; esta
+  /// pantalla se quedó fuera.
+  void _contactoProtegido(String referencia) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.lock_outline_rounded,
+                    color: _kPooledColor, size: 22),
+                SizedBox(width: 10),
+                Text('Contacto protegido',
+                    style:
+                        TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Por tu seguridad y la del conductor, el número real se mantiene '
+              'privado. Si necesitas coordinar la recogida, escríbenos desde '
+              'Ayuda y soporte y te ponemos en contacto.',
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+            ),
+            if (referencia.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Icon(Icons.phone_outlined,
+                      size: 18, color: context.textTertiaryColor),
+                  const SizedBox(width: 8),
+                  Text('Referencia: $referencia',
+                      style: TextStyle(
+                          fontSize: 13, color: context.textTertiaryColor)),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _cancel(PooledTripEntity trip) async {
@@ -40,7 +86,7 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('¿Cancelar reserva?'),
         content: Text(
-          'Vas a liberar tus ${booking.seatsBooked} puesto(s) en el viaje '
+          'Vas a liberar ${booking.seatLabel} en el viaje '
           '${trip.origin.displayName} → ${trip.destination.displayName}.',
         ),
         actions: [
@@ -79,7 +125,7 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
       body: state.isLoadingBookings
           ? const Center(child: CircularProgressIndicator(color: _kPooledColor))
           : state.myBookings.isEmpty
-              ? _empty()
+              ? _empty(state.bookingsError)
               : RefreshIndicator(
                   color: _kPooledColor,
                   onRefresh: () =>
@@ -90,7 +136,8 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (_, i) => _BookingCard(
                       trip: state.myBookings[i],
-                      onCall: () => _callDriver(state.myBookings[i].driverPhone),
+                      onCall: () =>
+                          _contactoProtegido(state.myBookings[i].driverPhone),
                       onCancel: () => _cancel(state.myBookings[i]),
                     ),
                   ),
@@ -98,16 +145,43 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
     );
   }
 
-  Widget _empty() => ListView(
+  /// Con `fallo` no se dice «no tienes reservas»: la lista está vacía porque
+  /// no se pudo preguntar, y a quien sí compró un puesto decirle que no tiene
+  /// ninguno es la peor respuesta posible. Se ofrece reintentar.
+  Widget _empty(String? fallo) => ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
         children: [
-          SizedBox(height: 100),
-          Icon(Icons.confirmation_number_outlined,
-              size: 64, color: context.textSecondaryColor),
-          SizedBox(height: 16),
-          Center(
-            child: Text('Aún no tienes reservas de viajes compartidos.',
-                style: TextStyle(color: context.textSecondaryColor)),
+          const SizedBox(height: 100),
+          Icon(
+            fallo != null
+                ? Icons.cloud_off_rounded
+                : Icons.confirmation_number_outlined,
+            size: 64,
+            color: context.textSecondaryColor,
           ),
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              fallo ?? 'Aún no tienes reservas de viajes compartidos.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: context.textSecondaryColor),
+            ),
+          ),
+          if (fallo != null) ...[
+            const SizedBox(height: 16),
+            Center(
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    ref.read(pooledProvider.notifier).loadMyBookings(),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _kPooledColor,
+                  side: const BorderSide(color: _kPooledColor),
+                ),
+                label: const Text('Reintentar'),
+              ),
+            ),
+          ],
         ],
       );
 }
@@ -171,8 +245,16 @@ class _BookingCard extends StatelessWidget {
           const SizedBox(height: 8),
           _row(context, Icons.schedule_rounded,
               '$timeLabel · ${t.day}/${t.month}/${t.year}'),
-          _row(context, Icons.event_seat_rounded,
-              '$seats puesto(s) · ${CurrencyFormatter.format(trip.farePerSeat * seats)}'),
+          // La silla va PRIMERO y destacada: es el dato que se busca con el
+          // bus delante, y decir «2 puestos» a quien eligió ventana obliga a
+          // preguntárselo al conductor.
+          _row(
+            context,
+            Icons.event_seat_rounded,
+            '${booking?.seatLabel ?? '$seats puesto${seats == 1 ? '' : 's'}'}'
+            ' · ${CurrencyFormatter.format(trip.farePerSeat * seats)}',
+            destacado: booking != null && booking.seats.isNotEmpty,
+          ),
           _row(context, Icons.directions_car_rounded,
               '${trip.driverName} · ${trip.vehicleDescription}'),
           if (booking?.pickupAddress != null && booking!.pickupAddress!.isNotEmpty)
@@ -183,12 +265,12 @@ class _BookingCard extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: onCall,
-                  icon: const Icon(Icons.phone_rounded, size: 18),
+                  icon: const Icon(Icons.shield_outlined, size: 18),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _kPooledColor,
                     side: const BorderSide(color: _kPooledColor),
                   ),
-                  label: const Text('Llamar'),
+                  label: const Text('Contacto'),
                 ),
               ),
               if (canCancel) ...[
@@ -212,16 +294,30 @@ class _BookingCard extends StatelessWidget {
     );
   }
 
-  Widget _row(BuildContext context, IconData icon, String text) => Padding(
+  Widget _row(
+    BuildContext context,
+    IconData icon,
+    String text, {
+    bool destacado = false,
+  }) =>
+      Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Row(
           children: [
-            Icon(icon, size: 15, color: context.textSecondaryColor),
+            Icon(icon,
+                size: 15,
+                color: destacado ? _kPooledColor : context.textSecondaryColor),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(text,
-                  style: TextStyle(
-                      fontSize: 13, color: context.textSecondaryColor)),
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: destacado ? 14 : 13,
+                  fontWeight: destacado ? FontWeight.w800 : FontWeight.normal,
+                  color:
+                      destacado ? _kPooledColor : context.textSecondaryColor,
+                ),
+              ),
             ),
           ],
         ),

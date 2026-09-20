@@ -615,7 +615,17 @@ export async function bookSeats(
     const tripDto = _toDTO(tripWithBooking, false);
     _notify(tripId, tripDto);
 
-    return { trip: tripDto, booking: _toBookingDTO(booking as DbSeatBooking) };
+    // La reserva vuelve CON sus sillas. `create` no devuelve las relaciones,
+    // así que sin esta relectura la confirmación de compra salía con la lista
+    // vacía: el pasajero acaba de elegir la 4 y el recibo le diría «1 puesto».
+    const conSillas = numerada
+      ? ((await tx.seatBooking.findUnique({
+          where: { id: booking.id },
+          include: { seats: true },
+        })) as DbSeatBooking)
+      : (booking as DbSeatBooking);
+
+    return { trip: tripDto, booking: _toBookingDTO(conSillas) };
   });
 }
 
@@ -669,7 +679,14 @@ export async function cancelSeatBooking(clientId: string, bookingId: string): Pr
 export async function getClientBookings(clientId: string): Promise<Array<PooledTripDTO & { myBooking: SeatBookingDTO }>> {
   const bookings = await prisma.seatBooking.findMany({
     where: { userId: clientId, status: 'CONFIRMED' },
-    include: { trip: { include: { bookings: { include: { seats: true } }, seatAssignments: true } } },
+    include: {
+      // `seats` en DOS niveles y no es repetición: el de abajo arma el mapa de
+      // la salida; ESTE es el de la reserva propia. Sin él, «Mis reservas» le
+      // decía «2 puestos» a quien había elegido ventana, que es justo el dato
+      // que va a necesitar en la terminal.
+      seats: true,
+      trip: { include: { bookings: { include: { seats: true } }, seatAssignments: true } },
+    },
     orderBy: { bookedAt: 'desc' },
   });
 
