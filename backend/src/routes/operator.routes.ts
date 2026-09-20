@@ -53,6 +53,7 @@ import {
 } from '../services/operator.service';
 import { isValidColombianPhone } from '../services/auth.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
+import { esTipoConSillas } from '../lib/mapa-asientos';
 import {
   ManifestError,
   createManifest,
@@ -641,14 +642,22 @@ router.post(
       vehicleDescription?: string;
       notes?: string;
       stops?: Array<{ name?: string; lat?: number; lng?: number; order?: number }>;
+      seatType?: string;
+      seatRows?: number;
     };
+    // Con silla numerada los puestos los dice el mapa del vehículo, así que
+    // `totalSeats` deja de ser obligatorio: pedirlo sería que la empresa
+    // escribiera un número que de todas formas se ignora.
+    const numerada = esTipoConSillas(b.seatType);
     if (
       !b.driverId || !b.origin || !b.destination || !b.departureTime ||
-      b.totalSeats === undefined || b.farePerSeat === undefined
+      (!numerada && b.totalSeats === undefined) || b.farePerSeat === undefined
     ) {
       res.status(400).json({
         success: false,
-        error: 'driverId, origin, destination, departureTime, totalSeats y farePerSeat son requeridos',
+        error: numerada
+          ? 'driverId, origin, destination, departureTime y farePerSeat son requeridos'
+          : 'driverId, origin, destination, departureTime, totalSeats y farePerSeat son requeridos',
       });
       return;
     }
@@ -686,9 +695,12 @@ router.post(
           origin: b.origin as IntercityCity,
           destination: b.destination as IntercityCity,
           departureTime: b.departureTime,
-          totalSeats: b.totalSeats,
+          totalSeats: b.totalSeats ?? 1,
           farePerSeat: b.farePerSeat,
           vehicleDescription,
+          ...(numerada
+            ? { seatType: b.seatType as 'VAN' | 'BUSETA' | 'BUS', seatRows: b.seatRows }
+            : {}),
           notes: b.notes,
           allowFleet: true,
           stops: (b.stops ?? []).map((st, i) => ({

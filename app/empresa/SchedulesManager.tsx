@@ -74,6 +74,10 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   const [dest, setDest] = useState('cucuta')
   const [departure, setDeparture] = useState('')
   const [seats, setSeats] = useState('4')
+  // Vehículo con el que viaja. '' = sin numerar, que es como se publicaba
+  // antes: se venden cupos sueltos y el pasajero no elige dónde se sienta.
+  const [seatType, setSeatType] = useState<'' | 'VAN' | 'BUSETA' | 'BUS'>('')
+  const [seatRows, setSeatRows] = useState('5')
   const [fare, setFare] = useState('22000')
   const [notes, setNotes] = useState('')
   // Paradas intermedias ("pasa por"): nombres de lugar, máx. 6.
@@ -114,8 +118,13 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           origin,
           destination: dest,
           departureTime: new Date(departure).toISOString(),
+          // Con vehículo declarado los puestos los pone el mapa de sillas; se
+          // manda igual por si el backend aún no tiene la numeración.
           totalSeats: Number(seats),
           farePerSeat: Number(fare),
+          ...(seatType
+            ? { seatType, seatRows: Number(seatRows) || undefined }
+            : {}),
           notes: notes.trim() || undefined,
           stops: stops.length > 0
             ? stops.map((name, i) => ({ name, order: i }))
@@ -178,10 +187,40 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
         <CityInput label="Origen" value={origin} onChange={setOrigin} municipios={municipios} />
         <CityInput label="Destino" value={dest} onChange={setDest} municipios={municipios} />
         <label className="block">
-          <span className="block text-[11px] font-semibold text-slate-500 mb-1">Puestos</span>
-          <input type="number" min={1} max={20} value={seats} onChange={(e) => setSeats(e.target.value)}
-            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm" />
+          <span className="block text-[11px] font-semibold text-slate-500 mb-1">Vehículo</span>
+          <select
+            value={seatType}
+            onChange={(e) => setSeatType(e.target.value as typeof seatType)}
+            className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm"
+          >
+            <option value="">Sin numerar (cupos)</option>
+            <option value="VAN">Van · silla numerada</option>
+            <option value="BUSETA">Buseta · silla numerada</option>
+            <option value="BUS">Bus · silla numerada</option>
+          </select>
         </label>
+        {seatType ? (
+          <label className="block">
+            <span className="block text-[11px] font-semibold text-slate-500 mb-1">
+              Filas de sillas
+            </span>
+            <input type="number" min={2} max={15} value={seatRows}
+              onChange={(e) => setSeatRows(e.target.value)}
+              className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm" />
+            {/* Los puestos NO se escriben aquí: los cuenta el mapa. Si la
+                empresa pusiera 20 en una van de 12 se venderían ocho sillas
+                que no existen, y el problema aparecería en la terminal. */}
+            <span className="block text-[10px] text-slate-400 mt-1">
+              Los puestos los cuenta el mapa de sillas
+            </span>
+          </label>
+        ) : (
+          <label className="block">
+            <span className="block text-[11px] font-semibold text-slate-500 mb-1">Puestos</span>
+            <input type="number" min={1} max={20} value={seats} onChange={(e) => setSeats(e.target.value)}
+              className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm" />
+          </label>
+        )}
         <label className="block">
           <span className="block text-[11px] font-semibold text-slate-500 mb-1">Tarifa por puesto (COP)</span>
           <input type="number" min={0} step={500} value={fare} onChange={(e) => setFare(e.target.value)}

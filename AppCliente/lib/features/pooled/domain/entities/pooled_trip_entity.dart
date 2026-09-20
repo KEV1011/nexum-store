@@ -82,6 +82,65 @@ class SeatBookingEntity {
 }
 
 /// Un viaje compartido publicado por un conductor particular.
+/// Una celda del mapa de sillas, tal como la manda el servidor.
+class CeldaAsiento {
+  const CeldaAsiento({required this.tipo, this.numero, this.ocupada = false});
+
+  /// silla · pasillo · vacio · conductor · puerta
+  final String tipo;
+  final int? numero;
+  final bool ocupada;
+
+  bool get esSilla => tipo == 'silla' && numero != null;
+
+  /// Sin casteos: un backend anterior a la numeración no manda estos campos, y
+  /// reventar aquí dejaría al pasajero sin poder ni ver la salida.
+  factory CeldaAsiento.fromJson(Map<String, dynamic> j) {
+    final n = j['numero'];
+    return CeldaAsiento(
+      tipo: j['tipo'] is String ? j['tipo'] as String : 'vacio',
+      numero: n is num ? n.toInt() : null,
+      ocupada: j['ocupada'] == true,
+    );
+  }
+}
+
+/// El mapa de sillas de una salida numerada.
+class MapaAsientos {
+  const MapaAsientos({
+    required this.etiqueta,
+    required this.columnas,
+    required this.filas,
+    required this.libres,
+  });
+
+  /// «Van», «Buseta», «Bus».
+  final String etiqueta;
+  final int columnas;
+  final List<List<CeldaAsiento>> filas;
+  final int libres;
+
+  static MapaAsientos? fromJson(Object? crudo) {
+    if (crudo is! Map) return null;
+    final filas = crudo['filas'];
+    if (filas is! List) return null;
+    final cols = crudo['columnas'];
+    return MapaAsientos(
+      etiqueta: crudo['etiqueta'] is String ? crudo['etiqueta'] as String : 'Vehículo',
+      columnas: cols is num ? cols.toInt() : 0,
+      filas: [
+        for (final f in filas)
+          if (f is List)
+            [
+              for (final c in f)
+                if (c is Map<String, dynamic>) CeldaAsiento.fromJson(c),
+            ],
+      ],
+      libres: crudo['libres'] is num ? (crudo['libres'] as num).toInt() : 0,
+    );
+  }
+}
+
 class PooledTripEntity {
   const PooledTripEntity({
     required this.id,
@@ -103,7 +162,12 @@ class PooledTripEntity {
     this.operatorName,
     this.stops = const [],
     this.myBooking,
+    this.seatMap,
   });
+
+  /// Mapa de sillas. Null = salida sin numerar: se compran cupos y no se
+  /// elige dónde se sienta uno, que es como funcionaban todas hasta ahora.
+  final MapaAsientos? seatMap;
 
   final String id;
   final String tripRef;
@@ -167,6 +231,7 @@ class PooledTripEntity {
             if (st is Map<String, dynamic> && st['name'] is String)
               st['name'] as String,
         ],
+        seatMap: MapaAsientos.fromJson(j['seatMap']),
         myBooking: j['myBooking'] is Map<String, dynamic>
             ? SeatBookingEntity.fromJson(j['myBooking'] as Map<String, dynamic>)
             : null,
@@ -196,5 +261,10 @@ class PooledTripEntity {
         operatorName: operatorName,
         stops: stops,
         myBooking: myBooking,
+        // Sin esta línea, cualquier copia —refrescar cupos, cambiar estado—
+        // dejaría la salida sin mapa y el pasajero vería desaparecer las
+        // sillas. Es el mismo descuido que en su día perdió el PIN del envío,
+        // y por eso hay una prueba que lo vigila.
+        seatMap: seatMap,
       );
 }

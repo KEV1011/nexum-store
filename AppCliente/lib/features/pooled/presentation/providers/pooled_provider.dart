@@ -97,6 +97,9 @@ class PooledNotifier extends StateNotifier<PooledState> {
   Future<String?> bookSeats({
     required String tripId,
     required int seats,
+    /// Números de silla, solo en las salidas numeradas. El servidor manda:
+    /// si la salida lleva mapa y esto va vacío, la rechaza.
+    List<int>? sillas,
     String? pickupAddress,
     String? notes,
   }) async {
@@ -105,6 +108,7 @@ class PooledNotifier extends StateNotifier<PooledState> {
         '/client/intercity/pool/$tripId/book',
         data: {
           'seatsBooked': seats,
+          if (sillas != null && sillas.isNotEmpty) 'seats': sillas,
           if (pickupAddress != null && pickupAddress.isNotEmpty)
             'pickupAddress': pickupAddress,
           if (notes != null && notes.isNotEmpty) 'notes': notes,

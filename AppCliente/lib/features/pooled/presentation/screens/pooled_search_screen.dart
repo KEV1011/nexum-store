@@ -9,6 +9,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart'
     show IntercityCity;
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
+import 'package:nexum_client/features/pooled/presentation/widgets/mapa_sillas.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
@@ -439,6 +440,10 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   final _notesCtrl = TextEditingController();
   bool _submitting = false;
 
+  /// Sillas elegidas en el mapa. Vacío en las salidas sin numerar, donde lo
+  /// único que se decide es CUÁNTOS puestos.
+  final Set<int> _sillas = <int>{};
+
   int get _maxSelectable {
     final t = widget.trip;
     // Booking the whole vehicle is only allowed if the driver enabled fleet.
@@ -459,9 +464,13 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
 
   Future<void> _confirm() async {
     setState(() => _submitting = true);
+    final mapa = widget.trip.seatMap;
     final err = await ref.read(pooledProvider.notifier).bookSeats(
           tripId: widget.trip.id,
-          seats: _seats,
+          // Con mapa, los puestos son las sillas elegidas: mandar otro número
+          // sería pagar uno y ocupar tres.
+          seats: mapa != null ? _sillas.length : _seats,
+          sillas: mapa != null ? _sillas.toList()..sort() : null,
           pickupAddress: _pickupCtrl.text.trim(),
           notes: _notesCtrl.text.trim(),
         );
@@ -480,7 +489,8 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   @override
   Widget build(BuildContext context) {
     final trip = widget.trip;
-    final total = trip.farePerSeat * _seats;
+    final puestos = trip.seatMap != null ? _sillas.length : _seats;
+    final total = trip.farePerSeat * puestos;
     final maxSel = _maxSelectable;
 
     return Padding(
@@ -513,27 +523,41 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                 style: TextStyle(color: context.textSecondaryColor, fontSize: 13)),
             const SizedBox(height: 20),
 
-            const Text('¿Cuántos puestos?',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _stepBtn(Icons.remove_rounded, _seats > 1, () {
-                  setState(() => _seats--);
+            if (trip.seatMap != null) ...[
+              const Text('Elige tu silla',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              MapaSillas(
+                mapa: trip.seatMap!,
+                seleccionadas: _sillas,
+                maximo: maxSel,
+                onToque: (n) => setState(() {
+                  if (!_sillas.remove(n)) _sillas.add(n);
                 }),
-                Expanded(
-                  child: Center(
-                    child: Text('$_seats',
-                        style: const TextStyle(
-                            fontSize: 28, fontWeight: FontWeight.w800)),
+              ),
+            ] else ...[
+              const Text('¿Cuántos puestos?',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _stepBtn(Icons.remove_rounded, _seats > 1, () {
+                    setState(() => _seats--);
+                  }),
+                  Expanded(
+                    child: Center(
+                      child: Text('$_seats',
+                          style: const TextStyle(
+                              fontSize: 28, fontWeight: FontWeight.w800)),
+                    ),
                   ),
-                ),
-                _stepBtn(Icons.add_rounded, _seats < maxSel, () {
-                  setState(() => _seats++);
-                }),
-              ],
-            ),
-            if (trip.allowFleet && _seats == trip.totalSeats)
+                  _stepBtn(Icons.add_rounded, _seats < maxSel, () {
+                    setState(() => _seats++);
+                  }),
+                ],
+              ),
+            ],
+            if (trip.allowFleet && trip.seatMap == null && _seats == trip.totalSeats)
               const Padding(
                 padding: EdgeInsets.only(top: 4),
                 child: Text('Reservando el vehículo completo (flete)',
@@ -591,7 +615,9 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               width: double.infinity,
               height: 52,
               child: ElevatedButton(
-                onPressed: _submitting ? null : _confirm,
+                onPressed: _submitting || (trip.seatMap != null && _sillas.isEmpty)
+                    ? null
+                    : _confirm,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kPooledColor,
                   foregroundColor: Colors.white,
