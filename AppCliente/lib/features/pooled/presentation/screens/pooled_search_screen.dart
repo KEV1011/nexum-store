@@ -470,7 +470,9 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
           // Con mapa, los puestos son las sillas elegidas: mandar otro número
           // sería pagar uno y ocupar tres.
           seats: mapa != null ? _sillas.length : _seats,
-          sillas: mapa != null ? _sillas.toList()..sort() : null,
+          // Los paréntesis son obligatorios: el cascada `..sort()` tiene menos
+          // precedencia que el ternario y sin ellos no compila.
+          sillas: mapa != null ? (_sillas.toList()..sort()) : null,
           pickupAddress: _pickupCtrl.text.trim(),
           notes: _notesCtrl.text.trim(),
         );
