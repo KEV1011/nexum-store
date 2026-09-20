@@ -122,10 +122,13 @@ def rasterizar(ruta: Path, alto_px: int) -> Image.Image:
 
 # ─── Recorte del fondo del repartidor ────────────────────────────────────────
 
-def quitar_fondo_oscuro(img: Image.Image, tolerancia: int = 40) -> Image.Image:
-    """Borra la región oscura CONECTADA a los bordes. Ver punto 5.
+def quitar_fondo(img: Image.Image, claro: bool, tolerancia: int = 24) -> Image.Image:
+    """Borra la región de fondo CONECTADA a los bordes. Ver punto 5.
 
-    No toca el negro interior del dibujo porque no se alcanza desde fuera.
+    `claro=True` para los originales sobre blanco, `False` para los que vienen
+    sobre negro. En los dos casos el color interior del dibujo sobrevive porque
+    no se alcanza desde fuera: los faros blancos del taxi están rodeados de
+    amarillo, y el pantalón negro del repartidor, de amarillo también.
     """
     img = img.convert('RGBA')
     ancho, alto = img.size
@@ -133,6 +136,8 @@ def quitar_fondo_oscuro(img: Image.Image, tolerancia: int = 40) -> Image.Image:
 
     def es_fondo(x: int, y: int) -> bool:
         r, g, b, _ = px[x, y]
+        if claro:
+            return r >= 255 - tolerancia and g >= 255 - tolerancia and b >= 255 - tolerancia
         return r <= tolerancia and g <= tolerancia and b <= tolerancia
 
     visto = bytearray(ancho * alto)
@@ -190,21 +195,44 @@ def exportar(img_1x: Image.Image, carpeta: str, nombre: str) -> None:
             img_1x.resize((lado, lado), Image.LANCZOS).save(destino / f'{nombre}.png')
 
 
+def _abrir(carpeta: str, nombre: str) -> Image.Image:
+    """El original de ese icono, venga como venga.
+
+    Conviven las dos fuentes a propósito: los primeros vinieron vectorizados
+    desde un PNG y los que se fueron reemplazando llegan ya como ilustración
+    limpia. Si existe un PNG o un WEBP con ese nombre, manda sobre el SVG —así
+    sustituir un dibujo es dejar el archivo nuevo, sin tocar el script.
+    """
+    base = RAIZ / 'disenio' / carpeta
+    for ext, claro in (('png', True), ('webp', None), ('jpg', True)):
+        p = base / f'{nombre}.{ext}'
+        if not p.exists():
+            continue
+        img = Image.open(p)
+        # El webp del repartidor vino sobre negro; los PNG, sobre blanco. Se
+        # mira una esquina en vez de fiarse del formato.
+        esquina = img.convert('RGB').getpixel((0, 0))
+        sobre_claro = claro if claro is not None else sum(esquina) > 382
+        return quitar_fondo(img, claro=sobre_claro)
+
+    svg = base / f'{nombre}.svg'
+    # Se rasteriza grande y se normaliza después: así el recorte al contenido
+    # trabaja con detalle y no con un dibujo ya pixelado.
+    return rasterizar(svg, alto_px=LADO * 6)
+
+
 def main() -> None:
     print('Categorías (vista frontal, para el selector)')
     for nombre, peso in PESO.items():
-        origen = RAIZ / 'disenio' / 'categorias' / f'{nombre}.svg'
-        # Se rasteriza grande y se normaliza después: así el recorte al
-        # contenido trabaja con detalle y no con un dibujo ya pixelado.
-        grande = rasterizar(origen, alto_px=LADO * 6)
-        exportar(a_cuadrado(grande, LADO, peso), 'categorias', nombre)
+        exportar(a_cuadrado(_abrir('categorias', nombre), LADO, peso),
+                 'categorias', nombre)
         print(f'  ✓ {nombre:11s} peso {peso}')
 
-    print('Servicios')
-    repartidor = quitar_fondo_oscuro(
-        Image.open(RAIZ / 'disenio' / 'servicios' / 'repartidor.webp'))
-    exportar(a_cuadrado(repartidor, LADO, 1.0), 'servicios', 'repartidor')
-    print('  ✓ repartidor')
+    print('Servicios (puertas del home)')
+    for nombre in ('repartidor', 'restaurantes'):
+        exportar(a_cuadrado(_abrir('servicios', nombre), LADO, 1.0),
+                 'servicios', nombre)
+        print(f'  ✓ {nombre}')
 
 
 if __name__ == '__main__':

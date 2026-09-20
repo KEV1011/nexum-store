@@ -356,6 +356,7 @@ class _RejillaServicios extends ConsumerWidget {
               Expanded(
                 child: TarjetaServicio(
                   icono: ZipaIconName.movilidad,
+                  ilustracion: 'assets/categorias/taxi.png',
                   tinte: ZipaTokens.movilidad,
                   titulo: 'Movilidad',
                   subtitulo: 'Taxi, moto, carro',
@@ -367,6 +368,7 @@ class _RejillaServicios extends ConsumerWidget {
               Expanded(
                 child: TarjetaServicio(
                   icono: ZipaIconName.restaurantes,
+                  ilustracion: 'assets/servicios/restaurantes.png',
                   tinte: ZipaTokens.restaurantes,
                   titulo: 'Restaurantes',
                   subtitulo: 'Comida a domicilio',
@@ -395,6 +397,7 @@ class _RejillaServicios extends ConsumerWidget {
               Expanded(
                 child: TarjetaServicio(
                   icono: ZipaIconName.intermunicipal,
+                  ilustracion: 'assets/categorias/bus.png',
                   tinte: ZipaTokens.intermunicipal,
                   titulo: 'Intermunicipal',
                   subtitulo: 'Viajes entre ciudades',

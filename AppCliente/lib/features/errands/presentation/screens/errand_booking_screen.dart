@@ -277,9 +277,14 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
           if (_category.usuallyBuys) ...[
             _Label('Presupuesto para compras'),
             const SizedBox(height: 4),
+            // Es un TOPE, no un anticipo. Decía «te devolvemos lo que sobre»,
+            // y eso solo sería cierto si el cliente hubiera entregado plata por
+            // adelantado — cosa que no pasa: paga al final el servicio más lo
+            // que costó de verdad. Prometer una devolución que nunca llega es
+            // de lo que peor sienta cuando toca pagar.
             Text(
-              'Cuánto autorizas gastar. Te devolvemos lo que sobre y '
-              'verás el costo real al final.',
+              'El máximo que autorizas gastar. Al recibir pagas el servicio '
+              'más lo que costó de verdad, nunca más de este tope.',
               style: TextStyle(fontSize: 11.5, color: context.textSecondaryColor),
             ),
             const SizedBox(height: 10),

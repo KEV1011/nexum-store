@@ -12,6 +12,7 @@ import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/map_pin.dart';
+import 'package:nexum_client/shared/widgets/punto_usuario.dart';
 
 /// Dirección elegida en el mapa: texto + coordenadas.
 class PickedPlace {
@@ -70,6 +71,12 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
   String _direccion = '';
   bool _resolviendo = false;
   bool _ubicando = false;
+
+  /// Dónde está el usuario, para pintarlo. Null mientras no se sepa — y ahí no
+  /// se dibuja nada: un punto azul en el centro de Pamplona cuando el GPS no
+  /// ha respondido diría que estás en el obelisco, que es justo el fallo que
+  /// ya se corrigió en el latido del conductor.
+  LatLng? _miPosicion;
 
   @override
   void initState() {
@@ -133,6 +140,7 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
       if (!mounted) return;
       final p = LatLng(pos.latitude, pos.longitude);
       _centro = p;
+      _miPosicion = p;
       _map.move(p, 17);
       await _resolverDireccion();
     } catch (_) {
@@ -161,7 +169,22 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
               initialZoom: 16.5,
               onPositionChanged: _onMapMoved,
             ),
-            children: const [GoogleMapTiles()],
+            children: [
+              const GoogleMapTiles(),
+              // Dónde estás tú. Va DEBAJO del pin del centro en el árbol para
+              // que, cuando coincidan, el que elige el punto quede encima.
+              if (_miPosicion != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _miPosicion!,
+                      width: PuntoUsuario.lado,
+                      height: PuntoUsuario.lado,
+                      child: const PuntoUsuario(),
+                    ),
+                  ],
+                ),
+            ],
           ),
 
           // Pin fijo al centro: se mueve el mapa, no el pin. Es el gesto que
