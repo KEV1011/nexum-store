@@ -690,16 +690,22 @@ class _CostCard extends StatelessWidget {
               ),
               highlight: hasActual,
             ),
+            // Aquí decía «Te devolvemos» con la diferencia entre el tope y lo
+            // que costó, y era falso: el cliente NO entrega plata por
+            // adelantado —no hay cobro previo en ninguna parte del backend—,
+            // así que no hay nada que devolver. Paga al final el servicio más
+            // el costo real, que es justo el «Total a pagar» de abajo.
+            //
+            // Se deja el tope a la vista porque sí es información útil —
+            // confirma que no se gastó de más— pero como referencia apagada,
+            // no como una plata que va a volver.
             if (hasActual &&
                 errand.actualPurchaseCost! < errand.purchaseBudget!) ...[
               const SizedBox(height: 8),
               _row(
                 context,
-                'Te devolvemos',
-                CurrencyFormatter.format(
-                  errand.purchaseBudget! - errand.actualPurchaseCost!,
-                ),
-                positive: true,
+                'Autorizaste hasta',
+                CurrencyFormatter.format(errand.purchaseBudget!),
               ),
             ],
           ],
@@ -724,7 +730,6 @@ class _CostCard extends StatelessWidget {
     String value, {
     bool isBold = false,
     bool highlight = false,
-    bool positive = false,
   }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -743,13 +748,11 @@ class _CostCard extends StatelessWidget {
           style: TextStyle(
             fontSize: isBold ? 17 : 13,
             fontWeight: isBold ? FontWeight.w800 : FontWeight.w600,
-            color: positive
-                ? AppColors.success
-                : isBold
-                    ? AppColors.primary
-                    : highlight
-                        ? AppColors.secondary
-                        : context.textPrimaryColor,
+            color: isBold
+                ? AppColors.primary
+                : highlight
+                    ? AppColors.secondary
+                    : context.textPrimaryColor,
           ),
         ),
       ],

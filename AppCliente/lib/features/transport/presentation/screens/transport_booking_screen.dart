@@ -1008,7 +1008,20 @@ class _ServiceHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _colorOf(serviceType);
-    final containerColor = _containerColorOf(serviceType);
+    // Mezclado con la superficie del tema, no el container fijo.
+    //
+    // `_containerColorOf` devuelve un pastel claro igual en los dos temas, y
+    // aquí debajo hay un subtítulo en `context.textSecondaryColor`: en tema
+    // oscuro salía texto claro sobre fondo claro. Mismo defecto que tenía la
+    // tarjeta de categoría seleccionada, escondido detrás de una variable —
+    // por eso el barrido que busca `AppColors.*Container` pegado al `color:`
+    // no lo encontró.
+    final containerColor = Color.alphaBlend(
+      _containerColorOf(serviceType).withValues(
+        alpha: Theme.of(context).brightness == Brightness.dark ? 0.16 : 1,
+      ),
+      context.surfaceVariantColor,
+    );
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1398,18 +1411,31 @@ class _CategoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final glyph = vehicleGlyphKindFor(opcion.categoria);
     final activa = opcion.disponible;
+    final oscuro = Theme.of(context).brightness == Brightness.dark;
     final acento = seleccionada
         ? AppColors.serviceParticular
         : context.textSecondaryColor;
+
+    // El fondo de la seleccionada se MEZCLA con la superficie del tema en vez
+    // de ser un color fijo.
+    //
+    // Era `AppColors.serviceParticularContainer`, un lavanda casi blanco fijo,
+    // con el texto en `context.textPrimaryColor`, que en tema oscuro es claro:
+    // el nombre de la categoría y EL PRECIO salían casi invisibles justo en la
+    // tarjeta que el pasajero acaba de tocar. Es la co-ocurrencia que la regla
+    // de contraste del repositorio prohíbe —fondo fijo con texto adaptativo en
+    // el mismo subárbol— y aquí costaba no poder leer lo que vas a pagar.
+    final fondoSeleccion = Color.alphaBlend(
+      AppColors.serviceParticular.withValues(alpha: oscuro ? 0.30 : 0.14),
+      context.surfaceVariantColor,
+    );
 
     return Opacity(
       // Apagada, no escondida: si desapareciera, el selector cambiaría de
       // tamaño solo cada vez que un conductor se conecta o se va.
       opacity: activa ? 1 : 0.45,
       child: Material(
-        color: seleccionada
-            ? AppColors.serviceParticularContainer
-            : context.surfaceVariantColor,
+        color: seleccionada ? fondoSeleccion : context.surfaceVariantColor,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: onTap,
