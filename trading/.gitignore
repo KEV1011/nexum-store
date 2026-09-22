@@ -1,0 +1,4 @@
+# Cache de velas descargadas: son datos, no codigo, y pesan.
+datos/
+__pycache__/
+*.pyc
