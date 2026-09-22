@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/zipa_vehiculos.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 
 /// El plano del vehículo para elegir dónde sentarse.
@@ -50,6 +51,24 @@ class MapaSillas extends StatelessWidget {
       children: [
         Row(
           children: [
+            // La silueta del vehículo REAL al lado del nombre: con «Buseta»
+            // escrito no se sabe si es la van de doce o el bus de cuarenta, y
+            // es lo primero que pregunta quien compra en una taquilla.
+            if (vehiculoDeTipo(mapa.tipo) != null) ...[
+              SizedBox(
+                width: 34,
+                height: 20,
+                child: CustomPaint(
+                  painter: ZipaVehiculoPainter(
+                    vehiculo: vehiculoDeTipo(mapa.tipo)!,
+                    cuerpo: AppColors.primary,
+                    hueco: context.surfaceColor,
+                    rueda: AppColors.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 7),
+            ],
             Text(
               mapa.etiqueta,
               style: TextStyle(

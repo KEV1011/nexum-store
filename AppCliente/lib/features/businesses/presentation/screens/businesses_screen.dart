@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/zipa_icon.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
+import 'package:nexum_client/app/theme/zipa_vehiculos.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
@@ -368,6 +369,13 @@ class _RejillaServicios extends ConsumerWidget {
               Expanded(
                 child: TarjetaServicio(
                   icono: ZipaIconName.restaurantes,
+                  // Dibujada, no PNG: la imagen que había eran cuatro objetos
+                  // superpuestos y a este tamaño era una mancha.
+                  dibujo: CustomPaint(
+                    painter: ZipaComidaPainter(
+                      color: ZipaTokens.restaurantes.glifo.de(context),
+                    ),
+                  ),
                   tinte: ZipaTokens.restaurantes,
                   titulo: 'Restaurantes',
                   subtitulo: 'Comida a domicilio',
@@ -396,6 +404,16 @@ class _RejillaServicios extends ConsumerWidget {
               Expanded(
                 child: TarjetaServicio(
                   icono: ZipaIconName.intermunicipal,
+                  // Las ventanas toman el color del FONDO del cuadro para que
+                  // se lean como aberturas y no como parches pegados encima.
+                  dibujo: CustomPaint(
+                    painter: ZipaVehiculoPainter(
+                      vehiculo: ZipaVehiculo.bus,
+                      cuerpo: ZipaTokens.intermunicipal.glifo.de(context),
+                      hueco: ZipaTokens.intermunicipal.fondo.de(context),
+                      rueda: ZipaTokens.intermunicipal.glifo.de(context),
+                    ),
+                  ),
                   tinte: ZipaTokens.intermunicipal,
                   titulo: 'Intermunicipal',
                   subtitulo: 'Viajes entre ciudades',

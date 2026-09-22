@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CalendarClock, Plus, XCircle, Loader2, Users, Bus } from 'lucide-react'
 import type { OperatorApi } from './api'
 import { useMunicipios } from './useMunicipios'
+import { SiluetaVehiculo, type TipoVehiculo } from './SiluetaVehiculo'
 import CityInput from './CityInput'
 import { formatCOP as formatCOP } from '../moneda'
 
@@ -43,7 +44,7 @@ interface PooledTripRow {
   status: string
   bookings?: SeatBookingRow[]
   /** Presente solo en las salidas con silla numerada. */
-  seatMap?: { etiqueta: string }
+  seatMap?: { etiqueta: string; tipo?: TipoVehiculo }
 }
 
 interface OperatorDriverRow {
@@ -240,6 +241,16 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
             <option value="BUSETA">Buseta · silla numerada</option>
             <option value="BUS">Bus · silla numerada</option>
           </select>
+          {/* La silueta de lo que se acaba de elegir, con los mismos números
+              que la app: la empresa ve aquí lo que verá el pasajero allí. */}
+          {seatType && (
+            <span className="mt-1.5 flex items-center gap-2">
+              <SiluetaVehiculo tipo={seatType} alto={20} />
+              <span className="text-[10px] text-slate-400">
+                Así lo verá el pasajero
+              </span>
+            </span>
+          )}
         </label>
         {seatType ? (
           <label className="block">
@@ -373,8 +384,16 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                   {t.seatMap && (
                     <span
                       title="El pasajero elige su silla en el plano del vehículo"
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-emerald-50 text-emerald-700"
+                      className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-emerald-50 text-emerald-700"
                     >
+                      {t.seatMap.tipo && (
+                        <SiluetaVehiculo
+                          tipo={t.seatMap.tipo}
+                          alto={13}
+                          cuerpo="#047857"
+                          hueco="#ECFDF5"
+                        />
+                      )}
                       {t.seatMap.etiqueta} numerada
                     </span>
                   )}

@@ -123,11 +123,16 @@ class CeldaAsiento {
 /// El mapa de sillas de una salida numerada.
 class MapaAsientos {
   const MapaAsientos({
+    required this.tipo,
     required this.etiqueta,
     required this.columnas,
     required this.filas,
     required this.libres,
   });
+
+  /// VAN · BUSETA · BUS. Es lo que elige la silueta que se dibuja; la
+  /// `etiqueta` es para leer, este es para pintar.
+  final String tipo;
 
   /// «Van», «Buseta», «Bus».
   final String etiqueta;
@@ -141,6 +146,7 @@ class MapaAsientos {
     if (filas is! List) return null;
     final cols = crudo['columnas'];
     return MapaAsientos(
+      tipo: crudo['tipo'] is String ? crudo['tipo'] as String : '',
       etiqueta: crudo['etiqueta'] is String ? crudo['etiqueta'] as String : 'Vehículo',
       columnas: cols is num ? cols.toInt() : 0,
       filas: [

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/zipa_vehiculos.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart'
@@ -316,9 +317,37 @@ class _TripCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: context.textPrimaryColor)),
               const SizedBox(height: 2),
-              Text('por puesto · ${trip.durationLabel}',
-                  style: TextStyle(
-                      fontSize: 12, color: context.textSecondaryColor)),
+              Row(
+                children: [
+                  Text('por puesto · ${trip.durationLabel}',
+                      style: TextStyle(
+                          fontSize: 12, color: context.textSecondaryColor)),
+                  // Con qué vehículo va la salida, antes de abrirla. Es lo que
+                  // decide entre dos salidas a la misma hora: nadie elige
+                  // «buseta» leyendo la palabra, la reconoce por la forma.
+                  if (vehiculoDeTipo(trip.seatMap?.tipo) != null) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 28,
+                      height: 16,
+                      child: CustomPaint(
+                        painter: ZipaVehiculoPainter(
+                          vehiculo: vehiculoDeTipo(trip.seatMap!.tipo)!,
+                          cuerpo: _kPooledColor,
+                          hueco: context.cardColor2,
+                          rueda: _kPooledColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(trip.seatMap!.etiqueta,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: context.textSecondaryColor)),
+                  ],
+                ],
+              ),
               const Divider(height: 20),
               // Salida oficial de empresa: sello de confianza (vs particular).
               if (trip.operatorName != null) ...[
