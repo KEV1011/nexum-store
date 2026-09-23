@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Chat } from './Chat'
+import { codigoDesdeHash } from './codigo-enlace'
 import { Direccion } from './Direccion'
 import { useViajeEnVivo } from './useViajeEnVivo'
 import {
@@ -69,15 +70,15 @@ export default function PedirPage() {
     let cancelado = false
 
     async function entrar() {
-      const hash = window.location.hash.replace(/^#/, '').trim()
-      if (hash) {
+      const codigo = codigoDesdeHash(window.location.hash)
+      if (codigo) {
         // Se limpia ANTES de canjear: si el canje falla, recargar no debe
         // reintentar un código quemado.
         window.history.replaceState(null, '', window.location.pathname)
         try {
           const r = await llamar<{ token: string; origen: { lat: number; lng: number; etiqueta: string | null } | null }>(
             '/client/auth/magic-link',
-            { method: 'POST', body: { code: hash } },
+            { method: 'POST', body: { code: codigo } },
           )
           if (cancelado) return
           guardarToken(r.token)
