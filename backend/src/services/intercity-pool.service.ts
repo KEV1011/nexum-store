@@ -41,10 +41,15 @@ export class PooledTripError extends Error {
 
 // ─── Enum mappings ─────────────────────────────────────────────────────────────
 
-const CITY_TO_PRISMA: Record<string, 'PAMPLONA' | 'CUCUTA' | 'BUCARAMANGA' | 'CHITAGA' | 'MALAGA' | 'OCANA' | 'BOGOTA'> = {
-  pamplona: 'PAMPLONA', cucuta: 'CUCUTA', bucaramanga: 'BUCARAMANGA',
-  chitaga: 'CHITAGA', malaga: 'MALAGA', ocana: 'OCANA', bogota: 'BOGOTA',
-};
+// La columna guarda el SLUG del municipio (ver model Municipality). Esto era un
+// mapa de los siete valores del enum viejo con `?? toUpperCase()` de respaldo,
+// que escribía 'PAMPLONA' y 'LOS-PATIOS' en una columna que la migración de
+// municipios ya había pasado a minúscula: las salidas publicadas antes de esa
+// migración dejaron de aparecer en la búsqueda del pasajero, porque en
+// PostgreSQL 'pamplona' <> 'PAMPLONA'. Mismo arreglo que intercity.service.
+const CITY_TO_PRISMA = new Proxy({} as Record<string, string>, {
+  get: (_t, slug: string) => slug,
+});
 
 const CITY_FROM_PRISMA: Record<string, IntercityCity> = {
   PAMPLONA: 'pamplona', CUCUTA: 'cucuta', BUCARAMANGA: 'bucaramanga',
@@ -275,8 +280,8 @@ export async function publishPooledTrip(
       driverName,
       driverPhone,
       vehicleDescription: dto.vehicleDescription,
-      origin: CITY_TO_PRISMA[dto.origin] ?? dto.origin.toUpperCase(),
-      destination: CITY_TO_PRISMA[dto.destination] ?? dto.destination.toUpperCase(),
+      origin: CITY_TO_PRISMA[dto.origin],
+      destination: CITY_TO_PRISMA[dto.destination],
       departureTime: departure,
       totalSeats,
       seatType: numerada ? (dto.seatType as TipoConSillas) : null,
@@ -458,8 +463,8 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
   const where: Record<string, unknown> = {
     status: 'OPEN',
     departureTime: { gt: now },
-    ...(query.origin && { origin: CITY_TO_PRISMA[query.origin] ?? query.origin.toUpperCase() }),
-    ...(query.destination && { destination: CITY_TO_PRISMA[query.destination] ?? query.destination.toUpperCase() }),
+    ...(query.origin && { origin: CITY_TO_PRISMA[query.origin] }),
+    ...(query.destination && { destination: CITY_TO_PRISMA[query.destination] }),
   };
 
   const trips = await prisma.pooledTrip.findMany({
