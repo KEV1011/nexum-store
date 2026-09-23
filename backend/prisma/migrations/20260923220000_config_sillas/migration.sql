@@ -1,0 +1,14 @@
+-- Distribución real del vehículo de cada empresa.
+--
+-- Hasta ahora el mapa de sillas salía de tres moldes cerrados (van 2+1,
+-- buseta y bus 2+2) con solo el número de filas ajustable, y eso hacía que la
+-- capacidad saltara de cuatro en cuatro: 6, 10, 14, 18, 22, 26… Las
+-- capacidades más comunes del transporte colombiano quedaban fuera — una
+-- buseta de 19 o 20 puestos y un bus de 40 o 44 no se podían publicar, así que
+-- la empresa tenía que declarar el número de al lado y o vendía sillas que no
+-- existen o dejaba dos sin vender.
+--
+-- Nullable a propósito: las salidas ya publicadas se quedan con su molde.
+-- Cambiarle el mapa a una salida a mitad de venta dejaría a quien ya compró
+-- sin saber dónde se sienta.
+ALTER TABLE "pooled_trips" ADD COLUMN "seatConfig" JSONB;

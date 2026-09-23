@@ -1060,6 +1060,14 @@ model PooledTrip {
   /// Filas de pasajeros del vehículo, que la empresa ajusta a su flota. NULL =
   /// las del vehículo típico de ese tipo.
   seatRows           Int?
+  /// Distribución real del vehículo de ESTA empresa: `{izquierda, derecha,
+  /// filas, frenteIzquierda?, frenteDerecha?, fondoCorrido?, bano?}`.
+  /// Ver `lib/mapa-asientos.ts`.
+  ///
+  /// NULL = la salida se publicó con el molde fijo del tipo, y se sigue
+  /// dibujando con él: cambiarle el mapa a una salida a mitad de venta dejaría
+  /// a quien ya compró sin saber dónde se sienta, y la discusión sería a bordo.
+  seatConfig         Json?
   farePerSeat        Float
   maxFarePerSeat     Float
   allowFleet         Boolean          @default(false)

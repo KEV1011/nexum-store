@@ -60,6 +60,67 @@ function formatWhen(iso: string): string {
   })
 }
 
+/** Una distribución posible del vehículo, con su mapa ya dibujado. */
+interface ConfigSillas {
+  izquierda: number
+  derecha: number
+  filas: number
+  frenteIzquierda?: number
+  frenteDerecha?: number
+  fondoCorrido?: number
+  bano?: 'izquierda' | 'derecha'
+}
+
+interface Disposicion {
+  config: ConfigSillas
+  mapa: {
+    columnas: number
+    sillas: number
+    filas: Array<Array<{ tipo: string; numero?: number }>>
+  }
+}
+
+/**
+ * El plano del vehículo en miniatura.
+ *
+ * Deliberadamente sin números: a este tamaño no se leen, y lo que la empresa
+ * está reconociendo es la FORMA de su vehículo — cuántas sillas van a cada
+ * lado del pasillo y si el fondo va corrido.
+ */
+function MapaMini({ mapa }: { mapa: Disposicion['mapa'] }) {
+  return (
+    <span
+      className="grid gap-[2px]"
+      style={{ gridTemplateColumns: `repeat(${mapa.columnas}, 7px)` }}
+    >
+      {mapa.filas.flatMap((fila, f) =>
+        fila.map((celda, c) => (
+          <span
+            key={`${f}-${c}`}
+            className={`h-[7px] w-[7px] rounded-[2px] ${
+              celda.tipo === 'silla'
+                ? 'bg-emerald-500'
+                : celda.tipo === 'conductor'
+                  ? 'bg-slate-400'
+                  : celda.tipo === 'puerta'
+                    ? 'bg-slate-300'
+                    : ''
+            }`}
+          />
+        )),
+      )}
+    </span>
+  )
+}
+
+/** Cómo se lee una disposición en una línea, para confirmar la elegida. */
+function descripcionConfig(c: ConfigSillas): string {
+  const partes = [`${c.izquierda}+${c.derecha}`, `${c.filas} filas`]
+  if (c.fondoCorrido) partes.push(`fondo de ${c.fondoCorrido}`)
+  if (c.bano) partes.push('con baño')
+  return partes.join(' · ')
+}
+
 /**
  * Salidas programadas de la empresa: publica horarios intermunicipales con
  * conductor afiliado, puestos y tarifa. El cliente los ve y reserva en
@@ -83,11 +144,54 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   // antes: se venden cupos sueltos y el pasajero no elige dónde se sienta.
   const [seatType, setSeatType] = useState<'' | 'VAN' | 'BUSETA' | 'BUS'>('')
   const [seatRows, setSeatRows] = useState('5')
+  // Cuántos puestos tiene el vehículo DE VERDAD. Es el dato que la empresa
+  // sabe de memoria; de cuántas filas de 2+2 se compone, no. Antes había que
+  // tantear las filas hasta que el número saliera — y con las capacidades más
+  // comunes (una buseta de 19, un bus de 40) no salía nunca, porque el molde
+  // fijo del tipo solo daba múltiplos de cuatro más dos.
+  const [puestosReales, setPuestosReales] = useState('')
+  const [disposiciones, setDisposiciones] = useState<Disposicion[] | null>(null)
+  const [buscandoDisp, setBuscandoDisp] = useState(false)
+  const [dispError, setDispError] = useState<string | null>(null)
+  const [seatConfig, setSeatConfig] = useState<ConfigSillas | null>(null)
   const [fare, setFare] = useState('22000')
   const [notes, setNotes] = useState('')
   // Paradas intermedias ("pasa por"): nombres de lugar, máx. 6.
   const [stops, setStops] = useState<string[]>([])
   const [stopDraft, setStopDraft] = useState('')
+
+  /**
+   * Qué disposiciones dan EXACTAMENTE los puestos que declaró la empresa.
+   *
+   * Si ninguna cuadra se dice, y no se aproxima al número de al lado: ese
+   * redondeo es justo el problema que esto viene a corregir — con una silla de
+   * más se vende un puesto que no existe, y con una de menos se deja de
+   * vender.
+   */
+  async function buscarDisposiciones() {
+    const n = Number(puestosReales)
+    if (!seatType || !Number.isFinite(n) || n < 1) return
+    setBuscandoDisp(true)
+    setDispError(null)
+    setDisposiciones(null)
+    try {
+      const r = await api<{ opciones: Disposicion[] }>(
+        `/operator/pool/disposiciones?tipo=${seatType}&sillas=${n}`,
+      )
+      const opciones = r?.opciones ?? []
+      setDisposiciones(opciones)
+      if (opciones.length === 0) {
+        setDispError(
+          `No hay ninguna distribución de ${n} puestos para ese tipo de vehículo. ` +
+          'Comprueba el número, o elige otro tipo.',
+        )
+      }
+    } catch (e) {
+      setDispError(e instanceof Error ? e.message : 'No se pudieron consultar las distribuciones.')
+    } finally {
+      setBuscandoDisp(false)
+    }
+  }
 
   // Numerar una salida ya publicada: qué salida se está editando y con qué.
   const [numerarId, setNumerarId] = useState<string | null>(null)
@@ -138,7 +242,12 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           totalSeats: Number(seats),
           farePerSeat: Number(fare),
           ...(seatType
-            ? { seatType, seatRows: Number(seatRows) || undefined }
+            ? {
+                seatType,
+                seatRows: Number(seatRows) || undefined,
+                // Sin disposición elegida se usa el molde del tipo, como antes.
+                ...(seatConfig ? { seatConfig } : {}),
+              }
             : {}),
           notes: notes.trim() || undefined,
           stops: stops.length > 0
@@ -255,16 +364,28 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
         {seatType ? (
           <label className="block">
             <span className="block text-[11px] font-semibold text-slate-500 mb-1">
-              Filas de sillas
+              ¿Cuántos puestos tiene?
             </span>
-            <input type="number" min={2} max={15} value={seatRows}
-              onChange={(e) => setSeatRows(e.target.value)}
-              className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm" />
-            {/* Los puestos NO se escriben aquí: los cuenta el mapa. Si la
-                empresa pusiera 20 en una van de 12 se venderían ocho sillas
-                que no existen, y el problema aparecería en la terminal. */}
+            <div className="flex gap-1.5">
+              <input
+                type="number" min={1} max={60} value={puestosReales}
+                placeholder="40"
+                onChange={(e) => { setPuestosReales(e.target.value); setSeatConfig(null); setDisposiciones(null) }}
+                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-sm"
+              />
+              <button
+                type="button"
+                onClick={buscarDisposiciones}
+                disabled={buscandoDisp || !puestosReales}
+                className="shrink-0 px-3 py-2 rounded-lg bg-slate-800 text-white text-xs font-semibold disabled:opacity-40"
+              >
+                {buscandoDisp ? '…' : 'Buscar'}
+              </button>
+            </div>
             <span className="block text-[10px] text-slate-400 mt-1">
-              Los puestos los cuenta el mapa de sillas
+              {seatConfig
+                ? `Disposición elegida · ${descripcionConfig(seatConfig)}`
+                : 'Los puestos los cuenta el mapa de sillas'}
             </span>
           </label>
         ) : (
@@ -329,6 +450,44 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           </div>
         )}
       </div>
+
+      {/* Elegir la disposición VIENDO el dibujo. «2+2, 10 filas, fondo de 4» no
+          le dice nada a nadie; el plano del vehículo sí, porque es el mismo que
+          va a ver su pasajero. */}
+      {dispError && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          {dispError}
+        </p>
+      )}
+      {disposiciones && disposiciones.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[11px] font-semibold text-slate-500 mb-2">
+            Elige la que se parece a tu vehículo · {disposiciones.length} de {puestosReales} puestos
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {disposiciones.map((d, i) => {
+              const elegida = seatConfig != null && descripcionConfig(seatConfig) === descripcionConfig(d.config)
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setSeatConfig(d.config)}
+                  className={`text-left p-2 rounded-lg border transition-colors ${
+                    elegida
+                      ? 'border-emerald-500 bg-emerald-50 ring-1 ring-emerald-500'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <MapaMini mapa={d.mapa} />
+                  <span className="block text-[10px] text-slate-600 mt-1.5 font-medium">
+                    {descripcionConfig(d.config)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
 

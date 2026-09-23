@@ -1119,6 +1119,22 @@ export interface PublishPooledTripDTO {
   seatType?: 'VAN' | 'BUSETA' | 'BUS';
   /** Filas de pasajeros del vehículo. Sin él, las del típico de ese tipo. */
   seatRows?: number;
+  /**
+   * Distribución real del vehículo de la empresa. Es lo que permite publicar
+   * las capacidades que de verdad ruedan —una buseta de 19 o un bus de 40—,
+   * que con el molde fijo del tipo no se podían representar.
+   *
+   * Sin declararla se usa el molde del tipo, como siempre.
+   */
+  seatConfig?: {
+    izquierda: number;
+    derecha: number;
+    filas: number;
+    frenteIzquierda?: number;
+    frenteDerecha?: number;
+    fondoCorrido?: number;
+    bano?: 'izquierda' | 'derecha';
+  };
 }
 
 /** A single passenger's booking on a pooled trip. */

@@ -20,8 +20,10 @@ import { prisma } from '../lib/prisma';
 import {
   esTipoConSillas,
   motivoParaNoReservar,
-  plantillaDe,
+  plantillaPara,
+  saneaConfigSillas,
   sillasLibres,
+  type ConfigSillas,
   type TipoConSillas,
 } from '../lib/mapa-asientos';
 import { maskPhone } from './safe-contact.service';
@@ -71,6 +73,7 @@ type DbPooledTrip = {
   operatorId?: string | null;
   seatType?: string | null;
   seatRows?: number | null;
+  seatConfig?: unknown;
   bookings?: DbSeatBooking[];
   seatAssignments?: { seatNumber: number; bookingId: string }[];
 };
@@ -116,9 +119,10 @@ function _mapaDe(t: DbPooledTrip): MapaAsientosDTO | undefined {
 
   const tipo = t.seatType as TipoConSillas;
   const filas = t.seatRows ?? undefined;
+  const config = saneaConfigSillas(t.seatConfig);
   const ocupadas = t.seatAssignments.map((a) => a.seatNumber);
   const tomadas = new Set(ocupadas);
-  const plantilla = plantillaDe(tipo, filas);
+  const plantilla = plantillaPara(tipo, filas, config);
 
   return {
     tipo,
@@ -132,7 +136,7 @@ function _mapaDe(t: DbPooledTrip): MapaAsientosDTO | undefined {
       ),
     ),
     sillas: plantilla.sillas,
-    libres: sillasLibres(tipo, ocupadas, filas),
+    libres: sillasLibres(tipo, ocupadas, filas, config),
     ocupadas,
   };
 }
@@ -268,8 +272,11 @@ export async function publishPooledTrip(
   // si la empresa escribiera 20 en una van de 12, se venderían ocho sillas que
   // no existen y la pelea sería en la terminal.
   const numerada = esTipoConSillas(dto.seatType);
+  const configSillas: ConfigSillas | null = numerada
+    ? saneaConfigSillas((dto as { seatConfig?: unknown }).seatConfig)
+    : null;
   const totalSeats = numerada
-    ? plantillaDe(dto.seatType as TipoConSillas, dto.seatRows).sillas
+    ? plantillaPara(dto.seatType as TipoConSillas, dto.seatRows, configSillas).sillas
     : dto.totalSeats;
 
   const tripRef = `NXP-${Math.floor(1000 + Math.random() * 8000)}`;
@@ -286,6 +293,7 @@ export async function publishPooledTrip(
       totalSeats,
       seatType: numerada ? (dto.seatType as TipoConSillas) : null,
       seatRows: numerada ? (dto.seatRows ?? null) : null,
+      seatConfig: configSillas ? (configSillas as unknown as Prisma.InputJsonObject) : Prisma.DbNull,
       farePerSeat: dto.farePerSeat,
       maxFarePerSeat: maxFare,
       allowFleet: dto.allowFleet ?? false,
@@ -371,7 +379,7 @@ export async function numerarPooledTrip(
     );
   }
 
-  const plantilla = plantillaDe(seatType as TipoConSillas, seatRows);
+  const plantilla = plantillaPara(seatType as TipoConSillas, seatRows);
   const updated = await prisma.pooledTrip.update({
     where: { id: tripId },
     // Los puestos los dice el mapa, igual que al publicar: dejar el número
@@ -555,6 +563,10 @@ export async function bookSeats(
       const motivo = motivoParaNoReservar({
         tipo: t.seatType as TipoConSillas,
         filas: t.seatRows ?? undefined,
+        // La MISMA configuración con la que se dibujó el mapa. Si aquí se
+        // validara contra el molde del tipo, el pasajero tocaría la silla 40
+        // de su bus de 40 y el servidor le diría que no existe.
+        config: saneaConfigSillas((t as { seatConfig?: unknown }).seatConfig),
         pedidas: sillas,
         ocupadas,
       });

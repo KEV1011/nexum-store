@@ -54,7 +54,12 @@ import {
 } from '../services/operator.service';
 import { isValidColombianPhone } from '../services/auth.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
-import { esTipoConSillas } from '../lib/mapa-asientos';
+import {
+  configuracionesPara,
+  esTipoConSillas,
+  plantillaDeConfig,
+  saneaConfigSillas,
+} from '../lib/mapa-asientos';
 import {
   ManifestError,
   createManifest,
@@ -645,6 +650,7 @@ router.post(
       stops?: Array<{ name?: string; lat?: number; lng?: number; order?: number }>;
       seatType?: string;
       seatRows?: number;
+      seatConfig?: unknown;
     };
     // Con silla numerada los puestos los dice el mapa del vehículo, así que
     // `totalSeats` deja de ser obligatorio: pedirlo sería que la empresa
@@ -700,7 +706,15 @@ router.post(
           farePerSeat: b.farePerSeat,
           vehicleDescription,
           ...(numerada
-            ? { seatType: b.seatType as 'VAN' | 'BUSETA' | 'BUS', seatRows: b.seatRows }
+            ? {
+                seatType: b.seatType as 'VAN' | 'BUSETA' | 'BUS',
+                seatRows: b.seatRows,
+                // La distribución real del vehículo de la empresa. Sin ella se
+                // usa el molde del tipo, como se venía haciendo.
+                ...(saneaConfigSillas(b.seatConfig)
+                  ? { seatConfig: saneaConfigSillas(b.seatConfig)! }
+                  : {}),
+              }
             : {}),
           notes: b.notes,
           allowFleet: true,
@@ -720,6 +734,37 @@ router.post(
     }
   },
 );
+
+// GET /operator/pool/disposiciones?tipo=BUS&sillas=40
+//
+// Qué distribuciones dan EXACTAMENTE esa capacidad, con su mapa dibujado.
+//
+// Es lo que hace usable el formulario: la empresa sabe que su bus tiene 40
+// puestos, no de cuántas filas de 2+2 se compone. Antes tenía que tantear el
+// número de filas hasta que saliera — y con las capacidades más comunes no
+// salía nunca, porque el molde fijo solo daba múltiplos de cuatro más dos.
+router.get('/pool/disposiciones', async (req: Request, res: Response): Promise<void> => {
+  const tipo = String(req.query['tipo'] ?? '');
+  const sillas = Number(req.query['sillas']);
+
+  if (!esTipoConSillas(tipo)) {
+    res.status(400).json({ success: false, error: 'Tipo de vehículo no válido.' });
+    return;
+  }
+  if (!Number.isFinite(sillas) || sillas < 1) {
+    res.status(400).json({ success: false, error: 'Dinos cuántos puestos tiene el vehículo.' });
+    return;
+  }
+
+  const opciones = configuracionesPara(tipo, sillas).map((config) => ({
+    config,
+    // El mapa va con cada opción para que la empresa ELIJA VIENDO el dibujo y
+    // no leyendo «2+2, 10 filas, fondo 4», que no le dice nada a nadie.
+    mapa: plantillaDeConfig(tipo, config),
+  }));
+
+  res.json({ success: true, data: { sillas, opciones } });
+});
 
 // POST /operator/pool/:id/numerar — pasa una salida por cupos a silla numerada
 // (o corrige el vehículo de una numerada que aún nadie compró).
