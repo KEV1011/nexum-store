@@ -42,10 +42,11 @@ router.get('/municipios', async (req: Request, res: Response) => {
 
 // GET /geo/zona?lat=&lng= — con qué nombre se presenta la marca ahí.
 //
-// En Pamplona la app dice «ZIPA/SANTURBÁN» y no «ZIPA» a secas: el operador de
-// allí quiere que se note que la plataforma es de su tierra, y en un pueblo eso
-// pesa más que un nombre genérico. ZIPA crecerá a otras ciudades, así que la
-// zona sale de la tabla de municipios, no de un `if` con el nombre dentro.
+// Hoy devuelve siempre «ZIPA»: la zona de Pamplona («ZIPA/SANTURBÁN») se retiró
+// y ninguna fila de `municipalities` tiene `zone`. La ruta NO es código muerto
+// aunque la app nueva ya no la pinte — las instaladas guardan la última zona
+// conocida en el teléfono y solo la olvidan cuando esta ruta les contesta que
+// no hay ninguna. Quitarla dejaría «ZIPA/SANTURBÁN» pegado en esos teléfonos.
 //
 // Público y sin datos personales: son unas coordenadas a cambio de un nombre.
 // Y sin geocodificador: se resuelve por el centroide más cercano de la tabla ya

@@ -38,7 +38,12 @@ const RETENTION_DAYS = Number(process.env['TRACK_RETENTION_DAYS'] ?? 90);
 /** Distancia bajo la cual se considera que el vehículo estuvo detenido. */
 const STOPPED_DIST_M = 100;
 
-export type TrackServiceKind = 'trip' | 'intercity' | 'freight' | 'cargo';
+/**
+ * `pooled` es la salida programada en bus. Era el ÚNICO servicio que quedaba
+ * fuera del rastro: un bus con cuarenta pasajeros no dejaba recorrido, no
+ * generaba alerta de desvío y su pasajero no podía ver dónde iba.
+ */
+export type TrackServiceKind = 'trip' | 'intercity' | 'freight' | 'cargo' | 'pooled';
 
 // ── Estado en memoria: último punto GRABADO por conductor ─────────────────────
 

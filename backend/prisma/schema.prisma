@@ -18,51 +18,51 @@ datasource db {
 // ── Usuarios (clientes) ───────────────────────────────────────────────────────
 
 model User {
-  id          String    @id @default(cuid())
-  phone       String    @unique
-  name        String?
-  email       String?   @unique
-  avatarUrl   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  isActive    Boolean   @default(true)
+  id        String    @id @default(cuid())
+  phone     String    @unique
+  name      String?
+  email     String?   @unique
+  avatarUrl String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  isActive  Boolean   @default(true)
   // Cuenta borrada a petición del titular (App Store / Play exigen poder
   // hacerlo desde la app). NO se borra la fila: sus viajes liquidados son la
   // contabilidad del conductor y de la empresa, y desaparecerían con ella. Se
   // anonimiza — teléfono a un valor lápida, nombre/email/foto fuera — y esta
   // fecha deja constancia de cuándo y de que fue el titular quien lo pidió.
-  deletedAt   DateTime?
+  deletedAt DateTime?
 
   // Verificación de identidad del pasajero (anti-fraude/anti-robo). Mismo modelo
   // env-gated que el KYC del conductor. El conductor ve "cliente verificado".
-  kycStatus         KycStatus @default(PENDING)
-  kycProvider       String?
-  kycReference      String?
-  kycCheckedAt      DateTime?
-  selfieUrl         String?
+  kycStatus    KycStatus @default(PENDING)
+  kycProvider  String?
+  kycReference String?
+  kycCheckedAt DateTime?
+  selfieUrl    String?
 
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
-  fcmToken    String?
+  fcmToken String?
 
   /// Reputación del pasajero, promediada de los viajes que sus conductores
   /// calificaron. Null mientras nadie lo haya calificado — el conductor ve
   /// «Nuevo», no un 5,0 escrito a mano como hasta ahora.
-  rating         Float?
-  ratingCount    Int      @default(0)
+  rating      Float?
+  ratingCount Int    @default(0)
 
   // Trusted contact for the SOS / share-trip safety features.
   trustedContactName  String?
   trustedContactPhone String?
 
   // Programa de referidos: código propio para compartir y quién lo refirió.
-  referralCode  String? @unique
-  referredById  String?
-  referredBy    User?   @relation("UserReferrals", fields: [referredById], references: [id])
-  referrals     User[]  @relation("UserReferrals")
+  referralCode String? @unique
+  referredById String?
+  referredBy   User?   @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals    User[]  @relation("UserReferrals")
 
   addresses         Address[]
   orders            Order[]
-  trips             Trip[]            @relation("TripPassenger")
+  trips             Trip[]             @relation("TripPassenger")
   errands           Errand[]
   intercityBookings IntercityBooking[]
   seatBookings      SeatBooking[]
@@ -84,29 +84,37 @@ enum PromoScope {
   ALL
   TRIPS
   ORDERS
+  /// Pasajes de salidas intermunicipales. Solo lo emiten las empresas: ver
+  /// `lib/cupon-pasaje.ts` para por qué un cupón de plataforma no puede
+  /// aplicarse mientras el pasaje no se pague por la app.
+  INTERCITY
 }
 
 model PromoCode {
-  id             String      @id @default(cuid())
-  code           String      @unique
+  id             String     @id @default(cuid())
+  code           String     @unique
   description    String?
   type           PromoType
   /// PERCENT: 1–100; FIXED: monto en COP.
   value          Float
-  scope          PromoScope  @default(ALL)
-  minAmount      Float       @default(0)
+  scope          PromoScope @default(ALL)
+  minAmount      Float      @default(0)
   /// Tope del descuento en COP para cupones PERCENT (null = sin tope).
   maxDiscount    Float?
   /// null = sin límite global de canjes.
   maxRedemptions Int?
-  perUserLimit   Int         @default(1)
+  perUserLimit   Int        @default(1)
   expiresAt      DateTime?
-  active         Boolean     @default(true)
+  active         Boolean    @default(true)
   /// Teléfono del admin que lo creó, o "referral" para los generados por referidos.
   createdBy      String?
   /// Si es un cupón personal, solo este usuario puede canjearlo.
   ownerUserId    String?
-  createdAt      DateTime    @default(now())
+  /// Empresa que lo emitió y que asume el descuento. NULL = cupón de la
+  /// plataforma, que lo absorbe con su comisión. Un cupón de empresa solo vale
+  /// en las salidas de ESA empresa.
+  operatorId     String?
+  createdAt      DateTime   @default(now())
 
   redemptions PromoRedemption[]
 
@@ -141,8 +149,8 @@ model OtpSession {
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  driverId  String?
-  driver    Driver?  @relation(fields: [driverId], references: [id])
+  driverId String?
+  driver   Driver? @relation(fields: [driverId], references: [id])
   // Sin relación a User por `phone`: el OTP es para login/registro y el número
   // puede no existir aún en `users`. La FK otp_sessions_phone_fkey rompía el
   // envío de OTP para cualquier teléfono no registrado.
@@ -154,84 +162,84 @@ model OtpSession {
 // ── Conductores ───────────────────────────────────────────────────────────────
 
 model Driver {
-  id                String       @id @default(cuid())
-  phone             String       @unique
-  name              String
-  email             String?      @unique
-  avatarUrl         String?
-  documentType      String?
-  documentNumber    String?      @unique
-  licenseNumber     String?      @unique
-  status            DriverStatus @default(OFFLINE)
-  isVerified        Boolean      @default(false)
+  id                  String           @id @default(cuid())
+  phone               String           @unique
+  name                String
+  email               String?          @unique
+  avatarUrl           String?
+  documentType        String?
+  documentNumber      String?          @unique
+  licenseNumber       String?          @unique
+  status              DriverStatus     @default(OFFLINE)
+  isVerified          Boolean          @default(false)
   // ── KYC / verificación de identidad ──────────────────────────────────────
   // isVerified = documentos aprobados; kycStatus = identidad validada (cédula/
   // licencia contra registros + selfie/liveness). Un conductor está "habilitado
   // para conducir" solo si AMBOS pasan (gating activable con KYC_ENFORCE).
-  kycStatus         KycStatus    @default(PENDING)
-  kycProvider       String?      // 'manual' | 'truora' | ... (quién validó)
-  kycReference      String?      // id de la verificación del proveedor
-  kycCheckedAt      DateTime?
-  selfieUrl         String?      // foto selfie para comparación/liveness
+  kycStatus           KycStatus        @default(PENDING)
+  kycProvider         String? // 'manual' | 'truora' | ... (quién validó)
+  kycReference        String? // id de la verificación del proveedor
+  kycCheckedAt        DateTime?
+  selfieUrl           String? // foto selfie para comparación/liveness
   // ── Antecedentes (env-gated) ─────────────────────────────────────────────
-  backgroundStatus     BackgroundStatus @default(UNCHECKED)
-  backgroundProvider   String?
-  backgroundReference  String?
-  backgroundCheckedAt  DateTime?
+  backgroundStatus    BackgroundStatus @default(UNCHECKED)
+  backgroundProvider  String?
+  backgroundReference String?
+  backgroundCheckedAt DateTime?
   // Antifraude: contador de eventos GPS sospechosos (saltos/velocidad imposible).
-  fraudFlags        Int          @default(0)
+  fraudFlags          Int              @default(0)
   // ── Kill-switch documental ───────────────────────────────────────────────
   // Estado calculado por el chequeo diario de vencimientos (document-expiry):
   // BLOCKED = algún documento obligatorio vencido. blockedReason lista cuáles.
-  complianceStatus  ComplianceStatus @default(CLEAR)
-  blockedReason     String?
-  blockedAt         DateTime?
+  complianceStatus    ComplianceStatus @default(CLEAR)
+  blockedReason       String?
+  blockedAt           DateTime?
   // Disponibilidad para recibir solicitudes de viajes intermunicipales.
   // Default TRUE (paridad con el urbano): un conductor ONLINE recibe
   // intermunicipales salvo que lo apague en Preferencias de servicio.
-  intercityEnabled  Boolean      @default(true)
+  intercityEnabled    Boolean          @default(true)
   // Preferencias de servicio: qué tipos de solicitud recibe el conductor.
   // El matching las respeta al elegir candidatos (default: todo activo).
-  acceptsTrips      Boolean      @default(true)
-  acceptsErrands    Boolean      @default(true)
-  acceptsOrders     Boolean      @default(true)
+  acceptsTrips        Boolean          @default(true)
+  acceptsErrands      Boolean          @default(true)
+  acceptsOrders       Boolean          @default(true)
   // Viajes encadenados: recibir la siguiente solicitud mientras se termina la
   // actual, ya cerca del destino (como Uber y DiDi). Sin esto el conductor
   // llega a dejar al pasajero y no ve el servicio que acaba de salir a la
   // vuelta de la esquina. Se puede apagar: hay quien prefiere cerrar un viaje
   // antes de pensar en el siguiente.
-  acceptsChained    Boolean      @default(true)
+  acceptsChained      Boolean          @default(true)
   // Token FCM del dispositivo para notificaciones push (null = sin registrar).
-  fcmToken          String?
+  fcmToken            String?
   /// Reputación REAL, promediada de los viajes que los pasajeros calificaron.
   /// Null mientras nadie lo haya calificado — antes era `@default(5.0)` y
   /// NADIE la escribía nunca, así que todos los conductores enseñaban el mismo
   /// cinco de fábrica al pasajero que decidía si subirse a su carro.
-  rating            Float?
-  ratingCount       Int          @default(0)
-  totalTrips        Int          @default(0)
-  bio               String?
-  bankName          String?
-  bankAccountType   String?
-  bankAccountNumber String?
+  rating              Float?
+  ratingCount         Int              @default(0)
+  totalTrips          Int              @default(0)
+  bio                 String?
+  bankName            String?
+  bankAccountType     String?
+  bankAccountNumber   String?
   // Afiliación a una empresa de transporte (null = conductor independiente).
-  operatorId        String?
-  employmentType    EmploymentType?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  operatorId          String?
+  employmentType      EmploymentType?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
   // Cuenta borrada a petición del titular. Ver el comentario en User.deletedAt:
   // se anonimiza en vez de borrarse porque sus viajes liquidados sostienen la
   // liquidación de la empresa, las cuentas de cobro y los remitos firmados.
-  deletedAt         DateTime?
+  deletedAt           DateTime?
 
   // Trusted contact for the SOS / share-trip safety features.
   trustedContactName  String?
   trustedContactPhone String?
 
   // Última posición conocida
-  lastLat       Float?
-  lastLng       Float?
-  lastSeenAt    DateTime?
+  lastLat    Float?
+  lastLng    Float?
+  lastSeenAt DateTime?
 
   // Posición geográfica para matching por cercanía (PostGIS).
   // Prisma no soporta tipos PostGIS de forma nativa: la columna se declara como
@@ -239,21 +247,21 @@ model Driver {
   // se CONSULTA exclusivamente vía SQL raw (ST_MakePoint / ST_DWithin / ST_Distance)
   // desde matching.service.ts. El índice GIST y la columna se crean en la
   // migración manual `add_postgis`.
-  geo               Unsupported("geography(Point, 4326)")?
+  geo Unsupported("geography(Point, 4326)")?
 
-  vehicles      Vehicle[]
-  trips         Trip[]
-  otpSessions   OtpSession[]
-  earnings      DriverEarning[]
-  documents     DriverDocument[]
-  emergencyEvents EmergencyEvent[]
-  payouts         Payout[]
-  operator         Operator?        @relation(fields: [operatorId], references: [id])
+  vehicles         Vehicle[]
+  trips            Trip[]
+  otpSessions      OtpSession[]
+  earnings         DriverEarning[]
+  documents        DriverDocument[]
+  emergencyEvents  EmergencyEvent[]
+  payouts          Payout[]
+  operator         Operator?         @relation(fields: [operatorId], references: [id])
   fleetAssignments FleetAssignment[]
 
   // Plaza donde se le vio por última vez, refrescada con el latido. A
   // diferencia de la del viaje, esta NO es historia: dice dónde está hoy.
-  citySlug          String?
+  citySlug String?
 
   @@index([status])
   @@index([operatorId])
@@ -283,7 +291,7 @@ model DriverDocument {
   uploadedAt      DateTime       @default(now())
   reviewedAt      DateTime?
 
-  driver          Driver         @relation(fields: [driverId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
 
   @@unique([driverId, type])
   @@index([driverId])
@@ -306,10 +314,10 @@ enum DocumentStatus {
 }
 
 enum KycStatus {
-  PENDING      // aún no envía verificación de identidad
-  IN_REVIEW    // enviada; en revisión (proveedor o admin manual)
-  VERIFIED     // identidad confirmada
-  REJECTED     // no pasó la verificación
+  PENDING // aún no envía verificación de identidad
+  IN_REVIEW // enviada; en revisión (proveedor o admin manual)
+  VERIFIED // identidad confirmada
+  REJECTED // no pasó la verificación
 }
 
 // Cumplimiento documental del conductor (kill-switch de documentos vencidos).
@@ -333,30 +341,30 @@ enum BackgroundStatus {
 }
 
 model Vehicle {
-  id           String      @id @default(cuid())
-  driverId     String
-  type         VehicleType
-  brand        String
-  model        String
-  year         Int
-  plate        String      @unique
-  color        String
-  isActive     Boolean     @default(true)
+  id                  String      @id @default(cuid())
+  driverId            String
+  type                VehicleType
+  brand               String
+  model               String
+  year                Int
+  plate               String      @unique
+  color               String
+  isActive            Boolean     @default(true)
   // Flota de empresa (null = vehículo de conductor independiente).
-  operatorId      String?
-  operationCardNo String?   // tarjeta de operación (taxi/intermunicipal)
-  capacity        Int?      // # de pasajeros
-  capacityKg      Int?      // capacidad de carga en kg (turbo/camión/mula)
-  internalCode    String?   // "móvil 042" interno de la empresa
+  operatorId          String?
+  operationCardNo     String? // tarjeta de operación (taxi/intermunicipal)
+  capacity            Int? // # de pasajeros
+  capacityKg          Int? // capacidad de carga en kg (turbo/camión/mula)
+  internalCode        String? // "móvil 042" interno de la empresa
   // ── Documentos y cumplimiento ────────────────────────────────────────────
-  photoUrl            String?   // foto del vehículo
+  photoUrl            String? // foto del vehículo
   soatExpiry          DateTime? // vencimiento del SOAT
   rtmExpiry           DateTime? // vencimiento de la revisión técnico-mecánica
   operationCardExpiry DateTime? // vencimiento de la tarjeta de operación
-  createdAt    DateTime    @default(now())
+  createdAt           DateTime    @default(now())
 
-  driver       Driver      @relation(fields: [driverId], references: [id])
-  trips        Trip[]
+  driver           Driver            @relation(fields: [driverId], references: [id])
+  trips            Trip[]
   operator         Operator?         @relation(fields: [operatorId], references: [id])
   fleetAssignments FleetAssignment[]
 
@@ -369,77 +377,83 @@ enum VehicleType {
   TAXI
   MOTO
   // Vehículos de carga (empresas de transporte de mercancía / acarreos).
-  TURBO   // camión mediano (NPR y similares)
-  CAMION  // camión sencillo
-  MULA    // tractocamión / articulado
+  TURBO // camión mediano (NPR y similares)
+  CAMION // camión sencillo
+  MULA // tractocamión / articulado
+  // Pasajeros intermunicipal. Antes no existían: una empresa que mueve gente
+  // entre municipios no podía ni declarar con qué viaja, y sin eso no hay
+  // mapa de sillas que dibujar (ver `lib/mapa-asientos.ts`).
+  VAN // tipo Hiace: 3 por fila, pasillo lateral
+  BUSETA // 2+2 con la puerta partiendo la primera fila
+  BUS // 2+2 corridas
 }
 
 // ── Negocios aliados ──────────────────────────────────────────────────────────
 
 model Business {
-  id           String           @id @default(cuid())
-  name         String
-  ownerName    String?
-  category     BusinessCategory
-  address      String
-  lat          Float?
-  lng          Float?
-  phone        String?
-  whatsapp     String?
-  rating       Float?
+  id              String           @id @default(cuid())
+  name            String
+  ownerName       String?
+  category        BusinessCategory
+  address         String
+  lat             Float?
+  lng             Float?
+  phone           String?
+  whatsapp        String?
+  rating          Float?
   /// Promoción de la tienda: «$descuento comprando $mínimo». Las dos o
   /// ninguna. El MISMO cálculo (`promoDeTienda`) alimenta el banner y el
   /// cobro, para que la pantalla no prometa lo que la caja no aplica.
-  promoMinAmount Int?
-  promoDiscount  Int?
+  promoMinAmount  Int?
+  promoDiscount   Int?
   /// Vigencia de la promoción. Null = siempre. Con fecha, se apaga SOLA —
   /// un «solo este fin de semana» que hay que acordarse de quitar el lunes
   /// sigue puesto en marzo.
-  promoFrom      DateTime?
-  promoUntil     DateTime?
+  promoFrom       DateTime?
+  promoUntil      DateTime?
   /// Horario estructurado: [{dia:0-6, abre:"HH:MM", cierra:"HH:MM"}].
   /// Vacío/null = sin horario declarado ⇒ se considera SIEMPRE abierta, que
   /// es como se comportaban los negocios ya registrados. `openingHours` (texto
   /// libre) se conserva para los que aún no lo han declarado.
-  hours          Json?
+  hours           Json?
   /// Pausa temporal que se levanta sola. Distinta de apagar el interruptor:
   /// la cocina copada para media hora, no cierra el día.
-  pausedUntil    DateTime?
-  pauseReason    String?
+  pausedUntil     DateTime?
+  pauseReason     String?
   /// Reputación REAL. `rating` es null mientras nadie haya calificado — antes
   /// era 5.0 por defecto y la app enseñaba una nota que nadie dio.
-  ratingCount    Int              @default(0)
-  etaMinutes   Int              @default(30)
-  deliveryFee  Float            @default(2500)
+  ratingCount     Int              @default(0)
+  etaMinutes      Int              @default(30)
+  deliveryFee     Float            @default(2500)
   // isOpen = cuenta activa (gate de acceso al portal, lo controla el admin/registro).
-  isOpen       Boolean          @default(true)
+  isOpen          Boolean          @default(true)
   // acceptingOrders = vitrina abierta/cerrada (pausa de pedidos que el dueño
   // controla desde el portal). Distinto de isOpen para no perder el acceso al
   // portal al cerrar. Cerrado = el negocio se ve como "Cerrado" y no toma pedidos.
-  acceptingOrders Boolean       @default(true)
+  acceptingOrders Boolean          @default(true)
   // Horario de atención en texto libre (ej: "Lun-Sáb 8am-9pm"). Informativo.
-  openingHours String?
+  openingHours    String?
 
   /// La plaza del comercio, con EL MISMO criterio que la de viajes y
   /// conductores (`plazaDeCoordenadas`: centroide más cercano, 40 km). Si aquí
   /// se usara otro, un pedido podría ser «de Cúcuta» para el comercio y «de
   /// otra parte» para el tablero.
-  citySlug     String?
+  citySlug  String?
   /// A qué otras ciudades despacha, a qué precio y en cuánto tiempo.
   /// `[{city, fee, etaHours}]` — ver `lib/destinos-envio.ts`.
   /// VACÍA SIGNIFICA «A NINGUNA», que es como nacen todos los comercios ya
   /// registrados: lo contrario habría abierto de golpe el catálogo local a
   /// todo el país el día del despliegue.
-  shipsTo      Json?
+  shipsTo   Json?
   // Foto de portada del local (subida por el dueño desde el portal). Null = sin
   // portada (el cliente cae al color/ícono de la categoría).
-  imageUrl     String?
-  token        String           @unique @default(cuid())
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  imageUrl  String?
+  token     String   @unique @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  products     Product[]
-  orders       Order[]
+  products Product[]
+  orders   Order[]
 
   @@index([category])
   @@map("businesses")
@@ -453,35 +467,35 @@ enum BusinessCategory {
 }
 
 model Product {
-  id           String   @id @default(cuid())
-  businessId   String
-  name         String
-  description  String?
-  price        Float
+  id             String   @id @default(cuid())
+  businessId     String
+  name           String
+  description    String?
+  price          Float
   /// Precio ANTES de la rebaja, para el tachado. Null = sin descuento.
   /// Se valida al guardar (`saneaPrecioAntes`): un «antes» inflado no es una
   /// decisión de precio, es publicidad engañosa.
   compareAtPrice Float?
-  category     String   @default("General")
+  category       String   @default("General")
   /// Orden dentro de la carta. Una carta se lee en un orden concreto —
   /// entradas antes que postres— y por fecha de creación salen mezclados.
   /// Las secciones se ordenan por el menor sortOrder de sus productos, así
   /// que ordenar productos ordena también la carta.
-  sortOrder    Int      @default(0)
+  sortOrder      Int      @default(0)
   // Foto de portada (primera/principal). La galería adicional vive en `photos`.
-  imageUrl     String?
-  isAvailable  Boolean  @default(true)
+  imageUrl       String?
+  isAvailable    Boolean  @default(true)
   // ── Inventario (supermercados y farmacias) ────────────────────────────────
   // Todo opcional: un restaurante no lleva código de barras ni stock, y con
   // estos campos en null se comporta exactamente como antes.
-  barcode      String?  // EAN-13 / UPC impreso en el empaque
-  sku          String?  // código interno del negocio
+  barcode        String? // EAN-13 / UPC impreso en el empaque
+  sku            String? // código interno del negocio
   /// null = el negocio NO controla inventario de este producto (caso
   /// restaurante: la cocina decide). Un número sí se descuenta al vender.
-  stock        Int?
-  unit         String?  // 'unidad' | 'kg' | 'g' | 'litro' | 'libra'
-  brand        String?
-  createdAt    DateTime @default(now())
+  stock          Int?
+  unit           String? // 'unidad' | 'kg' | 'g' | 'litro' | 'libra'
+  brand          String?
+  createdAt      DateTime @default(now())
 
   business     Business       @relation(fields: [businessId], references: [id])
   orderLines   OrderLine[]
@@ -499,17 +513,17 @@ model Product {
 // "Quitar"). `minSelect`/`maxSelect` controlan cuántas opciones puede elegir el
 // cliente (maxSelect=1 → selección única tipo radio; >1 → múltiple tipo check).
 model OptionGroup {
-  id         String   @id @default(cuid())
-  productId  String
-  name       String
-  required   Boolean  @default(false)
-  minSelect  Int      @default(0)
-  maxSelect  Int      @default(1)
-  sortOrder  Int      @default(0)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  productId String
+  name      String
+  required  Boolean  @default(false)
+  minSelect Int      @default(0)
+  maxSelect Int      @default(1)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
 
-  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  options    ProductOption[]
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options ProductOption[]
 
   @@index([productId])
   @@map("option_groups")
@@ -518,14 +532,14 @@ model OptionGroup {
 // Una opción dentro de un grupo (ej: "Grande" +3000, "+Queso" +2000,
 // "Sin cebolla" +0). `priceDelta` se suma al precio base del producto.
 model ProductOption {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   groupId     String
   name        String
-  priceDelta  Float    @default(0)
-  isAvailable Boolean  @default(true)
-  sortOrder   Int      @default(0)
+  priceDelta  Float   @default(0)
+  isAvailable Boolean @default(true)
+  sortOrder   Int     @default(0)
 
-  group       OptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group OptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@index([groupId])
   @@map("product_options")
@@ -533,13 +547,13 @@ model ProductOption {
 
 // Galería de fotos adicionales de un producto (además de `Product.imageUrl`).
 model ProductPhoto {
-  id         String   @id @default(cuid())
-  productId  String
-  url        String
-  sortOrder  Int      @default(0)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
 
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@map("product_photos")
@@ -548,31 +562,31 @@ model ProductPhoto {
 // ── Pedidos de domicilio ──────────────────────────────────────────────────────
 
 model Order {
-  id               String      @id @default(cuid())
-  orderRef         String      @unique
-  userId           String?
-  businessId       String
-  driverId         String?
+  id              String      @id @default(cuid())
+  orderRef        String      @unique
+  userId          String?
+  businessId      String
+  driverId        String?
   // Empresa del conductor al momento de aceptar (sellado para liquidación).
-  operatorId       String?
-  status           OrderStatus @default(CONFIRMED)
-  deliveryAddress  String
-  deliveryLat      Float?
-  deliveryLng      Float?
+  operatorId      String?
+  status          OrderStatus @default(CONFIRMED)
+  deliveryAddress String
+  deliveryLat     Float?
+  deliveryLng     Float?
 
   /// Plaza del comercio y plaza de la dirección de entrega, SELLADAS al crear.
   /// Se guardan en vez de leerse del comercio al consultar porque si mañana el
   /// dueño corrige su ubicación, el pedido de ayer no puede cambiar de ciudad.
-  originCitySlug   String?
-  destCitySlug     String?
+  originCitySlug String?
+  destCitySlug   String?
   /// Si este pedido se VENDIÓ como envío a otra ciudad. Es una decisión sellada,
   /// no una derivación: con `destCitySlug` sin resolver, un pedido cobrado como
   /// intermunicipal se convertiría en local al recargarlo.
-  isIntercity      Boolean     @default(false)
+  isIntercity    Boolean @default(false)
   /// Lo que el comercio cobró por el tramo intermunicipal. Va aparte de
   /// `deliveryFee` a propósito: ese es el pago del repartidor urbano y no puede
   /// mezclarse con el flete.
-  intercityFee     Float?
+  intercityFee   Float?
 
   /// El cliente pidió que se la lleven hasta la puerta en la ciudad de destino,
   /// en vez de recogerla él en la taquilla.
@@ -581,19 +595,19 @@ model Order {
   /// `deliveryFee` (que en un envío intermunicipal paga al repartidor de
   /// DESTINO, no al de origen — en origen el comercio lleva la caja a la
   /// terminal y no hay repartidor que pagar).
-  lastMile         Boolean     @default(false)
+  lastMile Boolean   @default(false)
   /// Dónde se entregó la encomienda en la ciudad de destino: el punto real
   /// donde el conductor del bus firmó el acta, tomado de su GPS. Es el origen
   /// del repartidor de última milla — no se inventa una dirección de terminal
   /// que nadie declaró.
-  hubLat           Float?
-  hubLng           Float?
-  hubAt            DateTime?
+  hubLat   Float?
+  hubLng   Float?
+  hubAt    DateTime?
 
   /// Cuándo se prometió la entrega, calculado al crear con la hora de corte de
   /// bodega del destino. `etaMinutes` no sirve para esto: «doce horas» dicho a
   /// las cinco de la tarde, con el bus de las cuatro ya ido, es mentira.
-  promisedAt       DateTime?
+  promisedAt DateTime?
 
   subtotal         Float
   /// Descuento de la promoción de la tienda, SELLADO al crear el pedido: se
@@ -620,24 +634,24 @@ model Order {
   deliveryPin      String?
   pickupPinAt      DateTime?
   deliveryPinAt    DateTime?
-  hasSignature     Boolean     @default(false)
+  hasSignature     Boolean   @default(false)
   customerName     String?
   driverName       String?
   driverPhone      String?
-  tipAmount        Float       @default(0)
-  tipPaid          Boolean     @default(false)
+  tipAmount        Float     @default(0)
+  tipPaid          Boolean   @default(false)
   rating           Int?
   ratingComment    String?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   pickedUpAt       DateTime?
   deliveredAt      DateTime?
 
   /// Remito con el que viaja, si es una encomienda ya subida a un despacho.
-  manifest         FreightManifest?
-  user             User?       @relation(fields: [userId], references: [id])
-  business         Business    @relation(fields: [businessId], references: [id])
-  lines            OrderLine[]
+  manifest FreightManifest?
+  user     User?            @relation(fields: [userId], references: [id])
+  business Business         @relation(fields: [businessId], references: [id])
+  lines    OrderLine[]
 
   @@index([userId])
   @@index([driverId])
@@ -665,13 +679,13 @@ enum OrderStatus {
 }
 
 model OrderLine {
-  id          String  @id @default(cuid())
-  orderId     String
-  productId   String
-  productName String
-  quantity    Int
-  unitPrice   Float
-  subtotal    Float
+  id             String   @id @default(cuid())
+  orderId        String
+  productId      String
+  productName    String
+  quantity       Int
+  unitPrice      Float
+  subtotal       Float
   // Resumen legible de las opciones elegidas (ej: "Grande · +Queso · Sin cebolla").
   // El `unitPrice` ya incluye los deltas de esas opciones.
   //
@@ -683,13 +697,13 @@ model OrderLine {
   /// presentación. Con esto el servidor recalcula el precio, rechaza una
   /// opción que el negocio acaba de agotar, y el restaurante puede saber
   /// cuántas veces le pidieron extra queso.
-  optionIds   String[]
+  optionIds      String[]
   /// Lo que en el mostrador se dice de viva voz: "sin cebolla", "bien cocida".
   /// Va a la cocina tal cual.
-  notes       String?
+  notes          String?
 
-  order       Order   @relation(fields: [orderId], references: [id])
-  product     Product @relation(fields: [productId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
 
   @@map("order_lines")
 }
@@ -697,13 +711,13 @@ model OrderLine {
 // ── Viajes de movilidad ───────────────────────────────────────────────────────
 
 model Trip {
-  id                 String          @id @default(cuid())
-  requestRef         String          @unique
+  id                 String        @id @default(cuid())
+  requestRef         String        @unique
   passengerId        String?
   driverId           String?
   vehicleId          String?
   serviceType        TransportType
-  status             TripStatus      @default(SEARCHING)
+  status             TripStatus    @default(SEARCHING)
   originAddress      String
   originLat          Float
   originLng          Float
@@ -715,7 +729,7 @@ model Trip {
   // valide y lea los tres igual.
   stops              Json?
   estimatedFare      Float
-  surgeMultiplier    Float           @default(1.0)
+  surgeMultiplier    Float         @default(1.0)
   /// Cómo acordó pagar el pasajero. Los valores los define `lib/metodos-pago`.
   /// Null = efectivo (viajes anteriores a este campo). Salvo 'en_linea', que sí
   /// cobra Wompi, el dinero se mueve entre pasajero y conductor y la comisión
@@ -753,30 +767,35 @@ model Trip {
   ratingTags         Json?
   netEarning         Float?
   commission         Float?
-  tipAmount          Float           @default(0)
-  tipPaid            Boolean         @default(false)
+  tipAmount          Float         @default(0)
+  tipPaid            Boolean       @default(false)
   rating             Int?
   ratingComment      String?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
   acceptedAt         DateTime?
   startedAt          DateTime?
   arrivedAt          DateTime?
   completedAt        DateTime?
 
   // Empresa bajo la cual se prestó el servicio (trazabilidad legal + liquidación).
-  operatorId         String?
+  operatorId String?
 
-  passenger          User?           @relation("TripPassenger", fields: [passengerId], references: [id])
-  driver             Driver?         @relation(fields: [driverId], references: [id])
-  vehicle            Vehicle?        @relation(fields: [vehicleId], references: [id])
+  passenger User?    @relation("TripPassenger", fields: [passengerId], references: [id])
+  driver    Driver?  @relation(fields: [driverId], references: [id])
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
 
   // Plaza donde se ORIGINÓ el viaje, sellada al crearlo con el mismo criterio
   // que usa la app para saber en qué municipio estás (centroide más cercano).
   // Se guarda en vez de calcularse al consultar para que el panel pueda filtrar
   // por ciudad con un índice, y para que cambiar un centroide mañana no
   // reescriba a qué plaza perteneció un viaje del mes pasado.
-  citySlug           String?
+  citySlug      String?
+  // Custodia del ENVÍO: el PIN lo dicta quien RECIBE el paquete. Sin él, el
+  // repartidor no puede cerrar la entrega. Solo se genera para serviceType
+  // ENVIOS: un pasajero no necesita PIN para bajarse del carro.
+  deliveryPin   String?
+  deliveryPinAt DateTime?
 
   @@index([passengerId])
   @@index([driverId])
@@ -787,11 +806,6 @@ model Trip {
   /// completo de la tabla sesenta veces por hora.
   @@index([status, searchFrom])
   @@map("trips")
-  // Custodia del ENVÍO: el PIN lo dicta quien RECIBE el paquete. Sin él, el
-  // repartidor no puede cerrar la entrega. Solo se genera para serviceType
-  // ENVIOS: un pasajero no necesita PIN para bajarse del carro.
-  deliveryPin        String?
-  deliveryPinAt      DateTime?
 }
 
 enum TransportType {
@@ -826,16 +840,16 @@ enum TripStatus {
 // ── Ganancias del conductor ───────────────────────────────────────────────────
 
 model DriverEarning {
-  id          String   @id @default(cuid())
-  driverId    String
-  date        DateTime @db.Date
-  grossFare   Float
-  commission  Float
-  netEarning  Float
-  tripCount   Int
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  driverId   String
+  date       DateTime @db.Date
+  grossFare  Float
+  commission Float
+  netEarning Float
+  tripCount  Int
+  createdAt  DateTime @default(now())
 
-  driver      Driver   @relation(fields: [driverId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
 
   @@unique([driverId, date])
   @@index([driverId])
@@ -867,7 +881,7 @@ model Payout {
   requestedAt DateTime     @default(now())
   processedAt DateTime?
 
-  driver      Driver       @relation(fields: [driverId], references: [id])
+  driver Driver @relation(fields: [driverId], references: [id])
 
   @@index([driverId])
   @@index([status])
@@ -892,7 +906,7 @@ model Address {
   lng         Float?
   isDefault   Boolean @default(false)
 
-  user        User    @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@map("addresses")
@@ -901,8 +915,8 @@ model Address {
 // ── Mandados ──────────────────────────────────────────────────────────────────
 
 model Errand {
-  id               String        @id @default(cuid())
-  requestRef       String        @unique
+  id               String         @id @default(cuid())
+  requestRef       String         @unique
   userId           String
   driverId         String?
   // Empresa del conductor al momento de aceptar (sellado para liquidación).
@@ -917,11 +931,11 @@ model Errand {
   // del pueblo. Guardarlo también permite pintar el mapa y medir el recorrido.
   pickupLat        Float?
   pickupLng        Float?
-  serviceFee       Float         @default(6000)
+  serviceFee       Float          @default(6000)
   purchaseBudget   Float?
   actualCost       Float?
   notes            String?
-  status           ErrandStatus  @default(SEARCHING)
+  status           ErrandStatus   @default(SEARCHING)
   proofPhotoUrl    String?
   deliveryPhotoUrl String?
   // Cadena de custodia por PIN (ver Order): recogida y entrega.
@@ -929,15 +943,15 @@ model Errand {
   deliveryPin      String?
   pickupPinAt      DateTime?
   deliveryPinAt    DateTime?
-  hasSignature     Boolean       @default(false)
+  hasSignature     Boolean        @default(false)
   driverName       String?
   driverPhone      String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   acceptedAt       DateTime?
   deliveredAt      DateTime?
 
-  user             User          @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([driverId])
@@ -997,17 +1011,17 @@ model IntercityBooking {
   ratingComment  String?
 
   // Empresa bajo la cual se prestó el servicio (troncales legales + liquidación).
-  operatorId     String?
+  operatorId String?
 
-  user           User            @relation(fields: [userId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  // Marcas de la trazabilidad: alimentan la línea de tiempo del pasajero.
+  enRouteAt DateTime?
+  arrivedAt DateTime?
 
   @@index([userId])
   @@index([status])
   @@index([operatorId])
   @@map("intercity_bookings")
-  // Marcas de la trazabilidad: alimentan la línea de tiempo del pasajero.
-  enRouteAt      DateTime?
-  arrivedAt      DateTime?
 }
 
 enum IntercitySeats {
@@ -1034,8 +1048,8 @@ enum IntercityStatus {
 // ── Viajes compartidos (Modelo A) ─────────────────────────────────────────────
 
 model PooledTrip {
-  id                 String           @id @default(cuid())
-  tripRef            String           @unique
+  id                 String            @id @default(cuid())
+  tripRef            String            @unique
   driverId           String
   driverName         String
   driverPhone        String
@@ -1045,26 +1059,89 @@ model PooledTrip {
   destination        String
   departureTime      DateTime
   totalSeats         Int
+  /// Con qué vehículo viaja, para dibujar el mapa de sillas. NULL = salida sin
+  /// numeración: se vende por cantidad de cupos, como se hacía antes de que
+  /// existiera la selección de silla. Las salidas ya publicadas se quedan así
+  /// a propósito — cambiarles el modo a mitad de venta dejaría a los que ya
+  /// compraron sin saber dónde se sientan.
+  seatType           VehicleType?
+  /// Filas de pasajeros del vehículo, que la empresa ajusta a su flota. NULL =
+  /// las del vehículo típico de ese tipo.
+  seatRows           Int?
+  /// Distribución real del vehículo de ESTA empresa: `{izquierda, derecha,
+  /// filas, frenteIzquierda?, frenteDerecha?, fondoCorrido?, bano?}`.
+  /// Ver `lib/mapa-asientos.ts`.
+  ///
+  /// NULL = la salida se publicó con el molde fijo del tipo, y se sigue
+  /// dibujando con él: cambiarle el mapa a una salida a mitad de venta dejaría
+  /// a quien ya compró sin saber dónde se sienta, y la discusión sería a bordo.
+  seatConfig         Json?
+  /// Si la salida recoge al pasajero en su casa (puerta a puerta). NULL = no
+  /// se declaró y se deduce del vehículo: las VAN sí, las busetas y buses no,
+  /// y las salidas sin vehículo declarado también sí, que es como han
+  /// funcionado siempre. Ver `lib/recogida-salida.ts`.
+  doorToDoor         Boolean?
+  /// Dónde y a qué hora sube el pasajero: `[{id,name,address?,time,lat?,lng?}]`
+  /// (máx. 6). NO son las paradas de `stops`, que son los municipios por los
+  /// que pasa el bus: estos están en la ciudad de origen y sirven para
+  /// abordar. Ver `lib/puntos-embarque.ts`.
+  boardingPoints     Json?
+  /// Qué trae el vehículo: `["aire","usb",…]` del catálogo de
+  /// `lib/amenidades.ts`. Va en la SALIDA y no en la empresa porque dentro de
+  /// la misma flota un bus tiene aire y la buseta vieja no. El baño no se
+  /// guarda aquí: se deriva de `seatConfig.bano` para que el chip no
+  /// contradiga al plano.
+  amenities          Json?
+  /// Encomiendas que viajan en la bodega de esta salida.
+  manifests          FreightManifest[]
   farePerSeat        Float
   maxFarePerSeat     Float
-  allowFleet         Boolean          @default(false)
-  status             PooledTripStatus @default(OPEN)
+  allowFleet         Boolean           @default(false)
+  status             PooledTripStatus  @default(OPEN)
   notes              String?
   // Paradas intermedias de la salida: [{name, lat?, lng?, order}] (máx. 6).
   stops              Json?
   // Empresa que publicó la salida (null = conductor particular). Sin FK,
   // mismo patrón que IntercityBooking.operatorId.
   operatorId         String?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
-  bookings           SeatBooking[]
+  bookings        SeatBooking[]
+  seatAssignments SeatAssignment[]
 
   @@index([driverId])
   @@index([status])
   @@index([origin, destination])
   @@index([operatorId])
   @@map("pooled_trips")
+}
+
+/// Una silla vendida de una salida.
+///
+/// ⚠ ESTA TABLA ES LA GARANTÍA CONTRA LA DOBLE VENTA, no la comprobación en
+/// código. Dos personas comprando a la vez pasan las dos la validación —entre
+/// mirar y escribir hay milisegundos— y sin el índice único las dos se llevan
+/// la silla 7, se presentan al bus y la pelea es a bordo. Con él, la segunda
+/// choca contra la base y se le dice que elija otra.
+///
+/// Es una fila por silla, no un array en la reserva: un `String[]` no se puede
+/// hacer único por elemento en PostgreSQL, y esa es justo la garantía que hace
+/// falta. Mismo patrón que `FreightManifest.orderId`.
+model SeatAssignment {
+  id         String @id @default(cuid())
+  tripId     String
+  seatNumber Int
+  bookingId  String
+
+  trip    PooledTrip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  booking SeatBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tripId, seatNumber])
+  @@index([bookingId])
+  @@map("seat_assignments")
 }
 
 model SeatBooking {
@@ -1078,9 +1155,31 @@ model SeatBooking {
   notes          String?
   status         SeatBookingStatus @default(CONFIRMED)
   bookedAt       DateTime          @default(now())
+  /// Cómo calificó el pasajero esta salida (1-5) y qué escribió. La nota vive
+  /// en la fila del servicio —como en `Trip` y en `Order`— y el promedio de la
+  /// empresa se RECALCULA de aquí, nunca se va sumando encima.
+  rating         Int?
+  ratingComment  String?
+  /// El punto de embarque que eligió, SELLADO: `{id,name,address?,time}`. Se
+  /// copia y no se referencia porque si la empresa mueve el punto o le cambia
+  /// la hora mañana, a esta persona le dijeron otra cosa y es la que tiene que
+  /// seguir viendo.
+  boardingPoint  Json?
+  /// Lo que costó, sellado al reservar. Antes la reserva no guardaba ningún
+  /// importe: si la empresa subía la tarifa, «Mis reservas» le mostraba al
+  /// pasajero un precio que él nunca aceptó.
+  fareTotal      Float?
+  /// Descuento aplicado y con qué código. Lo pone la EMPRESA que emitió el
+  /// cupón: en un pasaje de bus el dinero no pasa por la plataforma, así que
+  /// no hay comisión de la que descontarlo (ver `lib/cupon-pasaje.ts`).
+  discount       Float    @default(0)
+  promoCode      String?
 
-  trip          PooledTrip        @relation(fields: [tripId], references: [id])
-  user          User              @relation(fields: [userId], references: [id])
+  trip  PooledTrip       @relation(fields: [tripId], references: [id])
+  user  User             @relation(fields: [userId], references: [id])
+  /// Qué sillas concretas le tocaron. Vacío en las salidas sin numeración,
+  /// donde `seatsBooked` sigue siendo todo lo que se sabe.
+  seats SeatAssignment[]
 
   @@index([tripId])
   @@index([userId])
@@ -1132,8 +1231,8 @@ model EmergencyEvent {
   type      EmergencyType @default(PANIC)
   createdAt DateTime      @default(now())
 
-  user      User?    @relation(fields: [userId], references: [id])
-  driver    Driver?  @relation(fields: [driverId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+  driver Driver? @relation(fields: [driverId], references: [id])
 
   @@index([userId])
   @@index([driverId])
@@ -1172,6 +1271,17 @@ model Operator {
   contactEmail          String?
   city                  String?
   commissionRate        Float? // override de comisión de plataforma (null = global)
+  /// Condiciones del tiquete que publica la empresa: equipaje, mascotas,
+  /// menores, cancelación. Ver `lib/politicas-tiquete.ts`. NULL = no las ha
+  /// publicado, y la app lo dice — no se inventa una política por defecto,
+  /// que sería una condición reclamable que la empresa nunca fijó.
+  policies              Json?
+  /// Reputación REAL de la empresa, promediada de sus servicios calificados
+  /// (salidas programadas + intermunicipales). `null` mientras nadie la haya
+  /// calificado: la app dice «Nuevo». Nunca un 5,0 de fábrica — ese error ya
+  /// se pagó dos veces, en `Business` y en `Driver`.
+  rating                Float?
+  ratingCount           Int            @default(0)
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
@@ -1197,7 +1307,7 @@ model OperatorDocument {
   reviewedAt      DateTime?
   uploadedAt      DateTime        @default(now())
 
-  operator        Operator        @relation(fields: [operatorId], references: [id])
+  operator Operator @relation(fields: [operatorId], references: [id])
 
   @@index([operatorId])
   @@index([status])
@@ -1213,7 +1323,7 @@ model OperatorMember {
   active     Boolean      @default(true)
   createdAt  DateTime     @default(now())
 
-  operator   Operator     @relation(fields: [operatorId], references: [id])
+  operator Operator @relation(fields: [operatorId], references: [id])
 
   @@unique([operatorId, phone])
   @@index([operatorId])
@@ -1228,7 +1338,7 @@ model OperatorRoute {
   authorized Boolean  @default(false)
   createdAt  DateTime @default(now())
 
-  operator   Operator @relation(fields: [operatorId], references: [id])
+  operator Operator @relation(fields: [operatorId], references: [id])
 
   @@unique([operatorId, originCity, destCity])
   @@index([operatorId])
@@ -1244,9 +1354,9 @@ model FleetAssignment {
   endedAt    DateTime?
   active     Boolean   @default(true)
 
-  operator   Operator  @relation(fields: [operatorId], references: [id])
-  driver     Driver    @relation(fields: [driverId], references: [id])
-  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id])
+  operator Operator @relation(fields: [operatorId], references: [id])
+  driver   Driver   @relation(fields: [driverId], references: [id])
+  vehicle  Vehicle  @relation(fields: [vehicleId], references: [id])
 
   @@index([operatorId])
   @@index([driverId])
@@ -1294,10 +1404,10 @@ enum EmploymentType {
 // ── Fletes de carga (cliente ↔ empresa/dueño de camiones) ─────────────────────
 
 enum FreightStatus {
-  REQUESTED   // publicado por el cliente, visible para las flotas de carga
-  ACCEPTED    // una empresa/dueño lo tomó (conductor + vehículo asignados)
+  REQUESTED // publicado por el cliente, visible para las flotas de carga
+  ACCEPTED // una empresa/dueño lo tomó (conductor + vehículo asignados)
   IN_PROGRESS // carga en ruta
-  COMPLETED   // entregado y liquidado (comisión de plataforma descontada)
+  COMPLETED // entregado y liquidado (comisión de plataforma descontada)
   CANCELLED
 }
 
@@ -1314,9 +1424,9 @@ model FreightRequest {
   destCity         String?
   cargoDescription String
   weightKg         Int
-  vehicleType      VehicleType   // TURBO | CAMION | MULA
+  vehicleType      VehicleType // TURBO | CAMION | MULA
   offeredPrice     Float
-  scheduledFor     DateTime?     // null = lo antes posible
+  scheduledFor     DateTime? // null = lo antes posible
   status           FreightStatus @default(REQUESTED)
   // Cadena de custodia por PIN (ver Order): el remitente entrega la carga
   // contra `pickupPin` y el destinatario la recibe contra `deliveryPin`.
@@ -1348,11 +1458,11 @@ model FreightRequest {
   startedAt        DateTime?
   completedAt      DateTime?
 
-  events           FreightEvent[]
+  events      FreightEvent[]
   // Viaje de carga creado al aceptar la solicitud: ahí vive toda la
   // trazabilidad (rastro, gastos, tiempos, remitos y cobro).
-  cargoTripId      String?       @unique
-  cargoTrip        CargoTrip?    @relation(fields: [cargoTripId], references: [id])
+  cargoTripId String?        @unique
+  cargoTrip   CargoTrip?     @relation(fields: [cargoTripId], references: [id])
 
   @@index([status])
   @@index([operatorId])
@@ -1371,20 +1481,20 @@ model FreightEvent {
   cargoTripId String?
   driverId    String
   // FUEL | STOP | NOTE
-  type       String
-  lat        Float?
-  lng        Float?
-  address    String?
+  type        String
+  lat         Float?
+  lng         Float?
+  address     String?
   // Solo FUEL: monto en COP, galones y odómetro al tanquear.
-  amountCop  Float?
-  gallons    Float?
-  odometerKm Float?
-  note       String?
-  photoUrl   String?
-  createdAt  DateTime @default(now())
+  amountCop   Float?
+  gallons     Float?
+  odometerKm  Float?
+  note        String?
+  photoUrl    String?
+  createdAt   DateTime @default(now())
 
-  freight     FreightRequest? @relation(fields: [freightId], references: [id])
-  cargoTrip   CargoTrip?      @relation(fields: [cargoTripId], references: [id])
+  freight   FreightRequest? @relation(fields: [freightId], references: [id])
+  cargoTrip CargoTrip?      @relation(fields: [cargoTripId], references: [id])
 
   @@index([freightId])
   @@index([cargoTripId])
@@ -1441,19 +1551,19 @@ model DriverTrackPoint {
 // carga): el formato del cliente es de rollos de tela, pero el modelo no se
 // casa con ese negocio.
 model FreightManifest {
-  id             String   @id @default(cuid())
-  operatorId     String
+  id         String  @id @default(cuid())
+  operatorId String
   // Consecutivo legible del remito, único por empresa (REM-0001).
-  code           String
+  code       String
   // Referencia del lote — en el formato del cliente, "Cross Plus Black".
-  reference      String?
+  reference  String?
   // Bodega o punto de salida ("BODEGA CÚCUTA").
-  warehouse      String?
+  warehouse  String?
 
   // Destinatario
-  clientName     String
-  clientAddress  String?
-  clientCity     String?
+  clientName    String
+  clientAddress String?
+  clientCity    String?
 
   // Transporte. Se copian del conductor y vehículo al despachar: el remito es
   // un documento y no puede cambiar si mañana el conductor edita su perfil.
@@ -1464,18 +1574,18 @@ model FreightManifest {
   vehiclePlate   String?
 
   // Unidades del negocio: qué es cada renglón y en qué se mide.
-  unitLabel      String   @default("bulto")
-  measureLabel   String   @default("unidades")
+  unitLabel    String @default("bulto")
+  measureLabel String @default("unidades")
 
-  status         ManifestStatus @default(DRAFT)
+  status ManifestStatus @default(DRAFT)
 
   // Totales sellados al despachar (el papel los suma a mano; aquí quedan fijos
   // como constancia de lo que salió).
-  totalItems     Int?
-  totalMeasure   Float?
+  totalItems   Int?
+  totalMeasure Float?
 
-  authorizedBy   String?
-  notes          String?
+  authorizedBy String?
+  notes        String?
 
   // Recepción
   receivedByName     String?
@@ -1483,41 +1593,50 @@ model FreightManifest {
   receivedAt         DateTime?
   receiptPhotoUrl    String?
   // Diferencias detectadas al recibir (faltantes + averiados).
-  discrepancyCount   Int      @default(0)
+  discrepancyCount   Int       @default(0)
 
-  createdAt      DateTime @default(now())
-  dispatchedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  dispatchedAt DateTime?
 
-  items          FreightManifestItem[]
+  items FreightManifestItem[]
 
   // Viaje al que pertenece esta línea. Un remito puede colgar de un flete del
   // marketplace (`freightId`) o de un viaje propio de la flota (`cargoTripId`),
   // que es como opera una empresa que despacha para un cliente recurrente.
-  cargoTripId    String?
-  cargoTrip      CargoTrip? @relation(fields: [cargoTripId], references: [id])
+  cargoTripId  String?
+  cargoTrip    CargoTrip?  @relation(fields: [cargoTripId], references: [id])
+  /// O de una SALIDA DE BUS de pasajeros, que es como opera de verdad una
+  /// cooperativa intermunicipal: el bus ya va, la bodega va vacía, y cada
+  /// encomienda es margen sobre un costo ya hundido. Antes el remito solo podía
+  /// colgar de un viaje de carga, así que esa bodega no se podía vender.
+  ///
+  /// Excluyentes en la práctica: un remito va en UN vehículo.
+  pooledTripId String?
+  pooledTrip   PooledTrip? @relation(fields: [pooledTripId], references: [id])
   // Fecha de entrega que va en la cuenta de cobro. Normalmente la sella la
   // conciliación (`receivedAt`), pero se puede fijar a mano al cargar
   // despachos ya entregados en papel.
-  deliveredOn    DateTime?
+  deliveredOn  DateTime?
 
   /// El pedido que viaja en este remito, si el remito nació de una encomienda.
   /// ÚNICO: un pedido no puede ir en dos despachos — si pudiera, dos empresas
   /// cobrarían el mismo envío y nadie sabría en qué bus va la caja.
-  orderId        String?  @unique
-  order          Order?   @relation(fields: [orderId], references: [id])
+  orderId String? @unique
+  order   Order?  @relation(fields: [orderId], references: [id])
 
   @@unique([operatorId, code])
   @@index([operatorId])
   @@index([freightId])
   @@index([cargoTripId])
+  @@index([pooledTripId])
   @@index([status])
   @@map("freight_manifests")
 }
 
 enum ManifestStatus {
-  DRAFT       // se está armando en el portal
-  DISPATCHED  // salió de bodega; el conductor lo lleva
-  RECEIVED    // entregado y conciliado
+  DRAFT // se está armando en el portal
+  DISPATCHED // salió de bodega; el conductor lo lleva
+  RECEIVED // entregado y conciliado
   CANCELLED
 }
 
@@ -1536,17 +1655,17 @@ enum ManifestStatus {
 // vez por viaje, y la aritmética lo confirma (69–78 kg por rollo en todos los
 // viajes que lo traen; por línea daría cifras imposibles).
 model CargoTrip {
-  id           String          @id @default(cuid())
-  operatorId   String
+  id          String  @id @default(cuid())
+  operatorId  String
   // Consecutivo legible por empresa (1, 2, 3…), como el talonario de papel.
-  number       Int
+  number      Int
   // "BOGOTA" + "MADRID", "CUCUTA" + "DON LUIS": ciudad y punto de salida.
-  originCity   String
-  originPlace  String?
+  originCity  String
+  originPlace String?
   // Peso total del camión en kg.
-  weightKg     Int?
+  weightKg    Int?
   // Acarreo urbano: se cobra el viaje, sin rollos ni metros que listar.
-  isUrban      Boolean         @default(false)
+  isUrban     Boolean @default(false)
 
   driverId     String?
   vehicleId    String?
@@ -1562,7 +1681,7 @@ model CargoTrip {
 
   // Destino principal del viaje. Las líneas llevan cada una su destinatario y
   // su ciudad; este es el punto contra el que se miden geocerca y desvío.
-  destCity     String?
+  destCity String?
 
   status       CargoTripStatus @default(DRAFT)
   notes        String?
@@ -1578,15 +1697,15 @@ model CargoTrip {
   createdAt    DateTime        @default(now())
 
   // Cuenta de cobro en la que se facturó (null = todavía sin facturar).
-  cobroId      String?
-  cobro        CobroAccount?   @relation(fields: [cobroId], references: [id])
+  cobroId String?
+  cobro   CobroAccount? @relation(fields: [cobroId], references: [id])
 
-  manifests    FreightManifest[]
+  manifests FreightManifest[]
   // Bitácora de ruta del viaje: tanqueos, peajes, viáticos, paradas y notas.
-  events       FreightEvent[]
+  events    FreightEvent[]
   // Solicitud del marketplace que originó este viaje (null = despacho propio
   // de la flota). Es el puente que unifica los dos caminos.
-  freight      FreightRequest?
+  freight   FreightRequest?
 
   @@unique([operatorId, number])
   @@index([operatorId, createdAt])
@@ -1595,9 +1714,9 @@ model CargoTrip {
 }
 
 enum CargoTripStatus {
-  DRAFT       // se está armando
-  DISPATCHED  // salió de bodega
-  COMPLETED   // entregado
+  DRAFT // se está armando
+  DISPATCHED // salió de bodega
+  COMPLETED // entregado
   CANCELLED
 }
 
@@ -1627,8 +1746,8 @@ model CobroAccount {
   notes      String?
   createdAt  DateTime    @default(now())
 
-  trips      CargoTrip[]
-  payments   CobroPayment[]
+  trips    CargoTrip[]
+  payments CobroPayment[]
 
   @@unique([operatorId, number])
   @@index([operatorId, createdAt])
@@ -1636,9 +1755,9 @@ model CobroAccount {
 }
 
 enum CobroStatus {
-  DRAFT   // se está armando; se pueden añadir y quitar viajes
-  ISSUED  // emitida y sellada
-  VOID    // anulada
+  DRAFT // se está armando; se pueden añadir y quitar viajes
+  ISSUED // emitida y sellada
+  VOID // anulada
 }
 
 // ─── Pagos de la cuenta de cobro ──────────────────────────────────────────────
@@ -1651,21 +1770,21 @@ enum CobroStatus {
 // Un pago registrado no se edita: se anula y se vuelve a cargar. Un recibo que
 // cambia de monto después de entregado no prueba nada.
 model CobroPayment {
-  id        String       @id @default(cuid())
-  cobroId   String
-  cobro     CobroAccount @relation(fields: [cobroId], references: [id], onDelete: Cascade)
-  amount    Float
-  kind      PaymentKind  @default(ABONO)
+  id         String       @id @default(cuid())
+  cobroId    String
+  cobro      CobroAccount @relation(fields: [cobroId], references: [id], onDelete: Cascade)
+  amount     Float
+  kind       PaymentKind  @default(ABONO)
   // Efectivo, transferencia, cheque… texto libre: cada empresa usa los suyos.
-  method    String?
+  method     String?
   // Número de consignación, comprobante o cheque.
-  reference String?
-  notes     String?
+  reference  String?
+  notes      String?
   // Soporte escaneado del pago.
   receiptUrl String?
-  paidAt    DateTime     @default(now())
-  voidedAt  DateTime?
-  createdAt DateTime     @default(now())
+  paidAt     DateTime     @default(now())
+  voidedAt   DateTime?
+  createdAt  DateTime     @default(now())
 
   @@index([cobroId, paidAt])
   @@map("cobro_payments")
@@ -1673,21 +1792,21 @@ model CobroPayment {
 
 enum PaymentKind {
   ANTICIPO // adelanto antes o al despachar
-  ABONO    // pago parcial durante el período
-  SALDO    // cierre de la cuenta
+  ABONO // pago parcial durante el período
+  SALDO // cierre de la cuenta
 }
 
 // Un renglón del remito: en el formato del cliente, un rollo de tela con su
 // metraje. `position` es el número impreso en la tabla (1..100).
 model FreightManifestItem {
-  id             String   @id @default(cuid())
-  manifestId     String
-  position       Int
+  id         String  @id @default(cuid())
+  manifestId String
+  position   Int
   // Medida declarada al despachar (metros, kilos, unidades…).
-  measure        Float
+  measure    Float
   // Identificador del bulto si la bodega lo maneja (lote, serie, código).
-  code           String?
-  note           String?
+  code       String?
+  note       String?
 
   // Conciliación en la entrega. `receivedMeasure` null = aún no conciliado.
   receivedMeasure Float?
@@ -1695,7 +1814,7 @@ model FreightManifestItem {
   receivedNote    String?
   photoUrl        String?
 
-  manifest       FreightManifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
+  manifest FreightManifest @relation(fields: [manifestId], references: [id], onDelete: Cascade)
 
   @@unique([manifestId, position])
   @@index([manifestId])
@@ -1703,24 +1822,23 @@ model FreightManifestItem {
 }
 
 enum ManifestItemStatus {
-  PENDING   // despachado, sin conciliar
-  OK        // recibido conforme
-  SHORT     // llegó con menos medida de la declarada
-  MISSING   // no llegó
-  DAMAGED   // llegó averiado
+  PENDING // despachado, sin conciliar
+  OK // recibido conforme
+  SHORT // llegó con menos medida de la declarada
+  MISSING // no llegó
+  DAMAGED // llegó averiado
 }
-
 
 // ─── Chat de viaje (pasajero ↔ conductor) ──────────────────────────────────────
 // Mensajería persistente atada a un Trip. senderRole: 'client' | 'driver'.
 model TripMessage {
-  id        String   @id @default(cuid())
-  tripId    String
-  senderRole String  // 'client' | 'driver'
-  senderId  String
-  body      String   @default("")
-  imageUrl  String?  // mensaje con foto (compartir ubicación/estado). null = texto
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  tripId     String
+  senderRole String // 'client' | 'driver'
+  senderId   String
+  body       String   @default("")
+  imageUrl   String? // mensaje con foto (compartir ubicación/estado). null = texto
+  createdAt  DateTime @default(now())
 
   @@index([tripId])
   @@map("trip_messages")
@@ -1735,17 +1853,17 @@ enum SupportStatus {
 }
 
 model SupportTicket {
-  id            String          @id @default(cuid())
+  id            String           @id @default(cuid())
   // Quién abre el ticket: 'client' | 'driver'.
   requesterKind String
   requesterId   String
   requesterName String?
   subject       String
-  category      String          @default("general")
-  status        SupportStatus   @default(OPEN)
+  category      String           @default("general")
+  status        SupportStatus    @default(OPEN)
   messages      SupportMessage[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([requesterKind, requesterId])
   @@index([status])
@@ -1793,13 +1911,13 @@ model LegalDocument {
 // Constancia de aceptación: quién (cliente/conductor/empresa), qué versión,
 // cuándo y desde qué IP — soporte probatorio del clickwrap (arbitraje).
 model LegalConsent {
-  id         String       @id @default(cuid())
-  subjectKind String      // 'user' | 'driver' | 'operator'
-  subjectId  String
-  docKind    LegalDocKind
-  docVersion String
-  acceptedAt DateTime     @default(now())
-  ip         String?
+  id          String       @id @default(cuid())
+  subjectKind String // 'user' | 'driver' | 'operator'
+  subjectId   String
+  docKind     LegalDocKind
+  docVersion  String
+  acceptedAt  DateTime     @default(now())
+  ip          String?
 
   @@index([subjectKind, subjectId])
   @@map("legal_consents")
@@ -1829,11 +1947,11 @@ model TakedownRequest {
 /// TODOS los pueblos. Como tabla, agregar uno es insertar una fila.
 model Municipality {
   /// Identificador estable en minúscula y sin tildes: 'pamplona', 'villa-del-rosario'.
-  slug       String  @id
-  name       String
-  department String
+  slug           String  @id
+  name           String
+  department     String
   /// Código DANE, cuando se conoce. Útil para cruzar con fuentes oficiales.
-  daneCode   String?
+  daneCode       String?
   /// Nombre de la zona con la que la marca se presenta en ese municipio, o null
   /// para usar solo «ZIPA».
   ///
@@ -1842,7 +1960,7 @@ model Municipality {
   /// note que la plataforma es de su tierra, y eso vale más que un nombre
   /// genérico. ZIPA va a crecer a otras ciudades, así que la zona vive en la
   /// tabla: sumar una región es insertar o editar una fila, no desplegar código.
-  zone       String?
+  zone           String?
   /// Comisión de la plataforma en ese municipio (0–1), o null para la global.
   ///
   /// Abrir plaza nueva casi siempre exige entrar con una comisión más baja que
@@ -1850,10 +1968,10 @@ model Municipality {
   /// desplegar y a que TODAS las ciudades cambien a la vez.
   commissionRate Float?
   /// Centroide del casco urbano. Ancla el matching y el mapa.
-  lat        Float
-  lng        Float
+  lat            Float
+  lng            Float
   /// Permite ocultar un municipio sin borrarlo (y sin perder los viajes viejos).
-  isActive   Boolean @default(true)
+  isActive       Boolean @default(true)
 
   @@index([department])
   @@index([name])
@@ -1869,12 +1987,12 @@ model Municipality {
 /// de la flota no entra nunca.
 model SafetyAlertLog {
   id          String   @id @default(cuid())
-  kind        String   // geofence | stall | deviation | offline
+  kind        String // geofence | stall | deviation | offline
   driverId    String
   driverName  String
   /// Empresa dueña del servicio. Null = servicio sin flota (cliente directo).
   operatorId  String?
-  serviceKind String   // trip | intercity | freight | cargo
+  serviceKind String // trip | intercity | freight | cargo
   serviceId   String
   detail      String
   createdAt   DateTime @default(now())
@@ -1976,6 +2094,51 @@ model WhatsappInbound {
 
   @@index([fromPhone, receivedAt])
   @@map("whatsapp_inbound")
+}
+
+/// Por dónde va la conversación de WhatsApp de un teléfono.
+///
+/// Antes esto no existía y era correcto: con dos pasos —pedir ubicación, mandar
+/// enlace— bastaba con mirar la fila del mensaje anterior. Ahora la conversación
+/// entera vive en WhatsApp (origen, destino, precio, confirmación), así que hay
+/// que saber qué se está esperando de cada quien.
+///
+/// UNA FILA POR TELÉFONO, que se reescribe. No es un historial: es dónde está
+/// esa persona AHORA. El historial de lo que se decidió con cada mensaje ya lo
+/// guarda `whatsapp_inbound`, y duplicarlo aquí daría dos versiones de la misma
+/// verdad.
+model WhatsappConversation {
+  /// El teléfono en E.164 es la clave: una persona, una conversación.
+  phone String @id
+
+  /// inicio | esperando_origen | esperando_destino | esperando_confirmacion |
+  /// viaje_en_curso. Ver `lib/whatsapp-flujo.ts`.
+  state String @default("inicio")
+
+  /// Punto de recogida que mandó con el botón de ubicación.
+  originLat   Float?
+  originLng   Float?
+  originLabel String?
+
+  /// A dónde va, ya resuelto a coordenadas. El texto se guarda tal como lo
+  /// escribió porque es lo que se le muestra para confirmar: si se le enseñara
+  /// la dirección normalizada por Google, no reconocería su propio destino.
+  destText String?
+  destLat  Float?
+  destLng  Float?
+
+  /// Lo cotizado y aceptado. Se guarda para que el viaje se cree con lo MISMO
+  /// que la persona vio en pantalla; recalcular al confirmar podría dar otro
+  /// número, y el precio cambiado después de decir que sí es la peor sorpresa.
+  category String?
+  fare     Int?
+
+  /// El viaje que salió de esta conversación, mientras esté en curso.
+  tripId String?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("whatsapp_conversations")
 }
 
 /// Enlace de un solo uso para entrar a la app web sin escribir el código OTP.

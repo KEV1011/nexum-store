@@ -13,6 +13,7 @@ import FleetMap, { type FleetMapPoint } from './FleetMap'
 import AlertsPanel from './AlertsPanel'
 import RoutesManager from './RoutesManager'
 import SchedulesManager from './SchedulesManager'
+import PromosManager from './PromosManager'
 import DriversManager from './DriversManager'
 import FreightManager from './FreightManager'
 import ManifestsManager from './ManifestsManager'
@@ -24,6 +25,7 @@ import VehiclesManager from './VehiclesManager'
 import DocumentsManager from './DocumentsManager'
 import MembersManager from './MembersManager'
 import ProfileForm from './ProfileForm'
+import PoliticasForm from './PoliticasForm'
 import { EncomiendasPanel } from './EncomiendasPanel'
 import { leerToken, leerInfo, guardarSesion, borrarSesion } from './session'
 
@@ -589,6 +591,7 @@ function Dashboard({ token, operator, onLogout }: {
             <>
               <h1 className="font-bold text-slate-900 text-lg">Mi empresa</h1>
               <ProfileForm api={api} />
+              <PoliticasForm api={api} />
               <DocumentsManager api={api} token={token} />
             </>
           )}
@@ -727,6 +730,7 @@ function Dashboard({ token, operator, onLogout }: {
                   bus de esta noche. */}
               <EncomiendasPanel api={api} />
               <SchedulesManager api={api} />
+              <PromosManager api={api} />
               <RoutesManager api={api} />
             </>
           )}

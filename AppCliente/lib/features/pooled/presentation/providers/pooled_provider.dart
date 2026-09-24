@@ -17,6 +17,7 @@ class PooledState {
     this.isLoadingBookings = false,
     this.hasSearched = false,
     this.error,
+    this.bookingsError,
   });
 
   final List<PooledTripEntity> searchResults;
@@ -26,6 +27,12 @@ class PooledState {
   final bool hasSearched;
   final String? error;
 
+  /// Por qué falló la última carga de «Mis reservas». Separado de `error`
+  /// —el de la búsqueda— porque si no, una lista vacía por fallo de red se
+  /// ve igual que no tener ninguna reserva, y quien SÍ compró creería que
+  /// se perdió.
+  final String? bookingsError;
+
   PooledState copyWith({
     List<PooledTripEntity>? searchResults,
     List<PooledTripEntity>? myBookings,
@@ -33,6 +40,7 @@ class PooledState {
     bool? isLoadingBookings,
     bool? hasSearched,
     String? error,
+    String? bookingsError,
   }) =>
       PooledState(
         searchResults: searchResults ?? this.searchResults,
@@ -41,6 +49,7 @@ class PooledState {
         isLoadingBookings: isLoadingBookings ?? this.isLoadingBookings,
         hasSearched: hasSearched ?? this.hasSearched,
         error: error,
+        bookingsError: bookingsError,
       );
 }
 
@@ -97,17 +106,28 @@ class PooledNotifier extends StateNotifier<PooledState> {
   Future<String?> bookSeats({
     required String tripId,
     required int seats,
+    /// Números de silla, solo en las salidas numeradas. El servidor manda:
+    /// si la salida lleva mapa y esto va vacío, la rechaza.
+    List<int>? sillas,
     String? pickupAddress,
     String? notes,
+    /// Dónde sube, cuando la salida publica puntos de embarque.
+    String? boardingPointId,
+    /// Código de descuento de la empresa de la salida.
+    String? promoCode,
   }) async {
     try {
       await _dio.post<Map<String, dynamic>>(
         '/client/intercity/pool/$tripId/book',
         data: {
           'seatsBooked': seats,
+          if (sillas != null && sillas.isNotEmpty) 'seats': sillas,
           if (pickupAddress != null && pickupAddress.isNotEmpty)
             'pickupAddress': pickupAddress,
           if (notes != null && notes.isNotEmpty) 'notes': notes,
+          if (boardingPointId != null) 'boardingPointId': boardingPointId,
+          if (promoCode != null && promoCode.trim().isNotEmpty)
+            'promoCode': promoCode.trim(),
         },
       );
       await loadMyBookings();
@@ -118,6 +138,64 @@ class PooledNotifier extends StateNotifier<PooledState> {
       return 'No se pudo reservar. Intenta de nuevo.';
     } catch (_) {
       return 'No se pudo reservar. Intenta de nuevo.';
+    }
+  }
+
+  /// Cuánto descontaría un código, para enseñarlo ANTES de comprar.
+  ///
+  /// Devuelve el descuento, o el motivo por el que no aplica —de otra empresa,
+  /// vencido, ya usado—, que son cosas distintas y se arreglan distinto.
+  Future<({double? descuento, double? total, String? error})> cotizarCupon(
+    String tripId,
+    String codigo,
+    int puestos,
+  ) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/client/intercity/pool/$tripId/promo',
+        data: {'code': codigo, 'seats': puestos},
+      );
+      final d = res.data?['data'] as Map<String, dynamic>?;
+      return (
+        descuento: (d?['discount'] as num?)?.toDouble(),
+        total: (d?['amountToPay'] as num?)?.toDouble(),
+        error: null,
+      );
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      return (
+        descuento: null,
+        total: null,
+        error: body is Map && body['error'] is String
+            ? body['error'] as String
+            : 'No se pudo aplicar el código.',
+      );
+    } catch (_) {
+      return (descuento: null, total: null, error: 'No se pudo aplicar el código.');
+    }
+  }
+
+  /// Relee UNA salida. Hace falta cuando el servidor rechaza la compra porque
+  /// alguien se adelantó con la silla: el mensaje dice «actualiza y elige
+  /// otra», y sin esto no hay nada que actualizar — el plano seguiría pintando
+  /// libre la silla que acaban de vender y el pasajero volvería a fallar.
+  Future<PooledTripEntity?> fetchTrip(String tripId) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/client/intercity/pool/$tripId',
+      );
+      final data = res.data?['data'];
+      if (data is! Map<String, dynamic>) return null;
+      final trip = PooledTripEntity.fromJson(data);
+      // Se refresca también la lista de resultados: si el pasajero vuelve
+      // atrás, la tarjeta no puede seguir prometiendo los cupos de antes.
+      state = state.copyWith(searchResults: [
+        for (final t in state.searchResults)
+          if (t.id == trip.id) trip else t,
+      ]);
+      return trip;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -134,8 +212,19 @@ class PooledNotifier extends StateNotifier<PooledState> {
           .map(PooledTripEntity.fromJson)
           .toList();
       state = state.copyWith(myBookings: list, isLoadingBookings: false);
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      state = state.copyWith(
+        isLoadingBookings: false,
+        bookingsError: body is Map && body['error'] is String
+            ? body['error'] as String
+            : 'No pudimos cargar tus reservas. Revisa tu conexión.',
+      );
     } catch (_) {
-      state = state.copyWith(isLoadingBookings: false);
+      state = state.copyWith(
+        isLoadingBookings: false,
+        bookingsError: 'No pudimos cargar tus reservas.',
+      );
     }
   }
 
@@ -152,6 +241,32 @@ class PooledNotifier extends StateNotifier<PooledState> {
       return 'No se pudo cancelar la reserva.';
     } catch (_) {
       return 'No se pudo cancelar la reserva.';
+    }
+  }
+
+  /// Califica la salida en la que viajó: las estrellas son para la empresa.
+  ///
+  /// Devuelve el motivo si el servidor la rechaza —todavía no terminó, la
+  /// reserva estaba cancelada— en vez de tragárselo: quien acaba de puntuar
+  /// necesita saber si quedó registrado.
+  Future<String?> calificarSalida(String bookingId, int estrellas, {String? comentario}) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/intercity/pool/bookings/$bookingId/rate',
+        data: {
+          'rating': estrellas,
+          if (comentario != null && comentario.trim().isNotEmpty)
+            'comment': comentario.trim(),
+        },
+      );
+      await loadMyBookings();
+      return null;
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      if (body is Map && body['error'] is String) return body['error'] as String;
+      return 'No se pudo enviar tu calificación.';
+    } catch (_) {
+      return 'No se pudo enviar tu calificación.';
     }
   }
 

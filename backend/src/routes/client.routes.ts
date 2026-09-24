@@ -55,6 +55,8 @@ import {
   getPooledTripById,
   bookSeats,
   cancelSeatBooking,
+  rateSeatBooking,
+  cotizarCuponDePasaje,
   getClientBookings,
   PooledTripError,
 } from '../services/intercity-pool.service';
@@ -874,6 +876,9 @@ router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) =
   try {
     const result = await bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
       seatsBooked: dto.seatsBooked, pickupAddress: dto.pickupAddress, notes: dto.notes,
+      ...(dto.seats ? { seats: dto.seats } : {}),
+      ...(dto.boardingPointId ? { boardingPointId: dto.boardingPointId } : {}),
+      ...(dto.promoCode ? { promoCode: dto.promoCode } : {}),
     });
     res.status(201).json({ success: true, data: result });
   } catch (err) {
@@ -890,6 +895,56 @@ router.post('/intercity/pool/bookings/:bookingId/cancel', clientAuthMiddleware, 
   } catch (err) {
     const status = err instanceof PooledTripError ? 400 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to cancel booking' });
+  }
+});
+
+// POST /client/intercity/pool/:id/promo — cuánto descontaría un código aquí.
+//
+// Previsualización: la validación de verdad vuelve a correr dentro de la
+// transacción de la reserva, porque entre mirar y comprar el cupón puede
+// agotarse.
+router.post('/intercity/pool/:id/promo', clientAuthMiddleware, async (req, res) => {
+  const b = req.body as { code?: unknown; seats?: unknown };
+  if (typeof b.code !== 'string') {
+    res.status(400).json({ success: false, error: 'Ingresa un código' });
+    return;
+  }
+  try {
+    const data = await cotizarCuponDePasaje(
+      req.clientId!,
+      req.params['id']!,
+      b.code,
+      typeof b.seats === 'number' ? b.seats : 1,
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo aplicar el código',
+    });
+  }
+});
+
+// POST /client/intercity/pool/bookings/:bookingId/rate — calificar la salida.
+//
+// Las estrellas son para la EMPRESA que la prestó (y para el conductor). Es
+// corregible: quien se equivoca de estrella prefiere cambiarla a dejar una
+// nota falsa publicada para siempre.
+router.post('/intercity/pool/bookings/:bookingId/rate', clientAuthMiddleware, async (req, res) => {
+  const b = req.body as { rating?: unknown; comment?: unknown };
+  try {
+    const booking = await rateSeatBooking(
+      req.clientId!,
+      req.params['bookingId']!,
+      b.rating,
+      b.comment,
+    );
+    res.json({ success: true, data: booking });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo calificar',
+    });
   }
 });
 

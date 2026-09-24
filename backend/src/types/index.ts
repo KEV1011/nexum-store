@@ -1112,6 +1112,50 @@ export interface PublishPooledTripDTO {
   allowFleet?: boolean; // passenger may book the whole vehicle at once
   /** Paradas intermedias opcionales (máx. 6). */
   stops?: TripStopDTO[];
+  /**
+   * Vehículo con el que viaja, para vender SILLA NUMERADA en vez de cupos.
+   * Omitirlo deja la salida como siempre: se venden puestos sin número.
+   */
+  seatType?: 'VAN' | 'BUSETA' | 'BUS';
+  /** Filas de pasajeros del vehículo. Sin él, las del típico de ese tipo. */
+  seatRows?: number;
+  /**
+   * Distribución real del vehículo de la empresa. Es lo que permite publicar
+   * las capacidades que de verdad ruedan —una buseta de 19 o un bus de 40—,
+   * que con el molde fijo del tipo no se podían representar.
+   *
+   * Sin declararla se usa el molde del tipo, como siempre.
+   */
+  seatConfig?: {
+    izquierda: number;
+    derecha: number;
+    filas: number;
+    frenteIzquierda?: number;
+    frenteDerecha?: number;
+    fondoCorrido?: number;
+    bano?: 'izquierda' | 'derecha';
+  };
+  /**
+   * Qué trae el vehículo: claves del catálogo de `lib/amenidades.ts`.
+   *
+   * El baño NO se manda desde aquí aunque venga: se deriva de `seatConfig`
+   * para que el chip no prometa lo que el plano no dibuja.
+   */
+  amenities?: string[];
+  /**
+   * Si recoge en la casa del pasajero. Omitirlo lo deduce del vehículo, que es
+   * lo que hace que las salidas ya publicadas se comporten como siempre.
+   */
+  doorToDoor?: boolean;
+  /** Puntos de abordaje con su hora (máx. 6). */
+  boardingPoints?: Array<{
+    id?: string;
+    name: string;
+    address?: string;
+    time: string;
+    lat?: number;
+    lng?: number;
+  }>;
 }
 
 /** A single passenger's booking on a pooled trip. */
@@ -1123,17 +1167,85 @@ export interface SeatBookingDTO {
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
   seatsBooked: number;
+  /**
+   * Qué sillas le tocaron, ordenadas. Vacío en las salidas sin numerar.
+   *
+   * Sin esto el conductor tiene el nombre y «2 puestos» pero no sabe a quién
+   * sentar dónde, que es justo para lo que se numeró.
+   */
+  seats?: number[];
   pickupAddress?: string;
   notes?: string;
   status: SeatBookingStatus;
   bookedAt: string;
+  /**
+   * Cómo calificó el pasajero esta salida. Ausente = todavía no lo ha hecho,
+   * que es lo que la app usa para ofrecerle calificar.
+   */
+  rating?: number;
+  ratingComment?: string;
+  /** El punto donde sube, tal como se lo dijeron al reservar. */
+  boardingPoint?: PuntoEmbarqueDTO;
+  /** Lo que costó, sellado al reservar. */
+  fareTotal?: number;
+  /** Descuento de la empresa, y el código con el que se aplicó. */
+  discount?: number;
+  promoCode?: string;
+  /** Lo que de verdad paga: `fareTotal - discount`. */
+  amountToPay?: number;
 }
 
 /** Client-supplied payload when reserving seats on a pooled trip. */
 export interface BookSeatsDTO {
   seatsBooked: number;
+  /**
+   * Sillas concretas, cuando la salida va numerada.
+   *
+   * Obligatorio si `PooledTrip.seatType` está puesto; ignorado si no, que es
+   * como siguen funcionando las salidas publicadas antes de que existiera la
+   * numeración. `seatsBooked` debe cuadrar con la cantidad.
+   */
+  seats?: number[];
   pickupAddress?: string;
   notes?: string;
+  /**
+   * Cuál de los puntos de embarque eligió. Sin él se toma el primero —la
+   * terminal—, porque las apps ya instaladas no lo mandan y dejarlas sin poder
+   * reservar sería peor.
+   */
+  boardingPointId?: string;
+  /** Código de descuento de la EMPRESA de la salida, si tiene uno. */
+  promoCode?: string;
+}
+
+/** Un punto donde el pasajero puede subirse, con su hora. */
+export interface PuntoEmbarqueDTO {
+  id: string;
+  name: string;
+  address?: string;
+  /** Hora local «HH:MM». En un nocturno puede ser del día siguiente. */
+  time: string;
+  lat?: number;
+  lng?: number;
+}
+
+/** Una celda del mapa de sillas, tal como la pinta la app. */
+export interface CeldaAsientoDTO {
+  tipo: 'silla' | 'pasillo' | 'vacio' | 'conductor' | 'puerta';
+  numero?: number;
+  /** Solo en las sillas: si ya se vendió. */
+  ocupada?: boolean;
+}
+
+/** El mapa completo de una salida numerada. */
+export interface MapaAsientosDTO {
+  tipo: string;
+  etiqueta: string;
+  columnas: number;
+  filas: CeldaAsientoDTO[][];
+  sillas: number;
+  libres: number;
+  ocupadas: number[];
 }
 
 /** Full pooled-trip view returned to drivers and passengers. */
@@ -1158,13 +1270,60 @@ export interface PooledTripDTO {
   notes?: string;
   /** Paradas intermedias de la salida ("pasa por"). */
   stops?: TripStopDTO[];
+  /**
+   * Mapa de sillas, solo si la salida va numerada. Ausente = se vende por
+   * cantidad de cupos y la app no debe pedir silla.
+   */
+  seatMap?: MapaAsientosDTO;
   distanceKm?: number;
   durationMinutes?: number;
   createdAt: string;
+  /**
+   * Qué trae el vehículo, ya resuelto: lo que declaró la empresa más el baño
+   * si el plano lo dibuja. Lista vacía = no declaró nada, que es distinto de
+   * «no tiene» y por eso la app no pinta chips en vez de pintar cruces.
+   */
+  amenities?: string[];
+  /**
+   * Dónde y a qué hora se puede subir. Vacío/ausente = la salida no los
+   * declara y se sigue usando el texto libre de siempre.
+   */
+  boardingPoints?: PuntoEmbarqueDTO[];
+  /**
+   * Si recoge al pasajero en su casa. YA RESUELTO: lo declara la empresa y, si
+   * no lo declaró, se deduce del vehículo (las vans sí, los buses no). La app
+   * lo usa para decidir si pide la dirección o solo ofrece los puntos.
+   */
+  doorToDoor?: boolean;
   /** Empresa que publicó la salida (null/ausente = conductor particular). */
   operatorId?: string;
   /** Razón social de la empresa, para mostrar confianza en la búsqueda. */
   operatorName?: string;
+  /**
+   * Nota de la empresa, promediada de sus servicios calificados. Ausente =
+   * nadie la ha calificado todavía, y la app dice «Nuevo» — nunca un número
+   * de fábrica.
+   */
+  operatorRating?: number;
+  operatorRatingCount?: number;
+  /**
+   * Condiciones del tiquete YA REDACTADAS (equipaje, mascotas, menores,
+   * cancelación). Se mandan en prosa y no en campos sueltos porque el portal
+   * y la app tienen que decir exactamente lo mismo: si cada uno redactara su
+   * versión, la empresa creería estar publicando una regla y el pasajero
+   * leería otra. Ausente/vacío = la empresa no las ha publicado.
+   */
+  operatorPolicies?: string[];
+  /**
+   * Dónde va el bus AHORA, del último latido del conductor.
+   *
+   * Solo con la salida en curso (DEPARTED): antes de arrancar, la posición del
+   * conductor no es la del bus —está en su casa— y enseñarla como si lo fuera
+   * sería peor que no enseñar nada. Es lo primero que mira quien compró un
+   * pasaje, y era el único de los cinco servicios que no lo tenía.
+   */
+  driverLat?: number;
+  driverLng?: number;
   /** Present only on driver-facing responses. */
   bookings?: SeatBookingDTO[];
 }

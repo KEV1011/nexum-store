@@ -1,12 +1,12 @@
 /**
  * E2E de la zona de marca.
  *
- * En Pamplona la app se presenta como «ZIPA/SANTURBÁN». Lo que hay que
- * demostrar no es que la cadena se concatene —eso ya lo fijan las pruebas
- * unitarias— sino que el municipio se resuelva bien desde unas coordenadas
- * reales y, sobre todo, que NO se le atribuya una zona a quien no le
- * corresponde: eso saldría en la primera pantalla de la app diciéndole a
- * alguien de Bogotá que está en Santurbán.
+ * El sufijo de región se retiró: la marca es ZIPA en todas partes, y lo primero
+ * que se comprueba aquí es justo eso — que la migración dejó a Pamplona SIN
+ * zona, porque mientras esa fila tenga «Santurbán» las apps ya instaladas
+ * seguirán pintándolo. Lo demás es el mecanismo: que el municipio se resuelva
+ * bien desde coordenadas reales, que no se le atribuya una zona a quien no le
+ * corresponde, y que añadir una siga siendo una fila y no un despliegue.
  *
  *   DATABASE_URL=postgresql://... npx tsx e2e/zona-de-marca.ts
  */
@@ -35,15 +35,17 @@ async function main(): Promise<void> {
   comprobar('la tabla de municipios está sembrada', cuantos > 0, `${cuantos} filas`);
 
   const pam = await prisma.municipality.findUnique({ where: { slug: 'pamplona' } });
-  comprobar('Pamplona tiene su zona en la base', pam?.zone === 'Santurbán',
-    String(pam?.zone));
+  comprobar('Pamplona ya NO tiene zona sembrada', pam?.zone == null, String(pam?.zone));
 
-  console.log('\n═══ En Pamplona la marca lleva su zona ═══');
+  const conZona = await prisma.municipality.count({ where: { zone: { not: null } } });
+  comprobar('ningún municipio la tiene', conZona === 0, `${conZona} con zona`);
+
+  console.log('\n═══ En Pamplona la marca va sola ═══');
   {
     const z = await zonaDeCoordenadas(PARQUE_PAMPLONA.lat, PARQUE_PAMPLONA.lng);
     comprobar('resuelve el municipio', z.municipio === 'Pamplona', String(z.municipio));
     comprobar('con su departamento', (z.departamento ?? '').length > 0, String(z.departamento));
-    comprobar('la etiqueta es ZIPA/SANTURBÁN', z.etiqueta === 'ZIPA/SANTURBÁN', z.etiqueta);
+    comprobar('la etiqueta es ZIPA, sin sufijo', z.etiqueta === 'ZIPA', z.etiqueta);
   }
 
   console.log('\n═══ Donde no hay zona, la marca va sola ═══');

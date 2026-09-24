@@ -113,7 +113,7 @@ ruta cae a línea recta y las teselas a OpenStreetMap. Comprobar: `/geo/health`.
 
 | Variable | Para qué |
 |---|---|
-| `NEXT_PUBLIC_SUPPORT_EMAIL` | El correo de contacto de las páginas legales. Apple lo pide junto al reporte y el bloqueo |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | El correo de contacto de las páginas legales. **Opcional**: sin ella se publica `zipalegalcolombia@gmail.com` |
 | `NEXT_PUBLIC_BACKEND_URL` | A qué backend apunta el portal (ya debería estar) |
 
 ---

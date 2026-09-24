@@ -32,6 +32,7 @@ class TarjetaServicio extends StatefulWidget {
     required this.subtitulo,
     required this.onTap,
     this.ilustracion,
+    this.dibujo,
     super.key,
   });
 
@@ -47,6 +48,14 @@ class TarjetaServicio extends StatefulWidget {
   /// color al lado de un glifo monocromo canta, y se vio en cuanto se montó
   /// solo la de Envíos. O todas, o ninguna.
   final String? ilustracion;
+
+  /// Ilustración DIBUJADA, para las dos puertas que no tienen archivo.
+  ///
+  /// Las imágenes que había para Restaurantes e Intermunicipal no servían —un
+  /// bus de frente es un rectángulo a este tamaño, y la de comida eran cuatro
+  /// objetos superpuestos—, así que se dibujan. Tiene la ventaja de que toman
+  /// los colores del tinte y funcionan en claro y oscuro sin exportar nada.
+  final Widget? dibujo;
 
   final ZipaTinte tinte;
   final String titulo;
@@ -145,7 +154,12 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
                     // puertas se leían flojas. Se escala desde el tamaño del
                     // catálogo en vez de añadir una medida a `ZipaIconSize`,
                     // que tiene dos y una prueba lo vigila.
-                    child: widget.ilustracion != null
+                    child: widget.dibujo != null
+                        ? Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: widget.dibujo,
+                          )
+                        : widget.ilustracion != null
                         ? Padding(
                             padding: const EdgeInsets.all(3),
                             child: Image.asset(

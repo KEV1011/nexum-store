@@ -4,11 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:nexum_client/app/theme/zipa_vehiculos.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart'
     show IntercityCity;
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
+import 'package:nexum_client/features/pooled/presentation/widgets/mapa_sillas.dart';
+import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
@@ -239,17 +242,24 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
   }
 
   Future<void> _openBookSheet(PooledTripEntity trip) async {
-    final booked = await showModalBottomSheet<bool>(
+    // `null` = cerró sin comprar. Una lista (aunque vacía) = compró; vacía
+    // significa salida por cupos, donde no hay silla que nombrar.
+    final compradas = await showModalBottomSheet<List<int>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _BookSeatsSheet(trip: trip),
     );
-    if (booked == true && mounted) {
+    if (compradas != null && mounted) {
       _runSearch();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('¡Reserva confirmada! La verás en "Mis reservas".'),
+        SnackBar(
+          content: Text(
+            compradas.isEmpty
+                ? '¡Reserva confirmada! La verás en "Mis reservas".'
+                : '¡Listo! ${compradas.length == 1 ? "Silla" : "Sillas"} '
+                    '${compradas.join(', ')}. Las verás en "Mis reservas".',
+          ),
           backgroundColor: AppColors.success,
         ),
       );
@@ -308,9 +318,37 @@ class _TripCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: context.textPrimaryColor)),
               const SizedBox(height: 2),
-              Text('por puesto · ${trip.durationLabel}',
-                  style: TextStyle(
-                      fontSize: 12, color: context.textSecondaryColor)),
+              Row(
+                children: [
+                  Text('por puesto · ${trip.durationLabel}',
+                      style: TextStyle(
+                          fontSize: 12, color: context.textSecondaryColor)),
+                  // Con qué vehículo va la salida, antes de abrirla. Es lo que
+                  // decide entre dos salidas a la misma hora: nadie elige
+                  // «buseta» leyendo la palabra, la reconoce por la forma.
+                  if (vehiculoDeTipo(trip.seatMap?.tipo) != null) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 28,
+                      height: 16,
+                      child: CustomPaint(
+                        painter: ZipaVehiculoPainter(
+                          vehiculo: vehiculoDeTipo(trip.seatMap!.tipo)!,
+                          cuerpo: _kPooledColor,
+                          hueco: context.cardColor2,
+                          rueda: _kPooledColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(trip.seatMap!.etiqueta,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: context.textSecondaryColor)),
+                  ],
+                ],
+              ),
               const Divider(height: 20),
               // Salida oficial de empresa: sello de confianza (vs particular).
               if (trip.operatorName != null) ...[
@@ -331,8 +369,41 @@ class _TripCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                    NotaEmpresa(
+                      rating: trip.operatorRating,
+                      votos: trip.operatorRatingCount,
+                    ),
                   ],
                 ),
+                const SizedBox(height: 6),
+              ],
+              // El puerta a puerta es POR LO QUE se elige una van frente a un
+              // bus, así que va en la tarjeta y no escondido en la hoja de
+              // reserva. Solo cuando la salida lo hace: anunciarlo siempre lo
+              // volvería ruido y a veces mentira.
+              if (trip.doorToDoor) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.home_rounded,
+                        size: 15, color: AppColors.liveGreen),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Te recogen en tu dirección',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
+              // Qué trae el vehículo. Solo lo declarado: sin comodidades no se
+              // pinta nada, en vez de una fila de cruces que afirmaría que no
+              // las tiene.
+              if (trip.amenities.isNotEmpty) ...[
+                ChipsComodidades(claves: trip.amenities),
                 const SizedBox(height: 6),
               ],
               // Lugares por donde pasa la salida (paradas publicadas).
@@ -433,14 +504,73 @@ class _BookSeatsSheet extends ConsumerStatefulWidget {
   ConsumerState<_BookSeatsSheet> createState() => _BookSeatsSheetState();
 }
 
+/// Valor del radio «En mi dirección», y lo que se le manda al servidor.
+///
+/// Es un marcador EXPLÍCITO y no «sin punto»: sin punto es lo que manda una app
+/// vieja que no conoce los puntos, y a esa hay que sellarle la terminal. Si
+/// fueran lo mismo, quien pidiera que lo recogieran en su casa acabaría con
+/// «Sube en: Terminal · 06:00» en su reserva. El valor lo define
+/// `backend/src/lib/recogida-salida.ts`.
+const _kEnMiDireccion = 'domicilio';
+
 class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   int _seats = 1;
   final _pickupCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   bool _submitting = false;
 
+  /// Sillas elegidas en el mapa. Vacío en las salidas sin numerar, donde lo
+  /// único que se decide es CUÁNTOS puestos.
+  final Set<int> _sillas = <int>{};
+
+  /// La salida releída tras un choque de sillas. Mientras es null se usa la
+  /// que llegó de la búsqueda; el `widget.trip` es una foto del momento en que
+  /// se abrió la hoja y no puede quedarse como única verdad.
+  PooledTripEntity? _fresco;
+
+  PooledTripEntity get _trip => _fresco ?? widget.trip;
+
+  /// Dónde sube. Arranca en el primero —la terminal— porque es donde sube casi
+  /// todo el mundo y deja la compra a un toque.
+  String? _puntoId;
+
+  final _cuponCtrl = TextEditingController();
+  double? _descuento;
+  String? _cuponAplicado;
+  String? _cuponError;
+  bool _cotizando = false;
+
+  /// Lo que se paga, con el descuento ya restado. Una sola cuenta para el
+  /// botón y para el total: si cada uno hiciera la suya, el pasajero vería un
+  /// precio y pagaría otro.
+  double get _totalAPagar {
+    final t = _trip;
+    final puestos = t.seatMap != null ? _sillas.length : _seats;
+    return (t.farePerSeat * puestos) - (_descuento ?? 0);
+  }
+
+  /// Vuelve a cotizar cuando cambian los puestos: un cupón del 20 % sobre un
+  /// puesto no descuenta lo mismo que sobre tres, y dejar el número viejo
+  /// enseñaría un total que el servidor no va a aceptar.
+  Future<void> _cotizar() async {
+    final codigo = _cuponCtrl.text.trim();
+    if (codigo.isEmpty) return;
+    setState(() { _cotizando = true; _cuponError = null; });
+    final puestos = _trip.seatMap != null ? _sillas.length : _seats;
+    final r = await ref
+        .read(pooledProvider.notifier)
+        .cotizarCupon(_trip.id, codigo, puestos < 1 ? 1 : puestos);
+    if (!mounted) return;
+    setState(() {
+      _cotizando = false;
+      _descuento = r.descuento;
+      _cuponAplicado = r.error == null ? codigo.toUpperCase() : null;
+      _cuponError = r.error;
+    });
+  }
+
   int get _maxSelectable {
-    final t = widget.trip;
+    final t = _trip;
     // Booking the whole vehicle is only allowed if the driver enabled fleet.
     if (t.allowFleet) return t.availableSeats;
     return t.availableSeats == t.totalSeats
@@ -454,33 +584,72 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   void dispose() {
     _pickupCtrl.dispose();
     _notesCtrl.dispose();
+    _cuponCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _confirm() async {
     setState(() => _submitting = true);
+    final mapa = _trip.seatMap;
     final err = await ref.read(pooledProvider.notifier).bookSeats(
-          tripId: widget.trip.id,
-          seats: _seats,
+          tripId: _trip.id,
+          // Con mapa, los puestos son las sillas elegidas: mandar otro número
+          // sería pagar uno y ocupar tres.
+          seats: mapa != null ? _sillas.length : _seats,
+          // Los paréntesis son obligatorios: el cascada `..sort()` tiene menos
+          // precedencia que el ternario y sin ellos no compila.
+          sillas: mapa != null ? (_sillas.toList()..sort()) : null,
           pickupAddress: _pickupCtrl.text.trim(),
           notes: _notesCtrl.text.trim(),
+          // El marcador viaja tal cual: el servidor distingue «pidió
+          // domicilio» de «no eligió nada».
+          boardingPointId: _puntoId,
+          promoCode: _cuponAplicado,
         );
     if (!mounted) return;
     if (err == null) {
       HapticFeedback.mediumImpact();
-      Navigator.of(context).pop(true);
-    } else {
-      setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(err), backgroundColor: AppColors.error),
-      );
+      // Devuelve las sillas compradas (vacío = salida por cupos) para que la
+      // pantalla pueda decir CUÁL se llevó: es lo que va a buscar al subir.
+      final compradas = _sillas.toList()..sort();
+      Navigator.of(context).pop(compradas);
+      return;
     }
+
+    // Rechazo: en una salida numerada el motivo casi siempre es que alguien se
+    // adelantó, así que se relee el plano y se sueltan las sillas que ya no
+    // están. Sin esto el mensaje pide actualizar algo que no se puede.
+    if (mapa != null) {
+      final fresco = await ref.read(pooledProvider.notifier).fetchTrip(_trip.id);
+      if (!mounted) return;
+      if (fresco != null) {
+        // Las ocupadas se leen del propio plano en vez de guardarse aparte:
+        // un segundo listado acabaría discrepando del dibujo.
+        final ocupadas = <int>{
+          for (final fila in fresco.seatMap?.filas ?? const <List<CeldaAsiento>>[])
+            for (final c in fila)
+              if (c.ocupada && c.numero != null) c.numero!,
+        };
+        setState(() {
+          _fresco = fresco;
+          _sillas.removeWhere(ocupadas.contains);
+        });
+      }
+    }
+
+    setState(() => _submitting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(err), backgroundColor: AppColors.error),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final trip = widget.trip;
-    final total = trip.farePerSeat * _seats;
+    final trip = _trip;
+    // Una sola cuenta, la del getter: el botón, el total y lo que cobra el
+    // conductor tienen que decir lo mismo.
+    final total = _totalAPagar;
+    final bruto = trip.farePerSeat * (trip.seatMap != null ? _sillas.length : _seats);
     final maxSel = _maxSelectable;
 
     return Padding(
@@ -513,27 +682,41 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                 style: TextStyle(color: context.textSecondaryColor, fontSize: 13)),
             const SizedBox(height: 20),
 
-            const Text('¿Cuántos puestos?',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _stepBtn(Icons.remove_rounded, _seats > 1, () {
-                  setState(() => _seats--);
+            if (trip.seatMap != null) ...[
+              const Text('Elige tu silla',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              MapaSillas(
+                mapa: trip.seatMap!,
+                seleccionadas: _sillas,
+                maximo: maxSel,
+                onToque: (n) => setState(() {
+                  if (!_sillas.remove(n)) _sillas.add(n);
                 }),
-                Expanded(
-                  child: Center(
-                    child: Text('$_seats',
-                        style: const TextStyle(
-                            fontSize: 28, fontWeight: FontWeight.w800)),
+              ),
+            ] else ...[
+              const Text('¿Cuántos puestos?',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _stepBtn(Icons.remove_rounded, _seats > 1, () {
+                    setState(() => _seats--);
+                  }),
+                  Expanded(
+                    child: Center(
+                      child: Text('$_seats',
+                          style: const TextStyle(
+                              fontSize: 28, fontWeight: FontWeight.w800)),
+                    ),
                   ),
-                ),
-                _stepBtn(Icons.add_rounded, _seats < maxSel, () {
-                  setState(() => _seats++);
-                }),
-              ],
-            ),
-            if (trip.allowFleet && _seats == trip.totalSeats)
+                  _stepBtn(Icons.add_rounded, _seats < maxSel, () {
+                    setState(() => _seats++);
+                  }),
+                ],
+              ),
+            ],
+            if (trip.allowFleet && trip.seatMap == null && _seats == trip.totalSeats)
               const Padding(
                 padding: EdgeInsets.only(top: 4),
                 child: Text('Reservando el vehículo completo (flete)',
@@ -541,14 +724,85 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             const SizedBox(height: 16),
 
-            TextField(
-              controller: _pickupCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Dónde te recogen (opcional)',
-                prefixIcon: Icon(Icons.my_location_rounded),
-                border: OutlineInputBorder(),
+            // ── Dónde sube ────────────────────────────────────────────────
+            // Las dos formas CONVIVEN. Una van intermunicipal recoge puerta a
+            // puerta y además tiene parada en la terminal; enseñar solo los
+            // puntos le quitaría media operación, que es justo lo que pasó al
+            // publicar esta pantalla por primera vez.
+            if (trip.boardingPoints.isNotEmpty) ...[
+              const Text('¿Dónde te subes?',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              for (final p in trip.boardingPoints)
+                RadioListTile<String>(
+                  value: p.id,
+                  groupValue: _puntoId ?? trip.boardingPoints.first.id,
+                  onChanged: (v) => setState(() => _puntoId = v),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: _kPooledColor,
+                  title: Text(p.name,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    p.address == null ? 'Pasa a las ${p.time}' : '${p.address} · ${p.time}',
+                    style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                  ),
+                ),
+              if (trip.doorToDoor)
+                RadioListTile<String>(
+                  value: _kEnMiDireccion,
+                  groupValue: _puntoId ?? trip.boardingPoints.first.id,
+                  onChanged: (v) => setState(() => _puntoId = v),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: _kPooledColor,
+                  title: const Text('En mi dirección',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    'Pasan por ti',
+                    style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                  ),
+                ),
+              // El campo solo cuando eligió domicilio: pedir la dirección a
+              // quien va a subir en la terminal es pedir un dato que nadie va
+              // a usar.
+              if (trip.doorToDoor && _puntoId == _kEnMiDireccion) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _pickupCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '¿Dónde te recogemos?',
+                    prefixIcon: Icon(Icons.my_location_rounded),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+            ] else if (trip.doorToDoor)
+              TextField(
+                controller: _pickupCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Dónde te recogen (opcional)',
+                  prefixIcon: Icon(Icons.my_location_rounded),
+                  border: OutlineInputBorder(),
+                ),
+              )
+            else
+              // Ni puntos ni domicilio: se dice dónde subir en vez de dejar un
+              // formulario vacío que no responde nada.
+              Row(
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      size: 16, color: context.textSecondaryColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Subes donde arranca la salida, en ${trip.origin.displayName}.',
+                      style: TextStyle(fontSize: 12.5, color: context.textSecondaryColor),
+                    ),
+                  ),
+                ],
               ),
-            ),
             const SizedBox(height: 12),
             TextField(
               controller: _notesCtrl,
@@ -559,6 +813,50 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             ),
             const SizedBox(height: 20),
+
+            // Código de la empresa. Solo se ofrece en salidas de empresa: en la
+            // de un conductor particular no hay quien emita uno, y un campo
+            // que siempre falla es peor que no tenerlo.
+            if (trip.operatorName != null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _cuponCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: InputDecoration(
+                        labelText: 'Código de descuento (opcional)',
+                        prefixIcon: const Icon(Icons.local_offer_outlined),
+                        border: const OutlineInputBorder(),
+                        errorText: _cuponError,
+                        helperText: _cuponAplicado != null
+                            ? 'Aplicado: −${CurrencyFormatter.format(_descuento ?? 0)}'
+                            : null,
+                      ),
+                      onSubmitted: (_) => _cotizar(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: _cotizando ? null : () => _cotizar(),
+                    child: Text(_cotizando ? '…' : 'Aplicar'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // Lo que se termina de mirar antes de pagar: qué trae el bus y qué
+            // pasa con la maleta. En la tarjeta del buscador van comprimidas;
+            // aquí hay sitio para leerlas.
+            if (trip.amenities.isNotEmpty) ...[
+              ChipsComodidades(claves: trip.amenities, compacto: false),
+              const SizedBox(height: 16),
+            ],
+            if (trip.operatorName != null) ...[
+              CondicionesTiquete(lineas: trip.operatorPolicies),
+              const SizedBox(height: 16),
+            ],
 
             Container(
               padding: const EdgeInsets.all(14),
@@ -571,6 +869,19 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                   const Text('Total a pagar',
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   const Spacer(),
+                  // Con descuento se enseña el antes tachado: sin él, el
+                  // pasajero no ve que el código hizo algo.
+                  if ((_descuento ?? 0) > 0) ...[
+                    Text(
+                      CurrencyFormatter.format(bruto),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: context.textSecondaryColor,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   Text(CurrencyFormatter.format(total),
                       style: const TextStyle(
                           fontSize: 20,
@@ -591,7 +902,9 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               width: double.infinity,
               height: 52,
               child: ElevatedButton(
-                onPressed: _submitting ? null : _confirm,
+                onPressed: _submitting || (trip.seatMap != null && _sillas.isEmpty)
+                    ? null
+                    : _confirm,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kPooledColor,
                   foregroundColor: Colors.white,

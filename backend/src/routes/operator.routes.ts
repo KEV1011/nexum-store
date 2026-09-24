@@ -9,12 +9,15 @@ import {
   publishPooledTrip,
   getOperatorPooledTrips,
   cancelPooledTripByOperator,
+  numerarPooledTrip,
   PooledTripError,
 } from '../services/intercity-pool.service';
 import { IntercityCity } from '../types';
 import {
   listarEncomiendasPendientes,
   adjuntarEncomienda,
+  adjuntarEncomiendaASalida,
+  listarEncomiendasDeSalida,
   soltarEncomienda,
   EncomiendaError,
 } from '../services/encomiendas.service';
@@ -54,6 +57,12 @@ import {
 import { isValidColombianPhone } from '../services/auth.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
 import {
+  configuracionesPara,
+  esTipoConSillas,
+  plantillaDeConfig,
+  saneaConfigSillas,
+} from '../lib/mapa-asientos';
+import {
   ManifestError,
   createManifest,
   listManifests,
@@ -87,6 +96,10 @@ import {
   addCobroPayment, voidCobroPayment,
   type CreateCobroDTO, type AddPaymentDTO,
 } from '../services/cobro.service';
+
+import {
+  operatorCreatePromo, operatorListPromos, operatorTogglePromo,
+} from '../services/promo.service';
 
 const router = Router();
 
@@ -500,6 +513,58 @@ router.put('/profile', requireOperatorRole('OWNER'), async (req: Request, res: R
   }
 });
 
+// ─── Cupones de la empresa ───────────────────────────────────────────────────
+//
+// Los emite ella y los asume ella: en un pasaje de bus el dinero va directo a
+// la empresa, así que un descuento de la plataforma no tendría de dónde salir.
+
+router.get('/promos', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await operatorListPromos(req.operatorId!) });
+});
+
+router.post('/promos', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as Record<string, unknown>;
+  if (typeof b['code'] !== 'string' || typeof b['value'] !== 'number') {
+    res.status(400).json({ success: false, error: 'code y value son requeridos' });
+    return;
+  }
+  try {
+    const promo = await operatorCreatePromo(req.operatorId!, {
+      code: b['code'],
+      description: typeof b['description'] === 'string' ? b['description'] : undefined,
+      type: b['type'] === 'FIXED' ? 'FIXED' : 'PERCENT',
+      value: b['value'],
+      minAmount: typeof b['minAmount'] === 'number' ? b['minAmount'] : undefined,
+      maxDiscount: typeof b['maxDiscount'] === 'number' ? b['maxDiscount'] : undefined,
+      maxRedemptions: typeof b['maxRedemptions'] === 'number' ? b['maxRedemptions'] : undefined,
+      perUserLimit: typeof b['perUserLimit'] === 'number' ? b['perUserLimit'] : undefined,
+      expiresAt: typeof b['expiresAt'] === 'string' ? b['expiresAt'] : undefined,
+    });
+    res.status(201).json({ success: true, data: promo });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo crear el código',
+    });
+  }
+});
+
+router.post('/promos/:id/toggle', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await operatorTogglePromo(
+      req.operatorId!,
+      req.params['id']!,
+      req.body?.active !== false,
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo cambiar el código',
+    });
+  }
+});
+
 // GET /operator/documents · POST /operator/documents (multipart)
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {
   res.json({ success: true, data: await listOperatorDocuments(req.operatorId!) });
@@ -641,14 +706,26 @@ router.post(
       vehicleDescription?: string;
       notes?: string;
       stops?: Array<{ name?: string; lat?: number; lng?: number; order?: number }>;
+      seatType?: string;
+      seatRows?: number;
+      seatConfig?: unknown;
+      amenities?: string[];
+      boardingPoints?: Array<{ name: string; time: string; address?: string }>;
+      doorToDoor?: boolean;
     };
+    // Con silla numerada los puestos los dice el mapa del vehículo, así que
+    // `totalSeats` deja de ser obligatorio: pedirlo sería que la empresa
+    // escribiera un número que de todas formas se ignora.
+    const numerada = esTipoConSillas(b.seatType);
     if (
       !b.driverId || !b.origin || !b.destination || !b.departureTime ||
-      b.totalSeats === undefined || b.farePerSeat === undefined
+      (!numerada && b.totalSeats === undefined) || b.farePerSeat === undefined
     ) {
       res.status(400).json({
         success: false,
-        error: 'driverId, origin, destination, departureTime, totalSeats y farePerSeat son requeridos',
+        error: numerada
+          ? 'driverId, origin, destination, departureTime y farePerSeat son requeridos'
+          : 'driverId, origin, destination, departureTime, totalSeats y farePerSeat son requeridos',
       });
       return;
     }
@@ -686,10 +763,29 @@ router.post(
           origin: b.origin as IntercityCity,
           destination: b.destination as IntercityCity,
           departureTime: b.departureTime,
-          totalSeats: b.totalSeats,
+          totalSeats: b.totalSeats ?? 1,
           farePerSeat: b.farePerSeat,
           vehicleDescription,
+          ...(numerada
+            ? {
+                seatType: b.seatType as 'VAN' | 'BUSETA' | 'BUS',
+                seatRows: b.seatRows,
+                // La distribución real del vehículo de la empresa. Sin ella se
+                // usa el molde del tipo, como se venía haciendo.
+                ...(saneaConfigSillas(b.seatConfig)
+                  ? { seatConfig: saneaConfigSillas(b.seatConfig)! }
+                  : {}),
+              }
+            : {}),
           notes: b.notes,
+          // Qué trae el vehículo. El baño no entra por aquí aunque lo marquen:
+          // lo pone el plano de sillas.
+          ...(b.amenities ? { amenities: b.amenities } : {}),
+          // Dónde y a qué hora sube el pasajero. Se validan contra la hora de
+          // salida dentro del servicio.
+          ...(b.boardingPoints ? { boardingPoints: b.boardingPoints } : {}),
+          // Si no viene, el servicio lo deduce del vehículo: van sí, bus no.
+          ...(typeof b.doorToDoor === 'boolean' ? { doorToDoor: b.doorToDoor } : {}),
           allowFleet: true,
           stops: (b.stops ?? []).map((st, i) => ({
             name: String(st.name ?? ''), lat: st.lat, lng: st.lng, order: st.order ?? i,
@@ -703,6 +799,67 @@ router.post(
       res.status(status).json({
         success: false,
         error: err instanceof Error ? err.message : 'No se pudo publicar la salida',
+      });
+    }
+  },
+);
+
+// GET /operator/pool/disposiciones?tipo=BUS&sillas=40
+//
+// Qué distribuciones dan EXACTAMENTE esa capacidad, con su mapa dibujado.
+//
+// Es lo que hace usable el formulario: la empresa sabe que su bus tiene 40
+// puestos, no de cuántas filas de 2+2 se compone. Antes tenía que tantear el
+// número de filas hasta que saliera — y con las capacidades más comunes no
+// salía nunca, porque el molde fijo solo daba múltiplos de cuatro más dos.
+router.get('/pool/disposiciones', async (req: Request, res: Response): Promise<void> => {
+  const tipo = String(req.query['tipo'] ?? '');
+  const sillas = Number(req.query['sillas']);
+
+  if (!esTipoConSillas(tipo)) {
+    res.status(400).json({ success: false, error: 'Tipo de vehículo no válido.' });
+    return;
+  }
+  if (!Number.isFinite(sillas) || sillas < 1) {
+    res.status(400).json({ success: false, error: 'Dinos cuántos puestos tiene el vehículo.' });
+    return;
+  }
+
+  const opciones = configuracionesPara(tipo, sillas).map((config) => ({
+    config,
+    // El mapa va con cada opción para que la empresa ELIJA VIENDO el dibujo y
+    // no leyendo «2+2, 10 filas, fondo 4», que no le dice nada a nadie.
+    mapa: plantillaDeConfig(tipo, config),
+  }));
+
+  res.json({ success: true, data: { sillas, opciones } });
+});
+
+// POST /operator/pool/:id/numerar — pasa una salida por cupos a silla numerada
+// (o corrige el vehículo de una numerada que aún nadie compró).
+router.post(
+  '/pool/:id/numerar',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    const b = req.body as { seatType?: string; seatRows?: number };
+    const operator = await prisma.operator.findUnique({
+      where: { id: req.operatorId! },
+      select: { isVerified: true },
+    });
+    try {
+      const trip = await numerarPooledTrip(
+        req.operatorId!,
+        req.params['id']!,
+        b.seatType,
+        b.seatRows,
+        { licensedOperator: operator?.isVerified === true },
+      );
+      res.json({ success: true, data: trip });
+    } catch (err) {
+      const status = err instanceof PooledTripError ? 400 : 500;
+      res.status(status).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'No se pudo numerar la salida',
       });
     }
   },
@@ -934,6 +1091,29 @@ router.post('/cargo-trips/:id/encomiendas', requireOperatorRole('OWNER', 'DISPAT
   }
   try {
     const data = await adjuntarEncomienda(req.operatorId!, orderId, req.params['id']!);
+    res.status(201).json({ success: true, data });
+  } catch (err) { _errorEncomienda(res, err); }
+});
+
+// GET /operator/pool/:id/encomiendas — qué va en la bodega de esa salida.
+router.get('/pool/:id/encomiendas', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await listarEncomiendasDeSalida(req.operatorId!, req.params['id']!);
+    res.json({ success: true, data });
+  } catch (err) { _errorEncomienda(res, err); }
+});
+
+// POST /operator/pool/:id/encomiendas { orderId } — sube una caja a la bodega
+// del bus de pasajeros. Mismo remito y mismo consecutivo que en un camión: lo
+// único que cambia es el vehículo en el que viaja.
+router.post('/pool/:id/encomiendas', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const { orderId } = req.body as { orderId?: string };
+  if (!orderId) {
+    res.status(400).json({ success: false, error: 'Falta el pedido.' });
+    return;
+  }
+  try {
+    const data = await adjuntarEncomiendaASalida(req.operatorId!, orderId, req.params['id']!);
     res.status(201).json({ success: true, data });
   } catch (err) { _errorEncomienda(res, err); }
 });

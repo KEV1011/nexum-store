@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, Store, Car, Package } from 'lucide-react'
+import { ArrowRight, Store, Car, Package, Navigation } from 'lucide-react'
 
 // Landing mínima: la web pública de ZIPA es el portal de negocios.
 // Las apps (cliente y conductor) viven en GitHub Pages / stores.
@@ -51,21 +51,42 @@ export default function HomePage() {
             ))}
           </div>
 
+          {/* El pasajero va PRIMERO y solo. Es quien más llega a esta página
+              —y quien llega por un QR o un enlace—, y hasta ahora los únicos
+              botones eran para registrar un negocio o una flota: se iba sin
+              entender que desde aquí mismo puede pedir el viaje, sin instalar
+              nada. */}
+          <Link
+            href="/pedir"
+            className="group mb-4 flex flex-col items-center gap-1 rounded-2xl
+                       bg-emerald-500 hover:bg-emerald-400 transition-colors
+                       px-6 py-5 text-slate-950 max-w-xl mx-auto"
+          >
+            <span className="inline-flex items-center gap-2 font-extrabold text-lg">
+              <Navigation className="w-5 h-5" />
+              Pedir un viaje
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </span>
+            <span className="text-xs font-medium text-emerald-950/70">
+              Desde el navegador, sin descargar la app
+            </span>
+          </Link>
+
           {/* Dos aliados = dos portales distintos. Antes solo estaba el de
               negocios; las empresas de transporte no tenían cómo registrarse. */}
           <div className="grid sm:grid-cols-2 gap-3 max-w-xl mx-auto">
             <Link
               href="/negocio/registro"
               className="group flex flex-col items-center gap-1 rounded-2xl
-                         bg-emerald-500 hover:bg-emerald-400 transition-colors
-                         px-6 py-4 text-slate-950"
+                         border border-slate-700 bg-slate-900 hover:border-emerald-500
+                         transition-colors px-6 py-4 text-slate-50"
             >
               <span className="inline-flex items-center gap-2 font-bold">
-                <Store className="w-4 h-4" />
+                <Store className="w-4 h-4 text-emerald-400" />
                 Registra tu negocio
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </span>
-              <span className="text-xs font-medium text-emerald-950/70">
+              <span className="text-xs font-medium text-slate-400">
                 Restaurantes, tiendas y farmacias
               </span>
             </Link>

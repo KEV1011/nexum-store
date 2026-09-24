@@ -26,7 +26,7 @@ export class PromoError extends Error {
   }
 }
 
-export type PromoContext = 'trip' | 'order';
+export type PromoContext = 'trip' | 'order' | 'pooled';
 
 // ─── Referidos ────────────────────────────────────────────────────────────────
 
@@ -159,11 +159,15 @@ async function _findValidPromo(
   if (promo.expiresAt && promo.expiresAt < new Date()) throw new PromoError('Este código ya venció');
   if (promo.ownerUserId && promo.ownerUserId !== userId) throw new PromoError('Código no válido');
   if (promo.scope !== PromoScope.ALL) {
-    const needed = context === 'trip' ? PromoScope.TRIPS : PromoScope.ORDERS;
+    const needed = context === 'trip' ? PromoScope.TRIPS
+      : context === 'pooled' ? PromoScope.INTERCITY
+      : PromoScope.ORDERS;
     if (promo.scope !== needed) {
       throw new PromoError(context === 'trip'
         ? 'Este código solo aplica para pedidos'
-        : 'Este código solo aplica para viajes');
+        : context === 'pooled'
+          ? 'Este código no aplica para pasajes intermunicipales'
+          : 'Este código solo aplica para viajes');
     }
   }
   if (amount < promo.minAmount) {
@@ -298,7 +302,7 @@ export async function adminCreatePromo(params: {
   description?: string;
   type: 'PERCENT' | 'FIXED';
   value: number;
-  scope?: 'ALL' | 'TRIPS' | 'ORDERS';
+  scope?: 'ALL' | 'TRIPS' | 'ORDERS' | 'INTERCITY';
   minAmount?: number;
   maxDiscount?: number;
   maxRedemptions?: number;
@@ -325,6 +329,7 @@ export async function adminCreatePromo(params: {
         value: params.value,
         scope: params.scope === 'TRIPS' ? PromoScope.TRIPS
           : params.scope === 'ORDERS' ? PromoScope.ORDERS
+          : params.scope === 'INTERCITY' ? PromoScope.INTERCITY
           : PromoScope.ALL,
         minAmount: params.minAmount ?? 0,
         maxDiscount: params.maxDiscount ?? null,
@@ -342,6 +347,72 @@ export async function adminCreatePromo(params: {
   }
 }
 
+// ─── Cupones de una empresa de transporte ────────────────────────────────────
+//
+// Los emite la EMPRESA y los asume ella: es la única forma de que un descuento
+// en un pasaje de bus se pueda ejecutar hoy, porque ese dinero no pasa por la
+// plataforma y no hay comisión de la que descontarlo (ver `lib/cupon-pasaje.ts`).
+// Por eso nacen con scope INTERCITY y con su `operatorId` puesto.
+
+export async function operatorCreatePromo(operatorId: string, params: {
+  code: string;
+  description?: string;
+  type: 'PERCENT' | 'FIXED';
+  value: number;
+  minAmount?: number;
+  maxDiscount?: number;
+  maxRedemptions?: number;
+  perUserLimit?: number;
+  expiresAt?: string;
+}) {
+  const promo = await adminCreatePromo({
+    ...params,
+    scope: 'INTERCITY',
+    createdBy: `operator:${operatorId}`,
+  });
+  // `adminCreatePromo` no conoce empresas: se marca aquí, en la misma llamada,
+  // para que no exista ni un instante un cupón de pasaje sin dueño — uno así
+  // se leería como «de la plataforma» y se rechazaría al canjearlo.
+  return prisma.promoCode.update({
+    where: { id: promo.id },
+    data: { operatorId },
+  });
+}
+
+export async function operatorListPromos(operatorId: string) {
+  const promos = await prisma.promoCode.findMany({
+    where: { operatorId },
+    include: { _count: { select: { redemptions: true } } },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  return promos.map((p) => ({
+    id: p.id,
+    code: p.code,
+    description: p.description,
+    type: p.type,
+    value: p.value,
+    minAmount: p.minAmount,
+    maxDiscount: p.maxDiscount,
+    maxRedemptions: p.maxRedemptions,
+    perUserLimit: p.perUserLimit,
+    expiresAt: p.expiresAt?.toISOString() ?? null,
+    active: p.active,
+    redemptions: p._count.redemptions,
+    createdAt: p.createdAt.toISOString(),
+  }));
+}
+
+/** Activa o desactiva uno SUYO. El `operatorId` en el where es la pertenencia. */
+export async function operatorTogglePromo(operatorId: string, id: string, active: boolean) {
+  const r = await prisma.promoCode.updateMany({
+    where: { id, operatorId },
+    data: { active },
+  });
+  if (r.count === 0) throw new PromoError('Ese código no es de tu empresa.');
+  return { id, active };
+}
+
 export async function adminListPromos() {
   const promos = await prisma.promoCode.findMany({
     where: { createdBy: { not: 'referral' } },
@@ -349,7 +420,22 @@ export async function adminListPromos() {
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
+
+  // De quién es cada uno. Desde que las empresas emiten los suyos, esta lista
+  // los mezcla con los de la plataforma, y sin el nombre delante un admin
+  // podría desactivar la promoción de una empresa creyendo que es nuestra.
+  const ids = [...new Set(promos.map((p) => p.operatorId).filter((x): x is string => !!x))];
+  const empresas = ids.length
+    ? new Map(
+        (await prisma.operator.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, legalName: true, tradeName: true },
+        })).map((o) => [o.id, o.tradeName ?? o.legalName]),
+      )
+    : new Map<string, string>();
+
   return promos.map((p) => ({
+    operatorName: p.operatorId ? empresas.get(p.operatorId) ?? 'Empresa' : null,
     id: p.id,
     code: p.code,
     description: p.description,

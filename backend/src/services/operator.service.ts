@@ -4,9 +4,11 @@ import {
   OperatorDocType,
   OperatorRole,
   VehicleType,
+  Prisma,
 } from '@prisma/client';
 import { isValidColombianPhone, normalizeColombianPhone } from './auth.service';
 import { rangoFechas } from '../lib/date-range';
+import { saneaPoliticas, politicasGuardadas, lineasDePolitica } from '../lib/politicas-tiquete';
 import { requiresAmount } from '../lib/freight-costs';
 import { getMunicipality } from './municipality.service';
 import { getDriverTrack, type DriverTrack } from './track.service';
@@ -66,13 +68,19 @@ export async function findOperatorMemberByPhone(phone: string) {
 }
 
 export async function getOperatorProfile(operatorId: string) {
-  return prisma.operator.findUnique({
+  const op = await prisma.operator.findUnique({
     where: { id: operatorId },
     include: {
       documents: { orderBy: { uploadedAt: 'desc' } },
       _count: { select: { vehicles: true, drivers: true } },
     },
   });
+  if (!op) return null;
+  // Las condiciones del tiquete YA REDACTADAS, para que el portal le enseñe a
+  // la empresa exactamente el texto que va a leer el pasajero. Si el portal
+  // las redactara por su cuenta, la empresa creería estar publicando una cosa
+  // y en la app saldría otra.
+  return { ...op, policyLines: lineasDePolitica(politicasGuardadas(op.policies)) };
 }
 
 // ─── Flota: vehículos ──────────────────────────────────────────────────────────
@@ -1117,6 +1125,11 @@ export interface UpdateOperatorProfileDTO {
   contactPhone?: string;
   contactEmail?: string;
   city?: string;
+  /**
+   * Condiciones del tiquete (equipaje, mascotas, menores, cancelación).
+   * `null` las borra; ausente las deja como estaban.
+   */
+  policies?: unknown;
 }
 
 /**
@@ -1140,6 +1153,18 @@ export async function updateOperatorProfile(
     data['contactPhone'] = p ? normalizeColombianPhone(p) : null;
   }
 
-  if (Object.keys(data).length === 0) throw new Error('No hay nada que actualizar.');
-  return prisma.operator.update({ where: { id: operatorId }, data });
+  // Las condiciones del tiquete van aparte porque no son texto: se validan y
+  // se guardan como JSON. Mandar `null` las retira —una empresa puede querer
+  // dejar de publicarlas— y eso es distinto de no mandar el campo.
+  const conPoliticas: Record<string, unknown> = { ...data };
+  if (dto.policies !== undefined) {
+    const p = saneaPoliticas(dto.policies);
+    conPoliticas['policies'] = p ?? Prisma.DbNull;
+  }
+
+  if (Object.keys(conPoliticas).length === 0) throw new Error('No hay nada que actualizar.');
+  return prisma.operator.update({
+    where: { id: operatorId },
+    data: conPoliticas as Prisma.OperatorUpdateInput,
+  });
 }

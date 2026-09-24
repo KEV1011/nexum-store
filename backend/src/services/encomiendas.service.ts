@@ -133,6 +133,61 @@ export async function adjuntarEncomienda(
     throw new EncomiendaError('Ese despacho no existe o no es de tu empresa.');
   }
 
+  return _adjuntar(operatorId, orderId, {
+    origen: viaje.originCity?.toLowerCase() ?? null,
+    destino: viaje.destCity?.toLowerCase() ?? null,
+    // Facturado o ya salido: no admite más carga.
+    editable: viaje.status === 'DRAFT' && !viaje.cobroId,
+    vinculo: { cargoTripId },
+  });
+}
+
+/**
+ * Sube una encomienda a una SALIDA DE BUS de pasajeros.
+ *
+ * Es el mismo remito, el mismo consecutivo y la misma conciliación que en un
+ * viaje de carga: lo único que cambia es de qué vehículo cuelga. Por eso todo
+ * pasa por `_adjuntar` y no hay una segunda versión de la lógica — dos copias
+ * de esto acabarían admitiendo cosas distintas, y la que se equivocara sería
+ * la que deja una caja en la ciudad que no es.
+ */
+export async function adjuntarEncomiendaASalida(
+  operatorId: string,
+  orderId: string,
+  pooledTripId: string,
+): Promise<{ manifestId: string; code: string; bultos: number }> {
+  const salida = await prisma.pooledTrip.findUnique({
+    where: { id: pooledTripId },
+    select: { id: true, operatorId: true, status: true, origin: true, destination: true },
+  });
+  if (!salida || salida.operatorId !== operatorId) {
+    throw new EncomiendaError('Esa salida no existe o no es de tu empresa.');
+  }
+
+  return _adjuntar(operatorId, orderId, {
+    // La columna ya guarda el slug del municipio; `lower` es defensivo para las
+    // salidas escritas antes de que eso se corrigiera.
+    origen: salida.origin?.toLowerCase() ?? null,
+    destino: salida.destination?.toLowerCase() ?? null,
+    // Una vez el bus salió, la bodega está cerrada. CANCELLED tampoco admite.
+    editable: salida.status === 'OPEN' || salida.status === 'FULL',
+    vinculo: { pooledTripId },
+  });
+}
+
+/** El despacho al que se sube la caja, sea un camión o la bodega de un bus. */
+interface DestinoDeCarga {
+  origen: string | null;
+  destino: string | null;
+  editable: boolean;
+  vinculo: { cargoTripId: string } | { pooledTripId: string };
+}
+
+async function _adjuntar(
+  operatorId: string,
+  orderId: string,
+  destino: DestinoDeCarga,
+): Promise<{ manifestId: string; code: string; bultos: number }> {
   const o = await _buscarPedido(orderId);
 
   const motivo = motivoParaNoDespachar({
@@ -153,10 +208,9 @@ export async function adjuntarEncomienda(
       tieneRemito: false,
     },
     {
-      origen: viaje.originCity?.toLowerCase() ?? null,
-      destino: viaje.destCity?.toLowerCase() ?? null,
-      // Facturado o ya salido: no admite más carga.
-      editable: viaje.status === 'DRAFT' && !viaje.cobroId,
+      origen: destino.origen,
+      destino: destino.destino,
+      editable: destino.editable,
     },
   );
   if (noAdmite) throw new EncomiendaError(noAdmite);
@@ -185,7 +239,7 @@ export async function adjuntarEncomienda(
         clientName: o.customerName ?? o.user?.name ?? 'Cliente',
         clientAddress: o.deliveryAddress,
         clientCity: o.destCitySlug,
-        cargoTripId,
+        ...destino.vinculo,
         orderId,
         items: { create: items },
       },
@@ -218,12 +272,19 @@ export async function soltarEncomienda(
     select: {
       id: true, operatorId: true, status: true,
       cargoTrip: { select: { status: true, cobroId: true } },
+      pooledTrip: { select: { status: true } },
     },
   });
   if (!m || m.operatorId !== operatorId) {
     throw new EncomiendaError('Esa encomienda no está en ninguno de tus despachos.');
   }
-  if (m.status !== 'DRAFT' || m.cargoTrip?.status !== 'DRAFT' || m.cargoTrip?.cobroId) {
+  // Va en la bodega de un bus: se puede bajar mientras el bus no haya salido.
+  const enSalida = m.pooledTrip != null;
+  const bodegaAbierta = enSalida
+    ? m.pooledTrip!.status === 'OPEN' || m.pooledTrip!.status === 'FULL'
+    : m.cargoTrip?.status === 'DRAFT' && !m.cargoTrip?.cobroId;
+
+  if (m.status !== 'DRAFT' || !bodegaAbierta) {
     throw new EncomiendaError(
       'Ese despacho ya salió o ya se facturó: la encomienda no se puede bajar.',
     );
@@ -243,6 +304,48 @@ export async function marcarEncomiendasEnTransito(cargoTripId: string): Promise<
     select: { orderId: true },
   });
   return _ponerEnTransito(remitos.map((r) => r.orderId!).filter(Boolean));
+}
+
+/**
+ * GANCHO 1c — la SALIDA DE BUS arranca: sus encomiendas entran en tránsito.
+ *
+ * Mismo criterio que el despacho de carga y la misma función de fondo. Se
+ * llama después de que la salida pase a DEPARTED.
+ */
+export async function marcarEncomiendasDeSalidaEnTransito(
+  pooledTripId: string,
+): Promise<number> {
+  const remitos = await prisma.freightManifest.findMany({
+    where: { pooledTripId, orderId: { not: null } },
+    select: { orderId: true },
+  });
+  return _ponerEnTransito(remitos.map((r) => r.orderId!).filter(Boolean));
+}
+
+/**
+ * Las encomiendas que van en una salida, para el tablero del portal.
+ */
+export async function listarEncomiendasDeSalida(
+  operatorId: string,
+  pooledTripId: string,
+): Promise<Array<{ manifestId: string; code: string; orderRef: string | null; clientName: string; clientCity: string | null; bultos: number; status: string }>> {
+  const remitos = await prisma.freightManifest.findMany({
+    where: { pooledTripId, operatorId },
+    select: {
+      id: true, code: true, reference: true, clientName: true,
+      clientCity: true, status: true, items: { select: { measure: true } },
+    },
+    orderBy: { code: 'asc' },
+  });
+  return remitos.map((m) => ({
+    manifestId: m.id,
+    code: m.code,
+    orderRef: m.reference,
+    clientName: m.clientName,
+    clientCity: m.clientCity,
+    bultos: m.items.reduce((s, i) => s + i.measure, 0),
+    status: m.status,
+  }));
 }
 
 /**

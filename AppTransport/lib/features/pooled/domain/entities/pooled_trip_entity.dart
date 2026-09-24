@@ -116,6 +116,18 @@ enum PooledTripStatus {
       this == PooledTripStatus.open || this == PooledTripStatus.full;
 }
 
+/// «Terminal de Transportes · 06:00», listo para leer de un vistazo.
+///
+/// Sin casteos directos: esto se pinta en la lista del conductor y reventar
+/// aquí lo dejaría sin ver a ninguno de sus pasajeros.
+String? _puntoLegible(Object? crudo) {
+  if (crudo is! Map) return null;
+  final nombre = crudo['name'];
+  final hora = crudo['time'];
+  if (nombre is! String) return null;
+  return hora is String ? '$nombre · $hora' : nombre;
+}
+
 class PooledSeatBooking {
   const PooledSeatBooking({
     required this.id,
@@ -124,6 +136,11 @@ class PooledSeatBooking {
     required this.seatsBooked,
     this.pickupAddress,
     this.notes,
+    this.seats = const [],
+    this.boardingPoint,
+    this.amountToPay,
+    this.discount = 0,
+    this.promoCode,
   });
 
   final String id;
@@ -133,6 +150,30 @@ class PooledSeatBooking {
   final String? pickupAddress;
   final String? notes;
 
+  /// Dónde sube, cuando la empresa publicó puntos de embarque: «Terminal ·
+  /// 06:00». Con dirección en vez de punto, la recogida es a domicilio.
+  final String? boardingPoint;
+
+  /// Lo que hay que COBRARLE, con el descuento de la empresa ya restado. Sin
+  /// esto el conductor pediría la tarifa completa a quien usó un código de la
+  /// propia empresa, y la discusión sería en la puerta del vehículo.
+  final double? amountToPay;
+  final double discount;
+  final String? promoCode;
+
+  /// Sillas numeradas de esta reserva, en orden. Vacía en las salidas por
+  /// cupos, que son las de siempre: ahí no hay dónde sentar a nadie en
+  /// concreto y lo único cierto es cuántos puestos compró.
+  final List<int> seats;
+
+  /// Lo que el conductor necesita leer en la puerta del vehículo: «Silla 3» o
+  /// «Sillas 3, 4». Sin numeración cae a los puestos, que es la información
+  /// que de verdad hay — inventar un número aquí sentaría a alguien donde no
+  /// le corresponde.
+  String get seatLabel => seats.isEmpty
+      ? '$seatsBooked puesto${seatsBooked == 1 ? '' : 's'}'
+      : '${seats.length == 1 ? 'Silla' : 'Sillas'} ${seats.join(', ')}';
+
   factory PooledSeatBooking.fromJson(Map<String, dynamic> j) => PooledSeatBooking(
         id: j['id'] as String? ?? '',
         passengerName: j['passengerName'] as String? ?? '',
@@ -140,6 +181,14 @@ class PooledSeatBooking {
         seatsBooked: (j['seatsBooked'] as num?)?.toInt() ?? 1,
         pickupAddress: j['pickupAddress'] as String?,
         notes: j['notes'] as String?,
+        boardingPoint: _puntoLegible(j['boardingPoint']),
+        amountToPay: (j['amountToPay'] as num?)?.toDouble(),
+        discount: (j['discount'] as num?)?.toDouble() ?? 0,
+        promoCode: j['promoCode'] as String?,
+        seats: [
+          for (final s in (j['seats'] as List<dynamic>? ?? const []))
+            if (s is num) s.toInt(),
+        ],
       );
 }
 

@@ -44,27 +44,31 @@ async function main(): Promise<void> {
   await prisma.legalDocument.updateMany({ data: { active: false } });
   await prisma.legalDocument.deleteMany({});
 
-  // ── 1. Sin correo configurado ──────────────────────────────────────────
-  console.log('1. Sin canal configurado, no se inventa ninguno');
+  // ── 1. Sin variables de entorno ────────────────────────────────────────
+  // Antes esto publicaba una política SIN canal de atención, y era el caso que
+  // de verdad se desplegaba: nadie se acordaba de poner la variable en los dos
+  // servicios. Ahora hay un buzón real por defecto, así que lo que se comprueba
+  // es que el documento salga completo igualmente — sin inventar nada.
+  console.log('1. Sin variables, se publica el buzón real de ZIPA');
   delete process.env['SUPPORT_EMAIL'];
   delete process.env['PRIVACY_EMAIL'];
   delete process.env['LEGAL_EMAIL'];
 
   let legal = await import('../src/services/legal.service');
-  const { contactoLegalConfigurado } = await import('../src/lib/contacto');
+  const { contactoLegalConfigurado, BUZON_ZIPA } = await import('../src/lib/contacto');
 
-  comprobar('el diagnóstico lo marca pendiente', contactoLegalConfigurado() === false);
+  comprobar('el diagnóstico lo da por publicado', contactoLegalConfigurado() === true);
 
   const v1 = await legal.getActiveLegalDoc('PRIVACY');
   comprobar('se siembra la v1 sola', Boolean(v1.version), v1.version);
   comprobar(
-    'y NO imprime una dirección inventada',
-    !/@/.test(v1.body),
+    'con el buzón real dentro del texto',
+    v1.body.includes(BUZON_ZIPA),
     (v1.body.match(/\S+@\S+/) ?? ['—'])[0],
   );
   comprobar(
-    'pero reconoce que el canal está pendiente',
-    /pendiente/i.test(v1.body),
+    'y ya no dice que el canal está pendiente',
+    !/pendiente de publicar/i.test(v1.body),
   );
 
   // ── 2. Con correo configurado ──────────────────────────────────────────

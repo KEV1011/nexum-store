@@ -26,17 +26,8 @@ import {
   motivoParaNoResponder,
   type MensajeWhatsapp,
 } from '../lib/whatsapp-payload';
-import { construirEnlace, VIGENCIA_MIN } from '../lib/enlace-magico';
-import {
-  siguientePaso,
-  textoPedirUbicacion,
-  textoEnlaceConOrigen,
-  textoEnlaceSinOrigen,
-  textoFueraDeCobertura,
-  esFueraDeCobertura,
-  MEMORIA_PETICION_MIN,
-} from '../lib/whatsapp-conversacion';
-import { emitirEnlaceMagico, usuarioParaTelefonoVerificado } from './enlace-magico.service';
+import { textoFueraDeCobertura, esFueraDeCobertura } from '../lib/whatsapp-cobertura';
+import { ejecutarPasoDelPedido } from './whatsapp-pedido.service';
 import { plazaDeCoordenadas, listMunicipalities } from './municipality.service';
 
 const PHONE_NUMBER_ID = process.env['WHATSAPP_PHONE_NUMBER_ID'] ?? '';
@@ -207,47 +198,64 @@ export async function enviarSolicitudUbicacion(
   );
 }
 
+/**
+ * Manda hasta tres botones de respuesta rápida.
+ *
+ * Se usan para confirmar el viaje. Un botón en vez de pedir que escriba «sí»
+ * evita tres cosas a la vez: el teclado, tener que adivinar qué significa
+ * «dale», y que la respuesta llegue en un mensaje que cueste otro turno.
+ *
+ * El `id` de cada botón es lo que vuelve por el webhook, no su título: así el
+ * texto se puede cambiar sin romper el flujo. Meta limita el título a 20
+ * caracteres y se RECORTA aquí en vez de dejar que la API lo rechace — un
+ * mensaje que no sale deja al pasajero mirando una pantalla muerta.
+ */
+export async function enviarBotones(
+  telefono: string,
+  cuerpo: string,
+  botones: Array<{ id: string; titulo: string }>,
+): Promise<boolean> {
+  return _enviar(
+    telefono,
+    {
+      type: 'interactive',
+      interactive: {
+        type: 'button',
+        body: { text: cuerpo },
+        action: {
+          buttons: botones.slice(0, 3).map((b) => ({
+            type: 'reply',
+            reply: { id: b.id, title: b.titulo.slice(0, 20) },
+          })),
+        },
+      },
+    },
+    `botones=${cuerpo}`,
+  );
+}
+
 // ─── Entrada ──────────────────────────────────────────────────────────────────
 
 /** Ventana del tope: 24 h móviles, no día natural (evita la trampa del huso). */
 const VENTANA_TOPE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Los dos resultados que además de anotarse MANDAN un mensaje.
+ * El resultado que además de anotarse MANDA un mensaje.
  *
  * Empiezan por `respondido` a propósito: el contador del tope cuenta con
  * `startsWith('respondido')`, así que cada mensaje que sale cuenta. Si la
  * petición de ubicación se llamara de otra forma, un pasajero podría hacernos
  * mandar cien botones sin tocar el tope.
  */
-const OUTCOME_UBICACION = 'respondido:ubicacion-pedida';
 const OUTCOME_SIN_COBERTURA = 'respondido:fuera-de-cobertura';
 
 /** Qué se decidió con un mensaje. Se guarda para poder diagnosticar el silencio. */
 export type Resultado =
-  | { estado: 'respondido'; telefono: string; enlace: string }
+  | { estado: 'respondido'; telefono: string; enlace?: string }
   | { estado: 'ubicacion-pedida'; telefono: string }
   | { estado: 'fuera-de-cobertura'; telefono: string }
   | { estado: 'ignorado'; telefono: string; motivo: string }
   | { estado: 'repetido'; telefono: string };
-
-/**
- * Si ya se le mandó el botón de ubicación hace poco.
- *
- * Es todo el «estado» de la conversación, y sale de la tabla de mensajes que ya
- * existe: una tabla de conversaciones sería un sitio más donde quedarse colgado.
- */
-async function _ubicacionYaPedida(telefono: string, ahora: Date): Promise<boolean> {
-  const desde = new Date(ahora.getTime() - MEMORIA_PETICION_MIN * 60000);
-  const previo = await prisma.whatsappInbound.findFirst({
-    // Igualdad exacta, no `startsWith`: si el envío falló quedó marcado
-    // `…:sin-salir`, o sea que el pasajero NUNCA vio el botón. En ese caso hay
-    // que volver a pedírselo, no darlo por pedido y mandarle un enlace seco.
-    where: { fromPhone: telefono, outcome: OUTCOME_UBICACION, receivedAt: { gte: desde } },
-    select: { id: true },
-  });
-  return previo !== null;
-}
 
 /**
  * Si ese punto está fuera de toda plaza donde ZIPA opera.
@@ -306,46 +314,38 @@ async function procesarMensaje(m: MensajeWhatsapp, ahora: Date): Promise<Resulta
     return { estado: 'ignorado', telefono: m.telefono, motivo };
   }
 
-  // ── 3. ¿Qué toca: pedirle el punto o mandarle el enlace? ────────────────
-  const paso = siguientePaso({
-    ubicacion: m.ubicacion,
-    ubicacionYaPedida: await _ubicacionYaPedida(m.telefono, ahora),
-  });
-
-  // Se anota ANTES de mandar, siempre. Si el envío falla, el usuario escribe
-  // otra vez y eso es un mensaje nuevo con id nuevo. Al revés —mandar y luego
-  // anotar— un corte a mitad dejaría el mensaje sin marcar y el reintento de
-  // Meta le mandaría un segundo mensaje.
-  if (paso.accion === 'pedir-ubicacion') {
-    await anotar(OUTCOME_UBICACION);
-    const salio = await enviarSolicitudUbicacion(m.telefono, textoPedirUbicacion(m.nombre));
-    if (!salio) await anotar(`${OUTCOME_UBICACION}:sin-salir`);
-    return { estado: 'ubicacion-pedida', telefono: m.telefono };
-  }
-
-  // ── 4. Fuera de cobertura: se dice, no se manda un enlace inútil ────────
-  if (paso.origen && (await _fueraDeCobertura(paso.origen.lat, paso.origen.lng))) {
+  // ── 3. Fuera de cobertura: se dice antes de empezar nada ────────────────
+  // Si manda su punto y ahí no operamos, entrar en la conversación para
+  // acabar diciéndole que no hay servicio le cuesta cuatro mensajes y a
+  // nosotros cuatro también.
+  if (m.ubicacion && (await _fueraDeCobertura(m.ubicacion.lat, m.ubicacion.lng))) {
     await anotar(OUTCOME_SIN_COBERTURA);
     const salio = await enviarTexto(m.telefono, textoFueraDeCobertura(m.nombre));
     if (!salio) await anotar(`${OUTCOME_SIN_COBERTURA}:sin-salir`);
     return { estado: 'fuera-de-cobertura', telefono: m.telefono };
   }
 
-  // ── 5. Identidad y enlace ───────────────────────────────────────────────
+  // ── 4. El pedido, dentro del chat ───────────────────────────────────────
   // El teléfono lo verificó Meta con su firma; por eso no se pide OTP.
-  const usuario = await usuarioParaTelefonoVerificado(m.telefono, m.nombre);
-  const { codigo } = await emitirEnlaceMagico(usuario.id, 'whatsapp', ahora, paso.origen);
-  const enlace = construirEnlace(CLIENT_WEB_URL, codigo);
+  const r = await ejecutarPasoDelPedido(m, ahora);
 
-  const cuerpo = paso.origen
-    ? textoEnlaceConOrigen(enlace, VIGENCIA_MIN, paso.origen.etiqueta)
-    : textoEnlaceSinOrigen(m.nombre, enlace, VIGENCIA_MIN);
+  // Se anota ANTES de mandar, siempre. Si el envío falla, el usuario escribe
+  // otra vez y eso es un mensaje nuevo con id nuevo. Al revés —mandar y luego
+  // anotar— un corte a mitad dejaría el mensaje sin marcar y el reintento de
+  // Meta le mandaría un segundo mensaje.
+  await anotar(r.outcome);
 
-  await anotar('respondido');
-  const salio = await enviarTexto(m.telefono, cuerpo);
-  if (!salio) await anotar('respondido:sin-salir');
+  const salio = r.pedirUbicacion
+    ? await enviarSolicitudUbicacion(m.telefono, r.cuerpo)
+    : r.botones && r.botones.length > 0
+      ? await enviarBotones(m.telefono, r.cuerpo, r.botones)
+      : await enviarTexto(m.telefono, r.cuerpo);
 
-  return { estado: 'respondido', telefono: m.telefono, enlace };
+  if (!salio) await anotar(`${r.outcome}:sin-salir`);
+
+  return r.pedirUbicacion
+    ? { estado: 'ubicacion-pedida', telefono: m.telefono }
+    : { estado: 'respondido', telefono: m.telefono };
 }
 
 /**

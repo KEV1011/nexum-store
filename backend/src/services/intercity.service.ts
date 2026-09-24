@@ -15,6 +15,10 @@ import { nuevaReferencia } from '../lib/referencia';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
 import { maskPhone } from './safe-contact.service';
+import {
+  recalcularReputacionConductor,
+  recalcularReputacionEmpresa,
+} from './reputacion.service';
 import { getDriverProfile } from './driver-profile.service';
 import { sendPushToDriver, sendPushToClient } from './push.service';
 import {
@@ -887,6 +891,16 @@ export async function rateIntercityBooking(
     where: { id: bookingId },
     data: { rating, ratingComment: comment?.trim() || null },
   });
+
+  // La estrella se guardaba aquí y NO llegaba a ninguna reputación: ni al
+  // conductor —cuya nota salía solo de los viajes urbanos— ni a la empresa
+  // bajo la que se prestó el servicio. El pasajero calificaba y el dato moría
+  // en su propia fila. Se ESPERAN, como en el viaje urbano: las dos son
+  // best-effort por dentro, así que no esperarlas solo abriría la carrera de
+  // que la app recargue y lea la nota vieja.
+  if (updated.driverId) await recalcularReputacionConductor(updated.driverId);
+  if (updated.operatorId) await recalcularReputacionEmpresa(updated.operatorId);
+
   return _toDTO(updated as DbBooking);
 }
 

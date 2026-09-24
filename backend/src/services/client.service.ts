@@ -47,6 +47,7 @@ import {
 import type { Franja } from '../lib/horario-tienda';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
+import { recalcularReputacionConductor } from './reputacion.service';
 import { saneaMetodoPago } from '../lib/metodos-pago';
 import { saneaElogios } from '../lib/elogios';
 import { planificar } from '../lib/viaje-programado';
@@ -917,29 +918,15 @@ export async function rateClientTrip(
 }
 
 /**
- * Vuelve a calcular la nota del conductor a partir de sus viajes calificados.
+ * La nota del conductor.
  *
- * Best-effort por el mismo motivo que la del negocio: la calificación del
- * pasajero ya quedó guardada en su viaje, y perderla por un fallo al promediar
- * sería tirar el dato bueno por el derivado.
+ * Se mudó a `reputacion.service` cuando dejó de ser «el promedio de sus
+ * viajes urbanos»: un conductor presta también intermunicipales y salidas de
+ * bus, y esas estrellas se estaban guardando sin llegar a su nota. Se
+ * re-exporta desde aquí porque media docena de sitios ya la llamaban por este
+ * nombre.
  */
-export async function recalcularReputacionConductor(driverId: string): Promise<void> {
-  try {
-    const filas = await prisma.trip.findMany({
-      where: { driverId, rating: { not: null } },
-      select: { rating: true },
-    });
-    const { rating, ratingCount } = promedioReputacion(
-      filas.map((f) => f.rating as number),
-    );
-    await prisma.driver.update({
-      where: { id: driverId },
-      data: { rating, ratingCount },
-    });
-  } catch (err) {
-    console.error('[reputacion] no se pudo recalcular la nota del conductor:', err);
-  }
-}
+export { recalcularReputacionConductor };
 
 /**
  * Vuelve a calcular la nota del negocio a partir de sus pedidos calificados.
@@ -1455,6 +1442,26 @@ function _avisarPasajero(
     body: aviso.body,
     data: { type: aviso.type, tripId },
   });
+  // Y por WhatsApp, si el viaje se pidió por ahí. Quien pide desde el chat no
+  // tiene la app instalada: sin esto pediría el taxi y no volvería a saber
+  // nada. Usa el MISMO `avisoDeEstado`, así que los dos canales dicen lo mismo
+  // y callan en los mismos estados.
+  _avisarPorWhatsapp?.(tripId, aviso.title, aviso.body);
+}
+
+/**
+ * Aviso por WhatsApp de un cambio de estado del viaje.
+ *
+ * Se INYECTA en vez de importarse: `whatsapp-pedido.service` necesita crear
+ * viajes desde aquí, y un import en los dos sentidos sería un ciclo. Mismo
+ * patrón que los avisos por socket.
+ */
+let _avisarPorWhatsapp: ((tripId: string, titulo: string, cuerpo: string) => void) | null = null;
+
+export function registerAvisoWhatsapp(
+  fn: (tripId: string, titulo: string, cuerpo: string) => void,
+): void {
+  _avisarPorWhatsapp = fn;
 }
 
 export async function cancelClientTrip(clientId: string, tripId: string): Promise<boolean> {
