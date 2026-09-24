@@ -80,9 +80,10 @@ PRIVACY_EMAIL  = privacidad@tudominio.co
 LEGAL_EMAIL    = legal@tudominio.co
 ```
 
-Solo `SUPPORT_EMAIL` es obligatoria: las otras dos la heredan si faltan. Una
-dirección mal escrita **se descarta con un aviso en los registros** en vez de
-publicarse rota.
+**Ninguna es obligatoria hoy**: sin ellas se publica `zipalegalcolombia@gmail.com`,
+que es un buzón real y atendido. `PRIVACY_EMAIL` y `LEGAL_EMAIL` heredan de
+`SUPPORT_EMAIL` si faltan, y una dirección mal escrita **se descarta con un
+aviso en los registros** en vez de publicarse rota.
 
 **Render → `nexum-store` (el portal) → Environment:**
 
@@ -92,7 +93,9 @@ NEXT_PUBLIC_SUPPORT_EMAIL = soporte@tudominio.co
 
 Va aparte porque Next.js la necesita al compilar y es otro servicio. Ponla igual
 que la del backend y **vuelve a desplegar el portal**, o se queda con el valor
-anterior dentro del bundle.
+anterior dentro del bundle. Si no la pones, el portal usa el mismo buzón por
+defecto que el backend — que los dos coincidan lo vigila
+`backend/src/lib/contacto-portal.test.ts`.
 
 **Comprobar:** en `/health`, el campo `contactoLegal` debe pasar de
 `sin-configurar` a `publicado`.

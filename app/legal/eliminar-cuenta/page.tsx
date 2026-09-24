@@ -1,5 +1,7 @@
 import Link from 'next/link'
 
+import { correoSoporte } from '../../contacto'
+
 /**
  * Play exige una URL pública que explique cómo eliminar la cuenta y qué pasa
  * con los datos, alcanzable SIN instalar la app. El borrado en sí ya existe
@@ -21,13 +23,11 @@ export const metadata = {
 }
 
 /**
- * Correo de soporte. NO tiene valor por defecto a propósito: un correo
- * inventado en la página que lee el revisor de Play rebota, y un canal de
- * contacto que no contesta es peor que no ofrecerlo. Si no está configurado, la
- * página solo ofrece el camino que sí funciona seguro (el soporte dentro de la
- * app). Defínelo en Vercel/Render como NEXT_PUBLIC_SUPPORT_EMAIL.
+ * Correo de soporte. Sale de `app/contacto.ts`, que es el mismo buzón que el
+ * backend publica en la política de privacidad — dos direcciones distintas en
+ * el mismo trámite serían dos canales contradictorios.
  */
-const SOPORTE = process.env.NEXT_PUBLIC_SUPPORT_EMAIL?.trim() || null
+const SOPORTE = correoSoporte()
 
 export default function Page() {
   return (
@@ -60,23 +60,14 @@ export default function Page() {
 
         <section className="mt-8">
           <h2 className="text-lg font-semibold">Si ya desinstalaste la app</h2>
-          {SOPORTE ? (
-            <p className="mt-3 text-[15px] leading-relaxed text-slate-700">
-              Escríbenos a{' '}
-              <a href={`mailto:${SOPORTE}`} className="text-emerald-700 font-semibold">
-                {SOPORTE}
-              </a>{' '}
-              indicando el número de celular con el que te registraste. Verificamos que
-              la cuenta es tuya y la eliminamos dentro de los 30 días siguientes.
-            </p>
-          ) : (
-            <p className="mt-3 text-[15px] leading-relaxed text-slate-700">
-              Vuelve a instalar la app, entra con tu número y elimina la cuenta desde
-              Ajustes. También puedes escribirnos por el correo de contacto que aparece
-              en nuestra ficha de Google Play, indicando el número con el que te
-              registraste.
-            </p>
-          )}
+          <p className="mt-3 text-[15px] leading-relaxed text-slate-700">
+            Escríbenos a{' '}
+            <a href={`mailto:${SOPORTE}`} className="text-emerald-700 font-semibold">
+              {SOPORTE}
+            </a>{' '}
+            indicando el número de celular con el que te registraste. Verificamos que
+            la cuenta es tuya y la eliminamos dentro de los 30 días siguientes.
+          </p>
         </section>
 
         <section className="mt-8">

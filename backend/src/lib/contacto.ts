@@ -14,9 +14,14 @@
  * -------------------------------------------
  * Una dirección que no existe dentro de un documento legal es peor que no
  * tener ninguna: el titular escribe, rebota, y queda constancia de que el canal
- * que publicamos no funciona. Así que sin configurar no se imprime nada
- * parecido a un correo — se dice la verdad, y `/health` lo marca como pendiente
- * para que no se lance así sin darse cuenta.
+ * que publicamos no funciona. Por eso una variable mal escrita se descarta en
+ * vez de imprimirse, y por eso `BUZON_ZIPA` es un buzón REAL que el titular de
+ * ZIPA abrió para esto — no un `soporte@undominio.co` de relleno.
+ *
+ * El valor por defecto existe para que los documentos legales no dependan de
+ * que alguien se acuerde de poner la misma variable en dos servicios: sin él,
+ * un despliegue del portal sin la variable publica una política sin canal de
+ * atención, que es justo lo que la Ley 1581 y Play no admiten.
  *
  * TRES DIRECCIONES Y NO UNA, aunque al principio caigan en el mismo buzón:
  * separarlas cuesta lo mismo hoy y evita tener que reeditar documentos legales
@@ -25,6 +30,17 @@
 
 /** Forma mínima de un correo. No valida que exista; valida que no sea basura. */
 const CORREO = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+
+/**
+ * El buzón de ZIPA mientras no haya dominio propio.
+ *
+ * Es una cuenta real y atendida, no un placeholder: se puede publicar en la
+ * política de privacidad, en la ficha de Play y en el formulario de retiros sin
+ * que rebote nada. El día que haya dominio, se define `SUPPORT_EMAIL` (y, si se
+ * quieren separar, `PRIVACY_EMAIL`/`LEGAL_EMAIL`) y este deja de usarse sin
+ * tocar código.
+ */
+export const BUZON_ZIPA = 'zipalegalcolombia@gmail.com';
 
 function leer(nombre: string): string | null {
   const v = (process.env[nombre] ?? '').trim();
@@ -53,7 +69,7 @@ export interface Contactos {
  * permite arrancar con un único buzón sin dejar huecos en los documentos.
  */
 export function contactos(): Contactos {
-  const soporte = leer('SUPPORT_EMAIL');
+  const soporte = leer('SUPPORT_EMAIL') ?? BUZON_ZIPA;
   return {
     soporte,
     privacidad: leer('PRIVACY_EMAIL') ?? soporte,

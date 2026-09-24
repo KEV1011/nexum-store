@@ -34,8 +34,8 @@ responsabilidad a quien subió el contenido — los tres ya están montados.
    No se escribe a mano en ningún documento: los términos lo toman de ahí
    (`lib/contacto.ts`), así que cambiarlo no exige tocar código — solo volver a
    publicar el documento desde `/admin` → SOS → Documentos legales.
-   Si no se define, hereda `SUPPORT_EMAIL`; si tampoco hay, los términos
-   remiten solo al formulario `/legal/takedown` en vez de publicar una
+   Si no se define, hereda `SUPPORT_EMAIL`; si tampoco hay, se publica el buzón
+   por defecto `zipalegalcolombia@gmail.com`. Lo que nunca se publica es una
    dirección inventada.
 3. En Colombia, el régimen análogo (Ley 1915 de 2018, decisiones CAN) queda
    cubierto por el mismo procedimiento de notificación y retiro.

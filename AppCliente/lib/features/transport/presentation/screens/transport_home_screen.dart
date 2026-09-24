@@ -9,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
-import 'package:nexum_client/shared/services/zona_marca_provider.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
@@ -105,10 +104,6 @@ class _TransportHomeScreenState extends ConsumerState<TransportHomeScreen>
       final here = LatLng(pos.latitude, pos.longitude);
       setState(() => _myLocation = here);
       _mapController.move(here, 16);
-      // Con qué nombre se presenta la marca aquí: en Pamplona, ZIPA/SANTURBÁN.
-      unawaited(
-        ref.read(zonaMarcaProvider.notifier).resolver(here.latitude, here.longitude),
-      );
     } catch (_) {
       // Sin GPS disponible: se conserva el centro por defecto.
     }
@@ -371,18 +366,16 @@ class _MyLocationDot extends StatelessWidget {
 
 // ── Chip de ubicación (top left) ──────────────────────────────────────────────
 
-class _LocationChip extends ConsumerWidget {
+class _LocationChip extends StatelessWidget {
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     // Era un adorno: parecía un selector (con su flecha hacia abajo) pero no
     // tenía onTap y al tocarlo no pasaba nada. Ahora lleva a las direcciones.
     //
-    // Y dice dónde estás con el nombre de la marca allí: en Pamplona,
-    // «ZIPA/SANTURBÁN». Mientras no se sepa la zona —GPS sin enganchar, permiso
-    // denegado, un municipio sin zona asignada— se queda en «Tu ubicación», que
-    // era el texto de siempre. Nunca una zona inventada ni un hueco.
-    final zona = ref.watch(zonaMarcaProvider);
-    final texto = zona.tieneZona ? zona.etiqueta : 'Tu ubicación';
+    // Aquí se pintaba el nombre de la marca con la zona del municipio
+    // («ZIPA/SANTURBÁN» en Pamplona). Se retiró: la marca es ZIPA en todas
+    // partes, y el chip vuelve a decir lo que siempre dijo.
+    const texto = 'Tu ubicación';
 
     return GestureDetector(
       onTap: () => context.push(AppRoutes.addresses),

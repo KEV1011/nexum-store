@@ -5,6 +5,7 @@ import {
   canalDelTitular,
   canalDeSoporte,
   canalDeRetiros,
+  BUZON_ZIPA,
 } from './contacto';
 
 const VARS = ['SUPPORT_EMAIL', 'PRIVACY_EMAIL', 'LEGAL_EMAIL'];
@@ -25,9 +26,17 @@ afterEach(() => {
 });
 
 describe('las tres direcciones', () => {
-  it('sin configurar, ninguna', () => {
-    expect(contactos()).toEqual({ soporte: null, privacidad: null, legal: null });
-    expect(contactoLegalConfigurado()).toBe(false);
+  it('sin variables, el buzón real de ZIPA — nunca un hueco', () => {
+    // Antes esto devolvía null y la política de privacidad salía sin canal de
+    // atención. No hace falta: hay un buzón de verdad, así que el documento se
+    // publica completo aunque nadie se acuerde de poner la variable en los dos
+    // servicios. Lo que sigue prohibido es imprimir una dirección inventada.
+    expect(contactos()).toEqual({
+      soporte: BUZON_ZIPA,
+      privacidad: BUZON_ZIPA,
+      legal: BUZON_ZIPA,
+    });
+    expect(contactoLegalConfigurado()).toBe(true);
   });
 
   it('con un solo buzón, las otras dos lo heredan', () => {
@@ -57,13 +66,12 @@ describe('las tres direcciones', () => {
 
   it('un valor mal escrito se DESCARTA, no se publica', () => {
     // Una dirección rota dentro de un documento legal es peor que ninguna: el
-    // titular escribe, rebota, y queda constancia de que el canal no sirve.
-    process.env['SUPPORT_EMAIL'] = 'soporte@zipa';
-    expect(contactos().soporte).toBeNull();
-    process.env['SUPPORT_EMAIL'] = 'no es un correo';
-    expect(contactos().soporte).toBeNull();
-    process.env['SUPPORT_EMAIL'] = '@zipa.co';
-    expect(contactos().soporte).toBeNull();
+    // titular escribe, rebota, y queda constancia de que el canal no sirve. Con
+    // el valor roto fuera, queda el buzón real en vez de un hueco.
+    for (const roto of ['soporte@zipa', 'no es un correo', '@zipa.co']) {
+      process.env['SUPPORT_EMAIL'] = roto;
+      expect(contactos().soporte, roto).toBe(BUZON_ZIPA);
+    }
   });
 
   it('una dirección específica rota no arrastra a la heredada', () => {
@@ -82,16 +90,18 @@ describe('lo que se imprime en los documentos', () => {
     expect(t).toMatch(/suprimir/i);
   });
 
-  it('SIN correo no se inventa ninguno, y se reconoce el hueco', () => {
+  it('sin variables, el buzón real y la ley igualmente', () => {
+    // El caso que de verdad se despliega hoy: nadie definió nada y la política
+    // tiene que salir con un canal al que se pueda escribir.
     const t = canalDelTitular();
-    expect(t).not.toMatch(/@/);
-    expect(t).toMatch(/pendiente/i);
+    expect(t).toContain(BUZON_ZIPA);
+    expect(t).toContain('1581');
   });
 
   it('el soporte y los retiros siguen la misma regla', () => {
-    expect(canalDeSoporte()).not.toMatch(/@/);
+    expect(canalDeSoporte()).toContain(BUZON_ZIPA);
     expect(canalDeRetiros()).toContain('/legal/takedown');
-    expect(canalDeRetiros()).not.toMatch(/@/);
+    expect(canalDeRetiros()).toContain(BUZON_ZIPA);
 
     process.env['SUPPORT_EMAIL'] = 'soporte@zipa.co';
     expect(canalDeSoporte()).toContain('soporte@zipa.co');

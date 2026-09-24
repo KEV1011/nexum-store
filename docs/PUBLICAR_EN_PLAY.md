@@ -120,9 +120,12 @@ formulario tienen que coincidir.
 
 ### Correo de soporte
 
-**[hacer tú]** Define `NEXT_PUBLIC_SUPPORT_EMAIL` en el hosting del portal. Sin
-esa variable, `/legal/eliminar-cuenta` no muestra ningún correo — a propósito:
-poner uno inventado en la página que lee el revisor garantiza un rebote.
+**Ya resuelto:** las páginas legales y la política de privacidad publican
+`zipalegalcolombia@gmail.com` sin necesidad de configurar nada
+(`backend/src/lib/contacto.ts` y `app/contacto.ts`, con una prueba que impide
+que los dos ficheros divergan). El día que haya dominio propio se definen
+`SUPPORT_EMAIL` en el backend y `NEXT_PUBLIC_SUPPORT_EMAIL` en el portal, y
+mandan sobre el valor por defecto.
 
 Play además pide un correo de contacto en la ficha, que es un campo aparte.
 

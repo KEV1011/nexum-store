@@ -1,0 +1,15 @@
+-- La marca vuelve a ser ZIPA en todas partes.
+--
+-- La migración `20260828140000_municipality_zone` sembró zone='Santurbán' en
+-- Pamplona para que la app se presentara como «ZIPA/SANTURBÁN». Se retira: el
+-- nombre de cara al usuario es ZIPA, sin sufijo de región.
+--
+-- Se BORRA EL DATO en vez de quitar la columna, y no es pereza: las apps ya
+-- instaladas guardan la última zona conocida en el teléfono y solo la olvidan
+-- cuando el servidor les responde que no hay ninguna. Con la columna en null,
+-- `/geo/zona` devuelve `zona: null` y esos teléfonos vuelven solos a «ZIPA»;
+-- quitando la ruta se quedarían con «ZIPA/SANTURBÁN» pegado para siempre.
+--
+-- La columna se queda por si algún día una plaza quiere su propio nombre: es
+-- nullable y hoy no la lee nadie más.
+UPDATE "municipalities" SET "zone" = NULL WHERE "zone" IS NOT NULL;

@@ -215,7 +215,7 @@ export interface ZonaDeMarca {
   departamento: string | null;
   /** Zona configurada para ese municipio, si tiene. */
   zona: string | null;
-  /** Lo que la app pinta: «ZIPA/SANTURBÁN» o «ZIPA». */
+  /** Lo que la app pinta. Hoy siempre «ZIPA»: ya no hay zonas configuradas. */
   etiqueta: string;
 }
 
@@ -298,8 +298,13 @@ export async function zonaDeCoordenadas(lat: number, lng: number): Promise<ZonaD
 export const MARCA = 'ZIPA';
 
 /**
- * «ZIPA/SANTURBÁN» o «ZIPA». En mayúsculas porque va como logotipo, y la zona
- * se guarda con su tilde y su capitalización correctas ('Santurbán').
+ * El nombre con el que se presenta la marca.
+ *
+ * Se añadía la zona del municipio en mayúsculas («ZIPA/SANTURBÁN» en Pamplona).
+ * Ese sufijo se retiró y ninguna fila tiene `zone`, así que hoy esto devuelve
+ * siempre `MARCA`. Se conserva el mecanismo —columna y función— porque es lo
+ * que hace que las apps ya instaladas dejen de pintar la zona vieja, y porque
+ * el día que una plaza quiera su nombre basta con escribir una fila.
  */
 export function etiquetaDeZona(zona: string | null | undefined): string {
   const z = zona?.trim();
