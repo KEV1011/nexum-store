@@ -222,6 +222,9 @@ class PooledTripEntity {
     this.distanceKm,
     this.durationMinutes,
     this.bookings = const [],
+    this.esUrbano = false,
+    this.routeName,
+    this.savingsPerSeat,
   });
 
   final String id;
@@ -244,7 +247,25 @@ class PooledTripEntity {
   final int? durationMinutes;
   final List<PooledSeatBooking> bookings;
 
+  /// Puesto de taxi dentro de la ciudad, no salida intermunicipal. En una
+  /// urbana el origen y el destino son el MISMO municipio, así que pintar
+  /// «Pamplona → Pamplona» se leería como un error: el nombre está en
+  /// `routeName`.
+  final bool esUrbano;
+
+  /// «Terminal → Universidad». Solo en las urbanas.
+  final String? routeName;
+
+  /// Cuánto se ahorra el pasajero frente a tomar el taxi solo, ya calculado
+  /// por el servidor.
+  final double? savingsPerSeat;
+
   int get bookedSeats => totalSeats - availableSeats;
+
+  /// Cómo se llama esta salida en una línea.
+  String get tituloRuta => esUrbano
+      ? (routeName ?? 'Viaje por puestos')
+      : '${origin.displayName} → ${destination.displayName}';
 
   factory PooledTripEntity.fromJson(Map<String, dynamic> j) => PooledTripEntity(
         id: j['id'] as String? ?? '',
@@ -272,5 +293,8 @@ class PooledTripEntity {
             .whereType<Map<String, dynamic>>()
             .map(PooledSeatBooking.fromJson)
             .toList(),
+        esUrbano: j['kind'] == 'urbano',
+        routeName: j['routeName'] as String?,
+        savingsPerSeat: (j['savingsPerSeat'] as num?)?.toDouble(),
       );
 }

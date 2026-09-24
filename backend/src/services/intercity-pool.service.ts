@@ -55,7 +55,7 @@ import {
 import { precioCategoria, tablaTarifas } from '../lib/tarifa-categoria';
 import { medirTrayecto } from './trip-options.service';
 import { geocodeAddress } from './geo.service';
-import { getMunicipality } from './municipality.service';
+import { getMunicipality, plazaDeCoordenadas } from './municipality.service';
 import { comisionPara } from './comision.service';
 import { recordCompletedTrip } from './earnings.service';
 import {
@@ -616,6 +616,20 @@ export interface BuscarPuestosUrbanosQuery {
   ciudad: string;
   /** Solo las que salen dentro de las próximas N horas. */
   horas?: number;
+}
+
+/**
+ * En qué ciudad está el pasajero, con el MISMO criterio que sella el viaje y
+ * el conductor (`plazaDeCoordenadas`). Si aquí se usara otro, la app diría que
+ * está en una plaza y el despacho lo contaría en otra.
+ */
+export async function plazaDelPasajero(
+  lat: number, lng: number,
+): Promise<{ slug: string; nombre: string } | null> {
+  const slug = await plazaDeCoordenadas(lat, lng);
+  if (!slug) return null;
+  const m = await getMunicipality(slug);
+  return { slug, nombre: m?.name ?? slug };
 }
 
 /**

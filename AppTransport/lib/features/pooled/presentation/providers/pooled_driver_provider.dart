@@ -28,6 +28,28 @@ class FareCapInfo {
   final bool costosDeclarados;
 }
 
+/// Lo que se puede cobrar por un puesto en una ruta urbana.
+///
+/// `tarifaSolo` es lo que costaría esa misma carrera llevando a una persona:
+/// es contra eso que se topa el puesto. Con `medida: false` el servidor no
+/// pudo medir el trayecto y usó la carrera mínima, así que la pantalla lo dice
+/// en vez de presentar el número como si estuviera medido.
+class TopePuestoUrbano {
+  const TopePuestoUrbano({
+    required this.tarifaSolo,
+    required this.topePorPuesto,
+    required this.sugerido,
+    required this.medida,
+    this.distanceKm,
+  });
+
+  final double tarifaSolo;
+  final double topePorPuesto;
+  final double sugerido;
+  final bool medida;
+  final double? distanceKm;
+}
+
 class PooledDriverState {
   const PooledDriverState({
     this.trips = const [],
@@ -85,6 +107,73 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  // ── Puesto de taxi urbano ───────────────────────────────────────────────────
+
+  /// Lo que el formulario necesita para proponer un precio sin adivinar.
+  Future<TopePuestoUrbano?> fetchTopeUrbano({
+    required PooledCity ciudad,
+    required String origen,
+    required String destino,
+    required int puestos,
+  }) async {
+    try {
+      final res = await _client.get<Map<String, dynamic>>(
+        '/driver/pool/urbano/tope',
+        queryParameters: {
+          'ciudad': ciudad.name,
+          'origen': origen,
+          'destino': destino,
+          'puestos': puestos,
+        },
+      );
+      final d = res.data?['data'] as Map<String, dynamic>?;
+      if (d == null) return null;
+      return TopePuestoUrbano(
+        tarifaSolo: (d['tarifaSolo'] as num?)?.toDouble() ?? 0,
+        topePorPuesto: (d['topePorPuesto'] as num?)?.toDouble() ?? 0,
+        sugerido: (d['sugerido'] as num?)?.toDouble() ?? 0,
+        medida: d['medida'] as bool? ?? false,
+        distanceKm: (d['distanceKm'] as num?)?.toDouble(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// `null` si se publicó; si no, el motivo que devolvió el servidor.
+  Future<String?> publicarPuestoUrbano({
+    required PooledCity ciudad,
+    required String origen,
+    required String destino,
+    required DateTime salida,
+    required int puestos,
+    required double tarifaPorPuesto,
+    required String vehiculo,
+    String? notas,
+  }) async {
+    try {
+      await _client.post<Map<String, dynamic>>(
+        '/driver/pool/urbano/publish',
+        data: {
+          'city': ciudad.name,
+          'originLabel': origen,
+          'destLabel': destino,
+          'departureTime': salida.toIso8601String(),
+          'totalSeats': puestos,
+          'farePerSeat': tarifaPorPuesto,
+          'vehicleDescription': vehiculo,
+          if (notas != null && notas.isNotEmpty) 'notes': notas,
+        },
+      );
+      await loadMine();
+      return null;
+    } on AppException catch (e) {
+      return _extractError(e) ?? 'No se pudo publicar el viaje por puestos.';
+    } catch (_) {
+      return 'No se pudo publicar el viaje por puestos.';
     }
   }
 

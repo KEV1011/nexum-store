@@ -47,6 +47,8 @@ import 'package:nexum_client/features/pooled/presentation/screens/'
     'pooled_search_screen.dart';
 import 'package:nexum_client/features/pooled/presentation/screens/'
     'pooled_bookings_screen.dart';
+import 'package:nexum_client/features/pooled/presentation/screens/'
+    'puesto_urbano_screen.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/screens/'
     'request_ride_screen.dart';
 import 'package:nexum_client/features/onboarding/presentation/screens/'
@@ -98,6 +100,8 @@ abstract final class AppRoutes {
   static const String freight = '/freight';
   static const String pooledSearch = '/pooled/search';
   static const String pooledBookings = '/pooled/bookings';
+  /// Puestos de taxi dentro de la ciudad.
+  static const String puestoUrbano = '/puesto-urbano';
   static const String requestRide = '/ride/request';
 
   // Rutas de envíos por encargo (motor errands)
@@ -286,6 +290,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideUp(
           pageKey: state.pageKey,
           child: const PooledBookingsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.puestoUrbano,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const PuestoUrbanoScreen(),
         ),
       ),
       GoRoute(

@@ -259,7 +259,30 @@ class PooledTripEntity {
     this.stops = const [],
     this.myBooking,
     this.seatMap,
+    this.esUrbano = false,
+    this.routeName,
+    this.savingsPerSeat,
   });
+
+  /// Puesto de taxi dentro de la ciudad, no salida intermunicipal.
+  ///
+  /// En una urbana el origen y el destino son el MISMO municipio, así que
+  /// pintar «Pamplona → Pamplona» se leería como un error: el nombre de la
+  /// ruta está en [routeName].
+  final bool esUrbano;
+
+  /// «Terminal → Universidad». Solo en las urbanas.
+  final String? routeName;
+
+  /// Cuánto se ahorra frente a tomar el taxi solo, ya calculado por el
+  /// servidor. Null = no hay con qué compararlo, y entonces no se promete
+  /// ningún ahorro.
+  final double? savingsPerSeat;
+
+  /// Cómo se llama esta salida en una línea.
+  String get tituloRuta => esUrbano
+      ? (routeName ?? 'Viaje por puestos')
+      : '${origin.displayName} → ${destination.displayName}';
 
   /// Mapa de sillas. Null = salida sin numerar: se compran cupos y no se
   /// elige dónde se sienta uno, que es como funcionaban todas hasta ahora.
@@ -375,6 +398,9 @@ class PooledTripEntity {
               st['name'] as String,
         ],
         seatMap: MapaAsientos.fromJson(j['seatMap']),
+        esUrbano: j['kind'] == 'urbano',
+        routeName: j['routeName'] as String?,
+        savingsPerSeat: (j['savingsPerSeat'] as num?)?.toDouble(),
         myBooking: j['myBooking'] is Map<String, dynamic>
             ? SeatBookingEntity.fromJson(j['myBooking'] as Map<String, dynamic>)
             : null,
@@ -416,5 +442,11 @@ class PooledTripEntity {
         // sillas. Es el mismo descuido que en su día perdió el PIN del envío,
         // y por eso hay una prueba que lo vigila.
         seatMap: seatMap,
+        // Sin estas tres, refrescar los cupos de un puesto urbano lo
+        // convertiría en intermunicipal y la tarjeta pasaría a decir
+        // «Pamplona → Pamplona» a mitad de la reserva.
+        esUrbano: esUrbano,
+        routeName: routeName,
+        savingsPerSeat: savingsPerSeat,
       );
 }
