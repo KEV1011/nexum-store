@@ -1068,6 +1068,12 @@ model PooledTrip {
   /// dibujando con él: cambiarle el mapa a una salida a mitad de venta dejaría
   /// a quien ya compró sin saber dónde se sienta, y la discusión sería a bordo.
   seatConfig         Json?
+  /// Qué trae el vehículo: `["aire","usb",…]` del catálogo de
+  /// `lib/amenidades.ts`. Va en la SALIDA y no en la empresa porque dentro de
+  /// la misma flota un bus tiene aire y la buseta vieja no. El baño no se
+  /// guarda aquí: se deriva de `seatConfig.bano` para que el chip no
+  /// contradiga al plano.
+  amenities          Json?
   /// Encomiendas que viajan en la bodega de esta salida.
   manifests          FreightManifest[]
   farePerSeat        Float
@@ -1131,6 +1137,11 @@ model SeatBooking {
   notes          String?
   status         SeatBookingStatus @default(CONFIRMED)
   bookedAt       DateTime          @default(now())
+  /// Cómo calificó el pasajero esta salida (1-5) y qué escribió. La nota vive
+  /// en la fila del servicio —como en `Trip` y en `Order`— y el promedio de la
+  /// empresa se RECALCULA de aquí, nunca se va sumando encima.
+  rating         Int?
+  ratingComment  String?
 
   trip  PooledTrip       @relation(fields: [tripId], references: [id])
   user  User             @relation(fields: [userId], references: [id])
@@ -1228,6 +1239,17 @@ model Operator {
   contactEmail          String?
   city                  String?
   commissionRate        Float? // override de comisión de plataforma (null = global)
+  /// Condiciones del tiquete que publica la empresa: equipaje, mascotas,
+  /// menores, cancelación. Ver `lib/politicas-tiquete.ts`. NULL = no las ha
+  /// publicado, y la app lo dice — no se inventa una política por defecto,
+  /// que sería una condición reclamable que la empresa nunca fijó.
+  policies              Json?
+  /// Reputación REAL de la empresa, promediada de sus servicios calificados
+  /// (salidas programadas + intermunicipales). `null` mientras nadie la haya
+  /// calificado: la app dice «Nuevo». Nunca un 5,0 de fábrica — ese error ya
+  /// se pagó dos veces, en `Business` y en `Driver`.
+  rating                Float?
+  ratingCount           Int            @default(0)
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 

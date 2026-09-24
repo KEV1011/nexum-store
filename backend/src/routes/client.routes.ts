@@ -55,6 +55,7 @@ import {
   getPooledTripById,
   bookSeats,
   cancelSeatBooking,
+  rateSeatBooking,
   getClientBookings,
   PooledTripError,
 } from '../services/intercity-pool.service';
@@ -890,6 +891,29 @@ router.post('/intercity/pool/bookings/:bookingId/cancel', clientAuthMiddleware, 
   } catch (err) {
     const status = err instanceof PooledTripError ? 400 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to cancel booking' });
+  }
+});
+
+// POST /client/intercity/pool/bookings/:bookingId/rate — calificar la salida.
+//
+// Las estrellas son para la EMPRESA que la prestó (y para el conductor). Es
+// corregible: quien se equivoca de estrella prefiere cambiarla a dejar una
+// nota falsa publicada para siempre.
+router.post('/intercity/pool/bookings/:bookingId/rate', clientAuthMiddleware, async (req, res) => {
+  const b = req.body as { rating?: unknown; comment?: unknown };
+  try {
+    const booking = await rateSeatBooking(
+      req.clientId!,
+      req.params['bookingId']!,
+      b.rating,
+      b.comment,
+    );
+    res.json({ success: true, data: booking });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo calificar',
+    });
   }
 });
 

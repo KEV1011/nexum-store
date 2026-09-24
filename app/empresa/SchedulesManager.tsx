@@ -147,6 +147,23 @@ function descripcionConfig(c: ConfigSillas): string {
  * conductor afiliado, puestos y tarifa. El cliente los ve y reserva en
  * "Cupos compartidos" de la app.
  */
+/**
+ * Las comodidades que se pueden marcar, sin el baño.
+ *
+ * Espejo de `backend/src/lib/amenidades.ts`: el backend RECHAZA una clave que
+ * no conozca diciendo cuál, así que un desajuste entre las dos listas se ve al
+ * primer intento de publicar y no se queda escondido.
+ */
+const COMODIDADES: Array<[string, string]> = [
+  ['aire', 'Aire acondicionado'],
+  ['reclinable', 'Silla reclinable'],
+  ['usb', 'Cargador USB'],
+  ['wifi', 'Wi-Fi'],
+  ['tv', 'Pantallas'],
+  ['bodega', 'Bodega para equipaje'],
+  ['mantas', 'Mantas y almohadas'],
+]
+
 export default function SchedulesManager({ api }: { api: OperatorApi }) {
   const [trips, setTrips] = useState<PooledTripRow[]>([])
   const [drivers, setDrivers] = useState<OperatorDriverRow[]>([])
@@ -180,6 +197,10 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   // Paradas intermedias ("pasa por"): nombres de lugar, máx. 6.
   const [stops, setStops] = useState<string[]>([])
   const [stopDraft, setStopDraft] = useState('')
+  // Qué trae el vehículo. El baño NO está en esta lista: lo pone el plano de
+  // sillas, y tenerlo en dos sitios acabaría prometiendo un baño que el dibujo
+  // no tiene.
+  const [comodidades, setComodidades] = useState<string[]>([])
 
   /**
    * Qué disposiciones dan EXACTAMENTE los puestos que declaró la empresa.
@@ -317,6 +338,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
               }
             : {}),
           notes: notes.trim() || undefined,
+          amenities: comodidades.length > 0 ? comodidades : undefined,
           stops: stops.length > 0
             ? stops.map((name, i) => ({ name, order: i }))
             : undefined,
@@ -326,6 +348,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
       setDeparture('')
       setStops([])
       setStopDraft('')
+      setComodidades([])
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo publicar la salida.')
@@ -516,6 +539,45 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Qué trae el vehículo. Son los chips que el pasajero compara entre dos
+          salidas, y por eso el catálogo es cerrado: con texto libre una empresa
+          escribiría «A/C» y otra «climatizado», y no habría con qué comparar.
+          El baño no está: lo pone el plano de sillas. */}
+      <div className="mb-4">
+        <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">
+          Comodidades del vehículo
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {COMODIDADES.map(([clave, texto]) => {
+            const puesta = comodidades.includes(clave)
+            return (
+              <button
+                key={clave}
+                type="button"
+                onClick={() =>
+                  setComodidades(
+                    puesta
+                      ? comodidades.filter((c) => c !== clave)
+                      : [...comodidades, clave],
+                  )
+                }
+                className={`px-2.5 py-1 rounded-full border text-[11px] font-medium transition-colors ${
+                  puesta
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                {texto}
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-[10px] text-slate-400 mt-1.5">
+          El baño sale del plano de sillas, no de aquí: así el aviso nunca
+          promete lo que el dibujo no tiene.
+        </p>
       </div>
 
       {/* Elegir la disposición VIENDO el dibujo. «2+2, 10 filas, fondo de 4» no

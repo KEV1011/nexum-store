@@ -6,6 +6,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
+import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -112,6 +113,37 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
     );
   }
 
+  /// Califica la salida: las estrellas son para la empresa que la prestó.
+  ///
+  /// Si el servidor dice que todavía no —el bus sigue rodando— se enseña SU
+  /// motivo en vez de un «no se pudo» que obligaría a adivinar.
+  Future<void> _calificar(PooledTripEntity trip) async {
+    final booking = trip.myBooking;
+    if (booking == null) return;
+    final resultado = await showModalBottomSheet<(int, String)>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _HojaCalificar(
+        empresa: trip.operatorName,
+        inicial: booking.rating,
+      ),
+    );
+    if (resultado == null || !mounted) return;
+    final err = await ref
+        .read(pooledProvider.notifier)
+        .calificarSalida(booking.id, resultado.$1, comentario: resultado.$2);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(err ?? 'Gracias, tu calificación quedó registrada'),
+        backgroundColor: err == null ? AppColors.success : AppColors.error,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pooledProvider);
@@ -139,6 +171,7 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
                       onCall: () =>
                           _contactoProtegido(state.myBookings[i].driverPhone),
                       onCancel: () => _cancel(state.myBookings[i]),
+                      onCalificar: () => _calificar(state.myBookings[i]),
                     ),
                   ),
                 ),
@@ -191,11 +224,13 @@ class _BookingCard extends StatelessWidget {
     required this.trip,
     required this.onCall,
     required this.onCancel,
+    required this.onCalificar,
   });
 
   final PooledTripEntity trip;
   final VoidCallback onCall;
   final VoidCallback onCancel;
+  final VoidCallback onCalificar;
 
   @override
   Widget build(BuildContext context) {
@@ -206,6 +241,14 @@ class _BookingCard extends StatelessWidget {
     final seats = booking?.seatsBooked ?? 1;
     final canCancel = trip.status == PooledTripStatus.open ||
         trip.status == PooledTripStatus.full;
+    // Se ofrece calificar cuando el viaje ya pasó o va en camino. La regla
+    // exacta —si ya debería haber llegado según la duración de la ruta— la
+    // decide el SERVIDOR, y si dice que todavía no, se enseña su motivo. Dos
+    // copias de esa regla acabarían discrepando.
+    final puedeCalificar = booking != null &&
+        booking.status == 'confirmed' &&
+        (trip.status == PooledTripStatus.completed ||
+            trip.status == PooledTripStatus.departed);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -257,6 +300,33 @@ class _BookingCard extends StatelessWidget {
           ),
           _row(context, Icons.directions_car_rounded,
               '${trip.driverName} · ${trip.vehicleDescription}'),
+          if (trip.operatorName != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified_rounded,
+                      size: 15, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      trip.operatorName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                  NotaEmpresa(
+                    rating: trip.operatorRating,
+                    votos: trip.operatorRatingCount,
+                  ),
+                ],
+              ),
+            ),
           if (booking?.pickupAddress != null && booking!.pickupAddress!.isNotEmpty)
             _row(context, Icons.my_location_rounded, booking.pickupAddress!),
           const SizedBox(height: 12),
@@ -289,6 +359,56 @@ class _BookingCard extends StatelessWidget {
               ],
             ],
           ),
+          // Se piden aquí y no solo al comprar: las condiciones se releen
+          // cuando hay que cancelar o cuando aparece la maleta de más.
+          if (trip.operatorName != null && trip.operatorPolicies.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            CondicionesTiquete(lineas: trip.operatorPolicies),
+          ],
+          if (puedeCalificar) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            if (booking.rating != null)
+              Row(
+                children: [
+                  for (var i = 1; i <= 5; i++)
+                    Icon(
+                      i <= booking.rating! ? Icons.star_rounded : Icons.star_border_rounded,
+                      size: 20,
+                      color: AppColors.starText,
+                    ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Gracias por calificar',
+                      style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: onCalificar,
+                    child: const Text('Cambiar'),
+                  ),
+                ],
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onCalificar,
+                  icon: const Icon(Icons.star_rounded, size: 18),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _kPooledColor,
+                    side: const BorderSide(color: _kPooledColor),
+                  ),
+                  label: Text(
+                    trip.operatorName != null
+                        ? 'Calificar a ${trip.operatorName}'
+                        : 'Calificar el viaje',
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -322,4 +442,96 @@ class _BookingCard extends StatelessWidget {
           ],
         ),
       );
+}
+
+
+/// Las estrellas y, si quiere, por qué.
+///
+/// El comentario es opcional a propósito: obligarlo hace que la gente escriba
+/// «bien» para poder cerrar, y eso no le sirve a nadie. Sale con la nota ya
+/// puesta cuando viene a corregirla.
+class _HojaCalificar extends StatefulWidget {
+  const _HojaCalificar({this.empresa, this.inicial});
+
+  final String? empresa;
+  final int? inicial;
+
+  @override
+  State<_HojaCalificar> createState() => _HojaCalificarState();
+}
+
+class _HojaCalificarState extends State<_HojaCalificar> {
+  late int _estrellas = widget.inicial ?? 0;
+  final _comentario = TextEditingController();
+
+  @override
+  void dispose() {
+    _comentario.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.empresa == null
+                ? '¿Qué tal estuvo el viaje?'
+                : '¿Qué tal viajaste con ${widget.empresa}?',
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tu calificación ayuda a los demás pasajeros a elegir.',
+            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 1; i <= 5; i++)
+                IconButton(
+                  onPressed: () => setState(() => _estrellas = i),
+                  icon: Icon(
+                    i <= _estrellas ? Icons.star_rounded : Icons.star_border_rounded,
+                    size: 38,
+                    color: AppColors.starText,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _comentario,
+            maxLength: 300,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Cuéntanos (opcional)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _estrellas == 0
+                  ? null
+                  : () => Navigator.pop(context, (_estrellas, _comentario.text)),
+              style: FilledButton.styleFrom(backgroundColor: _kPooledColor),
+              child: const Text('Enviar'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

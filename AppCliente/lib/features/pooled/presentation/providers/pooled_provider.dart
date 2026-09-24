@@ -203,6 +203,32 @@ class PooledNotifier extends StateNotifier<PooledState> {
     }
   }
 
+  /// Califica la salida en la que viajó: las estrellas son para la empresa.
+  ///
+  /// Devuelve el motivo si el servidor la rechaza —todavía no terminó, la
+  /// reserva estaba cancelada— en vez de tragárselo: quien acaba de puntuar
+  /// necesita saber si quedó registrado.
+  Future<String?> calificarSalida(String bookingId, int estrellas, {String? comentario}) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/intercity/pool/bookings/$bookingId/rate',
+        data: {
+          'rating': estrellas,
+          if (comentario != null && comentario.trim().isNotEmpty)
+            'comment': comentario.trim(),
+        },
+      );
+      await loadMyBookings();
+      return null;
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      if (body is Map && body['error'] is String) return body['error'] as String;
+      return 'No se pudo enviar tu calificación.';
+    } catch (_) {
+      return 'No se pudo enviar tu calificación.';
+    }
+  }
+
   // ── Live seat updates while viewing a trip ──────────────────────────────────
 
   void watchTrip(String tripId) {

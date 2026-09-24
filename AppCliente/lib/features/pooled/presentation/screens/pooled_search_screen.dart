@@ -11,6 +11,7 @@ import 'package:nexum_client/features/intercity/domain/entities/intercity_entity
     show IntercityCity;
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/widgets/mapa_sillas.dart';
+import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
@@ -368,8 +369,19 @@ class _TripCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                    NotaEmpresa(
+                      rating: trip.operatorRating,
+                      votos: trip.operatorRatingCount,
+                    ),
                   ],
                 ),
+                const SizedBox(height: 6),
+              ],
+              // Qué trae el vehículo. Solo lo declarado: sin comodidades no se
+              // pinta nada, en vez de una fila de cruces que afirmaría que no
+              // las tiene.
+              if (trip.amenities.isNotEmpty) ...[
+                ChipsComodidades(claves: trip.amenities),
                 const SizedBox(height: 6),
               ],
               // Lugares por donde pasa la salida (paradas publicadas).
@@ -653,6 +665,18 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             ),
             const SizedBox(height: 20),
+
+            // Lo que se termina de mirar antes de pagar: qué trae el bus y qué
+            // pasa con la maleta. En la tarjeta del buscador van comprimidas;
+            // aquí hay sitio para leerlas.
+            if (trip.amenities.isNotEmpty) ...[
+              ChipsComodidades(claves: trip.amenities, compacto: false),
+              const SizedBox(height: 16),
+            ],
+            if (trip.operatorName != null) ...[
+              CondicionesTiquete(lineas: trip.operatorPolicies),
+              const SizedBox(height: 16),
+            ],
 
             Container(
               padding: const EdgeInsets.all(14),

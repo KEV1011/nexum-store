@@ -61,6 +61,8 @@ class SeatBookingEntity {
     this.pickupAddress,
     this.notes,
     this.seats = const [],
+    this.rating,
+    this.ratingComment,
   });
 
   final String id;
@@ -73,6 +75,11 @@ class SeatBookingEntity {
 
   /// Las sillas que le tocaron, en orden. Vacía en las salidas por cupos.
   final List<int> seats;
+
+  /// Cómo calificó la salida. Null = todavía no lo ha hecho, y es lo que la
+  /// pantalla usa para ofrecérselo.
+  final int? rating;
+  final String? ratingComment;
 
   /// Lo que hay que enseñarle al subir: «Silla 4» o «Sillas 3, 4». Sin
   /// numeración cae a los puestos, que es lo único cierto ahí — un número
@@ -93,6 +100,8 @@ class SeatBookingEntity {
           for (final s in (j['seats'] as List<dynamic>? ?? const []))
             if (s is num) s.toInt(),
         ],
+        rating: (j['rating'] as num?)?.toInt(),
+        ratingComment: j['ratingComment'] as String?,
       );
 }
 
@@ -181,6 +190,10 @@ class PooledTripEntity {
     this.distanceKm,
     this.durationMinutes,
     this.operatorName,
+    this.operatorRating,
+    this.operatorRatingCount,
+    this.operatorPolicies = const [],
+    this.amenities = const [],
     this.stops = const [],
     this.myBooking,
     this.seatMap,
@@ -209,6 +222,20 @@ class PooledTripEntity {
 
   /// Razón social de la empresa que publicó la salida (null = particular).
   final String? operatorName;
+
+  /// Nota de la empresa. Null = nadie la ha calificado, y entonces se dice
+  /// «Nuevo»: ni un cero (que se lee como pésimo) ni un cinco de regalo.
+  final double? operatorRating;
+  final int? operatorRatingCount;
+
+  /// Condiciones del tiquete YA REDACTADAS por el servidor. Vacío = la empresa
+  /// no las ha publicado, que es distinto de no tenerlas.
+  final List<String> operatorPolicies;
+
+  /// Qué trae el vehículo: claves del catálogo (`comodidades.dart`). Vacío = no
+  /// se declaró nada, y entonces no se pinta ningún chip — en vez de pintar
+  /// cruces, que afirmarían que NO los tiene.
+  final List<String> amenities;
 
   /// Paradas intermedias de la salida ("pasa por"), en orden.
   final List<String> stops;
@@ -247,6 +274,16 @@ class PooledTripEntity {
         distanceKm: (j['distanceKm'] as num?)?.toDouble(),
         durationMinutes: (j['durationMinutes'] as num?)?.toInt(),
         operatorName: j['operatorName'] as String?,
+        operatorRating: (j['operatorRating'] as num?)?.toDouble(),
+        operatorRatingCount: (j['operatorRatingCount'] as num?)?.toInt(),
+        operatorPolicies: [
+          for (final l in (j['operatorPolicies'] as List<dynamic>? ?? const []))
+            if (l is String) l,
+        ],
+        amenities: [
+          for (final a in (j['amenities'] as List<dynamic>? ?? const []))
+            if (a is String) a,
+        ],
         stops: [
           for (final st in (j['stops'] as List<dynamic>? ?? const []))
             if (st is Map<String, dynamic> && st['name'] is String)
@@ -280,6 +317,10 @@ class PooledTripEntity {
         distanceKm: distanceKm,
         durationMinutes: durationMinutes,
         operatorName: operatorName,
+        operatorRating: operatorRating,
+        operatorRatingCount: operatorRatingCount,
+        operatorPolicies: operatorPolicies,
+        amenities: amenities,
         stops: stops,
         myBooking: myBooking,
         // Sin esta línea, cualquier copia —refrescar cupos, cambiar estado—

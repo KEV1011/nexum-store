@@ -653,6 +653,7 @@ router.post(
       seatType?: string;
       seatRows?: number;
       seatConfig?: unknown;
+      amenities?: string[];
     };
     // Con silla numerada los puestos los dice el mapa del vehículo, así que
     // `totalSeats` deja de ser obligatorio: pedirlo sería que la empresa
@@ -719,6 +720,9 @@ router.post(
               }
             : {}),
           notes: b.notes,
+          // Qué trae el vehículo. El baño no entra por aquí aunque lo marquen:
+          // lo pone el plano de sillas.
+          ...(b.amenities ? { amenities: b.amenities } : {}),
           allowFleet: true,
           stops: (b.stops ?? []).map((st, i) => ({
             name: String(st.name ?? ''), lat: st.lat, lng: st.lng, order: st.order ?? i,

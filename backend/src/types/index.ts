@@ -1135,6 +1135,13 @@ export interface PublishPooledTripDTO {
     fondoCorrido?: number;
     bano?: 'izquierda' | 'derecha';
   };
+  /**
+   * Qué trae el vehículo: claves del catálogo de `lib/amenidades.ts`.
+   *
+   * El baño NO se manda desde aquí aunque venga: se deriva de `seatConfig`
+   * para que el chip no prometa lo que el plano no dibuja.
+   */
+  amenities?: string[];
 }
 
 /** A single passenger's booking on a pooled trip. */
@@ -1157,6 +1164,12 @@ export interface SeatBookingDTO {
   notes?: string;
   status: SeatBookingStatus;
   bookedAt: string;
+  /**
+   * Cómo calificó el pasajero esta salida. Ausente = todavía no lo ha hecho,
+   * que es lo que la app usa para ofrecerle calificar.
+   */
+  rating?: number;
+  ratingComment?: string;
 }
 
 /** Client-supplied payload when reserving seats on a pooled trip. */
@@ -1223,10 +1236,31 @@ export interface PooledTripDTO {
   distanceKm?: number;
   durationMinutes?: number;
   createdAt: string;
+  /**
+   * Qué trae el vehículo, ya resuelto: lo que declaró la empresa más el baño
+   * si el plano lo dibuja. Lista vacía = no declaró nada, que es distinto de
+   * «no tiene» y por eso la app no pinta chips en vez de pintar cruces.
+   */
+  amenities?: string[];
   /** Empresa que publicó la salida (null/ausente = conductor particular). */
   operatorId?: string;
   /** Razón social de la empresa, para mostrar confianza en la búsqueda. */
   operatorName?: string;
+  /**
+   * Nota de la empresa, promediada de sus servicios calificados. Ausente =
+   * nadie la ha calificado todavía, y la app dice «Nuevo» — nunca un número
+   * de fábrica.
+   */
+  operatorRating?: number;
+  operatorRatingCount?: number;
+  /**
+   * Condiciones del tiquete YA REDACTADAS (equipaje, mascotas, menores,
+   * cancelación). Se mandan en prosa y no en campos sueltos porque el portal
+   * y la app tienen que decir exactamente lo mismo: si cada uno redactara su
+   * versión, la empresa creería estar publicando una regla y el pasajero
+   * leería otra. Ausente/vacío = la empresa no las ha publicado.
+   */
+  operatorPolicies?: string[];
   /**
    * Dónde va el bus AHORA, del último latido del conductor.
    *

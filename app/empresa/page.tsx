@@ -24,6 +24,7 @@ import VehiclesManager from './VehiclesManager'
 import DocumentsManager from './DocumentsManager'
 import MembersManager from './MembersManager'
 import ProfileForm from './ProfileForm'
+import PoliticasForm from './PoliticasForm'
 import { EncomiendasPanel } from './EncomiendasPanel'
 import { leerToken, leerInfo, guardarSesion, borrarSesion } from './session'
 
@@ -589,6 +590,7 @@ function Dashboard({ token, operator, onLogout }: {
             <>
               <h1 className="font-bold text-slate-900 text-lg">Mi empresa</h1>
               <ProfileForm api={api} />
+              <PoliticasForm api={api} />
               <DocumentsManager api={api} token={token} />
             </>
           )}

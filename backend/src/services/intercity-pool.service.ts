@@ -26,6 +26,14 @@ import {
   type ConfigSillas,
   type TipoConSillas,
 } from '../lib/mapa-asientos';
+import { amenidadesDeSalida, saneaAmenidades } from '../lib/amenidades';
+import { politicasGuardadas, lineasDePolitica } from '../lib/politicas-tiquete';
+import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
+import { motivoParaNoCalificar, type EstadoSalida } from '../lib/calificar-salida';
+import {
+  recalcularReputacionEmpresa,
+  recalcularReputacionConductor,
+} from './reputacion.service';
 import { maskPhone } from './safe-contact.service';
 import { marcarEncomiendasDeSalidaEnTransito } from './encomiendas.service';
 
@@ -75,6 +83,7 @@ type DbPooledTrip = {
   seatType?: string | null;
   seatRows?: number | null;
   seatConfig?: unknown;
+  amenities?: unknown;
   bookings?: DbSeatBooking[];
   seatAssignments?: { seatNumber: number; bookingId: string }[];
 };
@@ -82,6 +91,7 @@ type DbPooledTrip = {
 type DbSeatBooking = {
   id: string; tripId: string; userId: string; passengerName: string; passengerPhone: string;
   seatsBooked: number; pickupAddress: string | null; notes: string | null; status: string; bookedAt: Date;
+  rating?: number | null; ratingComment?: string | null;
   seats?: { seatNumber: number }[];
 };
 
@@ -101,6 +111,8 @@ function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
     notes: b.notes ?? undefined,
     status: (b.status === 'CONFIRMED' ? 'confirmed' : 'cancelled') as SeatBookingStatus,
     bookedAt: b.bookedAt.toISOString(),
+    ...(b.rating != null && { rating: b.rating }),
+    ...(b.ratingComment && { ratingComment: b.ratingComment }),
   };
 }
 
@@ -172,6 +184,16 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     notes: t.notes ?? undefined,
     stops: stopsFromDb(t.stops),
     seatMap: _mapaDe(t),
+    // El baño sale del PLANO y no de lo que marcaron: dos fuentes acabarían
+    // contradiciéndose, y un chip prometiendo baño sobre un plano que no lo
+    // dibuja es la queja más cara en una ruta de nueve horas. Sin plano
+    // (la salida por cupos del particular) no hay de dónde derivarlo.
+    amenities: amenidadesDeSalida(
+      t.amenities,
+      esTipoConSillas(t.seatType)
+        ? Boolean(saneaConfigSillas(t.seatConfig)?.bano)
+        : null,
+    ),
     distanceKm: route?.distanceKm,
     durationMinutes: route?.durationMinutes,
     createdAt: t.createdAt.toISOString(),
@@ -295,6 +317,8 @@ export async function publishPooledTrip(
       seatType: numerada ? (dto.seatType as TipoConSillas) : null,
       seatRows: numerada ? (dto.seatRows ?? null) : null,
       seatConfig: configSillas ? (configSillas as unknown as Prisma.InputJsonObject) : Prisma.DbNull,
+      // El baño se queda fuera aunque venga marcado: lo pone el plano.
+      amenities: saneaAmenidades(dto.amenities),
       farePerSeat: dto.farePerSeat,
       maxFarePerSeat: maxFare,
       allowFleet: dto.allowFleet ?? false,
@@ -472,6 +496,46 @@ export interface SearchPooledTripsQuery {
   date?: string;
 }
 
+/**
+ * Le pone a cada salida los datos de la empresa que la publicó: nombre, nota y
+ * condiciones del tiquete.
+ *
+ * En UNA consulta para todas. Es lo que mira el pasajero antes de comprar —con
+ * quién viaja y qué pasa con su maleta— y hacer una consulta por salida
+ * volvería lenta justo la pantalla de la búsqueda.
+ *
+ * Las salidas de conductor particular pasan de largo: no hay empresa detrás, y
+ * ese hueco es información (es exactamente la diferencia que el pasajero está
+ * evaluando).
+ */
+async function _conDatosDeEmpresa(dtos: PooledTripDTO[]): Promise<PooledTripDTO[]> {
+  const ids = [...new Set(dtos.map((d) => d.operatorId).filter((x): x is string => !!x))];
+  if (ids.length === 0) return dtos;
+
+  const ops = await prisma.operator.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true, legalName: true, tradeName: true,
+      rating: true, ratingCount: true, policies: true,
+    },
+  });
+  const porId = new Map(ops.map((o) => [o.id, o]));
+
+  for (const d of dtos) {
+    const o = d.operatorId ? porId.get(d.operatorId) : undefined;
+    if (!o) continue;
+    d.operatorName = o.tradeName ?? o.legalName;
+    // Sin calificaciones NO se manda un número: la app dice «Nuevo». Un cero
+    // se leería como «pésimo» y un 5,0 de fábrica como «impecable», y las dos
+    // lecturas serían falsas.
+    if (o.rating != null) d.operatorRating = o.rating;
+    if (o.ratingCount > 0) d.operatorRatingCount = o.ratingCount;
+    const lineas = lineasDePolitica(politicasGuardadas(o.policies));
+    if (lineas.length > 0) d.operatorPolicies = lineas;
+  }
+  return dtos;
+}
+
 export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<PooledTripDTO[]> {
   const now = new Date();
   let target: Date | null = null;
@@ -493,24 +557,9 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
     orderBy: { departureTime: 'asc' },
   });
 
-  // Nombre de la empresa para las salidas publicadas por operadores: da
-  // confianza en la búsqueda ("Salida de Cotranal" vs conductor particular).
-  const operatorIds = [...new Set(trips.map((t) => t.operatorId).filter((id): id is string => !!id))];
-  const operatorNames = new Map<string, string>();
-  if (operatorIds.length > 0) {
-    const ops = await prisma.operator.findMany({
-      where: { id: { in: operatorIds } },
-      select: { id: true, legalName: true, tradeName: true },
-    });
-    for (const o of ops) operatorNames.set(o.id, o.tradeName ?? o.legalName);
-  }
+  const dtos = await _conDatosDeEmpresa(trips.map((t) => _toDTO(t as DbPooledTrip, false)));
 
-  return trips
-    .map((t) => {
-      const dto = _toDTO(t as DbPooledTrip, false);
-      if (dto.operatorId) dto.operatorName = operatorNames.get(dto.operatorId);
-      return dto;
-    })
+  return dtos
     .filter((t) => {
       if (t.availableSeats <= 0) return false;
       if (target) {
@@ -764,16 +813,81 @@ export async function getClientBookings(clientId: string): Promise<Array<PooledT
     }
   }
 
-  return bookings.map((b) => {
-    const tripWithBookings = b.trip as DbPooledTrip;
-    const dto = _toDTO(tripWithBookings, false);
-    const pos = b.trip.status === 'DEPARTED' ? posiciones.get(b.trip.driverId) : undefined;
-    if (pos) {
-      dto.driverLat = pos.lat;
-      dto.driverLng = pos.lng;
-    }
-    return { ...dto, myBooking: _toBookingDTO(b as DbSeatBooking) };
+  const conEmpresa = await _conDatosDeEmpresa(
+    bookings.map((b) => {
+      const dto = _toDTO(b.trip as DbPooledTrip, false);
+      const pos = b.trip.status === 'DEPARTED' ? posiciones.get(b.trip.driverId) : undefined;
+      if (pos) {
+        dto.driverLat = pos.lat;
+        dto.driverLng = pos.lng;
+      }
+      return dto;
+    }),
+  );
+
+  // Las condiciones del tiquete se necesitan MÁS aquí que en la búsqueda: al
+  // comprar se leen por encima, y se vuelven a buscar cuando hay que cancelar
+  // o cuando aparece la maleta de más.
+  return conEmpresa.map((dto, i) => ({
+    ...dto,
+    myBooking: _toBookingDTO(bookings[i] as unknown as DbSeatBooking),
+  }));
+}
+
+/**
+ * Califica la salida en la que viajó: estrellas para la EMPRESA.
+ *
+ * La nota se guarda en la reserva —como en `Trip` y en `Order`— y el promedio
+ * de la empresa se recalcula de ahí. Es corregible: si alguien se equivoca de
+ * estrella, cambiarla es mejor que dejar una nota falsa para siempre, y
+ * `rateIntercityBooking` es el único sitio del código que no lo permite.
+ *
+ * También mueve la nota del conductor, porque una salida de bus es un servicio
+ * suyo: antes de esto, sus estrellas solo salían de los viajes urbanos.
+ */
+export async function rateSeatBooking(
+  clientId: string,
+  bookingId: string,
+  estrellas: unknown,
+  comentario?: unknown,
+): Promise<SeatBookingDTO> {
+  const rating = saneaEstrellas(estrellas);
+  const ratingComment = saneaComentario(comentario);
+
+  const b = await prisma.seatBooking.findUnique({
+    where: { id: bookingId },
+    include: { trip: true, seats: true },
   });
+  if (!b || b.userId !== clientId) throw new PooledTripError('Reserva no encontrada');
+
+  const motivo = motivoParaNoCalificar({
+    estadoSalida: (STATUS_FROM_PRISMA[b.trip.status] ?? 'open') as EstadoSalida,
+    reservaCancelada: b.status !== 'CONFIRMED',
+    salidaEn: b.trip.departureTime,
+    duracionMin: getIntercityRoute(
+      (CITY_FROM_PRISMA[b.trip.origin] ?? b.trip.origin.toLowerCase()) as IntercityCity,
+      (CITY_FROM_PRISMA[b.trip.destination] ?? b.trip.destination.toLowerCase()) as IntercityCity,
+    )?.durationMinutes,
+    ahora: new Date(),
+  });
+  if (motivo) throw new PooledTripError(motivo);
+
+  const actualizada = await prisma.seatBooking.update({
+    where: { id: bookingId },
+    data: { rating, ratingComment },
+    include: { seats: true },
+  });
+
+  // Los promedios se ESPERAN, como en el viaje urbano. La tentación era
+  // lanzarlos sin `await` «para no bloquear», pero la protección ya está
+  // dentro: las dos funciones son best-effort y se tragan su propio fallo. Sin
+  // esperarlas se abre una carrera —la app recarga y lee la nota vieja— a
+  // cambio de nada. Lo cazó el E2E: la empresa seguía sin nota justo después
+  // de calificarla.
+  if (b.trip.operatorId) await recalcularReputacionEmpresa(b.trip.operatorId);
+  await recalcularReputacionConductor(b.trip.driverId);
+
+  return _toBookingDTO(actualizada as unknown as DbSeatBooking);
 }
 
 // ─── Realtime ─────────────────────────────────────────────────────────────────
