@@ -15,6 +15,7 @@ import { saneaTasa } from '../lib/comision';
 import { motivoParaNoConectar } from './driver-online-guard';
 import { cancelOrderByAdmin } from './client.service';
 import { cancelErrandByAdmin } from './errand.service';
+import { HORAS_UTC_COLOMBIA } from '../lib/horario-tienda';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin service — métricas operativas y listados para el panel /admin.
@@ -245,8 +246,11 @@ export async function getAdminMetrics(ciudad?: string | null): Promise<AdminMetr
 // consulta y su propia ruta porque son más pesadas (series y cohortes) y no
 // deben retrasar los números que el administrador mira de un vistazo.
 
-/** Desfase horario de Colombia, sin horario de verano. Mismo criterio que `_startOfToday`. */
-const HORAS_UTC_COLOMBIA = -5;
+// El desfase de Colombia se importa de `lib/horario-tienda`, que es donde vive
+// desde que lo necesitó el horario de los comercios. Tenerlo escrito dos veces
+// no es un riesgo de que cambie —Colombia no tiene horario de verano— sino de
+// que dos tableros acaben cortando el día en momentos distintos al tocar uno
+// solo de los dos.
 
 export interface MetricasNegocio {
   desde: string;

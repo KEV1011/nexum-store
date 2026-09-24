@@ -11,6 +11,10 @@ import { prisma } from '../lib/prisma';
 import { tasaComision } from './comision.service';
 import { generateCustodyPins, assertCustodyPin } from '../lib/custody-pin';
 import { mediaMinutos, rangoAnterior, variacionPct, duracionMin } from '../lib/analitica';
+import {
+  bucketsPorHora, diaColombiaDe, horaColombiaDe, horaPico, motivoLegible,
+  serviciosPorDiaActivo, tasaCancelacion, type BucketHora,
+} from '../lib/analitica-operacion';
 import { COMMISSION_RATE, INTERCITY_CITY_COORDS } from '../config/constants';
 import { coordsOfSync } from './municipality.service';
 import { recordCompletedTrip } from './earnings.service';
@@ -682,7 +686,10 @@ export interface FleetFinanceSummary {
   /** Rendimiento km/galón por camión, calculado con los tanqueos del período. */
   efficiency: VehicleEfficiency[];
   byService: Record<string, { count: number; gross: number }>;
-  byDriver: { name: string; count: number; gross: number; cost: number }[];
+  /// `diasActivos` = días DISTINTOS en que ese conductor cerró algo. Sin él,
+  /// el ranking pone a la misma altura a quien hizo cuarenta servicios en dos
+  /// días y a quien los repartió en veinte.
+  byDriver: { name: string; count: number; gross: number; cost: number; diasActivos: number }[];
   byVehicle: { plate: string; count: number; gross: number; cost: number }[];
 
   /// Un punto por DÍA del rango, incluidos los días sin nada.
@@ -691,6 +698,10 @@ export interface FleetFinanceSummary {
   /// vacíos comprime el tiempo y hace parecer continuo lo que fue a tirones —
   /// un lunes flojo entre dos findes buenos desaparecería.
   serie: { fecha: string; servicios: number; bruto: number }[];
+
+  /// Las veinticuatro horas del día, en hora de COLOMBIA, contando cuándo se
+  /// PIDIÓ cada servicio del período. Es con lo que se arma un turno.
+  porHora: BucketHora[];
 }
 
 /** Consolidado financiero de TODOS los servicios sellados a la flota. */
@@ -703,19 +714,31 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   const [trips, intercity, errands, orders, freights] = await Promise.all([
     prisma.trip.findMany({
       where: { operatorId, status: 'COMPLETED', completedAt: range },
-      select: { finalFare: true, estimatedFare: true, completedAt: true, driver: { select: { name: true } } },
+      // `createdAt`/`scheduledFor` salen de la MISMA consulta: son el momento
+      // en que se pidió el servicio, que es lo que dice a qué hora hay que
+      // tener gente en la calle. La hora de cierre serviría de poco: un viaje
+      // reservado la noche anterior no genera demanda a la hora en que se
+      // reservó, sino a la que se prestó.
+      select: {
+        finalFare: true, estimatedFare: true, completedAt: true,
+        createdAt: true, scheduledFor: true,
+        driver: { select: { name: true } },
+      },
     }),
     prisma.intercityBooking.findMany({
       where: { operatorId, status: 'COMPLETED', completedAt: range },
-      select: { finalFare: true, offeredFare: true, completedAt: true, driverName: true },
+      select: {
+        finalFare: true, offeredFare: true, completedAt: true,
+        createdAt: true, driverName: true,
+      },
     }),
     prisma.errand.findMany({
       where: { operatorId, status: 'DELIVERED', deliveredAt: range },
-      select: { serviceFee: true, deliveredAt: true, driverName: true },
+      select: { serviceFee: true, deliveredAt: true, createdAt: true, driverName: true },
     }),
     prisma.order.findMany({
       where: { operatorId, status: 'DELIVERED', deliveredAt: range },
-      select: { deliveryFee: true, deliveredAt: true, driverName: true },
+      select: { deliveryFee: true, deliveredAt: true, createdAt: true, driverName: true },
     }),
     prisma.freightRequest.findMany({
       // Un flete con viaje se contabiliza COMO VIAJE: contarlo también aquí
@@ -839,6 +862,14 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
 
   const byService: Record<string, { count: number; gross: number }> = {};
   const byDriverMap = new Map<string, { count: number; gross: number; cost: number }>();
+  // Días DISTINTOS en que cada conductor cerró algo. Se junta aquí, en el mismo
+  // recorrido que su facturación, para que no puedan discrepar: cuarenta
+  // servicios repartidos en dos días y en veinte se ven igual en un ranking por
+  // plata, y son dos conductores muy distintos.
+  const diasPorConductor = new Map<string, Set<string>>();
+  // A qué hora se PIDIERON los servicios del período. Mismas filas que los
+  // totales, así que la gráfica no puede sumar distinto que el KPI de arriba.
+  const horasPedido: number[] = [];
   const byVehicleMap = new Map<string, { count: number; gross: number; cost: number }>();
   let totalGross = 0;
   let totalCommission = 0;
@@ -852,7 +883,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
   const add = (
     service: string, gross: number, commission: number,
     driverName?: string | null, plate?: string | null, cost = 0,
-    cuando?: Date | null,
+    cuando?: Date | null, pedidoEl?: Date | null,
   ) => {
     totalGross += gross;
     totalCommission += commission;
@@ -861,6 +892,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
       const cur = porDia.get(dia) ?? { servicios: 0, bruto: 0 };
       porDia.set(dia, { servicios: cur.servicios + 1, bruto: cur.bruto + gross });
     }
+    if (pedidoEl) horasPedido.push(horaColombiaDe(pedidoEl));
     byService[service] = {
       count: (byService[service]?.count ?? 0) + 1,
       gross: (byService[service]?.gross ?? 0) + gross,
@@ -868,6 +900,11 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     if (driverName) {
       const cur = byDriverMap.get(driverName) ?? { count: 0, gross: 0, cost: 0 };
       byDriverMap.set(driverName, { count: cur.count + 1, gross: cur.gross + gross, cost: cur.cost + cost });
+      if (cuando) {
+        const dias = diasPorConductor.get(driverName) ?? new Set<string>();
+        dias.add(diaColombiaDe(cuando));
+        diasPorConductor.set(driverName, dias);
+      }
     }
     if (plate) {
       const cur = byVehicleMap.get(plate) ?? { count: 0, gross: 0, cost: 0 };
@@ -877,14 +914,18 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
 
   for (const t of trips) {
     const fare = t.finalFare ?? t.estimatedFare ?? 0;
-    add('VIAJE', fare, Math.round(fare * COMMISSION_RATE), t.driver?.name, null, 0, t.completedAt);
+    // Un viaje reservado no genera demanda cuando se reservó, sino a la hora
+    // acordada: ahí es donde hace falta el carro.
+    add('VIAJE', fare, Math.round(fare * COMMISSION_RATE), t.driver?.name, null, 0,
+      t.completedAt, t.scheduledFor ?? t.createdAt);
   }
   for (const b of intercity) {
     const fare = b.finalFare ?? b.offeredFare ?? 0;
-    add('INTERMUNICIPAL', fare, Math.round(fare * COMMISSION_RATE), b.driverName, null, 0, b.completedAt);
+    add('INTERMUNICIPAL', fare, Math.round(fare * COMMISSION_RATE), b.driverName, null, 0,
+      b.completedAt, b.createdAt);
   }
-  for (const e of errands) add('MANDADO', e.serviceFee ?? 0, Math.round((e.serviceFee ?? 0) * COMMISSION_RATE), e.driverName, null, 0, e.deliveredAt);
-  for (const o of orders) add('PEDIDO', o.deliveryFee ?? 0, Math.round((o.deliveryFee ?? 0) * COMMISSION_RATE), o.driverName, null, 0, o.deliveredAt);
+  for (const e of errands) add('MANDADO', e.serviceFee ?? 0, Math.round((e.serviceFee ?? 0) * COMMISSION_RATE), e.driverName, null, 0, e.deliveredAt, e.createdAt);
+  for (const o of orders) add('PEDIDO', o.deliveryFee ?? 0, Math.round((o.deliveryFee ?? 0) * COMMISSION_RATE), o.driverName, null, 0, o.deliveredAt, o.createdAt);
   for (const f of freights) {
     add(
       'FLETE',
@@ -894,6 +935,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
       f.vehicleId ? vehPlate.get(f.vehicleId) : undefined,
       costByFreight.get(f.id) ?? 0,
       f.completedAt,
+      f.createdAt,
     );
   }
 
@@ -909,11 +951,12 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
       t.vehicleId ? cVehPlate.get(t.vehicleId) : undefined,
       costByFreight.get(t.id) ?? 0,
       t.completedAt,
+      t.createdAt,
     );
   }
 
   const byDriver = [...byDriverMap.entries()]
-    .map(([name, v]) => ({ name, ...v }))
+    .map(([name, v]) => ({ name, ...v, diasActivos: diasPorConductor.get(name)?.size ?? 0 }))
     .sort((a, b) => b.gross - a.gross);
   const byVehicle = [...byVehicleMap.entries()]
     .map(([plate, v]) => ({ plate, ...v }))
@@ -954,6 +997,7 @@ export async function getFleetFinance(operatorId: string, fromISO?: string, toIS
     byDriver,
     byVehicle,
     serie,
+    porHora: bucketsPorHora(horasPedido),
   };
 }
 
@@ -968,7 +1012,15 @@ export interface FleetAnalytics {
   totalServices: number;
   avgTicket: number;
   byService: { service: string; count: number; gross: number; avg: number }[];
-  topDrivers: { name: string; count: number; gross: number; net: number; avgTicket: number; rating: number | null }[];
+  topDrivers: {
+    name: string; count: number; gross: number; net: number; avgTicket: number;
+    rating: number | null;
+    /// Días distintos trabajados y servicios por día trabajado (`null` si no
+    /// cerró ninguno). Sin esto el ranking premia al que estuvo veinte días
+    /// sobre el que rinde el doble en dos.
+    diasActivos: number;
+    porDiaActivo: number | null;
+  }[];
   topVehicles: { plate: string; count: number; gross: number; avgTicket: number; type: string | null }[];
 
   /// Un punto por día del rango (viene del consolidado financiero).
@@ -993,6 +1045,27 @@ export interface FleetAnalytics {
     duracionMin: number | null;
     muestra: number;
   };
+
+  /// A qué hora del día se pide el servicio, en hora de Colombia.
+  ///
+  /// `pico` es `null` cuando la muestra es corta o cuando dos horas empatan:
+  /// una flecha señalando una hora deducida de tres servicios movería el turno
+  /// de la gente por ruido.
+  porHora: { buckets: BucketHora[]; pico: number | null; muestra: number };
+
+  /// Lo que el resto del tablero no puede ver: los viajes que la flota ACEPTÓ
+  /// y luego se cayeron. No entran en ninguna suma de facturación, así que una
+  /// operación que se desmorona a la mitad luce impecable sin esto.
+  cancelaciones: {
+    completados: number;
+    cancelados: number;
+    /// Porcentaje sobre los viajes terminados (completados + cancelados).
+    /// `null` sin denominador: un «0 %» para quien no cerró nada felicitaría
+    /// a quien no trabajó.
+    tasa: number | null;
+    porMotivo: { motivo: string; cuantos: number }[];
+    porConductor: { name: string; cuantos: number }[];
+  };
 }
 
 /**
@@ -1006,9 +1079,10 @@ export async function getFleetAnalytics(operatorId: string, fromISO?: string, to
   // El período anterior tiene el MISMO número de días, pegado por detrás.
   const previo = rangoAnterior(fin.from, fin.to);
 
-  const [finAnterior, tiempos] = await Promise.all([
+  const [finAnterior, tiempos, canceladosRows] = await Promise.all([
     getFleetFinance(operatorId, previo.desde, previo.hasta),
     _tiemposDeServicio(operatorId, new Date(fin.from), new Date(fin.to)),
+    _viajesCaidos(operatorId, new Date(fin.from), new Date(fin.to)),
   ]);
 
   const [drivers, vehicles] = await Promise.all([
@@ -1031,7 +1105,26 @@ export async function getFleetAnalytics(operatorId: string, fromISO?: string, to
     net: net(d.gross),
     avgTicket: d.count ? Math.round(d.gross / d.count) : 0,
     rating: ratingByName.get(d.name) ?? null,
+    diasActivos: d.diasActivos,
+    porDiaActivo: serviciosPorDiaActivo(d.count, d.diasActivos),
   }));
+
+  // Los viajes caídos, agrupados. Se cuentan los que la flota ya había
+  // aceptado: un viaje que nadie tomó no tiene empresa sellada, así que jamás
+  // aparece aquí — no se le puede reprochar a una flota lo que no aceptó.
+  const porMotivoMap = new Map<string, number>();
+  const porConductorMap = new Map<string, number>();
+  for (const c of canceladosRows) {
+    const motivo = motivoLegible(c.cancelReason);
+    porMotivoMap.set(motivo, (porMotivoMap.get(motivo) ?? 0) + 1);
+    const nombre = c.driver?.name;
+    if (nombre) porConductorMap.set(nombre, (porConductorMap.get(nombre) ?? 0) + 1);
+  }
+  const ordenar = <T extends { cuantos: number }>(xs: T[]) => xs.sort((a, b) => b.cuantos - a.cuantos);
+  const completadosUrbanos = fin.byService['VIAJE']?.count ?? 0;
+
+  const horas = fin.porHora;
+  const muestraHoras = horas.reduce((s, b) => s + b.servicios, 0);
 
   const topVehicles = fin.byVehicle.map((v) => ({
     plate: v.plate,
@@ -1064,7 +1157,37 @@ export async function getFleetAnalytics(operatorId: string, fromISO?: string, to
       servicios: variacionPct(fin.totalServices, finAnterior.totalServices),
     },
     tiempos,
+    porHora: { buckets: horas, pico: horaPico(horas), muestra: muestraHoras },
+    cancelaciones: {
+      completados: completadosUrbanos,
+      cancelados: canceladosRows.length,
+      tasa: tasaCancelacion(completadosUrbanos, canceladosRows.length),
+      porMotivo: ordenar([...porMotivoMap.entries()].map(([motivo, cuantos]) => ({ motivo, cuantos }))),
+      porConductor: ordenar([...porConductorMap.entries()].map(([name, cuantos]) => ({ name, cuantos }))),
+    },
   };
+}
+
+/**
+ * Los viajes que la flota aceptó y luego se cayeron.
+ *
+ * Se filtra por `updatedAt` y no por una columna de cancelación porque no
+ * existe: cancelar es la ÚLTIMA escritura que recibe un viaje —después no se
+ * liquida, no se califica (calificar exige COMPLETED) y no se vuelve a tocar—,
+ * así que su `updatedAt` es el instante en que se cayó. Añadir una columna
+ * nueva habría dejado fuera todo el historial anterior, que es justo el que
+ * alguien querría mirar la primera vez que abre esta tarjeta.
+ *
+ * Solo viajes urbanos: son los que sellan `operatorId` al aceptar y los que
+ * guardan el motivo. Un viaje que nadie tomó nunca tuvo empresa, así que no
+ * entra — y eso es lo correcto: no se le reprocha a una flota lo que no aceptó.
+ */
+async function _viajesCaidos(operatorId: string, desde: Date, hasta: Date) {
+  return prisma.trip.findMany({
+    where: { operatorId, status: 'CANCELLED', updatedAt: { gte: desde, lte: hasta } },
+    select: { cancelReason: true, driver: { select: { name: true } } },
+    take: 2000,
+  });
 }
 
 /**

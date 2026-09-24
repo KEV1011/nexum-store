@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Trophy, Star, Car, TrendingUp } from 'lucide-react'
+import { Trophy, Star, Car, TrendingUp, Clock, XCircle } from 'lucide-react'
 import type { OperatorApi } from './api'
 import { formatCOP as cop } from '../moneda'
 
@@ -17,7 +17,10 @@ interface Analytics {
   totalServices: number
   avgTicket: number
   byService: { service: string; count: number; gross: number; avg: number }[]
-  topDrivers: { name: string; count: number; gross: number; net: number; avgTicket: number; rating: number | null }[]
+  topDrivers: {
+    name: string; count: number; gross: number; net: number; avgTicket: number
+    rating: number | null; diasActivos: number; porDiaActivo: number | null
+  }[]
   topVehicles: { plate: string; count: number; gross: number; avgTicket: number; type: string | null }[]
   serie: { fecha: string; servicios: number; bruto: number }[]
   anterior: { desde: string; hasta: string; bruto: number; servicios: number }
@@ -28,7 +31,17 @@ interface Analytics {
     duracionMin: number | null
     muestra: number
   }
+  porHora: { buckets: { hora: number; servicios: number }[]; pico: number | null; muestra: number }
+  cancelaciones: {
+    completados: number
+    cancelados: number
+    tasa: number | null
+    porMotivo: { motivo: string; cuantos: number }[]
+    porConductor: { name: string; cuantos: number }[]
+  }
 }
+
+const hhmm = (h: number) => `${String(h).padStart(2, '0')}:00`
 
 const SERVICE_LABEL: Record<string, string> = {
   VIAJE: 'Viajes', INTERMUNICIPAL: 'Intermunicipal', MANDADO: 'Mandados', PEDIDO: 'Pedidos', FLETE: 'Fletes',
@@ -98,7 +111,10 @@ export default function AnalyticsPanel({ api }: { api: OperatorApi }) {
           <p className="font-medium text-amber-800">No pudimos cargar el rendimiento</p>
           <p className="text-slate-400 text-sm mt-1">Reintentando automáticamente. Esto no significa que no hayas tenido actividad.</p>
         </div>
-      ) : !data || data.totalServices === 0 ? (
+      ) : !data || (data.totalServices === 0 && data.cancelaciones.cancelados === 0) ? (
+        // «Sin actividad» solo si tampoco hubo viajes caídos: una flota que
+        // aceptó diez y los perdió todos SÍ tuvo actividad, y es precisamente
+        // la que no puede quedarse mirando un cartel que dice que no pasó nada.
         <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
           <TrendingUp className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <p className="font-medium text-slate-600">Aún no hay actividad en este periodo</p>
@@ -123,7 +139,9 @@ export default function AnalyticsPanel({ api }: { api: OperatorApi }) {
           </div>
 
           <SerieDiaria puntos={data.serie} />
+          <PorHora p={data.porHora} />
           <Tiempos t={data.tiempos} />
+          <Cancelaciones c={data.cancelaciones} />
 
           {/* Ranking de conductores */}
           {data.topDrivers.length > 0 && (
@@ -147,7 +165,16 @@ export default function AnalyticsPanel({ api }: { api: OperatorApi }) {
                     <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(d.gross / maxDriver) * 100}%` }} />
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-0.5">{d.count} servicios · ticket {cop(d.avgTicket)} · neto {cop(d.net)}</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {d.count} servicios · ticket {cop(d.avgTicket)} · neto {cop(d.net)}
+                      {/*
+                        Cuarenta servicios en dos días y en veinte se ven igual
+                        en un ranking por plata. Esto los separa.
+                      */}
+                      {d.porDiaActivo != null && (
+                        <> · {d.diasActivos} {d.diasActivos === 1 ? 'día' : 'días'} activo{d.diasActivos === 1 ? '' : 's'} ({d.porDiaActivo}/día)</>
+                      )}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -267,6 +294,116 @@ function SerieDiaria({ puntos }: { puntos: { fecha: string; servicios: number; b
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/**
+ * A qué hora se pide el servicio. Con esto se arma un turno.
+ *
+ * Veinticuatro barras siempre, incluidas las horas muertas: la madrugada en
+ * blanco es la respuesta a «¿monto turno de noche?».
+ */
+function PorHora({ p }: { p: Analytics['porHora'] }) {
+  if (p.muestra === 0) return null
+  const max = Math.max(1, ...p.buckets.map((b) => b.servicios))
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+      <div className="flex items-baseline justify-between gap-2 mb-3 flex-wrap">
+        <p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-emerald-600" /> A qué hora te piden servicio
+        </p>
+        {p.pico != null ? (
+          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+            Hora pico: {hhmm(p.pico)}
+          </span>
+        ) : (
+          // Sin muestra o con dos horas empatadas no se señala pico: una
+          // flecha deducida de tres servicios movería el turno por ruido.
+          <span className="text-[11px] text-slate-400">Aún no hay muestra para señalar una hora pico</span>
+        )}
+      </div>
+      <div className="flex items-end gap-[2px] h-24">
+        {p.buckets.map((b) => (
+          <div
+            key={b.hora}
+            className="flex-1 min-w-0 flex flex-col justify-end h-full group"
+            title={`${hhmm(b.hora)} · ${b.servicios} servicio(s)`}
+          >
+            <div
+              className={`w-full rounded-t ${
+                b.hora === p.pico ? 'bg-emerald-600' : b.servicios > 0 ? 'bg-emerald-400 group-hover:bg-emerald-500' : 'bg-slate-100'
+              }`}
+              style={{ height: b.servicios > 0 ? `${Math.max(4, (b.servicios / max) * 100)}%` : '2px' }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-[2px] mt-1">
+        {p.buckets.map((b) => (
+          <div key={b.hora} className="flex-1 min-w-0 text-center text-[9px] text-slate-400">
+            {b.hora % 6 === 0 ? b.hora : ''}
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-slate-400 mt-1.5">
+        Hora de Colombia · {p.muestra} servicios del periodo · cuenta cuándo se pidió, no cuándo se cerró
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Los viajes que la flota aceptó y se cayeron.
+ *
+ * El resto del tablero suma solo lo que salió bien, así que sin esta tarjeta
+ * una operación que se desmorona a la mitad luce impecable.
+ */
+function Cancelaciones({ c }: { c: Analytics['cancelaciones'] }) {
+  if (c.cancelados === 0) return null
+  // Por encima de esto ya no es mala suerte: es algo que hay que mirar.
+  const grave = c.tasa != null && c.tasa >= 15
+
+  return (
+    <div className={`bg-white border rounded-xl p-3.5 ${grave ? 'border-rose-200' : 'border-slate-200'}`}>
+      <div className="flex items-baseline justify-between gap-2 mb-2.5 flex-wrap">
+        <p className="text-xs font-semibold text-slate-500 flex items-center gap-1.5">
+          <XCircle className={`w-3.5 h-3.5 ${grave ? 'text-rose-500' : 'text-slate-400'}`} /> Viajes que se cayeron
+        </p>
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${grave ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+          {/* `tasa` es null sin denominador; ahí no se pinta un porcentaje. */}
+          {c.tasa != null ? `${c.tasa} %` : '—'} de {c.completados + c.cancelados}
+        </span>
+      </div>
+
+      <div className="space-y-1.5">
+        {c.porMotivo.map((m) => (
+          <div key={m.motivo} className="flex items-center justify-between text-sm">
+            <span className="text-slate-600 truncate">{m.motivo}</span>
+            <span className="font-semibold text-slate-800 shrink-0 ml-2">{m.cuantos}</span>
+          </div>
+        ))}
+      </div>
+
+      {c.porConductor.length > 0 && (
+        <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+          <p className="text-[11px] text-slate-400 mb-1.5">
+            Por conductor. Cuando se repite en el mismo, suele ser que tarda en llegar a la recogida.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {c.porConductor.slice(0, 8).map((d) => (
+              <span key={d.name} className="text-[11px] bg-slate-100 text-slate-700 rounded-full px-2 py-0.5">
+                {d.name} · {d.cuantos}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="text-[10px] text-slate-400 mt-2">
+        Solo viajes urbanos que tu flota ya había aceptado. Los que nadie tomó no se te cuentan.
+      </p>
     </div>
   )
 }
