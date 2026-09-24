@@ -43,9 +43,18 @@ describe('quién puede emitir una sesión sin OTP', () => {
   });
 
   it('fuera de su módulo, solo la llama el servicio de WhatsApp', () => {
+    // La lista se amplía SOLO para el módulo de WhatsApp, que es el único
+    // sitio donde emitir sesión sin OTP está justificado: Meta ya verificó el
+    // teléfono con su firma y pedir un código sería hacer probar algo probado.
+    //
+    // `whatsapp-pedido.service` entró aquí cuando el pedido pasó a ocurrir
+    // dentro del chat: es una extracción del mismo módulo, no una puerta
+    // nueva. Cualquier OTRO archivo que aparezca en esta prueba es una fuga y
+    // hay que mirarlo, no añadirlo a la lista.
     const permitidos = new Set([
       join(SRC, 'services', 'enlace-magico.service.ts'),
       join(SRC, 'services', 'whatsapp.service.ts'),
+      join(SRC, 'services', 'whatsapp-pedido.service.ts'),
     ]);
 
     const inesperados: string[] = [];

@@ -27,8 +27,10 @@ import {
   handleNoDriversFound,
   acceptClientOrder,
   updateOrderStatusByDriver,
+  registerAvisoWhatsapp,
   DriverOrderStatus,
 } from '../services/client.service';
+import { avisarViajePorWhatsapp } from '../services/whatsapp-pedido.service';
 import {
   getClientErrandRaw,
   acceptClientErrand,
@@ -1481,6 +1483,12 @@ export function setupWebSocket(wss: WebSocketServer): void {
   // notify passengers, without importing WebSocket internals directly.
   registerSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   registerNotifyTripUpdate(notifyClientTripUpdateById);
+  // Los avisos del viaje también van al chat de WhatsApp, para quien pidió por
+  // ahí y no tiene la app. Se inyecta aquí por el mismo motivo que los de
+  // socket: evitar el ciclo de imports.
+  registerAvisoWhatsapp((tripId, titulo, cuerpo) => {
+    void avisarViajePorWhatsapp(tripId, titulo, cuerpo);
+  });
   registerOnNoDrivers((tripId) => void handleNoDriversFound(tripId));
   registerClientSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   registerErrandSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));

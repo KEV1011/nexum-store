@@ -2042,6 +2042,51 @@ model WhatsappInbound {
   @@map("whatsapp_inbound")
 }
 
+/// Por dónde va la conversación de WhatsApp de un teléfono.
+///
+/// Antes esto no existía y era correcto: con dos pasos —pedir ubicación, mandar
+/// enlace— bastaba con mirar la fila del mensaje anterior. Ahora la conversación
+/// entera vive en WhatsApp (origen, destino, precio, confirmación), así que hay
+/// que saber qué se está esperando de cada quien.
+///
+/// UNA FILA POR TELÉFONO, que se reescribe. No es un historial: es dónde está
+/// esa persona AHORA. El historial de lo que se decidió con cada mensaje ya lo
+/// guarda `whatsapp_inbound`, y duplicarlo aquí daría dos versiones de la misma
+/// verdad.
+model WhatsappConversation {
+  /// El teléfono en E.164 es la clave: una persona, una conversación.
+  phone String @id
+
+  /// inicio | esperando_origen | esperando_destino | esperando_confirmacion |
+  /// viaje_en_curso. Ver `lib/whatsapp-flujo.ts`.
+  state String @default("inicio")
+
+  /// Punto de recogida que mandó con el botón de ubicación.
+  originLat   Float?
+  originLng   Float?
+  originLabel String?
+
+  /// A dónde va, ya resuelto a coordenadas. El texto se guarda tal como lo
+  /// escribió porque es lo que se le muestra para confirmar: si se le enseñara
+  /// la dirección normalizada por Google, no reconocería su propio destino.
+  destText String?
+  destLat  Float?
+  destLng  Float?
+
+  /// Lo cotizado y aceptado. Se guarda para que el viaje se cree con lo MISMO
+  /// que la persona vio en pantalla; recalcular al confirmar podría dar otro
+  /// número, y el precio cambiado después de decir que sí es la peor sorpresa.
+  category String?
+  fare     Int?
+
+  /// El viaje que salió de esta conversación, mientras esté en curso.
+  tripId String?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("whatsapp_conversations")
+}
+
 /// Enlace de un solo uso para entrar a la app web sin escribir el código OTP.
 ///
 /// El teléfono ya viene verificado por Meta (nadie escribe desde un número que

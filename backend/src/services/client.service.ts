@@ -1455,6 +1455,26 @@ function _avisarPasajero(
     body: aviso.body,
     data: { type: aviso.type, tripId },
   });
+  // Y por WhatsApp, si el viaje se pidió por ahí. Quien pide desde el chat no
+  // tiene la app instalada: sin esto pediría el taxi y no volvería a saber
+  // nada. Usa el MISMO `avisoDeEstado`, así que los dos canales dicen lo mismo
+  // y callan en los mismos estados.
+  _avisarPorWhatsapp?.(tripId, aviso.title, aviso.body);
+}
+
+/**
+ * Aviso por WhatsApp de un cambio de estado del viaje.
+ *
+ * Se INYECTA en vez de importarse: `whatsapp-pedido.service` necesita crear
+ * viajes desde aquí, y un import en los dos sentidos sería un ciclo. Mismo
+ * patrón que los avisos por socket.
+ */
+let _avisarPorWhatsapp: ((tripId: string, titulo: string, cuerpo: string) => void) | null = null;
+
+export function registerAvisoWhatsapp(
+  fn: (tripId: string, titulo: string, cuerpo: string) => void,
+): void {
+  _avisarPorWhatsapp = fn;
 }
 
 export async function cancelClientTrip(clientId: string, tripId: string): Promise<boolean> {

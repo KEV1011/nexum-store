@@ -42,6 +42,14 @@ export interface MensajeWhatsapp {
   texto: string;
   /** El punto, si el mensaje es una ubicación válida. Si no, `null`. */
   ubicacion: UbicacionWhatsapp | null;
+  /**
+   * Id del botón que tocó, si tocó uno.
+   *
+   * Se lee el ID y no el título porque el título es lo que se le MUESTRA:
+   * cambiar «Pedir taxi» por «Confirmar» dejaría de reconocer la respuesta, y
+   * el pasajero tocaría el botón sin que pasara nada.
+   */
+  botonId: string | null;
   /** Nombre del perfil de WhatsApp, si Meta lo incluye. */
   nombre: string | null;
   /** Cuándo lo envió el usuario (Meta manda epoch en segundos, como texto). */
@@ -138,6 +146,23 @@ function ubicacionDelMensaje(
   return { lat, lng, etiqueta: etiqueta || null };
 }
 
+/** El id del botón o de la fila de lista que tocó, si tocó alguno. */
+function botonDelMensaje(m: Record<string, unknown>, tipo: string): string | null {
+  if (tipo === 'button' && esObjeto(m['button'])) {
+    // Los botones de plantilla traen su carga útil aquí.
+    const p = texto(m['button']['payload']);
+    return p || null;
+  }
+  if (tipo === 'interactive' && esObjeto(m['interactive'])) {
+    const i = m['interactive'];
+    for (const clave of ['button_reply', 'list_reply']) {
+      const r = i[clave];
+      if (esObjeto(r)) return texto(r['id']) || null;
+    }
+  }
+  return null;
+}
+
 /** Saca el texto útil según el tipo de mensaje. */
 function textoDelMensaje(m: Record<string, unknown>, tipo: string): string {
   if (tipo === 'text' && esObjeto(m['text'])) return texto(m['text']['body']);
@@ -208,6 +233,7 @@ export function mensajesDe(payload: unknown): MensajeWhatsapp[] {
           tipo,
           texto: textoDelMensaje(crudo, tipo),
           ubicacion: ubicacionDelMensaje(crudo, tipo),
+          botonId: botonDelMensaje(crudo, tipo),
           nombre: nombres.get(desde) ?? null,
           enviadoEn,
         });
