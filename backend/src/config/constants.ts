@@ -114,9 +114,25 @@ export const OTP_RIESGO_LLAVE_MAESTRA = _veredictoOtp.arranca && _veredictoOtp.r
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
 export const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? '*';
-// URL del portal web (links de negocio). El default apunta al portal REAL
-// de producción — 'nexum.app' no existe y generaba enlaces muertos.
-export const PORTAL_BASE_URL = process.env['PORTAL_BASE_URL'] ?? 'https://nexum-store.onrender.com';
+/**
+ * URL del portal web. De aquí salen los enlaces que se le ENTREGAN a cada
+ * negocio y los links legales del bot de WhatsApp, así que un valor equivocado
+ * no rompe nada al desplegar: rompe el enlace que alguien abrirá mañana.
+ *
+ * El default apunta a **Vercel**, que despliega solo en cada push a `main`. El
+ * anterior era el servicio de Render, que se creó a mano fuera de `render.yaml`
+ * y **no tiene auto-deploy**: servía un build viejo y acabó sin responder, con
+ * todos los enlaces ya repartidos apuntando ahí.
+ *
+ * Si el dominio de Vercel no es exactamente éste (con tres proyectos sobre el
+ * mismo repo, el que manda es el que diga su panel), se corrige con la variable
+ * de entorno SIN tocar código — y `/health` publica el valor en vigor como
+ * `portal`, que es la única forma de ver de un vistazo qué enlace se está
+ * entregando.
+ */
+export const PORTAL_BASE_URL =
+  process.env['PORTAL_BASE_URL']?.trim().replace(/\/+$/, '') ??
+  'https://nexum-store.vercel.app';
 
 // ─── Fare Rates (COP) ─────────────────────────────────────────────────────────
 

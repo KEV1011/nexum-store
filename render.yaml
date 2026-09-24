@@ -16,6 +16,13 @@ services:
         value: production
       - key: CORS_ORIGIN
         value: "*"
+      # De aquí salen los enlaces que se le entregan a cada negocio y los links
+      # legales del bot de WhatsApp. Va declarado —aunque el código tenga un
+      # default— porque el fallo típico no es que falte, es que apunte a un
+      # portal que dejó de actualizarse, y en el panel de Render no se ve lo
+      # que nunca se declaró. El valor en vigor se lee en /health como `portal`.
+      - key: PORTAL_BASE_URL
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL

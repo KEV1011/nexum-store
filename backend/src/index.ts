@@ -11,7 +11,7 @@ import path from 'path';
 import { WebSocketServer } from 'ws';
 import pinoHttp from 'pino-http';
 
-import { PORT, CORS_ORIGIN, INTERCITY_SIMULATE } from './config/constants';
+import { PORT, CORS_ORIGIN, INTERCITY_SIMULATE, PORTAL_BASE_URL } from './config/constants';
 import { setupWebSocket } from './websocket/ws.handler';
 import { scheduleDocumentExpiryChecks, docKillSwitchEnforced } from './services/document-expiry.service';
 import { logger } from './lib/logger';
@@ -196,6 +196,11 @@ app.get('/health', async (_req, res) => {
     // circular: quien la desinstaló no puede pedir que borremos sus datos.
     // Play lo exige accesible sin instalar y la Ley 1581 obliga a publicarlo.
     contactoLegal: contactoLegalConfigurado() ? 'publicado' : 'sin-configurar',
+    // De aquí salen los enlaces que se le entregan a cada negocio. Va en
+    // claro y no como «configurado/sin-configurar» porque el fallo típico no
+    // es que falte: es que apunte a un portal que ya no se actualiza, y eso
+    // solo se ve leyendo la URL.
+    portal: PORTAL_BASE_URL,
     // Piloto: si está activo, el despacho ignora la verificación. Caduca solo
     // — la fecha y los días restantes van aquí para que no se olvide encendido.
     pilotSkipVerification: piloto.activo,
