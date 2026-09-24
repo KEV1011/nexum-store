@@ -4,6 +4,7 @@ import {
   estadoTras,
   BOTON_CONFIRMAR,
   BOTON_CANCELAR,
+  BOTON_ACEPTO,
   VIDA_CONVERSACION_MIN,
   type ContextoFlujo,
   type EstadoConversacion,
@@ -19,6 +20,7 @@ function ctx(p: Partial<ContextoFlujo> = {}): ContextoFlujo {
     texto: '',
     botonId: null,
     tieneViajeActivo: false,
+    aceptoTerminos: true,
     ...p,
   };
 }
@@ -130,5 +132,43 @@ describe('a qué estado se pasa', () => {
 
   it('repetir no mueve el estado: se sigue esperando lo mismo', () => {
     expect(estadoTras({ accion: 'repetir', estado: 'esperando_destino' })).toBe('esperando_destino');
+  });
+});
+
+describe('los términos, una sola vez', () => {
+  it('quien no los ha aceptado no puede pedir nada', () => {
+    // Antes de esto, quien entraba por WhatsApp pedía un taxi sin constancia
+    // de haber aceptado nada: `recordConsent` se llamaba en el login por OTP,
+    // en el registro de conductor y en el de empresa, y este camino no pasaba
+    // por ninguno.
+    for (const extra of [{ texto: 'hola' }, { ubicacion: PUNTO }, { botonId: BOTON_CONFIRMAR }]) {
+      const p = siguientePaso(ctx({ aceptoTerminos: false, ...extra }));
+      expect(p.accion, JSON.stringify(extra)).toBe('pedir-terminos');
+    }
+  });
+
+  it('el botón de aceptar deja constancia', () => {
+    const p = siguientePaso(ctx({
+      aceptoTerminos: false,
+      estado: 'esperando_terminos',
+      botonId: BOTON_ACEPTO,
+    }));
+    expect(p.accion).toBe('aceptar-terminos');
+  });
+
+  it('y lo siguiente que ve es el botón de ubicación, sin un turno de más', () => {
+    expect(estadoTras({ accion: 'aceptar-terminos' })).toBe('esperando_origen');
+  });
+
+  it('cancelar sigue funcionando SIN haberlos aceptado', () => {
+    // Si no, quien no quiera aceptarlos se queda recibiendo la misma pantalla
+    // una y otra vez, sin forma de salir.
+    const p = siguientePaso(ctx({ aceptoTerminos: false, botonId: BOTON_CANCELAR }));
+    expect(p.accion).toBe('cancelar');
+  });
+
+  it('quien ya los aceptó no los vuelve a ver', () => {
+    // Repetirlo en cada carrera sería un mensaje cobrado por viaje.
+    expect(siguientePaso(ctx({ aceptoTerminos: true, texto: 'hola' })).accion).toBe('pedir-origen');
   });
 });

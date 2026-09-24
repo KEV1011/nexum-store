@@ -12,7 +12,7 @@
  */
 import { prisma } from '../src/lib/prisma';
 import { ejecutarPasoDelPedido } from '../src/services/whatsapp-pedido.service';
-import { BOTON_CONFIRMAR, BOTON_CANCELAR } from '../src/lib/whatsapp-flujo';
+import { BOTON_CONFIRMAR, BOTON_CANCELAR, BOTON_ACEPTO } from '../src/lib/whatsapp-flujo';
 import type { MensajeWhatsapp } from '../src/lib/whatsapp-payload';
 
 let fallos = 0;
@@ -60,11 +60,39 @@ async function main() {
     },
   });
 
-  // ── 1. «hola» → botón de ubicación ──────────────────────────────────────
-  console.log('\n[1] Escribe «hola»');
-  const r1 = await ejecutarPasoDelPedido(msg({ texto: 'hola' }), ahora);
+  // ── 0. El primer contacto pide los términos ─────────────────────────────
+  console.log('\n[0] Primer contacto de alguien que nunca ha usado ZIPA');
+  const r0 = await ejecutarPasoDelPedido(msg({ texto: 'hola' }), ahora);
+  console.log(`    → ${r0.outcome}`);
+  check(r0.outcome === 'respondido:terminos-pedidos', 'se le piden los términos ANTES de nada', r0.outcome);
+  check(/legal\/terminos/.test(r0.cuerpo), 'con el enlace al texto real y versionado');
+
+  const sinAceptar = await ejecutarPasoDelPedido(msg({ tipo: 'location', ubicacion: PAMPLONA }), ahora);
+  check(
+    sinAceptar.outcome === 'respondido:terminos-pedidos',
+    'y sin aceptarlos no se puede avanzar, ni mandando la ubicación',
+    sinAceptar.outcome,
+  );
+
+  // ── 1. Acepta → botón de ubicación ──────────────────────────────────────
+  console.log('\n[1] Toca «Acepto»');
+  const r1 = await ejecutarPasoDelPedido(
+    msg({ tipo: 'interactive', botonId: BOTON_ACEPTO }), ahora,
+  );
   console.log(`    → ${r1.outcome}`);
-  check(r1.pedirUbicacion === true, 'se le manda el botón nativo de ubicación');
+  console.log(`    → ${r1.outcome}`);
+  check(r1.pedirUbicacion === true, 'se le manda el botón nativo de ubicación, sin un turno de más');
+
+  const u0 = await prisma.user.findFirst({ where: { phone: TEL } });
+  const constancia = await prisma.legalConsent.count({ where: { subjectKind: 'user', subjectId: u0?.id ?? '' } });
+  check(constancia >= 2, 'queda constancia de términos Y privacidad', constancia);
+
+  const repetido = await ejecutarPasoDelPedido(msg({ texto: 'hola' }), ahora);
+  check(
+    repetido.outcome !== 'respondido:terminos-pedidos',
+    'y no se le vuelven a pedir: sería un mensaje cobrado por viaje',
+    repetido.outcome,
+  );
   check(await estado() === 'esperando_origen', 'la conversación queda esperando el punto', await estado());
 
   // ── 2. Manda su ubicación → se le pregunta a dónde va ───────────────────
@@ -172,6 +200,7 @@ async function main() {
   // ── Limpieza ────────────────────────────────────────────────────────────
   const u = await prisma.user.findFirst({ where: { phone: TEL } });
   await prisma.whatsappConversation.deleteMany({ where: { phone: TEL } });
+  await prisma.legalConsent.deleteMany({ where: { subjectKind: 'user', subjectId: u?.id ?? '' } });
   await prisma.magicLink.deleteMany({ where: { userId: u?.id } });
   await prisma.trip.deleteMany({ where: { passengerId: u?.id } });
   if (u) await prisma.user.delete({ where: { id: u.id } });

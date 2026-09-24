@@ -49,7 +49,9 @@ export type EstadoConversacion =
   /** Hay trayecto y precio; falta que diga que sí. */
   | 'esperando_confirmacion'
   /** Pidió el viaje y está en curso. */
-  | 'viaje_en_curso';
+  | 'viaje_en_curso'
+  /** Se le pidió que acepte los términos y se espera que toque el botón. */
+  | 'esperando_terminos';
 
 /**
  * Cuánto dura una conversación a medias.
@@ -64,6 +66,7 @@ export const VIDA_CONVERSACION_MIN = 20;
 /** Ids de los botones. Estables aunque cambie el texto que se muestra. */
 export const BOTON_CONFIRMAR = 'zipa_confirmar';
 export const BOTON_CANCELAR = 'zipa_cancelar';
+export const BOTON_ACEPTO = 'zipa_acepto';
 
 export interface ContextoFlujo {
   estado: EstadoConversacion;
@@ -76,6 +79,16 @@ export interface ContextoFlujo {
   botonId: string | null;
   /** Si ya tiene un viaje abierto en la plataforma. */
   tieneViajeActivo: boolean;
+  /**
+   * Si ya aceptó la versión VIGENTE de términos y privacidad.
+   *
+   * Por los otros caminos —login por OTP, registro de conductor, registro de
+   * empresa— el consentimiento se registra con su clickwrap. Este camino no
+   * pasaba por ninguno, así que quien entraba por WhatsApp pedía un taxi sin
+   * constancia de haber aceptado nada. Al publicar una versión nueva esto
+   * vuelve a ser falso solo, y se pide otra vez.
+   */
+  aceptoTerminos: boolean;
 }
 
 export type Paso =
@@ -87,6 +100,10 @@ export type Paso =
   | { accion: 'cotizar'; destinoTexto: string }
   /** Crear el viaje: dijo que sí. */
   | { accion: 'pedir-viaje' }
+  /** Enseñarle los términos y esperar que los acepte. */
+  | { accion: 'pedir-terminos' }
+  /** Dejar constancia de que los aceptó y seguir. */
+  | { accion: 'aceptar-terminos' }
   /** Soltar lo que había a medias. */
   | { accion: 'cancelar' }
   /** Ya tiene un viaje: recordarle en qué va en vez de empezar otro. */
@@ -111,9 +128,21 @@ export type Paso =
  *     una ubicación tienen sentido aunque la conversación esté vieja.
  */
 export function siguientePaso(c: ContextoFlujo): Paso {
-  if (c.tieneViajeActivo) return { accion: 'recordar-viaje' };
-
+  // Cancelar es la salida y va primero: tiene que funcionar incluso con los
+  // términos sin aceptar, porque si no, quien no quiera aceptarlos se queda
+  // recibiendo la misma pantalla sin forma de salir.
   if (c.botonId === BOTON_CANCELAR) return { accion: 'cancelar' };
+
+  // Sin consentimiento no se opera. Va ANTES que todo lo demás porque es un
+  // requisito previo, no un paso del pedido: pedir un taxi es tratar sus datos
+  // —su teléfono, su ubicación, a dónde va— y eso no se hace sin permiso.
+  if (!c.aceptoTerminos) {
+    return c.botonId === BOTON_ACEPTO
+      ? { accion: 'aceptar-terminos' }
+      : { accion: 'pedir-terminos' };
+  }
+
+  if (c.tieneViajeActivo) return { accion: 'recordar-viaje' };
 
   if (c.ubicacion) return { accion: 'pedir-destino', origen: c.ubicacion };
 
@@ -143,6 +172,10 @@ export function siguientePaso(c: ContextoFlujo): Paso {
       if (c.texto.trim().length >= 4) return { accion: 'cotizar', destinoTexto: c.texto.trim() };
       return { accion: 'repetir', estado };
 
+    case 'esperando_terminos':
+      // Ya aceptó (lo cubre la comprobación de arriba): empieza el pedido.
+      return { accion: 'pedir-origen' };
+
     case 'viaje_en_curso':
       // No debería llegarse aquí (lo cubre `tieneViajeActivo`), pero si el
       // estado guardado y la plataforma discrepan, manda la plataforma.
@@ -159,6 +192,10 @@ export function estadoTras(paso: Paso): EstadoConversacion {
     case 'pedir-viaje': return 'viaje_en_curso';
     case 'cancelar': return 'inicio';
     case 'recordar-viaje': return 'viaje_en_curso';
+    case 'pedir-terminos': return 'esperando_terminos';
+    // Aceptar no deja la conversación esperando nada: lo siguiente que se le
+    // manda es el botón de ubicación, en el mismo turno.
+    case 'aceptar-terminos': return 'esperando_origen';
     case 'repetir': return paso.estado;
   }
 }

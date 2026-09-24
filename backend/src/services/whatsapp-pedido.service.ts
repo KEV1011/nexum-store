@@ -25,10 +25,13 @@ import {
   estadoTras,
   BOTON_CONFIRMAR,
   BOTON_CANCELAR,
+  BOTON_ACEPTO,
   type EstadoConversacion,
   type Paso,
 } from '../lib/whatsapp-flujo';
 import type { MensajeWhatsapp } from '../lib/whatsapp-payload';
+import { PORTAL_BASE_URL } from '../config/constants';
+import { hasCurrentConsent, recordConsent } from './legal.service';
 import { geocodeAddress } from './geo.service';
 import { getTripOptions } from './trip-options.service';
 import { requestClientTrip, getActiveClientTrip } from './client.service';
@@ -97,6 +100,27 @@ function textoPedirOrigen(nombre: string | null): string {
   return `${saludo}Para pedirte un taxi, tócame el botón y mándame dónde estás.`;
 }
 
+/**
+ * Lo que se le enseña antes de nada, UNA sola vez.
+ *
+ * Solo la primera vez —y otra vez si se publica una versión nueva de los
+ * documentos, que `hasCurrentConsent` detecta solo—. Repetirlo en cada carrera
+ * sería un mensaje cobrado por viaje y una molestia que nadie lee.
+ *
+ * El enlace va al texto real y versionado que sirve el backend, no a un
+ * resumen: lo que se acepta tiene que ser lo que se puede leer.
+ */
+function textoTerminos(nombre: string | null): string {
+  const saludo = nombre ? `Hola ${nombre.split(' ')[0]}. ` : 'Hola. ';
+  return (
+    `${saludo}Antes de pedir tu primer viaje necesito que aceptes nuestros ` +
+    'términos y la política de privacidad.\n\n' +
+    `Términos: ${PORTAL_BASE_URL}/legal/terminos\n` +
+    `Privacidad: ${PORTAL_BASE_URL}/legal/privacidad\n\n` +
+    'Solo te lo pido esta vez.'
+  );
+}
+
 function textoPedirDestino(): string {
   return (
     'Listo, ya sé dónde estás.\n\n' +
@@ -159,7 +183,10 @@ export async function ejecutarPasoDelPedido(
   // La verdad sobre si tiene viaje la tiene la PLATAFORMA, no la conversación:
   // pudo pedirlo desde la app, o el viaje pudo cerrarse por otro camino.
   const usuario = await usuarioParaTelefonoVerificado(m.telefono, m.nombre);
-  const activo = await getActiveClientTrip(usuario.id).catch(() => null);
+  const [activo, acepto] = await Promise.all([
+    getActiveClientTrip(usuario.id).catch(() => null),
+    hasCurrentConsent('user', usuario.id).catch(() => false),
+  ]);
 
   const minutosDesdeUltimo = conv
     ? Math.max(0, (ahora.getTime() - conv.updatedAt.getTime()) / 60000)
@@ -172,6 +199,7 @@ export async function ejecutarPasoDelPedido(
     texto: m.texto,
     botonId: m.botonId,
     tieneViajeActivo: activo != null,
+    aceptoTerminos: acepto,
   });
 
   return _ejecutar(paso, m, conv, usuario.id, activo);
@@ -211,6 +239,30 @@ async function _ejecutar(
     case 'cancelar':
       await _guardar(m.telefono, { state: 'inicio' });
       return { cuerpo: textoCancelado(), outcome: 'respondido:cancelado' };
+
+    case 'pedir-terminos':
+      await _guardar(m.telefono, { ...(conv ?? {}), state: estadoTras(paso) });
+      return {
+        cuerpo: textoTerminos(m.nombre),
+        botones: [
+          { id: BOTON_ACEPTO, titulo: 'Acepto' },
+          { id: BOTON_CANCELAR, titulo: 'Ahora no' },
+        ],
+        outcome: 'respondido:terminos-pedidos',
+      };
+
+    case 'aceptar-terminos': {
+      // La constancia se graba con la IP en null: aquí no hay petición del
+      // usuario, el mensaje llega por el webhook de Meta. Queda el teléfono,
+      // la versión y la fecha, que es lo que la ley pide poder demostrar.
+      await recordConsent('user', userId, null);
+      await _guardar(m.telefono, { ...(conv ?? {}), state: estadoTras(paso) });
+      return {
+        cuerpo: textoPedirOrigen(m.nombre),
+        pedirUbicacion: true,
+        outcome: 'respondido:terminos-aceptados',
+      };
+    }
 
     case 'recordar-viaje':
       return _recordar(m, activo, userId);
