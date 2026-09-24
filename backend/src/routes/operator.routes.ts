@@ -16,6 +16,8 @@ import { IntercityCity } from '../types';
 import {
   listarEncomiendasPendientes,
   adjuntarEncomienda,
+  adjuntarEncomiendaASalida,
+  listarEncomiendasDeSalida,
   soltarEncomienda,
   EncomiendaError,
 } from '../services/encomiendas.service';
@@ -1022,6 +1024,29 @@ router.post('/cargo-trips/:id/encomiendas', requireOperatorRole('OWNER', 'DISPAT
   }
   try {
     const data = await adjuntarEncomienda(req.operatorId!, orderId, req.params['id']!);
+    res.status(201).json({ success: true, data });
+  } catch (err) { _errorEncomienda(res, err); }
+});
+
+// GET /operator/pool/:id/encomiendas — qué va en la bodega de esa salida.
+router.get('/pool/:id/encomiendas', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await listarEncomiendasDeSalida(req.operatorId!, req.params['id']!);
+    res.json({ success: true, data });
+  } catch (err) { _errorEncomienda(res, err); }
+});
+
+// POST /operator/pool/:id/encomiendas { orderId } — sube una caja a la bodega
+// del bus de pasajeros. Mismo remito y mismo consecutivo que en un camión: lo
+// único que cambia es el vehículo en el que viaja.
+router.post('/pool/:id/encomiendas', requireOperatorRole('OWNER', 'DISPATCHER'), async (req: Request, res: Response): Promise<void> => {
+  const { orderId } = req.body as { orderId?: string };
+  if (!orderId) {
+    res.status(400).json({ success: false, error: 'Falta el pedido.' });
+    return;
+  }
+  try {
+    const data = await adjuntarEncomiendaASalida(req.operatorId!, orderId, req.params['id']!);
     res.status(201).json({ success: true, data });
   } catch (err) { _errorEncomienda(res, err); }
 });

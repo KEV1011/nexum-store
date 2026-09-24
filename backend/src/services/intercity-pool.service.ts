@@ -27,6 +27,7 @@ import {
   type TipoConSillas,
 } from '../lib/mapa-asientos';
 import { maskPhone } from './safe-contact.service';
+import { marcarEncomiendasDeSalidaEnTransito } from './encomiendas.service';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type TripCallback = (tripId: string, trip: PooledTripDTO) => void;
@@ -421,6 +422,17 @@ export async function departPooledTrip(driverId: string, tripId: string): Promis
   const updated = await prisma.pooledTrip.update({
     where: { id: tripId }, data: { status: 'DEPARTED' }, include: { bookings: { include: { seats: true } }, seatAssignments: true },
   });
+
+  // El bus arranca con las encomiendas en la bodega: sus pedidos pasan a
+  // «en tránsito intermunicipal». Se ESPERA a propósito —es una transición de
+  // estado, no un aviso—: si se dejara al aire y fallara, el cliente vería su
+  // caja «preparando» con el bus ya en carretera.
+  await marcarEncomiendasDeSalidaEnTransito(tripId).catch((e) => {
+    // Pero tampoco puede impedir que el bus salga: el conductor está esperando
+    // y el viaje de los pasajeros no depende de esto.
+    console.error('[Pool] No se pudieron poner en tránsito las encomiendas:', e);
+  });
+
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
   return dto;
@@ -513,6 +525,30 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
     });
 }
 
+/**
+ * Dónde va el bus, del último latido del conductor.
+ *
+ * Solo con la salida EN CURSO: antes de arrancar, la posición del conductor no
+ * es la del bus —está en su casa— y pintarla en el mapa como si lo fuera es
+ * peor que no pintar nada, porque el pasajero decide cuándo salir de casa
+ * mirando eso.
+ */
+async function _conPosicionDelBus(
+  dto: PooledTripDTO,
+  t: { driverId: string; status: string },
+): Promise<PooledTripDTO> {
+  if (t.status !== 'DEPARTED') return dto;
+  const d = await prisma.driver.findUnique({
+    where: { id: t.driverId },
+    select: { lastLat: true, lastLng: true },
+  });
+  if (d?.lastLat != null && d.lastLng != null) {
+    dto.driverLat = d.lastLat;
+    dto.driverLng = d.lastLng;
+  }
+  return dto;
+}
+
 export async function getPooledTripById(tripId: string, includeBookings = false): Promise<PooledTripDTO | null> {
   const t = await prisma.pooledTrip.findUnique({
     where: { id: tripId },
@@ -521,7 +557,8 @@ export async function getPooledTripById(tripId: string, includeBookings = false)
     // comprando un cupo sin poder elegir dónde se sienta.
     include: { bookings: includeBookings, seatAssignments: true },
   });
-  return t ? _toDTO(t as DbPooledTrip, includeBookings) : null;
+  if (!t) return null;
+  return _conPosicionDelBus(_toDTO(t as DbPooledTrip, includeBookings), t);
 }
 
 export async function bookSeats(
@@ -707,12 +744,35 @@ export async function getClientBookings(clientId: string): Promise<Array<PooledT
     orderBy: { bookedAt: 'desc' },
   });
 
+  // La posición de los buses EN CURSO, en UNA consulta. Es la pantalla donde
+  // el pasajero mira dónde va el suyo, y hacer una consulta por reserva la
+  // volvería lenta justo cuando más se abre.
+  const enCurso = bookings
+    .map((b) => b.trip)
+    .filter((t) => t.status === 'DEPARTED')
+    .map((t) => t.driverId);
+  const posiciones = new Map<string, { lat: number; lng: number }>();
+  if (enCurso.length > 0) {
+    const conductores = await prisma.driver.findMany({
+      where: { id: { in: [...new Set(enCurso)] } },
+      select: { id: true, lastLat: true, lastLng: true },
+    });
+    for (const d of conductores) {
+      if (d.lastLat != null && d.lastLng != null) {
+        posiciones.set(d.id, { lat: d.lastLat, lng: d.lastLng });
+      }
+    }
+  }
+
   return bookings.map((b) => {
     const tripWithBookings = b.trip as DbPooledTrip;
-    return {
-      ..._toDTO(tripWithBookings, false),
-      myBooking: _toBookingDTO(b as DbSeatBooking),
-    };
+    const dto = _toDTO(tripWithBookings, false);
+    const pos = b.trip.status === 'DEPARTED' ? posiciones.get(b.trip.driverId) : undefined;
+    if (pos) {
+      dto.driverLat = pos.lat;
+      dto.driverLng = pos.lng;
+    }
+    return { ...dto, myBooking: _toBookingDTO(b as DbSeatBooking) };
   });
 }
 

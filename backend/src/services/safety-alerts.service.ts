@@ -55,7 +55,7 @@ export interface SafetyAlert {
 }
 
 interface ActiveService {
-  kind: 'trip' | 'intercity' | 'freight' | 'cargo';
+  kind: 'trip' | 'intercity' | 'freight' | 'cargo' | 'pooled';
   id: string;
   clientId: string | null;
   operatorId: string | null;
@@ -238,6 +238,32 @@ async function _activeServiceFor(driverId: string): Promise<ActiveService | null
         originLat: o?.lat ?? null, originLng: o?.lng ?? null,
         destLat: d?.lat ?? null, destLng: d?.lng ?? null,
         destLabel: b.destination, geofenceM: GEOFENCE_LONG_M,
+      };
+    }
+  }
+
+  if (!svc) {
+    // Salida programada en bus. Va antes que el flete porque un conductor que
+    // lleva pasajeros no está haciendo otra cosa, y porque es el servicio con
+    // más gente a bordo: si algo se desvía, es el que más importa.
+    const sp = await prisma.pooledTrip.findFirst({
+      where: { driverId, status: 'DEPARTED' },
+      select: { id: true, operatorId: true, origin: true, destination: true },
+    });
+    if (sp) {
+      const o = coordsOfSync(sp.origin.toLowerCase());
+      const d = coordsOfSync(sp.destination.toLowerCase());
+      const driver = await prisma.driver.findUnique({ where: { id: driverId }, select: { name: true } });
+      svc = {
+        // `clientId` va en null a propósito: una salida tiene MUCHOS pasajeros,
+        // así que no hay un cliente al que avisar. El aviso de proximidad de un
+        // bus se le manda a cada pasajero desde su propia reserva, no desde
+        // aquí; mandárselo a uno solo sería peor que no mandarlo.
+        kind: 'pooled', id: sp.id, clientId: null, operatorId: sp.operatorId,
+        driverName: driver?.name ?? 'Conductor',
+        originLat: o?.lat ?? null, originLng: o?.lng ?? null,
+        destLat: d?.lat ?? null, destLng: d?.lng ?? null,
+        destLabel: sp.destination, geofenceM: GEOFENCE_LONG_M,
       };
     }
   }

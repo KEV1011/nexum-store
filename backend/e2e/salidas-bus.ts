@@ -25,6 +25,11 @@ function check(cond: boolean, msg: string, detalle?: unknown) {
 /**
  * Hueco de producto conocido, no un fallo.
  *
+ * Hoy no queda ninguno abierto —los tres que había (remito en salida, rastro
+ * GPS y posición del bus) se cerraron y pasaron a `check`—, pero el mecanismo
+ * se conserva: la próxima auditoría del bus encontrará otros, y éste es el
+ * sitio donde anotarlos sin que tumben la corrida.
+ *
  * Se mide igual que lo demás y se imprime, pero no tumba la corrida: son
  * funciones que todavía no existen, no cosas que se rompieron. El día que se
  * construyan, esta línea pasa a verde sola y hay que moverla a `check`.
@@ -121,7 +126,7 @@ async function main() {
       WHERE table_name = 'freight_manifests' AND column_name LIKE '%rip%'`,
   );
   console.log(`    freight_manifests tiene: ${columnas.map((c) => c.column_name).join(', ')}`);
-  pendiente(
+  check(
     columnas.some((c) => c.column_name.toLowerCase().includes('pooled')),
     'el remito se puede colgar de una salida de bus (pooledTripId)',
     columnas.map((c) => c.column_name),
@@ -137,13 +142,13 @@ async function main() {
   const fuente = (await import('fs')).readFileSync('src/services/track.service.ts', 'utf8');
   const linea = fuente.match(/export type TrackServiceKind = .*/)?.[0] ?? '(no encontrada)';
   console.log(`    ${linea}`);
-  pendiente(linea.includes('pooled'), 'el rastro GPS admite salidas de bus');
+  check(linea.includes('pooled'), 'el rastro GPS admite salidas de bus');
 
   // ── 8. ¿El pasajero ve dónde va el bus? ─────────────────────────────────
   console.log('\n[8] Posición del bus para quien compró el cupo');
   const tipos = (await import('fs')).readFileSync('src/types/index.ts', 'utf8');
   const bloque = tipos.match(/export interface PooledTripDTO \{[\s\S]*?\n\}/)?.[0] ?? '';
-  pendiente(
+  check(
     bloque.includes('driverLat'),
     'PooledTripDTO expone la posición del conductor (como los otros cuatro servicios)',
   );

@@ -1227,6 +1227,16 @@ export interface PooledTripDTO {
   operatorId?: string;
   /** Razón social de la empresa, para mostrar confianza en la búsqueda. */
   operatorName?: string;
+  /**
+   * Dónde va el bus AHORA, del último latido del conductor.
+   *
+   * Solo con la salida en curso (DEPARTED): antes de arrancar, la posición del
+   * conductor no es la del bus —está en su casa— y enseñarla como si lo fuera
+   * sería peor que no enseñar nada. Es lo primero que mira quien compró un
+   * pasaje, y era el único de los cinco servicios que no lo tenía.
+   */
+  driverLat?: number;
+  driverLng?: number;
   /** Present only on driver-facing responses. */
   bookings?: SeatBookingDTO[];
 }

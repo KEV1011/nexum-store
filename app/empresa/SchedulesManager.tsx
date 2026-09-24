@@ -60,6 +60,27 @@ function formatWhen(iso: string): string {
   })
 }
 
+/** Una caja que ya va en la bodega del bus. */
+interface EncomiendaEnBodega {
+  manifestId: string
+  code: string
+  orderRef: string | null
+  clientName: string
+  clientCity: string | null
+  bultos: number
+  status: string
+}
+
+/** Una caja esperando en bodega a que alguien la suba a un bus. */
+interface EncomiendaPendiente {
+  orderId: string
+  orderRef: string
+  clientName: string
+  destCitySlug: string | null
+  businessName?: string | null
+  bultos?: number
+}
+
 /** Una distribución posible del vehículo, con su mapa ya dibujado. */
 interface ConfigSillas {
   izquierda: number
@@ -190,6 +211,52 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
       setDispError(e instanceof Error ? e.message : 'No se pudieron consultar las distribuciones.')
     } finally {
       setBuscandoDisp(false)
+    }
+  }
+
+  // La bodega: qué encomiendas lleva cada salida y cuáles hay esperando.
+  const [bodegaId, setBodegaId] = useState<string | null>(null)
+  const [bodega, setBodega] = useState<EncomiendaEnBodega[]>([])
+  const [pendientes, setPendientes] = useState<EncomiendaPendiente[]>([])
+  const [bodegaMsg, setBodegaMsg] = useState<string | null>(null)
+  const [cargandoBodega, setCargandoBodega] = useState(false)
+
+  /**
+   * Abre la bodega de una salida: lo que ya lleva y lo que hay esperando en esa
+   * misma ruta. Las dos cosas juntas, porque la decisión del despachador es
+   * «¿qué más le cabe a este bus?» y no se puede tomar con media pantalla.
+   */
+  async function abrirBodega(tripId: string, origen: string, destino: string) {
+    if (bodegaId === tripId) { setBodegaId(null); return }
+    setBodegaId(tripId)
+    setCargandoBodega(true)
+    setBodegaMsg(null)
+    try {
+      const [dentro, esperando] = await Promise.all([
+        api<EncomiendaEnBodega[]>(`/operator/pool/${tripId}/encomiendas`),
+        api<EncomiendaPendiente[]>(`/operator/encomiendas?origen=${origen}&destino=${destino}`),
+      ])
+      setBodega(dentro ?? [])
+      setPendientes(esperando ?? [])
+    } catch (e) {
+      setBodegaMsg(e instanceof Error ? e.message : 'No se pudo abrir la bodega.')
+    } finally {
+      setCargandoBodega(false)
+    }
+  }
+
+  async function subirEncomienda(tripId: string, orderId: string, origen: string, destino: string) {
+    setBodegaMsg(null)
+    try {
+      await api(`/operator/pool/${tripId}/encomiendas`, {
+        method: 'POST', body: JSON.stringify({ orderId }),
+      })
+      await abrirBodega(tripId, origen, destino)
+      setBodegaId(tripId)
+    } catch (e) {
+      // El backend dice el motivo exacto —ruta distinta, ya va en otro bus— y
+      // es lo que el despachador necesita leer con el bus a punto de salir.
+      setBodegaMsg(e instanceof Error ? e.message : 'No se pudo subir la encomienda.')
     }
   }
 
@@ -646,6 +713,76 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                           </li>
                         ))}
                       </ul>
+                    )}
+                  </div>
+                )}
+                {/* LA BODEGA. Para una cooperativa esto pesa tanto como el
+                    pasaje: el bus ya va y el costo está hundido, así que cada
+                    caja es margen casi puro. Solo mientras no haya salido —
+                    después la bodega está cerrada y el backend lo rechaza. */}
+                {(t.status === 'open' || t.status === 'full') && (
+                  <div className="mt-2 pl-7">
+                    <button
+                      onClick={() => abrirBodega(t.id, t.origin, t.destination)}
+                      className="text-[11px] font-semibold text-amber-600 hover:text-amber-700"
+                    >
+                      {bodegaId === t.id ? 'Ocultar bodega' : 'Encomiendas de esta salida'}
+                    </button>
+
+                    {bodegaId === t.id && (
+                      <div className="mt-1.5">
+                        {bodegaMsg && (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-1.5">
+                            {bodegaMsg}
+                          </p>
+                        )}
+                        {cargandoBodega ? (
+                          <p className="text-[11px] text-slate-400">Cargando…</p>
+                        ) : (
+                          <>
+                            {bodega.length === 0 ? (
+                              <p className="text-[11px] text-slate-400">La bodega va vacía.</p>
+                            ) : (
+                              <ul className="space-y-1">
+                                {bodega.map((e) => (
+                                  <li key={e.manifestId} className="text-[11px] text-slate-600 border-l-2 border-amber-300 pl-2">
+                                    <span className="font-semibold text-slate-800">{e.code}</span>
+                                    {' · '}{e.clientName}
+                                    {e.clientCity ? ` · ${etiqueta(e.clientCity)}` : ''}
+                                    {' · '}<span className="font-semibold text-amber-700">
+                                      {e.bultos} {e.bultos === 1 ? 'bulto' : 'bultos'}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+
+                            {pendientes.length > 0 && (
+                              <div className="mt-2">
+                                <p className="text-[10px] font-semibold text-slate-500 mb-1">
+                                  Esperando en esta ruta
+                                </p>
+                                <ul className="space-y-1">
+                                  {pendientes.map((p) => (
+                                    <li key={p.orderId} className="flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                                      <span className="truncate">
+                                        {p.orderRef} · {p.clientName}
+                                        {p.businessName ? ` · ${p.businessName}` : ''}
+                                      </span>
+                                      <button
+                                        onClick={() => subirEncomienda(t.id, p.orderId, t.origin, t.destination)}
+                                        className="shrink-0 px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-semibold hover:bg-amber-700"
+                                      >
+                                        Subir al bus
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
