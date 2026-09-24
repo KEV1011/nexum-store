@@ -4,7 +4,6 @@ import {
   puntosGuardados,
   horaAbsolutaDePunto,
   minutosTrasLaSalida,
-  elegirPunto,
   etiquetaPunto,
   MAX_PUNTOS,
 } from './puntos-embarque';
@@ -107,29 +106,11 @@ describe('lo que ya está guardado', () => {
   });
 });
 
-describe('cuál eligió el pasajero', () => {
+describe('la etiqueta', () => {
   const puntos = saneaPuntosEmbarque(
     [{ name: 'Terminal', time: '06:00' }, { name: 'Parque', time: '06:15' }],
     SALIDA,
   );
-
-  it('el que pidió', () => {
-    expect(elegirPunto(puntos, puntos[1]!.id)?.name).toBe('Parque');
-  });
-
-  it('sin elegir, el primero: es la terminal y es donde sube casi todo el mundo', () => {
-    // Las apps ya instaladas no mandan este campo. Rechazarles la compra sería
-    // peor que asignarles el punto principal.
-    expect(elegirPunto(puntos, undefined)?.name).toBe('Terminal');
-  });
-
-  it('un id que no existe NO cae al primero: se sabe que algo va mal', () => {
-    expect(elegirPunto(puntos, 'inventado')).toBeNull();
-  });
-
-  it('una salida sin puntos devuelve null, como se venden hoy', () => {
-    expect(elegirPunto([], 'x')).toBeNull();
-  });
 
   it('la etiqueta lleva el nombre y la hora, que es lo que se lee de un vistazo', () => {
     expect(etiquetaPunto(puntos[0]!)).toBe('Terminal · 06:00');

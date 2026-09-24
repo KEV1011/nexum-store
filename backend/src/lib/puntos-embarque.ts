@@ -194,21 +194,6 @@ export function puntosGuardados(v: unknown): PuntoEmbarque[] {
   return out;
 }
 
-/**
- * Cuál eligió el pasajero.
- *
- * Sin elección se toma el PRIMERO —el de la hora más temprana, que es la
- * terminal— en vez de rechazar la compra: las apps ya instaladas no mandan
- * este campo, y dejarlas sin poder reservar sería peor que asignarles el punto
- * principal, que es donde sube casi todo el mundo. Devuelve `null` solo cuando
- * la salida no tiene puntos, que es como se venden hoy.
- */
-export function elegirPunto(puntos: PuntoEmbarque[], id?: string | null): PuntoEmbarque | null {
-  if (puntos.length === 0) return null;
-  if (!id) return puntos[0]!;
-  return puntos.find((p) => p.id === id) ?? null;
-}
-
 /** «Terminal de Transportes · 06:00». Lo que se pinta en una línea. */
 export function etiquetaPunto(p: PuntoEmbarque): string {
   return `${p.name} · ${p.time}`;

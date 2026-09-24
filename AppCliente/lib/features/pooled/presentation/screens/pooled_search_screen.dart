@@ -377,6 +377,28 @@ class _TripCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
               ],
+              // El puerta a puerta es POR LO QUE se elige una van frente a un
+              // bus, así que va en la tarjeta y no escondido en la hoja de
+              // reserva. Solo cuando la salida lo hace: anunciarlo siempre lo
+              // volvería ruido y a veces mentira.
+              if (trip.doorToDoor) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.home_rounded,
+                        size: 15, color: AppColors.liveGreen),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Te recogen en tu dirección',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+              ],
               // Qué trae el vehículo. Solo lo declarado: sin comodidades no se
               // pinta nada, en vez de una fila de cruces que afirmaría que no
               // las tiene.
@@ -482,6 +504,15 @@ class _BookSeatsSheet extends ConsumerStatefulWidget {
   ConsumerState<_BookSeatsSheet> createState() => _BookSeatsSheetState();
 }
 
+/// Valor del radio «En mi dirección», y lo que se le manda al servidor.
+///
+/// Es un marcador EXPLÍCITO y no «sin punto»: sin punto es lo que manda una app
+/// vieja que no conoce los puntos, y a esa hay que sellarle la terminal. Si
+/// fueran lo mismo, quien pidiera que lo recogieran en su casa acabaría con
+/// «Sube en: Terminal · 06:00» en su reserva. El valor lo define
+/// `backend/src/lib/recogida-salida.ts`.
+const _kEnMiDireccion = 'domicilio';
+
 class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   int _seats = 1;
   final _pickupCtrl = TextEditingController();
@@ -570,6 +601,8 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
           sillas: mapa != null ? (_sillas.toList()..sort()) : null,
           pickupAddress: _pickupCtrl.text.trim(),
           notes: _notesCtrl.text.trim(),
+          // El marcador viaja tal cual: el servidor distingue «pidió
+          // domicilio» de «no eligió nada».
           boardingPointId: _puntoId,
           promoCode: _cuponAplicado,
         );
@@ -691,9 +724,11 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             const SizedBox(height: 16),
 
-            // Dónde sube. Con puntos publicados se elige de la lista y se
-            // acabó el texto libre: la hora del punto es la que importa, no la
-            // de la salida del bus.
+            // ── Dónde sube ────────────────────────────────────────────────
+            // Las dos formas CONVIVEN. Una van intermunicipal recoge puerta a
+            // puerta y además tiene parada en la terminal; enseñar solo los
+            // puntos le quitaría media operación, que es justo lo que pasó al
+            // publicar esta pantalla por primera vez.
             if (trip.boardingPoints.isNotEmpty) ...[
               const Text('¿Dónde te subes?',
                   style: TextStyle(fontWeight: FontWeight.w700)),
@@ -713,8 +748,37 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                     style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
                   ),
                 ),
+              if (trip.doorToDoor)
+                RadioListTile<String>(
+                  value: _kEnMiDireccion,
+                  groupValue: _puntoId ?? trip.boardingPoints.first.id,
+                  onChanged: (v) => setState(() => _puntoId = v),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: _kPooledColor,
+                  title: const Text('En mi dirección',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    'Pasan por ti',
+                    style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                  ),
+                ),
+              // El campo solo cuando eligió domicilio: pedir la dirección a
+              // quien va a subir en la terminal es pedir un dato que nadie va
+              // a usar.
+              if (trip.doorToDoor && _puntoId == _kEnMiDireccion) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _pickupCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '¿Dónde te recogemos?',
+                    prefixIcon: Icon(Icons.my_location_rounded),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
-            ] else
+            ] else if (trip.doorToDoor)
               TextField(
                 controller: _pickupCtrl,
                 decoration: const InputDecoration(
@@ -722,6 +786,22 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                   prefixIcon: Icon(Icons.my_location_rounded),
                   border: OutlineInputBorder(),
                 ),
+              )
+            else
+              // Ni puntos ni domicilio: se dice dónde subir en vez de dejar un
+              // formulario vacío que no responde nada.
+              Row(
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      size: 16, color: context.textSecondaryColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Subes donde arranca la salida, en ${trip.origin.displayName}.',
+                      style: TextStyle(fontSize: 12.5, color: context.textSecondaryColor),
+                    ),
+                  ),
+                ],
               ),
             const SizedBox(height: 12),
             TextField(

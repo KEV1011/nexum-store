@@ -1977,7 +1977,12 @@ function loadPromos() {
   api('/admin/promos').then((rows) => {
     const tb = document.getElementById('promos-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Sin cupones aún.</td></tr>'; return; }
-    tb.innerHTML = rows.map((p) => '<tr><td><strong>' + esc(p.code) + '</strong></td><td>' + (p.type === 'PERCENT' ? '%' : 'COP') +
+    tb.innerHTML = rows.map((p) => '<tr><td><strong>' + esc(p.code) + '</strong>' +
+      // De quién es. Desde que las empresas emiten los suyos, esta tabla los
+      // mezcla, y sin decirlo un admin desactivaría la promoción de una
+      // empresa creyendo que es nuestra.
+      (p.operatorName ? '<br><span class="muted">' + esc(p.operatorName) + '</span>' : '') +
+      '</td><td>' + (p.type === 'PERCENT' ? '%' : 'COP') +
       '</td><td>' + (p.type === 'PERCENT' ? p.value + '%' : money(p.value)) + '</td><td>' + p.scope + '</td><td>' + p.redemptions +
       (p.maxRedemptions ? ' / ' + p.maxRedemptions : '') + '</td><td>' + (p.expiresAt ? when(p.expiresAt) : '—') +
       '</td><td><span class="badge ' + (p.active ? 'badge-ok' : 'badge-OFFLINE') + '">' + (p.active ? 'Activo' : 'Inactivo') +

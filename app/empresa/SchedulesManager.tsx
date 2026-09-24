@@ -221,6 +221,10 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   const [puntoNombre, setPuntoNombre] = useState('')
   const [puntoHora, setPuntoHora] = useState('')
   const [puntoDir, setPuntoDir] = useState('')
+  // null = sin declarar, y entonces lo deduce el backend del vehículo: las van
+  // recogen en casa, las busetas y buses no. Se declara solo si la empresa
+  // toca la casilla, para no imponerle un valor que no eligió.
+  const [domicilio, setDomicilio] = useState<boolean | null>(null)
 
   /**
    * Qué disposiciones dan EXACTAMENTE los puestos que declaró la empresa.
@@ -360,6 +364,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
           notes: notes.trim() || undefined,
           amenities: comodidades.length > 0 ? comodidades : undefined,
           boardingPoints: puntos.length > 0 ? puntos : undefined,
+          ...(domicilio === null ? {} : { doorToDoor: domicilio }),
           stops: stops.length > 0
             ? stops.map((name, i) => ({ name, order: i }))
             : undefined,
@@ -371,6 +376,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
       setStopDraft('')
       setComodidades([])
       setPuntos([])
+      setDomicilio(null)
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo publicar la salida.')
@@ -561,6 +567,30 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* El puerta a puerta es lo que hace que la gente prefiera la van al bus,
+          y también lo que un bus de cuarenta no puede ofrecer. Sin tocar nada
+          se deduce del vehículo. */}
+      <div className="mb-3">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="w-4 h-4 accent-emerald-600"
+            checked={domicilio ?? (seatType === '' || seatType === 'VAN')}
+            onChange={(e) => setDomicilio(e.target.checked)}
+          />
+          Recogemos al pasajero en su dirección (puerta a puerta)
+        </label>
+        <p className="text-[10px] text-slate-400 mt-1 ml-6">
+          {domicilio === null
+            ? seatType === 'BUSETA' || seatType === 'BUS'
+              ? 'Por el vehículo, esta salida sale de la terminal. Márcalo si tu buseta o bus sí recoge en ruta.'
+              : 'Por el vehículo, esta salida recoge en casa. Desmárcalo si sale solo de la terminal.'
+            : domicilio
+              ? 'El pasajero podrá escribir su dirección al reservar.'
+              : 'El pasajero solo podrá elegir uno de los puntos de embarque.'}
+        </p>
       </div>
 
       {/* Dónde sube el pasajero, y a qué hora. Es lo que hoy escribía él a mano

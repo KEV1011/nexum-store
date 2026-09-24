@@ -1076,6 +1076,11 @@ model PooledTrip {
   /// dibujando con él: cambiarle el mapa a una salida a mitad de venta dejaría
   /// a quien ya compró sin saber dónde se sienta, y la discusión sería a bordo.
   seatConfig         Json?
+  /// Si la salida recoge al pasajero en su casa (puerta a puerta). NULL = no
+  /// se declaró y se deduce del vehículo: las VAN sí, las busetas y buses no,
+  /// y las salidas sin vehículo declarado también sí, que es como han
+  /// funcionado siempre. Ver `lib/recogida-salida.ts`.
+  doorToDoor         Boolean?
   /// Dónde y a qué hora sube el pasajero: `[{id,name,address?,time,lat?,lng?}]`
   /// (máx. 6). NO son las paradas de `stops`, que son los municipios por los
   /// que pasa el bus: estos están en la ciudad de origen y sirven para

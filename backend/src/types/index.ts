@@ -1142,6 +1142,11 @@ export interface PublishPooledTripDTO {
    * para que el chip no prometa lo que el plano no dibuja.
    */
   amenities?: string[];
+  /**
+   * Si recoge en la casa del pasajero. Omitirlo lo deduce del vehículo, que es
+   * lo que hace que las salidas ya publicadas se comporten como siempre.
+   */
+  doorToDoor?: boolean;
   /** Puntos de abordaje con su hora (máx. 6). */
   boardingPoints?: Array<{
     id?: string;
@@ -1284,6 +1289,12 @@ export interface PooledTripDTO {
    * declara y se sigue usando el texto libre de siempre.
    */
   boardingPoints?: PuntoEmbarqueDTO[];
+  /**
+   * Si recoge al pasajero en su casa. YA RESUELTO: lo declara la empresa y, si
+   * no lo declaró, se deduce del vehículo (las vans sí, los buses no). La app
+   * lo usa para decidir si pide la dirección o solo ofrece los puntos.
+   */
+  doorToDoor?: boolean;
   /** Empresa que publicó la salida (null/ausente = conductor particular). */
   operatorId?: string;
   /** Razón social de la empresa, para mostrar confianza en la búsqueda. */

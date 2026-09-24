@@ -254,6 +254,79 @@ async function main() {
     'sin elegir punto se sella la terminal, que es donde sube casi todo el mundo',
     punto2);
 
+  // ── 4.5 La van que recoge en la casa ────────────────────────────────────
+  console.log('\n[4.5] Puerta a puerta: la van pasa por tu casa');
+  // La hora se fija a las 07:00 del día siguiente: con `Date.now() + 26h` la
+  // salida caía a la hora que fuera y el punto de las 07:00 quedaba a doce
+  // horas, que la guarda rechaza — y con razón.
+  const salidaVan = new Date(Date.now() + 24 * 3600 * 1000);
+  salidaVan.setHours(7, 0, 0, 0);
+  const van = await publishPooledTrip(
+    driver.id, driver.name, driver.phone,
+    {
+      origin: 'pamplona', destination: 'cucuta',
+      departureTime: salidaVan.toISOString(),
+      totalSeats: 1, farePerSeat: 35000,
+      vehicleDescription: 'Van Hiace',
+      seatType: 'VAN',
+      boardingPoints: [{ name: 'Terminal', time: '07:00' }],
+    },
+    { operatorId: op.id, licensedOperator: true },
+  );
+  check(van.doorToDoor === true,
+    'una VAN recoge a domicilio sin que nadie lo declare', van.doorToDoor);
+
+  const bus = await prisma.pooledTrip.findUnique({ where: { id: trip.id } });
+  const { admiteDomicilio } = await import('../src/lib/recogida-salida');
+  check(admiteDomicilio(bus?.seatType as 'BUSETA') === false,
+    'y una buseta no: sale de la terminal', bus?.seatType);
+
+  const tercerTel = `+5730088${sufijo}`;
+  const token3 = await entrarComoCliente(tercerTel);
+  const compra3 = await pedir('POST', `/client/intercity/pool/${van.id}/book`, {
+    token: token3,
+    body: {
+      seatsBooked: 1,
+      seats: [1],
+      boardingPointId: 'domicilio',
+      pickupAddress: 'Calle 9 # 2-15, barrio El Carmen',
+    },
+  });
+  check(compra3.status === 201, 'se puede reservar pidiendo recogida en casa',
+    compra3.json.error ?? compra3.status);
+
+  const u3 = await prisma.user.findFirst({ where: { phone: tercerTel } });
+  const r3b = await prisma.seatBooking.findFirst({
+    where: { tripId: van.id, userId: u3?.id },
+  });
+  check(r3b?.pickupAddress === 'Calle 9 # 2-15, barrio El Carmen',
+    'la dirección queda guardada', r3b?.pickupAddress);
+  check(r3b?.boardingPoint == null,
+    'y NO se le sella la terminal: pidió que pasaran por su casa',
+    r3b?.boardingPoint);
+
+  // Pedir domicilio sin dirección no cuela.
+  const cuartoTel = `+5730099${sufijo}`;
+  const token4 = await entrarComoCliente(cuartoTel);
+  const sinDir = await pedir('POST', `/client/intercity/pool/${van.id}/book`, {
+    token: token4,
+    body: { seatsBooked: 1, seats: [2], boardingPointId: 'domicilio' },
+  });
+  check(/dónde te recogemos/i.test(sinDir.json.error ?? ''),
+    'sin dirección se rechaza: el conductor no sabría a dónde ir',
+    sinDir.json.error);
+
+  // Y en la buseta, que no hace domicilio, se rechaza aunque la manden.
+  const enBuseta = await pedir('POST', `/client/intercity/pool/${trip.id}/book`, {
+    token: token4,
+    body: {
+      seatsBooked: 1, seats: [7],
+      boardingPointId: 'domicilio', pickupAddress: 'Mi casa',
+    },
+  });
+  check(/no recoge/i.test(enBuseta.json.error ?? ''),
+    'la buseta rechaza el domicilio en vez de prometerlo', enBuseta.json.error);
+
   // ── 5. Lo que el pasajero ve en sus reservas ────────────────────────────
   console.log('\n[5] Mis reservas');
   const mis = await pedir('GET', '/client/intercity/pool/bookings', { token: token2 });
@@ -265,15 +338,17 @@ async function main() {
     'y a qué hora lo recogen', fila?.myBooking?.['boardingPoint']);
 
   // ── Limpieza ────────────────────────────────────────────────────────────
-  const users = await prisma.user.findMany({ where: { phone: { in: [telefono, otroTel] } } });
+  const users = await prisma.user.findMany({
+    where: { phone: { in: [telefono, otroTel, tercerTel, cuartoTel] } },
+  });
   await prisma.promoRedemption.deleteMany({
     where: { promoCodeId: { in: [suyo.id, ajeno.id, dePlataforma.id] } },
   });
   await prisma.promoCode.deleteMany({
     where: { id: { in: [suyo.id, ajeno.id, dePlataforma.id] } },
   });
-  await prisma.seatAssignment.deleteMany({ where: { tripId: trip.id } });
-  await prisma.seatBooking.deleteMany({ where: { tripId: trip.id } });
+  await prisma.seatAssignment.deleteMany({ where: { trip: { operatorId: op.id } } });
+  await prisma.seatBooking.deleteMany({ where: { trip: { operatorId: op.id } } });
   await prisma.pooledTrip.deleteMany({ where: { operatorId: op.id } });
   await prisma.user.deleteMany({ where: { id: { in: users.map((u) => u.id) } } });
   await prisma.driver.delete({ where: { id: driver.id } });

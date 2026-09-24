@@ -711,6 +711,7 @@ router.post(
       seatConfig?: unknown;
       amenities?: string[];
       boardingPoints?: Array<{ name: string; time: string; address?: string }>;
+      doorToDoor?: boolean;
     };
     // Con silla numerada los puestos los dice el mapa del vehículo, así que
     // `totalSeats` deja de ser obligatorio: pedirlo sería que la empresa
@@ -783,6 +784,8 @@ router.post(
           // Dónde y a qué hora sube el pasajero. Se validan contra la hora de
           // salida dentro del servicio.
           ...(b.boardingPoints ? { boardingPoints: b.boardingPoints } : {}),
+          // Si no viene, el servicio lo deduce del vehículo: van sí, bus no.
+          ...(typeof b.doorToDoor === 'boolean' ? { doorToDoor: b.doorToDoor } : {}),
           allowFleet: true,
           stops: (b.stops ?? []).map((st, i) => ({
             name: String(st.name ?? ''), lat: st.lat, lng: st.lng, order: st.order ?? i,

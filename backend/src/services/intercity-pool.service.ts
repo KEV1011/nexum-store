@@ -30,10 +30,14 @@ import { amenidadesDeSalida, saneaAmenidades } from '../lib/amenidades';
 import {
   saneaPuntosEmbarque,
   puntosGuardados,
-  elegirPunto,
   type PuntoEmbarque,
 } from '../lib/puntos-embarque';
 import { motivoParaNoAplicarCupon, totalDelPasaje } from '../lib/cupon-pasaje';
+import {
+  admiteDomicilio,
+  elegirAbordaje,
+  type TipoDeVehiculo,
+} from '../lib/recogida-salida';
 import { politicasGuardadas, lineasDePolitica } from '../lib/politicas-tiquete';
 import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { motivoParaNoCalificar, type EstadoSalida } from '../lib/calificar-salida';
@@ -92,6 +96,7 @@ type DbPooledTrip = {
   seatConfig?: unknown;
   amenities?: unknown;
   boardingPoints?: unknown;
+  doorToDoor?: boolean | null;
   bookings?: DbSeatBooking[];
   seatAssignments?: { seatNumber: number; bookingId: string }[];
 };
@@ -214,6 +219,10 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     // dibuja es la queja más cara en una ruta de nueve horas. Sin plano
     // (la salida por cupos del particular) no hay de dónde derivarlo.
     boardingPoints: puntosGuardados(t.boardingPoints),
+    // Ya resuelto: la app no tiene que saber que una van recoge en casa y un
+    // bus no. Si lo dedujera cada pantalla, una acabaría pidiendo la dirección
+    // donde la otra no la pide.
+    doorToDoor: admiteDomicilio(t.seatType as TipoDeVehiculo, t.doorToDoor),
     amenities: amenidadesDeSalida(
       t.amenities,
       esTipoConSillas(t.seatType)
@@ -347,6 +356,7 @@ export async function publishPooledTrip(
       amenities: saneaAmenidades(dto.amenities),
       // Contra la hora de salida: así un punto a nueve horas se rechaza aquí y
       // no cuando un pasajero esté esperando en esa esquina.
+      doorToDoor: dto.doorToDoor ?? null,
       boardingPoints: saneaPuntosEmbarque(
         dto.boardingPoints,
         departure,
@@ -700,14 +710,21 @@ export async function bookSeats(
     }
 
     // ── Dónde sube ────────────────────────────────────────────────────────
-    // Se SELLA el punto, no se guarda su id: si la empresa le cambia la hora
-    // mañana, a esta persona le dijeron otra cosa y es la que tiene que seguir
-    // viendo en su reserva.
+    // Un punto FIJO o su propia casa: una van intermunicipal hace las dos
+    // cosas. El punto se SELLA, no se referencia: si la empresa le cambia la
+    // hora mañana, a esta persona le dijeron otra cosa.
     const puntos = puntosGuardados((t as { boardingPoints?: unknown }).boardingPoints);
-    const punto = elegirPunto(puntos, dto.boardingPointId);
-    if (puntos.length > 0 && punto == null) {
-      throw new PooledTripError('Ese punto de embarque ya no existe en esta salida.');
-    }
+    const abordaje = elegirAbordaje({
+      puntos,
+      domicilioAdmitido: admiteDomicilio(
+        t.seatType as TipoDeVehiculo,
+        (t as { doorToDoor?: boolean | null }).doorToDoor,
+      ),
+      puntoId: dto.boardingPointId,
+      direccion: dto.pickupAddress,
+    });
+    if (abordaje.motivo) throw new PooledTripError(abordaje.motivo);
+    const punto = abordaje.punto;
 
     // ── Cuánto cuesta, y el descuento si trae código ──────────────────────
     // El importe se sella aquí: sin esto, subir la tarifa mañana le cambiaba
@@ -774,7 +791,10 @@ export async function bookSeats(
         passengerName,
         passengerPhone,
         seatsBooked: requested,
-        pickupAddress: dto.pickupAddress ?? null,
+        // La resuelta: quien eligió un punto fijo no lleva dirección, y
+        // guardarla igual haría que el conductor viera dos sitios distintos
+        // donde recoger a la misma persona.
+        pickupAddress: abordaje.direccion,
         notes: dto.notes ?? null,
         status: 'CONFIRMED',
         ...(punto && { boardingPoint: punto as unknown as Prisma.InputJsonObject }),

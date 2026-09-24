@@ -282,18 +282,52 @@ class _PooledTripCard extends StatelessWidget {
             ...trip.bookings.map((b) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Icon(Icons.person_rounded,
                           size: 15, color: context.textSecondaryColor),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Text(
-                          '${b.passengerName}'
-                          '${b.pickupAddress != null && b.pickupAddress!.isNotEmpty ? " · ${b.pickupAddress}" : ""}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 12.5, color: context.textSecondaryColor),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              b.passengerName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 12.5, color: context.textSecondaryColor),
+                            ),
+                            // Dónde recogerlo: el punto que eligió, o su
+                            // dirección si va puerta a puerta. Es lo primero
+                            // que necesita el conductor al armar la ruta.
+                            if (b.boardingPoint != null ||
+                                (b.pickupAddress?.isNotEmpty ?? false))
+                              Text(
+                                b.boardingPoint ?? b.pickupAddress!,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: _kPooledColor,
+                                ),
+                              ),
+                            // Cuánto cobrarle. Con un código de la empresa,
+                            // pedirle la tarifa completa sería cobrarle de más.
+                            if (b.amountToPay != null)
+                              Text(
+                                b.discount > 0
+                                    ? 'Cobrar ${CurrencyFormatter.format(b.amountToPay!)}'
+                                        ' (−${CurrencyFormatter.format(b.discount)}'
+                                        '${b.promoCode != null ? ' · ${b.promoCode}' : ''})'
+                                    : 'Cobrar ${CurrencyFormatter.format(b.amountToPay!)}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: context.textSecondaryColor,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 6),

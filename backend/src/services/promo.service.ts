@@ -420,7 +420,22 @@ export async function adminListPromos() {
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
+
+  // De quién es cada uno. Desde que las empresas emiten los suyos, esta lista
+  // los mezcla con los de la plataforma, y sin el nombre delante un admin
+  // podría desactivar la promoción de una empresa creyendo que es nuestra.
+  const ids = [...new Set(promos.map((p) => p.operatorId).filter((x): x is string => !!x))];
+  const empresas = ids.length
+    ? new Map(
+        (await prisma.operator.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, legalName: true, tradeName: true },
+        })).map((o) => [o.id, o.tradeName ?? o.legalName]),
+      )
+    : new Map<string, string>();
+
   return promos.map((p) => ({
+    operatorName: p.operatorId ? empresas.get(p.operatorId) ?? 'Empresa' : null,
     id: p.id,
     code: p.code,
     description: p.description,

@@ -254,6 +254,7 @@ class PooledTripEntity {
     this.operatorPolicies = const [],
     this.amenities = const [],
     this.boardingPoints = const [],
+    this.doorToDoor = true,
     this.stops = const [],
     this.myBooking,
     this.seatMap,
@@ -300,6 +301,11 @@ class PooledTripEntity {
   /// Dónde se puede subir. Vacío = la salida no los declara y se sigue usando
   /// el texto libre de «dónde te recogen», como hasta ahora.
   final List<PuntoEmbarque> boardingPoints;
+
+  /// Si recoge en la casa. Lo resuelve el servidor (las vans sí, los buses
+  /// no); por defecto true para que un backend viejo, que no manda el campo,
+  /// siga ofreciendo la dirección como hasta ahora.
+  final bool doorToDoor;
 
   /// Paradas intermedias de la salida ("pasa por"), en orden.
   final List<String> stops;
@@ -352,6 +358,7 @@ class PooledTripEntity {
           for (final p in (j['boardingPoints'] as List<dynamic>? ?? const []))
             if (PuntoEmbarque.fromJson(p) != null) PuntoEmbarque.fromJson(p)!,
         ],
+        doorToDoor: j['doorToDoor'] as bool? ?? true,
         stops: [
           for (final st in (j['stops'] as List<dynamic>? ?? const []))
             if (st is Map<String, dynamic> && st['name'] is String)
@@ -390,6 +397,7 @@ class PooledTripEntity {
         operatorPolicies: operatorPolicies,
         amenities: amenities,
         boardingPoints: boardingPoints,
+        doorToDoor: doorToDoor,
         stops: stops,
         myBooking: myBooking,
         // Sin esta línea, cualquier copia —refrescar cupos, cambiar estado—
