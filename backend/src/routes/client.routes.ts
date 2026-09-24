@@ -58,6 +58,7 @@ import {
   rateSeatBooking,
   cotizarCuponDePasaje,
   getClientBookings,
+  buscarPuestosUrbanos,
   PooledTripError,
 } from '../services/intercity-pool.service';
 import {
@@ -857,6 +858,27 @@ router.get('/intercity/pool/search', clientAuthMiddleware, async (req, res) => {
     date: req.query['date'] as string | undefined,
   });
   res.json({ success: true, data: trips });
+});
+
+// GET /client/pool/urbano?ciudad=&horas= — puestos de taxi dentro de la ciudad.
+//
+// Va APARTE de `/intercity/pool/search` a propósito: la búsqueda
+// intermunicipal abre sin filtro para que el pasajero vea toda la oferta, y
+// mezclar aquí una ruta Terminal→Universidad no sería oferta, sería ruido.
+router.get('/pool/urbano', clientAuthMiddleware, async (req, res) => {
+  const ciudad = String(req.query['ciudad'] ?? '').trim();
+  if (!ciudad) {
+    res.status(400).json({ success: false, error: 'Falta la ciudad' });
+    return;
+  }
+  const horas = Number(req.query['horas']);
+  res.json({
+    success: true,
+    data: await buscarPuestosUrbanos({
+      ciudad,
+      ...(Number.isFinite(horas) && horas > 0 ? { horas } : {}),
+    }),
+  });
 });
 
 router.get('/intercity/pool/bookings', clientAuthMiddleware, async (req, res) => {

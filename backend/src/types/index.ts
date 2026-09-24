@@ -1352,8 +1352,53 @@ export interface PooledTripDTO {
    */
   driverLat?: number;
   driverLng?: number;
+  /**
+   * Intermunicipal o puesto de taxi urbano. Va SIEMPRE para que ninguna
+   * pantalla tenga que deducirlo de que falten las ciudades.
+   */
+  kind?: PooledKind;
+  /** Nombre de la ruta urbana («Terminal → Universidad»). */
+  routeName?: string;
+  /** Los dos extremos de la ruta urbana, tal como los escribió el conductor. */
+  originLabel?: string;
+  destLabel?: string;
+  originLat?: number;
+  originLng?: number;
+  destLat?: number;
+  destLng?: number;
+  /** Lo que costaría el mismo trayecto en una carrera sola, sellado al publicar. */
+  soloFareRef?: number;
+  /** Cuánto se ahorra frente a ir solo. Ausente = no hay con qué compararlo. */
+  savingsPerSeat?: number;
   /** Present only on driver-facing responses. */
   bookings?: SeatBookingDTO[];
+}
+
+export type PooledKind = 'intercity' | 'urbano';
+
+/**
+ * Publicar un puesto de taxi urbano.
+ *
+ * La ciudad es UNA: el trayecto es dentro de ella y los extremos de verdad son
+ * las dos etiquetas. Ver `lib/puesto-urbano.ts`.
+ */
+export interface PublishUrbanSeatDTO {
+  /** Slug del municipio donde corre la ruta. */
+  city: string;
+  originLabel: string;
+  destLabel: string;
+  /** Opcional: si la app ya resolvió los puntos, se ahorra el geocodificado. */
+  originLat?: number;
+  originLng?: number;
+  destLat?: number;
+  destLng?: number;
+  /** Cómo se llama la ruta. Sin él se arma con los dos extremos. */
+  routeName?: string;
+  departureTime: string;
+  totalSeats: number;
+  farePerSeat: number;
+  vehicleDescription: string;
+  notes?: string;
 }
 
 // ─── Ride Negotiation (inDriver-style: bids + chat + multi-driver) ──────────────

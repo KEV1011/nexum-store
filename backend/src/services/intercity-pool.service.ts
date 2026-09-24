@@ -8,6 +8,7 @@ import {
   SeatBookingDTO,
   SeatBookingStatus,
   MapaAsientosDTO,
+  PublishUrbanSeatDTO,
 } from '../types';
 import {
   getIntercityRoute,
@@ -45,6 +46,18 @@ import {
 } from '../lib/pasajeros-tiquete';
 import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { motivoParaNoCalificar, type EstadoSalida } from '../lib/calificar-salida';
+import {
+  ahorroDelPasajero,
+  motivoParaNoPublicarPuesto,
+  sugeridoPorPuesto,
+  topePorPuesto,
+} from '../lib/puesto-urbano';
+import { precioCategoria, tablaTarifas } from '../lib/tarifa-categoria';
+import { medirTrayecto } from './trip-options.service';
+import { geocodeAddress } from './geo.service';
+import { getMunicipality } from './municipality.service';
+import { comisionPara } from './comision.service';
+import { recordCompletedTrip } from './earnings.service';
 import {
   recalcularReputacionEmpresa,
   recalcularReputacionConductor,
@@ -95,6 +108,15 @@ type DbPooledTrip = {
   status: string; notes: string | null; createdAt: Date;
   stops?: unknown;
   operatorId?: string | null;
+  kind?: string | null;
+  routeName?: string | null;
+  originLabel?: string | null;
+  destLabel?: string | null;
+  originLat?: number | null;
+  originLng?: number | null;
+  destLat?: number | null;
+  destLng?: number | null;
+  soloFareRef?: number | null;
   seatType?: string | null;
   seatRows?: number | null;
   seatConfig?: unknown;
@@ -244,6 +266,26 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     durationMinutes: route?.durationMinutes,
     createdAt: t.createdAt.toISOString(),
     operatorId: t.operatorId ?? undefined,
+    // Va siempre: si la app tuviera que deducir el tipo de que falten las
+    // ciudades, un día una salida urbana se colaría en la lista intermunicipal.
+    kind: t.kind === 'URBANO' ? 'urbano' : 'intercity',
+    ...(t.routeName && { routeName: t.routeName }),
+    ...(t.originLabel && { originLabel: t.originLabel }),
+    ...(t.destLabel && { destLabel: t.destLabel }),
+    // Los cuatro juntos o ninguno: media coordenada no dibuja nada y la app
+    // acabaría pintando un extremo en el mar.
+    ...(t.originLat != null && t.originLng != null && {
+      originLat: t.originLat, originLng: t.originLng,
+    }),
+    ...(t.destLat != null && t.destLng != null && {
+      destLat: t.destLat, destLng: t.destLng,
+    }),
+    ...(t.soloFareRef != null && {
+      soloFareRef: t.soloFareRef,
+      // Ya restado aquí y no en cada pantalla: si lo calculara la app, una
+      // versión vieja seguiría prometiendo un ahorro que ya no es cierto.
+      savingsPerSeat: ahorroDelPasajero(t.soloFareRef, t.farePerSeat),
+    }),
   };
 
   if (includeBookings) {
@@ -385,6 +427,284 @@ export async function publishPooledTrip(
   return _toDTO(trip as DbPooledTrip, true);
 }
 
+// ─── Puesto de taxi urbano ────────────────────────────────────────────────────
+//
+// El motor es el mismo (publicar, vender puestos, arrancar, cerrar). Lo que
+// cambia es de dónde sale el precio máximo y que los extremos son dos puntos
+// de la misma ciudad. Las reglas están sueltas en `lib/puesto-urbano.ts`.
+
+export interface CarreraSolaMedida {
+  /** Lo que costaría el trayecto en una carrera normal de taxi. */
+  tarifaSolo: number;
+  distanceKm: number | null;
+  durationMinutes: number | null;
+  /** Falso ⇒ no se pudo medir y el número sale del piso conocido. */
+  medida: boolean;
+  origen: { lat: number; lng: number } | null;
+  destino: { lat: number; lng: number } | null;
+}
+
+/**
+ * Cuánto cuesta esa misma carrera llevando a una sola persona.
+ *
+ * Es el número contra el que se topa el puesto, así que no puede inventarse.
+ * Si no se pueden resolver los dos extremos —sin llave de Google, o una
+ * dirección que nadie encuentra— se cae a la CARRERA MÍNIMA del decreto, que
+ * es el piso real de cualquier carrera y por tanto el tope más estricto. Se
+ * dice con `medida: false` para que la app no lo presente como medido.
+ */
+export async function medirCarreraSola(p: {
+  ciudad: string;
+  origenTexto: string;
+  destinoTexto: string;
+  origenLat?: number; origenLng?: number;
+  destinoLat?: number; destinoLng?: number;
+}): Promise<CarreraSolaMedida> {
+  const taxi = tablaTarifas().TAXI;
+  const piso: CarreraSolaMedida = {
+    tarifaSolo: taxi.minimo,
+    distanceKm: null,
+    durationMinutes: null,
+    medida: false,
+    origen: null,
+    destino: null,
+  };
+
+  const ciudad = await getMunicipality(p.ciudad).catch(() => null);
+  const nombreCiudad = ciudad?.name;
+
+  const punto = async (
+    lat: number | undefined, lng: number | undefined, texto: string,
+  ): Promise<{ lat: number; lng: number } | null> => {
+    if (typeof lat === 'number' && typeof lng === 'number') return { lat, lng };
+    return geocodeAddress(texto, nombreCiudad).catch(() => null);
+  };
+
+  const [origen, destino] = await Promise.all([
+    punto(p.origenLat, p.origenLng, p.origenTexto),
+    punto(p.destinoLat, p.destinoLng, p.destinoTexto),
+  ]);
+  if (!origen || !destino) return piso;
+
+  const t = await medirTrayecto(origen.lat, origen.lng, destino.lat, destino.lng)
+    .catch(() => null);
+  if (!t) return { ...piso, origen, destino };
+
+  // Sin multiplicador por demanda: la tarifa del taxi la fija el decreto y
+  // `precioCategoria` ya lo respeta (`admiteSurge: false`).
+  const precio = precioCategoria(taxi, t.distanceKm, t.durationMinutes);
+  return {
+    // El piso manda igual: una ruta cortísima no puede dar un tope por debajo
+    // de la carrera mínima, que es lo que el taxista cobraría de todos modos.
+    tarifaSolo: Math.max(precio.fare, taxi.minimo),
+    distanceKm: t.distanceKm,
+    durationMinutes: t.durationMinutes,
+    medida: true,
+    origen,
+    destino,
+  };
+}
+
+/** Lo que el formulario del conductor necesita para proponer un precio. */
+export async function topeDelPuestoUrbano(p: {
+  ciudad: string;
+  origenTexto: string;
+  destinoTexto: string;
+  puestos: number;
+}): Promise<CarreraSolaMedida & { topePorPuesto: number; sugerido: number }> {
+  const carrera = await medirCarreraSola(p);
+  return {
+    ...carrera,
+    topePorPuesto: topePorPuesto(carrera.tarifaSolo, p.puestos),
+    sugerido: sugeridoPorPuesto(carrera.tarifaSolo, p.puestos),
+  };
+}
+
+/**
+ * Publica un viaje urbano por puestos.
+ *
+ * NO pasa por `publishPooledTrip`: aquélla exige una ruta intermunicipal
+ * definida, aplica el tope de gasto compartido de esa ruta y rechaza que el
+ * origen sea igual al destino — las tres cosas que aquí no aplican. Lo que sí
+ * se conserva es el modelo, así que vender, contar puestos, arrancar y cerrar
+ * es exactamente el mismo código.
+ */
+export async function publicarPuestoUrbano(
+  driverId: string,
+  driverName: string,
+  driverPhone: string,
+  dto: PublishUrbanSeatDTO,
+  opts?: { operatorId?: string },
+): Promise<PooledTripDTO> {
+  const ciudad = (dto.city ?? '').trim().toLowerCase();
+  const municipio = await getMunicipality(ciudad);
+  if (!municipio) throw new PooledTripError('Esa ciudad no está en la lista de municipios');
+
+  const departure = new Date(dto.departureTime);
+  if (Number.isNaN(departure.getTime()) || departure.getTime() < Date.now()) {
+    throw new PooledTripError('La hora de salida debe ser en el futuro');
+  }
+
+  const carrera = await medirCarreraSola({
+    ciudad,
+    origenTexto: dto.originLabel ?? '',
+    destinoTexto: dto.destLabel ?? '',
+    ...(dto.originLat != null && { origenLat: dto.originLat }),
+    ...(dto.originLng != null && { origenLng: dto.originLng }),
+    ...(dto.destLat != null && { destinoLat: dto.destLat }),
+    ...(dto.destLng != null && { destinoLng: dto.destLng }),
+  });
+
+  const motivo = motivoParaNoPublicarPuesto({
+    ciudadOrigen: ciudad,
+    ciudadDestino: ciudad,
+    origenTexto: dto.originLabel ?? '',
+    destinoTexto: dto.destLabel ?? '',
+    puestos: dto.totalSeats,
+    tarifaPorPuesto: dto.farePerSeat,
+    tarifaSolo: carrera.tarifaSolo,
+  });
+  if (motivo) throw new PooledTripError(motivo);
+
+  if (!dto.vehicleDescription?.trim()) {
+    throw new PooledTripError('Escribe con qué vehículo vas (marca, color y placa)');
+  }
+
+  const origenTexto = dto.originLabel.trim();
+  const destinoTexto = dto.destLabel.trim();
+  const nombreRuta = dto.routeName?.trim() || `${origenTexto} → ${destinoTexto}`;
+
+  // Prefijo propio: en soporte, «NXU» dice de un vistazo que es un puesto
+  // urbano y no una salida intermunicipal.
+  const tripRef = `NXU-${Math.floor(1000 + Math.random() * 8000)}`;
+  const trip = await prisma.pooledTrip.create({
+    data: {
+      tripRef,
+      kind: 'URBANO',
+      driverId,
+      driverName,
+      driverPhone,
+      vehicleDescription: dto.vehicleDescription.trim(),
+      // Las dos guardan la ciudad: el trayecto es dentro de ella.
+      origin: ciudad,
+      destination: ciudad,
+      routeName: nombreRuta,
+      originLabel: origenTexto,
+      destLabel: destinoTexto,
+      originLat: carrera.origen?.lat ?? null,
+      originLng: carrera.origen?.lng ?? null,
+      destLat: carrera.destino?.lat ?? null,
+      destLng: carrera.destino?.lng ?? null,
+      soloFareRef: carrera.tarifaSolo,
+      departureTime: departure,
+      totalSeats: dto.totalSeats,
+      farePerSeat: Math.round(dto.farePerSeat),
+      // El tope de ESTA salida, sellado: es contra lo que se validó.
+      maxFarePerSeat: topePorPuesto(carrera.tarifaSolo, dto.totalSeats),
+      allowFleet: false,
+      status: 'OPEN',
+      notes: dto.notes?.trim() || null,
+      operatorId: opts?.operatorId ?? null,
+    },
+    include: { bookings: { include: { seats: true } }, seatAssignments: true },
+  });
+  return _toDTO(trip as DbPooledTrip, true);
+}
+
+export interface BuscarPuestosUrbanosQuery {
+  /** Slug del municipio. Sin él no se busca: un puesto urbano de otra ciudad no le sirve a nadie. */
+  ciudad: string;
+  /** Solo las que salen dentro de las próximas N horas. */
+  horas?: number;
+}
+
+/**
+ * Los puestos urbanos que puede tomar un pasajero de esa ciudad.
+ *
+ * Con ventana de horas y no de día: un puesto que sale a las seis de la mañana
+ * de mañana no le sirve a quien quiere moverse ahora, y mezclarlo con los de
+ * dentro de veinte minutos convierte la lista en ruido.
+ */
+export async function buscarPuestosUrbanos(
+  query: BuscarPuestosUrbanosQuery,
+): Promise<PooledTripDTO[]> {
+  const ciudad = (query.ciudad ?? '').trim().toLowerCase();
+  if (!ciudad) return [];
+  const horas = Number.isFinite(query.horas) && (query.horas ?? 0) > 0
+    ? Math.min(query.horas!, 48)
+    : 12;
+  const ahora = new Date();
+  const hasta = new Date(ahora.getTime() + horas * 3600_000);
+
+  const trips = await prisma.pooledTrip.findMany({
+    where: {
+      kind: 'URBANO',
+      status: 'OPEN',
+      origin: ciudad,
+      departureTime: { gt: ahora, lte: hasta },
+    },
+    include: {
+      bookings: { where: { status: 'CONFIRMED' }, include: { seats: true } },
+      seatAssignments: true,
+    },
+    orderBy: { departureTime: 'asc' },
+  });
+
+  return trips
+    .map((t) => _toDTO(t as DbPooledTrip, false))
+    .filter((t) => t.availableSeats > 0);
+}
+
+/**
+ * Liquida un viaje urbano por puestos al cerrarlo.
+ *
+ * POR QUÉ SOLO EL URBANO. La salida intermunicipal de un particular es gasto
+ * compartido: no hay servicio que comisionar. El puesto urbano sí es una
+ * carrera de taxi vendida por sillas, y sin esto quedaría siendo el único
+ * servicio de la plataforma que mueve plata y no deja rastro.
+ *
+ * El pasajero le paga al conductor en la puerta, así que la comisión queda como
+ * DEUDA suya y se ve en su billetera — la misma maquinaria que cualquier
+ * carrera en efectivo (ver `lib/saldo-conductor.ts`).
+ */
+async function _liquidarPuestoUrbano(t: DbPooledTrip): Promise<void> {
+  const confirmadas = (t.bookings ?? []).filter((b) => b.status === 'CONFIRMED');
+  // Lo que de verdad se cobró: el importe sellado en cada reserva, que ya trae
+  // el descuento del cupón. Sin él (reservas viejas) se cae a la tarifa por el
+  // número de puestos, que es lo que se le cobró a esa persona.
+  const bruto = confirmadas.reduce((suma, b) => {
+    const sellado = b.fareTotal != null
+      ? Math.max(0, b.fareTotal - (b.discount ?? 0))
+      : t.farePerSeat * b.seatsBooked;
+    return suma + sellado;
+  }, 0);
+  if (bruto <= 0) return; // salió vacío: no hay nada que comisionar
+
+  const { tasa } = await comisionPara({
+    driverId: t.driverId,
+    operatorId: t.operatorId ?? null,
+    lat: t.originLat ?? null,
+    lng: t.originLng ?? null,
+  });
+  const comision = Math.round(bruto * tasa);
+
+  recordCompletedTrip(
+    {
+      tripId: t.id,
+      origin: t.originLabel ?? t.origin,
+      destination: t.destLabel ?? t.destination,
+      grossFare: Math.round(bruto),
+      netEarning: Math.round(bruto) - comision,
+      completedAt: new Date().toISOString(),
+    },
+    t.driverId,
+    // El puesto se paga en la mano: la comisión queda a deber. Declararlo
+    // explícitamente y no dejarlo al valor por defecto deja la intención
+    // escrita donde se lee.
+    'efectivo',
+  );
+}
+
 export async function getDriverPooledTrips(driverId: string): Promise<PooledTripDTO[]> {
   const trips = await prisma.pooledTrip.findMany({
     where: { driverId },
@@ -398,7 +718,10 @@ export async function getDriverPooledTrips(driverId: string): Promise<PooledTrip
 
 export async function getOperatorPooledTrips(operatorId: string): Promise<PooledTripDTO[]> {
   const trips = await prisma.pooledTrip.findMany({
-    where: { operatorId },
+    // El panel de salidas del portal es el de las intermunicipales. Un puesto
+    // urbano lo publica el taxista desde su app, y mezclarlo en esa tabla
+    // —con columnas de ciudad origen y destino iguales— se leería como un error.
+    where: { operatorId, kind: 'INTERCITY' },
     include: { bookings: { include: { seats: true } }, seatAssignments: true },
     orderBy: { departureTime: 'desc' },
   });
@@ -523,6 +846,16 @@ export async function completePooledTrip(driverId: string, tripId: string): Prom
   const updated = await prisma.pooledTrip.update({
     where: { id: tripId }, data: { status: 'COMPLETED' }, include: { bookings: { include: { seats: true } }, seatAssignments: true },
   });
+
+  // Se ESPERA: es dinero, no un aviso. Y se protege, porque cerrar el viaje
+  // tiene que quedar cerrado aunque la liquidación falle — al conductor ya se
+  // le bajaron los pasajeros.
+  if (updated.kind === 'URBANO') {
+    await _liquidarPuestoUrbano(updated as DbPooledTrip).catch((e) => {
+      console.error('[Pool] No se pudo liquidar el puesto urbano:', e);
+    });
+  }
+
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
   return dto;
@@ -605,6 +938,11 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
   }
 
   const where: Record<string, unknown> = {
+    // SOLO intermunicipales. La búsqueda abre sin filtro de ciudad (para que
+    // el pasajero vea la oferta antes de elegir), así que sin esto los puestos
+    // de taxi urbanos saldrían mezclados en «ver todas las salidas» — y una
+    // ruta Terminal→Universidad no es una alternativa para quien va a Cúcuta.
+    kind: 'INTERCITY',
     status: 'OPEN',
     departureTime: { gt: now },
     ...(query.origin && { origin: CITY_TO_PRISMA[query.origin] }),
