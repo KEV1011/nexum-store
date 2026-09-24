@@ -499,6 +499,45 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
 
   PooledTripEntity get _trip => _fresco ?? widget.trip;
 
+  /// Dónde sube. Arranca en el primero —la terminal— porque es donde sube casi
+  /// todo el mundo y deja la compra a un toque.
+  String? _puntoId;
+
+  final _cuponCtrl = TextEditingController();
+  double? _descuento;
+  String? _cuponAplicado;
+  String? _cuponError;
+  bool _cotizando = false;
+
+  /// Lo que se paga, con el descuento ya restado. Una sola cuenta para el
+  /// botón y para el total: si cada uno hiciera la suya, el pasajero vería un
+  /// precio y pagaría otro.
+  double get _totalAPagar {
+    final t = _trip;
+    final puestos = t.seatMap != null ? _sillas.length : _seats;
+    return (t.farePerSeat * puestos) - (_descuento ?? 0);
+  }
+
+  /// Vuelve a cotizar cuando cambian los puestos: un cupón del 20 % sobre un
+  /// puesto no descuenta lo mismo que sobre tres, y dejar el número viejo
+  /// enseñaría un total que el servidor no va a aceptar.
+  Future<void> _cotizar() async {
+    final codigo = _cuponCtrl.text.trim();
+    if (codigo.isEmpty) return;
+    setState(() { _cotizando = true; _cuponError = null; });
+    final puestos = _trip.seatMap != null ? _sillas.length : _seats;
+    final r = await ref
+        .read(pooledProvider.notifier)
+        .cotizarCupon(_trip.id, codigo, puestos < 1 ? 1 : puestos);
+    if (!mounted) return;
+    setState(() {
+      _cotizando = false;
+      _descuento = r.descuento;
+      _cuponAplicado = r.error == null ? codigo.toUpperCase() : null;
+      _cuponError = r.error;
+    });
+  }
+
   int get _maxSelectable {
     final t = _trip;
     // Booking the whole vehicle is only allowed if the driver enabled fleet.
@@ -514,6 +553,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   void dispose() {
     _pickupCtrl.dispose();
     _notesCtrl.dispose();
+    _cuponCtrl.dispose();
     super.dispose();
   }
 
@@ -530,6 +570,8 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
           sillas: mapa != null ? (_sillas.toList()..sort()) : null,
           pickupAddress: _pickupCtrl.text.trim(),
           notes: _notesCtrl.text.trim(),
+          boardingPointId: _puntoId,
+          promoCode: _cuponAplicado,
         );
     if (!mounted) return;
     if (err == null) {
@@ -571,8 +613,10 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   @override
   Widget build(BuildContext context) {
     final trip = _trip;
-    final puestos = trip.seatMap != null ? _sillas.length : _seats;
-    final total = trip.farePerSeat * puestos;
+    // Una sola cuenta, la del getter: el botón, el total y lo que cobra el
+    // conductor tienen que decir lo mismo.
+    final total = _totalAPagar;
+    final bruto = trip.farePerSeat * (trip.seatMap != null ? _sillas.length : _seats);
     final maxSel = _maxSelectable;
 
     return Padding(
@@ -647,14 +691,38 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             const SizedBox(height: 16),
 
-            TextField(
-              controller: _pickupCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Dónde te recogen (opcional)',
-                prefixIcon: Icon(Icons.my_location_rounded),
-                border: OutlineInputBorder(),
+            // Dónde sube. Con puntos publicados se elige de la lista y se
+            // acabó el texto libre: la hora del punto es la que importa, no la
+            // de la salida del bus.
+            if (trip.boardingPoints.isNotEmpty) ...[
+              const Text('¿Dónde te subes?',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              for (final p in trip.boardingPoints)
+                RadioListTile<String>(
+                  value: p.id,
+                  groupValue: _puntoId ?? trip.boardingPoints.first.id,
+                  onChanged: (v) => setState(() => _puntoId = v),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  activeColor: _kPooledColor,
+                  title: Text(p.name,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    p.address == null ? 'Pasa a las ${p.time}' : '${p.address} · ${p.time}',
+                    style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                  ),
+                ),
+              const SizedBox(height: 12),
+            ] else
+              TextField(
+                controller: _pickupCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Dónde te recogen (opcional)',
+                  prefixIcon: Icon(Icons.my_location_rounded),
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
             const SizedBox(height: 12),
             TextField(
               controller: _notesCtrl,
@@ -665,6 +733,38 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             ),
             const SizedBox(height: 20),
+
+            // Código de la empresa. Solo se ofrece en salidas de empresa: en la
+            // de un conductor particular no hay quien emita uno, y un campo
+            // que siempre falla es peor que no tenerlo.
+            if (trip.operatorName != null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _cuponCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: InputDecoration(
+                        labelText: 'Código de descuento (opcional)',
+                        prefixIcon: const Icon(Icons.local_offer_outlined),
+                        border: const OutlineInputBorder(),
+                        errorText: _cuponError,
+                        helperText: _cuponAplicado != null
+                            ? 'Aplicado: −${CurrencyFormatter.format(_descuento ?? 0)}'
+                            : null,
+                      ),
+                      onSubmitted: (_) => _cotizar(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: _cotizando ? null : () => _cotizar(),
+                    child: Text(_cotizando ? '…' : 'Aplicar'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Lo que se termina de mirar antes de pagar: qué trae el bus y qué
             // pasa con la maleta. En la tarjeta del buscador van comprimidas;
@@ -689,6 +789,19 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                   const Text('Total a pagar',
                       style: TextStyle(fontWeight: FontWeight.w600)),
                   const Spacer(),
+                  // Con descuento se enseña el antes tachado: sin él, el
+                  // pasajero no ve que el código hizo algo.
+                  if ((_descuento ?? 0) > 0) ...[
+                    Text(
+                      CurrencyFormatter.format(bruto),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: context.textSecondaryColor,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   Text(CurrencyFormatter.format(total),
                       style: const TextStyle(
                           fontSize: 20,

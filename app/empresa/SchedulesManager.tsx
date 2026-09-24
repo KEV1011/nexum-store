@@ -25,9 +25,22 @@ interface SeatBookingRow {
   seats?: number[]
   pickupAddress?: string
   notes?: string
+  /** El punto donde sube, tal como se lo dijeron al reservar. */
+  boardingPoint?: { name: string; time: string; address?: string }
+  fareTotal?: number
+  discount?: number
+  promoCode?: string
+  amountToPay?: number
 }
 
 interface TripStop { name: string; order: number }
+
+interface PuntoEmbarque {
+  id?: string
+  name: string
+  time: string
+  address?: string
+}
 
 interface PooledTripRow {
   stops?: TripStop[]
@@ -45,6 +58,7 @@ interface PooledTripRow {
   bookings?: SeatBookingRow[]
   /** Presente solo en las salidas con silla numerada. */
   seatMap?: { etiqueta: string; tipo?: TipoVehiculo }
+  boardingPoints?: PuntoEmbarque[]
 }
 
 interface OperatorDriverRow {
@@ -201,6 +215,12 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
   // sillas, y tenerlo en dos sitios acabaría prometiendo un baño que el dibujo
   // no tiene.
   const [comodidades, setComodidades] = useState<string[]>([])
+  // Dónde y a qué hora sube el pasajero. Máx. 6; el backend los ordena por
+  // hora y rechaza los que queden a más de tres horas de la salida.
+  const [puntos, setPuntos] = useState<PuntoEmbarque[]>([])
+  const [puntoNombre, setPuntoNombre] = useState('')
+  const [puntoHora, setPuntoHora] = useState('')
+  const [puntoDir, setPuntoDir] = useState('')
 
   /**
    * Qué disposiciones dan EXACTAMENTE los puestos que declaró la empresa.
@@ -339,6 +359,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
             : {}),
           notes: notes.trim() || undefined,
           amenities: comodidades.length > 0 ? comodidades : undefined,
+          boardingPoints: puntos.length > 0 ? puntos : undefined,
           stops: stops.length > 0
             ? stops.map((name, i) => ({ name, order: i }))
             : undefined,
@@ -349,6 +370,7 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
       setStops([])
       setStopDraft('')
       setComodidades([])
+      setPuntos([])
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo publicar la salida.')
@@ -539,6 +561,81 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Dónde sube el pasajero, y a qué hora. Es lo que hoy escribía él a mano
+          en «dónde te recogen»: aquí lo declara la empresa con su hora, que es
+          la que el pasajero tiene que mirar para salir de casa — no la de la
+          salida del bus. */}
+      <div className="mb-4">
+        <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">
+          Puntos de embarque
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <input
+            className="flex-1 min-w-[140px] rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+            placeholder="Terminal de Transportes"
+            value={puntoNombre}
+            maxLength={80}
+            onChange={(e) => setPuntoNombre(e.target.value)}
+          />
+          <input
+            className="w-28 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+            type="time"
+            value={puntoHora}
+            onChange={(e) => setPuntoHora(e.target.value)}
+          />
+          <input
+            className="flex-1 min-w-[140px] rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+            placeholder="Dirección (opcional)"
+            value={puntoDir}
+            maxLength={160}
+            onChange={(e) => setPuntoDir(e.target.value)}
+          />
+          <button
+            type="button"
+            disabled={!puntoNombre.trim() || !puntoHora || puntos.length >= 6}
+            onClick={() => {
+              setPuntos([
+                ...puntos,
+                {
+                  name: puntoNombre.trim(),
+                  time: puntoHora,
+                  ...(puntoDir.trim() ? { address: puntoDir.trim() } : {}),
+                },
+              ])
+              setPuntoNombre('')
+              setPuntoHora('')
+              setPuntoDir('')
+            }}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-semibold disabled:opacity-40"
+          >
+            Añadir
+          </button>
+        </div>
+        {puntos.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {puntos.map((p, i) => (
+              <li key={`${p.name}-${i}`} className="flex items-center gap-2 text-[12px] text-slate-700">
+                <span className="font-semibold">{p.time}</span>
+                <span>{p.name}</span>
+                {p.address ? <span className="text-slate-400">· {p.address}</span> : null}
+                <button
+                  type="button"
+                  onClick={() => setPuntos(puntos.filter((_, j) => j !== i))}
+                  className="text-slate-400 hover:text-red-600"
+                  aria-label={`Quitar ${p.name}`}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-[10px] text-slate-400 mt-1.5">
+          Sin puntos declarados, el pasajero escribe a mano dónde lo recogen,
+          como hasta ahora.
+        </p>
       </div>
 
       {/* Qué trae el vehículo. Son los chips que el pasajero compara entre dos
@@ -770,7 +867,28 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                               <>{' · '}{b.seatsBooked} {b.seatsBooked === 1 ? 'puesto' : 'puestos'}</>
                             )}
                             {b.maskedPhone ? ` · ${b.maskedPhone}` : ''}
+                            {b.boardingPoint ? (
+                              <span className="block text-slate-500">
+                                Sube en: <span className="font-semibold">{b.boardingPoint.name}</span>
+                                {' · '}{b.boardingPoint.time}
+                                {b.boardingPoint.address ? ` · ${b.boardingPoint.address}` : ''}
+                              </span>
+                            ) : null}
                             {b.pickupAddress ? <span className="block text-slate-400">Recoge en: {b.pickupAddress}</span> : null}
+                            {/* Lo que tiene que cobrar. Sin esto, el conductor
+                                le pediría la tarifa completa a quien usó un
+                                código de la propia empresa, y la discusión
+                                sería en la puerta del bus. */}
+                            {b.amountToPay != null ? (
+                              <span className="block text-slate-500">
+                                Cobrar: <span className="font-semibold text-emerald-700">{formatCOP(b.amountToPay)}</span>
+                                {b.discount ? (
+                                  <span className="text-amber-700">
+                                    {' '}(−{formatCOP(b.discount)} con {b.promoCode})
+                                  </span>
+                                ) : null}
+                              </span>
+                            ) : null}
                             {b.notes ? <span className="block text-slate-400">Nota: {b.notes}</span> : null}
                           </li>
                         ))}

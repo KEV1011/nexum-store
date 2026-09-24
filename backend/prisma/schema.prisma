@@ -84,6 +84,10 @@ enum PromoScope {
   ALL
   TRIPS
   ORDERS
+  /// Pasajes de salidas intermunicipales. Solo lo emiten las empresas: ver
+  /// `lib/cupon-pasaje.ts` para por qué un cupón de plataforma no puede
+  /// aplicarse mientras el pasaje no se pague por la app.
+  INTERCITY
 }
 
 model PromoCode {
@@ -106,6 +110,10 @@ model PromoCode {
   createdBy      String?
   /// Si es un cupón personal, solo este usuario puede canjearlo.
   ownerUserId    String?
+  /// Empresa que lo emitió y que asume el descuento. NULL = cupón de la
+  /// plataforma, que lo absorbe con su comisión. Un cupón de empresa solo vale
+  /// en las salidas de ESA empresa.
+  operatorId     String?
   createdAt      DateTime   @default(now())
 
   redemptions PromoRedemption[]
@@ -1068,6 +1076,11 @@ model PooledTrip {
   /// dibujando con él: cambiarle el mapa a una salida a mitad de venta dejaría
   /// a quien ya compró sin saber dónde se sienta, y la discusión sería a bordo.
   seatConfig         Json?
+  /// Dónde y a qué hora sube el pasajero: `[{id,name,address?,time,lat?,lng?}]`
+  /// (máx. 6). NO son las paradas de `stops`, que son los municipios por los
+  /// que pasa el bus: estos están en la ciudad de origen y sirven para
+  /// abordar. Ver `lib/puntos-embarque.ts`.
+  boardingPoints     Json?
   /// Qué trae el vehículo: `["aire","usb",…]` del catálogo de
   /// `lib/amenidades.ts`. Va en la SALIDA y no en la empresa porque dentro de
   /// la misma flota un bus tiene aire y la buseta vieja no. El baño no se
@@ -1142,6 +1155,20 @@ model SeatBooking {
   /// empresa se RECALCULA de aquí, nunca se va sumando encima.
   rating         Int?
   ratingComment  String?
+  /// El punto de embarque que eligió, SELLADO: `{id,name,address?,time}`. Se
+  /// copia y no se referencia porque si la empresa mueve el punto o le cambia
+  /// la hora mañana, a esta persona le dijeron otra cosa y es la que tiene que
+  /// seguir viendo.
+  boardingPoint  Json?
+  /// Lo que costó, sellado al reservar. Antes la reserva no guardaba ningún
+  /// importe: si la empresa subía la tarifa, «Mis reservas» le mostraba al
+  /// pasajero un precio que él nunca aceptó.
+  fareTotal      Float?
+  /// Descuento aplicado y con qué código. Lo pone la EMPRESA que emitió el
+  /// cupón: en un pasaje de bus el dinero no pasa por la plataforma, así que
+  /// no hay comisión de la que descontarlo (ver `lib/cupon-pasaje.ts`).
+  discount       Float    @default(0)
+  promoCode      String?
 
   trip  PooledTrip       @relation(fields: [tripId], references: [id])
   user  User             @relation(fields: [userId], references: [id])

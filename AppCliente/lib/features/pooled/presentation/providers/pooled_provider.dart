@@ -111,6 +111,10 @@ class PooledNotifier extends StateNotifier<PooledState> {
     List<int>? sillas,
     String? pickupAddress,
     String? notes,
+    /// Dónde sube, cuando la salida publica puntos de embarque.
+    String? boardingPointId,
+    /// Código de descuento de la empresa de la salida.
+    String? promoCode,
   }) async {
     try {
       await _dio.post<Map<String, dynamic>>(
@@ -121,6 +125,9 @@ class PooledNotifier extends StateNotifier<PooledState> {
           if (pickupAddress != null && pickupAddress.isNotEmpty)
             'pickupAddress': pickupAddress,
           if (notes != null && notes.isNotEmpty) 'notes': notes,
+          if (boardingPointId != null) 'boardingPointId': boardingPointId,
+          if (promoCode != null && promoCode.trim().isNotEmpty)
+            'promoCode': promoCode.trim(),
         },
       );
       await loadMyBookings();
@@ -131,6 +138,40 @@ class PooledNotifier extends StateNotifier<PooledState> {
       return 'No se pudo reservar. Intenta de nuevo.';
     } catch (_) {
       return 'No se pudo reservar. Intenta de nuevo.';
+    }
+  }
+
+  /// Cuánto descontaría un código, para enseñarlo ANTES de comprar.
+  ///
+  /// Devuelve el descuento, o el motivo por el que no aplica —de otra empresa,
+  /// vencido, ya usado—, que son cosas distintas y se arreglan distinto.
+  Future<({double? descuento, double? total, String? error})> cotizarCupon(
+    String tripId,
+    String codigo,
+    int puestos,
+  ) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/client/intercity/pool/$tripId/promo',
+        data: {'code': codigo, 'seats': puestos},
+      );
+      final d = res.data?['data'] as Map<String, dynamic>?;
+      return (
+        descuento: (d?['discount'] as num?)?.toDouble(),
+        total: (d?['amountToPay'] as num?)?.toDouble(),
+        error: null,
+      );
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      return (
+        descuento: null,
+        total: null,
+        error: body is Map && body['error'] is String
+            ? body['error'] as String
+            : 'No se pudo aplicar el código.',
+      );
+    } catch (_) {
+      return (descuento: null, total: null, error: 'No se pudo aplicar el código.');
     }
   }
 

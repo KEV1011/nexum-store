@@ -13,6 +13,7 @@ import FleetMap, { type FleetMapPoint } from './FleetMap'
 import AlertsPanel from './AlertsPanel'
 import RoutesManager from './RoutesManager'
 import SchedulesManager from './SchedulesManager'
+import PromosManager from './PromosManager'
 import DriversManager from './DriversManager'
 import FreightManager from './FreightManager'
 import ManifestsManager from './ManifestsManager'
@@ -729,6 +730,7 @@ function Dashboard({ token, operator, onLogout }: {
                   bus de esta noche. */}
               <EncomiendasPanel api={api} />
               <SchedulesManager api={api} />
+              <PromosManager api={api} />
               <RoutesManager api={api} />
             </>
           )}

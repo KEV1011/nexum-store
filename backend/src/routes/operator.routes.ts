@@ -97,6 +97,10 @@ import {
   type CreateCobroDTO, type AddPaymentDTO,
 } from '../services/cobro.service';
 
+import {
+  operatorCreatePromo, operatorListPromos, operatorTogglePromo,
+} from '../services/promo.service';
+
 const router = Router();
 
 const OPERATOR_TYPES = new Set<string>(['TAXI', 'INTERCITY', 'MIXED', 'CARGA']);
@@ -509,6 +513,58 @@ router.put('/profile', requireOperatorRole('OWNER'), async (req: Request, res: R
   }
 });
 
+// ─── Cupones de la empresa ───────────────────────────────────────────────────
+//
+// Los emite ella y los asume ella: en un pasaje de bus el dinero va directo a
+// la empresa, así que un descuento de la plataforma no tendría de dónde salir.
+
+router.get('/promos', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await operatorListPromos(req.operatorId!) });
+});
+
+router.post('/promos', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as Record<string, unknown>;
+  if (typeof b['code'] !== 'string' || typeof b['value'] !== 'number') {
+    res.status(400).json({ success: false, error: 'code y value son requeridos' });
+    return;
+  }
+  try {
+    const promo = await operatorCreatePromo(req.operatorId!, {
+      code: b['code'],
+      description: typeof b['description'] === 'string' ? b['description'] : undefined,
+      type: b['type'] === 'FIXED' ? 'FIXED' : 'PERCENT',
+      value: b['value'],
+      minAmount: typeof b['minAmount'] === 'number' ? b['minAmount'] : undefined,
+      maxDiscount: typeof b['maxDiscount'] === 'number' ? b['maxDiscount'] : undefined,
+      maxRedemptions: typeof b['maxRedemptions'] === 'number' ? b['maxRedemptions'] : undefined,
+      perUserLimit: typeof b['perUserLimit'] === 'number' ? b['perUserLimit'] : undefined,
+      expiresAt: typeof b['expiresAt'] === 'string' ? b['expiresAt'] : undefined,
+    });
+    res.status(201).json({ success: true, data: promo });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo crear el código',
+    });
+  }
+});
+
+router.post('/promos/:id/toggle', requireOperatorRole('OWNER'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await operatorTogglePromo(
+      req.operatorId!,
+      req.params['id']!,
+      req.body?.active !== false,
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo cambiar el código',
+    });
+  }
+});
+
 // GET /operator/documents · POST /operator/documents (multipart)
 router.get('/documents', async (req: Request, res: Response): Promise<void> => {
   res.json({ success: true, data: await listOperatorDocuments(req.operatorId!) });
@@ -654,6 +710,7 @@ router.post(
       seatRows?: number;
       seatConfig?: unknown;
       amenities?: string[];
+      boardingPoints?: Array<{ name: string; time: string; address?: string }>;
     };
     // Con silla numerada los puestos los dice el mapa del vehículo, así que
     // `totalSeats` deja de ser obligatorio: pedirlo sería que la empresa
@@ -723,6 +780,9 @@ router.post(
           // Qué trae el vehículo. El baño no entra por aquí aunque lo marquen:
           // lo pone el plano de sillas.
           ...(b.amenities ? { amenities: b.amenities } : {}),
+          // Dónde y a qué hora sube el pasajero. Se validan contra la hora de
+          // salida dentro del servicio.
+          ...(b.boardingPoints ? { boardingPoints: b.boardingPoints } : {}),
           allowFleet: true,
           stops: (b.stops ?? []).map((st, i) => ({
             name: String(st.name ?? ''), lat: st.lat, lng: st.lng, order: st.order ?? i,

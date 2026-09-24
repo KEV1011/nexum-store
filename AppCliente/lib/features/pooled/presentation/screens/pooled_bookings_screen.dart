@@ -295,9 +295,28 @@ class _BookingCard extends StatelessWidget {
             context,
             Icons.event_seat_rounded,
             '${booking?.seatLabel ?? '$seats puesto${seats == 1 ? '' : 's'}'}'
-            ' · ${CurrencyFormatter.format(trip.farePerSeat * seats)}',
+            // El importe SELLADO al reservar, no la tarifa de hoy: si la
+            // empresa la sube, a esta persona le cobran lo que aceptó.
+            ' · ${CurrencyFormatter.format(booking?.amountToPay ?? trip.farePerSeat * seats)}',
             destacado: booking != null && booking.seats.isNotEmpty,
           ),
+          if ((booking?.discount ?? 0) > 0)
+            _row(
+              context,
+              Icons.local_offer_rounded,
+              'Descuento de ${CurrencyFormatter.format(booking!.discount)}'
+              '${booking.promoCode != null ? ' con ${booking.promoCode}' : ''}',
+            ),
+          // Dónde y a qué hora sube: la hora del PUNTO, que no es la de salida
+          // del bus. Es el dato que decide a qué hora sale de su casa.
+          if (booking?.boardingPoint != null)
+            _row(
+              context,
+              Icons.directions_walk_rounded,
+              'Sube en ${booking!.boardingPoint!.name} · ${booking.boardingPoint!.time}'
+              '${booking.boardingPoint!.address != null ? '\n${booking.boardingPoint!.address}' : ''}',
+              destacado: true,
+            ),
           _row(context, Icons.directions_car_rounded,
               '${trip.driverName} · ${trip.vehicleDescription}'),
           if (trip.operatorName != null)

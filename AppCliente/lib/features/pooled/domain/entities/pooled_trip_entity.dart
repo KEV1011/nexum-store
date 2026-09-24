@@ -50,6 +50,45 @@ enum PooledTripStatus {
 IntercityCity _cityFromApi(String? s) =>
     s == null || s.isEmpty ? IntercityCity.pamplona : IntercityCity.bySlug(s);
 
+/// Un sitio donde subirse, con su hora.
+///
+/// La hora es la del PUNTO, no la de la salida del bus: quien sube en el
+/// segundo punto tiene que estar ahí quince minutos después, y decirle la hora
+/// de la terminal lo dejaría esperando de más o perdiendo el bus.
+class PuntoEmbarque {
+  const PuntoEmbarque({
+    required this.id,
+    required this.name,
+    required this.time,
+    this.address,
+  });
+
+  final String id;
+  final String name;
+
+  /// «06:15», tal como la publicó la empresa.
+  final String time;
+  final String? address;
+
+  /// Sin casteos directos: esto se lee en la pantalla de comprar, y reventar
+  /// aquí dejaría al pasajero sin poder reservar.
+  static PuntoEmbarque? fromJson(Object? crudo) {
+    if (crudo is! Map) return null;
+    final name = crudo['name'];
+    final time = crudo['time'];
+    if (name is! String || time is! String) return null;
+    return PuntoEmbarque(
+      id: crudo['id'] is String ? crudo['id'] as String : name,
+      name: name,
+      time: time,
+      address: crudo['address'] is String ? crudo['address'] as String : null,
+    );
+  }
+
+  /// «Terminal · 06:00», que es como se lee de un vistazo.
+  String get etiqueta => '$name · $time';
+}
+
 /// La reserva del propio pasajero dentro de un viaje compartido.
 class SeatBookingEntity {
   const SeatBookingEntity({
@@ -63,6 +102,11 @@ class SeatBookingEntity {
     this.seats = const [],
     this.rating,
     this.ratingComment,
+    this.boardingPoint,
+    this.fareTotal,
+    this.discount = 0,
+    this.promoCode,
+    this.amountToPay,
   });
 
   final String id;
@@ -80,6 +124,16 @@ class SeatBookingEntity {
   /// pantalla usa para ofrecérselo.
   final int? rating;
   final String? ratingComment;
+
+  /// Dónde sube, tal como se lo dijeron al reservar. Sellado: si la empresa
+  /// cambia la hora del punto mañana, a esta persona le dijeron otra.
+  final PuntoEmbarque? boardingPoint;
+
+  /// Lo que costó y lo que de verdad paga. El descuento lo pone la empresa.
+  final double? fareTotal;
+  final double discount;
+  final String? promoCode;
+  final double? amountToPay;
 
   /// Lo que hay que enseñarle al subir: «Silla 4» o «Sillas 3, 4». Sin
   /// numeración cae a los puestos, que es lo único cierto ahí — un número
@@ -102,6 +156,11 @@ class SeatBookingEntity {
         ],
         rating: (j['rating'] as num?)?.toInt(),
         ratingComment: j['ratingComment'] as String?,
+        boardingPoint: PuntoEmbarque.fromJson(j['boardingPoint']),
+        fareTotal: (j['fareTotal'] as num?)?.toDouble(),
+        discount: (j['discount'] as num?)?.toDouble() ?? 0,
+        promoCode: j['promoCode'] as String?,
+        amountToPay: (j['amountToPay'] as num?)?.toDouble(),
       );
 }
 
@@ -194,6 +253,7 @@ class PooledTripEntity {
     this.operatorRatingCount,
     this.operatorPolicies = const [],
     this.amenities = const [],
+    this.boardingPoints = const [],
     this.stops = const [],
     this.myBooking,
     this.seatMap,
@@ -236,6 +296,10 @@ class PooledTripEntity {
   /// se declaró nada, y entonces no se pinta ningún chip — en vez de pintar
   /// cruces, que afirmarían que NO los tiene.
   final List<String> amenities;
+
+  /// Dónde se puede subir. Vacío = la salida no los declara y se sigue usando
+  /// el texto libre de «dónde te recogen», como hasta ahora.
+  final List<PuntoEmbarque> boardingPoints;
 
   /// Paradas intermedias de la salida ("pasa por"), en orden.
   final List<String> stops;
@@ -284,6 +348,10 @@ class PooledTripEntity {
           for (final a in (j['amenities'] as List<dynamic>? ?? const []))
             if (a is String) a,
         ],
+        boardingPoints: [
+          for (final p in (j['boardingPoints'] as List<dynamic>? ?? const []))
+            if (PuntoEmbarque.fromJson(p) != null) PuntoEmbarque.fromJson(p)!,
+        ],
         stops: [
           for (final st in (j['stops'] as List<dynamic>? ?? const []))
             if (st is Map<String, dynamic> && st['name'] is String)
@@ -321,6 +389,7 @@ class PooledTripEntity {
         operatorRatingCount: operatorRatingCount,
         operatorPolicies: operatorPolicies,
         amenities: amenities,
+        boardingPoints: boardingPoints,
         stops: stops,
         myBooking: myBooking,
         // Sin esta línea, cualquier copia —refrescar cupos, cambiar estado—

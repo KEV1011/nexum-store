@@ -27,6 +27,13 @@ import {
   type TipoConSillas,
 } from '../lib/mapa-asientos';
 import { amenidadesDeSalida, saneaAmenidades } from '../lib/amenidades';
+import {
+  saneaPuntosEmbarque,
+  puntosGuardados,
+  elegirPunto,
+  type PuntoEmbarque,
+} from '../lib/puntos-embarque';
+import { motivoParaNoAplicarCupon, totalDelPasaje } from '../lib/cupon-pasaje';
 import { politicasGuardadas, lineasDePolitica } from '../lib/politicas-tiquete';
 import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { motivoParaNoCalificar, type EstadoSalida } from '../lib/calificar-salida';
@@ -84,6 +91,7 @@ type DbPooledTrip = {
   seatRows?: number | null;
   seatConfig?: unknown;
   amenities?: unknown;
+  boardingPoints?: unknown;
   bookings?: DbSeatBooking[];
   seatAssignments?: { seatNumber: number; bookingId: string }[];
 };
@@ -92,6 +100,8 @@ type DbSeatBooking = {
   id: string; tripId: string; userId: string; passengerName: string; passengerPhone: string;
   seatsBooked: number; pickupAddress: string | null; notes: string | null; status: string; bookedAt: Date;
   rating?: number | null; ratingComment?: string | null;
+  boardingPoint?: unknown; fareTotal?: number | null;
+  discount?: number | null; promoCode?: string | null;
   seats?: { seatNumber: number }[];
 };
 
@@ -113,7 +123,22 @@ function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
     bookedAt: b.bookedAt.toISOString(),
     ...(b.rating != null && { rating: b.rating }),
     ...(b.ratingComment && { ratingComment: b.ratingComment }),
+    ...(_puntoDe(b.boardingPoint) && { boardingPoint: _puntoDe(b.boardingPoint)! }),
+    ...(b.fareTotal != null && { fareTotal: b.fareTotal }),
+    ...(b.discount ? { discount: b.discount } : {}),
+    ...(b.promoCode && { promoCode: b.promoCode }),
+    // Lo que se paga, ya restado. Si lo calculara cada pantalla, una acabaría
+    // enseñando el precio sin descuento justo cuando el pasajero va a pagar.
+    ...(b.fareTotal != null && {
+      amountToPay: Math.max(0, Math.round(b.fareTotal - (b.discount ?? 0))),
+    }),
   };
+}
+
+/** El punto sellado en la reserva, tolerante con lo que haya guardado. */
+function _puntoDe(v: unknown): PuntoEmbarque | null {
+  const p = puntosGuardados(Array.isArray(v) ? v : [v]);
+  return p[0] ?? null;
 }
 
 /**
@@ -188,6 +213,7 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
     // contradiciéndose, y un chip prometiendo baño sobre un plano que no lo
     // dibuja es la queja más cara en una ruta de nueve horas. Sin plano
     // (la salida por cupos del particular) no hay de dónde derivarlo.
+    boardingPoints: puntosGuardados(t.boardingPoints),
     amenities: amenidadesDeSalida(
       t.amenities,
       esTipoConSillas(t.seatType)
@@ -319,6 +345,12 @@ export async function publishPooledTrip(
       seatConfig: configSillas ? (configSillas as unknown as Prisma.InputJsonObject) : Prisma.DbNull,
       // El baño se queda fuera aunque venga marcado: lo pone el plano.
       amenities: saneaAmenidades(dto.amenities),
+      // Contra la hora de salida: así un punto a nueve horas se rechaza aquí y
+      // no cuando un pasajero esté esperando en esa esquina.
+      boardingPoints: saneaPuntosEmbarque(
+        dto.boardingPoints,
+        departure,
+      ) as unknown as Prisma.InputJsonValue,
       farePerSeat: dto.farePerSeat,
       maxFarePerSeat: maxFare,
       allowFleet: dto.allowFleet ?? false,
@@ -667,6 +699,74 @@ export async function bookSeats(
       throw new PooledTripError('Este conductor no permite reservar el vehículo completo');
     }
 
+    // ── Dónde sube ────────────────────────────────────────────────────────
+    // Se SELLA el punto, no se guarda su id: si la empresa le cambia la hora
+    // mañana, a esta persona le dijeron otra cosa y es la que tiene que seguir
+    // viendo en su reserva.
+    const puntos = puntosGuardados((t as { boardingPoints?: unknown }).boardingPoints);
+    const punto = elegirPunto(puntos, dto.boardingPointId);
+    if (puntos.length > 0 && punto == null) {
+      throw new PooledTripError('Ese punto de embarque ya no existe en esta salida.');
+    }
+
+    // ── Cuánto cuesta, y el descuento si trae código ──────────────────────
+    // El importe se sella aquí: sin esto, subir la tarifa mañana le cambiaba
+    // el precio a quien ya había comprado.
+    let descuento = 0;
+    let codigo: string | null = null;
+    if (dto.promoCode?.trim()) {
+      const bruto = totalDelPasaje(t.farePerSeat, requested).total;
+      const cupon = await tx.promoCode.findUnique({
+        where: { code: dto.promoCode.trim().toUpperCase() },
+      });
+      if (!cupon || !cupon.active) throw new PooledTripError('Código no válido');
+      const motivoCupon = motivoParaNoAplicarCupon(
+        {
+          code: cupon.code,
+          operatorId: cupon.operatorId,
+          aplicaAPasajes: cupon.scope === 'INTERCITY' || cupon.scope === 'ALL',
+        },
+        { operatorId: t.operatorId ?? null },
+      );
+      if (motivoCupon) throw new PooledTripError(motivoCupon);
+      if (cupon.expiresAt && cupon.expiresAt < new Date()) {
+        throw new PooledTripError('Este código ya venció');
+      }
+      if (bruto < cupon.minAmount) {
+        throw new PooledTripError(
+          `Monto mínimo: $${cupon.minAmount.toLocaleString('es-CO')}`,
+        );
+      }
+      const usos = await tx.promoRedemption.count({
+        where: { promoCodeId: cupon.id, userId: clientId },
+      });
+      if (usos >= cupon.perUserLimit) throw new PooledTripError('Ya usaste este código');
+      if (cupon.maxRedemptions != null) {
+        const total = await tx.promoRedemption.count({ where: { promoCodeId: cupon.id } });
+        if (total >= cupon.maxRedemptions) {
+          throw new PooledTripError('Este código alcanzó su límite de usos');
+        }
+      }
+
+      const crudo = cupon.type === 'PERCENT'
+        ? bruto * (Math.min(cupon.value, 100) / 100)
+        : cupon.value;
+      const topado = cupon.maxDiscount != null ? Math.min(crudo, cupon.maxDiscount) : crudo;
+      descuento = totalDelPasaje(t.farePerSeat, requested, topado).descuento;
+      codigo = cupon.code;
+
+      // La redención va DENTRO de la transacción de la reserva: si la silla se
+      // la lleva otro, el cupón no puede quedar gastado.
+      await tx.promoRedemption.create({
+        data: {
+          promoCodeId: cupon.id, userId: clientId, context: 'pooled',
+          amountBefore: bruto, discount: descuento,
+        },
+      });
+    }
+
+    const plata = totalDelPasaje(t.farePerSeat, requested, descuento);
+
     const booking = await tx.seatBooking.create({
       data: {
         tripId,
@@ -677,6 +777,10 @@ export async function bookSeats(
         pickupAddress: dto.pickupAddress ?? null,
         notes: dto.notes ?? null,
         status: 'CONFIRMED',
+        ...(punto && { boardingPoint: punto as unknown as Prisma.InputJsonObject }),
+        fareTotal: plata.total,
+        discount: plata.descuento,
+        promoCode: codigo,
       },
     });
 
@@ -832,6 +936,61 @@ export async function getClientBookings(clientId: string): Promise<Array<PooledT
     ...dto,
     myBooking: _toBookingDTO(bookings[i] as unknown as DbSeatBooking),
   }));
+}
+
+/**
+ * Cuánto descontaría un código en esta salida, sin canjearlo.
+ *
+ * Existe para que el pasajero vea el precio con descuento ANTES de dar a
+ * comprar. La validación de verdad vuelve a correr dentro de la transacción de
+ * la reserva —entre mirar y comprar el cupón puede agotarse—, así que esto es
+ * una previsualización y no una promesa.
+ */
+export async function cotizarCuponDePasaje(
+  clientId: string,
+  tripId: string,
+  code: string,
+  puestos: number,
+): Promise<{ code: string; discount: number; amountToPay: number }> {
+  const t = await prisma.pooledTrip.findUnique({
+    where: { id: tripId },
+    select: { farePerSeat: true, operatorId: true },
+  });
+  if (!t) throw new PooledTripError('Esa salida ya no existe');
+
+  const cupon = await prisma.promoCode.findUnique({
+    where: { code: code.trim().toUpperCase() },
+  });
+  if (!cupon || !cupon.active) throw new PooledTripError('Código no válido');
+
+  const motivo = motivoParaNoAplicarCupon(
+    {
+      code: cupon.code,
+      operatorId: cupon.operatorId,
+      aplicaAPasajes: cupon.scope === 'INTERCITY' || cupon.scope === 'ALL',
+    },
+    { operatorId: t.operatorId ?? null },
+  );
+  if (motivo) throw new PooledTripError(motivo);
+  if (cupon.expiresAt && cupon.expiresAt < new Date()) {
+    throw new PooledTripError('Este código ya venció');
+  }
+
+  const bruto = totalDelPasaje(t.farePerSeat, puestos).total;
+  if (bruto < cupon.minAmount) {
+    throw new PooledTripError(`Monto mínimo: $${cupon.minAmount.toLocaleString('es-CO')}`);
+  }
+  const usos = await prisma.promoRedemption.count({
+    where: { promoCodeId: cupon.id, userId: clientId },
+  });
+  if (usos >= cupon.perUserLimit) throw new PooledTripError('Ya usaste este código');
+
+  const crudo = cupon.type === 'PERCENT'
+    ? bruto * (Math.min(cupon.value, 100) / 100)
+    : cupon.value;
+  const topado = cupon.maxDiscount != null ? Math.min(crudo, cupon.maxDiscount) : crudo;
+  const plata = totalDelPasaje(t.farePerSeat, puestos, topado);
+  return { code: cupon.code, discount: plata.descuento, amountToPay: plata.paga };
 }
 
 /**

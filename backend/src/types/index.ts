@@ -1142,6 +1142,15 @@ export interface PublishPooledTripDTO {
    * para que el chip no prometa lo que el plano no dibuja.
    */
   amenities?: string[];
+  /** Puntos de abordaje con su hora (máx. 6). */
+  boardingPoints?: Array<{
+    id?: string;
+    name: string;
+    address?: string;
+    time: string;
+    lat?: number;
+    lng?: number;
+  }>;
 }
 
 /** A single passenger's booking on a pooled trip. */
@@ -1170,6 +1179,15 @@ export interface SeatBookingDTO {
    */
   rating?: number;
   ratingComment?: string;
+  /** El punto donde sube, tal como se lo dijeron al reservar. */
+  boardingPoint?: PuntoEmbarqueDTO;
+  /** Lo que costó, sellado al reservar. */
+  fareTotal?: number;
+  /** Descuento de la empresa, y el código con el que se aplicó. */
+  discount?: number;
+  promoCode?: string;
+  /** Lo que de verdad paga: `fareTotal - discount`. */
+  amountToPay?: number;
 }
 
 /** Client-supplied payload when reserving seats on a pooled trip. */
@@ -1185,6 +1203,25 @@ export interface BookSeatsDTO {
   seats?: number[];
   pickupAddress?: string;
   notes?: string;
+  /**
+   * Cuál de los puntos de embarque eligió. Sin él se toma el primero —la
+   * terminal—, porque las apps ya instaladas no lo mandan y dejarlas sin poder
+   * reservar sería peor.
+   */
+  boardingPointId?: string;
+  /** Código de descuento de la EMPRESA de la salida, si tiene uno. */
+  promoCode?: string;
+}
+
+/** Un punto donde el pasajero puede subirse, con su hora. */
+export interface PuntoEmbarqueDTO {
+  id: string;
+  name: string;
+  address?: string;
+  /** Hora local «HH:MM». En un nocturno puede ser del día siguiente. */
+  time: string;
+  lat?: number;
+  lng?: number;
 }
 
 /** Una celda del mapa de sillas, tal como la pinta la app. */
@@ -1242,6 +1279,11 @@ export interface PooledTripDTO {
    * «no tiene» y por eso la app no pinta chips en vez de pintar cruces.
    */
   amenities?: string[];
+  /**
+   * Dónde y a qué hora se puede subir. Vacío/ausente = la salida no los
+   * declara y se sigue usando el texto libre de siempre.
+   */
+  boardingPoints?: PuntoEmbarqueDTO[];
   /** Empresa que publicó la salida (null/ausente = conductor particular). */
   operatorId?: string;
   /** Razón social de la empresa, para mostrar confianza en la búsqueda. */
