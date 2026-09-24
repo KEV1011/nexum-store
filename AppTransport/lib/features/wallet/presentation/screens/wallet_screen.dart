@@ -146,6 +146,38 @@ class _BalanceCard extends StatelessWidget {
               style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ],
+          // La deuda va VISIBLE y aparte. Restarla en silencio hasta dar cero
+          // deja al conductor mirando un «$0» que se lee como un fallo de la
+          // app; dicha, sabe qué pasó y qué hacer.
+          if (balance.tieneDeuda) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      size: 16, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Debes ${CurrencyFormatter.format(balance.owed)} de comisiones '
+                      'de los servicios que cobraste en efectivo o por transferencia. '
+                      'Se descuenta de lo que te giramos.',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11.5,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,

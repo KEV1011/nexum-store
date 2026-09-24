@@ -1,6 +1,7 @@
 import { Payout, PayoutStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { MIN_PAYOUT_COP } from '../config/constants';
+import { saldoDelConductor } from '../lib/saldo-conductor';
 
 /** Error de dominio de payouts (mapea a HTTP 400 en las rutas). */
 export class PayoutError extends Error {}
@@ -9,7 +10,14 @@ export interface DriverBalanceDTO {
   totalEarned: number;
   totalPaidOut: number; // retiros PAID
   pending: number; // retiros REQUESTED + PROCESSING
-  available: number; // totalEarned - totalPaidOut - pending (≥ 0)
+  /**
+   * Lo que puede retirar HOY: lo que ZIPA recaudó, menos lo girado, lo
+   * solicitado y lo que él debe. No es `totalEarned`: de un servicio en
+   * efectivo la plata ya la tiene en el bolsillo.
+   */
+  available: number;
+  /** Comisiones de servicios que cobró de su mano y todavía no ha pagado. */
+  owed: number;
   minPayout: number;
   bank: {
     name: string | null;
@@ -56,7 +64,13 @@ function toDTO(p: Payout): PayoutDTO {
  */
 export async function getDriverBalance(driverId: string): Promise<DriverBalanceDTO> {
   const [earnAgg, payouts, driver] = await Promise.all([
-    prisma.driverEarning.aggregate({ where: { driverId }, _sum: { netEarning: true } }),
+    prisma.driverEarning.aggregate({
+      where: { driverId },
+      // `netEarning` es lo que GANÓ, no lo que puede retirar: incluye los
+      // servicios que cobró de su mano. Lo retirable sale de `platformHeld`
+      // menos `driverOwes` (ver `lib/saldo-conductor.ts`).
+      _sum: { netEarning: true, platformHeld: true, driverOwes: true },
+    }),
     prisma.payout.findMany({ where: { driverId }, select: { amount: true, status: true } }),
     prisma.driver.findUnique({
       where: { id: driverId },
@@ -71,13 +85,23 @@ export async function getDriverBalance(driverId: string): Promise<DriverBalanceD
     if (p.status === 'PAID') totalPaidOut += p.amount;
     else if (p.status === 'REQUESTED' || p.status === 'PROCESSING') pending += p.amount;
   }
-  const available = Math.max(0, Math.round(totalEarned - totalPaidOut - pending));
+
+  const saldo = saldoDelConductor({
+    retenidoPorLaPlataforma: earnAgg._sum.platformHeld ?? 0,
+    deudaAcumulada: earnAgg._sum.driverOwes ?? 0,
+    yaPagado: totalPaidOut,
+    solicitado: pending,
+  });
 
   return {
     totalEarned: Math.round(totalEarned),
     totalPaidOut: Math.round(totalPaidOut),
     pending: Math.round(pending),
-    available,
+    available: saldo.disponible,
+    // Lo que debe de comisiones de servicios que cobró él. Va aparte y NO
+    // escondido detrás de un cero: un «$0 disponible» a secas se lee como un
+    // error de la app, y esto es lo que hace falta para poder cobrárselo.
+    owed: saldo.deuda,
     minPayout: MIN_PAYOUT_COP,
     bank: {
       name: driver?.bankName ?? null,

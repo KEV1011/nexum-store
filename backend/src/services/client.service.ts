@@ -1312,6 +1312,9 @@ export async function updateClientTripStatus(
         distanceKm: true, etaMinutes: true, driverId: true, originAddress: true,
         destAddress: true, finalFare: true, serviceType: true, deliveryPin: true,
         surgeMultiplier: true, operatorId: true, originLat: true, originLng: true,
+        // Decide si la liquidación le deja saldo a favor o una deuda: en
+        // efectivo cobró él y nos debe la comisión.
+        paymentMethod: true,
       },
     });
     // Envío = mercancía que cambia de manos. Sin el PIN de quien recibe no se
@@ -1383,6 +1386,9 @@ export async function updateClientTripStatus(
           completedAt: new Date().toISOString(),
         },
         trip.driverId,
+        // El método sellado en el viaje decide si esto le deja saldo a favor
+        // o una deuda: en efectivo ya cobró él.
+        trip.paymentMethod,
       );
       // Libre para nuevos viajes — salvo que ya tenga el siguiente aceptado.
       await liberarConductorSiNoTieneMas(trip.driverId);
