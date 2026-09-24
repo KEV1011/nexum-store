@@ -879,6 +879,7 @@ router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) =
       ...(dto.seats ? { seats: dto.seats } : {}),
       ...(dto.boardingPointId ? { boardingPointId: dto.boardingPointId } : {}),
       ...(dto.promoCode ? { promoCode: dto.promoCode } : {}),
+      ...(dto.passengers ? { passengers: dto.passengers } : {}),
     });
     res.status(201).json({ success: true, data: result });
   } catch (err) {

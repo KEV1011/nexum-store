@@ -252,6 +252,7 @@ class PooledTripEntity {
     this.operatorRating,
     this.operatorRatingCount,
     this.operatorPolicies = const [],
+    this.operatorPayment = const [],
     this.amenities = const [],
     this.boardingPoints = const [],
     this.doorToDoor = true,
@@ -292,6 +293,11 @@ class PooledTripEntity {
   /// Condiciones del tiquete YA REDACTADAS por el servidor. Vacío = la empresa
   /// no las ha publicado, que es distinto de no tenerlas.
   final List<String> operatorPolicies;
+
+  /// Cómo cobra la empresa, ya redactado por el servidor. A diferencia de las
+  /// condiciones, viene SIEMPRE: cuando no está declarado, la línea dice que
+  /// el pago se acuerda con la empresa.
+  final List<String> operatorPayment;
 
   /// Qué trae el vehículo: claves del catálogo (`comodidades.dart`). Vacío = no
   /// se declaró nada, y entonces no se pinta ningún chip — en vez de pintar
@@ -346,6 +352,10 @@ class PooledTripEntity {
         operatorName: j['operatorName'] as String?,
         operatorRating: (j['operatorRating'] as num?)?.toDouble(),
         operatorRatingCount: (j['operatorRatingCount'] as num?)?.toInt(),
+        operatorPayment: [
+          for (final l in (j['operatorPayment'] as List<dynamic>? ?? const []))
+            if (l is String) l,
+        ],
         operatorPolicies: [
           for (final l in (j['operatorPolicies'] as List<dynamic>? ?? const []))
             if (l is String) l,
@@ -395,6 +405,7 @@ class PooledTripEntity {
         operatorRating: operatorRating,
         operatorRatingCount: operatorRatingCount,
         operatorPolicies: operatorPolicies,
+        operatorPayment: operatorPayment,
         amenities: amenities,
         boardingPoints: boardingPoints,
         doorToDoor: doorToDoor,

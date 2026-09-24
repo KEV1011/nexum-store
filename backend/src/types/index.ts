@@ -1193,6 +1193,15 @@ export interface SeatBookingDTO {
   promoCode?: string;
   /** Lo que de verdad paga: `fareTotal - discount`. */
   amountToPay?: number;
+  /**
+   * Quién viaja en cada silla, uno por puesto.
+   *
+   * Es la planilla con la que la empresa responde por quién iba a bordo.
+   * Ausente en las reservas hechas antes de que existiera el campo: el
+   * manifiesto lo dice así en vez de repetir el nombre de la cuenta tantas
+   * veces como puestos, que sería inventar pasajeros.
+   */
+  passengers?: { tipoDoc: string; documento: string; nombre: string }[];
 }
 
 /** Client-supplied payload when reserving seats on a pooled trip. */
@@ -1216,6 +1225,14 @@ export interface BookSeatsDTO {
   boardingPointId?: string;
   /** Código de descuento de la EMPRESA de la salida, si tiene uno. */
   promoCode?: string;
+  /**
+   * Quién viaja en cada silla: uno por puesto comprado.
+   *
+   * Opcional a propósito: las apps ya instaladas no lo mandan y exigirlo hoy
+   * las dejaría sin poder reservar. La exigencia se enciende con
+   * `PASAJEROS_EXIGIR_DOCUMENTO` cuando los APK nuevos estén repartidos.
+   */
+  passengers?: { tipoDoc: string; documento: string; nombre: string }[];
 }
 
 /** Un punto donde el pasajero puede subirse, con su hora. */
@@ -1314,6 +1331,17 @@ export interface PooledTripDTO {
    * leería otra. Ausente/vacío = la empresa no las ha publicado.
    */
   operatorPolicies?: string[];
+  /**
+   * Cómo cobra la empresa, YA REDACTADO (mismo criterio que las condiciones).
+   *
+   * A diferencia de aquéllas, esto viene SIEMPRE: cuando la empresa no lo ha
+   * publicado, la línea dice que el pago se acuerda con ella. Callar sería
+   * dejar la reserva terminando sin una palabra sobre el dinero, que es el
+   * defecto que esto viene a cerrar.
+   */
+  operatorPayment?: string[];
+  /** Una línea corta para la tarjeta de la búsqueda. Ausente = sin declarar. */
+  operatorPaymentSummary?: string;
   /**
    * Dónde va el bus AHORA, del último latido del conductor.
    *

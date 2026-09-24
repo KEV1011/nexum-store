@@ -39,6 +39,10 @@ import {
   type TipoDeVehiculo,
 } from '../lib/recogida-salida';
 import { politicasGuardadas, lineasDePolitica } from '../lib/politicas-tiquete';
+import { cobroGuardado, lineasDeCobro, resumenDeCobro } from '../lib/cobro-pasaje';
+import {
+  exigirDocumentoDePasajero, pasajerosGuardados, saneaPasajeros, type PasajeroTiquete,
+} from '../lib/pasajeros-tiquete';
 import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { motivoParaNoCalificar, type EstadoSalida } from '../lib/calificar-salida';
 import {
@@ -107,6 +111,7 @@ type DbSeatBooking = {
   rating?: number | null; ratingComment?: string | null;
   boardingPoint?: unknown; fareTotal?: number | null;
   discount?: number | null; promoCode?: string | null;
+  passengers?: unknown;
   seats?: { seatNumber: number }[];
 };
 
@@ -136,6 +141,12 @@ function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
     // enseñando el precio sin descuento justo cuando el pasajero va a pagar.
     ...(b.fareTotal != null && {
       amountToPay: Math.max(0, Math.round(b.fareTotal - (b.discount ?? 0))),
+    }),
+    // La planilla: quién viaja en cada silla. Vacío en las reservas hechas
+    // antes de que existiera el campo, y el manifiesto lo dice así en vez de
+    // repetir el nombre de la cuenta tantas veces como puestos.
+    ...(pasajerosGuardados(b.passengers).length > 0 && {
+      passengers: pasajerosGuardados(b.passengers),
     }),
   };
 }
@@ -558,7 +569,7 @@ async function _conDatosDeEmpresa(dtos: PooledTripDTO[]): Promise<PooledTripDTO[
     where: { id: { in: ids } },
     select: {
       id: true, legalName: true, tradeName: true,
-      rating: true, ratingCount: true, policies: true,
+      rating: true, ratingCount: true, policies: true, paymentInfo: true,
     },
   });
   const porId = new Map(ops.map((o) => [o.id, o]));
@@ -574,6 +585,13 @@ async function _conDatosDeEmpresa(dtos: PooledTripDTO[]): Promise<PooledTripDTO[
     if (o.ratingCount > 0) d.operatorRatingCount = o.ratingCount;
     const lineas = lineasDePolitica(politicasGuardadas(o.policies));
     if (lineas.length > 0) d.operatorPolicies = lineas;
+    // Cómo se paga. Va SIEMPRE, incluso sin declarar, porque la línea que
+    // manda entonces —«acuérdalo con la empresa»— es justo la que hoy falta:
+    // la reserva termina sin decir una palabra sobre el dinero.
+    const cobro = cobroGuardado(o.paymentInfo);
+    d.operatorPayment = lineasDeCobro(cobro);
+    const resumen = resumenDeCobro(cobro);
+    if (resumen) d.operatorPaymentSummary = resumen;
   }
   return dtos;
 }
@@ -784,6 +802,23 @@ export async function bookSeats(
 
     const plata = totalDelPasaje(t.farePerSeat, requested, descuento);
 
+    // ── Quién viaja en cada silla ─────────────────────────────────────────
+    // Se valida contra los puestos REALES (`requested`), no contra lo que
+    // mandó el cliente: en una salida numerada los puestos los cuentan las
+    // sillas elegidas, y validar contra el otro número dejaría pasar una
+    // planilla con más o menos gente de la que sube.
+    let pasajeros: PasajeroTiquete[] | null = null;
+    try {
+      pasajeros = saneaPasajeros((dto as { passengers?: unknown }).passengers, requested);
+    } catch (e) {
+      throw new PooledTripError(e instanceof Error ? e.message : 'Datos de los pasajeros inválidos');
+    }
+    if (!pasajeros && exigirDocumentoDePasajero()) {
+      throw new PooledTripError(
+        'Para viajar hace falta el documento de cada pasajero. Actualiza la app para continuar.',
+      );
+    }
+
     const booking = await tx.seatBooking.create({
       data: {
         tripId,
@@ -801,6 +836,7 @@ export async function bookSeats(
         fareTotal: plata.total,
         discount: plata.descuento,
         promoCode: codigo,
+        ...(pasajeros && { passengers: pasajeros as unknown as Prisma.InputJsonValue }),
       },
     });
 

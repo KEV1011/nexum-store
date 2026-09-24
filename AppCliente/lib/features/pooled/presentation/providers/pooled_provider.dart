@@ -7,6 +7,7 @@ import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart'
     show IntercityCity;
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
+import 'package:nexum_client/features/pooled/presentation/widgets/datos_pasajeros.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
 
 class PooledState {
@@ -115,6 +116,9 @@ class PooledNotifier extends StateNotifier<PooledState> {
     String? boardingPointId,
     /// Código de descuento de la empresa de la salida.
     String? promoCode,
+    /// Quién viaja en cada silla: uno por puesto. Es la planilla con la que
+    /// la empresa responde por quién iba a bordo.
+    List<PasajeroTiquete> pasajeros = const [],
   }) async {
     try {
       await _dio.post<Map<String, dynamic>>(
@@ -128,6 +132,11 @@ class PooledNotifier extends StateNotifier<PooledState> {
           if (boardingPointId != null) 'boardingPointId': boardingPointId,
           if (promoCode != null && promoCode.trim().isNotEmpty)
             'promoCode': promoCode.trim(),
+          // Solo si está COMPLETA. Media planilla la rechaza el servidor
+          // entera, así que mandarla sería cambiar un formulario incompleto
+          // por un error después de confirmar.
+          if (pasajeros.isNotEmpty && pasajeros.every((p) => p.completo))
+            'passengers': [for (final p in pasajeros) p.toJson()],
         },
       );
       await loadMyBookings();

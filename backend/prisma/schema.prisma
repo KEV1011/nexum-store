@@ -1174,6 +1174,11 @@ model SeatBooking {
   /// no hay comisión de la que descontarlo (ver `lib/cupon-pasaje.ts`).
   discount       Float    @default(0)
   promoCode      String?
+  /// Quién viaja en cada silla: `[{tipoDoc,documento,nombre}]`, uno por
+  /// puesto. Ver `lib/pasajeros-tiquete.ts`. Es la planilla con la que la
+  /// empresa responde por quién iba a bordo. NULL en las reservas hechas desde
+  /// una app que aún no los manda: se muestra como «sin datos», no se inventa.
+  passengers     Json?
 
   trip  PooledTrip       @relation(fields: [tripId], references: [id])
   user  User             @relation(fields: [userId], references: [id])
@@ -1276,6 +1281,13 @@ model Operator {
   /// publicado, y la app lo dice — no se inventa una política por defecto,
   /// que sería una condición reclamable que la empresa nunca fijó.
   policies              Json?
+  /// Cómo cobra la empresa el pasaje: `{medios:[...], detalle?}`. Ver
+  /// `lib/cobro-pasaje.ts`. La plata NO pasa por ZIPA —esto es lo que la
+  /// empresa declara, publicado tal cual—, y NULL significa que no lo ha
+  /// publicado: la app lo dice en vez de suponer «efectivo al abordar», que
+  /// dejaría a la gente sin efectivo en la puerta del bus de una empresa que
+  /// cobra por transferencia.
+  paymentInfo           Json?
   /// Reputación REAL de la empresa, promediada de sus servicios calificados
   /// (salidas programadas + intermunicipales). `null` mientras nadie la haya
   /// calificado: la app dice «Nuevo». Nunca un 5,0 de fábrica — ese error ya

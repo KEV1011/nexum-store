@@ -45,6 +45,7 @@ import { ocrProviderName } from './services/ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
 import { contactoLegalConfigurado } from './lib/contacto';
+import { exigirDocumentoDePasajero } from './lib/pasajeros-tiquete';
 import { whatsappMode } from './services/whatsapp.service';
 import { purgarEnlacesMagicos } from './services/enlace-magico.service';
 
@@ -191,6 +192,10 @@ app.get('/health', async (_req, res) => {
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),
     // Clickwrap legal: 'activo' = el registro exige aceptar términos.
     legalConsent: legalConsentEnforced() ? 'activo' : 'apagado',
+    // Planilla del pasaje: 'activo' = no se reserva sin el documento de cada
+    // pasajero. Se enciende cuando los APK nuevos estén repartidos; antes
+    // dejaría sin reservar a quien no haya actualizado.
+    pasajerosConDocumento: exigirDocumentoDePasajero() ? 'activo' : 'apagado',
     // Canal de atención al titular. 'sin-configurar' significa que la política
     // de privacidad publicada remite al soporte DENTRO de la app, y eso es
     // circular: quien la desinstaló no puede pedir que borremos sus datos.

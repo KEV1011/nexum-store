@@ -141,6 +141,7 @@ class PooledSeatBooking {
     this.amountToPay,
     this.discount = 0,
     this.promoCode,
+    this.passengers = const [],
   });
 
   final String id;
@@ -160,6 +161,11 @@ class PooledSeatBooking {
   final double? amountToPay;
   final double discount;
   final String? promoCode;
+
+  /// Quién viaja en cada silla, con su documento: la planilla. Vacía en las
+  /// reservas anteriores al campo, y la pantalla lo DICE en vez de repetir el
+  /// nombre de la cuenta tantas veces como puestos.
+  final List<String> passengers;
 
   /// Sillas numeradas de esta reserva, en orden. Vacía en las salidas por
   /// cupos, que son las de siempre: ahí no hay dónde sentar a nadie en
@@ -185,6 +191,11 @@ class PooledSeatBooking {
         amountToPay: (j['amountToPay'] as num?)?.toDouble(),
         discount: (j['discount'] as num?)?.toDouble() ?? 0,
         promoCode: j['promoCode'] as String?,
+        passengers: [
+          for (final p in (j['passengers'] as List<dynamic>? ?? const []))
+            if (p is Map<String, dynamic>)
+              '${p['tipoDoc'] ?? ''} ${p['documento'] ?? ''} · ${p['nombre'] ?? ''}'.trim(),
+        ],
         seats: [
           for (final s in (j['seats'] as List<dynamic>? ?? const []))
             if (s is num) s.toInt(),

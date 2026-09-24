@@ -327,6 +327,19 @@ class _PooledTripCard extends StatelessWidget {
                                   color: context.textSecondaryColor,
                                 ),
                               ),
+                            // La planilla: quién viaja, con documento. Es lo
+                            // que se contrasta al subir, y con una reserva de
+                            // cuatro puestos el nombre de la cuenta no basta.
+                            for (final p in b.passengers)
+                              Text(
+                                p,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: context.textSecondaryColor,
+                                ),
+                              ),
                           ],
                         ),
                       ),
