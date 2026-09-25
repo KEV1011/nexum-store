@@ -21,6 +21,7 @@ import { prisma } from './lib/prisma';
 import { pagoEnLineaDisponible } from './services/payment.service';
 import { isSmsSenderConfigured } from './services/sms.service';
 import { otpMode, otpEnRiesgo, demoRevisionActiva } from './services/otp.service';
+import { configRecargos } from './lib/tarifa-decreto';
 import { modoTarifaTaxi } from './lib/tarifa-categoria';
 import { existsSync } from 'fs';
 
@@ -182,6 +183,15 @@ app.get('/health', async (_req, res) => {
     // aún se usa la fórmula de la plataforma. La distinción importa: al taxi,
     // por ser tarifa regulada, nunca se le aplica multiplicador por demanda.
     tarifaTaxi: modoTarifaTaxi(),
+    // Qué recargos del decreto están cargados. Sin esto, un municipio que los
+    // fijó y nadie configuró se ve idéntico a uno que no los tiene.
+    recargosTaxi: (() => {
+      const r = configRecargos();
+      const partes: string[] = [];
+      if (r.nocturnoValor > 0) partes.push(`nocturno-desde-${r.nocturnoDesdeHora}h`);
+      if (r.dominicalValor > 0) partes.push('dominical-festivo');
+      return partes.length > 0 ? partes.join('+') : 'sin-configurar';
+    })(),
     // KYC: qué proveedor de identidad corre y si el gating bloquea el "conectarse".
     kyc: kycProviderName(),
     kycEnforce: kycEnforced(),

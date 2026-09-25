@@ -28,6 +28,7 @@ import {
 import { getSurgeMultiplier } from './surge.service';
 import { disponibilidadPorTipoVehiculo } from './matching.service';
 import { directions } from './geo.service';
+import { recargosDeCarrera, type LineaRecargo } from '../lib/tarifa-decreto';
 
 /**
  * Velocidad urbana nominal para estimar en cuántos minutos llega el conductor
@@ -59,6 +60,12 @@ export interface OpcionViaje {
   disponible: boolean;
   /** La más barata de las que hay. Nunca se marca si no hay con qué comparar. */
   cheapest: boolean;
+  /**
+   * Recargos del decreto ya incluidos en `fare`, desglosados para MOSTRARLOS.
+   * Un precio $1.000 más alto sin decir por qué se lee como un cobro de más, y
+   * el pasajero tiene derecho a ver la línea.
+   */
+  recargos?: LineaRecargo[];
 }
 
 export interface OpcionesViaje {
@@ -141,11 +148,16 @@ export async function getTripOptions(
   ]);
 
   const tabla = tablaTarifas();
+  // Una sola vez para las tres categorías: el reloj no puede cambiar entre
+  // una tarjeta y otra del mismo selector.
+  const recargos = recargosDeCarrera(new Date());
 
   const crudas = CATEGORIAS.map((cat) => {
     const tarifa = tabla[cat];
+    const aplicables = tarifa.regulada ? recargos : { total: 0, lineas: [] };
     const precio = precioCategoria(
       tarifa, trayecto.distanceKm, trayecto.durationMinutes, surge.multiplier,
+      aplicables.total,
     );
 
     // Una categoría puede atenderse con varios tipos de vehículo: se suman los
@@ -172,6 +184,9 @@ export async function getTripOptions(
       availableNearby: cuantos,
       disponible: cuantos > 0,
       cheapest: false,
+      // Solo si hay alguno: una lista vacía en el JSON haría que la app
+      // dibujara el bloque del desglose en blanco.
+      ...(aplicables.lineas.length > 0 && { recargos: aplicables.lineas }),
     };
   });
 
@@ -250,6 +265,7 @@ export async function precioServidor(
   ]);
   const precio = precioCategoria(
     tarifa, trayecto.distanceKm, trayecto.durationMinutes, surge.multiplier,
+    tarifa.regulada ? recargosDeCarrera(new Date()).total : 0,
   );
   return {
     fare: precio.fare,

@@ -27,6 +27,9 @@
 import {
   FARE_BASE, FARE_PER_KM, FARE_PER_MIN, FARE_MINIMUM,
 } from '../config/constants';
+import {
+  acotarAlSobre, leerNumeroEnv, sobreDelDecreto, type SobreDelDecreto,
+} from './tarifa-decreto';
 
 /** Categorías que el pasajero puede elegir para un viaje urbano. */
 export type CategoriaViaje = 'TAXI' | 'PARTICULAR' | 'MOTO';
@@ -55,22 +58,14 @@ export interface TarifaCategoria {
   regulada: boolean;
   /** Tipos de vehículo de la flota que atienden esta categoría. */
   tiposVehiculo: readonly string[];
+  /**
+   * Rango autorizado por el decreto para una carrera urbana. Solo lo tiene el
+   * taxi, y solo si el municipio lo cargó. Ver `lib/tarifa-decreto.ts`.
+   */
+  sobre: SobreDelDecreto | null;
 }
 
 // ─── Lectura de la tarifa del decreto desde el entorno ────────────────────────
-
-function numeroEnv(nombre: string): number | null {
-  const crudo = process.env[nombre];
-  if (crudo == null || crudo.trim() === '') return null;
-  const n = Number(crudo);
-  // Un valor ilegible se ignora y se avisa: arrancar con la tarifa en NaN
-  // dejaría todas las carreras del municipio en cero.
-  if (!Number.isFinite(n) || n < 0) {
-    console.warn(`[Tarifa] ${nombre}="${crudo}" no es un número válido; se ignora.`);
-    return null;
-  }
-  return n;
-}
 
 /**
  * Tarifa oficial del taxi, si el operador la cargó.
@@ -82,18 +77,28 @@ function numeroEnv(nombre: string): number | null {
 export function tarifaTaxiDelDecreto(): {
   banderazo: number; porKm: number; porMin: number; minimo: number;
 } | null {
-  const banderazo = numeroEnv('TAXI_BANDERAZO_COP');
-  const porKm = numeroEnv('TAXI_POR_KM_COP');
-  const minimo = numeroEnv('TAXI_CARRERA_MINIMA_COP');
+  const banderazo = leerNumeroEnv('TAXI_BANDERAZO_COP');
+  const porKm = leerNumeroEnv('TAXI_POR_KM_COP');
+  const minimo = leerNumeroEnv('TAXI_CARRERA_MINIMA_COP');
   if (banderazo == null || porKm == null || minimo == null) return null;
   // El tiempo es opcional: muchos decretos solo tarifan distancia.
-  const porMin = numeroEnv('TAXI_POR_MIN_COP') ?? 0;
+  const porMin = leerNumeroEnv('TAXI_POR_MIN_COP') ?? 0;
   return { banderazo, porKm, porMin, minimo };
 }
 
-/** Para /health y el panel: si el taxi cobra por decreto o por fórmula genérica. */
-export function modoTarifaTaxi(): 'decreto-municipal' | 'generica' {
-  return tarifaTaxiDelDecreto() ? 'decreto-municipal' : 'generica';
+export type ModoTarifaTaxi = 'decreto-por-km' | 'decreto-por-zonas' | 'generica';
+
+/**
+ * Cómo se está cobrando el taxi. Son TRES modos, no dos, porque hay decretos
+ * —el de Pamplona entre ellos— que no tarifan por kilómetro sino por una tabla
+ * de sectores: de esos solo se puede cargar el sobre (mínima y máxima), y el
+ * precio dentro de él es una estimación, no la casilla exacta del decreto.
+ * Llamar a eso «tarifa oficial» sería afirmar de más.
+ */
+export function modoTarifaTaxi(): ModoTarifaTaxi {
+  if (tarifaTaxiDelDecreto()) return 'decreto-por-km';
+  if (sobreDelDecreto()) return 'decreto-por-zonas';
+  return 'generica';
 }
 
 // ─── Catálogo de categorías ───────────────────────────────────────────────────
@@ -105,6 +110,7 @@ export function modoTarifaTaxi(): 'decreto-municipal' | 'generica' {
  */
 export function tablaTarifas(): Record<CategoriaViaje, TarifaCategoria> {
   const decreto = tarifaTaxiDelDecreto();
+  const sobre = sobreDelDecreto();
 
   return {
     TAXI: {
@@ -116,17 +122,24 @@ export function tablaTarifas(): Record<CategoriaViaje, TarifaCategoria> {
       // nosotros — y eso, en un servicio público regulado, no es un matiz.
       descripcion: decreto != null
         ? 'Servicio público con tarifa autorizada'
-        : 'Servicio público',
+        : sobre != null
+          // Dentro del rango del decreto, pero no es su casilla exacta: la
+          // tabla de sectores necesita saber en qué barrio cae cada punta.
+          ? 'Servicio público · precio dentro de la tarifa oficial'
+          : 'Servicio público',
       capacidad: 4,
       banderazo: decreto?.banderazo ?? FARE_BASE,
       porKm: decreto?.porKm ?? FARE_PER_KM,
       porMin: decreto?.porMin ?? FARE_PER_MIN,
-      minimo: decreto?.minimo ?? FARE_MINIMUM,
+      minimo: decreto?.minimo ?? sobre?.minimo ?? FARE_MINIMUM,
       redondeoA: 50,
       // Regulada: el precio no sube porque haya cola.
       admiteSurge: false,
-      regulada: decreto != null,
+      // Con la tabla de sectores cargada la tarifa TAMBIÉN es regulada: la fija
+      // la alcaldía aunque nosotros solo sepamos el rango.
+      regulada: decreto != null || sobre != null,
       tiposVehiculo: ['TAXI'],
+      sobre,
     },
     PARTICULAR: {
       categoria: 'PARTICULAR',
@@ -141,6 +154,7 @@ export function tablaTarifas(): Record<CategoriaViaje, TarifaCategoria> {
       admiteSurge: true,
       regulada: false,
       tiposVehiculo: ['PARTICULAR'],
+      sobre: null,
     },
     MOTO: {
       categoria: 'MOTO',
@@ -157,6 +171,7 @@ export function tablaTarifas(): Record<CategoriaViaje, TarifaCategoria> {
       admiteSurge: true,
       regulada: false,
       tiposVehiculo: ['MOTO'],
+      sobre: null,
     },
   };
 }
@@ -191,6 +206,8 @@ export interface PrecioCategoria {
   base: number;
   /** El multiplicador REALMENTE aplicado (1 en tarifa regulada). */
   surgeAplicado: number;
+  /** Recargos del decreto sumados a la carrera (nocturno, dominical). */
+  recargos: number;
 }
 
 function redondear(valor: number, multiplo: number): number {
@@ -210,6 +227,9 @@ export function precioCategoria(
   distanciaKm: number,
   minutos: number,
   surge = 1,
+  // Ya calculados por el que llama, que es quien tiene reloj. Este archivo
+  // sigue siendo puro: mismo argumento, mismo precio.
+  recargos = 0,
 ): PrecioCategoria {
   const km = Number.isFinite(distanciaKm) && distanciaKm > 0 ? distanciaKm : 0;
   const min = Number.isFinite(minutos) && minutos > 0 ? minutos : 0;
@@ -221,8 +241,16 @@ export function precioCategoria(
     ? Math.max(1, Number.isFinite(surge) ? surge : 1)
     : 1;
 
+  // El sobre acota la CARRERA, no el total: los recargos del decreto van por
+  // encima y por eso se suman después de acotar y de redondear. Sumarlos antes
+  // haría que el techo se comiera el recargo y el conductor lo perdiera justo
+  // en las carreras largas de domingo por la noche.
+  const carrera = acotarAlSobre(base * surgeAplicado, tarifa.sobre, km);
+  const extra = Number.isFinite(recargos) && recargos > 0 ? Math.round(recargos) : 0;
+
   return {
-    fare: redondear(base * surgeAplicado, tarifa.redondeoA),
+    fare: redondear(carrera, tarifa.redondeoA) + extra,
+    recargos: extra,
     base: redondear(base, tarifa.redondeoA),
     surgeAplicado,
   };
