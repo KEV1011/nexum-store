@@ -113,10 +113,21 @@ export async function verifyClientOtp(
 
   let user = await prisma.user.findUnique({ where: { phone: normalized } });
   if (!user) {
-    user = await prisma.user.create({ data: { phone: normalized, name: 'Usuario ZIPA' } });
+    // El nombre se deja en NULL, NO en un literal. Escribir un relleno en
+    // la columna destruye la única información que importa aquí: si el
+    // pasajero ya dijo cómo se llama o todavía no. Y el nombre acaba en la
+    // pantalla con la que el conductor decide si acepta la carrera y en la que
+    // lee a quién va a recoger — un taxista que llega y no puede llamar a
+    // nadie por su nombre es el caso que esto evita.
+    user = await prisma.user.create({ data: { phone: normalized } });
   }
 
-  const client: ClientDTO = { id: user.id, phone: user.phone, name: user.name ?? 'Usuario ZIPA' };
+  const client: ClientDTO = {
+    id: user.id,
+    phone: user.phone,
+    name: user.name ?? 'Pasajero',
+    ...(user.name ? {} : { needsName: true }),
+  };
   const payload: ClientJwtPayload = { clientId: user.id, phone: user.phone, role: 'client' };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   return { token, client };
@@ -136,7 +147,12 @@ export async function getClientNameByPhone(phone: string): Promise<string | null
 export async function getClientById(clientId: string): Promise<ClientDTO | null> {
   const user = await prisma.user.findUnique({ where: { id: clientId } });
   if (!user) return null;
-  return { id: user.id, phone: user.phone, name: user.name ?? 'Usuario ZIPA' };
+  return {
+    id: user.id,
+    phone: user.phone,
+    name: user.name ?? 'Pasajero',
+    ...(user.name ? {} : { needsName: true }),
+  };
 }
 
 // ─── Perfil del cliente ───────────────────────────────────────────────────────
@@ -147,7 +163,8 @@ export async function getClientProfile(clientId: string): Promise<ClientProfileD
   return {
     id: user.id,
     phone: user.phone,
-    name: user.name ?? 'Usuario ZIPA',
+    name: user.name ?? 'Pasajero',
+    ...(user.name ? {} : { needsName: true }),
     email: user.email ?? undefined,
     avatarUrl: user.avatarUrl ?? undefined,
     memberSince: user.createdAt.toISOString(),
@@ -160,6 +177,13 @@ export async function updateClientProfile(
 ): Promise<ClientProfileDTO> {
   const name = patch.name?.trim();
   const email = patch.email?.trim();
+  // Esta ruta pasó a ser también el registro del pasajero (la app pregunta el
+  // nombre justo después del OTP), así que la longitud mínima se comprueba
+  // aquí y no solo en la app: una inicial suelta en la pantalla del conductor
+  // no sirve para llamar a nadie.
+  if (name !== undefined && name.length > 0 && name.length < 2) {
+    throw new Error('Escribe tu nombre completo.');
+  }
   try {
     await prisma.user.update({
       where: { id: clientId },

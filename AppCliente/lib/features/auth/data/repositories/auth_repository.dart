@@ -83,13 +83,21 @@ class AuthRepository {
     final client = ClientEntity(
       id: c['id'] as String,
       phone: c['phone'] as String,
-      name: c['name'] as String? ?? 'Usuario ZIPA',
+      name: c['name'] as String? ?? 'Pasajero',
+      needsName: c['needsName'] == true,
     );
 
     // Se guarda el perfil para que checkAuth() lo restaure sin ir a la API.
     await _storage.write(
       key: _clientJsonKey,
-      value: jsonEncode({'id': client.id, 'phone': client.phone, 'name': client.name}),
+      value: jsonEncode({
+        'id': client.id,
+        'phone': client.phone,
+        'name': client.name,
+        // Sin esto, cerrar la app antes de contestar dejaría el nombre sin
+        // pedir para siempre: checkAuth() restaura de aquí, no de la API.
+        'needsName': client.needsName,
+      }),
     );
     return client;
   }
@@ -129,11 +137,35 @@ class AuthRepository {
       return ClientEntity(
         id: map['id'] as String,
         phone: map['phone'] as String,
-        name: map['name'] as String? ?? 'Usuario ZIPA',
+        name: map['name'] as String? ?? 'Pasajero',
+        needsName: map['needsName'] == true,
       );
     } catch (_) {
       return null;
     }
+  }
+
+  /// Deja escrito en la sesión guardada que el pasajero ya dijo su nombre.
+  ///
+  /// Sin esto la app volvería a preguntárselo en el siguiente arranque: quien
+  /// restaura la sesión es `getStoredClient()`, que lee de aquí y no del
+  /// servidor.
+  Future<ClientEntity> guardarNombre(ClientEntity actual, String nombre) async {
+    final actualizado = ClientEntity(
+      id: actual.id,
+      phone: actual.phone,
+      name: nombre,
+    );
+    await _storage.write(
+      key: _clientJsonKey,
+      value: jsonEncode({
+        'id': actualizado.id,
+        'phone': actualizado.phone,
+        'name': actualizado.name,
+        'needsName': false,
+      }),
+    );
+    return actualizado;
   }
 
   Future<bool> isAuthenticated() async {

@@ -486,7 +486,15 @@ export interface BusinessWsMessage {
 export interface ClientDTO {
   id: string;
   phone: string;
+  /** Para pintar. Cae a un genérico cuando el pasajero aún no lo ha dicho. */
   name: string;
+  /**
+   * El pasajero todavía no ha dicho cómo se llama, así que `name` es de
+   * relleno. La app lo pregunta UNA vez; el servidor no lo inventa ni lo
+   * guarda, porque entonces no habría forma de distinguir «no lo dijo» de
+   * «se llama así».
+   */
+  needsName?: boolean;
 }
 
 export interface ClientJwtPayload {
@@ -498,7 +506,15 @@ export interface ClientJwtPayload {
 export interface ClientProfileDTO {
   id: string;
   phone: string;
+  /** Para pintar. Cae a un genérico cuando el pasajero aún no lo ha dicho. */
   name: string;
+  /**
+   * Mismo significado que en `ClientDTO`: el nombre que va arriba es de
+   * relleno. La pantalla de Cuenta lo usa para invitar a ponerlo y, sobre
+   * todo, para NO precargar el relleno en el campo de edición: quien pulsa
+   * «Guardar» sin mirar se quedaría llamándose «Pasajero».
+   */
+  needsName?: boolean;
   email?: string;
   avatarUrl?: string;
   memberSince: string;

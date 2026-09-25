@@ -991,7 +991,7 @@ router.post('/rides/request', clientAuthMiddleware, async (req, res) => {
     if (dto[f] === undefined) { res.status(400).json({ success: false, error: `${f} is required` }); return; }
   }
   const client = await getClientById(req.clientId!);
-  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Usuario ZIPA';
+  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero';
   try {
     const ride = await createRideRequest(req.clientId!, clientName, req.clientPhone!, {
       serviceType: dto['serviceType'] as never,

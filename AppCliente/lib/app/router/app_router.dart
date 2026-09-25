@@ -16,6 +16,8 @@ import 'package:nexum_client/features/addresses/presentation/screens/'
 import 'package:nexum_client/features/auth/presentation/providers/'
     'auth_provider.dart';
 import 'package:nexum_client/features/auth/presentation/screens/'
+    'nombre_screen.dart';
+import 'package:nexum_client/features/auth/presentation/screens/'
     'otp_screen.dart';
 import 'package:nexum_client/features/auth/presentation/screens/'
     'phone_input_screen.dart';
@@ -75,6 +77,9 @@ abstract final class AppRoutes {
   static const String onboarding = '/onboarding';
   static const String login = '/login';
   static const String otp = '/otp';
+
+  /// Último paso del registro: el nombre con el que lo verá su conductor.
+  static const String nombre = '/nombre';
 
   /// Entrada desde el enlace de WhatsApp: `#/entrar?c=<código>`.
   static const String entrar = '/entrar';
@@ -154,6 +159,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: OtpScreen(phone: state.extra as String? ?? ''),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.nombre,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: NombreScreen(seguirAPedirViaje: state.extra == true),
         ),
       ),
       // Enlace de WhatsApp. El código llega como query DETRÁS del `#`, que es

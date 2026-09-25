@@ -52,6 +52,18 @@ class _EntrarConEnlaceScreenState extends ConsumerState<EntrarConEnlaceScreen> {
       return;
     }
 
+    // Cuenta recién creada y sin nombre en el perfil de WhatsApp: se pregunta
+    // antes de entrar, porque es lo que el conductor lee al ir a recogerlo. Si
+    // venía con ubicación, la pantalla del nombre sigue sola a pedir el viaje.
+    final falta = ref.read(currentClientProvider)?.needsName ?? false;
+    if (falta) {
+      if (r.origen != null) {
+        ref.read(origenSugeridoProvider.notifier).state = r.origen;
+      }
+      context.go(AppRoutes.nombre, extra: r.origen != null);
+      return;
+    }
+
     // Sin punto de recogida —escribió en vez de tocar el botón— se entra al
     // inicio de siempre y elige el servicio que quiera.
     if (r.origen == null) {
