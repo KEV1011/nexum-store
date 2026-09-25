@@ -36,7 +36,7 @@ import {
 // arrancar el proceso, y publicar una versión nueva después de configurar el
 // correo no cambiaría nada.
 
-const V1 = '2026-07-19';
+const V1 = '2026-09-25';
 
 function textoTerminos(version: string): string {
   const c = contactos();
@@ -115,24 +115,52 @@ artificial para el emparejamiento de servicios, la estimación de rutas y
 tarifas y la detección de fraudes y anomalías de seguridad. Puedes solicitar
 revisión humana de decisiones automatizadas a través de soporte.
 
-4. COMPARTIR DATOS. Compartimos lo mínimo necesario con: el conductor/cliente
-de tu servicio (nombre y referencia de contacto protegida), la empresa de
-transporte cuando el servicio lo presta una flota, autoridades cuando la ley
-lo exige, y proveedores tecnológicos (almacenamiento, notificaciones,
-verificación de identidad y antecedentes) bajo contratos de confidencialidad.
+4. CON QUIÉN COMPARTIMOS TUS DATOS.
+ • Las partes de tu servicio: el conductor o el cliente ve tu nombre y una
+   referencia de contacto protegida (el número va enmascarado); la empresa de
+   transporte ve el servicio cuando lo presta su flota, y el comercio ve tu
+   pedido.
+ • Autoridades, cuando la ley lo exige.
+ • Proveedores tecnológicos que tratan datos por cuenta nuestra, nombrados uno
+   a uno:
+   - Google (Maps Platform): direcciones y coordenadas, para buscar
+     direcciones, calcular rutas y mostrar mapas.
+   - Google Firebase (Cloud Messaging): el identificador de notificaciones de
+     tu dispositivo, para avisarte del estado de tu servicio.
+   - Meta Platforms (WhatsApp Business Cloud API): tu número y los mensajes
+     —incluida la ubicación que compartas— si pides el servicio por WhatsApp.
+   - Twilio: tu número, para enviarte el código de verificación por SMS.
+   - Wompi (Bancolombia): datos del pago. ZIPA no almacena números de tarjeta.
+   - Amazon Web Services o Cloudflare R2: almacenamiento de los documentos y
+     fotos que subes.
+   - Render y Vercel: alojamiento de la plataforma y de la base de datos.
+   - Proveedores de verificación de identidad y antecedentes, cuando el
+     servicio esté activado.
 
-5. TUS DERECHOS (HABEAS DATA). Conocer, actualizar, rectificar y suprimir tus
-datos, y revocar la autorización, a través del canal de soporte. Conservamos
-los datos el tiempo necesario para las finalidades descritas y las
-obligaciones legales (p. ej. registros de viajes).
+5. TRANSFERENCIA INTERNACIONAL. Varios de esos proveedores operan servidores
+fuera de Colombia (principalmente en Estados Unidos). Al aceptar esta política
+autorizas esa transferencia y transmisión internacional de tus datos, conforme
+al artículo 26 de la Ley 1581 de 2012, con proveedores que mantienen niveles
+adecuados de protección y contratos de tratamiento de datos.
 
-6. SEGURIDAD. Aplicamos medidas técnicas y organizativas razonables:
+6. TUS DERECHOS (HABEAS DATA). Puedes conocer, actualizar, rectificar y
+suprimir tus datos, y revocar la autorización.
+ • Borrado desde la app: Cuenta → Eliminar mi cuenta, sin escribirle a nadie.
+ • También desde la web, en la página de eliminación de cuenta, o por el canal
+   de atención indicado arriba.
+El borrado elimina tu perfil y tus datos de contacto. Conservamos, ya sin
+identificarte, los registros de viajes, pagos y facturación que la ley
+colombiana obliga a guardar (materia contable y tributaria), y no se puede
+borrar una cuenta con un servicio en curso o con saldos pendientes: primero
+hay que cerrarlos.
+
+7. SEGURIDAD. Aplicamos medidas técnicas y organizativas razonables:
 comunicación cifrada, números de teléfono enmascarados entre las partes y
 control de acceso interno.
 
-7. MENORES. La plataforma no está dirigida a menores de edad.
+8. MENORES. La plataforma no está dirigida a menores de edad.
 
-8. CAMBIOS. Publicaremos las nuevas versiones en la app y la web; el registro
+9. CAMBIOS. Publicaremos las nuevas versiones en la app y la web; el registro
 exigirá re-aceptación cuando la versión cambie.`;
 }
 
