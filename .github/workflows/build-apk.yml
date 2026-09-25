@@ -104,7 +104,7 @@ jobs:
         run: >
           bash tools/preparar-google-services.sh
           GOOGLE_SERVICES_BASE64
-          com.nexum.driver_app
+          com.zipa.conductor
           AppTransport/android/app/google-services.json
 
       # ── 6. Firma release estable (secrets ANDROID_KEYSTORE_*) ───────────────

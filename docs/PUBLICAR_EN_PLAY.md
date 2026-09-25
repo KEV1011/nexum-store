@@ -8,8 +8,8 @@ Dos apps distintas, dos fichas distintas en Play Console:
 
 | App | `applicationId` | Carpeta |
 |---|---|---|
-| ZIPA (pasajero) | `com.nexum.nexum_client` | `AppCliente/` |
-| ZIPA Conductor | `com.nexum.driver_app` | `AppTransport/` |
+| ZIPA (pasajero) | `com.zipa.cliente` | `AppCliente/` |
+| ZIPA Conductor | `com.zipa.conductor` | `AppTransport/` |
 
 ---
 

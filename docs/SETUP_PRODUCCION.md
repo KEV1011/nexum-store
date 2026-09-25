@@ -140,7 +140,7 @@ Abrir en el navegador: `https://nexum-api-trxr.onrender.com/geo/health`
 1. Ir a https://console.firebase.google.com
 2. Add project → "Nexum Driver" → continuar (puedes desactivar Analytics)
 3. Una vez creado: click en el ícono Android
-4. **Android package name:** `com.nexum.driver_app`
+4. **Android package name:** `com.zipa.conductor`
 5. **App nickname:** `Nexum Driver`
 6. **Debug signing certificate SHA-1:** ejecutar:
    ```
