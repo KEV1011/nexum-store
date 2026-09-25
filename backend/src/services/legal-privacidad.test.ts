@@ -32,6 +32,11 @@ function fuente(rel: string): string {
   return readFileSync(join(RAIZ, rel), 'utf8');
 }
 
+/** El inventario que alimenta el formulario de Seguridad de los datos. */
+function inventario(): string {
+  return readFileSync(join(RAIZ, '..', 'docs', 'PRIVACIDAD_DATOS.md'), 'utf8');
+}
+
 /** Proveedor integrado, el nombre que la política debe usar, y la prueba de que sigue vivo. */
 const TERCEROS: ReadonlyArray<{
   nombre: string;
@@ -120,5 +125,28 @@ describe('la política de privacidad no puede quedarse corta', () => {
 
   it('cita la ley colombiana que la rige', () => {
     expect(politica()).toContain('Ley 1581 de 2012');
+  });
+
+  it('el inventario de Play nombra a los MISMOS terceros que la política', () => {
+    // Se separaron una vez: la política se corrigió y el inventario —que es lo
+    // que se copia al formulario de Seguridad de los datos— se quedó con Wompi
+    // como único tercero. Dos documentos del mismo trámite diciendo cosas
+    // distintas es peor que uno incompleto.
+    const doc = inventario();
+    const faltan = TERCEROS.filter((t) => !doc.includes(t.enLaPolitica));
+    expect(faltan.map((t) => t.nombre)).toEqual([]);
+  });
+
+  it('el inventario NO manda marcar ubicación en segundo plano', () => {
+    // El manifiesto del conductor no declara ACCESS_BACKGROUND_LOCATION, así
+    // que marcarlo en la ficha obliga a justificar un permiso que la app no
+    // pide — y Play cruza las dos cosas. El inventario lo decía y era un
+    // rechazo esperando.
+    expect(inventario()).toContain('No marques «ubicación en segundo plano»');
+    const manifiesto = readFileSync(
+      join(RAIZ, '..', 'AppTransport', 'android', 'app', 'src', 'main', 'AndroidManifest.xml'),
+      'utf8',
+    );
+    expect(manifiesto).not.toMatch(/<uses-permission[^>]*ACCESS_BACKGROUND_LOCATION/);
   });
 });
