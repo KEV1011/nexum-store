@@ -41,6 +41,7 @@ import 'package:nexum_driver/shared/models/oferta_mapper.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
+import 'package:nexum_driver/shared/widgets/lupa_vidrio.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
@@ -1267,45 +1268,14 @@ class _GlassNavBar extends StatelessWidget {
                   // Lupa de vidrio (referencia Rappi/iOS liquid glass) sobre el
                   // ítem activo. Columnas visuales: [ítem0, Conectar, resto].
                   Builder(builder: (context) {
-                    final cols = items.length + 1;
+                    // Columnas visuales: [ítem0, Conectar, resto]. El botón
+                    // central ocupa una, así que el índice del ítem no es la
+                    // columna: hay que correrlo una posición a partir del
+                    // segundo. (66 de barra − 52 de píldora) / 2 = 7.
                     final activeIdx = items.indexWhere((i) => i.active);
-                    final visualCol = activeIdx <= 0 ? 0 : activeIdx + 1;
-                    return AnimatedAlign(
-                      duration: const Duration(milliseconds: 420),
-                      curve: Curves.easeOutBack,
-                      alignment: Alignment(
-                        cols <= 1 ? 0 : -1 + (2 * visualCol / (cols - 1)),
-                        0,
-                      ),
-                      child: FractionallySizedBox(
-                        widthFactor: 1 / cols,
-                        // Píldora y no círculo: dentro va el ícono con su
-                        // etiqueta debajo, y en la parte baja de un círculo no
-                        // cabe una palabra larga — se salía por los lados.
-                        // (66 de barra − 52 de píldora) / 2 = 7.
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 7),
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white.withValues(alpha: 0.22),
-                                  Colors.white.withValues(alpha: 0.05),
-                                ],
-                              ),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.30),
-                                width: 1.2,
-                              ),
-                            ),
-                            child: const SizedBox.expand(),
-                          ),
-                        ),
-                      ),
+                    return LupaVidrio(
+                      columnas: items.length + 1,
+                      activa: activeIdx <= 0 ? activeIdx : activeIdx + 1,
                     );
                   }),
                   Row(
@@ -1384,25 +1354,33 @@ class _GlassNavBar extends StatelessWidget {
         item.onTap();
       },
       borderRadius: BorderRadius.circular(30),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            item.icon,
-            size: 23,
-            color: item.active ? AppColors.primary : const Color(0xFF94A3B8),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            item.label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: item.active ? FontWeight.w800 : FontWeight.w600,
-              color:
-                  item.active ? AppColors.primary : const Color(0xFF94A3B8),
+      // El contenido acompaña a la lupa con un empujón mínimo, igual que en la
+      // app del cliente: las dos barras son la misma pieza y moverse distinto
+      // se nota al pasar de una app a la otra.
+      child: AnimatedScale(
+        scale: item.active ? 1.06 : 1,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              item.icon,
+              size: 23,
+              color: item.active ? AppColors.primary : const Color(0xFF94A3B8),
             ),
-          ),
-        ],
+            const SizedBox(height: 3),
+            Text(
+              item.label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: item.active ? FontWeight.w800 : FontWeight.w600,
+                color:
+                    item.active ? AppColors.primary : const Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

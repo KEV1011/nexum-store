@@ -21,6 +21,7 @@ import 'package:nexum_client/features/transport/presentation/providers/'
     'transport_provider.dart';
 import 'package:nexum_client/features/transport/presentation/screens/'
     'transport_home_screen.dart';
+import 'package:nexum_client/shared/widgets/lupa_vidrio.dart';
 
 /// Contenedor principal con barra de navegación inferior flotante de vidrio
 /// (estilo Rappi/Instagram): píldora translúcida con blur, el contenido se
@@ -164,49 +165,8 @@ class _GlassNavBar extends StatelessWidget {
                   // se desvanece en vez de irse al primer ítem: iluminar
                   // «Inicio» estando en otra pantalla es mentir sobre dónde
                   // está uno.
-                  AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    opacity: activo < 0 ? 0 : 1,
-                    child: AnimatedAlign(
-                      duration: const Duration(milliseconds: 420),
-                      curve: Curves.easeOutBack,
-                      alignment: Alignment(
-                        items.length <= 1 || activo < 0
-                            ? 0
-                            : -1 + (2 * activo / (items.length - 1)),
-                        0,
-                      ),
-                      child: FractionallySizedBox(
-                        widthFactor: 1 / items.length,
-                        // Padding + SizedBox.expand en vez de Center+Container
-                        // sin hijo: así el alto y los márgenes son explícitos y
-                        // no dependen de cómo resuelve Container un tamaño sin
-                        // contenido. (66 de barra − 52 de píldora) / 2 = 7.
-                        child: Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white.withValues(alpha: 0.22),
-                                  Colors.white.withValues(alpha: 0.05),
-                                ],
-                              ),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.30),
-                                width: 1.2,
-                              ),
-                            ),
-                            child: const SizedBox.expand(),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // (66 de barra − 52 de píldora) / 2 = 7 de margen vertical.
+                  LupaVidrio(columnas: items.length, activa: activo),
                   Row(
                     children: [
                       for (var i = 0; i < items.length; i++)
@@ -242,22 +202,30 @@ class _GlassNavBar extends StatelessWidget {
     return InkWell(
       onTap: () => onSelect(i),
       borderRadius: BorderRadius.circular(30),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          icono,
-          const SizedBox(height: 3),
-          Text(
-            item.label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-              color: color,
+      // El contenido acompaña a la lupa con un empujón mínimo. 1,06 y no más:
+      // por encima de eso la etiqueta de diez puntos empieza a reflowear y la
+      // fila entera parece moverse.
+      child: AnimatedScale(
+        scale: active ? 1.06 : 1,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            icono,
+            const SizedBox(height: 3),
+            Text(
+              item.label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                color: color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
