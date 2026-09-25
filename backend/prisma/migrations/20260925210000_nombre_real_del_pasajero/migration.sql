@@ -1,0 +1,18 @@
+-- El pasajero por fin dice cómo se llama, y el relleno que escribíamos por él
+-- deja de ocupar esa columna.
+--
+-- Hasta hoy, `verifyClientOtp` creaba la cuenta con el literal 'Usuario ZIPA'
+-- porque la app cliente NO tiene registro: se entra con teléfono y código y se
+-- está dentro. El efecto no se quedaba en la pantalla de la cuenta — ese
+-- nombre es el que el conductor lee en la oferta y en «a quién recojo», el que
+-- va en el manifiesto de un intermunicipal y el que ve el negocio en su
+-- pedido. O sea que todos los pasajeros de la plataforma se llamaban igual.
+--
+-- Con el literal escrito en la columna no hay forma de distinguir «todavía no
+-- lo ha dicho» de «se llama así», que es justo lo que hace falta para poder
+-- preguntárselo una vez y no volver a molestarle. Por eso se BORRA el relleno
+-- en vez de dejarlo: no lo escribió ninguna persona, lo escribimos nosotros.
+--
+-- Las cuentas que SÍ tienen un nombre de verdad (quien lo editó con el lápiz
+-- de Cuenta) no se tocan.
+UPDATE "users" SET "name" = NULL WHERE "name" = 'Usuario ZIPA';

@@ -183,3 +183,71 @@ class CondicionesTiquete extends StatelessWidget {
     );
   }
 }
+
+/// Cómo cobra la empresa el pasaje.
+///
+/// El texto lo redacta el SERVIDOR (`lib/cobro-pasaje.ts`), igual que las
+/// condiciones: si lo escribiera cada lado, la empresa creería publicar una
+/// cosa y aquí saldría otra.
+///
+/// Se pinta SIEMPRE, incluso sin declarar, porque la línea que manda entonces
+/// —«acuérdalo con la empresa»— es justo la que hoy falta: hasta ahora la
+/// reserva terminaba sin decir una palabra sobre el dinero.
+class FormaDePago extends StatelessWidget {
+  const FormaDePago({required this.lineas, super.key});
+
+  final List<String> lineas;
+
+  @override
+  Widget build(BuildContext context) {
+    if (lineas.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.surfaceVariantColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.payments_outlined, size: 15, color: context.textSecondaryColor),
+              const SizedBox(width: 6),
+              Text(
+                'Cómo se paga',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final l in lineas)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('· ', style: TextStyle(color: context.textSecondaryColor)),
+                  Expanded(
+                    child: Text(
+                      l,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.textSecondaryColor,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

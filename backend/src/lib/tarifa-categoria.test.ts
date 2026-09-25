@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   tablaTarifas,
   tarifaDe,
@@ -44,7 +44,7 @@ describe('tarifa del taxi cargada desde el decreto', () => {
     expect(taxi.porKm).toBe(1200);
     expect(taxi.minimo).toBe(7000);
     expect(taxi.regulada).toBe(true);
-    expect(modoTarifaTaxi()).toBe('decreto-municipal');
+    expect(modoTarifaTaxi()).toBe('decreto-por-km');
   });
 
   it('sin decreto NO se dice «tarifa autorizada» al pasajero', () => {
@@ -179,5 +179,64 @@ describe('correspondencia categoría ↔ servicio', () => {
     expect(tarifaDe('taxi')?.categoria).toBe('TAXI');
     expect(tarifaDe('helicoptero')).toBeNull();
     expect(tarifaDe(null)).toBeNull();
+  });
+});
+
+describe('decretos que tarifan por SECTORES y no por kilómetro', () => {
+  // El de Pamplona (049 de 2023) es así: no tiene banderazo ni valor por km,
+  // solo una tabla de barrios con precios fijos, la carrera mínima y dos
+  // recargos. Con el modelo anterior esa tarifa NO se podía cargar y el taxi
+  // se cotizaba con la fórmula genérica, o sea con un precio de Nexum.
+  const VARS_SOBRE = ['TAXI_CARRERA_MINIMA_COP', 'TAXI_CARRERA_MAXIMA_COP'];
+  const previo: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const v of VARS_SOBRE) { previo[v] = process.env[v]; delete process.env[v]; }
+    delete process.env['TAXI_BANDERAZO_COP'];
+    delete process.env['TAXI_POR_KM_COP'];
+  });
+  afterEach(() => {
+    for (const v of VARS_SOBRE) {
+      if (previo[v] === undefined) delete process.env[v];
+      else process.env[v] = previo[v];
+    }
+  });
+
+  function pamplona() {
+    process.env['TAXI_CARRERA_MINIMA_COP'] = '5000';
+    process.env['TAXI_CARRERA_MAXIMA_COP'] = '9500';
+  }
+
+  it('se reconoce como tarifa del decreto, no como genérica', () => {
+    pamplona();
+    expect(modoTarifaTaxi()).toBe('decreto-por-zonas');
+    expect(tablaTarifas().TAXI.regulada).toBe(true);
+  });
+
+  it('el precio no puede pasar de la fila más cara de la tabla', () => {
+    pamplona();
+    const taxi = tablaTarifas().TAXI;
+    // Un trayecto urbano largo que la fórmula genérica cotizaría muy por
+    // encima de lo que autoriza cualquier sector.
+    expect(precioCategoria(taxi, 25, 50).fare).toBe(9500);
+  });
+
+  it('ni bajar de la carrera mínima', () => {
+    pamplona();
+    expect(precioCategoria(tablaTarifas().TAXI, 0.3, 2).fare).toBe(5000);
+  });
+
+  it('los recargos van POR ENCIMA del techo, no dentro', () => {
+    pamplona();
+    const taxi = tablaTarifas().TAXI;
+    // Carrera tope + recargo nocturno + dominical.
+    const r = precioCategoria(taxi, 25, 50, 1, 2000);
+    expect(r.fare).toBe(11500);
+    expect(r.recargos).toBe(2000);
+  });
+
+  it('sin el par completo se sigue cayendo a la genérica', () => {
+    process.env['TAXI_CARRERA_MINIMA_COP'] = '5000';
+    expect(modoTarifaTaxi()).toBe('generica');
   });
 });

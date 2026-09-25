@@ -11,11 +11,24 @@ vi.mock('../lib/prisma', () => ({ prisma: mockPrisma }));
 
 import { getDriverBalance, requestPayout, PayoutError } from './payout.service';
 
+/**
+ * `earned` es lo que GANÓ; `retenido` es lo que ZIPA de verdad recaudó.
+ *
+ * Antes eran el mismo número y de ahí salía el saldo retirable — ése era el
+ * defecto: un servicio en efectivo sumaba «disponible» aunque el conductor ya
+ * tuviera la plata en el bolsillo. Por defecto se asume que todo lo ganado se
+ * cobró en línea, para que las pruebas que no hablan de esto sigan leyéndose
+ * igual; las que sí, lo pasan aparte.
+ */
 function setupBalance(
   earned: number,
   payouts: Array<{ amount: number; status: string }> = [],
+  retenido: number = earned,
+  debe: number = 0,
 ): void {
-  mockPrisma.driverEarning.aggregate.mockResolvedValue({ _sum: { netEarning: earned } });
+  mockPrisma.driverEarning.aggregate.mockResolvedValue({
+    _sum: { netEarning: earned, platformHeld: retenido, driverOwes: debe },
+  });
   mockPrisma.payout.findMany.mockResolvedValue(payouts);
   mockPrisma.driver.findUnique.mockResolvedValue({
     bankName: 'Bancolombia',
@@ -48,6 +61,34 @@ describe('getDriverBalance', () => {
     const b = await getDriverBalance('d1');
     expect(b.available).toBe(0);
   });
+
+  // ── Lo que esta tanda corrige ─────────────────────────────────────────────
+  // El saldo retirable salía de `netEarning`, que se escribe en TODO servicio
+  // completado sin mirar quién cobró. En efectivo eso le debía al conductor una
+  // plata que ya tenía encima.
+
+  it('lo cobrado EN EFECTIVO no deja saldo retirable', async () => {
+    // Ganó 100.000 conduciendo, pero todo lo cobró él: no recaudamos nada.
+    setupBalance(100000, [], 0, 15000);
+    const b = await getDriverBalance('d1');
+    expect(b.totalEarned).toBe(100000);
+    expect(b.available).toBe(0);
+    expect(b.owed).toBe(15000);
+  });
+
+  it('la deuda se compensa contra lo que sí retuvimos', async () => {
+    setupBalance(100000, [], 50000, 12000);
+    const b = await getDriverBalance('d1');
+    expect(b.available).toBe(38000);
+    expect(b.owed).toBe(12000);
+  });
+
+  it('la deuda se VE aunque el disponible quede en cero', async () => {
+    setupBalance(60000, [], 0, 9000);
+    const b = await getDriverBalance('d1');
+    expect(b.available).toBe(0);
+    expect(b.owed).toBe(9000);
+  });
 });
 
 describe('requestPayout', () => {
@@ -59,6 +100,13 @@ describe('requestPayout', () => {
   it('rechaza un monto mayor al saldo disponible', async () => {
     setupBalance(30000);
     await expect(requestPayout('d1', { amount: 50000 })).rejects.toBeInstanceOf(PayoutError);
+  });
+
+  it('un conductor 100 % de efectivo no puede retirar nada', async () => {
+    // El caso concreto que el defecto permitía: cincuenta carreras en efectivo
+    // daban ~$255.000 «disponibles» de plata ya cobrada.
+    setupBalance(255000, [], 0, 45000);
+    await expect(requestPayout('d1', { amount: 25000 })).rejects.toBeInstanceOf(PayoutError);
   });
 
   it('crea el retiro cuando es válido', async () => {

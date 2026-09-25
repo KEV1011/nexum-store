@@ -845,8 +845,18 @@ model DriverEarning {
   date       DateTime @db.Date
   grossFare  Float
   commission Float
+  /// Lo que GANÓ ese día, cobrara quien cobrara. Es la cifra del panel de
+  /// ganancias, y NO es lo que puede retirar: ver las dos de abajo.
   netEarning Float
   tripCount  Int
+  /// Lo que ZIPA recaudó y tiene que girarle (solo los servicios pagados en
+  /// línea). Antes se usaba `netEarning` para esto, y como se escribía también
+  /// en los viajes en efectivo, la billetera le debía al conductor una plata
+  /// que él ya tenía en el bolsillo. Ver `lib/saldo-conductor.ts`.
+  platformHeld Float  @default(0)
+  /// La comisión de los servicios que cobró él de su mano (efectivo, Nequi,
+  /// transferencia): eso NO se le debe, se le debe A NOSOTROS.
+  driverOwes   Float  @default(0)
   createdAt  DateTime @default(now())
 
   driver Driver @relation(fields: [driverId], references: [id])
@@ -1054,9 +1064,36 @@ model PooledTrip {
   driverName         String
   driverPhone        String
   vehicleDescription String
+  /// Intermunicipal (lo de siempre) o puesto de taxi urbano. El default deja
+  /// intactas todas las salidas ya publicadas.
+  kind               PooledKind        @default(INTERCITY)
   // Slug del municipio (ver model Municipality).
+  //
+  // En una salida URBANA los dos guardan el MISMO slug: el trayecto es dentro
+  // de la ciudad y los extremos de verdad son `originLabel`/`destLabel` con
+  // sus coordenadas. Se conserva la ciudad aquí para que el índice y el filtro
+  // por plaza sigan valiendo sin una columna nueva.
   origin             String
   destination        String
+  /// Cómo se llama la ruta urbana («Terminal → Universidad»). NULL en las
+  /// intermunicipales, donde el nombre son las dos ciudades.
+  routeName          String?
+  /// Los extremos de la ruta urbana, tal como los escribió el conductor.
+  originLabel        String?
+  destLabel          String?
+  /// Dónde caen esos extremos. Se geocodifican al publicar para poder medir la
+  /// carrera sola y dibujar el trayecto; quedan NULL si no se pudieron
+  /// resolver, y entonces la app no pinta mapa en vez de pintar uno falso.
+  originLat          Float?
+  originLng          Float?
+  destLat            Float?
+  destLng            Float?
+  /// Lo que costaría ese mismo trayecto en una carrera sola, SELLADO al
+  /// publicar. Es de donde salió el tope del puesto, así que guardarlo es lo
+  /// que permite auditar el precio después y decirle al pasajero cuánto se
+  /// ahorra. Si la tarifa del decreto cambia mañana, esta salida siguió la de
+  /// su día.
+  soloFareRef        Float?
   departureTime      DateTime
   totalSeats         Int
   /// Con qué vehículo viaja, para dibujar el mapa de sillas. NULL = salida sin
@@ -1114,6 +1151,9 @@ model PooledTrip {
   @@index([status])
   @@index([origin, destination])
   @@index([operatorId])
+  // La búsqueda del pasajero siempre filtra por tipo: si no lo hiciera, los
+  // puestos urbanos saldrían mezclados en «ver todas las salidas».
+  @@index([kind, origin, status])
   @@map("pooled_trips")
 }
 
@@ -1174,6 +1214,11 @@ model SeatBooking {
   /// no hay comisión de la que descontarlo (ver `lib/cupon-pasaje.ts`).
   discount       Float    @default(0)
   promoCode      String?
+  /// Quién viaja en cada silla: `[{tipoDoc,documento,nombre}]`, uno por
+  /// puesto. Ver `lib/pasajeros-tiquete.ts`. Es la planilla con la que la
+  /// empresa responde por quién iba a bordo. NULL en las reservas hechas desde
+  /// una app que aún no los manda: se muestra como «sin datos», no se inventa.
+  passengers     Json?
 
   trip  PooledTrip       @relation(fields: [tripId], references: [id])
   user  User             @relation(fields: [userId], references: [id])
@@ -1192,6 +1237,16 @@ enum PooledTripStatus {
   DEPARTED
   COMPLETED
   CANCELLED
+}
+
+/// De qué tipo es la salida por puestos.
+///
+/// INTERCITY: de un municipio a otro (lo que existía). URBANO: el puesto de
+/// taxi dentro de una ciudad — los dos extremos son puntos, no municipios, y
+/// la tarifa se mide contra la carrera sola (ver `lib/puesto-urbano.ts`).
+enum PooledKind {
+  INTERCITY
+  URBANO
 }
 
 enum SeatBookingStatus {
@@ -1276,6 +1331,13 @@ model Operator {
   /// publicado, y la app lo dice — no se inventa una política por defecto,
   /// que sería una condición reclamable que la empresa nunca fijó.
   policies              Json?
+  /// Cómo cobra la empresa el pasaje: `{medios:[...], detalle?}`. Ver
+  /// `lib/cobro-pasaje.ts`. La plata NO pasa por ZIPA —esto es lo que la
+  /// empresa declara, publicado tal cual—, y NULL significa que no lo ha
+  /// publicado: la app lo dice en vez de suponer «efectivo al abordar», que
+  /// dejaría a la gente sin efectivo en la puerta del bus de una empresa que
+  /// cobra por transferencia.
+  paymentInfo           Json?
   /// Reputación REAL de la empresa, promediada de sus servicios calificados
   /// (salidas programadas + intermunicipales). `null` mientras nadie la haya
   /// calificado: la app dice «Nuevo». Nunca un 5,0 de fábrica — ese error ya

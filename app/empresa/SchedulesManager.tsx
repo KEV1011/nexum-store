@@ -31,6 +31,8 @@ interface SeatBookingRow {
   discount?: number
   promoCode?: string
   amountToPay?: number
+  /** Quién viaja en cada silla. Ausente en las reservas anteriores al campo. */
+  passengers?: { tipoDoc: string; documento: string; nombre: string }[]
 }
 
 interface TripStop { name: string; order: number }
@@ -919,6 +921,26 @@ export default function SchedulesManager({ api }: { api: OperatorApi }) {
                                 ) : null}
                               </span>
                             ) : null}
+                            {/* La planilla: quién viaja en cada silla, con su
+                                documento. Sin ella el conductor sube con un
+                                solo nombre para cuatro personas y no puede
+                                contrastar con nada. */}
+                            {b.passengers && b.passengers.length > 0 ? (
+                              <span className="block text-slate-500">
+                                {b.passengers.map((p) => (
+                                  <span key={`${p.tipoDoc}-${p.documento}`} className="block">
+                                    {p.tipoDoc} {p.documento} · {p.nombre}
+                                  </span>
+                                ))}
+                              </span>
+                            ) : (
+                              // Se dice, no se rellena con el nombre de la
+                              // cuenta: eso inventaría pasajeros que nadie
+                              // declaró.
+                              <span className="block text-amber-700">
+                                Sin datos de los pasajeros (reserva anterior a este campo)
+                              </span>
+                            )}
                             {b.notes ? <span className="block text-slate-400">Nota: {b.notes}</span> : null}
                           </li>
                         ))}

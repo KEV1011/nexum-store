@@ -233,6 +233,9 @@ class _ProfileHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(clientProfileProvider);
+    // Mientras no lo haya dicho, aquí NO se pinta el relleno: se le invita a
+    // ponerlo. Su conductor lee ese nombre al ir a recogerlo.
+    final faltaNombre = profile?.needsName ?? client?.needsName ?? false;
     final name = profile?.name ?? client?.name ?? 'Cliente ZIPA';
     final phone = profile?.phone ?? client?.phone ?? '';
     final avatarUrl = profile?.avatarUrl;
@@ -283,17 +286,20 @@ class _ProfileHeader extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                name,
-                style: const TextStyle(
+                faltaNombre ? 'Añade tu nombre' : name,
+                style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
+                  color: faltaNombre ? AppColors.primary : null,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
               Text(
-                phone,
+                faltaNombre
+                    ? 'Tu conductor lo verá para saber a quién recoge'
+                    : phone,
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
@@ -304,7 +310,9 @@ class _ProfileHeader extends ConsumerWidget {
           ),
         ),
         IconButton(
-          onPressed: () => _editName(context, ref, name),
+          // Con el nombre sin poner, el campo nace VACÍO: precargar «Pasajero»
+          // convertiría un «Guardar» distraído en el nombre de la cuenta.
+          onPressed: () => _editName(context, ref, faltaNombre ? '' : name),
           tooltip: 'Editar nombre',
           icon: Icon(
             Icons.edit_rounded,

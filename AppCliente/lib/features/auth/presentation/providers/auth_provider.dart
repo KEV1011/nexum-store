@@ -130,6 +130,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return (motivo: null, origen: result.origen);
   }
 
+  /// Refleja en la sesión el nombre que el pasajero acaba de poner.
+  ///
+  /// Lo guarda el perfil (`PUT /client/profile`); esto solo actualiza la copia
+  /// local para que la app deje de preguntarlo y el saludo del inicio deje de
+  /// decir «Pasajero».
+  Future<void> nombrePuesto(String nombre) async {
+    final s = state;
+    if (s is! AuthAuthenticated) return;
+    state = AuthAuthenticated(
+      client: await _repository.guardarNombre(s.client, nombre),
+    );
+  }
+
   Future<void> logout() async {
     await _repository.logout();
     state = const AuthUnauthenticated();

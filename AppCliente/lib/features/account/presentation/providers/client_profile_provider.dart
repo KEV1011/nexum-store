@@ -13,6 +13,7 @@ class ClientProfile {
     this.email,
     this.avatarUrl,
     this.memberSince,
+    this.needsName = false,
   });
 
   factory ClientProfile.fromJson(Map<String, dynamic> json) {
@@ -22,8 +23,16 @@ class ClientProfile {
       email: json['email'] as String?,
       avatarUrl: json['avatarUrl'] as String?,
       memberSince: json['memberSince'] as String?,
+      needsName: json['needsName'] == true,
     );
   }
+
+  /// El pasajero aún no ha dicho cómo se llama: `name` es de relleno.
+  ///
+  /// Lo necesita la pantalla de Cuenta para dos cosas: invitarle a ponerlo, y
+  /// NO precargar el relleno en el campo de edición — quien pulsa «Guardar»
+  /// sin mirar se quedaría llamándose «Pasajero».
+  final bool needsName;
 
   final String name;
   final String phone;

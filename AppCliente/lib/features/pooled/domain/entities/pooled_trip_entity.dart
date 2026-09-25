@@ -252,13 +252,37 @@ class PooledTripEntity {
     this.operatorRating,
     this.operatorRatingCount,
     this.operatorPolicies = const [],
+    this.operatorPayment = const [],
     this.amenities = const [],
     this.boardingPoints = const [],
     this.doorToDoor = true,
     this.stops = const [],
     this.myBooking,
     this.seatMap,
+    this.esUrbano = false,
+    this.routeName,
+    this.savingsPerSeat,
   });
+
+  /// Puesto de taxi dentro de la ciudad, no salida intermunicipal.
+  ///
+  /// En una urbana el origen y el destino son el MISMO municipio, así que
+  /// pintar «Pamplona → Pamplona» se leería como un error: el nombre de la
+  /// ruta está en [routeName].
+  final bool esUrbano;
+
+  /// «Terminal → Universidad». Solo en las urbanas.
+  final String? routeName;
+
+  /// Cuánto se ahorra frente a tomar el taxi solo, ya calculado por el
+  /// servidor. Null = no hay con qué compararlo, y entonces no se promete
+  /// ningún ahorro.
+  final double? savingsPerSeat;
+
+  /// Cómo se llama esta salida en una línea.
+  String get tituloRuta => esUrbano
+      ? (routeName ?? 'Viaje por puestos')
+      : '${origin.displayName} → ${destination.displayName}';
 
   /// Mapa de sillas. Null = salida sin numerar: se compran cupos y no se
   /// elige dónde se sienta uno, que es como funcionaban todas hasta ahora.
@@ -292,6 +316,11 @@ class PooledTripEntity {
   /// Condiciones del tiquete YA REDACTADAS por el servidor. Vacío = la empresa
   /// no las ha publicado, que es distinto de no tenerlas.
   final List<String> operatorPolicies;
+
+  /// Cómo cobra la empresa, ya redactado por el servidor. A diferencia de las
+  /// condiciones, viene SIEMPRE: cuando no está declarado, la línea dice que
+  /// el pago se acuerda con la empresa.
+  final List<String> operatorPayment;
 
   /// Qué trae el vehículo: claves del catálogo (`comodidades.dart`). Vacío = no
   /// se declaró nada, y entonces no se pinta ningún chip — en vez de pintar
@@ -346,6 +375,10 @@ class PooledTripEntity {
         operatorName: j['operatorName'] as String?,
         operatorRating: (j['operatorRating'] as num?)?.toDouble(),
         operatorRatingCount: (j['operatorRatingCount'] as num?)?.toInt(),
+        operatorPayment: [
+          for (final l in (j['operatorPayment'] as List<dynamic>? ?? const []))
+            if (l is String) l,
+        ],
         operatorPolicies: [
           for (final l in (j['operatorPolicies'] as List<dynamic>? ?? const []))
             if (l is String) l,
@@ -365,6 +398,9 @@ class PooledTripEntity {
               st['name'] as String,
         ],
         seatMap: MapaAsientos.fromJson(j['seatMap']),
+        esUrbano: j['kind'] == 'urbano',
+        routeName: j['routeName'] as String?,
+        savingsPerSeat: (j['savingsPerSeat'] as num?)?.toDouble(),
         myBooking: j['myBooking'] is Map<String, dynamic>
             ? SeatBookingEntity.fromJson(j['myBooking'] as Map<String, dynamic>)
             : null,
@@ -395,6 +431,7 @@ class PooledTripEntity {
         operatorRating: operatorRating,
         operatorRatingCount: operatorRatingCount,
         operatorPolicies: operatorPolicies,
+        operatorPayment: operatorPayment,
         amenities: amenities,
         boardingPoints: boardingPoints,
         doorToDoor: doorToDoor,
@@ -405,5 +442,11 @@ class PooledTripEntity {
         // sillas. Es el mismo descuido que en su día perdió el PIN del envío,
         // y por eso hay una prueba que lo vigila.
         seatMap: seatMap,
+        // Sin estas tres, refrescar los cupos de un puesto urbano lo
+        // convertiría en intermunicipal y la tarjeta pasaría a decir
+        // «Pamplona → Pamplona» a mitad de la reserva.
+        esUrbano: esUrbano,
+        routeName: routeName,
+        savingsPerSeat: savingsPerSeat,
       );
 }

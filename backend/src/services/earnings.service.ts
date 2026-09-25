@@ -1,6 +1,7 @@
 import { DailyEarningsDTO, TripEarningEntry } from '../types';
 import { COMMISSION_RATE } from '../config/constants';
 import { prisma } from '../lib/prisma';
+import { movimientoDeLiquidacion } from '../lib/saldo-conductor';
 
 function todayStart(): Date {
   const d = new Date();
@@ -8,23 +9,43 @@ function todayStart(): Date {
   return d;
 }
 
-export function recordCompletedTrip(entry: TripEarningEntry, driverId?: string): void {
+/**
+ * Registra un servicio liquidado.
+ *
+ * `metodoPago` decide si esto le deja saldo a favor o una deuda: solo lo que
+ * cobró la plataforma es retirable. Es OPCIONAL porque hay servicios que hoy
+ * no guardan método (mandados, pedidos, fletes), y sin declararlo se asume
+ * efectivo — el error barato. Ver `lib/saldo-conductor.ts`.
+ */
+export function recordCompletedTrip(
+  entry: TripEarningEntry,
+  driverId?: string,
+  metodoPago?: string | null,
+): void {
   // Ya nadie lee la lista en memoria que se alimentaba aquí: las ganancias
   // salen siempre de la BD.
   if (!driverId) return;
 
   const date = todayStart();
   const commission = entry.grossFare - entry.netEarning;
+  const mov = movimientoDeLiquidacion(entry.grossFare, entry.netEarning, metodoPago);
 
   // Upsert daily aggregation (fire-and-forget).
   void prisma.driverEarning.upsert({
     where: { driverId_date: { driverId, date } },
-    create: { driverId, date, grossFare: entry.grossFare, commission, netEarning: entry.netEarning, tripCount: 1 },
+    create: {
+      driverId, date, grossFare: entry.grossFare, commission,
+      netEarning: entry.netEarning, tripCount: 1,
+      platformHeld: mov.aFavorDelConductor,
+      driverOwes: mov.deudaDelConductor,
+    },
     update: {
       grossFare: { increment: entry.grossFare },
       commission: { increment: commission },
       netEarning: { increment: entry.netEarning },
       tripCount: { increment: 1 },
+      platformHeld: { increment: mov.aFavorDelConductor },
+      driverOwes: { increment: mov.deudaDelConductor },
     },
   }).catch(() => { /* ignore DB errors */ });
 
@@ -45,10 +66,16 @@ export async function creditDriverTip(driverId: string, amount: number): Promise
   await prisma.driverEarning
     .upsert({
       where: { driverId_date: { driverId, date } },
-      create: { driverId, date, grossFare: amount, commission: 0, netEarning: amount, tripCount: 0 },
+      // La propina SÍ es retirable: la cobra Wompi (el enlace se pide antes de
+      // marcar `tipAmount`), así que la plata está en casa y hay que girarla.
+      create: {
+        driverId, date, grossFare: amount, commission: 0,
+        netEarning: amount, tripCount: 0, platformHeld: amount,
+      },
       update: {
         grossFare: { increment: amount },
         netEarning: { increment: amount },
+        platformHeld: { increment: amount },
       },
     })
     .catch(() => {

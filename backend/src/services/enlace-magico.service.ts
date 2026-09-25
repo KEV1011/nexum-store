@@ -42,7 +42,8 @@ function firmar(user: { id: string; phone: string; name: string | null }): {
   const client: ClientDTO = {
     id: user.id,
     phone: user.phone,
-    name: user.name ?? 'Usuario ZIPA',
+    name: user.name ?? 'Pasajero',
+    ...(user.name ? {} : { needsName: true }),
   };
   const payload: ClientJwtPayload = { clientId: user.id, phone: user.phone, role: 'client' };
   return { token: jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN }), client };
@@ -64,9 +65,11 @@ export async function usuarioParaTelefonoVerificado(
   const existente = await prisma.user.findUnique({ where: { phone: normalizado } });
   if (existente) return existente;
 
+  // Sin nombre del perfil de WhatsApp se deja en NULL y la app lo pregunta:
+  // un literal en la columna haría creer que el pasajero ya lo dijo.
   const limpio = (nombreSugerido ?? '').trim().slice(0, 60);
   return prisma.user.create({
-    data: { phone: normalizado, name: limpio || 'Usuario ZIPA' },
+    data: { phone: normalizado, ...(limpio ? { name: limpio } : {}) },
   });
 }
 

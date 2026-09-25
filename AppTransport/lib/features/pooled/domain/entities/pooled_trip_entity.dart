@@ -141,6 +141,7 @@ class PooledSeatBooking {
     this.amountToPay,
     this.discount = 0,
     this.promoCode,
+    this.passengers = const [],
   });
 
   final String id;
@@ -160,6 +161,11 @@ class PooledSeatBooking {
   final double? amountToPay;
   final double discount;
   final String? promoCode;
+
+  /// Quién viaja en cada silla, con su documento: la planilla. Vacía en las
+  /// reservas anteriores al campo, y la pantalla lo DICE en vez de repetir el
+  /// nombre de la cuenta tantas veces como puestos.
+  final List<String> passengers;
 
   /// Sillas numeradas de esta reserva, en orden. Vacía en las salidas por
   /// cupos, que son las de siempre: ahí no hay dónde sentar a nadie en
@@ -185,6 +191,11 @@ class PooledSeatBooking {
         amountToPay: (j['amountToPay'] as num?)?.toDouble(),
         discount: (j['discount'] as num?)?.toDouble() ?? 0,
         promoCode: j['promoCode'] as String?,
+        passengers: [
+          for (final p in (j['passengers'] as List<dynamic>? ?? const []))
+            if (p is Map<String, dynamic>)
+              '${p['tipoDoc'] ?? ''} ${p['documento'] ?? ''} · ${p['nombre'] ?? ''}'.trim(),
+        ],
         seats: [
           for (final s in (j['seats'] as List<dynamic>? ?? const []))
             if (s is num) s.toInt(),
@@ -211,6 +222,9 @@ class PooledTripEntity {
     this.distanceKm,
     this.durationMinutes,
     this.bookings = const [],
+    this.esUrbano = false,
+    this.routeName,
+    this.savingsPerSeat,
   });
 
   final String id;
@@ -233,7 +247,25 @@ class PooledTripEntity {
   final int? durationMinutes;
   final List<PooledSeatBooking> bookings;
 
+  /// Puesto de taxi dentro de la ciudad, no salida intermunicipal. En una
+  /// urbana el origen y el destino son el MISMO municipio, así que pintar
+  /// «Pamplona → Pamplona» se leería como un error: el nombre está en
+  /// `routeName`.
+  final bool esUrbano;
+
+  /// «Terminal → Universidad». Solo en las urbanas.
+  final String? routeName;
+
+  /// Cuánto se ahorra el pasajero frente a tomar el taxi solo, ya calculado
+  /// por el servidor.
+  final double? savingsPerSeat;
+
   int get bookedSeats => totalSeats - availableSeats;
+
+  /// Cómo se llama esta salida en una línea.
+  String get tituloRuta => esUrbano
+      ? (routeName ?? 'Viaje por puestos')
+      : '${origin.displayName} → ${destination.displayName}';
 
   factory PooledTripEntity.fromJson(Map<String, dynamic> j) => PooledTripEntity(
         id: j['id'] as String? ?? '',
@@ -261,5 +293,8 @@ class PooledTripEntity {
             .whereType<Map<String, dynamic>>()
             .map(PooledSeatBooking.fromJson)
             .toList(),
+        esUrbano: j['kind'] == 'urbano',
+        routeName: j['routeName'] as String?,
+        savingsPerSeat: (j['savingsPerSeat'] as num?)?.toDouble(),
       );
 }

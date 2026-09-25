@@ -9,6 +9,8 @@ import {
   departPooledTrip,
   completePooledTrip,
   cancelPooledTrip,
+  publicarPuestoUrbano,
+  topeDelPuestoUrbano,
   PooledTripError,
 } from '../services/intercity-pool.service';
 import {
@@ -20,6 +22,7 @@ import {
 import { getActiveDriverRide, getChatHistory } from '../services/ride-negotiation.service';
 import {
   PublishPooledTripDTO,
+  PublishUrbanSeatDTO,
   IntercityCity,
   UpsertDriverDocumentDTO,
 } from '../types';
@@ -682,6 +685,66 @@ router.post('/intercity/pool/publish', async (req: Request, res: Response): Prom
   } catch (err) {
     const status = err instanceof PooledTripError ? 400 : 500;
     res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Failed to publish trip' });
+  }
+});
+
+// ─── Puesto de taxi urbano ────────────────────────────────────────────────────
+
+// GET /driver/pool/urbano/tope?ciudad=&origen=&destino=&puestos=
+// Lo que el formulario necesita para proponer un precio: cuánto costaría la
+// carrera sola, el tope por puesto y la sugerencia. Sin esto el conductor
+// escribiría una cifra a ciegas y la publicación se le rechazaría después.
+router.get('/pool/urbano/tope', async (req: Request, res: Response): Promise<void> => {
+  const ciudad = String(req.query['ciudad'] ?? '').trim();
+  const origen = String(req.query['origen'] ?? '').trim();
+  const destino = String(req.query['destino'] ?? '').trim();
+  const puestos = Number(req.query['puestos'] ?? 4);
+  if (!ciudad || !origen || !destino) {
+    res.status(400).json({ success: false, error: 'ciudad, origen y destino son obligatorios' });
+    return;
+  }
+  res.json({
+    success: true,
+    data: await topeDelPuestoUrbano({
+      ciudad, origenTexto: origen, destinoTexto: destino, puestos,
+    }),
+  });
+});
+
+// POST /driver/pool/urbano/publish
+router.post('/pool/urbano/publish', async (req: Request, res: Response): Promise<void> => {
+  const dto = req.body as Partial<PublishUrbanSeatDTO>;
+  if (
+    !dto.city || !dto.originLabel || !dto.destLabel || !dto.departureTime ||
+    dto.totalSeats === undefined || dto.farePerSeat === undefined || !dto.vehicleDescription
+  ) {
+    res.status(400).json({
+      success: false,
+      error: 'city, originLabel, destLabel, departureTime, totalSeats, farePerSeat y vehicleDescription son obligatorios',
+    });
+    return;
+  }
+  try {
+    const me = await prisma.driver.findUnique({
+      where: { id: req.driverId! },
+      select: { name: true, phone: true, operatorId: true },
+    });
+    const trip = await publicarPuestoUrbano(
+      req.driverId!,
+      me?.name ?? 'Conductor ZIPA',
+      me?.phone ?? req.driverPhone ?? '',
+      dto as PublishUrbanSeatDTO,
+      // Si conduce para una empresa, la salida queda sellada con ella: es la
+      // misma regla que ya sigue cualquier otro servicio suyo.
+      me?.operatorId ? { operatorId: me.operatorId } : undefined,
+    );
+    res.status(201).json({ success: true, data: trip });
+  } catch (err) {
+    const status = err instanceof PooledTripError ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo publicar el viaje por puestos',
+    });
   }
 });
 

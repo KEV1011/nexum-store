@@ -1,6 +1,7 @@
 import { FARE_BASE, FARE_PER_KM, FARE_PER_MIN, FARE_MINIMUM } from '../config/constants';
 import { repartir, COMISION_GLOBAL } from './comision';
 import { categoriaDeServicio, tablaTarifas, precioCategoria } from './tarifa-categoria';
+import { recargosDeCarrera } from './tarifa-decreto';
 
 export interface FareBreakdown {
   grossFare: number;
@@ -104,11 +105,18 @@ export function liquidarViaje(
   minutes: number,
   surgeMultiplier = 1,
   tasaComision?: number,
+  // Cuándo ocurre la carrera. Por defecto ahora, que es lo correcto al cerrar
+  // un viaje; se puede pasar otro instante para cotizar una reserva.
+  cuando: Date = new Date(),
 ): FareBreakdown {
   const categoria = categoriaDeServicio(serviceType);
   // ENVIOS y demás: fórmula genérica, pero la comisión resuelta sí aplica.
   if (!categoria) return calcFare(distanceKm, minutes, tasaComision);
   const tarifa = tablaTarifas()[categoria];
-  const bruto = precioCategoria(tarifa, distanceKm, minutes, surgeMultiplier).fare;
+  // Los recargos del decreto solo existen donde hay tarifa regulada.
+  const recargos = tarifa.regulada ? recargosDeCarrera(cuando).total : 0;
+  const bruto = precioCategoria(
+    tarifa, distanceKm, minutes, surgeMultiplier, recargos,
+  ).fare;
   return desglosar(conTope(bruto, distanceKm, minutes), tasaComision);
 }

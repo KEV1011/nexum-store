@@ -48,6 +48,45 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
     if (ok == true) onYes();
   }
 
+  /// Dos formas de vender puestos, y son negocios distintos: el intermunicipal
+  /// va de una ciudad a otra y el urbano es el recorrido de siempre dentro de
+  /// la ciudad. Se pregunta en vez de meterlas en el mismo formulario porque
+  /// las reglas de precio no son las mismas.
+  Future<void> _elegirQuePublicar() async {
+    final destino = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: AppColors.serviceTaxiContainer,
+                child: Icon(Icons.groups_rounded, color: AppColors.serviceTaxi),
+              ),
+              title: const Text('Viaje por puestos en la ciudad'),
+              subtitle: const Text(
+                  'Tu recorrido de siempre, vendido por sillas'),
+              onTap: () => Navigator.pop(ctx, '/puesto-urbano/publicar'),
+            ),
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFE0E7FF),
+                child: Icon(Icons.alt_route_rounded, color: _kPooledColor),
+              ),
+              title: const Text('Viaje a otro municipio'),
+              subtitle: const Text('Intermunicipal, con tarifa por puesto'),
+              onTap: () => Navigator.pop(ctx, '/pooled-publish'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (destino != null && mounted) context.push(destino);
+  }
+
   /// Ejecuta la acción y SIEMPRE da feedback: éxito o el motivo del rechazo
   /// del backend (antes el error se perdía y el botón parecía roto).
   Future<void> _run(Future<String?> Function() action, String okMsg) async {
@@ -77,7 +116,7 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
         label: const Text('Publicar'),
-        onPressed: () => context.push('/pooled-publish'),
+        onPressed: _elegirQuePublicar,
       ),
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator(color: _kPooledColor))
@@ -182,10 +221,27 @@ class _PooledTripCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  '${trip.origin.displayName} → ${trip.destination.displayName}',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800),
+                // En una salida urbana el origen y el destino son la misma
+                // ciudad: «Pamplona → Pamplona» se leería como un error. El
+                // nombre de la ruta lo resuelve la entidad.
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      trip.tituloRuta,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
+                    if (trip.esUrbano)
+                      Text(
+                        'Por puestos · ${trip.origin.displayName}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.serviceTaxi,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               Container(
@@ -322,6 +378,19 @@ class _PooledTripCard extends StatelessWidget {
                                         ' (−${CurrencyFormatter.format(b.discount)}'
                                         '${b.promoCode != null ? ' · ${b.promoCode}' : ''})'
                                     : 'Cobrar ${CurrencyFormatter.format(b.amountToPay!)}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: context.textSecondaryColor,
+                                ),
+                              ),
+                            // La planilla: quién viaja, con documento. Es lo
+                            // que se contrasta al subir, y con una reserva de
+                            // cuatro puestos el nombre de la cuenta no basta.
+                            for (final p in b.passengers)
+                              Text(
+                                p,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 11.5,
                                   color: context.textSecondaryColor,

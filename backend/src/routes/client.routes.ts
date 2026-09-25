@@ -58,6 +58,8 @@ import {
   rateSeatBooking,
   cotizarCuponDePasaje,
   getClientBookings,
+  buscarPuestosUrbanos,
+  plazaDelPasajero,
   PooledTripError,
 } from '../services/intercity-pool.service';
 import {
@@ -859,6 +861,37 @@ router.get('/intercity/pool/search', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: trips });
 });
 
+// GET /client/pool/urbano?ciudad=&horas= — puestos de taxi dentro de la ciudad.
+//
+// Va APARTE de `/intercity/pool/search` a propósito: la búsqueda
+// intermunicipal abre sin filtro para que el pasajero vea toda la oferta, y
+// mezclar aquí una ruta Terminal→Universidad no sería oferta, sería ruido.
+router.get('/pool/urbano', clientAuthMiddleware, async (req, res) => {
+  // La app manda su posición y el servidor resuelve la plaza con EL MISMO
+  // criterio que sella el viaje y el conductor: si aquí se usara otro, la
+  // pantalla diría que está en una ciudad y el despacho lo contaría en otra.
+  const lat = Number(req.query['lat']);
+  const lng = Number(req.query['lng']);
+  let ciudad = String(req.query['ciudad'] ?? '').trim();
+  let nombre = '';
+  if (!ciudad && Number.isFinite(lat) && Number.isFinite(lng)) {
+    const plaza = await plazaDelPasajero(lat, lng);
+    if (plaza) { ciudad = plaza.slug; nombre = plaza.nombre; }
+  }
+  if (!ciudad) {
+    // Fuera de cobertura o sin ubicación: se dice, no se devuelve una lista
+    // vacía que se leería como «no hay ningún taxi por puestos».
+    res.json({ success: true, data: { city: null, cityName: null, trips: [] } });
+    return;
+  }
+  const horas = Number(req.query['horas']);
+  const trips = await buscarPuestosUrbanos({
+    ciudad,
+    ...(Number.isFinite(horas) && horas > 0 ? { horas } : {}),
+  });
+  res.json({ success: true, data: { city: ciudad, cityName: nombre || ciudad, trips } });
+});
+
 router.get('/intercity/pool/bookings', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: await getClientBookings(req.clientId!) });
 });
@@ -879,6 +912,7 @@ router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) =
       ...(dto.seats ? { seats: dto.seats } : {}),
       ...(dto.boardingPointId ? { boardingPointId: dto.boardingPointId } : {}),
       ...(dto.promoCode ? { promoCode: dto.promoCode } : {}),
+      ...(dto.passengers ? { passengers: dto.passengers } : {}),
     });
     res.status(201).json({ success: true, data: result });
   } catch (err) {
@@ -957,7 +991,7 @@ router.post('/rides/request', clientAuthMiddleware, async (req, res) => {
     if (dto[f] === undefined) { res.status(400).json({ success: false, error: `${f} is required` }); return; }
   }
   const client = await getClientById(req.clientId!);
-  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Usuario ZIPA';
+  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero';
   try {
     const ride = await createRideRequest(req.clientId!, clientName, req.clientPhone!, {
       serviceType: dto['serviceType'] as never,

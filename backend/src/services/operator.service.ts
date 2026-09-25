@@ -9,6 +9,7 @@ import {
 import { isValidColombianPhone, normalizeColombianPhone } from './auth.service';
 import { rangoFechas } from '../lib/date-range';
 import { saneaPoliticas, politicasGuardadas, lineasDePolitica } from '../lib/politicas-tiquete';
+import { saneaCobro, cobroGuardado, lineasDeCobro } from '../lib/cobro-pasaje';
 import { requiresAmount } from '../lib/freight-costs';
 import { getMunicipality } from './municipality.service';
 import { getDriverTrack, type DriverTrack } from './track.service';
@@ -80,7 +81,13 @@ export async function getOperatorProfile(operatorId: string) {
   // la empresa exactamente el texto que va a leer el pasajero. Si el portal
   // las redactara por su cuenta, la empresa creería estar publicando una cosa
   // y en la app saldría otra.
-  return { ...op, policyLines: lineasDePolitica(politicasGuardadas(op.policies)) };
+  return {
+    ...op,
+    policyLines: lineasDePolitica(politicasGuardadas(op.policies)),
+    // Y lo mismo con el cobro: la empresa ve el texto exacto que leerá el
+    // pasajero, incluido el «no lo has publicado» cuando falta.
+    paymentLines: lineasDeCobro(cobroGuardado(op.paymentInfo)),
+  };
 }
 
 // ─── Flota: vehículos ──────────────────────────────────────────────────────────
@@ -1130,6 +1137,10 @@ export interface UpdateOperatorProfileDTO {
    * `null` las borra; ausente las deja como estaban.
    */
   policies?: unknown;
+  /**
+   * Cómo cobra la empresa el pasaje. `null` lo retira; ausente lo deja igual.
+   */
+  paymentInfo?: unknown;
 }
 
 /**
@@ -1160,6 +1171,13 @@ export async function updateOperatorProfile(
   if (dto.policies !== undefined) {
     const p = saneaPoliticas(dto.policies);
     conPoliticas['policies'] = p ?? Prisma.DbNull;
+  }
+  // Cómo cobra: mismo tratamiento. `saneaCobro` lanza con el motivo exacto
+  // —por ejemplo, transferencia sin decir a qué cuenta— y ese mensaje es el
+  // que tiene que ver la empresa, no un «error al guardar».
+  if (dto.paymentInfo !== undefined) {
+    const c = saneaCobro(dto.paymentInfo);
+    conPoliticas['paymentInfo'] = c ?? Prisma.DbNull;
   }
 
   if (Object.keys(conPoliticas).length === 0) throw new Error('No hay nada que actualizar.');

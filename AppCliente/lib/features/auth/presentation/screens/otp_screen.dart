@@ -120,7 +120,12 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
   void _handleAuthState(AuthState? _, AuthState current) {
     if (!mounted) return;
     if (current is AuthAuthenticated) {
-      context.go(AppRoutes.home);
+      // Cuenta recién creada: falta el último paso del registro. El nombre no
+      // es decoración de su perfil — es lo que el conductor lee al aceptar y
+      // al llegar a recogerlo.
+      context.go(
+        current.client.needsName ? AppRoutes.nombre : AppRoutes.home,
+      );
     } else if (current is AuthError) {
       setState(() => _hasError = true);
       _shakeCtrl

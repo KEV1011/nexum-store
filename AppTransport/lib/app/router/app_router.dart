@@ -20,6 +20,7 @@ import 'package:nexum_driver/features/performance/presentation/screens/performan
 import 'package:nexum_driver/features/pooled/presentation/screens/my_pooled_trips_screen.dart';
 import 'package:nexum_driver/features/intercity/presentation/screens/intercity_requests_screen.dart';
 import 'package:nexum_driver/features/pooled/presentation/screens/publish_pooled_trip_screen.dart';
+import 'package:nexum_driver/features/pooled/presentation/screens/publish_urban_seat_screen.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/screens/verification_screen.dart';
 import 'package:nexum_driver/features/ride_pool/presentation/screens/ride_pool_screen.dart';
 import 'package:nexum_driver/features/profile/presentation/screens/profile_screen.dart';
@@ -64,6 +65,8 @@ abstract final class AppRoutes {
   static const String pooledTrips = '/pooled-trips';
   static const String intercityRequests = '/intercity-requests';
   static const String pooledPublish = '/pooled-publish';
+  /// Publicar un viaje por puestos dentro de la ciudad (el puesto de taxi).
+  static const String puestoUrbanoPublicar = '/puesto-urbano/publicar';
   static const String verification = '/verification';
   static const String ridePool = '/ride-pool';
 }
@@ -187,6 +190,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const PublishPooledTripScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.puestoUrbanoPublicar,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const PublishUrbanSeatScreen(),
         ),
       ),
       GoRoute(

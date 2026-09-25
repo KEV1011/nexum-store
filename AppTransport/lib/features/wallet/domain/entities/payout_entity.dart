@@ -5,6 +5,7 @@ class DriverBalance {
     required this.totalPaidOut,
     required this.pending,
     required this.available,
+    required this.owed,
     required this.minPayout,
     this.bankName,
     this.bankAccountType,
@@ -18,6 +19,7 @@ class DriverBalance {
       totalPaidOut: (j['totalPaidOut'] as num?)?.toDouble() ?? 0,
       pending: (j['pending'] as num?)?.toDouble() ?? 0,
       available: (j['available'] as num?)?.toDouble() ?? 0,
+      owed: (j['owed'] as num?)?.toDouble() ?? 0,
       minPayout: (j['minPayout'] as num?)?.toDouble() ?? 0,
       bankName: bank?['name'] as String?,
       bankAccountType: bank?['accountType'] as String?,
@@ -29,10 +31,18 @@ class DriverBalance {
   final double totalPaidOut;
   final double pending;
   final double available;
+
+  /// Comisiones de servicios que cobró de su mano (efectivo, Nequi,
+  /// transferencia) y todavía no ha pagado. Va aparte del disponible y NO
+  /// escondida detrás de un cero: un «$0 disponible» a secas se lee como un
+  /// error de la app.
+  final double owed;
   final double minPayout;
   final String? bankName;
   final String? bankAccountType;
   final String? bankAccountNumber;
+
+  bool get tieneDeuda => owed > 0;
 
   bool get hasBank => (bankAccountNumber ?? '').isNotEmpty;
 

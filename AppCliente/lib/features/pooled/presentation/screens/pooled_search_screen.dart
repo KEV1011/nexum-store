@@ -10,6 +10,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart'
     show IntercityCity;
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
+import 'package:nexum_client/features/pooled/presentation/widgets/datos_pasajeros.dart';
 import 'package:nexum_client/features/pooled/presentation/widgets/mapa_sillas.dart';
 import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
@@ -26,8 +27,13 @@ class PooledSearchScreen extends ConsumerStatefulWidget {
 }
 
 class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
-  IntercityCity _origin = IntercityCity.pamplona;
-  IntercityCity _destination = IntercityCity.cucuta;
+  // Nacen VACÍOS a propósito: así la pantalla abre mostrando TODAS las salidas
+  // publicadas. Antes venían fijos en Pamplona → Cúcuta y se buscaba solo ese
+  // par, de modo que una salida Cúcuta → Bogotá existía y el pasajero leía «no
+  // hay viajes». La pantalla afirmaba algo falso sobre la oferta, que es peor
+  // que no filtrar. El backend ya aceptaba los dos parámetros vacíos.
+  IntercityCity? _origin;
+  IntercityCity? _destination;
   DateTime? _date;
 
   @override
@@ -49,6 +55,17 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
       final tmp = _origin;
       _origin = _destination;
       _destination = tmp;
+    });
+    _runSearch();
+  }
+
+  /// Vuelve a mostrarlo todo. Sin esto, quien filtra una vez ya no sabe cómo
+  /// salir del filtro: los municipios se eligen pero no se des-eligen.
+  void _limpiarFiltros() {
+    setState(() {
+      _origin = null;
+      _destination = null;
+      _date = null;
     });
     _runSearch();
   }
@@ -110,7 +127,7 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
             ),
             child: Row(
               children: [
-                Expanded(child: _cityDropdown(_origin, (c) {
+                Expanded(child: _cityDropdown(_origin, 'Desde cualquier parte', (c) {
                   setState(() => _origin = c);
                   _runSearch();
                 })),
@@ -118,7 +135,7 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
                   icon: const Icon(Icons.swap_horiz_rounded, color: _kPooledColor),
                   onPressed: _swap,
                 ),
-                Expanded(child: _cityDropdown(_destination, (c) {
+                Expanded(child: _cityDropdown(_destination, 'A cualquier destino', (c) {
                   setState(() => _destination = c);
                   _runSearch();
                 })),
@@ -156,14 +173,41 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
               ],
             ],
           ),
+          // La salida del filtro. Los municipios se eligen pero no se
+          // des-eligen, así que sin esto quien filtra una vez se queda dentro.
+          if (_hayFiltro) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _limpiarFiltros,
+                icon: const Icon(Icons.close_rounded, size: 16, color: Colors.white70),
+                label: const Text(
+                  'Ver todas las salidas',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
+  bool get _hayFiltro => _origin != null || _destination != null || _date != null;
+
   /// Abre el buscador de municipios (antes era un desplegable: con cuarenta y
   /// cinco municipios había que recorrerlo a dedo).
-  Widget _cityDropdown(IntercityCity value, ValueChanged<IntercityCity> onChanged) {
+  Widget _cityDropdown(
+    IntercityCity? value,
+    String vacio,
+    ValueChanged<IntercityCity> onChanged,
+  ) {
     return InkWell(
       onTap: () async {
         final elegido = await showCitySearchSheet(
@@ -177,12 +221,16 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
         children: [
           Expanded(
             child: Text(
-              value.displayName,
+              value?.displayName ?? vacio,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: context.textPrimaryColor,
-                fontWeight: FontWeight.w600,
+                // Sin elegir se ve como marcador, no como una ciudad puesta:
+                // el mismo peso haría creer que ya hay un filtro aplicado.
+                color: value == null
+                    ? context.textSecondaryColor
+                    : context.textPrimaryColor,
+                fontWeight: value == null ? FontWeight.w400 : FontWeight.w600,
                 fontSize: 15,
               ),
             ),
@@ -229,9 +277,14 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 40),
             child: Text(
+              // Sin filtro, «prueba otra ciudad» sería un consejo absurdo:
+              // ya se está mirando todo lo que hay.
               error ??
-                  'No hay viajes publicados para esta ruta.\n'
-                      'Prueba otra fecha o ciudad.',
+                  (_hayFiltro
+                      ? 'No hay salidas publicadas para esta búsqueda.\n'
+                          'Prueba otra fecha o quita el filtro.'
+                      : 'Todavía no hay salidas publicadas.\n'
+                          'Las empresas las publican con antelación; vuelve más tarde.'),
               textAlign: TextAlign.center,
               style: TextStyle(color: context.textSecondaryColor, height: 1.4),
             ),
@@ -540,6 +593,21 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
   String? _cuponError;
   bool _cotizando = false;
 
+  /// Quién viaja en cada silla. Lo emite `DatosPasajeros` en cada tecla.
+  List<PasajeroTiquete> _pasajeros = const [];
+
+  /// Si la planilla está completa.
+  ///
+  /// Se exige en la app aunque el servidor todavía sea tolerante con las
+  /// versiones viejas: mandar media planilla la haría rechazar entera, y el
+  /// pasajero recibiría un «falta el pasajero 2» después de tocar Reservar en
+  /// vez de verlo mientras escribe.
+  bool get _pasajerosListos {
+    final puestos = _trip.seatMap != null ? _sillas.length : _seats;
+    if (puestos < 1) return false;
+    return _pasajeros.length == puestos && _pasajeros.every((p) => p.completo);
+  }
+
   /// Lo que se paga, con el descuento ya restado. Una sola cuenta para el
   /// botón y para el total: si cada uno hiciera la suya, el pasajero vería un
   /// precio y pagaría otro.
@@ -605,6 +673,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
           // domicilio» de «no eligió nada».
           boardingPointId: _puntoId,
           promoCode: _cuponAplicado,
+          pasajeros: _pasajeros,
         );
     if (!mounted) return;
     if (err == null) {
@@ -853,6 +922,14 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ChipsComodidades(claves: trip.amenities, compacto: false),
               const SizedBox(height: 16),
             ],
+            // Quién viaja. Va ANTES del total, como en cualquier taquilla:
+            // primero se dice a nombre de quién y después se paga.
+            DatosPasajeros(
+              puestos: trip.seatMap != null ? _sillas.length : _seats,
+              onChanged: (p) => setState(() => _pasajeros = p),
+            ),
+            const SizedBox(height: 8),
+
             if (trip.operatorName != null) ...[
               CondicionesTiquete(lineas: trip.operatorPolicies),
               const SizedBox(height: 16),
@@ -891,18 +968,45 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              'El pago es un gasto compartido del viaje. Acuerda el medio de '
-              'pago directamente con el conductor.',
-              style: TextStyle(fontSize: 11.5, color: context.textSecondaryColor),
-            ),
+            // Cómo se paga, DECLARADO por la empresa y redactado en el
+            // servidor. Antes había aquí un texto fijo que decía «acuerda el
+            // medio con el conductor» para todas: a la empresa que cobra por
+            // transferencia le mandaba la gente sin efectivo a la puerta.
+            FormaDePago(lineas: trip.operatorPayment),
             const SizedBox(height: 16),
+
+            // Por qué el botón está apagado. Sin esto se queda gris y nadie
+            // sabe qué falta — el defecto que este repo ya corrigió en media
+            // docena de pantallas.
+            if (!_pasajerosListos && !(trip.seatMap != null && _sillas.isEmpty)) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      size: 15, color: context.textSecondaryColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Completa el documento y el nombre de cada pasajero para reservar.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.textSecondaryColor,
+                        height: 1.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
 
             SizedBox(
               width: double.infinity,
               height: 52,
               child: ElevatedButton(
-                onPressed: _submitting || (trip.seatMap != null && _sillas.isEmpty)
+                onPressed: _submitting ||
+                        (trip.seatMap != null && _sillas.isEmpty) ||
+                        !_pasajerosListos
                     ? null
                     : _confirm,
                 style: ElevatedButton.styleFrom(

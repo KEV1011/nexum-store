@@ -660,6 +660,17 @@ class _BottomPanel extends StatelessWidget {
 
           const SizedBox(height: 8),
 
+          // Puesto de taxi dentro de la ciudad: va JUSTO debajo del hero y por
+          // encima de los fletes porque es lo que más gente usa a diario —los
+          // estudiantes que hoy toman la buseta— y porque compite con una
+          // carrera normal, que es lo que esta pantalla está ofreciendo.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _PuestoUrbanoCard(),
+          ),
+
+          const SizedBox(height: 8),
+
           // Fletes de carga: acarreos y mercancía con turbos/camiones/mulas
           // de flotas verificadas (urbano o entre ciudades).
           Padding(
@@ -1264,6 +1275,68 @@ Color _colorOf(TransportServiceType t) => switch (t) {
 
 
 // ── Entrada a fletes de carga ─────────────────────────────────────────────────
+
+/// Compartir el taxi con quien va por la misma ruta.
+///
+/// Los taxis de la ciudad ya salen recogiendo persona por persona; esto lo
+/// hace reservable. El texto compara con lo que la gente paga hoy, que es lo
+/// que hace entender el servicio en dos segundos.
+class _PuestoUrbanoCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFFF8E1),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: () => context.push(AppRoutes.puestoUrbano),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFFFCC80)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF57F17),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.groups_rounded,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Viaje por puestos',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14.5,
+                        color: Color(0xFF5B3D00),
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Comparte el taxi y paga solo tu silla',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF8A6100)),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF8A6100)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _FreightEntryCard extends StatelessWidget {
   @override

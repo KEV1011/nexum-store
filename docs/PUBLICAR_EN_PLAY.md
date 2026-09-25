@@ -17,8 +17,8 @@ Dos apps distintas, dos fichas distintas en Play Console:
 
 Play pide un **AAB** (`.aab`), no un APK. Los workflows ya lo generan:
 
-- `Build Nexum Driver APK` → artefacto `nexum-driver-aab-build<N>`
-- `Build Nexum Cliente APK` → artefacto `nexum-cliente-aab-build<N>`
+- `Build ZIPA Conductor APK` → artefacto `zipa-conductor-aab-build<N>`
+- `Build ZIPA Cliente APK` → artefacto `zipa-cliente-aab-build<N>`
 
 Ve a la pestaña **Actions** de GitHub, abre el run verde más reciente de `main`
 y descarga el artefacto que termina en `-aab-build<N>`. Dentro está

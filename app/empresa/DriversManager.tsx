@@ -81,7 +81,16 @@ interface OperatorDriver {
   phone: string
   status: string // OFFLINE | ONLINE | ON_TRIP
   isVerified: boolean
-  rating: number
+  /**
+   * NULL mientras nadie lo haya calificado. Aquí decía `number` y era mentira:
+   * el backend devuelve `Driver.rating`, que es `Float?` desde la migración de
+   * calificaciones —que además puso en NULL a todo el que no tenía votos—, así
+   * que `d.rating.toFixed(2)` reventaba con el PRIMER conductor que hubiera
+   * completado un servicio sin recibir estrellas. Al ser un tipo escrito a mano
+   * que no coincidía con la API, el compilador no exigió la guarda y la sección
+   * entera de Equipo y vehículos se caía con «This page couldn't load».
+   */
+  rating: number | null
   totalTrips: number
   employmentType: string | null // OWN | AFFILIATED
   // Por qué no le llega trabajo: sin esto la empresa veía "verificado, en línea"
@@ -253,7 +262,18 @@ export default function DriversManager({
                     {d.phone}
                     {d.totalTrips > 0 && (
                       <span className="inline-flex items-center gap-0.5 ml-2">
-                        <Star className="w-3 h-3 text-amber-400 inline" /> {d.rating.toFixed(2)} · {d.totalTrips} viajes
+                        {/* Sin calificaciones se dice «Nuevo», no un número: es
+                            la misma regla del resto de la plataforma. Un 0,00
+                            se leería como pésimo y un 5,00 de fábrica como
+                            impecable, y las dos lecturas serían falsas. */}
+                        {d.rating != null ? (
+                          <>
+                            <Star className="w-3 h-3 text-amber-400 inline" /> {d.rating.toFixed(2)}
+                          </>
+                        ) : (
+                          <span className="text-slate-400">Nuevo</span>
+                        )}
+                        {' · '}{d.totalTrips} viajes
                       </span>
                     )}
                   </p>

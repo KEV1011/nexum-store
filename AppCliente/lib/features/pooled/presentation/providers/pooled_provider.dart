@@ -7,6 +7,7 @@ import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart'
     show IntercityCity;
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
+import 'package:nexum_client/features/pooled/presentation/widgets/datos_pasajeros.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
 
 class PooledState {
@@ -18,7 +19,23 @@ class PooledState {
     this.hasSearched = false,
     this.error,
     this.bookingsError,
+    this.puestosUrbanos = const [],
+    this.ciudadUrbano,
+    this.isSearchingUrbano = false,
+    this.buscoUrbano = false,
+    this.urbanoError,
   });
+
+  /// Puestos de taxi que salen pronto en la ciudad del pasajero.
+  final List<PooledTripEntity> puestosUrbanos;
+
+  /// En qué ciudad se buscó, según el servidor. Null = no se pudo resolver
+  /// (sin ubicación o fuera de cobertura), y la pantalla lo DICE en vez de
+  /// enseñar una lista vacía que se leería como «no hay ninguno».
+  final String? ciudadUrbano;
+  final bool isSearchingUrbano;
+  final bool buscoUrbano;
+  final String? urbanoError;
 
   final List<PooledTripEntity> searchResults;
   final List<PooledTripEntity> myBookings;
@@ -41,6 +58,11 @@ class PooledState {
     bool? hasSearched,
     String? error,
     String? bookingsError,
+    List<PooledTripEntity>? puestosUrbanos,
+    String? ciudadUrbano,
+    bool? isSearchingUrbano,
+    bool? buscoUrbano,
+    String? urbanoError,
   }) =>
       PooledState(
         searchResults: searchResults ?? this.searchResults,
@@ -50,6 +72,11 @@ class PooledState {
         hasSearched: hasSearched ?? this.hasSearched,
         error: error,
         bookingsError: bookingsError,
+        puestosUrbanos: puestosUrbanos ?? this.puestosUrbanos,
+        ciudadUrbano: ciudadUrbano ?? this.ciudadUrbano,
+        isSearchingUrbano: isSearchingUrbano ?? this.isSearchingUrbano,
+        buscoUrbano: buscoUrbano ?? this.buscoUrbano,
+        urbanoError: urbanoError,
       );
 }
 
@@ -100,6 +127,47 @@ class PooledNotifier extends StateNotifier<PooledState> {
     }
   }
 
+  // ── Puesto de taxi urbano ────────────────────────────────────────────────
+
+  /// Los puestos de taxi que salen pronto en la ciudad donde está el pasajero.
+  ///
+  /// Se manda la POSICIÓN y la plaza la resuelve el servidor, con el mismo
+  /// criterio con el que sella los viajes: si la app decidiera por su cuenta
+  /// en qué ciudad está, podría pedir los puestos de una y el despacho
+  /// contarla en otra.
+  Future<void> buscarPuestosUrbanos({double? lat, double? lng}) async {
+    state = state.copyWith(isSearchingUrbano: true, urbanoError: null);
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/client/pool/urbano',
+        queryParameters: {
+          if (lat != null && lng != null) 'lat': lat,
+          if (lat != null && lng != null) 'lng': lng,
+        },
+      );
+      final d = res.data?['data'] as Map<String, dynamic>?;
+      final list = (d?['trips'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(PooledTripEntity.fromJson)
+          .toList();
+      state = state.copyWith(
+        puestosUrbanos: list,
+        ciudadUrbano: d?['cityName'] as String?,
+        isSearchingUrbano: false,
+        buscoUrbano: true,
+      );
+    } catch (_) {
+      // Falló la petición: NO es lo mismo que «no hay puestos». Una lista
+      // vacía por red caída haría creer que el servicio no existe.
+      state = state.copyWith(
+        puestosUrbanos: const [],
+        isSearchingUrbano: false,
+        buscoUrbano: true,
+        urbanoError: 'No pudimos cargar los viajes por puestos. Revisa tu conexión.',
+      );
+    }
+  }
+
   // ── Book ─────────────────────────────────────────────────────────────────
 
   /// Returns `null` on success, or a human error message on failure.
@@ -115,6 +183,9 @@ class PooledNotifier extends StateNotifier<PooledState> {
     String? boardingPointId,
     /// Código de descuento de la empresa de la salida.
     String? promoCode,
+    /// Quién viaja en cada silla: uno por puesto. Es la planilla con la que
+    /// la empresa responde por quién iba a bordo.
+    List<PasajeroTiquete> pasajeros = const [],
   }) async {
     try {
       await _dio.post<Map<String, dynamic>>(
@@ -128,6 +199,11 @@ class PooledNotifier extends StateNotifier<PooledState> {
           if (boardingPointId != null) 'boardingPointId': boardingPointId,
           if (promoCode != null && promoCode.trim().isNotEmpty)
             'promoCode': promoCode.trim(),
+          // Solo si está COMPLETA. Media planilla la rechaza el servidor
+          // entera, así que mandarla sería cambiar un formulario incompleto
+          // por un error después de confirmar.
+          if (pasajeros.isNotEmpty && pasajeros.every((p) => p.completo))
+            'passengers': [for (final p in pasajeros) p.toJson()],
         },
       );
       await loadMyBookings();
