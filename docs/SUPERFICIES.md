@@ -51,7 +51,7 @@ las cuatro APIs de Google (geocoding, places, routes, map tiles).
 
 ## 2 · App Cliente — pasajeros y compradores
 
-**Paquete:** `nexum_client` · **applicationId:** `com.nexum.nexum_client`
+**Paquete:** `nexum_client` · **applicationId:** `com.zipa.cliente`
 
 **Cómo instalarla o abrirla:**
 - **Android (APK):** GitHub → Actions → *Build Nexum Cliente APK* → última corrida
@@ -78,7 +78,7 @@ las cuatro APIs de Google (geocoding, places, routes, map tiles).
 
 ## 3 · App Conductor — conductores y repartidores
 
-**Paquete:** `nexum_driver` · **applicationId:** `com.nexum.driver_app`
+**Paquete:** `nexum_driver` · **applicationId:** `com.zipa.conductor`
 
 **Cómo instalarla o abrirla:**
 - **Android (APK):** Actions → *Build Nexum Driver APK* → artifact **`nexum-driver-apk`**

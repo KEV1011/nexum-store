@@ -56,9 +56,9 @@ Las fotos viejas del disco de Render no se migran (se vuelven a subir).
 1. https://console.firebase.google.com → **Agregar proyecto** → nombre `nexum`
    (Analytics: opcional, puedes desactivarlo).
 2. Dentro del proyecto → ícono **Android** (Agregar app):
-   - **App conductor**: package `com.nexum.driver_app` → Registrar →
+   - **App conductor**: package `com.zipa.conductor` → Registrar →
      descarga `google-services.json` → guárdalo como `google-services-driver.json`.
-   - Repite **Agregar app** → **App cliente**: package `com.nexum.nexum_client` →
+   - Repite **Agregar app** → **App cliente**: package `com.zipa.cliente` →
      descarga su `google-services.json` → guárdalo como `google-services-cliente.json`.
    (No hace falta seguir los pasos de "agregar SDK" que sugiere la consola —
    ya están en el código.)

@@ -24,8 +24,28 @@ import { tmpdir } from 'os';
 
 const RAIZ = join(__dirname, '..', '..', '..');
 const SCRIPT = join(RAIZ, 'tools', 'preparar-google-services.sh');
-const PAQUETE = 'com.nexum.driver_app';
-const OTRO_PAQUETE = 'com.nexum.nexum_client';
+/**
+ * El applicationId se LEE del gradle, no se escribe aquí.
+ *
+ * Vive en dos sitios que tienen que decir lo mismo —el `build.gradle.kts` y el
+ * argumento con que el workflow invoca el script—, y si se separan no hay
+ * error a medias: el script se para y el build se queda sin APK. Con el id
+ * copiado también aquí serían TRES sitios, y esta prueba pasaría a afirmar el
+ * valor viejo en vez de vigilarlo.
+ */
+function applicationId(app: string): string {
+  const gradle = readFileSync(
+    join(RAIZ, app, 'android', 'app', 'build.gradle.kts'),
+    'utf8',
+  );
+  // `namespace` también casa con comillas, así que se ancla en applicationId.
+  const m = /applicationId\s*=\s*"([^"]+)"/.exec(gradle);
+  if (!m) throw new Error(`no encontré applicationId en ${app}`);
+  return m[1]!;
+}
+
+const PAQUETE = applicationId('AppTransport');
+const OTRO_PAQUETE = applicationId('AppCliente');
 
 function archivoFirebase(paquete: string): string {
   return JSON.stringify(

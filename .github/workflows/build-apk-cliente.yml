@@ -96,7 +96,7 @@ jobs:
         run: dart run flutter_native_splash:create
 
       # ── 6. Decode Firebase google-services.json (opcional) ──────────────────
-      # App Android propia en Firebase: package com.nexum.nexum_client.
+      # App Android propia en Firebase: package com.zipa.cliente.
       # Sin el secret, el build sale sin push (la app lo tolera).
       # El script acepta el archivo tal cual o su base64, y cuando no sirve
       # describe qué llegó sin imprimirlo. Vive en tools/ y no aquí porque el
@@ -108,7 +108,7 @@ jobs:
         run: >
           bash tools/preparar-google-services.sh
           GOOGLE_SERVICES_CLIENTE_BASE64
-          com.nexum.nexum_client
+          com.zipa.cliente
           AppCliente/android/app/google-services.json
 
       - name: Configure release signing

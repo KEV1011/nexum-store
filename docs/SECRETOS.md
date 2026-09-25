@@ -15,8 +15,8 @@ Los leen los workflows al construir los APK.
 
 | Secreto | Para qué | De dónde sale |
 |---|---|---|
-| `GOOGLE_SERVICES_BASE64` | **Notificaciones del conductor.** Sin él el APK se construye sin Firebase y no recibe ni una oferta | Firebase Console → tu proyecto → app Android `com.nexum.driver_app` → descargar `google-services.json` → pasarlo a base64 |
-| `GOOGLE_SERVICES_CLIENTE_BASE64` | Lo mismo para el pasajero | Igual, pero con la app `com.nexum.nexum_client` |
+| `GOOGLE_SERVICES_BASE64` | **Notificaciones del conductor.** Sin él el APK se construye sin Firebase y no recibe ni una oferta | Firebase Console → tu proyecto → app Android `com.zipa.conductor` → descargar `google-services.json` → pasarlo a base64 |
+| `GOOGLE_SERVICES_CLIENTE_BASE64` | Lo mismo para el pasajero | Igual, pero con la app `com.zipa.cliente` |
 | `ANDROID_KEYSTORE_BASE64` | Firma estable del APK. Sin él se firma con llave de depuración y **las actualizaciones no instalan encima** | El `.jks` generado en julio (alias `nexum`), en base64 |
 | `ANDROID_KEYSTORE_PASSWORD` | Su contraseña | Lo mismo |
 | `GOOGLE_MAPS_API_KEY` | Mapas dentro del APK del conductor | Google Cloud Console |

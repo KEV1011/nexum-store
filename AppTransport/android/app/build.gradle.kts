@@ -22,6 +22,13 @@ if (keystoreFile.exists()) {
 }
 
 android {
+    // El NAMESPACE se queda como nació y NO sigue al applicationId. No es un
+    // olvido: el namespace es el paquete del código (dónde vive MainActivity y
+    // de dónde salen R y BuildConfig), y el manifiesto la declara como
+    // `.MainActivity`, relativo a él. Cambiarlo obliga a mover los .kt y
+    // reescribir sus `package`, y si se hace a medias la app compila y revienta
+    // al abrirse con ClassNotFoundException. No lo ve nadie y no es la
+    // identidad en Play: esa es el applicationId de abajo.
     namespace = "com.nexum.driver_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
@@ -34,7 +41,14 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.nexum.driver_app"
+        // LA IDENTIDAD DE LA APP EN GOOGLE PLAY. Es lo ÚNICO que no se puede
+        // cambiar una vez publicada: cambiarlo después crea una ficha nueva,
+        // con cero instalaciones y cero reseñas, y quien la tuviera deja de
+        // recibir actualizaciones. Cada cambio aquí obliga además a crear la
+        // app con este mismo paquete en Firebase y renovar el secreto
+        // GOOGLE_SERVICES_BASE64, o el build se para (a propósito: el
+        // google-services.json de otra app produce un APK sin avisos).
+        applicationId = "com.zipa.conductor"
         minSdk = 21
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

@@ -5,7 +5,7 @@
 > Actualizar este archivo CADA vez que se agregue una recolección nueva
 > (SDK de analítica, píxel, permiso nuevo) **antes** de publicar la versión.
 
-## App Cliente (`com.nexum.nexum_client`)
+## App Cliente (`com.zipa.cliente`)
 
 | Dato | ¿Se recolecta? | Propósito | ¿Vinculado a identidad? | ¿Tracking publicitario? |
 |---|---|---|---|---|
@@ -18,7 +18,7 @@
 | Historial de servicios | Sí | Historial, soporte, obligaciones legales | Sí | No |
 | Analítica de terceros / píxeles publicitarios | **No** (hoy no hay SDK de analítica) | — | — | No |
 
-## App Conductor (`com.nexum.driver_app`)
+## App Conductor (`com.zipa.conductor`)
 
 | Dato | ¿Se recolecta? | Propósito | ¿Vinculado? | ¿Tracking? |
 |---|---|---|---|---|

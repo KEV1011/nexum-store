@@ -16,7 +16,7 @@ está cableado en los dos workflows de CI; solo falta configurarlo una vez.
 En [console.firebase.google.com](https://console.firebase.google.com) → tu
 proyecto (`nexum-…`) → menú **Ejecutar** → **App Distribution** → *Comenzar*.
 
-Hazlo para las dos apps (`com.nexum.driver_app` y `com.nexum.nexum_client`).
+Hazlo para las dos apps (`com.zipa.conductor` y `com.zipa.cliente`).
 
 ### 2. Crear el grupo de probadores
 

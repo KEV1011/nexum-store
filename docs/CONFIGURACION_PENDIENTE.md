@@ -157,8 +157,8 @@ Guía detallada: **`docs/ACTIVAR_S3_FCM.md`** (parte 2). Resumen:
 
 1. Consola de Firebase → crea el proyecto (una vez).
 2. Añade **dos apps Android** con estos IDs exactos:
-   - `com.nexum.driver_app` (conductor)
-   - `com.nexum.nexum_client` (cliente)
+   - `com.zipa.conductor` (conductor)
+   - `com.zipa.cliente` (cliente)
    Descarga el `google-services.json` de cada una.
 3. Conviértelos a base64 (**PowerShell**, líneas separadas):
    ```

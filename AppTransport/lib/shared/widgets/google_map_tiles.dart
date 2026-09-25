@@ -126,7 +126,7 @@ class GoogleMapTiles extends ConsumerWidget {
           //
           // Se pierde algo de nitidez en pantallas densas. Un mapa un poco menos
           // fino se lee; uno a parches, no.
-          userAgentPackageName: 'com.nexum.driver',
+          userAgentPackageName: 'com.zipa.conductor',
         ),
       );
     }
@@ -139,7 +139,7 @@ class GoogleMapTiles extends ConsumerWidget {
       tileProvider: cache,
       fallbackUrl: _osm,
       retinaMode: RetinaMode.isHighDensity(context),
-      userAgentPackageName: 'com.nexum.driver',
+      userAgentPackageName: 'com.zipa.conductor',
     );
   }
 }
