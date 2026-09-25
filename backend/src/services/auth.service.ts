@@ -158,8 +158,27 @@ export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: s
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
     return { token, driver: driverDTO };
   } catch (err) {
-    if (err instanceof Error && err.message.includes('Unique constraint')) {
-      throw new Error('A driver with that document number or vehicle plate already exists');
+    // Los dos choques posibles son `Driver.documentNumber` y `Vehicle.plate`,
+    // los dos @unique. Antes se respondía «A driver with that document number
+    // or vehicle plate already exists»: en inglés, y sin decir CUÁL de los dos
+    // — que son dos arreglos distintos (usar tu propio teléfono / la placa está
+    // a nombre de otro). Prisma dice cuál en `meta.target`.
+    const p = err as { code?: string; meta?: { target?: unknown } };
+    const choque =
+      p.code === 'P2002' || (err instanceof Error && err.message.includes('Unique constraint'));
+    if (choque) {
+      const campos = Array.isArray(p.meta?.target) ? p.meta.target.map(String) : [];
+      if (campos.includes('plate')) {
+        throw new Error(
+          `La placa ${dto.vehiclePlate} ya está registrada a nombre de otro conductor. Si el vehículo es tuyo, escribe a soporte.`,
+        );
+      }
+      if (campos.includes('documentNumber')) {
+        throw new Error(
+          'Ese número de documento ya está registrado con otro teléfono. Entra con el teléfono que usaste la primera vez.',
+        );
+      }
+      throw new Error('Ya existe un registro con ese documento o con esa placa.');
     }
     throw err;
   }

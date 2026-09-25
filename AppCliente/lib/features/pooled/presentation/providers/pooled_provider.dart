@@ -387,3 +387,25 @@ final pooledProvider =
     StateNotifierProvider<PooledNotifier, PooledState>((ref) {
   return PooledNotifier(ref.read(apiClientProvider), TransportWsService());
 });
+
+/// Las salidas que las EMPRESAS ya publicaron para un trayecto concreto.
+///
+/// Vive fuera del notifier a propósito. La pantalla de reserva a demanda
+/// necesita consultarlas mientras el buscador de `/pooled/search` conserva sus
+/// propios resultados; si compartieran estado, abrir una pantalla le cambiaría
+/// la lista a la otra por debajo.
+///
+/// Un fallo se propaga (el `FutureProvider` lo entrega como error) en vez de
+/// devolver lista vacía: «todavía no hay salidas» y «no pudimos preguntar» son
+/// dos cosas distintas, y la segunda se arregla reintentando.
+final salidasPublicadasProvider = FutureProvider.family<List<PooledTripEntity>,
+    ({String origen, String destino})>((ref, ruta) async {
+  final res = await ref.read(apiClientProvider).get<Map<String, dynamic>>(
+    '/client/intercity/pool/search',
+    queryParameters: {'origin': ruta.origen, 'destination': ruta.destino},
+  );
+  return (res.data?['data'] as List<dynamic>? ?? [])
+      .whereType<Map<String, dynamic>>()
+      .map(PooledTripEntity.fromJson)
+      .toList();
+});

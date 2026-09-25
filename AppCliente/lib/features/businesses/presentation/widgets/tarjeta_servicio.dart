@@ -154,10 +154,18 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
                     // puertas se leían flojas. Se escala desde el tamaño del
                     // catálogo en vez de añadir una medida a `ZipaIconSize`,
                     // que tiene dos y una prueba lo vigila.
+                    // `SizedBox.expand` NO sobra: los dibujos que llegan aquí
+                    // son `CustomPaint` sin hijo, y un CustomPaint sin hijo y
+                    // sin `size` mide CERO. Dentro de este Container, que
+                    // centra y por tanto deja al hijo elegir su tamaño, el
+                    // painter se quedaba sin superficie y no pintaba nada:
+                    // Restaurantes e Intermunicipal salían con el cuadro de
+                    // color vacío mientras las otras dos, que traen PNG (y el
+                    // PNG sí tiene tamaño propio), se veían bien.
                     child: widget.dibujo != null
                         ? Padding(
                             padding: const EdgeInsets.all(4),
-                            child: widget.dibujo,
+                            child: SizedBox.expand(child: widget.dibujo),
                           )
                         : widget.ilustracion != null
                         ? Padding(

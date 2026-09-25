@@ -144,6 +144,33 @@ class DioClient {
 
   // ── Error handling ────────────────────────────────────────────────────────
 
+  /// El motivo que MANDÓ el servidor, si lo mandó.
+  ///
+  /// Todas las rutas del backend responden `{ success, error }` con el motivo
+  /// escrito en español y pensado para leerse («Placa inválida. Usa el formato
+  /// colombiano: ABC123…»). Esta clase los tiraba a la basura y enseñaba
+  /// «Error del servidor (400).», así que el conductor veía que algo falló y
+  /// no qué — el registro se quedaba trabado sin una sola pista, ni para él ni
+  /// para soporte.
+  ///
+  /// Solo se usa en los 4xx: un 5xx trae el mensaje de una excepción interna
+  /// (rutas que hacen `error: err.message`), y enseñar el texto de un fallo de
+  /// base de datos no ayuda a nadie y filtra cómo estamos hechos por dentro.
+  static String? _motivoDelServidor(dynamic body) {
+    if (body is! Map) return null;
+    for (final clave in const ['error', 'message']) {
+      final v = body[clave];
+      // Hay respuestas donde `error` es un objeto; solo sirve el texto.
+      if (v is String && v.trim().isNotEmpty) {
+        final t = v.trim();
+        // Un mensaje larguísimo en un snackbar se corta y no dice nada; a
+        // partir de ahí es un volcado, no un motivo.
+        return t.length > 300 ? '${t.substring(0, 299)}…' : t;
+      }
+    }
+    return null;
+  }
+
   /// Converts a [DioException] into a domain-level [AppException].
   ///
   /// Mapping:
@@ -194,15 +221,17 @@ class DioClient {
           );
         }
 
+        final motivo = _motivoDelServidor(responseBody);
+
         if (statusCode == 404) {
           return NotFoundException(
-            message: 'El recurso solicitado no existe ($statusCode).',
+            message: motivo ?? 'El recurso solicitado no existe ($statusCode).',
             code: 'NOT_FOUND',
           );
         }
 
         return ServerException(
-          message: 'Error del servidor ($statusCode).',
+          message: motivo ?? 'Error del servidor ($statusCode).',
           code: 'HTTP_$statusCode',
           details: responseBody,
         );

@@ -37,6 +37,8 @@ import 'package:nexum_client/features/errands/presentation/screens/'
     'errand_booking_screen.dart';
 import 'package:nexum_client/features/errands/presentation/screens/'
     'errand_status_screen.dart';
+import 'package:nexum_client/features/intercity/domain/entities/'
+    'intercity_entity.dart' show IntercityCity;
 import 'package:nexum_client/features/intercity/presentation/screens/'
     'intercity_booking_screen.dart';
 import 'package:nexum_client/features/intercity/presentation/screens/'
@@ -292,10 +294,23 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.pooledSearch,
-        pageBuilder: (context, state) => AppTransitions.slideLeft(
-          pageKey: state.pageKey,
-          child: const PooledSearchScreen(),
-        ),
+        pageBuilder: (context, state) {
+          // Trayecto opcional: se llega con él desde la reserva a demanda, y
+          // sin él desde el menú (y entonces abre mostrándolo todo). Con `is`
+          // y no con `as`: un extra de otra forma abre el buscador completo,
+          // que es un resultado útil, en vez de reventar la navegación.
+          final extra = state.extra;
+          final ruta = extra is ({IntercityCity? origen, IntercityCity? destino})
+              ? extra
+              : null;
+          return AppTransitions.slideLeft(
+            pageKey: state.pageKey,
+            child: PooledSearchScreen(
+              origenInicial: ruta?.origen,
+              destinoInicial: ruta?.destino,
+            ),
+          );
+        },
       ),
       GoRoute(
         path: AppRoutes.pooledBookings,
