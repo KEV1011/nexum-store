@@ -1221,7 +1221,7 @@ class _GlassNavItem {
   final bool active;
 }
 
-class _GlassNavBar extends StatelessWidget {
+class _GlassNavBar extends StatefulWidget {
   const _GlassNavBar({
     required this.items,
     required this.isOnline,
@@ -1233,6 +1233,40 @@ class _GlassNavBar extends StatelessWidget {
   final List<_GlassNavItem> items;
   final bool isOnline;
   final VoidCallback onConnectTap;
+
+  @override
+  State<_GlassNavBar> createState() => _GlassNavBarState();
+}
+
+class _GlassNavBarState extends State<_GlassNavBar> {
+  /// Columna (fraccionaria) donde está el dedo mientras arrastra la lupa.
+  double? _arrastre;
+
+  List<_GlassNavItem> get items => widget.items;
+  bool get isOnline => widget.isOnline;
+  VoidCallback get onConnectTap => widget.onConnectTap;
+
+  /// Columnas visuales: [ítem0, Conectar, resto].
+  int get _columnas => items.length + 1;
+
+  /// Al soltar, la columna más cercana.
+  ///
+  /// **Sobre Conectar no pasa nada, a propósito.** Conectarse o desconectarse
+  /// cambia si te llegan viajes; que se dispare porque el dedo pasó por encima
+  /// al ir de Inicio a Perfil sería el peor accidente posible de esta barra.
+  /// Ese botón solo responde al toque.
+  void _soltar() {
+    final pos = _arrastre;
+    setState(() => _arrastre = null);
+    if (pos == null) return;
+    final columna = pos.round().clamp(0, _columnas - 1);
+    if (columna == 1) return;
+    final indice = columna == 0 ? 0 : columna - 1;
+    if (indice < 0 || indice >= items.length) return;
+    if (items[indice].active) return;
+    HapticFeedback.selectionClick();
+    items[indice].onTap();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1263,30 +1297,54 @@ class _GlassNavBar extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.16),
                 ),
               ),
-              child: Stack(
-                children: [
-                  // Lupa de vidrio (referencia Rappi/iOS liquid glass) sobre el
-                  // ítem activo. Columnas visuales: [ítem0, Conectar, resto].
-                  Builder(builder: (context) {
-                    // Columnas visuales: [ítem0, Conectar, resto]. El botón
-                    // central ocupa una, así que el índice del ítem no es la
-                    // columna: hay que correrlo una posición a partir del
-                    // segundo. (66 de barra − 52 de píldora) / 2 = 7.
-                    final activeIdx = items.indexWhere((i) => i.active);
-                    return LupaVidrio(
-                      columnas: items.length + 1,
-                      activa: activeIdx <= 0 ? activeIdx : activeIdx + 1,
-                    );
-                  }),
-                  Row(
-                    children: [
-                      Expanded(child: _buildItem(items[0])),
-                      Expanded(child: _buildConnect()),
-                      for (final item in items.skip(1))
-                        Expanded(child: _buildItem(item)),
-                    ],
-                  ),
-                ],
+              child: LayoutBuilder(
+                builder: (context, c) => Stack(
+                  children: [
+                    // Lupa de vidrio sobre el ítem activo, o bajo el dedo si
+                    // alguien la está arrastrando. Columnas visuales:
+                    // [ítem0, Conectar, resto]. El botón central ocupa una, así
+                    // que el índice del ítem no es la columna: hay que correrlo
+                    // una posición a partir del segundo.
+                    // (66 de barra − 52 de píldora) / 2 = 7.
+                    Builder(builder: (context) {
+                      final activeIdx = items.indexWhere((i) => i.active);
+                      return LupaVidrio(
+                        columnas: _columnas,
+                        activa: activeIdx <= 0 ? activeIdx : activeIdx + 1,
+                        arrastre: _arrastre,
+                      );
+                    }),
+                    Row(
+                      children: [
+                        Expanded(child: _buildItem(items[0])),
+                        Expanded(child: _buildConnect()),
+                        for (final item in items.skip(1))
+                          Expanded(child: _buildItem(item)),
+                      ],
+                    ),
+                    // Arrastrar la lupa con el dedo. `translucent` deja que el
+                    // toque siga llegando a los botones de abajo: un toque sin
+                    // movimiento no es un arrastre horizontal.
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onHorizontalDragStart: (d) {
+                          HapticFeedback.selectionClick();
+                          setState(() => _arrastre = columnaDesdeX(
+                                d.localPosition.dx, c.maxWidth, _columnas,
+                              ));
+                        },
+                        onHorizontalDragUpdate: (d) => setState(
+                          () => _arrastre = columnaDesdeX(
+                            d.localPosition.dx, c.maxWidth, _columnas,
+                          ),
+                        ),
+                        onHorizontalDragEnd: (_) => _soltar(),
+                        onHorizontalDragCancel: _soltar,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -20,7 +20,17 @@ import 'package:nexum_client/features/intercity/presentation/widgets/city_search
 const _kPooledColor = Color(0xFF1E3A8A);
 
 class PooledSearchScreen extends ConsumerStatefulWidget {
-  const PooledSearchScreen({super.key});
+  const PooledSearchScreen({
+    super.key,
+    this.origenInicial,
+    this.destinoInicial,
+  });
+
+  /// Trayecto con el que abre, cuando se llega desde la pantalla de reserva a
+  /// demanda: allí el pasajero ya dijo de dónde a dónde va, y volvérselo a
+  /// preguntar es hacerle repetir el trabajo. Sin ellos abre mostrándolo todo.
+  final IntercityCity? origenInicial;
+  final IntercityCity? destinoInicial;
 
   @override
   ConsumerState<PooledSearchScreen> createState() => _PooledSearchScreenState();
@@ -39,6 +49,8 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
   @override
   void initState() {
     super.initState();
+    _origin = widget.origenInicial;
+    _destination = widget.destinoInicial;
     WidgetsBinding.instance.addPostFrameCallback((_) => _runSearch());
   }
 
@@ -486,7 +498,9 @@ class _TripCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '${trip.driverName} · ${trip.vehicleDescription}',
+                      trip.sinConductor
+                          ? trip.conductorLabel
+                          : '${trip.driverName} · ${trip.vehicleDescription}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -747,7 +761,10 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
             Text('${trip.origin.displayName} → ${trip.destination.displayName}',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
-            Text('${trip.driverName} · ${trip.vehicleDescription}',
+            Text(
+                trip.sinConductor
+                    ? trip.conductorLabel
+                    : '${trip.driverName} · ${trip.vehicleDescription}',
                 style: TextStyle(color: context.textSecondaryColor, fontSize: 13)),
             const SizedBox(height: 20),
 

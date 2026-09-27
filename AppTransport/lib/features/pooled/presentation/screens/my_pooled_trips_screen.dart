@@ -24,9 +24,11 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => ref.read(pooledDriverProvider.notifier).loadMine(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final n = ref.read(pooledDriverProvider.notifier);
+      n.loadMine();
+      n.cargarLibres();
+    });
   }
 
   Future<void> _confirm(String title, String body, VoidCallback onYes) async {
@@ -118,72 +120,159 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
         label: const Text('Publicar'),
         onPressed: _elegirQuePublicar,
       ),
-      body: state.isLoading
-          ? const Center(child: CircularProgressIndicator(color: _kPooledColor))
-          : state.trips.isEmpty
-              ? _empty()
-              : RefreshIndicator(
-                  color: _kPooledColor,
-                  onRefresh: () => notifier.loadMine(),
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-                    itemCount: state.trips.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (_, i) {
-                      final trip = state.trips[i];
-                      return _PooledTripCard(
-                        trip: trip,
-                        onDepart: () => _confirm(
-                          'Iniciar viaje',
-                          '¿Marcar este viaje como en camino? Ya no se podrán reservar puestos.',
-                          () => _run(
-                            () => notifier.depart(trip.id),
-                            'Viaje iniciado. ¡Buen camino!',
-                          ),
-                        ),
-                        onComplete: () => _confirm(
-                          'Finalizar viaje',
-                          '¿Confirmas que el viaje terminó?',
-                          () => _run(
-                            () => notifier.complete(trip.id),
-                            'Viaje finalizado.',
-                          ),
-                        ),
-                        onCancel: () => _confirm(
-                          'Cancelar viaje',
-                          'Se cancelará el viaje y se notificará a los pasajeros.',
-                          () => _run(
-                            () => notifier.cancel(trip.id),
-                            'Viaje cancelado.',
-                          ),
-                        ),
-                      );
-                    },
+      body: RefreshIndicator(
+        color: _kPooledColor,
+        onRefresh: () async {
+          await notifier.loadMine();
+          await notifier.cargarLibres();
+        },
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+          children: [
+            // ── Lo que están pidiendo los pasajeros ───────────────────────
+            // Va ARRIBA de los propios: es trabajo que se puede tomar ahora,
+            // y los propios ya se sabe que existen.
+            ..._tableroLibres(state, notifier),
+            const SizedBox(height: 8),
+            Text(
+              'Mis viajes compartidos',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: context.textPrimaryColor,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (state.isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: Center(
+                    child: CircularProgressIndicator(color: _kPooledColor)),
+              )
+            else if (state.trips.isEmpty)
+              _sinPropios()
+            else
+              for (final trip in state.trips)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _PooledTripCard(
+                    trip: trip,
+                    onDepart: () => _confirm(
+                      'Iniciar viaje',
+                      '¿Marcar este viaje como en camino? Ya no se podrán reservar puestos.',
+                      () => _run(
+                        () => notifier.depart(trip.id),
+                        'Viaje iniciado. ¡Buen camino!',
+                      ),
+                    ),
+                    onComplete: () => _confirm(
+                      'Finalizar viaje',
+                      '¿Confirmas que el viaje terminó?',
+                      () => _run(
+                        () => notifier.complete(trip.id),
+                        'Viaje finalizado.',
+                      ),
+                    ),
+                    onCancel: () => _confirm(
+                      'Cancelar viaje',
+                      'Se cancelará el viaje y se notificará a los pasajeros.',
+                      () => _run(
+                        () => notifier.cancel(trip.id),
+                        'Viaje cancelado.',
+                      ),
+                    ),
                   ),
                 ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _empty() => ListView(
+  /// El tablero de viajes que armaron PASAJEROS y nadie ha tomado.
+  ///
+  /// Cargando, falló y vacío son TRES cosas distintas y se dicen distinto: un
+  /// «no hay viajes» cuando en realidad se cayó la red hace que el conductor
+  /// deje de mirar el tablero.
+  List<Widget> _tableroLibres(
+    PooledDriverState state,
+    PooledDriverNotifier notifier,
+  ) {
+    final titulo = Text(
+      state.libres.isEmpty
+          ? 'Pasajeros buscando taxi'
+          : 'Pasajeros buscando taxi (${state.libres.length})',
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w800,
+        color: context.textPrimaryColor,
+      ),
+    );
+
+    Widget cuerpo;
+    if (state.cargandoLibres && state.libres.isEmpty) {
+      cuerpo = const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Center(child: CircularProgressIndicator(color: _kPooledColor)),
+      );
+    } else if (state.errorLibres != null) {
+      cuerpo = _NotaTablero(
+        texto: state.errorLibres!,
+        accion: 'Reintentar',
+        onAccion: notifier.cargarLibres,
+      );
+    } else if (state.avisoLibres != null) {
+      cuerpo = _NotaTablero(texto: state.avisoLibres!);
+    } else if (state.libres.isEmpty) {
+      cuerpo = const _NotaTablero(
+        texto: 'Ahora mismo nadie está buscando compartir taxi en tu ciudad. '
+            'Cuando alguien publique un viaje, te aparece aquí.',
+      );
+    } else {
+      cuerpo = Column(
         children: [
-          const SizedBox(height: 100),
-          Icon(Icons.groups_rounded,
-              size: 64, color: context.textSecondaryColor),
-          const SizedBox(height: 16),
-          Center(
-            child: Text('Aún no has publicado viajes compartidos.',
+          for (final t in state.libres)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _TarjetaLibre(
+                trip: t,
+                onTomar: () => _confirm(
+                  'Tomar este viaje',
+                  'Quedará a tu nombre y los pasajeros verán tu carro. '
+                      '¿Confirmas?',
+                  () => _run(
+                    () => notifier.tomarLibre(t.id),
+                    'Viaje tomado. Aparece abajo en tus viajes.',
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return [titulo, const SizedBox(height: 12), cuerpo, const SizedBox(height: 16)];
+  }
+
+  Widget _sinPropios() => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          children: [
+            Icon(Icons.groups_rounded,
+                size: 48, color: context.textSecondaryColor),
+            const SizedBox(height: 12),
+            Text('Aún no has publicado viajes compartidos.',
+                textAlign: TextAlign.center,
                 style: TextStyle(color: context.textSecondaryColor)),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: TextButton.icon(
-              onPressed: () => context.push('/pooled-publish'),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: _elegirQuePublicar,
               icon: const Icon(Icons.add_rounded, color: _kPooledColor),
               label: const Text('Publicar tu primer viaje',
                   style: TextStyle(color: _kPooledColor)),
             ),
-          ),
-        ],
+          ],
+        ),
       );
 }
 
@@ -480,5 +569,131 @@ class _PooledTripCard extends StatelessWidget {
       case PooledTripStatus.cancelled:
         return const SizedBox.shrink();
     }
+  }
+}
+
+/// Una nota del tablero: cargando no, pero «no hay», «falló» o «falta algo».
+class _NotaTablero extends StatelessWidget {
+  const _NotaTablero({required this.texto, this.accion, this.onAccion});
+
+  final String texto;
+  final String? accion;
+  final VoidCallback? onAccion;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: context.cardColor2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: context.outlineColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              texto,
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+            ),
+            if (accion != null && onAccion != null) ...[
+              const SizedBox(height: 8),
+              TextButton(onPressed: onAccion, child: Text(accion!)),
+            ],
+          ],
+        ),
+      );
+}
+
+/// Un viaje que armó un pasajero y que todavía no tiene conductor.
+///
+/// Enseña lo que decide si vale la pena: a qué hora, el recorrido, cuántos
+/// puestos ya están vendidos y cuánto suma eso. Un taxista no toma un viaje
+/// por «cuatro puestos a dos mil» sino por lo que se va a llevar.
+class _TarjetaLibre extends StatelessWidget {
+  const _TarjetaLibre({required this.trip, required this.onTomar});
+
+  final PooledTripEntity trip;
+  final VoidCallback onTomar;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = trip.departureTime;
+    final cuando = '${d.day}/${d.month} · '
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    final vendidos = trip.totalSeats - trip.availableSeats;
+    final yaVale = trip.farePerSeat * vendidos;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.cardColor2,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.serviceTaxi.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.schedule_rounded,
+                  size: 16, color: AppColors.serviceTaxi),
+              const SizedBox(width: 6),
+              Text(
+                cuando,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${CurrencyFormatter.format(trip.farePerSeat)}/puesto',
+                style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            trip.tituloRuta,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: context.textPrimaryColor,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '$vendidos de ${trip.totalSeats} puestos vendidos · '
+            'llevas ${CurrencyFormatter.format(yaVale)} si sale así',
+            style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+          ),
+          if ((trip.notes ?? '').isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              trip.notes!,
+              style: TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: context.textSecondaryColor,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.serviceTaxi,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: onTomar,
+              child: const Text('Tomar este viaje'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -109,7 +109,7 @@ class _GlassNavItem {
   final int badge;
 }
 
-class _GlassNavBar extends StatelessWidget {
+class _GlassNavBar extends StatefulWidget {
   const _GlassNavBar({
     required this.activo,
     required this.onSelect,
@@ -120,6 +120,31 @@ class _GlassNavBar extends StatelessWidget {
   final int activo;
   final ValueChanged<int> onSelect;
   final List<_GlassNavItem> items;
+
+  @override
+  State<_GlassNavBar> createState() => _GlassNavBarState();
+}
+
+class _GlassNavBarState extends State<_GlassNavBar> {
+  /// Columna (fraccionaria) donde está el dedo mientras arrastra la lupa.
+  /// Null = nadie la tiene cogida.
+  double? _arrastre;
+
+  int get activo => widget.activo;
+  List<_GlassNavItem> get items => widget.items;
+
+  /// Al soltar se selecciona la columna MÁS CERCANA, no la que quedó debajo
+  /// del píxel exacto: el dedo tapa el ítem y se suelta donde se puede.
+  void _soltar() {
+    final pos = _arrastre;
+    setState(() => _arrastre = null);
+    if (pos == null) return;
+    final destino = pos.round().clamp(0, items.length - 1);
+    if (destino != activo) {
+      HapticFeedback.selectionClick();
+      widget.onSelect(destino);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -152,28 +177,62 @@ class _GlassNavBar extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.16),
                 ),
               ),
-              child: Stack(
-                children: [
-                  // Lupa de vidrio (referencia Rappi/iOS liquid glass) que se
-                  // DESLIZA hasta el ítem activo.
-                  //
-                  // Píldora y no círculo: dentro va el ícono con su etiqueta
-                  // debajo, y en la parte baja de un círculo no cabe una
-                  // palabra como "Movilidad" — se salía por los lados. La
-                  // píldora se ajusta al ancho del ítem y contiene las dos.
-                  // Con -1 (estamos en Movilidad, que no tiene botón) la lupa
-                  // se desvanece en vez de irse al primer ítem: iluminar
-                  // «Inicio» estando en otra pantalla es mentir sobre dónde
-                  // está uno.
-                  // (66 de barra − 52 de píldora) / 2 = 7 de margen vertical.
-                  LupaVidrio(columnas: items.length, activa: activo),
-                  Row(
-                    children: [
-                      for (var i = 0; i < items.length; i++)
-                        Expanded(child: _buildItem(context, i)),
-                    ],
-                  ),
-                ],
+              child: LayoutBuilder(
+                builder: (context, c) => Stack(
+                  children: [
+                    // Lupa de vidrio (referencia Rappi/iOS liquid glass) que se
+                    // DESLIZA hasta el ítem activo.
+                    //
+                    // Píldora y no círculo: dentro va el ícono con su etiqueta
+                    // debajo, y en la parte baja de un círculo no cabe una
+                    // palabra como "Movilidad" — se salía por los lados. La
+                    // píldora se ajusta al ancho del ítem y contiene las dos.
+                    // Con -1 (estamos en Movilidad, que no tiene botón) la lupa
+                    // se desvanece en vez de irse al primer ítem: iluminar
+                    // «Inicio» estando en otra pantalla es mentir sobre dónde
+                    // está uno.
+                    // (66 de barra − 52 de píldora) / 2 = 7 de margen vertical.
+                    LupaVidrio(
+                      columnas: items.length,
+                      activa: activo,
+                      arrastre: _arrastre,
+                    ),
+                    Row(
+                      children: [
+                        for (var i = 0; i < items.length; i++)
+                          Expanded(child: _buildItem(context, i)),
+                      ],
+                    ),
+                    // ARRASTRAR LA LUPA. Es lo que se pedía: mantener el dedo y
+                    // deslizarla, como en WhatsApp.
+                    //
+                    // Va ENCIMA de los ítems y con `translucent`, que es lo que
+                    // deja convivir las dos cosas: un toque sin movimiento no es
+                    // un arrastre horizontal, así que el reconocedor pierde la
+                    // puja y el toque le llega al ítem de abajo como siempre.
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onHorizontalDragStart: (d) {
+                          HapticFeedback.selectionClick();
+                          setState(() => _arrastre = columnaDesdeX(
+                                d.localPosition.dx, c.maxWidth, items.length,
+                              ));
+                        },
+                        onHorizontalDragUpdate: (d) => setState(
+                          () => _arrastre = columnaDesdeX(
+                            d.localPosition.dx, c.maxWidth, items.length,
+                          ),
+                        ),
+                        onHorizontalDragEnd: (_) => _soltar(),
+                        // Si el gesto se cancela (llega una llamada, el sistema
+                        // se lleva el puntero) hay que soltarla igual: si no, la
+                        // lupa se queda pegada al último punto para siempre.
+                        onHorizontalDragCancel: _soltar,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -200,7 +259,7 @@ class _GlassNavBar extends StatelessWidget {
     }
 
     return InkWell(
-      onTap: () => onSelect(i),
+      onTap: () => widget.onSelect(i),
       borderRadius: BorderRadius.circular(30),
       // El contenido acompaña a la lupa con un empujón mínimo. 1,06 y no más:
       // por encima de eso la etiqueta de diez puntos empieza a reflowear y la

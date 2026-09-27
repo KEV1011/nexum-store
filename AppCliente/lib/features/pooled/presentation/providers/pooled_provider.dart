@@ -21,6 +21,7 @@ class PooledState {
     this.bookingsError,
     this.puestosUrbanos = const [],
     this.ciudadUrbano,
+    this.slugUrbano,
     this.isSearchingUrbano = false,
     this.buscoUrbano = false,
     this.urbanoError,
@@ -33,6 +34,11 @@ class PooledState {
   /// (sin ubicación o fuera de cobertura), y la pantalla lo DICE en vez de
   /// enseñar una lista vacía que se leería como «no hay ninguno».
   final String? ciudadUrbano;
+
+  /// El identificador de esa ciudad ('pamplona'), que es lo que viaja al
+  /// servidor al publicar. Va aparte del nombre porque el nombre lleva tildes
+  /// y mayúsculas y no casa con nada.
+  final String? slugUrbano;
   final bool isSearchingUrbano;
   final bool buscoUrbano;
   final String? urbanoError;
@@ -60,6 +66,7 @@ class PooledState {
     String? bookingsError,
     List<PooledTripEntity>? puestosUrbanos,
     String? ciudadUrbano,
+    String? slugUrbano,
     bool? isSearchingUrbano,
     bool? buscoUrbano,
     String? urbanoError,
@@ -74,6 +81,7 @@ class PooledState {
         bookingsError: bookingsError,
         puestosUrbanos: puestosUrbanos ?? this.puestosUrbanos,
         ciudadUrbano: ciudadUrbano ?? this.ciudadUrbano,
+        slugUrbano: slugUrbano ?? this.slugUrbano,
         isSearchingUrbano: isSearchingUrbano ?? this.isSearchingUrbano,
         buscoUrbano: buscoUrbano ?? this.buscoUrbano,
         urbanoError: urbanoError,
@@ -153,6 +161,7 @@ class PooledNotifier extends StateNotifier<PooledState> {
       state = state.copyWith(
         puestosUrbanos: list,
         ciudadUrbano: d?['cityName'] as String?,
+        slugUrbano: d?['city'] as String?,
         isSearchingUrbano: false,
         buscoUrbano: true,
       );
@@ -165,6 +174,80 @@ class PooledNotifier extends StateNotifier<PooledState> {
         buscoUrbano: true,
         urbanoError: 'No pudimos cargar los viajes por puestos. Revisa tu conexión.',
       );
+    }
+  }
+
+  // ── Publicar mi propio viaje por puestos ─────────────────────────────────
+
+  /// Cuánto puede costar el puesto en ese trayecto, según el servidor.
+  ///
+  /// Se pregunta ANTES de dejar escribir el precio: sin esto el pasajero pone
+  /// una cifra a ciegas y el servidor se la rechaza después, que es la forma
+  /// más rápida de que abandone el formulario.
+  Future<({double carreraSola, double tope, double sugerido})?> topeDePuesto({
+    required String ciudad,
+    required String origen,
+    required String destino,
+    required int puestos,
+  }) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/client/pool/urbano/tope',
+        queryParameters: {
+          'ciudad': ciudad, 'origen': origen, 'destino': destino, 'puestos': puestos,
+        },
+      );
+      final d = res.data?['data'] as Map<String, dynamic>?;
+      if (d == null) return null;
+      return (
+        carreraSola: (d['tarifaSolo'] as num?)?.toDouble() ?? 0,
+        tope: (d['topePorPuesto'] as num?)?.toDouble() ?? 0,
+        sugerido: (d['sugerido'] as num?)?.toDouble() ?? 0,
+      );
+    } catch (_) {
+      // Sin tope no se bloquea el formulario: el servidor vuelve a validar al
+      // publicar y ahí sí dirá el número exacto.
+      return null;
+    }
+  }
+
+  /// Publica un viaje por puestos armado por el pasajero.
+  ///
+  /// Devuelve `null` si salió, o el MOTIVO del servidor. El motivo se devuelve
+  /// y no se traga: «no se pudo publicar» no le dice a nadie qué corregir, y
+  /// aquí los rechazos son concretos (el precio pasa del tope, ya tiene dos
+  /// viajes abiertos, la hora ya pasó).
+  Future<String?> publicarMiViaje({
+    required String ciudad,
+    required String origen,
+    required String destino,
+    required DateTime salida,
+    required int puestos,
+    required int puestosParaMi,
+    required int precioPorPuesto,
+    String? notas,
+  }) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/pool/urbano/publish',
+        data: {
+          'city': ciudad,
+          'originLabel': origen,
+          'destLabel': destino,
+          'departureTime': salida.toUtc().toIso8601String(),
+          'totalSeats': puestos,
+          'seatsForMe': puestosParaMi,
+          'farePerSeat': precioPorPuesto,
+          if (notas != null && notas.trim().isNotEmpty) 'notes': notas.trim(),
+        },
+      );
+      return null;
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      if (body is Map && body['error'] is String) return body['error'] as String;
+      return 'No pudimos publicar tu viaje. Revisa tu conexión.';
+    } catch (_) {
+      return 'No pudimos publicar tu viaje. Revisa tu conexión.';
     }
   }
 
@@ -386,4 +469,26 @@ class PooledNotifier extends StateNotifier<PooledState> {
 final pooledProvider =
     StateNotifierProvider<PooledNotifier, PooledState>((ref) {
   return PooledNotifier(ref.read(apiClientProvider), TransportWsService());
+});
+
+/// Las salidas que las EMPRESAS ya publicaron para un trayecto concreto.
+///
+/// Vive fuera del notifier a propósito. La pantalla de reserva a demanda
+/// necesita consultarlas mientras el buscador de `/pooled/search` conserva sus
+/// propios resultados; si compartieran estado, abrir una pantalla le cambiaría
+/// la lista a la otra por debajo.
+///
+/// Un fallo se propaga (el `FutureProvider` lo entrega como error) en vez de
+/// devolver lista vacía: «todavía no hay salidas» y «no pudimos preguntar» son
+/// dos cosas distintas, y la segunda se arregla reintentando.
+final salidasPublicadasProvider = FutureProvider.family<List<PooledTripEntity>,
+    ({String origen, String destino})>((ref, ruta) async {
+  final res = await ref.read(apiClientProvider).get<Map<String, dynamic>>(
+    '/client/intercity/pool/search',
+    queryParameters: {'origin': ruta.origen, 'destination': ruta.destino},
+  );
+  return (res.data?['data'] as List<dynamic>? ?? [])
+      .whereType<Map<String, dynamic>>()
+      .map(PooledTripEntity.fromJson)
+      .toList();
 });

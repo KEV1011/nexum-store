@@ -9,6 +9,8 @@ import 'package:nexum_client/features/intercity/domain/entities/intercity_entity
 import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
+import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
+import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 
 // Color de identidad del módulo intermunicipal
 const _kInterColor = AppColors.intercityBrand;
@@ -307,6 +309,17 @@ class _IntercityBookingScreenState
               ],
             ),
           ),
+          const SizedBox(height: 12),
+
+          // ── Salidas que YA publicaron las empresas ────────────────────────
+          // Van aquí, arriba de todo lo demás, porque esta es la pantalla a la
+          // que llega el pasajero al tocar «Intermunicipal» — y hasta ahora no
+          // mencionaba las salidas de empresa por ningún lado: para verlas
+          // había que entrar por el sheet de movilidad o esperar a que el
+          // matching a demanda no encontrara a nadie. De ahí «no le salen las
+          // rutas de las empresas»: existían y no había por dónde llegar.
+          if (_origin.name != _destination.name)
+            _SalidasPublicadas(origen: _origin, destino: _destination),
           const SizedBox(height: 12),
 
           // ── Fecha y hora ──────────────────────────────────────────────────
@@ -660,6 +673,217 @@ class _IntercityBookingScreenState
 }
 
 // ── Sub-widgets ───────────────────────────────────────────────────────────────
+
+/// Las salidas que las EMPRESAS ya tienen publicadas para este trayecto.
+///
+/// No es lo mismo que pedir un viaje a demanda, y por eso va en su propia
+/// tarjeta: aquí el bus o la van ya sale a una hora fija, la publica una
+/// empresa habilitada y no depende de que haya un conductor en línea en este
+/// momento. Reservar se hace en `/pooled/search`, que es donde vive el flujo
+/// completo (sillas, puntos de embarque, cupón, datos de los pasajeros); esta
+/// tarjeta solo descubre y lleva allí, con el trayecto ya puesto.
+class _SalidasPublicadas extends ConsumerWidget {
+  const _SalidasPublicadas({required this.origen, required this.destino});
+
+  final IntercityCity origen;
+  final IntercityCity destino;
+
+  void _verTodas(BuildContext context) {
+    final ({IntercityCity? origen, IntercityCity? destino}) ruta =
+        (origen: origen, destino: destino);
+    context.push('/pooled/search', extra: ruta);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final clave = (origen: origen.name, destino: destino.name);
+    final salidas = ref.watch(salidasPublicadasProvider(clave));
+
+    return _DarkCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: _SectionTitle('SALIDAS DE EMPRESAS')),
+              if (salidas.valueOrNull?.isNotEmpty ?? false)
+                GestureDetector(
+                  onTap: () => _verTodas(context),
+                  child: const Text(
+                    'Ver todas',
+                    style: TextStyle(
+                      color: AppColors.intercityAccent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          salidas.when(
+            loading: () => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                'Buscando salidas publicadas…',
+                style: TextStyle(color: AppColors.intercityTextDim, fontSize: 13),
+              ),
+            ),
+            // «No hay» y «no pudimos preguntar» son cosas distintas: la segunda
+            // se arregla reintentando, y decir la primera cuando pasó la
+            // segunda manda al pasajero a pedir un viaje a demanda creyendo que
+            // no existe la salida que sí existe.
+            error: (_, __) => Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'No pudimos consultar las salidas.',
+                    style: TextStyle(color: AppColors.error, fontSize: 13),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () =>
+                      ref.invalidate(salidasPublicadasProvider(clave)),
+                  child: const Text('Reintentar'),
+                ),
+              ],
+            ),
+            data: (lista) {
+              if (lista.isEmpty) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ninguna empresa ha publicado salidas de '
+                      '${origen.displayName} a ${destino.displayName}.',
+                      style: const TextStyle(
+                        color: AppColors.intercityTextDim,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    GestureDetector(
+                      onTap: () => _verTodas(context),
+                      child: const Text(
+                        'Ver salidas de otros trayectos',
+                        style: TextStyle(
+                          color: AppColors.intercityAccent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              // Tres y no más: esto es un descubrimiento, no el buscador. La
+              // lista completa está a un toque.
+              final visibles = lista.take(3).toList();
+              return Column(
+                children: [
+                  for (final t in visibles) ...[
+                    _FilaSalida(salida: t, onTap: () => _verTodas(context)),
+                    if (t != visibles.last) const SizedBox(height: 8),
+                  ],
+                  if (lista.length > visibles.length) ...[
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () => _verTodas(context),
+                      child: Text(
+                        'Y ${lista.length - visibles.length} salida(s) más',
+                        style: const TextStyle(
+                          color: AppColors.intercityAccent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilaSalida extends StatelessWidget {
+  const _FilaSalida({required this.salida, required this.onTap});
+
+  final PooledTripEntity salida;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final h = salida.departureTime;
+    final hora = '${h.hour.toString().padLeft(2, '0')}:'
+        '${h.minute.toString().padLeft(2, '0')}';
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.intercityBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.intercityOutline),
+        ),
+        child: Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hora,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  // Sin empresa es un particular compartiendo gastos, y decirlo
+                  // importa: no es lo mismo que una empresa habilitada.
+                  salida.operatorName ?? 'Particular',
+                  style: const TextStyle(
+                    color: AppColors.intercityTextDim,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  CurrencyFormatter.format(salida.farePerSeat),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  salida.availableSeats > 0
+                      ? '${salida.availableSeats} puesto(s)'
+                      : 'Lleno',
+                  style: TextStyle(
+                    color: salida.availableSeats > 0
+                        ? AppColors.intercityTextDim
+                        : AppColors.error,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _DarkCard extends StatelessWidget {
   const _DarkCard({required this.child});

@@ -464,17 +464,23 @@ class _Step2Vehicle extends StatelessWidget {
             _FormField(
               controller: plateCtrl,
               label: 'Placa',
-              hint: 'Ej. ABC-123',
+              hint: 'Ej. ABC-123 (carro) o ABC-12D (moto)',
               textCapitalization: TextCapitalization.characters,
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9\-]')),
                 LengthLimitingTextInputFormatter(7),
                 _PlateFormatter(),
               ],
+              // Los DOS formatos colombianos, los mismos que acepta el backend
+              // (`registerDriver`). Antes solo pasaba el de carro, así que un
+              // motociclista escribía su placa real y el formulario la
+              // rechazaba: no podía registrarse de ninguna manera.
               validator: (v) {
                 final plate = v?.toUpperCase().trim() ?? '';
-                if (!RegExp(r'^[A-Z]{3}-[0-9]{3}$').hasMatch(plate)) {
-                  return 'Formato: ABC-123';
+                final carro = RegExp(r'^[A-Z]{3}-[0-9]{3}$');
+                final moto = RegExp(r'^[A-Z]{3}-[0-9]{2}[A-Z]$');
+                if (!carro.hasMatch(plate) && !moto.hasMatch(plate)) {
+                  return 'Formato: ABC-123 (carro) o ABC-12D (moto)';
                 }
                 return null;
               },

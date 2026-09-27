@@ -68,6 +68,9 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
   Widget build(BuildContext context) {
     final comerciosAsync = ref.watch(businessesProvider);
     final direccion = ref.watch(defaultAddressProvider);
+    // Sin filtro ni búsqueda la pantalla es una vitrina; con cualquiera de los
+    // dos pasa a ser una lista de resultados.
+    final explorando = _filtro == null && _busqueda.trim().isEmpty;
 
     return Scaffold(
       backgroundColor: context.zFondo,
@@ -95,35 +98,48 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                   onChanged: (v) => setState(() => _busqueda = v),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 18)),
-              SliverToBoxAdapter(child: _RejillaServicios(onFiltrarRestaurantes: () {
-                setState(() => _filtro = BusinessCategory.restaurant);
-              })),
-              const SliverToBoxAdapter(child: SizedBox(height: 22)),
-              // Va ARRIBA del sello y de los comercios porque es la oferta que
-              // nadie descubría: estaba a cinco toques dentro de dos hojas.
-              const SliverToBoxAdapter(child: FilaCategoriasMandado()),
-              const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              const SliverPadding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                sliver: SliverToBoxAdapter(child: SelloConfianza()),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 22)),
-              // Foto grande para los que la tienen; la lista de abajo sigue
-              // siendo de filas porque comparar pide densidad. Si ningún
-              // comercio tiene portada, esto no se dibuja — ni un marco gris.
-              if (comerciosAsync.valueOrNull != null) ...[
+              // Las puertas, los mandados, el sello y el carrusel son para
+              // EXPLORAR. Con un filtro puesto o una búsqueda escrita estorban:
+              // empujan la lista de resultados fuera de la pantalla y hacen
+              // creer que el botón no hizo nada — que es justo lo que pasaba al
+              // tocar «Restaurantes», que sí filtraba, pero varios cientos de
+              // píxeles más abajo, sin que se moviera nada a la vista.
+              if (explorando) ...[
+                const SliverToBoxAdapter(child: SizedBox(height: 18)),
                 SliverToBoxAdapter(
-                  child: CarruselDestacados(
-                    comercios: comerciosAsync.valueOrNull!,
-                    onAbrir: (c) => context.push(
-                      AppRoutes.businessPath(c.id),
-                      extra: c,
+                  child: _RejillaServicios(
+                    onFiltrarRestaurantes: () => setState(
+                      () => _filtro = BusinessCategory.restaurant,
                     ),
                   ),
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              ],
+                const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                // Va ARRIBA del sello y de los comercios porque es la oferta que
+                // nadie descubría: estaba a cinco toques dentro de dos hojas.
+                const SliverToBoxAdapter(child: FilaCategoriasMandado()),
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                const SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverToBoxAdapter(child: SelloConfianza()),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                // Foto grande para los que la tienen; la lista de abajo sigue
+                // siendo de filas porque comparar pide densidad. Si ningún
+                // comercio tiene portada, esto no se dibuja — ni un marco gris.
+                if (comerciosAsync.valueOrNull != null) ...[
+                  SliverToBoxAdapter(
+                    child: CarruselDestacados(
+                      comercios: comerciosAsync.valueOrNull!,
+                      onAbrir: (c) => context.push(
+                        AppRoutes.businessPath(c.id),
+                        extra: c,
+                      ),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                ],
+              ] else
+                const SliverToBoxAdapter(child: SizedBox(height: 14)),
               SliverToBoxAdapter(
                 child: _TituloSeccion(
                   texto: _filtro == null ? 'Cerca de ti' : _filtro!.label,

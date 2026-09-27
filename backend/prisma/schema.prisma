@@ -1060,10 +1060,20 @@ enum IntercityStatus {
 model PooledTrip {
   id                 String            @id @default(cuid())
   tripRef            String            @unique
-  driverId           String
-  driverName         String
-  driverPhone        String
-  vehicleDescription String
+  /// Quién la maneja. NULL = todavía NADIE: la salida la publicó un pasajero
+  /// («voy de la Terminal a la Universidad a las 6, somos 4») y está en el
+  /// tablero esperando a que un taxista la tome. En cuanto alguien la toma se
+  /// sellan los cuatro campos a la vez y deja de estar libre; la toma es
+  /// atómica (`driverId: null` en el where), igual que las reservas.
+  driverId           String?
+  driverName         String?
+  driverPhone        String?
+  /// Con qué vehículo va. NULL mientras no haya conductor: no se sabe, y
+  /// rellenarlo con «Taxi» sería inventarle un carro a la salida.
+  vehicleDescription String?
+  /// El PASAJERO que la publicó, si la publicó un pasajero. NULL en las de
+  /// siempre (conductor o empresa). Sin FK, mismo patrón que `operatorId`.
+  createdByUserId    String?
   /// Intermunicipal (lo de siempre) o puesto de taxi urbano. El default deja
   /// intactas todas las salidas ya publicadas.
   kind               PooledKind        @default(INTERCITY)
@@ -1151,6 +1161,7 @@ model PooledTrip {
   @@index([status])
   @@index([origin, destination])
   @@index([operatorId])
+  @@index([createdByUserId])
   // La búsqueda del pasajero siempre filtra por tipo: si no lo hiciera, los
   // puestos urbanos saldrían mezclados en «ver todas las salidas».
   @@index([kind, origin, status])
