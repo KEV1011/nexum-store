@@ -9,6 +9,7 @@ import {
   SeatBookingStatus,
   MapaAsientosDTO,
   PublishUrbanSeatDTO,
+  PublishPassengerSeatDTO,
 } from '../types';
 import {
   getIntercityRoute,
@@ -52,6 +53,10 @@ import {
   sugeridoPorPuesto,
   topePorPuesto,
 } from '../lib/puesto-urbano';
+import {
+  motivoParaNoPublicarComoPasajero,
+  motivoParaNoTomar,
+} from '../lib/puesto-de-pasajero';
 import { precioCategoria, tablaTarifas } from '../lib/tarifa-categoria';
 import { medirTrayecto } from './trip-options.service';
 import { geocodeAddress } from './geo.service';
@@ -102,8 +107,13 @@ const STATUS_FROM_PRISMA: Record<string, PooledTripStatus> = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 type DbPooledTrip = {
-  id: string; tripRef: string; driverId: string; driverName: string; driverPhone: string;
-  vehicleDescription: string; origin: string; destination: string; departureTime: Date;
+  // Los cuatro del conductor son nulos mientras la salida que publicó un
+  // pasajero no la haya tomado nadie.
+  id: string; tripRef: string;
+  driverId: string | null; driverName: string | null; driverPhone: string | null;
+  vehicleDescription: string | null;
+  createdByUserId?: string | null;
+  origin: string; destination: string; departureTime: Date;
   totalSeats: number; farePerSeat: number; maxFarePerSeat: number; allowFleet: boolean;
   status: string; notes: string | null; createdAt: Date;
   stops?: unknown;
@@ -228,13 +238,20 @@ function _toDTO(t: DbPooledTrip, includeBookings: boolean): PooledTripDTO {
   const dto: PooledTripDTO = {
     id: t.id,
     tripRef: t.tripRef,
-    driverId: t.driverId,
-    driverName: t.driverName,
-    // Privacy: passengers see a masked reference, not the driver's number.
-    driverPhone: maskPhone(t.driverPhone) ?? '',
-    contactChannel: 'in_app_chat',
-    maskedPhone: maskPhone(t.driverPhone),
-    vehicleDescription: t.vehicleDescription,
+    // Los cuatro del conductor, JUNTOS o ninguno. Sin conductor se omiten en
+    // vez de mandarse vacíos: un `driverName: ''` se pinta como un hueco y un
+    // `'Conductor'` de respaldo se lee como si ya hubiera uno asignado.
+    ...(t.driverId && {
+      driverId: t.driverId,
+      driverName: t.driverName ?? undefined,
+      // Privacy: passengers see a masked reference, not the driver's number.
+      driverPhone: maskPhone(t.driverPhone ?? '') ?? '',
+      contactChannel: 'in_app_chat' as const,
+      maskedPhone: maskPhone(t.driverPhone ?? ''),
+      vehicleDescription: t.vehicleDescription ?? undefined,
+    }),
+    sinConductor: !t.driverId,
+    ...(t.createdByUserId && { createdByUserId: t.createdByUserId }),
     origin: (CITY_FROM_PRISMA[t.origin] ?? t.origin.toLowerCase()) as IntercityCity,
     destination: (CITY_FROM_PRISMA[t.destination] ?? t.destination.toLowerCase()) as IntercityCity,
     departureTime: t.departureTime.toISOString(),
@@ -669,6 +686,213 @@ export async function buscarPuestosUrbanos(
     .filter((t) => t.availableSeats > 0);
 }
 
+// ── El viaje por puestos que arma el PASAJERO ────────────────────────────────
+
+/**
+ * Un pasajero publica un viaje por puestos: «voy de la Terminal a la
+ * Universidad a las 6, somos cuatro puestos, $X cada uno».
+ *
+ * Nace SIN conductor y con la reserva del que publica ya hecha, en la misma
+ * transacción. Las dos cosas van juntas a propósito: si la reserva se hiciera
+ * después, un fallo de red dejaría un viaje publicado en el que su propio autor
+ * no va — y el taxista llegaría a recoger a alguien que no está.
+ *
+ * El precio se valida con EL MISMO tope que la salida del taxista
+ * (`motivoParaNoPublicarPuesto`): la regla protege al que se sube, así que no
+ * cambia según quién publique.
+ */
+export async function publicarPuestoDePasajero(
+  userId: string,
+  dto: PublishPassengerSeatDTO,
+): Promise<PooledTripDTO> {
+  const ciudad = (dto.city ?? '').trim().toLowerCase();
+  const municipio = await getMunicipality(ciudad);
+  if (!municipio) throw new PooledTripError('Esa ciudad no está en la lista de municipios');
+
+  const usuario = await prisma.user.findUnique({ where: { id: userId } });
+  if (!usuario) throw new PooledTripError('No encontramos tu cuenta');
+
+  const abiertas = await prisma.pooledTrip.count({
+    where: { createdByUserId: userId, status: 'OPEN' },
+  });
+
+  const salida = new Date(dto.departureTime);
+  const motivoPasajero = motivoParaNoPublicarComoPasajero({
+    puestos: dto.totalSeats,
+    puestosDelCreador: dto.seatsForMe,
+    salida,
+    abiertas,
+  });
+  if (motivoPasajero) throw new PooledTripError(motivoPasajero);
+
+  const carrera = await medirCarreraSola({
+    ciudad,
+    origenTexto: dto.originLabel ?? '',
+    destinoTexto: dto.destLabel ?? '',
+    ...(dto.originLat != null && { origenLat: dto.originLat }),
+    ...(dto.originLng != null && { origenLng: dto.originLng }),
+    ...(dto.destLat != null && { destinoLat: dto.destLat }),
+    ...(dto.destLng != null && { destinoLng: dto.destLng }),
+  });
+
+  const motivo = motivoParaNoPublicarPuesto({
+    ciudadOrigen: ciudad,
+    ciudadDestino: ciudad,
+    origenTexto: dto.originLabel ?? '',
+    destinoTexto: dto.destLabel ?? '',
+    puestos: dto.totalSeats,
+    tarifaPorPuesto: dto.farePerSeat,
+    tarifaSolo: carrera.tarifaSolo,
+  });
+  if (motivo) throw new PooledTripError(motivo);
+
+  const origenTexto = dto.originLabel.trim();
+  const destinoTexto = dto.destLabel.trim();
+  const tarifa = Math.round(dto.farePerSeat);
+
+  // Prefijo propio para distinguirlo en soporte de un NXU (puesto del taxista).
+  const tripRef = `NXP-${Math.floor(1000 + Math.random() * 8000)}`;
+
+  return prisma.$transaction(async (tx) => {
+    const trip = await tx.pooledTrip.create({
+      data: {
+        tripRef,
+        kind: 'URBANO',
+        createdByUserId: userId,
+        origin: ciudad,
+        destination: ciudad,
+        routeName: dto.routeName?.trim() || `${origenTexto} → ${destinoTexto}`,
+        originLabel: origenTexto,
+        destLabel: destinoTexto,
+        originLat: carrera.origen?.lat ?? null,
+        originLng: carrera.origen?.lng ?? null,
+        destLat: carrera.destino?.lat ?? null,
+        destLng: carrera.destino?.lng ?? null,
+        soloFareRef: carrera.tarifaSolo,
+        departureTime: salida,
+        totalSeats: dto.totalSeats,
+        farePerSeat: tarifa,
+        maxFarePerSeat: topePorPuesto(carrera.tarifaSolo, dto.totalSeats),
+        allowFleet: false,
+        status: 'OPEN',
+        notes: dto.notes?.trim() || null,
+      },
+    });
+
+    await tx.seatBooking.create({
+      data: {
+        tripId: trip.id,
+        userId,
+        passengerName: usuario.name ?? 'Pasajero',
+        passengerPhone: usuario.phone,
+        seatsBooked: dto.seatsForMe,
+        // Sellado igual que cualquier reserva: si el autor sube la tarifa
+        // mañana, lo que él aceptó fue esto.
+        fareTotal: tarifa * dto.seatsForMe,
+        status: 'CONFIRMED',
+      },
+    });
+
+    const completo = await tx.pooledTrip.findUnique({
+      where: { id: trip.id },
+      include: {
+        bookings: { where: { status: 'CONFIRMED' }, include: { seats: true } },
+        seatAssignments: true,
+      },
+    });
+    return _toDTO(completo as DbPooledTrip, true);
+  });
+}
+
+/**
+ * El tablero del conductor: viajes por puestos que publicaron pasajeros y que
+ * todavía no tiene nadie.
+ *
+ * Filtrado por la plaza del conductor con el MISMO criterio que todo lo demás.
+ * Un viaje sin plaza resuelta NO se excluye —la lección del tablero de
+ * reservas: un dato que falta no puede quitarle trabajo a nadie—, pero aquí no
+ * puede pasar, porque publicar exige un municipio de la lista.
+ */
+export async function listarPuestosSinConductor(
+  ciudad: string,
+  horas = 24,
+): Promise<PooledTripDTO[]> {
+  const slug = (ciudad ?? '').trim().toLowerCase();
+  if (!slug) return [];
+  const ahora = new Date();
+  const hasta = new Date(ahora.getTime() + Math.min(Math.max(horas, 1), 168) * 3600_000);
+
+  const trips = await prisma.pooledTrip.findMany({
+    where: {
+      kind: 'URBANO',
+      status: 'OPEN',
+      driverId: null,
+      origin: slug,
+      departureTime: { gt: ahora, lte: hasta },
+    },
+    include: {
+      bookings: { where: { status: 'CONFIRMED' }, include: { seats: true } },
+      seatAssignments: true,
+    },
+    orderBy: { departureTime: 'asc' },
+  });
+  return trips.map((t) => _toDTO(t as DbPooledTrip, true));
+}
+
+/**
+ * Un conductor toma un viaje que publicó un pasajero.
+ *
+ * La toma es ATÓMICA (`driverId: null` en el `where` del `updateMany`): dos
+ * taxistas tocando «Tomar» a la vez y el pasajero acabaría con dos carros en la
+ * puerta, cada uno creyendo que el viaje es suyo. Comprobarlo antes con un
+ * `findUnique` no sirve: entre la lectura y la escritura cabe el otro.
+ */
+export async function tomarPuestoDePasajero(
+  driverId: string,
+  tripId: string,
+): Promise<PooledTripDTO> {
+  const conductor = await prisma.driver.findUnique({
+    where: { id: driverId },
+    include: { vehicles: { where: { isActive: true }, take: 1 } },
+  });
+  if (!conductor) throw new PooledTripError('No encontramos tu cuenta de conductor');
+
+  const trip = await prisma.pooledTrip.findUnique({ where: { id: tripId } });
+  if (!trip || trip.kind !== 'URBANO') throw new PooledTripError('El viaje no existe');
+
+  const motivo = motivoParaNoTomar({
+    driverIdActual: trip.driverId,
+    estado: trip.status,
+    salida: trip.departureTime,
+    tipoVehiculo: conductor.vehicles[0]?.type ?? null,
+  });
+  if (motivo) throw new PooledTripError(motivo);
+
+  const v = conductor.vehicles[0]!;
+  const tomada = await prisma.pooledTrip.updateMany({
+    where: { id: tripId, driverId: null, status: 'OPEN' },
+    data: {
+      driverId,
+      driverName: conductor.name,
+      driverPhone: conductor.phone,
+      vehicleDescription: `${v.brand} ${v.model} ${v.color} · ${v.plate}`,
+      // La empresa del conductor queda sellada igual que en cualquier servicio:
+      // si mañana se desafilia, este viaje siguió siendo de esa flota.
+      operatorId: conductor.operatorId ?? null,
+    },
+  });
+  if (tomada.count === 0) throw new PooledTripError('Otro conductor ya tomó este viaje.');
+
+  const completo = await prisma.pooledTrip.findUnique({
+    where: { id: tripId },
+    include: {
+      bookings: { where: { status: 'CONFIRMED' }, include: { seats: true } },
+      seatAssignments: true,
+    },
+  });
+  return _toDTO(completo as DbPooledTrip, true);
+}
+
 /**
  * Liquida un viaje urbano por puestos al cerrarlo.
  *
@@ -682,6 +906,10 @@ export async function buscarPuestosUrbanos(
  * carrera en efectivo (ver `lib/saldo-conductor.ts`).
  */
 async function _liquidarPuestoUrbano(t: DbPooledTrip): Promise<void> {
+  // Sin conductor no hay a quién liquidarle. No debería llegar aquí —cerrar la
+  // salida la cierra el conductor que la tomó— pero la comprobación es la que
+  // impide que un cambio futuro pague una carrera a nadie.
+  if (!t.driverId) return;
   const confirmadas = (t.bookings ?? []).filter((b) => b.status === 'CONFIRMED');
   // Lo que de verdad se cobró: el importe sellado en cada reserva, que ya trae
   // el descuento del cupón. Sin él (reservas viejas) se cae a la tarifa por el
@@ -996,9 +1224,9 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
  */
 async function _conPosicionDelBus(
   dto: PooledTripDTO,
-  t: { driverId: string; status: string },
+  t: { driverId: string | null; status: string },
 ): Promise<PooledTripDTO> {
-  if (t.status !== 'DEPARTED') return dto;
+  if (t.status !== 'DEPARTED' || !t.driverId) return dto;
   const d = await prisma.driver.findUnique({
     where: { id: t.driverId },
     select: { lastLat: true, lastLng: true },
@@ -1308,10 +1536,13 @@ export async function getClientBookings(clientId: string): Promise<Array<PooledT
   // La posición de los buses EN CURSO, en UNA consulta. Es la pantalla donde
   // el pasajero mira dónde va el suyo, y hacer una consulta por reserva la
   // volvería lenta justo cuando más se abre.
+  // `filter` con predicado de tipo: una salida en curso siempre tiene
+  // conductor, pero el compilador no lo sabe desde que la columna es opcional.
   const enCurso = bookings
     .map((b) => b.trip)
     .filter((t) => t.status === 'DEPARTED')
-    .map((t) => t.driverId);
+    .map((t) => t.driverId)
+    .filter((id): id is string => id != null);
   const posiciones = new Map<string, { lat: number; lng: number }>();
   if (enCurso.length > 0) {
     const conductores = await prisma.driver.findMany({
@@ -1328,7 +1559,9 @@ export async function getClientBookings(clientId: string): Promise<Array<PooledT
   const conEmpresa = await _conDatosDeEmpresa(
     bookings.map((b) => {
       const dto = _toDTO(b.trip as DbPooledTrip, false);
-      const pos = b.trip.status === 'DEPARTED' ? posiciones.get(b.trip.driverId) : undefined;
+      const pos = b.trip.status === 'DEPARTED' && b.trip.driverId
+        ? posiciones.get(b.trip.driverId)
+        : undefined;
       if (pos) {
         dto.driverLat = pos.lat;
         dto.driverLng = pos.lng;
@@ -1452,7 +1685,10 @@ export async function rateSeatBooking(
   // cambio de nada. Lo cazó el E2E: la empresa seguía sin nota justo después
   // de calificarla.
   if (b.trip.operatorId) await recalcularReputacionEmpresa(b.trip.operatorId);
-  await recalcularReputacionConductor(b.trip.driverId);
+  // Sin conductor no hay a quién promediar: pasa en una salida que se calificó
+  // antes de que nadie la tomara (que no debería poder calificarse, pero la
+  // reputación no es el sitio donde comprobar eso).
+  if (b.trip.driverId) await recalcularReputacionConductor(b.trip.driverId);
 
   return _toBookingDTO(actualizada as unknown as DbSeatBooking);
 }

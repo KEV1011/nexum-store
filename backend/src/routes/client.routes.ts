@@ -60,6 +60,8 @@ import {
   getClientBookings,
   buscarPuestosUrbanos,
   plazaDelPasajero,
+  topeDelPuestoUrbano,
+  publicarPuestoDePasajero,
   PooledTripError,
 } from '../services/intercity-pool.service';
 import {
@@ -123,6 +125,7 @@ import {
   RequestIntercityDTO,
   BookSeatsDTO,
   IntercityCity,
+  PublishPassengerSeatDTO,
 } from '../types';
 
 const router = Router();
@@ -891,6 +894,85 @@ router.get('/pool/urbano', clientAuthMiddleware, async (req, res) => {
   });
   res.json({ success: true, data: { city: ciudad, cityName: nombre || ciudad, trips } });
 });
+
+// GET /client/pool/urbano/tope — cuánto puede costar el puesto en ese trayecto.
+//
+// El pasajero no puede escribir un precio a ciegas: se le enseña qué cuesta la
+// carrera sola, el máximo por puesto y el sugerido. El mismo cálculo que ya usa
+// el conductor al publicar (`/driver/pool/urbano/tope`) — una segunda fórmula
+// aquí acabaría dando otro número para el mismo trayecto.
+router.get('/pool/urbano/tope', clientAuthMiddleware, async (req, res) => {
+  const ciudad = String(req.query['ciudad'] ?? '').trim().toLowerCase();
+  const origen = String(req.query['origen'] ?? '').trim();
+  const destino = String(req.query['destino'] ?? '').trim();
+  const puestos = Number(req.query['puestos'] ?? 0);
+  if (!ciudad || !origen || !destino || !Number.isFinite(puestos) || puestos < 1) {
+    res.status(400).json({ success: false, error: 'Faltan ciudad, origen, destino o puestos' });
+    return;
+  }
+  try {
+    res.json({
+      success: true,
+      data: await topeDelPuestoUrbano({
+        ciudad, origenTexto: origen, destinoTexto: destino, puestos,
+      }),
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos calcular el precio',
+    });
+  }
+});
+
+// POST /client/pool/urbano/publish — el PASAJERO arma el viaje por puestos.
+//
+// El caso que faltaba: no siempre lo publica el taxista o la empresa. Alguien
+// que tiene que ir a un sitio arma el viaje, otros se le suman y un taxista lo
+// toma del tablero.
+router.post(
+  '/pool/urbano/publish',
+  clientAuthMiddleware,
+  clientRequestRateLimit,
+  async (req, res) => {
+    const b = req.body as Partial<PublishPassengerSeatDTO>;
+    if (
+      typeof b.city !== 'string' ||
+      typeof b.originLabel !== 'string' ||
+      typeof b.destLabel !== 'string' ||
+      typeof b.departureTime !== 'string' ||
+      typeof b.totalSeats !== 'number' ||
+      typeof b.seatsForMe !== 'number' ||
+      typeof b.farePerSeat !== 'number'
+    ) {
+      res.status(400).json({ success: false, error: 'Faltan datos del viaje' });
+      return;
+    }
+    try {
+      const trip = await publicarPuestoDePasajero(req.clientId!, {
+        city: b.city,
+        originLabel: b.originLabel,
+        destLabel: b.destLabel,
+        departureTime: b.departureTime,
+        totalSeats: b.totalSeats,
+        seatsForMe: b.seatsForMe,
+        farePerSeat: b.farePerSeat,
+        ...(typeof b.originLat === 'number' && { originLat: b.originLat }),
+        ...(typeof b.originLng === 'number' && { originLng: b.originLng }),
+        ...(typeof b.destLat === 'number' && { destLat: b.destLat }),
+        ...(typeof b.destLng === 'number' && { destLng: b.destLng }),
+        ...(typeof b.routeName === 'string' && { routeName: b.routeName }),
+        ...(typeof b.notes === 'string' && { notes: b.notes }),
+      });
+      res.status(201).json({ success: true, data: trip });
+    } catch (err) {
+      res.status(400).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'No pudimos publicar el viaje',
+      });
+    }
+  },
+);
 
 router.get('/intercity/pool/bookings', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: await getClientBookings(req.clientId!) });

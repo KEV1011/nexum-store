@@ -82,6 +82,19 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
         ),
         title: const Text('Viaje por puestos'),
       ),
+      // Publicar es la mitad que faltaba: no siempre el que arma el viaje es
+      // el taxista. Va en un botón fijo y no al final de la lista porque
+      // justo cuando NO hay ninguno publicado —que es cuando más falta
+      // hace— la lista es un estado vacío y el botón quedaría escondido.
+      floatingActionButton: _sinUbicacion || state.slugUrbano == null
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: _kUrbano,
+              foregroundColor: Colors.white,
+              onPressed: _publicar,
+              icon: const Icon(Icons.add_road_rounded),
+              label: const Text('Publicar mi viaje'),
+            ),
       body: RefreshIndicator(
         color: _kUrbano,
         onRefresh: _cargar,
@@ -159,11 +172,16 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
     }
     if (state.puestosUrbanos.isEmpty) {
       return [
-        const _Aviso(
+        _Aviso(
           icono: Icons.schedule_rounded,
           titulo: 'Ningún taxi tiene puestos ahora',
-          cuerpo: 'Los conductores publican sus recorridos a lo largo del día. '
-              'Vuelve más tarde o pide una carrera normal.',
+          // Antes esto terminaba en «vuelve más tarde», que es pedirle a la
+          // persona que resuelva sola un problema que la app puede resolver:
+          // puede armar ella el viaje y esperar a que alguien lo tome.
+          cuerpo: 'Puedes publicar el tuyo: dices a dónde vas y a qué hora, '
+              'otros pasajeros se suman y un taxista lo toma.',
+          accion: 'Publicar mi viaje',
+          onAccion: _publicar,
         ),
       ];
     }
@@ -174,6 +192,21 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
           child: _TarjetaPuesto(trip: t, onReservar: () => _reservar(t)),
         ),
     ];
+  }
+
+  Future<void> _publicar() async {
+    final ciudad = ref.read(pooledProvider).slugUrbano;
+    if (ciudad == null) return;
+    final publicado = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _HojaPublicar(ciudad: ciudad),
+    );
+    if (publicado == true) {
+      HapticFeedback.mediumImpact();
+      await _cargar();
+    }
   }
 
   Future<void> _reservar(PooledTripEntity trip) async {
@@ -296,7 +329,9 @@ class _TarjetaPuesto extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                '${trip.driverName} · ${trip.vehicleDescription}',
+                trip.sinConductor
+                    ? trip.conductorLabel
+                    : '${trip.driverName} · ${trip.vehicleDescription}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
@@ -550,5 +585,383 @@ class _Aviso extends StatelessWidget {
             ],
           ],
         ),
+      );
+}
+
+/// El pasajero arma su propio viaje por puestos.
+///
+/// La pieza que faltaba: hasta ahora solo publicaban el taxista y la empresa,
+/// y en la calle pasa igual de seguido al revés — alguien tiene que ir a un
+/// sitio y busca con quién compartir el carro.
+///
+/// El precio NO se escribe a ciegas: en cuanto hay origen y destino se le
+/// pregunta al servidor cuánto cuesta la carrera sola y cuál es el máximo por
+/// puesto, y se enseñan los dos. Escribir una cifra y que te la rechacen
+/// después es la forma más rápida de que alguien abandone un formulario.
+class _HojaPublicar extends ConsumerStatefulWidget {
+  const _HojaPublicar({required this.ciudad});
+
+  /// Slug del municipio donde está el pasajero, resuelto por el servidor.
+  final String ciudad;
+
+  @override
+  ConsumerState<_HojaPublicar> createState() => _HojaPublicarState();
+}
+
+class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
+  final _origenCtrl = TextEditingController();
+  final _destinoCtrl = TextEditingController();
+  final _precioCtrl = TextEditingController();
+  final _notasCtrl = TextEditingController();
+
+  int _puestos = 4;
+  int _mios = 1;
+  DateTime _salida = DateTime.now().add(const Duration(minutes: 30));
+  bool _enviando = false;
+  bool _consultandoTope = false;
+  ({double carreraSola, double tope, double sugerido})? _tope;
+
+  @override
+  void dispose() {
+    _origenCtrl.dispose();
+    _destinoCtrl.dispose();
+    _precioCtrl.dispose();
+    _notasCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Se pregunta cuando ya hay los dos extremos y al cambiar los puestos: el
+  /// tope depende de entre cuántos se reparte la carrera.
+  Future<void> _consultarTope() async {
+    final o = _origenCtrl.text.trim();
+    final d = _destinoCtrl.text.trim();
+    if (o.isEmpty || d.isEmpty) return;
+    setState(() => _consultandoTope = true);
+    final t = await ref.read(pooledProvider.notifier).topeDePuesto(
+          ciudad: widget.ciudad, origen: o, destino: d, puestos: _puestos,
+        );
+    if (!mounted) return;
+    setState(() {
+      _tope = t;
+      _consultandoTope = false;
+      // Se PRERRELLENA con lo sugerido, no se fija: el precio lo pone quien
+      // publica, la app solo le dice por dónde va.
+      if (t != null && _precioCtrl.text.trim().isEmpty) {
+        _precioCtrl.text = t.sugerido.round().toString();
+      }
+    });
+  }
+
+  Future<void> _elegirHora() async {
+    final ahora = DateTime.now();
+    final fecha = await showDatePicker(
+      context: context,
+      initialDate: _salida,
+      firstDate: ahora,
+      lastDate: ahora.add(const Duration(days: 7)),
+    );
+    if (fecha == null || !mounted) return;
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_salida),
+    );
+    if (hora == null || !mounted) return;
+    setState(() {
+      _salida = DateTime(fecha.year, fecha.month, fecha.day, hora.hour, hora.minute);
+    });
+  }
+
+  String? _loQueFalta() {
+    if (_origenCtrl.text.trim().isEmpty) return 'Escribe de dónde sales';
+    if (_destinoCtrl.text.trim().isEmpty) return 'Escribe a dónde vas';
+    final precio = int.tryParse(_precioCtrl.text.trim().replaceAll('.', ''));
+    if (precio == null || precio <= 0) return 'Pon cuánto cuesta el puesto';
+    if (!_salida.isAfter(DateTime.now())) return 'La hora de salida ya pasó';
+    return null;
+  }
+
+  Future<void> _publicar() async {
+    final falta = _loQueFalta();
+    if (falta != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(falta), backgroundColor: AppColors.error),
+      );
+      return;
+    }
+    setState(() => _enviando = true);
+    final error = await ref.read(pooledProvider.notifier).publicarMiViaje(
+          ciudad: widget.ciudad,
+          origen: _origenCtrl.text.trim(),
+          destino: _destinoCtrl.text.trim(),
+          salida: _salida,
+          puestos: _puestos,
+          puestosParaMi: _mios,
+          precioPorPuesto: int.parse(_precioCtrl.text.trim().replaceAll('.', '')),
+          notas: _notasCtrl.text,
+        );
+    if (!mounted) return;
+    if (error == null) {
+      Navigator.pop(context, true);
+      return;
+    }
+    setState(() => _enviando = false);
+    // El motivo del servidor, tal cual: son concretos («no puede pasar de
+    // $X», «ya tienes 2 sin terminar») y cada uno se arregla distinto.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error), backgroundColor: AppColors.error),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String dosDigitos(int n) => n.toString().padLeft(2, '0');
+    final cuando = '${dosDigitos(_salida.day)}/${dosDigitos(_salida.month)} · '
+        '${dosDigitos(_salida.hour)}:${dosDigitos(_salida.minute)}';
+
+    return Padding(
+      // El teclado no puede tapar el campo, el mismo fallo que ya se corrigió
+      // en pedidos y en la hoja de pedir viaje.
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: BoxDecoration(
+          color: context.surfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: context.outlineColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Publica tu viaje',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Otros pasajeros se suman y un taxista lo toma. Tú vas en él.',
+                style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+              ),
+              const SizedBox(height: 16),
+
+              _Campo(
+                controller: _origenCtrl,
+                label: 'De dónde sales',
+                hint: 'Ej. Barrio El Rosario',
+                onEditado: _consultarTope,
+              ),
+              const SizedBox(height: 12),
+              _Campo(
+                controller: _destinoCtrl,
+                label: 'A dónde vas',
+                hint: 'Ej. Hospital San Juan de Dios',
+                onEditado: _consultarTope,
+              ),
+              const SizedBox(height: 16),
+
+              _FilaContador(
+                titulo: 'Puestos en total',
+                valor: _puestos,
+                minimo: 2,
+                maximo: 4,
+                onCambio: (v) {
+                  setState(() {
+                    _puestos = v;
+                    // Nunca puede quedarse con todos: es la regla que impide
+                    // pagar una carrera entera al precio de un puesto, y el
+                    // servidor la vuelve a comprobar.
+                    if (_mios >= _puestos) _mios = _puestos - 1;
+                  });
+                  _consultarTope();
+                },
+              ),
+              const SizedBox(height: 8),
+              _FilaContador(
+                titulo: 'Para mí',
+                valor: _mios,
+                minimo: 1,
+                maximo: _puestos - 1,
+                onCambio: (v) => setState(() => _mios = v),
+              ),
+              const SizedBox(height: 16),
+
+              InkWell(
+                onTap: _elegirHora,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: context.outlineColor),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.schedule_rounded, size: 20, color: _kUrbano),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Sale el $cuando',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: context.textPrimaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              _Campo(
+                controller: _precioCtrl,
+                label: 'Precio por puesto',
+                hint: 'Ej. 2000',
+                teclado: TextInputType.number,
+              ),
+              if (_consultandoTope)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('Calculando cuánto puede costar…',
+                      style: TextStyle(fontSize: 12)),
+                )
+              else if (_tope != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'La carrera sola cuesta ${CurrencyFormatter.format(_tope!.carreraSola)}. '
+                  'Máximo por puesto: ${CurrencyFormatter.format(_tope!.tope)}.',
+                  style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                ),
+              ],
+              const SizedBox(height: 12),
+
+              _Campo(
+                controller: _notasCtrl,
+                label: 'Notas (opcional)',
+                hint: 'Ej. Llevo una maleta',
+              ),
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _kUrbano,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: _enviando ? null : _publicar,
+                  child: _enviando
+                      ? const SizedBox(
+                          width: 20, height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Publicar viaje'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Campo extends StatelessWidget {
+  const _Campo({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    this.teclado,
+    this.onEditado,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final TextInputType? teclado;
+  final VoidCallback? onEditado;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+        controller: controller,
+        keyboardType: teclado,
+        onEditingComplete: onEditado,
+        onTapOutside: (_) {
+          FocusManager.instance.primaryFocus?.unfocus();
+          onEditado?.call();
+        },
+        style: TextStyle(color: context.textPrimaryColor),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+}
+
+class _FilaContador extends StatelessWidget {
+  const _FilaContador({
+    required this.titulo,
+    required this.valor,
+    required this.minimo,
+    required this.maximo,
+    required this.onCambio,
+  });
+
+  final String titulo;
+  final int valor;
+  final int minimo;
+  final int maximo;
+  final ValueChanged<int> onCambio;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        children: [
+          Expanded(
+            child: Text(
+              titulo,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: context.textPrimaryColor,
+              ),
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: valor > minimo ? () => onCambio(valor - 1) : null,
+            icon: const Icon(Icons.remove_rounded, size: 18),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              '$valor',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: context.textPrimaryColor,
+              ),
+            ),
+          ),
+          IconButton.filledTonal(
+            onPressed: valor < maximo ? () => onCambio(valor + 1) : null,
+            icon: const Icon(Icons.add_rounded, size: 18),
+          ),
+        ],
       );
 }

@@ -11,6 +11,9 @@ import {
   cancelPooledTrip,
   publicarPuestoUrbano,
   topeDelPuestoUrbano,
+  listarPuestosSinConductor,
+  tomarPuestoDePasajero,
+  plazaDelPasajero,
   PooledTripError,
 } from '../services/intercity-pool.service';
 import {
@@ -744,6 +747,57 @@ router.post('/pool/urbano/publish', async (req: Request, res: Response): Promise
     res.status(status).json({
       success: false,
       error: err instanceof Error ? err.message : 'No se pudo publicar el viaje por puestos',
+    });
+  }
+});
+
+// GET /driver/pool/urbano/sin-conductor — el tablero de viajes que armaron
+// PASAJEROS y que todavía no tiene nadie.
+//
+// La plaza sale del último latido del conductor: es la misma con la que el
+// despacho lo cuenta, y pedírsela a la app abriría la puerta a mirar el
+// tablero de otra ciudad.
+router.get('/pool/urbano/sin-conductor', async (req: Request, res: Response): Promise<void> => {
+  const me = await prisma.driver.findUnique({
+    where: { id: req.driverId! },
+    select: { citySlug: true, lastLat: true, lastLng: true },
+  });
+  let ciudad = me?.citySlug ?? '';
+  if (!ciudad && me?.lastLat != null && me.lastLng != null) {
+    const plaza = await plazaDelPasajero(me.lastLat, me.lastLng);
+    ciudad = plaza?.slug ?? '';
+  }
+  if (!ciudad) {
+    // Sin plaza no se devuelve una lista vacía a secas: se leería como «no hay
+    // viajes» cuando lo que falta es saber dónde está.
+    res.json({
+      success: true,
+      data: {
+        city: null,
+        trips: [],
+        aviso: 'Conéctate para que sepamos en qué ciudad estás y puedas ver los viajes de tu zona.',
+      },
+    });
+    return;
+  }
+  const horas = Number(req.query['horas']);
+  const trips = await listarPuestosSinConductor(
+    ciudad,
+    Number.isFinite(horas) && horas > 0 ? horas : 24,
+  );
+  res.json({ success: true, data: { city: ciudad, trips } });
+});
+
+// POST /driver/pool/urbano/:id/tomar
+router.post('/pool/urbano/:id/tomar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const trip = await tomarPuestoDePasajero(req.driverId!, req.params['id']!);
+    res.json({ success: true, data: trip });
+  } catch (err) {
+    const status = err instanceof PooledTripError ? 400 : 500;
+    res.status(status).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo tomar el viaje',
     });
   }
 });

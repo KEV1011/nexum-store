@@ -498,7 +498,9 @@ class _TripCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '${trip.driverName} · ${trip.vehicleDescription}',
+                      trip.sinConductor
+                          ? trip.conductorLabel
+                          : '${trip.driverName} · ${trip.vehicleDescription}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -759,7 +761,10 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
             Text('${trip.origin.displayName} → ${trip.destination.displayName}',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
-            Text('${trip.driverName} · ${trip.vehicleDescription}',
+            Text(
+                trip.sinConductor
+                    ? trip.conductorLabel
+                    : '${trip.driverName} · ${trip.vehicleDescription}',
                 style: TextStyle(color: context.textSecondaryColor, fontSize: 13)),
             const SizedBox(height: 20),
 

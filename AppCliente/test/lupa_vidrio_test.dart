@@ -136,6 +136,60 @@ void main() {
     );
   });
 
+  group('a qué columna corresponde el dedo', () {
+    // El arrastre es lo que se pedía —mantener y deslizar, como WhatsApp— y
+    // esta cuenta es la que decide dónde queda la lupa bajo el dedo y qué se
+    // selecciona al soltar. Equivocarla no da error: la lupa va detrás del
+    // dedo con desfase, o se selecciona el ítem de al lado.
+    test('el centro de cada columna devuelve su índice exacto', () {
+      const ancho = 400.0;
+      const n = 4; // columnas de 100 px: centros en 50, 150, 250, 350
+      expect(columnaDesdeX(50, ancho, n), closeTo(0, 1e-9));
+      expect(columnaDesdeX(150, ancho, n), closeTo(1, 1e-9));
+      expect(columnaDesdeX(250, ancho, n), closeTo(2, 1e-9));
+      expect(columnaDesdeX(350, ancho, n), closeTo(3, 1e-9));
+    });
+
+    test('entre dos centros da el valor intermedio', () {
+      expect(columnaDesdeX(100, 400, 4), closeTo(0.5, 1e-9));
+    });
+
+    test('ES la inversa de dónde se pinta la lupa', () {
+      // Si estas dos cuentas se separan, la lupa se pinta en un sitio y se
+      // selecciona otro. Se comprueba el viaje de ida y vuelta.
+      const ancho = 400.0;
+      const n = 4;
+      for (final col in [0.0, 1.0, 2.0, 3.0, 1.5]) {
+        final x = alineacionDeColumna(col, n);
+        // Centro en píxeles según `Align`: izquierda + mitad del ancho.
+        const anchoLupa = ancho / n;
+        final izquierda = ((x + 1) / 2) * (ancho - anchoLupa);
+        final centro = izquierda + anchoLupa / 2;
+        expect(columnaDesdeX(centro, ancho, n), closeTo(col, 1e-9));
+      }
+    });
+
+    test('pasarse por los bordes NO saca la lupa de la barra', () {
+      // Un dedo que se va por el lado de la pantalla dejaría la lupa fuera del
+      // recorte, o mandaría a seleccionar una columna que no existe.
+      expect(columnaDesdeX(-500, 400, 4), 0);
+      expect(columnaDesdeX(9999, 400, 4), 3);
+    });
+
+    test('al soltar, redondear cae en la columna más cercana', () {
+      // Es lo que decide la selección: el dedo tapa el ítem y se suelta donde
+      // se puede, así que manda el centro más próximo y no el píxel exacto.
+      expect(columnaDesdeX(149, 400, 4).round(), 1);
+      expect(columnaDesdeX(199, 400, 4).round(), 1);
+      expect(columnaDesdeX(201, 400, 4).round(), 2);
+    });
+
+    test('con una sola columna o sin ancho no se divide por cero', () {
+      expect(columnaDesdeX(123, 400, 1), 0);
+      expect(columnaDesdeX(123, 0, 4), 0);
+    });
+  });
+
   test('la campana usa seno y no una recta', () {
     // Una interpolación lineal daría 0,5 en el cuarto del recorrido; el seno
     // da más, que es lo que hace que el arranque se sienta rápido.

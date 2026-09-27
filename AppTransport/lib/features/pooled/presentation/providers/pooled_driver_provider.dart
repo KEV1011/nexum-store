@@ -54,18 +54,43 @@ class PooledDriverState {
   const PooledDriverState({
     this.trips = const [],
     this.isLoading = false,
+    this.libres = const [],
+    this.cargandoLibres = false,
+    this.avisoLibres,
+    this.errorLibres,
   });
 
   final List<PooledTripEntity> trips;
   final bool isLoading;
 
+  /// Viajes por puestos que publicaron PASAJEROS y que todavía no tiene nadie.
+  final List<PooledTripEntity> libres;
+  final bool cargandoLibres;
+
+  /// Por qué la lista viene vacía cuando el motivo no es «no hay»: sin plaza
+  /// resuelta no se puede ni buscar, y enseñar «ninguno» sería afirmar algo
+  /// que nadie comprobó.
+  final String? avisoLibres;
+
+  /// Falló la petición. Distinto del aviso y distinto de la lista vacía: son
+  /// tres cosas y cada una se arregla de otra forma.
+  final String? errorLibres;
+
   PooledDriverState copyWith({
     List<PooledTripEntity>? trips,
     bool? isLoading,
+    List<PooledTripEntity>? libres,
+    bool? cargandoLibres,
+    String? avisoLibres,
+    String? errorLibres,
   }) =>
       PooledDriverState(
         trips: trips ?? this.trips,
         isLoading: isLoading ?? this.isLoading,
+        libres: libres ?? this.libres,
+        cargandoLibres: cargandoLibres ?? this.cargandoLibres,
+        avisoLibres: avisoLibres,
+        errorLibres: errorLibres,
       );
 }
 
@@ -229,6 +254,55 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
     } catch (_) {
       state = state.copyWith(isLoading: false);
     }
+  }
+
+  // ── Tablero: viajes que armaron pasajeros y nadie ha tomado ──────────────
+
+  Future<void> cargarLibres() async {
+    state = state.copyWith(cargandoLibres: true);
+    try {
+      final res = await _client.get<Map<String, dynamic>>(
+        '/driver/pool/urbano/sin-conductor',
+      );
+      final d = res.data?['data'] as Map<String, dynamic>?;
+      final list = (d?['trips'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(PooledTripEntity.fromJson)
+          .toList();
+      state = state.copyWith(
+        libres: list,
+        cargandoLibres: false,
+        avisoLibres: d?['aviso'] as String?,
+      );
+    } catch (_) {
+      state = state.copyWith(
+        libres: const [],
+        cargandoLibres: false,
+        errorLibres: 'No pudimos cargar los viajes. Revisa tu conexión.',
+      );
+    }
+  }
+
+  /// Toma un viaje del tablero. `null` = quedó a su nombre; si no, el motivo.
+  ///
+  /// El motivo importa: «otro conductor ya lo tomó» se arregla buscando otro y
+  /// «registra tu vehículo» no se arregla mirando la pantalla.
+  Future<String?> tomarLibre(String tripId) async {
+    String? error;
+    try {
+      await _client.post<Map<String, dynamic>>(
+        '/driver/pool/urbano/$tripId/tomar',
+      );
+    } on AppException catch (e) {
+      error = _extractError(e) ?? 'No se pudo tomar el viaje.';
+    } catch (_) {
+      error = 'No se pudo tomar el viaje. Revisa tu conexión.';
+    }
+    // Se recarga pase lo que pase: si otro se lo llevó, tiene que desaparecer
+    // del tablero en vez de quedarse tentando.
+    await cargarLibres();
+    if (error == null) await loadMine();
+    return error;
   }
 
   /// Devuelven `null` si el backend aceptó la acción, o el mensaje de error a

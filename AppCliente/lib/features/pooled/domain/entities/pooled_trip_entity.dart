@@ -235,6 +235,7 @@ class PooledTripEntity {
     required this.id,
     required this.tripRef,
     required this.driverName,
+    this.sinConductor = false,
     required this.driverPhone,
     required this.vehicleDescription,
     required this.origin,
@@ -290,7 +291,17 @@ class PooledTripEntity {
 
   final String id;
   final String tripRef;
+
+  /// Vacío mientras no haya conductor (salida publicada por un pasajero).
   final String driverName;
+
+  /// La publicó un pasajero y todavía no la tomó ningún taxista.
+  final bool sinConductor;
+
+  /// Cómo se nombra al conductor en pantalla, sin inventarse uno.
+  String get conductorLabel => sinConductor
+      ? 'Sin conductor todavía'
+      : (driverName.isEmpty ? 'Conductor' : driverName);
   final String driverPhone;
   final String vehicleDescription;
   final IntercityCity origin;
@@ -357,7 +368,11 @@ class PooledTripEntity {
   factory PooledTripEntity.fromJson(Map<String, dynamic> j) => PooledTripEntity(
         id: j['id'] as String? ?? '',
         tripRef: j['tripRef'] as String? ?? '',
-        driverName: j['driverName'] as String? ?? 'Conductor',
+        // Sin conductor NO se pone «Conductor»: se lee como si ya hubiera uno
+        // asignado, y la salida que publicó un pasajero está esperando a que
+        // un taxista la tome. La etiqueta la decide `sinConductor`.
+        driverName: j['driverName'] as String? ?? '',
+        sinConductor: j['sinConductor'] as bool? ?? false,
         driverPhone: j['driverPhone'] as String? ?? '',
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         origin: _cityFromApi(j['origin'] as String?),
@@ -448,5 +463,8 @@ class PooledTripEntity {
         esUrbano: esUrbano,
         routeName: routeName,
         savingsPerSeat: savingsPerSeat,
+        // Y sin esta, refrescar los cupos de un viaje que publicó un pasajero
+        // haría aparecer un conductor que nadie asignó.
+        sinConductor: sinConductor,
       );
 }

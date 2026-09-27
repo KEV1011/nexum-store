@@ -1285,12 +1285,22 @@ export interface MapaAsientosDTO {
 export interface PooledTripDTO {
   id: string;
   tripRef: string;
-  driverId: string;
-  driverName: string;
-  driverPhone: string;
+  /**
+   * Los cuatro del conductor van AUSENTES mientras no haya uno: la salida la
+   * publicó un pasajero y está en el tablero esperando. Antes eran obligatorios
+   * porque toda salida la publicaba quien la iba a manejar. Ausente ≠ vacío: la
+   * app pinta «Sin conductor todavía» en vez de un nombre inventado.
+   */
+  driverId?: string;
+  driverName?: string;
+  driverPhone?: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
   maskedPhone?: string;
-  vehicleDescription: string;
+  vehicleDescription?: string;
+  /** true = la publicó un pasajero y sigue sin conductor. */
+  sinConductor?: boolean;
+  /** El pasajero que la publicó, si la publicó un pasajero. */
+  createdByUserId?: string;
   origin: IntercityCity;
   destination: IntercityCity;
   departureTime: string;
@@ -1414,6 +1424,31 @@ export interface PublishUrbanSeatDTO {
   totalSeats: number;
   farePerSeat: number;
   vehicleDescription: string;
+  notes?: string;
+}
+
+/**
+ * Lo que manda un PASAJERO al publicar un viaje por puestos.
+ *
+ * Es el mismo viaje que publica un taxista, al revés: aquí lo arma quien
+ * necesita moverse y el conductor aparece después, tomándolo del tablero. Por
+ * eso no hay `vehicleDescription` —todavía no se sabe con qué carro va— y sí
+ * `seatsForMe`: quien publica viaja, y hay que saber cuántos puestos ocupa.
+ */
+export interface PublishPassengerSeatDTO {
+  city: string;
+  originLabel: string;
+  destLabel: string;
+  originLat?: number;
+  originLng?: number;
+  destLat?: number;
+  destLng?: number;
+  routeName?: string;
+  departureTime: string;
+  totalSeats: number;
+  /** Cuántos de esos puestos ocupa quien publica (al menos 1, nunca todos). */
+  seatsForMe: number;
+  farePerSeat: number;
   notes?: string;
 }
 
