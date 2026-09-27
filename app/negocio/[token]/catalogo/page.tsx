@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect, useCallback, useRef } from 'react'
 import { BarcodeScanner } from './BarcodeScanner'
+import { CartaFoto } from './CartaFoto'
 import { CsvImport } from './CsvImport'
 import { PortalTabs } from '../PortalTabs'
 import Link from 'next/link'
@@ -1039,6 +1040,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             Va junto al inventario porque es el mismo tipo de negocio. */}
         {conInventario ? (
           <div className="mt-4">
+            <CartaFoto token={token} onImported={() => void load()} />
             <CsvImport token={token} onImported={() => void load()} />
           </div>
         ) : null}

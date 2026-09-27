@@ -43,6 +43,7 @@ import { purgeOldTrackPoints, pruneTrackState } from './services/track.service';
 import { rescatarDespacho, BARRIDO_MS } from './services/dispatch-recovery.service';
 import { warmMunicipalities } from './services/municipality.service';
 import { ocrProviderName } from './services/ocr.service';
+import { modoCartaOcr } from './services/carta-ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
 import { contactoLegalConfigurado } from './lib/contacto';
@@ -199,6 +200,10 @@ app.get('/health', async (_req, res) => {
     docKillSwitch: docKillSwitchEnforced() ? 'activo' : 'apagado',
     // OCR y antecedentes (env-gated): qué proveedor corre cada uno.
     ocr: ocrProviderName(),
+    // Leer la carta de un restaurante de una foto es OTRA capacidad que se
+    // contrata aparte del OCR de documentos: se publica por separado para que
+    // no se crea que activar una activa la otra.
+    cartaFoto: modoCartaOcr(),
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),
     // Clickwrap legal: 'activo' = el registro exige aceptar términos.
     legalConsent: legalConsentEnforced() ? 'activo' : 'apagado',

@@ -39,6 +39,8 @@ import {
 } from '../types';
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { documentUpload, fileToUrl } from '../lib/upload';
+import { parsearCarta, filasACsv } from '../lib/carta-foto';
+import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { PORTAL_BASE_URL } from '../config/constants';
 
 const router = Router();
@@ -593,6 +595,109 @@ router.post(
     }
   },
 );
+
+// POST /business/:token/products/carta-foto (multipart 'file')
+//
+// Lee la carta impresa de una foto y devuelve las filas que el dueño va a
+// REVISAR. No escribe nada: lo que se apruebe sale por el importador de
+// siempre (`csv-preview` → `csv-import`), que es donde vive la vista previa
+// obligatoria y la guarda de pertenencia al negocio. Un segundo camino de
+// escritura sería un segundo sitio donde olvidarse de validar el precio.
+router.post(
+  '/:token/products/carta-foto',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const { token } = req.params as { token: string };
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+      return;
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      res.status(400).json({
+        success: false,
+        error: 'La carta debe ser una foto (JPG, PNG o WebP).',
+      });
+      return;
+    }
+    try {
+      // Se resuelve el negocio ANTES de gastar una llamada al proveedor: un
+      // token inválido no debe costar una lectura facturada.
+      await getBusinessService().getBusinessByToken(token);
+
+      const lectura = await leerTextoDeCarta(fileToUrl(req.file));
+      if (!lectura.disponible) {
+        // 503 y no 400: no se equivocó el dueño, es que el servicio no está.
+        res.status(503).json({ success: false, error: lectura.motivo });
+        return;
+      }
+
+      const carta = parsearCarta(lectura.texto);
+      res.status(200).json({
+        success: true,
+        data: {
+          lineas: carta.lineas,
+          secciones: carta.secciones,
+          // Se devuelve el texto leído para que el dueño pueda comprobar si el
+          // problema fue la foto (borrosa, torcida) o nuestra lectura.
+          textoCrudo: lectura.texto,
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo leer la carta';
+      const notFound = message.includes('not found') || message.includes('no encontrado');
+      res.status(notFound ? 404 : 400).json({ success: false, error: message });
+    }
+  },
+);
+
+// POST /business/:token/products/carta-importar { filas: [{nombre,precio,seccion}] }
+//
+// Lo que el dueño aprobó en la tabla de la carta. Convierte sus filas a CSV y
+// las mete por el MISMO importador: la validación, el precio de la BD y la
+// guarda de pertenencia son las de siempre, no una segunda copia.
+//
+// El armado del CSV se hace AQUÍ y no en el navegador a propósito: el escape
+// de comillas y comas tiene que vivir junto a quien lo lee (`splitCsvLine`),
+// o un plato llamado «Arroz, pollo y "especial"» volvería partido en dos.
+router.post('/:token/products/carta-importar', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { filas } = req.body as {
+    filas?: Array<{ nombre?: unknown; precio?: unknown; seccion?: unknown; descripcion?: unknown }>;
+  };
+  if (!Array.isArray(filas) || filas.length === 0) {
+    res.status(400).json({ success: false, error: 'No hay filas para crear.' });
+    return;
+  }
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const csv = filasACsv(
+      filas.map((f) => ({
+        nombre: typeof f.nombre === 'string' ? f.nombre : '',
+        precio: typeof f.precio === 'number' ? f.precio : null,
+        seccion: typeof f.seccion === 'string' ? f.seccion : '',
+        descripcion: typeof f.descripcion === 'string' ? f.descripcion : '',
+      })),
+    );
+    const indice = await getBarcodeIndexForBusiness(business.id);
+    const preview = parseProductCsv(csv, indice);
+    const resultado = await applyProductImport(business.id, preview.nuevos, preview.actualizaciones);
+    res.status(200).json({
+      success: true,
+      data: { ...resultado, omitidos: preview.errores.length },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo crear el catálogo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
 
 // Reemplaza TODAS las variantes/opciones del producto (el portal guarda todo).
 router.put('/:token/products/:productId/options', async (req: Request, res: Response): Promise<void> => {
