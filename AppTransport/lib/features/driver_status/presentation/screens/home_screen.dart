@@ -130,6 +130,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   StreamSubscription<String>? _wsOrderCancelSub;
   StreamSubscription<Map<String, dynamic>>? _wsReservaSub;
 
+  /// Para poder recontar el tablero de reservas sin reconstruir el home: el
+  /// contador se leía UNA vez al crear la tarjeta y se quedaba congelado toda
+  /// la noche.
+  final _reservasKey = GlobalKey<ReservasPanelCardState>();
+
   /// Encuadre inicial mientras el GPS todavía no ha dado la primera lectura.
   /// No es la posición del conductor y no se dibuja ningún vehículo sobre él:
   /// solo es por dónde empieza mirando el mapa.
@@ -436,15 +441,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // conduciendo. Se le avisa y él decide cuándo abrirla.
     _wsReservaSub = DriverWsService().reservaEventos.listen((msg) {
       if (!mounted) return;
-      final activa = msg['type'] == 'reserva_activa';
+      final tipo = msg['type'];
+      final esActiva = tipo == 'reserva_activa';
+      final esLiberada = tipo == 'reserva_liberada';
+      final donde = msg['originAddress'] ?? 'el punto acordado';
+
+      // Los tres avisos son cosas distintas y se distinguen a propósito: antes
+      // todo lo que no era `reserva_activa` se anunciaba como «se liberó una de
+      // tus reservas», así que una reserva NUEVA habría salido en rojo
+      // diciéndole que perdió la suya.
+      final String texto;
+      final Color color;
+      if (esActiva) {
+        texto = 'Tu reserva empieza ahora. Recoge en $donde.';
+        color = const Color(0xFF059669);
+      } else if (esLiberada) {
+        texto = 'Se liberó una de tus reservas: no dimos contigo a la hora.';
+        color = const Color(0xFFDC2626);
+      } else {
+        // Nueva en el tablero. No interrumpe nada: es para más tarde, así que
+        // solo se anuncia y se refresca el contador de la tarjeta.
+        texto = 'Nueva reserva ${_cuandoReserva(msg['scheduledFor'])}: $donde.';
+        color = const Color(0xFF0284C7);
+        _reservasKey.currentState?.recontar();
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         duration: const Duration(seconds: 8),
-        backgroundColor:
-            activa ? const Color(0xFF059669) : const Color(0xFFDC2626),
-        content: Text(activa
-            ? 'Tu reserva empieza ahora. Recoge en '
-                '${msg['originAddress'] ?? 'el punto acordado'}.'
-            : 'Se liberó una de tus reservas: no dimos contigo a la hora.'),
+        backgroundColor: color,
+        content: Text(texto),
         action: SnackBarAction(
           label: 'Ver',
           textColor: Colors.white,
@@ -452,6 +477,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ));
     });
+  }
+
+  /// «hoy a las 18:30», «mañana a las 06:00» o la fecha, para el aviso.
+  ///
+  /// Sin hora legible el aviso no sirve para decidir: lo primero que quiere
+  /// saber el conductor de una reserva es si le cuadra con su día.
+  String _cuandoReserva(Object? iso) {
+    final cuando = iso is String ? DateTime.tryParse(iso)?.toLocal() : null;
+    if (cuando == null) return 'programada';
+    final hhmm = '${cuando.hour.toString().padLeft(2, '0')}:'
+        '${cuando.minute.toString().padLeft(2, '0')}';
+    final hoy = DateTime.now();
+    final dias = DateTime(cuando.year, cuando.month, cuando.day)
+        .difference(DateTime(hoy.year, hoy.month, hoy.day))
+        .inDays;
+    if (dias == 0) return 'hoy a las $hhmm';
+    if (dias == 1) return 'mañana a las $hhmm';
+    return 'el ${cuando.day}/${cuando.month} a las $hhmm';
   }
 
   /// Build a [TripRequestEntity] from a raw trip JSON map received via WS.
@@ -992,6 +1035,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // conductor puede apartar desde ahora. Va en el panel por lo mismo
           // que la tarjeta de arriba — en el menú lateral no lo encontraría.
           ReservasPanelCard(
+            key: _reservasKey,
             onOpen: () => context.push('/reservas'),
           ),
           const SizedBox(height: AppConstants.spacingS),

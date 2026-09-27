@@ -26,7 +26,7 @@ import { categoriaDeServicio } from '../lib/tarifa-categoria';
 import { precioServidor, medirConParadas } from './trip-options.service';
 import { sanitizeStops, stopsFromDb } from '../lib/trip-stops';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
-import { resolverOpciones, sanearNota } from '../lib/order-options';
+import { resolverLineasDePedido, descontarInventario } from './order-lines.service';
 import { exigirPuntoRecogida, exigirPuntoDestino } from '../lib/trip-coords';
 import { guardaNoTerminal } from '../lib/estado-terminal';
 import { recordCompletedTrip } from './earnings.service';
@@ -295,116 +295,16 @@ export async function placeClientOrder(
 
   // ── Validación contra la BD ────────────────────────────────────────────────
   // El precio y la disponibilidad los decide SIEMPRE el servidor, nunca el
-  // cliente: la app corre en el teléfono del usuario y cualquiera puede
-  // modificar lo que envía (antes se cobraba `line.unitPrice` tal cual, así
-  // que bastaba con mandar unitPrice:1 para llevarse cualquier producto).
-  let subtotal = 0;
-  const lines: Array<{
-    productId: string; productName: string; quantity: number; unitPrice: number;
-    subtotal: number; optionsSummary: string | null; optionIds: string[]; notes: string | null;
-  }> = [];
-  // Productos con inventario que habrá que descontar (stock no nulo).
-  const aDescontar: Array<{ productId: string; cantidad: number; nombre: string }> = [];
+  // cliente. Vive en `order-lines.service` porque el pedido desde el QR de una
+  // mesa pasa por la MISMA función: dos copias dejarían dos sitios donde
+  // validar el precio, y al segundo se le olvidaría.
+  const { subtotal, lines, aDescontar } = await resolverLineasDePedido(
+    dto.businessId,
+    dto.items,
+  );
 
-  for (const line of dto.items) {
-    if (!(line.quantity > 0)) {
-      throw new Error('La cantidad de cada producto debe ser mayor a cero.');
-    }
-    const producto = await prisma.product.findUnique({
-      where: { id: line.productId },
-      include: {
-        optionGroups: {
-          orderBy: { sortOrder: 'asc' },
-          include: { options: { orderBy: { sortOrder: 'asc' } } },
-        },
-      },
-    });
-    if (!producto || producto.businessId !== dto.businessId) {
-      throw new Error('Uno de los productos ya no está disponible en este negocio.');
-    }
-    if (!producto.isAvailable) {
-      throw new Error(`${producto.name} no está disponible en este momento.`);
-    }
-    // stock null = el negocio no controla inventario (caso restaurante).
-    if (producto.stock !== null && producto.stock < line.quantity) {
-      throw new Error(
-        producto.stock <= 0
-          ? `${producto.name} se agotó.`
-          : `Solo quedan ${producto.stock} de ${producto.name}.`,
-      );
-    }
-    if (producto.stock !== null) {
-      aDescontar.push({ productId: producto.id, cantidad: line.quantity, nombre: producto.name });
-    }
-
-    // ── El precio ─────────────────────────────────────────────────────────
-    // Con los ids de las opciones el servidor calcula el recargo EXACTO desde
-    // el catálogo, compone el resumen que leerá la cocina y rechaza cualquier
-    // opción que el negocio acabe de agotar.
-    //
-    // Sin ids se aplica el criterio antiguo (suelo el precio del catálogo,
-    // techo el triple). No es exacto y puede recortar un pedido legítimo con
-    // muchas adiciones, pero hay apps instaladas que todavía mandan solo el
-    // total sumado y dejarlas fuera sería peor. Cuando esas versiones se
-    // hayan renovado, esta rama se retira.
-    let precioUnitario: number;
-    let resumen: string | null;
-    let idsOpciones: string[] = [];
-
-    if (Array.isArray(line.optionIds)) {
-      const resueltas = resolverOpciones(
-        producto.optionGroups,
-        line.optionIds,
-        producto.name,
-      );
-      // El recargo puede ser negativo si el negocio descuenta por quitar algo;
-      // el precio de una línea nunca baja de cero.
-      precioUnitario = Math.max(0, producto.price + resueltas.recargo);
-      resumen = resueltas.resumen;
-      idsOpciones = resueltas.ids;
-    } else {
-      const enviado = Number(line.unitPrice) || 0;
-      precioUnitario = Math.min(Math.max(producto.price, enviado), producto.price * 3);
-      resumen = line.optionsSummary?.trim() || null;
-    }
-
-    const sub = line.quantity * precioUnitario;
-    subtotal += sub;
-    lines.push({
-      productId: line.productId,
-      productName: producto.name,
-      quantity: line.quantity,
-      unitPrice: precioUnitario,
-      subtotal: sub,
-      optionsSummary: resumen,
-      optionIds: idsOpciones,
-      notes: sanearNota(line.notes),
-    });
-  }
-
-  // ── Descuento de inventario, a prueba de concurrencia ──────────────────────
-  // updateMany con guardia `stock >= cantidad`: si dos clientes compran la
-  // última unidad a la vez, solo uno afecta filas y el otro recibe el aviso.
-  // Se hace ANTES de crear el pedido para no dejar pedidos sin respaldo.
-  const descontados: Array<{ productId: string; cantidad: number }> = [];
-  for (const item of aDescontar) {
-    const res = await prisma.product.updateMany({
-      where: { id: item.productId, stock: { gte: item.cantidad } },
-      data: { stock: { decrement: item.cantidad } },
-    });
-    if (res.count === 0) {
-      // Alguien se adelantó: se devuelve lo ya descontado y se avisa con el
-      // nombre del producto, para que el cliente sepa qué quitar del carrito.
-      for (const hecho of descontados) {
-        await prisma.product.update({
-          where: { id: hecho.productId },
-          data: { stock: { increment: hecho.cantidad } },
-        });
-      }
-      throw new Error(`${item.nombre} se agotó mientras confirmabas el pedido.`);
-    }
-    descontados.push({ productId: item.productId, cantidad: item.cantidad });
-  }
+  // Descuento de inventario a prueba de concurrencia, antes de crear el pedido.
+  await descontarInventario(aDescontar);
 
   // La promoción de la tienda se resuelve AQUÍ, con la misma función que pinta
   // el banner: si fueran dos cuentas, la pantalla prometería «$6.000 OFF» y la
@@ -553,7 +453,10 @@ export async function acceptOrderByBusiness(
       status: 'PREPARING',
       prepMinutes: prep,
       acceptedAt: new Date(),
-      etaMinutes: prep + DELIVERY_TRAVEL_MIN,
+      // En la mesa no hay trayecto que sumar: el plato sale de la cocina al
+      // salón. Sumarle los minutos del repartidor le prometería al comensal
+      // una espera que no existe.
+      etaMinutes: existing.mode === 'DINE_IN' ? prep : prep + DELIVERY_TRAVEL_MIN,
     },
     include: { lines: true, business: { select: { name: true } } },
   });
@@ -573,7 +476,11 @@ export async function acceptOrderByBusiness(
   // una moto de Cúcuta a llevar la caja a Bucaramanga. Su transporte lo resuelve
   // una empresa intermunicipal desde el tablero de encomiendas, y el pedido
   // espera en PREPARING hasta que alguien lo suba a un despacho.
-  if (!updated.isIntercity) {
+  //
+  // Un pedido EN MESA tampoco: el comensal está sentado en el local y el plato
+  // lo lleva el mesero. Sin esta guarda se le ofrecería la carrera a una moto
+  // para recoger algo que ya está en la mano de quien lo pidió.
+  if (!updated.isIntercity && updated.mode !== 'DINE_IN') {
     // Ahora sí buscamos repartidor (antes esperaba en la puerta del negocio).
     void startOrderMatchingCycle(orderId);
   }
@@ -723,6 +630,29 @@ export async function getClientOrdersForBusiness(
     ..._toSummary(o, o.business?.name ?? 'Negocio', o.lines),
     pickupPin: o.pickupPin ?? undefined,
   }));
+}
+
+/**
+ * Avisa al portal del negocio de un pedido (nuevo o que acaba de cambiar).
+ *
+ * Existe para que el pedido en mesa (`mesa.service`) llegue a la cocina por el
+ * MISMO canal y con el MISMO DTO que un domicilio: el portal ya lo pinta, lo
+ * suena y lo cuenta, y duplicar ese camino significaría que un cambio en la
+ * tarjeta de la cocina se aplicara a un tipo de pedido y no al otro.
+ */
+export async function avisarNegocioDePedidoNuevo(
+  orderId: string,
+): Promise<ClientOrderSummaryDTO | null> {
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+  if (!o) return null;
+  const summary = _toSummary(o, o.business?.name ?? 'Negocio', o.lines);
+  for (const cb of businessOrderListeners.get(o.businessId) ?? []) cb(summary);
+  // También a quien esté mirando ese pedido concreto (la pantalla del comensal).
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  return summary;
 }
 
 export function onNewClientOrderForBusiness(businessId: string, cb: BusinessNewOrderCallback): () => void {
@@ -1300,6 +1230,18 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   // antelación, para que a la hora acordada el carro esté en la puerta.
   if (!programado) {
     void startMatchingCycle(trip.id, trip.originLat, trip.originLng);
+  } else {
+    // Pero SÍ se avisa de que está en el tablero. Sin esto la reserva se creaba
+    // bien y nadie se enteraba nunca: el único sitio donde aparecía era una
+    // tarjeta cuyo contador se lee al abrir el home, así que el conductor con
+    // la app abierta seguía viendo «Sin reservas» toda la noche.
+    //
+    // Importación diferida para no crear un ciclo: `reservas.service` ya
+    // importa de aquí. Es el mismo recurso que usa `getBusinessPublicById`
+    // unas líneas arriba.
+    void import('./reservas.service')
+      .then((m) => m.notificarNuevaReserva(trip.id))
+      .catch(() => { /* best-effort: la reserva ya existe y el tablero la tiene */ });
   }
 
   // El PIN va SOLO en esta respuesta (y en las vistas propias del cliente):
@@ -1880,6 +1822,7 @@ type PrismaOrder = {
   // Opcionales porque no todas las consultas los piden en su `select`: donde
   // no vengan, el DTO simplemente no los lleva.
   promisedAt?: Date | null; lastMile?: boolean | null;
+  mode?: 'DELIVERY' | 'DINE_IN'; tableLabel?: string | null;
 };
 
 type PrismaOrderLine = {
@@ -1900,6 +1843,10 @@ function _toSummary(
     businessId: o.businessId,
     businessName,
     status: nombreEstadoPedido(o.status),
+    // Cómo se sirve. La cocina necesita ver «Mesa 5» donde en un domicilio ve
+    // una dirección, y es el mismo DTO para las dos cosas.
+    mode: o.mode,
+    tableLabel: o.tableLabel ?? undefined,
     subtotal: o.subtotal,
     // El descuento que SÍ se aplicó a este pedido. Sin él, el cliente ve un
     // total menor que la suma de sus productos y no sabe por qué.

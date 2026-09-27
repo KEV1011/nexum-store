@@ -449,6 +449,20 @@ model Business {
   // portada (el cliente cae al color/ícono de la categoría).
   imageUrl  String?
   token     String   @unique @default(cuid())
+
+  /// Código PÚBLICO de la carta: lo que va en el QR de la mesa.
+  ///
+  /// NO es `token`. `token` es la llave del portal del dueño (catálogo,
+  /// pedidos, ajustes, portada): imprimirlo en un individual de mesa sería
+  /// entregarle la administración del local a cualquiera que se siente. Este
+  /// código solo abre la carta y permite pedir.
+  menuCode  String?  @unique
+  /// Las mesas que el dueño declaró: `["1","2","Terraza 1"]`.
+  /// Ver `lib/mesas.ts`. Vacía = el local todavía no tiene servicio en mesa y
+  /// la carta pública no deja pedir (un pedido sin mesa no le sirve a la
+  /// cocina: no sabría a dónde llevarlo).
+  tables    Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -570,6 +584,23 @@ model Order {
   // Empresa del conductor al momento de aceptar (sellado para liquidación).
   operatorId      String?
   status          OrderStatus @default(CONFIRMED)
+
+  /// Cómo se sirve este pedido. `DINE_IN` = el comensal está SENTADO en el
+  /// local y pidió desde el QR de su mesa.
+  ///
+  /// Es un enum y no un booleano para que añadir «para llevar» mañana obligue
+  /// al compilador a señalar cada sitio que decide por modo, en vez de dejar
+  /// un `!dineIn` que pasaría a significar dos cosas.
+  ///
+  /// Un `DINE_IN` NO se despacha a ningún repartidor, no cobra domicilio y no
+  /// lleva PIN de custodia: no hay nadie a quien entregarle la caja.
+  mode            OrderMode   @default(DELIVERY)
+  /// La mesa, tal como la declaró el dueño («5», «Terraza 2»). Es lo único que
+  /// la cocina necesita para saber a dónde llevar el plato, así que se SELLA:
+  /// si mañana el dueño renombra sus mesas, el pedido de hoy no puede cambiar
+  /// de sitio.
+  tableLabel      String?
+
   deliveryAddress String
   deliveryLat     Float?
   deliveryLng     Float?
@@ -658,6 +689,14 @@ model Order {
   @@index([operatorId])
   @@index([status])
   @@map("orders")
+}
+
+/// Cómo se sirve un pedido. Ver `Order.mode`.
+enum OrderMode {
+  /// A domicilio (o encomienda a otra ciudad): el camino de siempre.
+  DELIVERY
+  /// En el local, desde el QR de la mesa.
+  DINE_IN
 }
 
 enum OrderStatus {

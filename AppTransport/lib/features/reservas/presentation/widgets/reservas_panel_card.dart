@@ -11,16 +11,24 @@ import 'package:nexum_driver/core/network/dio_client.dart';
 /// Enseña CUÁNTAS hay libres porque un número es lo que hace que se toque;
 /// si la petición falla no se inventa ninguno — se muestra la tarjeta sin
 /// contador, que es lo honesto.
+///
+/// EL CONTADOR SE REFRESCA, y esa era la mitad que faltaba. Antes se leía una
+/// sola vez en `initState`: un taxista con la app abierta a las 22:05, cuando
+/// alguien reservaba para las 6:00, seguía viendo «Sin reservas por ahora»
+/// hasta reiniciar la app. Ahora lo recuenta el home al llegar un
+/// `reserva_nueva` por el socket (`recontar()`), y también al volver la app al
+/// frente — que es cuando el conductor la mira después de un rato fuera.
 class ReservasPanelCard extends StatefulWidget {
   const ReservasPanelCard({required this.onOpen, super.key});
 
   final VoidCallback onOpen;
 
   @override
-  State<ReservasPanelCard> createState() => _ReservasPanelCardState();
+  State<ReservasPanelCard> createState() => ReservasPanelCardState();
 }
 
-class _ReservasPanelCardState extends State<ReservasPanelCard> {
+class ReservasPanelCardState extends State<ReservasPanelCard>
+    with WidgetsBindingObserver {
   int? _libres;
   int? _mias;
 
@@ -31,8 +39,27 @@ class _ReservasPanelCardState extends State<ReservasPanelCard> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _contar();
   }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState estado) {
+    // Al volver del bolsillo: es justo cuando se mira, y mientras la app estuvo
+    // atrás pudo entrar una reserva (el socket queda vivo, pero un contador de
+    // hace dos horas no dice nada).
+    if (estado == AppLifecycleState.resumed) _contar();
+  }
+
+  /// Vuelve a preguntar cuántas hay. La llama el home al recibir un aviso de
+  /// reserva nueva por el socket.
+  void recontar() => _contar();
 
   Future<void> _contar() async {
     try {

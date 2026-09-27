@@ -747,6 +747,15 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   businessId: string;
   businessName: string;
   status: string;
+  /**
+   * Cómo se sirve. `DINE_IN` = el comensal pidió desde el QR de su mesa: no hay
+   * repartidor, ni domicilio cobrado, ni dirección real que mostrar.
+   *
+   * Opcional para que las apps ya instaladas sigan leyendo este DTO.
+   */
+  mode?: 'DELIVERY' | 'DINE_IN';
+  /** La mesa, solo en los pedidos en mesa. Es lo que la cocina tiene que ver. */
+  tableLabel?: string;
   subtotal: number;
   /** Descuento de la promoción de la tienda que se aplicó a ESTE pedido. */
   promoDiscount?: number;

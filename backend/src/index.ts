@@ -64,6 +64,7 @@ import adminRouter from './routes/admin.routes';
 import operatorRouter from './routes/operator.routes';
 import geoRouter from './routes/geo.routes';
 import legalRouter from './routes/legal.routes';
+import menuRouter from './routes/menu.routes';
 
 // Crash reporting (no-op sin SENTRY_DSN).
 initSentry();
@@ -250,6 +251,8 @@ app.use('/admin', adminRouter);
 app.use('/operator', operatorRouter);
 app.use('/geo', geoRouter);
 app.use('/legal', legalRouter);
+// La carta pública del local: el QR de la mesa entra por aquí, sin cuenta.
+app.use('/carta', menuRouter);
 
 // Serve uploaded driver documents (protected path — no directory listing).
 const uploadsDir = path.resolve(process.cwd(), 'uploads');

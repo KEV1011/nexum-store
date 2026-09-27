@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { PortalTabs } from '../PortalTabs'
 import { LocationPicker } from './LocationPicker'
 import { DestinosEnvio, type Destino } from './DestinosEnvio'
+import { MesasManager } from './MesasManager'
 import { HorarioEditor, type Franja } from './HorarioEditor'
 import {
   ArrowLeft,
@@ -497,6 +498,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                 onSaved={(la, ln) => setGeo({ lat: la, lng: ln })}
               />
               <DestinosEnvio token={token} citySlug={citySlug} inicial={shipsTo} />
+              <MesasManager token={token} />
               <HorarioEditor franjas={settings.hours} onChange={(hours) => set({ hours })} />
               <button
                 onClick={() => void patch({

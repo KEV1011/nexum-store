@@ -127,7 +127,13 @@ class DriverWsService {
   Stream<String> get custodyPinErrors => _custodyPinErrorCtrl.stream;
 
   /// Avisos del tablero de reservas. El mapa trae `type`
-  /// (`reserva_activa` | `reserva_liberada`) y `tripId`.
+  /// (`reserva_nueva` | `reserva_activa` | `reserva_liberada`) y `tripId`.
+  ///
+  /// `reserva_nueva` NO es una oferta: no interrumpe ni tiene cuenta atrás,
+  /// porque el viaje es para más tarde. Solo sirve para que el tablero deje de
+  /// estar congelado — antes el contador del home se leía una sola vez al
+  /// construir la pantalla, así que una reserva creada a las 22:05 no la veía
+  /// nadie hasta reiniciar la app.
   Stream<Map<String, dynamic>> get reservaEventos => _reservaCtrl.stream;
 
   /// Motivo por el que el servidor no lo dejó ponerse en línea.
@@ -579,6 +585,7 @@ class DriverWsService {
         // La reserva que apartó con antelación llegó a su hora (o se le
         // liberó por no dar señales). El servidor ya la pasó a viaje aceptado;
         // aquí solo hay que avisarle, que es lo que no ocurría antes.
+        case 'reserva_nueva':
         case 'reserva_activa':
         case 'reserva_liberada':
           _reservaCtrl.add(msg);

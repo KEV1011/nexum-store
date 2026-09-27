@@ -67,6 +67,14 @@ describe('una sola definición', () => {
         if (/currency:\s*'COP'/.test(linea)) {
           infractores.push(`${rel}:${i + 1}  ${linea.trim()}`);
         }
+        // La otra forma, la que se escapó de la regla de arriba: el peso pegado
+        // a mano delante de un `toLocaleString`. Da el mismo resultado que
+        // `formatCOP` HOY, y son justo las copias que divergen mañana. Se busca
+        // el «$» a propósito: `18000 kg` también usa `toLocaleString('es-CO')` y
+        // ahí es correcto, porque no es dinero.
+        if (/\$\$\{[^}]*toLocaleString\('es-CO'\)/.test(linea)) {
+          infractores.push(`${rel}:${i + 1}  ${linea.trim()}`);
+        }
       });
     }
     expect(infractores, `Usa formatCOP de app/moneda.ts:\n${infractores.join('\n')}`)

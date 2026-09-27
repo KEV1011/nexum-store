@@ -170,7 +170,11 @@ const service = {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const orders = await prisma.order.findMany({
-      where: { businessId, createdAt: { gte: today }, userId: null },
+      // `mode: 'DELIVERY'` es obligatorio aquí: un pedido en mesa también tiene
+      // `userId: null` (el comensal no necesita cuenta), así que sin el filtro
+      // saldría en esta lista Y en la de pedidos online — el mismo plato
+      // contado dos veces en el portal y en las cifras del día.
+      where: { businessId, createdAt: { gte: today }, userId: null, mode: 'DELIVERY' },
       orderBy: { createdAt: 'desc' },
     });
     return orders.map(_toSummaryDTO);
