@@ -104,6 +104,36 @@ export const documentUpload = multer({
 });
 
 /**
+ * Tope de la foto de una carta. Más bajo que el de documentos porque los bytes
+ * se mandan DENTRO de la petición al lector de texto (Vision admite 20 MB de
+ * petición y el base64 infla un tercio), y una foto de carta de un celular
+ * pesa entre dos y cinco megas.
+ */
+const MAX_CARTA_BYTES = 8 * 1024 * 1024;
+
+/**
+ * La foto de la carta de un restaurante, **en memoria**.
+ *
+ * No se guarda en ninguna parte a propósito: de la carta interesa el texto, y
+ * la imagen no se vuelve a mirar nunca. Guardarla en el disco de Render la
+ * perdería en el siguiente despliegue, y en R2 dejaría una factura de archivos
+ * que nadie abre. Además el lector necesita los BYTES —una ruta
+ * `/uploads/...` del disco efímero no la puede abrir Google—, y con
+ * `memoryStorage` están en `req.file.buffer`.
+ */
+export const cartaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_CARTA_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      cb(new Error('La carta debe ser una foto (JPG, PNG o WebP).'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+/**
  * URL pública del archivo subido. Con S3/R2 devuelve la URL del bucket (o
  * `S3_PUBLIC_URL/<key>` si se configuró una base pública); en disco, la ruta
  * `/uploads/...` que sirve Express.

@@ -21,6 +21,8 @@
  *   DATABASE_URL=postgresql://... npx tsx e2e/carta-por-foto.ts
  */
 import { spawn, type ChildProcess } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../src/lib/prisma';
 import { parsearCarta } from '../src/lib/carta-foto';
 
@@ -64,7 +66,21 @@ async function subirCarta(token: string): Promise<Res> {
   return { status: r.status, json };
 }
 
-async function arrancarServidor(proveedor: string): Promise<ChildProcess> {
+/**
+ * Cuántos archivos hay en el directorio de subidas a disco. Se usa para
+ * comprobar que la foto de la carta NO se guarda en ninguna parte.
+ */
+function archivosSubidos(): number {
+  const dir = path.resolve(process.cwd(), 'uploads', 'driver-documents');
+  try { return fs.readdirSync(dir).length; } catch { return 0; }
+}
+
+/** Mismo servidor, con el proveedor puesto y sin ninguna llave en el entorno. */
+function arrancarServidorSinLlave(proveedor: string): Promise<ChildProcess> {
+  return arrancarServidor(proveedor, ['CARTA_OCR_API_KEY', 'GOOGLE_MAPS_API_KEY']);
+}
+
+async function arrancarServidor(proveedor: string, quitar: string[] = []): Promise<ChildProcess> {
   try {
     const ocupado = await fetch(`${BASE}/health`);
     if (ocupado.ok) {
@@ -77,11 +93,14 @@ async function arrancarServidor(proveedor: string): Promise<ChildProcess> {
     if (e instanceof Error && e.message.includes('ya está ocupado')) throw e;
   }
 
+  const entorno: Record<string, string | undefined> = { ...process.env };
+  for (const k of quitar) delete entorno[k];
+
   const hijo = spawn('npx', ['tsx', 'src/index.ts'], {
     detached: true,
     cwd: process.cwd(),
     env: {
-      ...process.env,
+      ...entorno,
       PORT: String(PUERTO),
       NODE_ENV: 'development',
       CARTA_OCR_PROVIDER: proveedor,
@@ -148,10 +167,32 @@ async function main() {
     }
   }
 
+  // ── Proveedor puesto pero sin llave: se degrada igual de honesto ───────────
+  console.log('\n[1b] Con el proveedor puesto y SIN llave tampoco se finge');
+  {
+    // Es el estado intermedio que se ve como un canal muerto: la variable
+    // está, así que alguien cree que quedó activo. Tiene que contestar lo
+    // mismo que el apagado y dejar el motivo técnico en el log del servidor.
+    const servidor = await arrancarServidorSinLlave('google-vision');
+    try {
+      const r = await subirCarta(negocio.token);
+      check(r.status === 503, 'responde 503', r.status);
+      check(
+        !/API|KEY|403/i.test(r.json.error ?? ''),
+        'y al dueño no se le nombra ninguna configuración',
+        r.json.error,
+      );
+    } finally {
+      matar(servidor);
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+
   // ── Con lector: la foto propone, el dueño dispone ──────────────────────────
   const servidor = await arrancarServidor('fake');
   try {
     console.log('\n[2] La foto devuelve filas para revisar, y NADA se crea todavía');
+    const archivosAntes = archivosSubidos();
     let lineas: Array<{ nombre: string; precio: number | null; seccion: string; aviso?: string }> = [];
     {
       const r = await subirCarta(negocio.token);
@@ -172,6 +213,14 @@ async function main() {
       );
       const cuantos = await prisma.product.count({ where: { businessId: negocio.id } });
       check(cuantos === 0, 'LEER NO CREA: el catálogo sigue vacío', cuantos);
+      // La foto va en MEMORIA: de la carta interesa el texto y la imagen no se
+      // vuelve a mirar nunca. En el disco de Render se perdería en el
+      // siguiente despliegue, y en R2 sería una factura de archivos muertos.
+      check(
+        archivosSubidos() === archivosAntes,
+        'y la foto NO quedó guardada en el disco',
+        { antes: archivosAntes, despues: archivosSubidos() },
+      );
     }
 
     console.log('\n[3] La línea con dos precios llega SIN precio y con su motivo');
