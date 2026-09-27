@@ -1,8 +1,3 @@
-import 'dart:math' as math;
-import 'dart:ui';
-
-import 'package:flutter/material.dart';
-
 /// La lupa de vidrio que viaja por la barra inferior hasta el ítem activo.
 ///
 /// POR QUÉ EXISTE ESTE WIDGET. Antes era un `AnimatedAlign` escrito dos veces
@@ -39,6 +34,11 @@ import 'package:flutter/material.dart';
 /// recorrido, así que la lupa solo está estirada mientras viaja — quieta sobre
 /// la primera o la última columna, su ancho es exactamente el de la columna.
 library;
+
+import 'dart:math' as math;
+import 'dart:ui';
+
+import 'package:flutter/material.dart';
 
 /// Dónde cae el centro de la columna `pos` en el eje de `Alignment`.
 ///
@@ -239,7 +239,7 @@ class _LupaVidrioState extends State<LupaVidrio>
                     scaleX: estiron,
                     scaleY: aplastado,
                     child: LayoutBuilder(
-                      builder: (_, c) => _cristal(x, n, c.biggest),
+                      builder: (_, c) => _cristal(x, c.biggest),
                     ),
                   ),
                 ),
@@ -263,7 +263,7 @@ class _LupaVidrioState extends State<LupaVidrio>
   /// Sin el área medida todavía (primer fotograma) se usa solo el desenfoque:
   /// una lupa sin aumento durante un frame no la ve nadie; una lupa enseñando
   /// el trozo equivocado de pantalla, sí.
-  ImageFilter _filtro(double x, int n, Size tam) {
+  ImageFilter _filtro(double x, Size tam) {
     const desenfoque = 3.0;
     final area = _areaGlobal;
     if (area == null || tam.isEmpty) {
@@ -287,11 +287,11 @@ class _LupaVidrioState extends State<LupaVidrio>
     );
   }
 
-  Widget _cristal(double x, int n, Size tam) {
+  Widget _cristal(double x, Size tam) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(widget.radio),
       child: BackdropFilter(
-        filter: _filtro(x, n, tam),
+        filter: _filtro(x, tam),
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(widget.radio),
@@ -307,35 +307,12 @@ class _LupaVidrioState extends State<LupaVidrio>
               ],
             ),
           ),
-          child: Stack(
-            children: [
-              // El canto irisado. En la referencia el borde descompone la luz
-              // en colores muy apagados; con un borde blanco uniforme se ve
-              // una línea dibujada, no un canto de vidrio. Alphas bajísimos a
-              // propósito: en cuanto se suben, esto parece un arcoíris.
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(widget.radio),
-                    border: GradientBoxBorder(
-                      width: 1.3,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.55),
-                          const Color(0xFF7DD3FC).withValues(alpha: 0.30),
-                          const Color(0xFFF0ABFC).withValues(alpha: 0.26),
-                          Colors.white.withValues(alpha: 0.10),
-                        ],
-                        stops: const [0, 0.35, 0.7, 1],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox.expand(),
-            ],
+          // El canto irisado. En la referencia el borde descompone la luz en
+          // colores muy apagados; con un borde blanco uniforme se ve una línea
+          // dibujada, no un canto de vidrio.
+          child: CustomPaint(
+            painter: _CantoIrisado(radio: widget.radio),
+            child: const SizedBox.expand(),
           ),
         ),
       ),
@@ -343,46 +320,50 @@ class _LupaVidrioState extends State<LupaVidrio>
   }
 }
 
-/// Un borde con degradado.
+/// El canto de vidrio: un trazo con degradado irisado.
 ///
-/// `Border.all` no acepta uno, y pintar cuatro `BorderSide` de colores
-/// distintos deja las esquinas cortadas en inglete con un salto de color. Se
-/// pinta el trazo del propio rectángulo redondeado con un `SweepGradient`
-/// lineal, que es lo que da el canto continuo.
-class GradientBoxBorder extends BoxBorder {
-  const GradientBoxBorder({required this.gradient, this.width = 1});
+/// Se pinta en vez de usar un `Border`, porque `BoxBorder` es una clase
+/// abstracta que obliga a implementar también los caminos de la forma
+/// (`getInnerPath`/`getOuterPath`) — un contrato que aquí no aporta nada y que
+/// de hecho ya dejó el CI en rojo una vez. Un painter hace exactamente esto y
+/// nada más.
+///
+/// Los alphas son bajísimos A PROPÓSITO: en cuanto se suben, el canto deja de
+/// leerse como luz descompuesta y parece un arcoíris pegado.
+class _CantoIrisado extends CustomPainter {
+  const _CantoIrisado({required this.radio});
 
-  final Gradient gradient;
-  final double width;
-
-  @override
-  BorderSide get bottom => BorderSide.none;
-  @override
-  BorderSide get top => BorderSide.none;
-  @override
-  bool get isUniform => true;
-  @override
-  EdgeInsetsGeometry get dimensions => EdgeInsets.all(width);
+  final double radio;
+  static const _grosor = 1.3;
 
   @override
-  void paint(
-    Canvas canvas,
-    Rect rect, {
-    TextDirection? textDirection,
-    BoxShape shape = BoxShape.rectangle,
-    BorderRadius? borderRadius,
-  }) {
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final rect = Offset.zero & size;
     final pincel = Paint()
-      ..strokeWidth = width
-      ..shader = gradient.createShader(rect)
-      ..style = PaintingStyle.stroke;
-    final r = (borderRadius ?? BorderRadius.zero)
-        .toRRect(rect)
-        .deflate(width / 2);
-    canvas.drawRRect(r, pincel);
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _grosor
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.55),
+          const Color(0xFF7DD3FC).withValues(alpha: 0.30),
+          const Color(0xFFF0ABFC).withValues(alpha: 0.26),
+          Colors.white.withValues(alpha: 0.10),
+        ],
+        stops: const [0, 0.35, 0.7, 1],
+      ).createShader(rect);
+    // Se mete medio grosor hacia dentro: si no, la mitad del trazo cae fuera
+    // del recorte y el canto se ve más fino de un lado.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(radio))
+          .deflate(_grosor / 2),
+      pincel,
+    );
   }
 
   @override
-  ShapeBorder scale(double t) =>
-      GradientBoxBorder(gradient: gradient, width: width * t);
+  bool shouldRepaint(covariant _CantoIrisado anterior) =>
+      anterior.radio != radio;
 }
