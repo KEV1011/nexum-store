@@ -221,7 +221,71 @@ async function main(): Promise<void> {
     );
   }
 
+  console.log('\n[7] Queda CONSTANCIA de a quién se avisó y de a quién no, con su motivo');
+  {
+    // Es lo que responde «a mí no me llegó»: o está su fila con el motivo, o
+    // no está y entonces ni fue candidato. Sin esto no se puede comprobar ni
+    // desmentir, y tampoco se puede saber si el aviso funciona.
+    const bloqueado = await sembrarConductor('Taxi con papeles vencidos', 'TAXI', 'pamplona');
+    await prisma.driver.update({
+      where: { id: bloqueado },
+      data: { complianceStatus: 'BLOCKED', blockedReason: 'SOAT vencido' },
+    });
+    process.env['DOC_KILL_SWITCH_ENFORCE'] = 'true';
+
+    avisados.length = 0;
+    const trip = await sembrarReserva(TransportType.TAXI, 'pamplona');
+    await reservas.notificarNuevaReserva(trip);
+    // La constancia se escribe sin esperar, para no retener al pasajero.
+    await new Promise((r) => setTimeout(r, 600));
+
+    const filas = await reservas.avisosDeReserva(trip);
+    const delBueno = filas.find((f) => f.driverId === taxiPam);
+    const delBloqueado = filas.find((f) => f.driverId === bloqueado);
+
+    comprobar('al que sí se le avisó queda como enviado', delBueno?.enviado === true, delBueno);
+    comprobar(
+      'y al bloqueado queda su fila DICIENDO por qué no',
+      delBloqueado != null && delBloqueado.enviado === false
+        && /vencid|document/i.test(delBloqueado.resultado),
+      delBloqueado,
+    );
+    comprobar('a ese no se le mandó nada', !avisados.includes(bloqueado), avisados);
+    comprobar('las filas traen el nombre, para leerlas sin cruzar tablas',
+      (delBueno?.driverName ?? '').length > 0, delBueno?.driverName);
+
+    process.env['DOC_KILL_SWITCH_ENFORCE'] = '';
+    delete process.env['DOC_KILL_SWITCH_ENFORCE'];
+    await prisma.driver.update({
+      where: { id: bloqueado },
+      data: { complianceStatus: 'CLEAR', blockedReason: null },
+    });
+    await prisma.reservaAviso.deleteMany({ where: { tripId: trip } });
+  }
+
+  console.log('\n[8] Las cifras del tablero: sin denominador no hay porcentaje');
+  {
+    const admin = await import('../src/services/admin.service');
+    const m = await admin.getMetricasReservas(30, 'no-existe-esta-plaza');
+    comprobar('en una plaza sin reservas, cero creadas', m.creadas === 0, m.creadas);
+    comprobar('y la tasa es NULL, no 0 % (no se acusa al tablero de nada)',
+      m.tasaApartado.pct === null, m.tasaApartado);
+    comprobar('ni se inventa un tiempo de apartado',
+      m.medianaMinutosHastaApartar === null, m.medianaMinutosHastaApartar);
+
+    const conDatos = await admin.getMetricasReservas(30, 'pamplona');
+    comprobar('en Pamplona sí hay reservas de esta corrida', conDatos.creadas > 0, conDatos.creadas);
+    comprobar('y se cuentan las que tuvieron conductor',
+      conDatos.apartadas >= 1, conDatos.apartadas);
+    comprobar('los dos motivos de caída se cuentan aparte',
+      typeof conDatos.incumplidasSinSenal === 'number'
+        && typeof conDatos.incumplidasDocumentos === 'number',
+      conDatos,
+    );
+  }
+
   // ── Limpieza ───────────────────────────────────────────────────────────────
+  await prisma.reservaAviso.deleteMany({ where: { tripId: { in: creados.trips } } });
   await prisma.trip.deleteMany({ where: { id: { in: creados.trips } } });
   await prisma.vehicle.deleteMany({ where: { driverId: { in: creados.drivers } } });
   await prisma.driver.deleteMany({ where: { id: { in: creados.drivers } } });

@@ -24,7 +24,8 @@ import { prisma } from '../lib/prisma';
 import type { BusinessPublicDTO, ClientOrderSummaryDTO } from '../types';
 import { codigoDeCarta, mesaDelCatalogo, saneaMesas } from '../lib/mesas';
 import { resolverLineasDePedido, descontarInventario } from './order-lines.service';
-import { avisarNegocioDePedidoNuevo } from './client.service';
+import { avisarNegocioDePedidoNuevo, _guardarCalificacionDePedido } from './client.service';
+import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { nombreEstadoPedido } from '../lib/estado-pedido';
 
 /** La carta pública de un local, tal como la abre el comensal desde el QR. */
@@ -47,6 +48,8 @@ export interface PedidoEnMesaDTO {
   prepMinutes?: number;
   acceptedAt?: string;
   createdAt?: string;
+  /** La estrella que ya dejó, si la dejó. Se puede corregir. */
+  rating?: number | null;
   items: Array<{
     productName: string;
     quantity: number;
@@ -157,8 +160,16 @@ export interface PedirEnMesaDTO {
     optionIds?: string[];
     notes?: string;
   }>;
-  /** Opcional: cómo se llama quien pide, para que el mesero lo llame por nombre. */
-  nombre?: string;
+  // A propósito NO se pide el nombre del comensal.
+  //
+  // El backend lo aceptaba y la pantalla no lo mandaba nunca: código muerto.
+  // Y al decidir si recogerlo o quitarlo, gana quitarlo: **en la mesa la
+  // identidad es la mesa**. El mesero no busca a nadie por nombre, camina al
+  // número que dice la comanda. Un campo más en el formulario es fricción en el
+  // único sitio donde toda la función consiste en no tener ninguna.
+  //
+  // Si algún día se quiere (locales con servicio por nombre), es una línea aquí
+  // y un campo en la hoja del pedido.
 }
 
 /**
@@ -207,8 +218,6 @@ export async function crearPedidoEnMesa(
   const { subtotal, lines, aDescontar } = await resolverLineasDePedido(biz.id, dto.items);
   await descontarInventario(aDescontar);
 
-  const nombre = typeof dto.nombre === 'string' ? dto.nombre.trim().slice(0, 40) : '';
-
   const order = await prisma.order.create({
     data: {
       orderRef: `MS-${Math.floor(1000 + Math.random() * 8000)}`,
@@ -221,6 +230,16 @@ export async function crearPedidoEnMesa(
       // La columna es obligatoria y todas las pantallas viejas la imprimen, así
       // que se escribe algo CIERTO y útil en vez de dejarla vacía.
       deliveryAddress: `En el local · Mesa ${mesa}`,
+      // La plaza del comercio, SELLADA. El dato existe —lo tiene el negocio— y
+      // sin copiarlo aquí el pedido quedaba fuera del panel por ciudad: un
+      // `null` honesto es cuando no se sabe, no cuando no se miró.
+      //
+      // Se sella también como destino porque el pedido se consume EN el local:
+      // origen y destino son el mismo sitio, y dejar el destino vacío haría
+      // pensar que falta por resolver. `isIntercity` sigue en falso, así que
+      // nada del camino de encomiendas se activa.
+      originCitySlug: biz.citySlug ?? null,
+      destCitySlug: biz.citySlug ?? null,
       // Nace PENDING: la cocina lo acepta y fija el tiempo de preparación,
       // igual que un domicilio. Lo que NO pasa al aceptar es el despacho.
       status: 'PENDING',
@@ -235,7 +254,8 @@ export async function crearPedidoEnMesa(
       // aceptar. `etaMinutes` del negocio incluye el trayecto del repartidor.
       etaMinutes: null,
       // Sin PIN de custodia: no hay repartidor a quien entregarle nada.
-      customerName: nombre || null,
+      // Y sin nombre: en la mesa la identidad es la mesa.
+      customerName: null,
       hasSignature: false,
       lines: { create: lines },
     },
@@ -271,6 +291,47 @@ export async function getPedidoEnMesa(
 }
 
 /**
+ * El comensal califica su pedido.
+ *
+ * POR QUÉ HACÍA FALTA. `rateClientOrder` exige que el pedido sea de la cuenta
+ * de quien califica, y en la mesa no hay cuenta — así que un pedido en mesa no
+ * se podía calificar NUNCA. La nota del restaurante salía solo de sus
+ * domicilios, cuando el salón suele ser la mayor parte de lo que vende.
+ *
+ * Lo que aquí hace de credencial es el **id del pedido**: un cuid de
+ * veinticinco caracteres aleatorios que solo tiene quien lo pidió, y que
+ * además se comprueba contra ESTE local y contra que sea de mesa. La
+ * referencia corta (`MS-1234`) no serviría: son ocho mil combinaciones y
+ * cualquiera podría ir calificando las mesas del vecino.
+ *
+ * Se puede corregir, como en el resto de la plataforma: quien se equivocó de
+ * estrella no se queda con ella para siempre.
+ */
+export async function calificarPedidoEnMesa(
+  codigo: string,
+  orderId: string,
+  estrellas: unknown,
+  comentario: unknown,
+): Promise<{ rating: number; ratingComment: string | null }> {
+  const carta = await getCartaPublica(codigo);
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { businessId: true, mode: true },
+  });
+  if (!order || order.businessId !== carta.business.id || order.mode !== 'DINE_IN') {
+    throw new Error('No encontramos ese pedido.');
+  }
+  // El resto —que esté servido, guardar y recalcular el promedio del negocio—
+  // es el MISMO camino que el domicilio. Copiarlo dejaría dos sitios que
+  // tendrían que cambiar juntos el día que cambie la reputación.
+  return _guardarCalificacionDePedido(
+    orderId,
+    saneaEstrellas(estrellas),
+    saneaComentario(comentario),
+  );
+}
+
+/**
  * La cocina marca el plato SERVIDO, que es el cierre de un pedido en mesa.
  *
  * `DELIVERED` es el estado terminal que ya existe y significa exactamente eso
@@ -296,7 +357,7 @@ function _aDTO(
   o: {
     id: string; orderRef: string; tableLabel: string | null; status: string;
     subtotal: number; total: number; prepMinutes: number | null;
-    acceptedAt: Date | null; createdAt: Date;
+    acceptedAt: Date | null; createdAt: Date; rating?: number | null;
   },
   businessName: string,
   lines: Array<{
@@ -314,6 +375,7 @@ function _aDTO(
     total: o.total,
     ...(o.prepMinutes != null ? { prepMinutes: o.prepMinutes } : {}),
     ...(o.acceptedAt ? { acceptedAt: o.acceptedAt.toISOString() } : {}),
+    ...(o.rating != null ? { rating: o.rating } : {}),
     createdAt: o.createdAt.toISOString(),
     items: lines.map((l) => ({
       productName: l.productName,

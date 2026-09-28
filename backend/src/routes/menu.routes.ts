@@ -8,6 +8,7 @@
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import {
+  calificarPedidoEnMesa,
   crearPedidoEnMesa,
   getCartaPublica,
   getPedidoEnMesa,
@@ -53,7 +54,7 @@ router.get('/:codigo', async (req: Request, res: Response): Promise<void> => {
 // POST /carta/:codigo/pedido { mesa, items, nombre? }
 router.post('/:codigo/pedido', cartaLimiter, async (req: Request, res: Response): Promise<void> => {
   const { codigo } = req.params as { codigo: string };
-  const body = req.body as { mesa?: unknown; items?: unknown; nombre?: unknown };
+  const body = req.body as { mesa?: unknown; items?: unknown };
   if (!Array.isArray(body.items) || body.items.length === 0) {
     res.status(400).json({ success: false, error: 'Agrega algo a tu pedido.' });
     return;
@@ -62,7 +63,6 @@ router.post('/:codigo/pedido', cartaLimiter, async (req: Request, res: Response)
     const pedido = await crearPedidoEnMesa(codigo, {
       mesa: body.mesa,
       items: body.items as Parameters<typeof crearPedidoEnMesa>[1]['items'],
-      ...(typeof body.nombre === 'string' ? { nombre: body.nombre } : {}),
     });
     res.status(201).json({ success: true, data: pedido });
   } catch (err) {
@@ -88,5 +88,27 @@ router.get('/:codigo/pedido/:orderId', async (req: Request, res: Response): Prom
     fallo(res, err, 'No se pudo consultar el pedido');
   }
 });
+
+// POST /carta/:codigo/pedido/:orderId/calificar { estrellas, comentario? }
+//
+// Sin cuenta: lo que hace de credencial es el id del pedido, un cuid que solo
+// tiene quien lo pidió. Sin esta ruta, un pedido en mesa no se podía calificar
+// NUNCA y la nota del restaurante salía solo de sus domicilios.
+router.post(
+  '/:codigo/pedido/:orderId/calificar',
+  cartaLimiter,
+  async (req: Request, res: Response): Promise<void> => {
+    const { codigo, orderId } = req.params as { codigo: string; orderId: string };
+    const { estrellas, comentario } = req.body as {
+      estrellas?: unknown; comentario?: unknown;
+    };
+    try {
+      const r = await calificarPedidoEnMesa(codigo, orderId, estrellas, comentario);
+      res.status(200).json({ success: true, data: r });
+    } catch (err) {
+      fallo(res, err, 'No se pudo guardar tu calificación');
+    }
+  },
+);
 
 export default router;

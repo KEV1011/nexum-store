@@ -50,6 +50,7 @@ import { contactoLegalConfigurado } from './lib/contacto';
 import { exigirDocumentoDePasajero } from './lib/pasajeros-tiquete';
 import { whatsappMode } from './services/whatsapp.service';
 import { purgarEnlacesMagicos } from './services/enlace-magico.service';
+import { purgarAvisosDeReserva } from './services/reservas.service';
 
 import authRouter from './routes/auth.routes';
 import driverRouter from './routes/driver.routes';
@@ -323,6 +324,9 @@ server.listen(PORT, () => {
   // Enlaces de WhatsApp ya vencidos: un código gastado no prueba nada que no
   // esté en el registro del mensaje, y la tabla crecería con cada «hola».
   setInterval(() => void purgarEnlacesMagicos(), 24 * 60 * 60 * 1000).unref();
+  // El registro de a quién se avisó de cada reserva. Es operación, no historia.
+  void purgarAvisosDeReserva();
+  setInterval(() => void purgarAvisosDeReserva(), 24 * 60 * 60 * 1000).unref();
   // Conductor que desaparece con mercancía en curso. Es la ÚNICA alerta que no
   // puede nacer del heartbeat: aquí el problema es que el heartbeat dejó de
   // llegar, así que hace falta ir a buscarlo.

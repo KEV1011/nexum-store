@@ -8,6 +8,9 @@ import {
   etiquetaEstado,
   imagen,
   llamar,
+  olvidarPedido,
+  pedidoRecordado,
+  recordarPedido,
   type Carta,
   type GrupoOpciones,
   type PedidoEnMesa,
@@ -59,6 +62,20 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   }, [codigo])
 
   useEffect(() => { void cargar() }, [cargar])
+
+  // Recuperar el pedido de este teléfono. Sin esto, recargar la página —o que
+  // el navegador descarte la pestaña al cambiar de app, que es lo normal en un
+  // celular— deja al comensal sin su pedido y sin forma de encontrarlo: no hay
+  // cuenta, y el id solo lo tenía la pestaña que se cerró.
+  useEffect(() => {
+    const guardado = pedidoRecordado(codigo)
+    if (!guardado) return
+    void llamar<PedidoEnMesa>(`/carta/${encodeURIComponent(codigo)}/pedido/${guardado}`)
+      .then(setPedido)
+      // Si ya no existe (se limpió la base, o pasó demasiado), se olvida en vez
+      // de dejar al comensal mirando un error que no puede arreglar.
+      .catch(() => olvidarPedido(codigo))
+  }, [codigo])
 
   // Con el pedido ya enviado, se sondea el estado: el comensal quiere saber si
   // la cocina lo aceptó y en cuántos minutos. Cada 10 s, y se para al servirse.
@@ -130,6 +147,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
         },
       })
       setPedido(creado)
+      recordarPedido(codigo, creado.id)
       setCarrito([])
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'No pudimos enviar tu pedido.')
@@ -221,9 +239,17 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
             </p>
           </div>
 
+          {pedido.status === 'delivered' && (
+            <Estrellas
+              codigo={codigo}
+              pedido={pedido}
+              onCalificado={(r) => setPedido({ ...pedido, rating: r })}
+            />
+          )}
+
           {pedido.status !== 'cancelled' && (
             <button
-              onClick={() => setPedido(null)}
+              onClick={() => { olvidarPedido(codigo); setPedido(null) }}
               className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
             >
               Pedir algo más
@@ -457,6 +483,72 @@ interface LineaCarrito {
   optionIds: string[]
   resumen: string
   nota: string
+}
+
+/**
+ * Las estrellas del comensal.
+ *
+ * POR QUÉ IMPORTA: hasta ahora la nota de un restaurante salía SOLO de sus
+ * domicilios, porque calificar exigía tener cuenta y en la mesa no hay
+ * ninguna. Para la mayoría de los restaurantes el salón es lo que más venden,
+ * así que su reputación se estaba calculando sobre la parte pequeña.
+ *
+ * Se puede corregir: quien tocó la estrella equivocada no se queda con ella.
+ */
+function Estrellas({ codigo, pedido, onCalificado }: {
+  codigo: string
+  pedido: PedidoEnMesa
+  onCalificado: (r: number) => void
+}) {
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const puesta = pedido.rating ?? 0
+
+  async function calificar(estrellas: number) {
+    setEnviando(true)
+    setError(null)
+    try {
+      await llamar(`/carta/${encodeURIComponent(codigo)}/pedido/${pedido.id}/calificar`, {
+        method: 'POST',
+        body: { estrellas },
+      })
+      onCalificado(estrellas)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'No pudimos guardar tu calificación.')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 text-center">
+      <p className="text-sm font-semibold text-slate-800">
+        {puesta > 0 ? '¡Gracias por calificar!' : '¿Qué tal estuvo?'}
+      </p>
+      <div className="mt-2 flex justify-center gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            disabled={enviando}
+            aria-label={`${n} estrella${n === 1 ? '' : 's'}`}
+            onClick={() => void calificar(n)}
+            className="p-1 disabled:opacity-50"
+          >
+            <Star
+              className={`h-7 w-7 ${
+                n <= puesta ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
+              }`}
+            />
+          </button>
+        ))}
+      </div>
+      {puesta > 0 && (
+        <p className="mt-1 text-[11px] text-slate-400">Puedes cambiarla si te equivocaste.</p>
+      )}
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  )
 }
 
 function Aviso({ tono, children }: { tono: 'amber' | 'red'; children: React.ReactNode }) {

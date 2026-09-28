@@ -809,6 +809,32 @@ export async function rateClientOrder(
 
   const order = await prisma.order.findFirst({
     where: { id: orderId, userId: clientId },
+    select: { id: true },
+  });
+  if (!order) throw new Error('El pedido no existe.');
+  return _guardarCalificacionDePedido(orderId, stars, comment);
+}
+
+/**
+ * Guarda la nota y recalcula la del negocio. **No comprueba de quién es el
+ * pedido**: eso lo hace quien llama, porque hay dos formas legítimas de
+ * demostrarlo y son distintas.
+ *
+ * Un domicilio se prueba con la cuenta del cliente. Un pedido en mesa no tiene
+ * cuenta —ese es el punto de la función— y se prueba con el id del pedido, que
+ * es un cuid: veinticinco caracteres aleatorios que solo tiene quien lo pidió.
+ *
+ * Existe para que el camino de la nota sea UNO. Si el pedido en mesa hubiera
+ * copiado estas líneas, el día que cambie la reputación —como ya pasó al
+ * quitar el 5,0 de fábrica— se arreglaría en un sitio y no en el otro.
+ */
+export async function _guardarCalificacionDePedido(
+  orderId: string,
+  stars: number,
+  comment: string | null,
+): Promise<{ rating: number; ratingComment: string | null }> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
     select: { id: true, status: true, businessId: true },
   });
   if (!order) throw new Error('El pedido no existe.');

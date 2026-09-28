@@ -11,6 +11,7 @@ import {
   type Emparejamiento,
   type Retencion,
 } from '../lib/metricas-negocio';
+import { armarMetricasReservas, type MetricasReservas } from '../lib/metricas-reservas';
 import { saneaTasa } from '../lib/comision';
 import { motivoParaNoConectar } from './driver-online-guard';
 import { cancelOrderByAdmin } from './client.service';
@@ -413,6 +414,21 @@ export interface AdminDriverRow {
   backgroundStatus: string;
   /** Plaza donde se le vio por última vez, o null si nunca dio un latido. */
   citySlug: string | null;
+  /**
+   * Reservas que apartó y NO cumplió, y por qué.
+   *
+   * Es la cifra que antes no existía: el barrido que libera la reserva borraba
+   * el `driverId`, así que un conductor podía apartar seis, faltar a las seis y
+   * amanecer con los seis cupos limpios sin que nadie pudiera saber que fue él.
+   *
+   * **No bloquea nada por su cuenta** — mismo criterio que los antecedentes:
+   * marca para que un humano decida si le baja el tope o lo suspende. Un
+   * automático aquí castigaría al que se le dañó el carro igual que al que
+   * nunca pensó ir.
+   */
+  noShows: number;
+  /** Cuántos de esos fueron por no aparecer (el resto, papeles vencidos). */
+  noShowsSinSenal: number;
 }
 
 export async function listDriversForAdmin(ciudad?: string | null): Promise<AdminDriverRow[]> {
@@ -448,8 +464,35 @@ export async function listDriversForAdmin(ciudad?: string | null): Promise<Admin
       backgroundStatus: d.backgroundStatus,
       motivoBloqueo: null, // se rellena justo debajo
       citySlug: d.citySlug,
+      noShows: 0, // se rellena justo debajo
+      noShowsSinSenal: 0,
     };
   });
+
+  // Los incumplimientos, en DOS consultas agrupadas para toda la tabla en vez
+  // de una por conductor. Se cuentan las filas, no un contador guardado: un
+  // contador y unas filas acaban discrepando y nadie sabe cuál miente.
+  if (filas.length > 0) {
+    const ids = filas.map((f) => f.id);
+    const [todos, sinSenal] = await Promise.all([
+      prisma.trip.groupBy({
+        by: ['noShowDriverId'],
+        where: { noShowDriverId: { in: ids } },
+        _count: { _all: true },
+      }),
+      prisma.trip.groupBy({
+        by: ['noShowDriverId'],
+        where: { noShowDriverId: { in: ids }, noShowReason: 'sin_senal' },
+        _count: { _all: true },
+      }),
+    ]);
+    const porId = new Map(todos.map((r) => [r.noShowDriverId, r._count._all]));
+    const porIdSinSenal = new Map(sinSenal.map((r) => [r.noShowDriverId, r._count._all]));
+    for (const f of filas) {
+      f.noShows = porId.get(f.id) ?? 0;
+      f.noShowsSinSenal = porIdSinSenal.get(f.id) ?? 0;
+    }
+  }
 
   // El motivo, uno a uno. Son consultas por conductor, así que solo se hacen
   // cuando hay algún gate encendido: con los dos apagados nadie está bloqueado
@@ -998,4 +1041,74 @@ export async function contarArchivosHuerfanos(): Promise<{
       : `${partes.join(', ')}. Subidos antes de configurar R2: el enlace existe pero el archivo ya no. `
         + 'Hay que volver a pedirlos.',
   };
+}
+
+// ─── Cifras del tablero de reservas ───────────────────────────────────────────
+//
+// `admin.service` no mencionaba `SCHEDULED` en ninguna parte: no se sabía
+// cuántas reservas se piden, cuántas se apartan ni cuántas se caen. Para una
+// empresa de taxis esa es la cifra que decide si la función sirve, y hay que
+// verla antes de que un pasajero se quede tirado a las seis de la mañana.
+
+/**
+ * Las cifras del tablero de reservas de los últimos `dias`.
+ *
+ * `ciudad` filtra por la plaza SELLADA en el viaje, con el mismo criterio que
+ * el resto del panel: un viaje sin plaza resuelta no pertenece a ninguna
+ * ciudad y por eso no se cuenta en ninguna — contarlo en todas inflaría cada
+ * número.
+ */
+export async function getMetricasReservas(
+  dias: number,
+  ciudad?: string | null,
+): Promise<MetricasReservas> {
+  const ventana = Math.max(1, Math.min(180, Math.round(dias || 30)));
+  const desde = new Date(Date.now() - ventana * 24 * 60 * 60 * 1000);
+  const base = {
+    scheduledFor: { not: null },
+    createdAt: { gte: desde },
+    ...(ciudad ? { citySlug: ciudad } : {}),
+  } as const;
+
+  const [creadas, canceladas, cumplidas, sinSenal, documentos, apartadasFilas] =
+    await Promise.all([
+      prisma.trip.count({ where: base }),
+      prisma.trip.count({ where: { ...base, status: 'CANCELLED' } }),
+      prisma.trip.count({ where: { ...base, status: 'COMPLETED' } }),
+      prisma.trip.count({ where: { ...base, noShowReason: 'sin_senal' } }),
+      prisma.trip.count({ where: { ...base, noShowReason: 'documentos' } }),
+      // «Apartada» es toda la que en algún momento tuvo conductor: la que lo
+      // tiene ahora, y la que lo tuvo y se le quitó. Mirar solo `driverId`
+      // dejaría fuera justo las que se cayeron, que es lo que se quiere medir.
+      prisma.trip.findMany({
+        where: {
+          ...base,
+          OR: [{ driverId: { not: null } }, { noShowDriverId: { not: null } }],
+        },
+        select: { createdAt: true, acceptedAt: true, noShowAt: true },
+        take: 5000,
+      }),
+    ]);
+
+  // Cuánto tardó en apartarse cada una. `acceptedAt` lo sella el barrido al
+  // activarla, así que para las que todavía no han llegado a su hora se usa el
+  // momento en que se le quitó al conductor cuando lo hubo. Sin ninguna de las
+  // dos marcas no se estima nada: un tiempo inventado aquí es peor que un hueco.
+  const minutosHastaApartar: number[] = [];
+  for (const t of apartadasFilas) {
+    const marca = t.acceptedAt ?? t.noShowAt;
+    if (!marca) continue;
+    const min = (marca.getTime() - t.createdAt.getTime()) / 60_000;
+    if (min >= 0) minutosHastaApartar.push(min);
+  }
+
+  return armarMetricasReservas({
+    creadas,
+    apartadas: apartadasFilas.length,
+    cumplidas,
+    incumplidasSinSenal: sinSenal,
+    incumplidasDocumentos: documentos,
+    canceladas,
+    minutosHastaApartar,
+  });
 }

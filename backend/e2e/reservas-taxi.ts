@@ -287,6 +287,24 @@ async function main(): Promise<void> {
     comprobar('y AHORA sí se le ofrece a los conductores cercanos',
       ofertas.some((m) => m['type'] === 'trip_request'),
       JSON.stringify(ofertas.map((m) => m['type'])));
+
+    // LA CONSTANCIA. Antes, al liberar la reserva se ponía `driverId: null` y
+    // con eso se borraba la identidad del que falló: podía apartar seis,
+    // faltar a las seis y amanecer con los seis cupos limpios sin que nadie
+    // pudiera saber que fue él.
+    const conRegistro = await prisma.trip.findUnique({
+      where: { id: reserva.id },
+      select: { noShowDriverId: true, noShowAt: true, noShowReason: true },
+    });
+    comprobar('queda escrito QUIÉN la tenía',
+      conRegistro?.noShowDriverId === dueno,
+      `${conRegistro?.noShowDriverId} vs ${dueno}`);
+    comprobar('con su hora', conRegistro?.noShowAt != null);
+    comprobar('y por qué: no dio señales (no es lo mismo que papeles vencidos)',
+      conRegistro?.noShowReason === 'sin_senal', conRegistro?.noShowReason ?? 'null');
+
+    const cuantas = await prisma.trip.count({ where: { noShowDriverId: dueno } });
+    comprobar('y se le puede contar al conductor', cuantas >= 1, `${cuantas}`);
   }
 
   console.log('\n═══ Al que SÍ da señales no se le quita nada ═══');
@@ -359,6 +377,15 @@ async function main(): Promise<void> {
     const t = await fila(v.id);
     comprobar('no se activa con el conductor bloqueado; sale a buscar',
       t?.status === 'SEARCHING' && t?.driverId === null, `${t?.status}/${t?.driverId}`);
+    // Queda registrado, pero con OTRO motivo: papeles vencidos no es lo mismo
+    // que no aparecer, y el admin tiene que poder distinguirlos para saber si
+    // le está hablando a alguien descuidado o a alguien que no piensa ir.
+    const reg = await prisma.trip.findUnique({
+      where: { id: v.id }, select: { noShowDriverId: true, noShowReason: true },
+    });
+    comprobar('queda constancia, pero como «documentos», no como plantón',
+      reg?.noShowDriverId === taxi.id && reg?.noShowReason === 'documentos',
+      `${reg?.noShowDriverId}/${reg?.noShowReason}`);
     await prisma.driver.update({
       where: { id: taxi.id },
       data: { complianceStatus: 'CLEAR', blockedReason: null },

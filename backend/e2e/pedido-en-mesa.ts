@@ -117,6 +117,7 @@ async function main(): Promise<void> {
       token: `tok-${marca}`,
       lat: 7.3754,
       lng: -72.6486,
+      citySlug: 'pamplona',
       deliveryFee: 3500,
       etaMinutes: 30,
     },
@@ -242,6 +243,15 @@ async function main(): Promise<void> {
         { p: fila?.pickupPin, d: fila?.deliveryPin },
       );
       check(fila?.etaMinutes === null, 'sin tiempo prometido hasta que la cocina lo fije', fila?.etaMinutes);
+      // La plaza del negocio, SELLADA: el dato existe y no copiarlo dejaba el
+      // pedido fuera del panel por ciudad. Un null honesto es cuando no se
+      // sabe, no cuando no se miró.
+      check(
+        fila?.originCitySlug === 'pamplona' && fila?.destCitySlug === 'pamplona',
+        'lleva la plaza del local (se consume ahí: origen y destino son el mismo sitio)',
+        { o: fila?.originCitySlug, d: fila?.destCitySlug },
+      );
+      check(fila?.isIntercity === false, 'y no se activa nada del camino de encomiendas');
       check(fila?.lines[0]?.notes === 'sin cebolla', 'la nota llega a la cocina', fila?.lines[0]?.notes);
       check(fila?.lines[0]?.unitPrice === 25000, 'el renglón al precio real', fila?.lines[0]?.unitPrice);
     }
@@ -343,6 +353,54 @@ async function main(): Promise<void> {
       check(otra.status === 409, 'dos toques al botón no lo sirven dos veces', otra.status);
     }
 
+    console.log('\n[8b] El comensal califica SIN CUENTA, y eso mueve la nota del local');
+    {
+      // Hasta ahora `rateClientOrder` exigía que el pedido fuera de la cuenta
+      // de quien califica, así que un pedido en mesa no se podía calificar
+      // NUNCA: la nota del restaurante salía solo de sus domicilios, que suele
+      // ser la parte pequeña de lo que vende.
+      const antes = await prisma.business.findUnique({
+        where: { id: negocio.id }, select: { rating: true, ratingCount: true },
+      });
+      check(antes?.rating === null, 'el local nace SIN nota, no con un 5,0 de fábrica', antes);
+
+      const r = await pedir(
+        'POST', `/carta/${codigo}/pedido/${pedidoMesa}/calificar`, { estrellas: 4 },
+      );
+      check(r.status === 200, 'se guarda', { s: r.status, e: r.json.error });
+      const despues = await prisma.business.findUnique({
+        where: { id: negocio.id }, select: { rating: true, ratingCount: true },
+      });
+      check(despues?.rating === 4 && despues?.ratingCount === 1,
+        'y el promedio del local se recalcula de las filas', despues);
+
+      // Corregible, como en el resto de la plataforma.
+      await pedir('POST', `/carta/${codigo}/pedido/${pedidoMesa}/calificar`, { estrellas: 5 });
+      const corregida = await prisma.business.findUnique({
+        where: { id: negocio.id }, select: { rating: true, ratingCount: true },
+      });
+      check(corregida?.rating === 5 && corregida?.ratingCount === 1,
+        'corregir la estrella NO cuenta como una calificación más', corregida);
+
+      // El id es la credencial: con el de otro local no se puede.
+      const otro = await prisma.business.create({
+        data: {
+          name: `${marca} Vecino`, ownerName: 'Vecino', phone: tel(),
+          address: 'Calle 7', category: 'RESTAURANT', token: `tok-v-${marca}`,
+          menuCode: 'ZZZZZZZZZZ',
+        },
+      });
+      const ajeno = await pedir(
+        'POST', `/carta/ZZZZZZZZZZ/pedido/${pedidoMesa}/calificar`, { estrellas: 1 },
+      );
+      check(ajeno.status >= 400, 'no se puede calificar desde la carta de otro local', ajeno.status);
+      const intacta = await prisma.business.findUnique({
+        where: { id: negocio.id }, select: { rating: true },
+      });
+      check(intacta?.rating === 5, 'y la nota del primero no se movió', intacta);
+      await prisma.business.delete({ where: { id: otro.id } });
+    }
+
     console.log('\n[9] El comensal consulta su pedido, y solo el suyo');
     {
       const r = await pedir('GET', `/carta/${codigo}/pedido/${pedidoMesa}`);
@@ -364,6 +422,27 @@ async function main(): Promise<void> {
         !(data?.orders ?? []).some((o) => o.id === pedidoMesa),
         'NO está en la lista de domicilios',
         (data?.orders ?? []).map((o) => o.id),
+      );
+
+      // Las cifras del día tienen que CUADRAR entre sí. Al separar la lista de
+      // domicilios (para que el de mesa no saliera dos veces), «Entregados»
+      // dejó de contarlos mientras «En preparación» los seguía contando: el
+      // dueño veía dos números del mismo día que se contradecían.
+      const stats = data?.stats as {
+        delivered?: number; enMesa?: number; servidosEnMesa?: number;
+        ventaSalon?: number; ventaDomicilio?: number;
+      } | undefined;
+      check((stats?.enMesa ?? 0) >= 1, 'las cifras del día cuentan el de mesa aparte', stats);
+      check((stats?.servidosEnMesa ?? 0) === 1, 'y sabe que ya se sirvió', stats);
+      check(
+        (stats?.ventaSalon ?? 0) === 50000,
+        'con lo vendido en el SALÓN, que es lo que el dueño quiere saber',
+        stats,
+      );
+      check(
+        (stats?.ventaDomicilio ?? 0) === 0,
+        'y sin mezclarlo con el domicilio',
+        stats,
       );
 
       const online = await pedir('GET', `/business/${negocio.token}/client-orders`);

@@ -99,6 +99,8 @@ export interface Carta {
 
 export interface PedidoEnMesa {
   id: string
+  /** La estrella que ya dejó, si la dejó. Se puede corregir. */
+  rating?: number | null
   orderRef: string
   tableLabel: string
   businessName: string
@@ -116,6 +118,51 @@ export interface PedidoEnMesa {
     optionsSummary?: string
     notes?: string
   }>
+}
+
+// ─── Recordar el pedido en este teléfono ─────────────────────────────────────
+//
+// El comensal no tiene cuenta, así que si recarga —o el navegador del teléfono
+// descarta la pestaña al cambiar de app, que es lo normal— pierde su pedido sin
+// forma de recuperarlo. Se guarda su id aquí.
+//
+// CON CADUCIDAD, y no es un detalle: sin ella, quien vuelve al restaurante la
+// semana que viene abre el QR y se encuentra el almuerzo del martes pasado como
+// si fuera de ahora.
+
+const HORAS_RECUERDO = 6
+
+function clave(codigo: string): string {
+  return `zipa.carta.${codigo.toUpperCase()}`
+}
+
+export function recordarPedido(codigo: string, orderId: string): void {
+  try {
+    localStorage.setItem(clave(codigo), JSON.stringify({ orderId, ts: Date.now() }))
+  } catch {
+    // Modo privado o almacenamiento bloqueado: se sigue sin recordar nada. La
+    // pantalla funciona igual mientras no se recargue.
+  }
+}
+
+export function pedidoRecordado(codigo: string): string | null {
+  try {
+    const crudo = localStorage.getItem(clave(codigo))
+    if (!crudo) return null
+    const { orderId, ts } = JSON.parse(crudo) as { orderId?: string; ts?: number }
+    if (typeof orderId !== 'string' || typeof ts !== 'number') return null
+    if (Date.now() - ts > HORAS_RECUERDO * 3600_000) {
+      olvidarPedido(codigo)
+      return null
+    }
+    return orderId
+  } catch {
+    return null
+  }
+}
+
+export function olvidarPedido(codigo: string): void {
+  try { localStorage.removeItem(clave(codigo)) } catch { /* nada que hacer */ }
 }
 
 /** La imagen puede venir relativa (`/uploads/...`) cuando no hay R2. */

@@ -189,10 +189,42 @@ const service = {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Las cifras del día del dueño.
+   *
+   * `delivered`, `inTransit` y la custodia son de DOMICILIO: salen de
+   * `getTodayOrdersForBusiness`, que filtra por `mode: 'DELIVERY'`. Los de mesa
+   * van aparte y por eso se cuentan con su propia consulta.
+   *
+   * Contarlos juntos fue el defecto que esto corrige: al separar la lista para
+   * que un pedido en mesa no saliera dos veces, «Entregados» dejó de contarlos
+   * mientras «En preparación» —que sale de otra lista— los seguía contando. El
+   * dueño veía dos números del mismo día que no cuadraban entre sí.
+   *
+   * Y va el DINERO, que es lo que de verdad quiere saber: cuánto vendió en el
+   * salón y cuánto a domicilio. El total de mesa no incluye domicilio porque
+   * ahí no se cobra ninguno.
+   */
   async getDayStats(businessId: string) {
-    const orders = await this.getTodayOrdersForBusiness(businessId);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const [orders, mesa] = await Promise.all([
+      this.getTodayOrdersForBusiness(businessId),
+      prisma.order.findMany({
+        where: { businessId, createdAt: { gte: hoy }, mode: 'DINE_IN' },
+        select: { status: true, total: true },
+      }),
+    ]);
     const delivered = orders.filter((o) => o.status === 'delivered');
     const fullCustody = delivered.filter((o) => o.hasFullCustody).length;
+
+    // Lo vendido: lo entregado a domicilio y lo servido en mesa. Lo cancelado
+    // no se cuenta —nadie lo pagó— y lo que está en curso tampoco, porque
+    // todavía puede caerse.
+    const servidosEnMesa = mesa.filter((o) => o.status === 'DELIVERED');
+    const ventaSalon = servidosEnMesa.reduce((s, o) => s + o.total, 0);
+    const ventaDomicilio = delivered.reduce((s, o) => s + o.grossFare, 0);
 
     return {
       total: orders.length,
@@ -200,6 +232,15 @@ const service = {
       inTransit: orders.filter((o) => o.status === 'in_transit').length,
       delivered: delivered.length,
       fullCustodyRate: delivered.length === 0 ? 0 : fullCustody / delivered.length,
+      // ── Salón ──────────────────────────────────────────────────────────────
+      /** Pedidos de mesa de hoy, en cualquier estado. */
+      enMesa: mesa.length,
+      /** De esos, los que ya salieron a la mesa. */
+      servidosEnMesa: servidosEnMesa.length,
+      /** De mesa, esperando o cocinándose. */
+      enMesaEnCurso: mesa.filter((o) => o.status === 'PENDING' || o.status === 'PREPARING').length,
+      ventaSalon,
+      ventaDomicilio,
     };
   },
 };

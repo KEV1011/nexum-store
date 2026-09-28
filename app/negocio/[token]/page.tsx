@@ -87,6 +87,14 @@ interface BusinessStats {
   inTransit: number
   delivered: number
   custodyPct: number
+  // ── Salón. Van aparte de los de domicilio a propósito: un pedido en mesa no
+  // tiene repartidor, así que mezclarlo en «En tránsito» o en la custodia no
+  // significaría nada.
+  enMesa?: number
+  servidosEnMesa?: number
+  enMesaEnCurso?: number
+  ventaSalon?: number
+  ventaDomicilio?: number
 }
 
 interface ApiResponse {
@@ -755,8 +763,37 @@ export default function PortalDashboard({
             <StatCard icon={ShoppingBag} label="Pedidos online" value={clientOrders.length} color="bg-orange-50 text-orange-600" />
             <StatCard icon={UtensilsCrossed} label="En preparación" value={preparingCount} color="bg-violet-50 text-violet-600" />
             <StatCard icon={Truck} label="En tránsito" value={stats.inTransit} color="bg-teal-50 text-teal-700" />
-            <StatCard icon={CheckCircle2} label="Entregados" value={stats.delivered} color="bg-emerald-50 text-emerald-600" />
+            {/* «Entregados» cuenta lo de domicilio Y lo servido en mesa. Contar
+                solo domicilio fue el defecto: «En preparación» sí incluía los de
+                mesa, así que el dueño veía dos números del mismo día que no
+                cuadraban entre sí. */}
+            <StatCard
+              icon={CheckCircle2}
+              label="Entregados"
+              value={stats.delivered + (stats.servidosEnMesa ?? 0)}
+              color="bg-emerald-50 text-emerald-600"
+            />
           </div>
+
+          {/* Lo que el dueño de verdad quiere saber al cerrar el día. Solo se
+              pinta cuando hay servicio en mesa: en un local que no lo usa, dos
+              tarjetas con «$0» solo estorban. */}
+          {(stats.enMesa ?? 0) > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <StatCard
+                icon={Utensils}
+                label={`Salón · ${stats.servidosEnMesa ?? 0} servido${(stats.servidosEnMesa ?? 0) === 1 ? '' : 's'}`}
+                value={formatCOP(stats.ventaSalon)}
+                color="bg-sky-50 text-sky-700"
+              />
+              <StatCard
+                icon={Truck}
+                label={`Domicilio · ${stats.delivered} entregado${stats.delivered === 1 ? '' : 's'}`}
+                value={formatCOP(stats.ventaDomicilio)}
+                color="bg-teal-50 text-teal-700"
+              />
+            </div>
+          )}
         </section>
 
         {/* Tabs */}
