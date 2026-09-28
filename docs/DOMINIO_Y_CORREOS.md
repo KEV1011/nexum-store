@@ -7,9 +7,19 @@ la política sea accionable sin instalar nada, y la **Ley 1581 de 2012** obliga 
 responsable a publicar un canal de atención al titular.
 
 Y hay una razón práctica igual de fuerte: hoy las URLs legales viven en
-`nexum-store.onrender.com`. Esas direcciones quedan dentro de la ficha de Play.
+`nexum-store.vercel.app`. Esas direcciones quedan dentro de la ficha de Play.
 Con dominio propio se puede cambiar de hosting sin tocar un documento
 publicado; sin él, mudarse rompe los enlaces que Google ya revisó.
+
+**Y hay un tercer bloqueo, comprobado el 28/09:** la verificación de negocio de
+**Meta** (necesaria para publicar la app de WhatsApp) rechaza el sitio actual
+con «No puedes verificar tu negocio con un dominio de sitio web común».
+`vercel.app` y `onrender.com` son subdominios **compartidos del hosting**, no
+del negocio, y Meta los trata igual que un `gmail.com`. No hay forma de pasar
+ese paso sin dominio propio.
+
+Un solo dominio desbloquea las cuatro cosas: verificación en Meta, política de
+privacidad de Play, canal de atención al titular, y poder mudarse de hosting.
 
 ---
 
