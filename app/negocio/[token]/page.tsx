@@ -19,6 +19,7 @@ import {
   ShoppingBag,
   Bell,
   UtensilsCrossed,
+  Utensils,
   Settings,
 } from 'lucide-react'
 
@@ -50,6 +51,10 @@ interface ClientOrder {
   businessId: string
   businessName: string
   status: ClientOrderStatus
+  /** Cómo se sirve. Ausente = domicilio (pedidos anteriores a esta función). */
+  mode?: 'DELIVERY' | 'DINE_IN'
+  /** La mesa, en los pedidos del salón. Es lo que la cocina tiene que ver. */
+  tableLabel?: string
   subtotal: number
   deliveryFee: number
   total: number
@@ -82,6 +87,14 @@ interface BusinessStats {
   inTransit: number
   delivered: number
   custodyPct: number
+  // ── Salón. Van aparte de los de domicilio a propósito: un pedido en mesa no
+  // tiene repartidor, así que mezclarlo en «En tránsito» o en la custodia no
+  // significaría nada.
+  enMesa?: number
+  servidosEnMesa?: number
+  enMesaEnCurso?: number
+  ventaSalon?: number
+  ventaDomicilio?: number
 }
 
 interface ApiResponse {
@@ -155,10 +168,12 @@ function ClientOrderCard({ order, token, onChanged }: {
 }) {
   const isNew = order.status === 'pending'
   const [prep, setPrep] = useState('20')
-  const [busy, setBusy] = useState<null | 'accept' | 'reject' | 'ready'>(null)
+  const [busy, setBusy] = useState<null | 'accept' | 'reject' | 'ready' | 'servido'>(null)
+  // Un pedido del salón: no hay repartidor, ni domicilio, ni dirección.
+  const enMesa = order.mode === 'DINE_IN'
   const [actionError, setActionError] = useState<string | null>(null)
 
-  async function act(kind: 'accept' | 'reject' | 'ready') {
+  async function act(kind: 'accept' | 'reject' | 'ready' | 'servido') {
     setBusy(kind)
     setActionError(null)
     try {
@@ -193,15 +208,27 @@ function ClientOrderCard({ order, token, onChanged }: {
         <ClientStatusBadge status={order.status} />
       </div>
 
-      <div className="text-xs text-slate-500 mb-3 flex items-start gap-1.5">
-        <span className="shrink-0 mt-0.5">📍</span>
-        <span className="truncate">{order.deliveryAddress}</span>
-      </div>
+      {enMesa ? (
+        /* Lo único que la cocina necesita para servir el plato. Grande, porque
+           es el dato que se busca de un vistazo con el salón lleno. */
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+          <Utensils className="h-4 w-4 shrink-0 text-sky-600" />
+          <span className="text-sm font-bold text-sky-900">Mesa {order.tableLabel}</span>
+          <span className="ml-auto text-[11px] font-semibold uppercase tracking-wide text-sky-600">
+            En el local
+          </span>
+        </div>
+      ) : (
+        <div className="text-xs text-slate-500 mb-3 flex items-start gap-1.5">
+          <span className="shrink-0 mt-0.5">📍</span>
+          <span className="truncate">{order.deliveryAddress}</span>
+        </div>
+      )}
 
       {/* PIN de recogida: el dueño se lo dicta al repartidor al entregarle el
           pedido. Sin él, el repartidor no puede marcarlo como recogido. Se
           oculta cuando ya salió del negocio (deja de tener utilidad). */}
-      {order.pickupPin && !order.pickedUpAt && (
+      {order.pickupPin && !order.pickedUpAt && !enMesa && (
         <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
             PIN de recogida
@@ -276,10 +303,13 @@ function ClientOrderCard({ order, token, onChanged }: {
       <div className="flex items-center justify-between pt-2 border-t border-slate-100">
         <div className="flex items-center gap-2 text-xs text-slate-500">
           <Clock className="w-3 h-3" />
-          <span>~{order.etaMinutes} min</span>
-          {order.deliveryFee > 0 && (
+          {/* En mesa el tiempo lo fija la cocina al aceptar; antes de eso no
+              hay ninguno, y enseñar un «~30 min» del domicilio sería inventarlo. */}
+          <span>{order.etaMinutes > 0 ? `~${order.etaMinutes} min` : 'Sin confirmar'}</span>
+          {order.deliveryFee > 0 && !enMesa && (
             <span className="text-slate-400">· Domicilio {formatCOP(order.deliveryFee)}</span>
           )}
+          {enMesa && <span className="text-slate-400">· Se paga en el local</span>}
         </div>
         <p className="text-sm font-bold text-slate-800">{formatCOP(order.total)}</p>
       </div>
@@ -326,7 +356,7 @@ function ClientOrderCard({ order, token, onChanged }: {
           </div>
         </div>
       )}
-      {order.status === 'preparing' && !order.readyAt && (
+      {order.status === 'preparing' && !order.readyAt && !enMesa && (
         <button
           onClick={() => act('ready')}
           disabled={busy !== null}
@@ -334,6 +364,18 @@ function ClientOrderCard({ order, token, onChanged }: {
                      hover:bg-violet-700 disabled:opacity-50"
         >
           {busy === 'ready' ? 'Marcando…' : 'Marcar listo para recoger'}
+        </button>
+      )}
+      {/* En el salón no hay repartidor que recoja: «listo» y «entregado» son el
+          mismo momento, cuando el plato sale a la mesa. */}
+      {enMesa && (order.status === 'pending' || order.status === 'preparing') && (
+        <button
+          onClick={() => act('servido')}
+          disabled={busy !== null}
+          className="mt-3 w-full rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white
+                     hover:bg-sky-700 disabled:opacity-50"
+        >
+          {busy === 'servido' ? 'Marcando…' : `Servido en la mesa ${order.tableLabel}`}
         </button>
       )}
     </div>
@@ -721,8 +763,37 @@ export default function PortalDashboard({
             <StatCard icon={ShoppingBag} label="Pedidos online" value={clientOrders.length} color="bg-orange-50 text-orange-600" />
             <StatCard icon={UtensilsCrossed} label="En preparación" value={preparingCount} color="bg-violet-50 text-violet-600" />
             <StatCard icon={Truck} label="En tránsito" value={stats.inTransit} color="bg-teal-50 text-teal-700" />
-            <StatCard icon={CheckCircle2} label="Entregados" value={stats.delivered} color="bg-emerald-50 text-emerald-600" />
+            {/* «Entregados» cuenta lo de domicilio Y lo servido en mesa. Contar
+                solo domicilio fue el defecto: «En preparación» sí incluía los de
+                mesa, así que el dueño veía dos números del mismo día que no
+                cuadraban entre sí. */}
+            <StatCard
+              icon={CheckCircle2}
+              label="Entregados"
+              value={stats.delivered + (stats.servidosEnMesa ?? 0)}
+              color="bg-emerald-50 text-emerald-600"
+            />
           </div>
+
+          {/* Lo que el dueño de verdad quiere saber al cerrar el día. Solo se
+              pinta cuando hay servicio en mesa: en un local que no lo usa, dos
+              tarjetas con «$0» solo estorban. */}
+          {(stats.enMesa ?? 0) > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <StatCard
+                icon={Utensils}
+                label={`Salón · ${stats.servidosEnMesa ?? 0} servido${(stats.servidosEnMesa ?? 0) === 1 ? '' : 's'}`}
+                value={formatCOP(stats.ventaSalon)}
+                color="bg-sky-50 text-sky-700"
+              />
+              <StatCard
+                icon={Truck}
+                label={`Domicilio · ${stats.delivered} entregado${stats.delivered === 1 ? '' : 's'}`}
+                value={formatCOP(stats.ventaDomicilio)}
+                color="bg-teal-50 text-teal-700"
+              />
+            </div>
+          )}
         </section>
 
         {/* Tabs */}

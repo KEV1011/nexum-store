@@ -170,7 +170,11 @@ const service = {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const orders = await prisma.order.findMany({
-      where: { businessId, createdAt: { gte: today }, userId: null },
+      // `mode: 'DELIVERY'` es obligatorio aquí: un pedido en mesa también tiene
+      // `userId: null` (el comensal no necesita cuenta), así que sin el filtro
+      // saldría en esta lista Y en la de pedidos online — el mismo plato
+      // contado dos veces en el portal y en las cifras del día.
+      where: { businessId, createdAt: { gte: today }, userId: null, mode: 'DELIVERY' },
       orderBy: { createdAt: 'desc' },
     });
     return orders.map(_toSummaryDTO);
@@ -185,10 +189,42 @@ const service = {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Las cifras del día del dueño.
+   *
+   * `delivered`, `inTransit` y la custodia son de DOMICILIO: salen de
+   * `getTodayOrdersForBusiness`, que filtra por `mode: 'DELIVERY'`. Los de mesa
+   * van aparte y por eso se cuentan con su propia consulta.
+   *
+   * Contarlos juntos fue el defecto que esto corrige: al separar la lista para
+   * que un pedido en mesa no saliera dos veces, «Entregados» dejó de contarlos
+   * mientras «En preparación» —que sale de otra lista— los seguía contando. El
+   * dueño veía dos números del mismo día que no cuadraban entre sí.
+   *
+   * Y va el DINERO, que es lo que de verdad quiere saber: cuánto vendió en el
+   * salón y cuánto a domicilio. El total de mesa no incluye domicilio porque
+   * ahí no se cobra ninguno.
+   */
   async getDayStats(businessId: string) {
-    const orders = await this.getTodayOrdersForBusiness(businessId);
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const [orders, mesa] = await Promise.all([
+      this.getTodayOrdersForBusiness(businessId),
+      prisma.order.findMany({
+        where: { businessId, createdAt: { gte: hoy }, mode: 'DINE_IN' },
+        select: { status: true, total: true },
+      }),
+    ]);
     const delivered = orders.filter((o) => o.status === 'delivered');
     const fullCustody = delivered.filter((o) => o.hasFullCustody).length;
+
+    // Lo vendido: lo entregado a domicilio y lo servido en mesa. Lo cancelado
+    // no se cuenta —nadie lo pagó— y lo que está en curso tampoco, porque
+    // todavía puede caerse.
+    const servidosEnMesa = mesa.filter((o) => o.status === 'DELIVERED');
+    const ventaSalon = servidosEnMesa.reduce((s, o) => s + o.total, 0);
+    const ventaDomicilio = delivered.reduce((s, o) => s + o.grossFare, 0);
 
     return {
       total: orders.length,
@@ -196,6 +232,15 @@ const service = {
       inTransit: orders.filter((o) => o.status === 'in_transit').length,
       delivered: delivered.length,
       fullCustodyRate: delivered.length === 0 ? 0 : fullCustody / delivered.length,
+      // ── Salón ──────────────────────────────────────────────────────────────
+      /** Pedidos de mesa de hoy, en cualquier estado. */
+      enMesa: mesa.length,
+      /** De esos, los que ya salieron a la mesa. */
+      servidosEnMesa: servidosEnMesa.length,
+      /** De mesa, esperando o cocinándose. */
+      enMesaEnCurso: mesa.filter((o) => o.status === 'PENDING' || o.status === 'PREPARING').length,
+      ventaSalon,
+      ventaDomicilio,
     };
   },
 };
@@ -845,7 +890,19 @@ export interface BusinessReviewsView {
   ratingCount: number;
   /** Cuántos pusieron 5, 4, 3… para ver de dónde sale el promedio. */
   distribucion: Record<number, number>;
-  comentarios: Array<{ estrellas: number; comentario: string; fecha: string }>;
+  comentarios: Array<{
+    estrellas: number;
+    comentario: string;
+    fecha: string;
+    /**
+     * De dónde viene la queja: `salon` o `domicilio`.
+     *
+     * Sin esto, el dueño lee «dos estrellas, llegó frío» y no sabe si el
+     * problema fue su cocina o el repartidor — y son dos cosas que arregla de
+     * formas opuestas. El dato existía en el pedido y no se le estaba dando.
+     */
+    origen: 'salon' | 'domicilio';
+  }>;
 }
 
 /**
@@ -858,7 +915,7 @@ export interface BusinessReviewsView {
 export async function getBusinessReviews(businessId: string): Promise<BusinessReviewsView> {
   const filas = await prisma.order.findMany({
     where: { businessId, rating: { not: null } },
-    select: { rating: true, ratingComment: true, updatedAt: true },
+    select: { rating: true, ratingComment: true, updatedAt: true, mode: true },
     orderBy: { updatedAt: 'desc' },
     take: 200,
   });
@@ -881,6 +938,7 @@ export async function getBusinessReviews(businessId: string): Promise<BusinessRe
         estrellas: f.rating as number,
         comentario: f.ratingComment as string,
         fecha: f.updatedAt.toISOString(),
+        origen: (f.mode === 'DINE_IN' ? 'salon' : 'domicilio') as 'salon' | 'domicilio',
       })),
   };
 }

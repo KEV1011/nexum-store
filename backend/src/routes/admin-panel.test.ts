@@ -542,6 +542,7 @@ describe('el panel pintando la comisión', () => {
       lastSeenAt: new Date().toISOString(), kycStatus: 'PENDING', hasSelfie: false,
       selfieUrl: null, backgroundStatus: 'UNCHECKED', fraudFlags: 0,
       complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+      noShows: 0, noShowsSinSenal: 0,
     };
     const { fn, el } = montar(
       { '/admin/drivers': [{ ...base, rating: null }] },
@@ -554,6 +555,40 @@ describe('el panel pintando la comisión', () => {
     // Y dice «Nuevo», no un número inventado ni un hueco en blanco.
     expect(html).toContain('Nuevo');
     expect(html).not.toContain('undefined');
+  });
+
+  it('los incumplimientos separan «no apareció» de «papeles vencidos»', () => {
+    // La columna existe para que un humano decida, no para bloquear: seis por
+    // papeles vencidos es un trámite, seis por no aparecer es dejar tirada a
+    // seis personas. Sin separarlas, el admin trataría igual al que se le
+    // venció el SOAT que al que nunca pensó ir.
+    const base = {
+      id: 'd1', name: 'Nelson', phone: '+573001112233', status: 'ONLINE',
+      isVerified: true, intercityEnabled: true, totalTrips: 12, vehicle: 'Mazda 2',
+      lastSeenAt: new Date().toISOString(), kycStatus: 'VERIFIED', hasSelfie: false,
+      selfieUrl: null, backgroundStatus: 'CLEAR', fraudFlags: 0, rating: 4.8,
+      complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+    };
+    const { fn, el } = montar(
+      {
+        '/admin/drivers': [
+          { ...base, id: 'd1', name: 'Falta', noShows: 3, noShowsSinSenal: 2 },
+          { ...base, id: 'd2', name: 'Limpio', noShows: 0, noShowsSinSenal: 0 },
+        ],
+      },
+      ['drivers-body'],
+    );
+    fn['loadDrivers']!();
+    return esperar().then(() => {
+      const html = el['drivers-body']!.innerHTML;
+      expect(html).toContain('Falta');
+      expect(html).toContain('Limpio');
+      // El desglose va en el title, que es donde lo lee el admin al pasar por
+      // encima del número.
+      expect(html).toContain('2 sin aparecer');
+      expect(html).toContain('1 por documentos');
+      expect(html).not.toContain('undefined');
+    });
   });
 
   it('el diagnóstico pinta el push con su cobertura de tokens', async () => {
@@ -605,6 +640,7 @@ describe('el panel pintando la comisión', () => {
       vehicle: 'Spark', lastSeenAt: null, kycStatus: 'IN_REVIEW', hasSelfie: true,
       selfieUrl: null, backgroundStatus: 'UNCHECKED', fraudFlags: 0,
       complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+      noShows: 0, noShowsSinSenal: 0,
       motivoBloqueo: 'Estamos revisando tu identidad.',
     };
     const { fn, el } = montar({ '/admin/drivers': [base] }, ['drivers-body']);
@@ -625,6 +661,7 @@ describe('el panel pintando la comisión', () => {
       vehicle: 'Mazda', lastSeenAt: new Date().toISOString(), kycStatus: 'VERIFIED',
       hasSelfie: true, selfieUrl: null, backgroundStatus: 'CLEAR', fraudFlags: 0,
       complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+      noShows: 0, noShowsSinSenal: 0,
       motivoBloqueo: null,
     };
     const { fn, el } = montar({ '/admin/drivers': [base] }, ['drivers-body']);
@@ -642,6 +679,7 @@ describe('el panel pintando la comisión', () => {
       lastSeenAt: new Date().toISOString(), kycStatus: 'VERIFIED', hasSelfie: false,
       selfieUrl: null, backgroundStatus: 'CLEAR', fraudFlags: 0,
       complianceStatus: 'CLEAR', blockedReason: null, citySlug: 'pamplona',
+      noShows: 0, noShowsSinSenal: 0,
     };
     const { fn, el } = montar(
       { '/admin/drivers': [{ ...base, rating: 4.6 }] },
@@ -720,7 +758,12 @@ describe('el panel por plaza', () => {
     safety: { sosLast24h: null },
   };
 
-  const domMetricas = ['metrics-grid', 'stuck-warn', 'pilot-warn', 'neg-dias', 'negocio', 'plaza'];
+  const domMetricas = [
+    'metrics-grid', 'stuck-warn', 'pilot-warn', 'neg-dias', 'negocio', 'plaza',
+    // El bloque de reservas se pinta en la misma pasada que las cifras del
+    // piloto: sin su contenedor, `loadNegocio` reventaría al terminar.
+    'reservas-metricas',
+  ];
 
   it('«no se sabe» se escribe «—», y el cero sigue siendo cero', () => {
     const { fn } = montar({}, []);
@@ -729,6 +772,55 @@ describe('el panel por plaza', () => {
     expect(oGuion(undefined)).toBe('—');
     expect(oGuion(0)).toBe('0');
     expect(oGuion(null, () => '$0')).toBe('—');
+  });
+
+  it('las cifras de reservas: la tasa va con su muestra y se calla si es diminuta', async () => {
+    // Antes no había UNA sola cifra sobre reservas en el panel. Y el riesgo al
+    // añadirlas es el de siempre: un porcentaje redondo sobre tres casos se lee
+    // como una conclusión.
+    const { fn, el } = montar(
+      {
+        // OJO: el stub casa por `startsWith` en orden de inserción, así que las
+        // rutas MÁS ESPECÍFICAS van primero o `/admin/metrics` se las come.
+        '/admin/metrics/reservas': {
+          creadas: 40, apartadas: 30, cumplidas: 25, canceladas: 4,
+          incumplidas: 5, incumplidasSinSenal: 4, incumplidasDocumentos: 1,
+          tasaApartado: { parte: 30, total: 40, pct: 75, fiable: true },
+          tasaCumplimiento: { parte: 25, total: 30, pct: 83.3, fiable: true },
+          tasaIncumplimiento: { parte: 3, total: 3, pct: null, fiable: false },
+          medianaMinutosHastaApartar: 12,
+        },
+        '/admin/metrics/negocio': {},
+        '/admin/metrics': metricasDePlaza,
+      },
+      domMetricas,
+    );
+    fn['loadMetrics']!();
+    await esperar();
+    const html = el['reservas-metricas']!.innerHTML;
+    expect(html).toContain('75 %');
+    expect(html).toContain('30 de 40');
+    // La muestra diminuta enseña la fracción y avisa, no un porcentaje.
+    expect(html).toContain('3 de 3');
+    expect(html).toContain('muy pocas');
+    expect(html).toContain('12 min');
+    expect(html).toContain('4'); // los que no aparecieron
+    expect(html).not.toContain('undefined');
+    expect(html).not.toContain('null');
+  });
+
+  it('sin reservas en el período se dice, no se pinta una tabla de ceros', async () => {
+    const { fn, el } = montar(
+      {
+        '/admin/metrics/reservas': { creadas: 0 },
+        '/admin/metrics/negocio': {},
+        '/admin/metrics': metricasDePlaza,
+      },
+      domMetricas,
+    );
+    fn['loadMetrics']!();
+    await esperar();
+    expect(el['reservas-metricas']!.innerHTML).toContain('Nadie ha reservado');
   });
 
   it('los datos que no saben de plazas NO se pintan como cero', async () => {
@@ -783,3 +875,4 @@ describe('el panel por plaza', () => {
     expect(fn['plaza']!()).toBe('cucuta');
   });
 });
+

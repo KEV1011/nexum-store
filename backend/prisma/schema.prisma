@@ -449,6 +449,20 @@ model Business {
   // portada (el cliente cae al color/ícono de la categoría).
   imageUrl  String?
   token     String   @unique @default(cuid())
+
+  /// Código PÚBLICO de la carta: lo que va en el QR de la mesa.
+  ///
+  /// NO es `token`. `token` es la llave del portal del dueño (catálogo,
+  /// pedidos, ajustes, portada): imprimirlo en un individual de mesa sería
+  /// entregarle la administración del local a cualquiera que se siente. Este
+  /// código solo abre la carta y permite pedir.
+  menuCode  String?  @unique
+  /// Las mesas que el dueño declaró: `["1","2","Terraza 1"]`.
+  /// Ver `lib/mesas.ts`. Vacía = el local todavía no tiene servicio en mesa y
+  /// la carta pública no deja pedir (un pedido sin mesa no le sirve a la
+  /// cocina: no sabría a dónde llevarlo).
+  tables    Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -570,6 +584,23 @@ model Order {
   // Empresa del conductor al momento de aceptar (sellado para liquidación).
   operatorId      String?
   status          OrderStatus @default(CONFIRMED)
+
+  /// Cómo se sirve este pedido. `DINE_IN` = el comensal está SENTADO en el
+  /// local y pidió desde el QR de su mesa.
+  ///
+  /// Es un enum y no un booleano para que añadir «para llevar» mañana obligue
+  /// al compilador a señalar cada sitio que decide por modo, en vez de dejar
+  /// un `!dineIn` que pasaría a significar dos cosas.
+  ///
+  /// Un `DINE_IN` NO se despacha a ningún repartidor, no cobra domicilio y no
+  /// lleva PIN de custodia: no hay nadie a quien entregarle la caja.
+  mode            OrderMode   @default(DELIVERY)
+  /// La mesa, tal como la declaró el dueño («5», «Terraza 2»). Es lo único que
+  /// la cocina necesita para saber a dónde llevar el plato, así que se SELLA:
+  /// si mañana el dueño renombra sus mesas, el pedido de hoy no puede cambiar
+  /// de sitio.
+  tableLabel      String?
+
   deliveryAddress String
   deliveryLat     Float?
   deliveryLng     Float?
@@ -658,6 +689,41 @@ model Order {
   @@index([operatorId])
   @@index([status])
   @@map("orders")
+}
+
+/// Cómo se sirve un pedido. Ver `Order.mode`.
+/// A quién se le avisó de una reserva nueva, y a quién no y por qué.
+///
+/// POR QUÉ EXISTE. Cuando un conductor dice «a mí no me llegó», sin esto no se
+/// puede comprobar ni desmentir — y, peor para nosotros, no se puede saber si
+/// el aviso funciona. Guardar solo los enviados no bastaría: la pregunta
+/// interesante es por qué a alguien NO, y esa respuesta («documentos
+/// vencidos», «tu vehículo no atiende ese servicio») es la que convierte una
+/// discusión en un trámite.
+///
+/// Se purga por retención en el barrido diario, como el rastro y las alertas:
+/// es un registro de operación, no historia que haya que conservar.
+model ReservaAviso {
+  id       String @id @default(cuid())
+  tripId   String
+  driverId String
+
+  /// `enviado`, o el motivo por el que no se le mandó nada.
+  resultado String
+
+  createdAt DateTime @default(now())
+
+  @@index([tripId])
+  @@index([driverId])
+  @@index([createdAt])
+  @@map("reserva_avisos")
+}
+
+enum OrderMode {
+  /// A domicilio (o encomienda a otra ciudad): el camino de siempre.
+  DELIVERY
+  /// En el local, desde el QR de la mesa.
+  DINE_IN
 }
 
 enum OrderStatus {
@@ -750,6 +816,30 @@ model Trip {
   /// barrido sea una consulta indexada y no tenga que hacer aritmética por
   /// fila.
   searchFrom         DateTime?
+
+  /// Quién apartó esta reserva y NO APARECIÓ a la hora.
+  ///
+  /// Existe porque el barrido que libera la reserva pone `driverId` en null, o
+  /// sea que borraba la identidad del que falló: un conductor podía apartar
+  /// seis, faltar a las seis, y al día siguiente volvía a tener sus seis cupos
+  /// limpios sin que nadie pudiera saber que fue él. El encabezado de
+  /// `reservas.service` dice que ese daño «no lo paga él» — esto es lo que
+  /// permite que sí lo pague.
+  ///
+  /// No se guarda ningún contador: el del conductor se DERIVA contando estas
+  /// filas. Un contador y unas filas acaban discrepando y nadie sabe cuál
+  /// miente.
+  ///
+  /// Soltarla a tiempo NO cuenta aquí: avisar de que no se puede es legítimo y
+  /// deja tiempo a que otro la tome. Lo que se registra es no aparecer.
+  noShowDriverId     String?
+  noShowAt           DateTime?
+  /// Por qué se le quitó: `sin_senal` (no apareció) o `documentos` (entre
+  /// apartarla y la hora se le venció un papel). Se distingue porque son dos
+  /// conversaciones distintas con el conductor: seis por papeles vencidos es un
+  /// trámite, seis por no aparecer es dejar tirada a seis personas.
+  noShowReason       String?
+
   distanceKm         Float?
   etaMinutes         Int?
   cancelReason       String?
@@ -805,6 +895,8 @@ model Trip {
   /// El barrido de programados corre cada minuto: sin esto sería un recorrido
   /// completo de la tabla sesenta veces por hora.
   @@index([status, searchFrom])
+  /// La ficha del conductor en el admin cuenta sus incumplimientos.
+  @@index([noShowDriverId])
   @@map("trips")
 }
 

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { DocumentStatus, PayoutStatus } from '@prisma/client';
+import { avisosDeReserva } from '../services/reservas.service';
 import {
   requireAdmin,
   isAdminPhone,
@@ -30,6 +31,7 @@ import { probePush, enviarPushDePrueba } from '../services/push.service';
 import {
   getAdminMetrics,
   getMetricasNegocio,
+  getMetricasReservas,
   setOperatorCommission,
   listDriversForAdmin,
   contarArchivosHuerfanos,
@@ -191,6 +193,32 @@ router.get('/metrics/negocio', async (req: Request, res: Response): Promise<void
   const dias = Number(req.query['dias'] ?? 30);
   try {
     res.json({ success: true, data: await getMetricasNegocio(dias, plazaDeLaPeticion(req)) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/metrics/reservas?dias=30 — si el tablero de reservas funciona.
+//
+// La pregunta que hasta ahora no tenía respuesta: de lo que se pide con
+// antelación, cuánto encuentra conductor, en cuánto tiempo, y cuánto se cae.
+router.get('/metrics/reservas', async (req: Request, res: Response): Promise<void> => {
+  const dias = Number(req.query['dias'] ?? 30);
+  try {
+    res.json({ success: true, data: await getMetricasReservas(dias, plazaDeLaPeticion(req)) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /admin/reservas/:tripId/avisos — a quién se le avisó de esa reserva.
+//
+// Existe para responder «a mí no me llegó»: o se ve su fila con el motivo
+// («documentos vencidos»), o no está y entonces ni fue candidato.
+router.get('/reservas/:tripId/avisos', async (req: Request, res: Response): Promise<void> => {
+  const { tripId } = req.params as { tripId: string };
+  try {
+    res.json({ success: true, data: await avisosDeReserva(tripId) });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
@@ -925,6 +953,8 @@ const PANEL_HTML = `<!DOCTYPE html>
         <button class="btn-sm" style="background:#e0f2f1;color:#00695c;margin-left:8px" onclick="bajarNegocioCsv()">Descargar CSV</button>
       </p>
       <div id="negocio"><div class="empty">Cargando…</div></div>
+      <h3 style="margin-top:1.2rem">Tablero de reservas</h3>
+      <div id="reservas-metricas"><div class="empty">Cargando…</div></div>
 
       <h3 style="margin:22px 0 10px">Estado de las integraciones</h3>
       <p style="color:#94a3b8;font-size:13px;margin:0 0 10px">
@@ -959,7 +989,7 @@ const PANEL_HTML = `<!DOCTYPE html>
         <table><thead><tr><th>Conductor</th><th>Estado</th><th>Verif.</th><th>GPS hace</th><th>Distancia</th><th>Radio 5 km</th><th>GPS fresco</th><th>¿Recibiría oferta?</th></tr></thead>
         <tbody id="diag-body"></tbody></table>
       </div>
-      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>¿Puede trabajar?</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Docs</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th>Última conexión</th><th>Acciones</th></tr></thead>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>¿Puede trabajar?</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Docs</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th title="Reservas que apartó y no cumplió">Incumple</th><th>Última conexión</th><th>Acciones</th></tr></thead>
       <tbody id="drivers-body"><tr><td colspan="14" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
@@ -1296,6 +1326,52 @@ function loadNegocio() {
   api('/admin/metrics/negocio?dias=' + encodeURIComponent(dias) + qPlaza('&')).then((n) => {
     document.getElementById('negocio').innerHTML = pintarNegocio(n);
   }).catch((e) => showMsg(e.message, true));
+  loadReservasMetricas(dias);
+}
+
+// Si el tablero de reservas sirve o no. Antes esto no se podía saber: no había
+// una sola cifra sobre reservas en todo el panel.
+function loadReservasMetricas(dias) {
+  api('/admin/metrics/reservas?dias=' + encodeURIComponent(dias) + qPlaza('&')).then((r) => {
+    document.getElementById('reservas-metricas').innerHTML = pintarReservas(r);
+  }).catch((e) => {
+    // Falló la petición ≠ no hay reservas. Son tres estados distintos y se
+    // distinguen, como en los paneles del portal.
+    document.getElementById('reservas-metricas').innerHTML =
+      '<div class="empty">No pudimos cargar las cifras de reservas.</div>';
+    showMsg(e.message, true);
+  });
+}
+
+// Una tasa se enseña con su muestra al lado, y cuando no da para afirmar nada
+// se dice —«sobre 3»— en vez de un porcentaje redondo que se lee como una
+// conclusión. Es la misma regla de las cifras del piloto.
+function tasaTxt(t) {
+  if (!t || !t.total) return '<span class="muted">Sin datos</span>';
+  if (t.pct === null) return t.parte + ' de ' + t.total + ' <span class="muted">(muy pocas)</span>';
+  return t.pct + ' % <span class="muted">(' + t.parte + ' de ' + t.total + ')</span>';
+}
+
+function pintarReservas(r) {
+  if (!r.creadas) {
+    return '<div class="empty">Nadie ha reservado en este período.</div>';
+  }
+  const filas = [
+    ['Reservas pedidas', r.creadas],
+    ['Las apartó un conductor', tasaTxt(r.tasaApartado)],
+    ['Se cumplieron', tasaTxt(r.tasaCumplimiento)],
+    ['Se cayeron', tasaTxt(r.tasaIncumplimiento)],
+    ['— porque no apareció', r.incumplidasSinSenal],
+    ['— por documentos vencidos', r.incumplidasDocumentos],
+    ['Canceladas', r.canceladas],
+    ['Tarda en apartarse (mediana)',
+      r.medianaMinutosHastaApartar === null
+        ? '<span class="muted">Ninguna se apartó</span>'
+        : r.medianaMinutosHastaApartar + ' min'],
+  ];
+  return '<table><tbody>' + filas.map((f) =>
+    '<tr><td>' + esc(f[0]) + '</td><td><strong>' + f[1] + '</strong></td></tr>').join('')
+    + '</tbody></table>';
 }
 
 // La descarga no puede ser un enlace normal: la ruta va con Authorization y
@@ -1525,7 +1601,7 @@ var KYC_LABEL = { PENDING: 'Pendiente', IN_REVIEW: 'En revisión', VERIFIED: 'Ve
 function loadDrivers() {
   api('/admin/drivers' + qPlaza('?')).then((rows) => {
     const tb = document.getElementById('drivers-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="14" class="empty">Sin conductores.</td></tr>'; return; }
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="15" class="empty">Sin conductores.</td></tr>'; return; }
     tb.innerHTML = rows.map((d) => {
       var kycCell = '<span style="font-size:.72rem">' + (KYC_LABEL[d.kycStatus] || d.kycStatus) + '</span>';
       if (d.hasSelfie && d.selfieUrl) kycCell += ' <a href="' + esc(d.selfieUrl) + '" target="_blank" style="color:#059669">selfie</a>';
@@ -1542,6 +1618,20 @@ function loadDrivers() {
           : '✅';
       // La respuesta directa a «¿por qué este no recibe viajes?». Cruzar
       // isVerified + KYC + cumplimiento a ojo es justo donde se pierde el rato.
+      // Reservas apartadas y no cumplidas. Se separa «no apareció» de «se le
+      // vencieron los papeles» porque son dos conversaciones distintas con él;
+      // y no bloquea nada solo — igual que los antecedentes, marca para que un
+      // humano decida si le baja el tope o lo suspende.
+      var incumple = '—';
+      if (d.noShows > 0) {
+        var faltas = d.noShowsSinSenal;
+        var papeles = d.noShows - faltas;
+        var detalle = [];
+        if (faltas > 0) detalle.push(faltas + ' sin aparecer');
+        if (papeles > 0) detalle.push(papeles + ' por documentos');
+        incumple = '<span class="badge ' + (faltas > 0 ? 'badge-reject' : '')
+          + '" title="' + esc(detalle.join(' · ')) + '">' + d.noShows + '</span>';
+      }
       var trabaja = d.motivoBloqueo
         ? '<span class="badge badge-reject" title="' + esc(d.motivoBloqueo) + '">⛔ No</span>'
         : '<span class="badge badge-approve">✅ Sí</span>';
@@ -1551,7 +1641,7 @@ function loadDrivers() {
       '</td><td>' + (d.intercityEnabled ? '🛣️' : '—') +
       '</td><td>' + kycCell + '</td><td>' + compliance + '</td><td>' + fraud +
       '</td><td>' + (d.rating == null ? '<span class="muted">Nuevo</span>' : d.rating.toFixed(2)) +
-      '</td><td>' + d.totalTrips + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
+      '</td><td>' + d.totalTrips + '</td><td>' + incumple + '</td><td>' + when(d.lastSeenAt) + '</td><td>' +
       (d.isVerified
         ? '<button class="btn-sm btn-reject" onclick="setDriverVerified(\\'' + d.id + '\\', \\'unverify\\')">Quitar verif.</button>'
         : '<button class="btn-sm btn-approve" onclick="setDriverVerified(\\'' + d.id + '\\', \\'verify\\')">Verificar</button>') +

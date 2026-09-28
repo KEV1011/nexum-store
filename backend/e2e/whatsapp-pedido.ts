@@ -185,8 +185,20 @@ async function main() {
   check(r6.outcome === 'respondido:viaje-recordado', 'se le recuerda su viaje en vez de empezar otro', r6.outcome);
   check(/mapa/i.test(r6.cuerpo), 'con el enlace del mapa ofrecido, no obligado', r6.cuerpo.slice(-60));
 
-  const cuantos = await prisma.trip.count({ where: { id: { not: conv!.tripId! }, originLat: PAMPLONA.lat } });
-  check(cuantos === 0, 'y NO se creó un segundo viaje', cuantos);
+  // Se cuenta lo de ESTE pasajero, no todo lo que salga del centro de Pamplona.
+  // Contar por `originLat` miraba la base ENTERA: cualquier otra suite que
+  // sembrara un viaje en el mismo punto —y varias lo hacen, porque es el
+  // centroide de la plaza— hacía fallar esta comprobación sin que hubiera nada
+  // roto. Pasó en cuanto `whatsapp-enlace.ts` volvió a pasar y empezó a dejar
+  // su viaje detrás.
+  const suUsuario = await prisma.user.findFirst({ where: { phone: TEL }, select: { id: true } });
+  // Sin esto, un usuario que no apareciera dejaría el conteo sobre un ámbito
+  // VACÍO y la comprobación pasaría sin comprobar nada.
+  check(!!suUsuario, 'el pasajero de esta corrida existe', TEL);
+  const cuantos = await prisma.trip.count({
+    where: { id: { not: conv!.tripId! }, passengerId: suUsuario?.id ?? '' },
+  });
+  check(cuantos === 0, 'y NO se creó un segundo viaje para ESE pasajero', cuantos);
 
   // ── 7. Cancelar deja todo listo para otro pedido ────────────────────────
   console.log('\n[7] Cierra el viaje y cancela la conversación');

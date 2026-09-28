@@ -9,13 +9,30 @@
  *     comprueba después que NO quedó ni un usuario ni un enlace — la
  *     contraprueba es lo que vale: sin ella, la comprobación pasaría también si
  *     el webhook estuviera roto y no hiciera nada nunca.
- *  2. **Un reintento de Meta no manda un segundo enlace** (se cobra y confunde).
- *  3. **El código es de un solo uso de verdad**, y el token que devuelve es una
+ *  2. **El portón de términos**: la primera respuesta es el consentimiento, no
+ *     se opera sin él, y al aceptar queda la CONSTANCIA que la ley pide poder
+ *     demostrar. Comprobado quitando el portón: caen cinco comprobaciones.
+ *  3. **Un reintento de Meta no manda un segundo mensaje** (se cobra y confunde).
+ *  4. **El código es de un solo uso de verdad**, y el token que devuelve es una
  *     sesión REAL: se usa contra una ruta autenticada, no se mira su forma.
- *  4. **Lo que no se responde, y por qué**: número extranjero, mensaje viejo,
- *     acuse de entrega y tope diario.
- *  5. **La pregunta del usuario**: el viaje que pide alguien que llegó por
+ *  5. **Lo que no se responde, y por qué**: número extranjero, mensaje viejo,
+ *     acuse de entrega, tope diario y punto fuera de cobertura.
+ *  6. **La pregunta del usuario**: el viaje que pide alguien que llegó por
  *     WhatsApp le llega a un conductor igual que cualquier otro.
+ *
+ * ESTA SUITE ESTUVO EN ROJO, y conviene saber por qué: el portón de términos se
+ * añadió sin actualizarla, así que el recorrido se quedaba esperando un enlace
+ * que ya no se emitía ahí. De paso, el enlace a la web dejó de salir en el
+ * segundo mensaje con el punto de recogida pegado —ahora el pedido se hace
+ * entero en el chat y el enlace va dentro del «ver en el mapa» cuando el
+ * pasajero pregunta por su viaje—, así que las comprobaciones sobre
+ * `originLat/originLng/originLabel` del `MagicLink` se retiraron a propósito.
+ *
+ * OBSERVADO, NO ENDOSADO: desde que el consentimiento se comprueba por usuario,
+ * el primer mensaje YA crea la cuenta (hace falta un id para mirar si aceptó).
+ * El diseño anterior evitaba a propósito ese «usuario fantasma» de quien escribe
+ * y no sigue. La suite afirma lo que el producto hace hoy; si se decide volver a
+ * no crearla hasta que acepte, hay que cambiar las dos cosas a la vez.
  *
  * Arranca el servidor de verdad como subproceso: el parser de cuerpo crudo que
  * hace posible validar la firma vive en index.ts, no en el router, así que
@@ -114,6 +131,52 @@ function payloadUbicacion(opts: {
                     latitude: String(opts.lat),
                     longitude: String(opts.lng),
                     ...(opts.nombreSitio ? { name: opts.nombreSitio } : {}),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Payload de Meta con la respuesta a un BOTÓN.
+ *
+ * Hace falta desde que la primera respuesta del bot es el portón de términos:
+ * sin poder pulsar «Acepto» la conversación no avanza de ahí, y toda esta suite
+ * se quedaba mirando un enlace que nunca se emitía.
+ */
+function payloadBoton(opts: {
+  desde: string;
+  wamid?: string;
+  botonId: string;
+  titulo?: string;
+  nombre?: string;
+}): unknown {
+  return {
+    object: 'whatsapp_business_account',
+    entry: [
+      {
+        id: '1',
+        changes: [
+          {
+            field: 'messages',
+            value: {
+              messaging_product: 'whatsapp',
+              metadata: { display_phone_number: '573000000000', phone_number_id: '1' },
+              contacts: [{ profile: { name: opts.nombre ?? 'Prueba' }, wa_id: opts.desde }],
+              messages: [
+                {
+                  from: opts.desde,
+                  id: opts.wamid ?? nuevoWamid(),
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: 'interactive',
+                  interactive: {
+                    type: 'button_reply',
+                    button_reply: { id: opts.botonId, title: opts.titulo ?? 'Acepto' },
                   },
                 },
               ],
@@ -302,33 +365,81 @@ async function main(): Promise<void> {
     comprobar('→ 200', ok.status === 200, String(ok.status));
     // `startsWith` y no igualdad: en modo mock ningún envío «sale», así que el
     // resultado queda marcado `…:sin-salir`. Eso es correcto y deliberado — en
-    // producción significa que el pasajero NO vio el botón.
+    // producción significa que el pasajero NO vio el mensaje.
     comprobar(
-      'se resuelve pidiendo la ubicación',
-      (await esperarResuelto(wamidPrimero))?.startsWith('respondido:ubicacion-pedida') === true,
+      'la primera respuesta es el portón de términos',
+      (await esperarResuelto(wamidPrimero))?.startsWith('respondido:terminos-pedidos') === true,
     );
 
-    // Para mandarle un botón no hace falta abrirle cuenta, y no se le abre:
-    // quien escribe y no sigue adelante no deja un usuario fantasma detrás.
+    // Nada de la conversación avanza hasta que acepte: ni se le pide ubicación
+    // ni se le emite enlace. Es lo que el portón existe para impedir.
     comprobar(
-      'todavía NO se le abre cuenta',
-      (await prisma.user.count({ where: { phone: victima } })) === 0,
-      'se creó antes de tiempo',
+      'y NO se emite ningún enlace todavía',
+      (await prisma.magicLink.count()) === enlacesAntes,
+      'se emitió antes de aceptar',
     );
 
-    let pidioEnLog = false;
-    for (let i = 0; i < 30 && !pidioEnLog; i++) {
-      pidioEnLog = registros.join('').includes('pide-ubicacion=');
-      if (!pidioEnLog) await reposar(100);
+    let pidioTerminos = false;
+    for (let i = 0; i < 30 && !pidioTerminos; i++) {
+      pidioTerminos = registros.join('').includes('necesito que aceptes');
+      if (!pidioTerminos) await reposar(100);
     }
     comprobar(
-      'y salió (modo mock) el mensaje con el botón',
-      pidioEnLog,
+      'y salió (modo mock) el mensaje con los términos',
+      pidioTerminos,
       'no aparece en los registros del servidor',
     );
 
-    // ── 3b. Segundo paso: manda el punto y recibe el enlace ───────────────
-    console.log('\n3b. Manda su ubicación → enlace con la recogida ya puesta');
+    // ── 3a-bis. Acepta: queda la constancia y la conversación arranca ─────
+    //
+    // Esta es la parte que la suite no tenía y que la dejó en rojo: el portón
+    // se añadió y nadie actualizó el recorrido. Comprobarlo importa porque la
+    // constancia del consentimiento es lo que la ley pide poder demostrar.
+    console.log('\n3a-bis. Pulsa «Acepto» → constancia y arranca el pedido');
+    const usuarioTrasTexto = await prisma.user.findUnique({ where: { phone: victima } });
+    comprobar(
+      'antes de aceptar no hay constancia de consentimiento',
+      usuarioTrasTexto === null ||
+        (await prisma.legalConsent.count({ where: { subjectId: usuarioTrasTexto.id } })) === 0,
+      'ya había consentimiento',
+    );
+
+    const wamidAcepto = nuevoWamid();
+    await postWebhook(
+      payloadBoton({
+        desde: victimaSinMas,
+        wamid: wamidAcepto,
+        botonId: 'zipa_acepto',
+        nombre: 'Kevin',
+      }),
+    );
+    comprobar(
+      'se resuelve como términos aceptados',
+      (await esperarResuelto(wamidAcepto))?.startsWith('respondido:terminos-aceptados') === true,
+    );
+
+    const usuario = await prisma.user.findUnique({ where: { phone: victima } });
+    comprobar('la cuenta existe, en E.164', usuario !== null, 'no se creó');
+    comprobar(
+      'con el nombre del perfil de WhatsApp',
+      usuario?.name === 'Kevin',
+      String(usuario?.name),
+    );
+    comprobar(
+      'y queda la CONSTANCIA del consentimiento',
+      (await prisma.legalConsent.count({ where: { subjectId: usuario!.id } })) > 0,
+      'no se grabó el consentimiento',
+    );
+
+    // ── 3b. Manda el punto → le pide el destino ───────────────────────────
+    //
+    // OJO, ESTO CAMBIÓ: la ubicación ya NO devuelve un enlace a la web. El
+    // pedido entero se hace dentro del chat (la web quedó como un «ver en el
+    // mapa» opcional), así que aquí no hay enlace que comprobar y el punto de
+    // recogida vive en la conversación, no pegado a un `MagicLink`. Las
+    // comprobaciones sobre `originLat/originLng/originLabel` del enlace se
+    // retiraron por eso, no por descuido: no las restaures.
+    console.log('\n3b. Manda su ubicación → le pide el destino');
     const wamidUbic = nuevoWamid();
     await postWebhook(
       payloadUbicacion({
@@ -341,32 +452,126 @@ async function main(): Promise<void> {
       }),
     );
     comprobar(
-      'se resuelve como respondido',
-      (await esperarResuelto(wamidUbic))?.startsWith('respondido') === true,
+      'se resuelve pidiendo el destino',
+      (await esperarResuelto(wamidUbic))?.startsWith('respondido:destino-pedido') === true,
     );
 
-    const usuario = await prisma.user.findUnique({ where: { phone: victima } });
-    comprobar('AHORA sí existe la cuenta, en E.164', usuario !== null, 'no se creó');
+    const conv = await prisma.whatsappConversation.findUnique({ where: { phone: victima } });
     comprobar(
-      'con el nombre del perfil de WhatsApp',
-      usuario?.name === 'Kevin',
-      String(usuario?.name),
+      'y el punto de recogida queda en la conversación',
+      conv?.originLat === ORIGEN.lat && conv?.originLng === ORIGEN.lng,
+      `lat=${conv?.originLat} lng=${conv?.originLng}`,
+    );
+    comprobar(
+      'con el nombre del sitio que mandó WhatsApp',
+      conv?.originLabel === 'Parque Principal',
+      String(conv?.originLabel),
     );
 
-    const enlaces = await prisma.magicLink.findMany({ where: { userId: usuario!.id } });
-    comprobar('AHORA sí se emitió UN enlace', enlaces.length === 1, String(enlaces.length));
+    // ── 4. Reintento de Meta ──────────────────────────────────────────────
+    console.log('\n4. Un reintento no duplica el enlace');
+    const wamidFijo = nuevoWamid();
+    await postWebhook(payload({ desde: victimaSinMas, wamid: wamidFijo }));
+    await reposar();
+    const trasPrimero = await prisma.whatsappInbound.count({ where: { fromPhone: victima } });
+    await postWebhook(payload({ desde: victimaSinMas, wamid: wamidFijo }));
+    await reposar();
+    const trasSegundo = await prisma.whatsappInbound.count({ where: { fromPhone: victima } });
+    comprobar('el mismo wamid se procesa una sola vez', trasPrimero === trasSegundo, `${trasPrimero} → ${trasSegundo}`);
+
+    // ── 5. El enlace a la web, por el camino que lo emite HOY ─────────────
+    //
+    // LO QUE CAMBIÓ: antes el enlace salía en el segundo mensaje de la
+    // conversación y llevaba el punto de recogida pegado. Ahora el pedido se
+    // hace entero en el chat y el enlace va DENTRO de un mensaje que ya salía
+    // —«ver en el mapa» cuando el pasajero pregunta por su viaje—, sin origen y
+    // sin costar un mensaje extra. Por eso se retiraron las comprobaciones del
+    // reuso del código y de la actualización del punto: no es que se hayan
+    // olvidado, es que ese enlace ya no existe.
+    //
+    // El despacho se comprueba en ESTE proceso porque la oferta viaja por un
+    // callback en memoria (`registerSendToDriver`) que vive dentro del proceso
+    // del servidor: desde fuera no hay forma de verla.
+    console.log('\n5. Con viaje activo, preguntar por él devuelve el enlace al mapa');
+    const matching = await import('../src/services/matching.service');
+    const { requestClientTrip } = await import('../src/services/client.service');
+
+    const ofertas: Array<{ driverId: string; tipo: string }> = [];
+    matching.registerSendToDriver((driverId: string, mensaje: { type: string }) => {
+      ofertas.push({ driverId, tipo: mensaje.type });
+      return true;
+    });
+
+    // Los conductores que dejó una corrida anterior abortada siguen ONLINE con
+    // GPS fresco, y el despacho ofrece de a uno con quince segundos de espera:
+    // la oferta se iba al conductor viejo y la comprobación fallaba sin que
+    // hubiera nada roto. Es la trampa que ya está anotada en el repositorio.
+    await prisma.driver.updateMany({ where: { status: 'ONLINE' }, data: { status: 'OFFLINE' } });
+
+    const conductor = await prisma.driver.create({
+      data: { phone: telColombiano(), name: 'Taxista E2E', status: 'ONLINE', isVerified: true, acceptsTrips: true },
+    });
+    await prisma.vehicle.create({
+      data: {
+        driverId: conductor.id, type: 'TAXI', isActive: true, brand: 'Prueba', model: 'X',
+        plate: `W${Math.floor(1000 + Math.random() * 8999)}`, year: 2020, color: 'Amarillo',
+      },
+    });
+    await prisma.$executeRaw`
+      UPDATE "drivers"
+      SET "geo" = ST_SetSRID(ST_MakePoint(${ORIGEN.lng}, ${ORIGEN.lat}), 4326)::geography,
+          "lastSeenAt" = now(), "lastLat" = ${ORIGEN.lat}, "lastLng" = ${ORIGEN.lng}
+      WHERE "id" = ${conductor.id}`;
+
+    const viaje = await requestClientTrip(usuario!.id, {
+      serviceType: 'taxi',
+      originAddress: 'Parque Principal',
+      destinationAddress: 'Terminal',
+      originLat: ORIGEN.lat,
+      originLng: ORIGEN.lng,
+      destLat: DESTINO.lat,
+      destLng: DESTINO.lng,
+    });
+    comprobar('el viaje se crea a nombre de esa cuenta', Boolean(viaje?.id));
+    // OJO: la columna es `passengerId`, no `userId`. Los scripts de e2e/ no
+    // entran en el `typecheck` (tsconfig solo incluye src/), así que un nombre
+    // de campo equivocado aquí no lo caza el compilador — solo la ejecución.
+    const enBd = await prisma.trip.findUnique({ where: { id: viaje.id } });
+    comprobar(
+      'y en la base pertenece al usuario de WhatsApp',
+      enBd?.passengerId === usuario!.id,
+      `passengerId=${enBd?.passengerId} esperado=${usuario!.id}`,
+    );
+
+    await reposar(1200);
+    comprobar(
+      'al conductor le llega la oferta trip_request',
+      ofertas.some((o) => o.driverId === conductor.id && o.tipo === 'trip_request'),
+      JSON.stringify(ofertas),
+    );
+
+    // Con viaje en curso, escribir es preguntar por él: ahí sale el enlace.
+    const enlacesAntesDeRecordar = await prisma.magicLink.count({ where: { userId: usuario!.id } });
+    const wamidRecordar = nuevoWamid();
+    await postWebhook(
+      payload({ desde: victimaSinMas, wamid: wamidRecordar, texto: '¿dónde va mi taxi?' }),
+    );
+    comprobar(
+      'se resuelve recordando el viaje',
+      (await esperarResuelto(wamidRecordar))?.startsWith('respondido:viaje-recordado') === true,
+    );
+
+    const enlaces = await prisma.magicLink.findMany({
+      where: { userId: usuario!.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    comprobar(
+      'y AHÍ se emite el enlace',
+      enlaces.length === enlacesAntesDeRecordar + 1,
+      `${enlacesAntesDeRecordar} → ${enlaces.length}`,
+    );
     comprobar('por el canal whatsapp', enlaces[0]?.channel === 'whatsapp');
     comprobar('y sin usar', enlaces[0]?.usedAt === null);
-    comprobar(
-      'con el punto de recogida guardado',
-      enlaces[0]?.originLat === ORIGEN.lat && enlaces[0]?.originLng === ORIGEN.lng,
-      `lat=${enlaces[0]?.originLat} lng=${enlaces[0]?.originLng}`,
-    );
-    comprobar(
-      'y el nombre del sitio que mandó WhatsApp',
-      enlaces[0]?.originLabel === 'Parque Principal',
-      String(enlaces[0]?.originLabel),
-    );
 
     const codigo = enlaces[0]!.code;
     // El registro del envío se escribe DESPUÉS de anotar la fila, así que aquí
@@ -381,75 +586,6 @@ async function main(): Promise<void> {
       salioEnLog,
       'no aparece en los registros del servidor',
     );
-
-    // ── 4. Reintento de Meta ──────────────────────────────────────────────
-    console.log('\n4. Un reintento no duplica el enlace');
-    const wamidFijo = nuevoWamid();
-    await postWebhook(payload({ desde: victimaSinMas, wamid: wamidFijo }));
-    await reposar();
-    const trasPrimero = await prisma.whatsappInbound.count({ where: { fromPhone: victima } });
-    await postWebhook(payload({ desde: victimaSinMas, wamid: wamidFijo }));
-    await reposar();
-    const trasSegundo = await prisma.whatsappInbound.count({ where: { fromPhone: victima } });
-    comprobar('el mismo wamid se procesa una sola vez', trasPrimero === trasSegundo, `${trasPrimero} → ${trasSegundo}`);
-
-    // ── 5. Reuso del código vivo (palanca de costo) ───────────────────────
-    console.log('\n5. Escribir otra vez reutiliza el código vivo');
-    const vivos = await prisma.magicLink.findMany({
-      where: { userId: usuario!.id, usedAt: null },
-    });
-    comprobar('sigue habiendo UN solo código vivo', vivos.length === 1, String(vivos.length));
-    comprobar('y es el mismo de antes', vivos[0]?.code === codigo);
-
-    // ── 5b. La trampa cara del reuso ──────────────────────────────────────
-    //
-    // Si el código se reutiliza pero el ORIGEN no se actualiza, el pasajero que
-    // camina dos cuadras y manda su ubicación otra vez recibiría un enlace que
-    // sigue llevando la anterior: el taxi iría a donde estuvo, no a donde está.
-    // Nada en la pantalla delataría el error.
-    console.log('\n5b. Mandar una ubicación NUEVA actualiza el punto del mismo código');
-    const wamidUbic2 = nuevoWamid();
-    await postWebhook(
-      payloadUbicacion({
-        desde: victimaSinMas,
-        wamid: wamidUbic2,
-        lat: DESTINO.lat,
-        lng: DESTINO.lng,
-      }),
-    );
-    await esperarResuelto(wamidUbic2);
-    const trasSegundaUbic = await prisma.magicLink.findUnique({ where: { code: codigo } });
-    comprobar(
-      'el código sigue siendo el mismo',
-      (await prisma.magicLink.count({ where: { userId: usuario!.id, usedAt: null } })) === 1,
-    );
-    comprobar(
-      'pero la recogida es la ÚLTIMA que mandó',
-      trasSegundaUbic?.originLat === DESTINO.lat && trasSegundaUbic?.originLng === DESTINO.lng,
-      `lat=${trasSegundaUbic?.originLat} (esperado ${DESTINO.lat})`,
-    );
-    comprobar(
-      'y la etiqueta vieja no se queda pegada al punto nuevo',
-      trasSegundaUbic?.originLabel === null,
-      String(trasSegundaUbic?.originLabel),
-    );
-
-    // Un mensaje de TEXTO después no puede borrar la ubicación que ya mandó.
-    const wamidTextoTras = nuevoWamid();
-    await postWebhook(payload({ desde: victimaSinMas, wamid: wamidTextoTras, texto: 'gracias' }));
-    await esperarResuelto(wamidTextoTras);
-    const trasTexto = await prisma.magicLink.findUnique({ where: { code: codigo } });
-    comprobar(
-      'un texto posterior NO borra el punto ya mandado',
-      trasTexto?.originLat === DESTINO.lat,
-      `lat=${trasTexto?.originLat}`,
-    );
-
-    // Dejar el punto como el de origen para lo que viene (el canje).
-    await prisma.magicLink.update({
-      where: { code: codigo },
-      data: { originLat: ORIGEN.lat, originLng: ORIGEN.lng, originLabel: 'Parque Principal' },
-    });
 
     // ── 6. Canje ──────────────────────────────────────────────────────────
     console.log('\n6. El código se canjea una vez y da una sesión REAL');
@@ -468,17 +604,16 @@ async function main(): Promise<void> {
     };
     comprobar('→ 200 con token', canje.status === 200 && Boolean(canjeBody.data?.token));
     comprobar('el cliente es el del teléfono', canjeBody.data?.client.phone === victima);
-    // Sin esto el punto se habría guardado para nada: la app no lo recibiría y
-    // el pasajero seguiría teniendo que escribir su dirección.
+    // El enlace de «ver en el mapa» NO lleva punto de recogida: el pedido ya se
+    // hizo en el chat, así que no hay nada que prellenar. Se comprueba que
+    // venga vacío en vez de ignorarlo, porque si algún día volviera a traerlo
+    // sin que nadie lo decidiera, la app abriría con un origen que el pasajero
+    // no eligió — y un punto de partida equivocado que parece correcto es peor
+    // que ninguno.
     comprobar(
-      'y el canje DEVUELVE el punto de recogida',
-      canjeBody.data?.origen?.lat === ORIGEN.lat && canjeBody.data?.origen?.lng === ORIGEN.lng,
+      'y el canje NO trae punto de recogida (este enlace no lo lleva)',
+      canjeBody.data?.origen == null,
       JSON.stringify(canjeBody.data?.origen),
-    );
-    comprobar(
-      'con su etiqueta',
-      canjeBody.data?.origen?.etiqueta === 'Parque Principal',
-      String(canjeBody.data?.origen?.etiqueta),
     );
 
     const token = canjeBody.data!.token;
@@ -584,9 +719,9 @@ async function main(): Promise<void> {
 
     // Tope diario: el que escribe en bucle deja de recibir.
     console.log('\n8. Tope diario por teléfono');
-    // El tope subió de 10 a 20 al aparecer el segundo mensaje: con el botón de
-    // ubicación son DOS salientes por carrera, y 10 dejaba a un pasajero
-    // frecuente en cinco viajes al día.
+    // El tope subió de 10 a 20 cuando el pedido pasó a hacerse dentro del
+    // chat: son varios salientes por carrera, y 10 dejaba a un pasajero
+    // frecuente sin poder pedir a media tarde.
     const insistente = telColombiano();
     for (let i = 0; i < 22; i++) {
       const wamid = nuevoWamid();
@@ -608,13 +743,14 @@ async function main(): Promise<void> {
     });
     comprobar('deja de responder al llegar al tope', respondidos === 20, `respondidos=${respondidos}`);
     comprobar('y los siguientes quedan anotados como topados', topados === 2, `topados=${topados}`);
-    // Que la petición de ubicación cuente para el tope no es un detalle: si se
-    // llamara de otra forma, alguien podría hacernos mandar cien botones —cada
-    // uno se cobra— sin tocar el límite.
+    // Que el mensaje de TÉRMINOS cuente para el tope no es un detalle: es el
+    // primero que recibe cualquiera, se cobra igual que los demás, y si se
+    // llamara de otra forma alguien podría hacernos mandar cien sin tocar el
+    // límite escribiendo desde un número nuevo una y otra vez.
     comprobar(
-      'la petición de ubicación también cuenta para el tope',
+      'el mensaje de términos también cuenta para el tope',
       (await prisma.whatsappInbound.count({
-        where: { fromPhone: insistente, outcome: { startsWith: 'respondido:ubicacion-pedida' } },
+        where: { fromPhone: insistente, outcome: { startsWith: 'respondido:terminos-pedidos' } },
       })) > 0,
     );
 
@@ -641,68 +777,6 @@ async function main(): Promise<void> {
         (await prisma.magicLink.count({ where: { userId: usuarioLejano.id } })) === 0,
     );
 
-    // ── 9. La pregunta del usuario: ¿llega al conductor? ──────────────────
-    // El token ya demostró ser una sesión real por HTTP. El despacho se
-    // comprueba en este proceso porque la oferta viaja por un callback en
-    // memoria (`registerSendToDriver`) que vive dentro del proceso del
-    // servidor: desde fuera no hay forma de verla.
-    console.log('\n9. El viaje de alguien que llegó por WhatsApp sí le llega a un conductor');
-    const matching = await import('../src/services/matching.service');
-    const { requestClientTrip } = await import('../src/services/client.service');
-
-    const ofertas: Array<{ driverId: string; tipo: string }> = [];
-    matching.registerSendToDriver((driverId: string, mensaje: { type: string }) => {
-      ofertas.push({ driverId, tipo: mensaje.type });
-      return true;
-    });
-
-    // Los conductores que dejó una corrida anterior abortada siguen ONLINE con
-    // GPS fresco, y el despacho ofrece de a uno con quince segundos de espera:
-    // la oferta se iba al conductor viejo y esta comprobación fallaba sin que
-    // hubiera nada roto. Es la trampa que ya está anotada en el repositorio.
-    await prisma.driver.updateMany({ where: { status: 'ONLINE' }, data: { status: 'OFFLINE' } });
-
-    const conductor = await prisma.driver.create({
-      data: { phone: telColombiano(), name: 'Taxista E2E', status: 'ONLINE', isVerified: true, acceptsTrips: true },
-    });
-    await prisma.vehicle.create({
-      data: {
-        driverId: conductor.id, type: 'TAXI', isActive: true, brand: 'Prueba', model: 'X',
-        plate: `W${Math.floor(1000 + Math.random() * 8999)}`, year: 2020, color: 'Amarillo',
-      },
-    });
-    await prisma.$executeRaw`
-      UPDATE "drivers"
-      SET "geo" = ST_SetSRID(ST_MakePoint(${ORIGEN.lng}, ${ORIGEN.lat}), 4326)::geography,
-          "lastSeenAt" = now(), "lastLat" = ${ORIGEN.lat}, "lastLng" = ${ORIGEN.lng}
-      WHERE "id" = ${conductor.id}`;
-
-    const viaje = await requestClientTrip(usuario!.id, {
-      serviceType: 'taxi',
-      originAddress: 'Parque Principal',
-      destinationAddress: 'Terminal',
-      originLat: ORIGEN.lat,
-      originLng: ORIGEN.lng,
-      destLat: DESTINO.lat,
-      destLng: DESTINO.lng,
-    });
-    comprobar('el viaje se crea a nombre de esa cuenta', Boolean(viaje?.id));
-    // OJO: la columna es `passengerId`, no `userId`. Los scripts de e2e/ no
-    // entran en el `typecheck` (tsconfig solo incluye src/), así que un nombre
-    // de campo equivocado aquí no lo caza el compilador — solo la ejecución.
-    const enBd = await prisma.trip.findUnique({ where: { id: viaje.id } });
-    comprobar(
-      'y en la base pertenece al usuario de WhatsApp',
-      enBd?.passengerId === usuario!.id,
-      `passengerId=${enBd?.passengerId} esperado=${usuario!.id}`,
-    );
-
-    await reposar(1200);
-    comprobar(
-      'al conductor le llega la oferta trip_request',
-      ofertas.some((o) => o.driverId === conductor.id && o.tipo === 'trip_request'),
-      JSON.stringify(ofertas),
-    );
   } finally {
     // Con algo en rojo, los registros del servidor son la única pista: el
     // procesamiento corre en segundo plano y sus errores no suben hasta aquí.

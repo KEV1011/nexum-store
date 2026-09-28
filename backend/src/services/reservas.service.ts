@@ -33,7 +33,7 @@
  *     como trabajo en curso (ver `guardaNoOcupa` en `lib/estado-terminal`).
  */
 
-import { TransportType, TripStatus } from '@prisma/client';
+import { TransportType, TripStatus, VehicleType } from '@prisma/client';
 
 import { prisma } from '../lib/prisma';
 import { tarifaDe } from '../lib/tarifa-categoria';
@@ -68,6 +68,15 @@ export const GRACIA_MIN = Number(process.env['RESERVA_GRACIA_MIN'] ?? 5);
 const SIN_SENAL_MIN = Number(process.env['RESERVA_SIN_SENAL_MIN'] ?? 10);
 
 export class ReservaError extends Error {}
+
+/**
+ * Por qué se le quitó una reserva a un conductor.
+ *
+ * Son dos conversaciones distintas con él, y por eso no se guarda un booleano:
+ * seis por papeles vencidos es un trámite, seis por no aparecer es dejar tirada
+ * a seis personas.
+ */
+export type MotivoIncumplimiento = 'sin_senal' | 'documentos';
 
 export interface ReservaDTO {
   id: string;
@@ -164,19 +173,43 @@ async function _conductor(driverId: string) {
  */
 export function serviciosQuePuedeTomar(tipoVehiculo: string | null): TransportType[] {
   if (!tipoVehiculo) return [];
-  const programables: TransportType[] = [
-    TransportType.TAXI,
-    TransportType.PARTICULAR,
-    TransportType.MOTO,
-    TransportType.ENVIOS,
-  ];
-  return programables.filter((s) => {
+  return SERVICIOS_PROGRAMABLES.filter((s) => {
     const tarifa = tarifaDe(s);
     // Sin categoría declarada (envíos) no hay nada que prometer: lo puede hacer
     // cualquier vehículo, igual que en el despacho.
     if (!tarifa) return true;
     return tarifa.tiposVehiculo.includes(tipoVehiculo);
   });
+}
+
+/** Los servicios que se pueden programar con antelación. */
+export const SERVICIOS_PROGRAMABLES: readonly TransportType[] = [
+  TransportType.TAXI,
+  TransportType.PARTICULAR,
+  TransportType.MOTO,
+  TransportType.ENVIOS,
+] as const;
+
+/**
+ * Todos los tipos de vehículo de la flota. Se listan aquí porque un servicio
+ * sin categoría declarada (envíos) lo puede hacer cualquiera, y para consultar
+ * la base hace falta la lista explícita.
+ */
+const TODOS_LOS_TIPOS: readonly string[] = [
+  'TAXI', 'PARTICULAR', 'MOTO', 'TURBO', 'CAMION', 'MULA', 'VAN', 'BUSETA',
+] as const;
+
+/**
+ * La INVERSA de `serviciosQuePuedeTomar`: qué vehículos atienden un servicio.
+ *
+ * Existe porque el tablero pregunta «dado este conductor, qué reservas ve» y el
+ * aviso pregunta «dada esta reserva, a quién se le dice». Son la misma regla
+ * leída en dos direcciones, y si cada una tuviera su propia tabla acabarían
+ * discrepando: a alguien se le avisaría de una reserva que su tablero no le
+ * muestra, o al contrario. `reservas-coherencia.test.ts` comprueba las dos.
+ */
+export function tiposVehiculoParaServicio(servicio: TransportType): readonly string[] {
+  return tarifaDe(servicio)?.tiposVehiculo ?? TODOS_LOS_TIPOS;
 }
 
 /**
@@ -344,6 +377,159 @@ export async function apartarReserva(
   return _aDTO(t);
 }
 
+/**
+ * Avisa a los conductores de que hay una reserva nueva en el tablero.
+ *
+ * ESTE ERA EL AGUJERO. El tablero funcionaba y la reserva se creaba bien, pero
+ * **a nadie se le decía que existía**: el único sitio donde aparecía era una
+ * tarjeta del home cuyo contador se lee UNA vez al construir la pantalla. Un
+ * taxista con la app abierta a las 22:05, cuando alguien reserva para las 6:00,
+ * seguía viendo «Sin reservas por ahora» toda la noche. Desde fuera se ve
+ * exactamente como lo describió el usuario: el cliente aparta un trayecto y no
+ * le llega a ningún conductor.
+ *
+ * NO ES UNA OFERTA, y la diferencia es deliberada. Un `trip_request` interrumpe
+ * con quince segundos de cuenta atrás porque hay alguien esperando en la calle;
+ * una reserva para mañana no puede hacer eso. Esto es un aviso: lo mira cuando
+ * pueda, entra al tablero y la aparta si le cuadra.
+ *
+ * SE AVISA TAMBIÉN AL QUE ESTÁ FUERA DE LÍNEA, que parece un descuido y es el
+ * punto: el conductor que va camino a su casa es justo el que quiere cuadrar la
+ * mañana siguiente. Filtrar por «en línea» dejaría la función para quien ya
+ * está trabajando, que es quien menos la necesita.
+ *
+ * Best-effort de principio a fin: si esto falla, la reserva ya está creada y el
+ * tablero la muestra igual. Nunca puede tumbar la petición del pasajero.
+ */
+export async function notificarNuevaReserva(tripId: string): Promise<number> {
+  const t = await prisma.trip.findUnique({
+    where: { id: tripId },
+    select: {
+      id: true, serviceType: true, status: true, driverId: true,
+      scheduledFor: true, citySlug: true, originAddress: true,
+      destAddress: true, estimatedFare: true,
+    },
+  });
+  // Solo las que de verdad están en el tablero: si el barrido ya la activó o
+  // alguien la apartó entre medias, avisar sería mandar a diez conductores a
+  // pelearse por algo que ya no está.
+  if (!t || t.status !== TripStatus.SCHEDULED || t.driverId) return 0;
+
+  const tipos = tiposVehiculoParaServicio(t.serviceType);
+  const candidatos = await prisma.driver.findMany({
+    where: {
+      // Su vehículo activo tiene que servir para ESTE servicio, con la misma
+      // regla que el tablero — leída al revés.
+      vehicles: { some: { isActive: true, type: { in: tipos as VehicleType[] } } },
+      // Plaza: la MISMA expresión que en `listarReservasLibres`, invertida.
+      // Allí un viaje sin ciudad no se le oculta a nadie; aquí, por tanto, una
+      // reserva sin ciudad se le avisa a todos, y una de Pamplona solo a quien
+      // está en Pamplona o todavía no tiene plaza resuelta.
+      ...(t.citySlug ? { OR: [{ citySlug: t.citySlug }, { citySlug: null }] } : {}),
+    },
+    select: { id: true },
+    // Tope de cordura. En una plaza con veinte taxis se avisa a los veinte: es
+    // un tablero, el primero que la aparta se la lleva.
+    take: 200,
+  });
+
+  const cuando = cuandoEnTexto(t.scheduledFor);
+  const constancia: Array<{ tripId: string; driverId: string; resultado: string }> = [];
+  let avisados = 0;
+  for (const c of candidatos) {
+    // Se pregunta por cada candidato en vez de repetir las condiciones en SQL.
+    // `motivoParaNoConectar` es la MISMA función que decide si puede ponerse en
+    // línea y la que `apartarReserva` vuelve a llamar: avisarle a quien al
+    // tocar «Apartar» recibiría un no es la forma más rápida de enseñarle a
+    // ignorar nuestros avisos. Las reservas son pocas al día, así que preguntar
+    // una vez por candidato sale barato.
+    const motivo = await motivoParaNoConectar(c.id).catch(() => null);
+    if (motivo) {
+      // Se guarda TAMBIÉN al que no se le avisó, con su motivo. Es la mitad
+      // que de verdad se consulta: «a mí no me llegó» se responde con
+      // «documentos vencidos el martes», no con una lista de los que sí.
+      constancia.push({ tripId: t.id, driverId: c.id, resultado: motivo.error });
+      continue;
+    }
+
+    _sendToDriver?.(c.id, {
+      type: 'reserva_nueva',
+      tripId: t.id,
+      serviceType: t.serviceType,
+      scheduledFor: t.scheduledFor?.toISOString() ?? null,
+      originAddress: t.originAddress,
+      destAddress: t.destAddress,
+      estimatedFare: t.estimatedFare,
+    });
+    void sendPushToDriver(c.id, {
+      title: 'Nueva reserva disponible',
+      body: `${cuando} · ${t.originAddress} → ${t.destAddress}. Ábrela para apartarla.`,
+      data: { type: 'reserva_nueva', tripId: t.id },
+    });
+    constancia.push({ tripId: t.id, driverId: c.id, resultado: RESULTADO_ENVIADO });
+    avisados++;
+  }
+
+  // La constancia se escribe de una vez y sin esperar: el aviso ya salió, y un
+  // fallo al registrarlo no puede deshacerlo ni retener al pasajero que acaba
+  // de reservar.
+  if (constancia.length > 0) {
+    void prisma.reservaAviso
+      .createMany({ data: constancia })
+      .catch((e) => console.error('[Reservas] no se pudo registrar el aviso:', e));
+  }
+  return avisados;
+}
+
+/** Cuántos días se guarda el registro de avisos. */
+const AVISOS_RETENCION_DIAS = Number(process.env['RESERVA_AVISOS_RETENCION_DIAS'] ?? 60);
+
+/** Purga del barrido diario. Es registro de operación, no historia. */
+export async function purgarAvisosDeReserva(): Promise<number> {
+  const corte = new Date(Date.now() - AVISOS_RETENCION_DIAS * 24 * 60 * 60_000);
+  const r = await prisma.reservaAviso.deleteMany({ where: { createdAt: { lt: corte } } });
+  return r.count;
+}
+
+/**
+ * Quién fue avisado de una reserva y quién no, para el panel.
+ *
+ * Responde la pregunta que hoy no tiene respuesta: cuando un conductor dice
+ * «a mí no me llegó», o se ve su fila con el motivo, o se ve que ni siquiera
+ * fue candidato — y eso último también es una respuesta («tu vehículo no
+ * atiende ese servicio», «esa reserva es de otra plaza»).
+ */
+export async function avisosDeReserva(tripId: string): Promise<Array<{
+  driverId: string;
+  driverName: string;
+  resultado: string;
+  enviado: boolean;
+  createdAt: string;
+}>> {
+  const filas = await prisma.reservaAviso.findMany({
+    where: { tripId },
+    orderBy: { createdAt: 'asc' },
+    take: 200,
+  });
+  if (filas.length === 0) return [];
+  const nombres = new Map(
+    (await prisma.driver.findMany({
+      where: { id: { in: filas.map((f) => f.driverId) } },
+      select: { id: true, name: true },
+    })).map((d) => [d.id, d.name]),
+  );
+  return filas.map((f) => ({
+    driverId: f.driverId,
+    driverName: nombres.get(f.driverId) ?? '—',
+    resultado: f.resultado,
+    enviado: f.resultado === RESULTADO_ENVIADO,
+    createdAt: f.createdAt.toISOString(),
+  }));
+}
+
+/** El valor que marca «sí se le mandó». Comparado en más de un sitio. */
+export const RESULTADO_ENVIADO = 'enviado';
+
 /** Suelta una reserva apartada: vuelve al tablero para otro conductor. */
 export async function soltarReserva(driverId: string, tripId: string): Promise<void> {
   // Solo se puede soltar mientras siga SCHEDULED. Una vez activada el viaje ya
@@ -374,6 +560,10 @@ export async function soltarReserva(driverId: string, tripId: string): Promise<v
     });
   }
   void notifyClientTripUpdateById(tripId);
+  // Vuelve al tablero, así que vuelve a avisarse: sin esto, una reserva soltada
+  // quedaría tan invisible como estaba antes de que existiera el aviso, y esa
+  // es la que más corre (ya se le prometió al pasajero y queda menos tiempo).
+  void notificarNuevaReserva(tripId).catch(() => { /* best-effort */ });
 }
 
 // ── Canal al conductor ───────────────────────────────────────────────────────
@@ -427,6 +617,7 @@ export async function activarReservas(): Promise<number> {
       await _devolverALaBusqueda(
         t,
         'Tu conductor no pudo tomar el viaje. Estamos buscándote otro.',
+        'documentos',
       );
       continue;
     }
@@ -501,6 +692,7 @@ export async function liberarReservasIncumplidas(): Promise<number> {
     const ok = await _devolverALaBusqueda(
       t,
       'Tu conductor no dio señales. Estamos buscándote otro ahora mismo.',
+      'sin_senal',
     );
     if (ok) liberadas++;
   }
@@ -522,10 +714,21 @@ export async function liberarReservasIncumplidas(): Promise<number> {
 async function _devolverALaBusqueda(
   t: _Fila & { driverId: string | null; passengerId: string | null },
   aviso: string,
+  motivo: MotivoIncumplimiento,
 ): Promise<boolean> {
   const liberada = await prisma.trip.updateMany({
     where: { id: t.id, status: t.status, driverId: t.driverId },
-    data: { status: TripStatus.SEARCHING, driverId: null, acceptedAt: null },
+    data: {
+      status: TripStatus.SEARCHING,
+      driverId: null,
+      acceptedAt: null,
+      // La constancia se escribe EN LA MISMA escritura que borra `driverId`.
+      // Si fueran dos, un fallo entre ellas dejaría la reserva libre y al
+      // conductor sin registro — que es exactamente el estado de antes.
+      noShowDriverId: t.driverId,
+      noShowAt: new Date(),
+      noShowReason: motivo,
+    },
   });
   if (liberada.count === 0) return false;
 

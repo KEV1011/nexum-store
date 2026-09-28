@@ -30,6 +30,7 @@ import {
   rejectOrderByBusiness,
   markOrderReadyByBusiness,
 } from '../services/client.service';
+import { getMesasDelNegocio, guardarMesas, marcarServido } from '../services/mesa.service';
 import {
   RegisterBusinessDTO,
   CreateProductDTO,
@@ -38,7 +39,7 @@ import {
   BusinessSettingsDTO,
 } from '../types';
 import { authLimiter } from '../middleware/rate-limit.middleware';
-import { documentUpload, fileToUrl } from '../lib/upload';
+import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
 import { parsearCarta, filasACsv } from '../lib/carta-foto';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { PORTAL_BASE_URL } from '../config/constants';
@@ -391,6 +392,52 @@ router.post('/:token/client-orders/:orderId/ready', async (req: Request, res: Re
   }
 });
 
+// El plato SALIÓ al salón. Es el cierre de un pedido en mesa: ahí no hay
+// repartidor que lo recoja, así que «listo» y «entregado» son el mismo momento.
+router.post('/:token/client-orders/:orderId/servido', async (req: Request, res: Response): Promise<void> => {
+  const { token, orderId } = req.params as { token: string; orderId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const order = await marcarServido(business.id, orderId);
+    if (!order) {
+      res.status(409).json({ success: false, error: 'Ese pedido ya no se puede marcar como servido' });
+      return;
+    }
+    res.status(200).json({ success: true, data: order });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo marcar el pedido';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// ─── Mesas del local y código de la carta ─────────────────────────────────────
+//
+// El código que devuelven estas rutas es el PÚBLICO (`menuCode`), el que va en
+// el QR. Nunca se imprime `token`: ese abre el portal entero.
+
+router.get('/:token/mesas', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.status(200).json({ success: true, data: await getMesasDelNegocio(business.id) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron cargar las mesas';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.put('/:token/mesas', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const { tables } = req.body as { tables?: unknown };
+    res.status(200).json({ success: true, data: await guardarMesas(business.id, tables) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron guardar las mesas';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
 // ─── Catálogo del negocio (gestión del dueño, autenticada por el token) ───────
 // El token del portal ES la credencial del negocio (mismo modelo que /orders).
 
@@ -606,7 +653,11 @@ router.post(
 router.post(
   '/:token/products/carta-foto',
   (req: Request, res: Response, next) => {
-    documentUpload.single('file')(req, res, (err) => {
+    // `cartaUpload` y no `documentUpload`: la foto va a MEMORIA. El lector
+    // necesita los bytes (una ruta `/uploads/...` del disco efímero de Render
+    // no la puede abrir Google) y de la carta solo interesa el texto, así que
+    // guardarla sería un archivo que nadie vuelve a abrir.
+    cartaUpload.single('file')(req, res, (err) => {
       if (err) {
         res.status(400).json({ success: false, error: err.message });
         return;
@@ -616,7 +667,7 @@ router.post(
   },
   async (req: Request, res: Response): Promise<void> => {
     const { token } = req.params as { token: string };
-    if (!req.file) {
+    if (!req.file?.buffer?.length) {
       res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
       return;
     }
@@ -632,7 +683,10 @@ router.post(
       // token inválido no debe costar una lectura facturada.
       await getBusinessService().getBusinessByToken(token);
 
-      const lectura = await leerTextoDeCarta(fileToUrl(req.file));
+      const lectura = await leerTextoDeCarta({
+        bytes: req.file.buffer,
+        mimetype: req.file.mimetype,
+      });
       if (!lectura.disponible) {
         // 503 y no 400: no se equivocó el dueño, es que el servicio no está.
         res.status(503).json({ success: false, error: lectura.motivo });

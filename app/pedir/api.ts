@@ -187,7 +187,4 @@ export interface MensajeChat {
 }
 
 /** Formato de peso colombiano. El símbolo va DELANTE, y el punto es de miles. */
-export function pesos(v: number | undefined | null): string {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return '$0'
-  return `$${Math.round(v).toLocaleString('es-CO')}`
-}
+export { formatCOP as pesos } from '../moneda'

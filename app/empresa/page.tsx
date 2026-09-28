@@ -9,6 +9,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { createOperatorApi } from './api'
+import { formatCOP } from '../moneda'
 import FleetMap, { type FleetMapPoint } from './FleetMap'
 import AlertsPanel from './AlertsPanel'
 import RoutesManager from './RoutesManager'
@@ -106,9 +107,6 @@ function relTime(iso: string | null): string {
   return `hace ${Math.floor(h / 24)} d`
 }
 
-function formatCOP(value: number): string {
-  return `$${Math.round(value).toLocaleString('es-CO')}`
-}
 
 /** Atajo del caso real: liquidar el mes que acaba de cerrar. */
 function mesPasado(): { desde: string; hasta: string } {
