@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -181,62 +180,6 @@ class ZipaVehiculoPainter extends CustomPainter {
       old.cuerpo != cuerpo ||
       old.hueco != hueco ||
       old.rueda != rueda;
-}
-
-// ─── Comida ──────────────────────────────────────────────────────────────────
-
-const double _rejillaComida = 44;
-
-/// Campana de servir sobre el plato.
-///
-/// La primera versión era una bolsa térmica y se leía como un MALETÍN: asa
-/// rígida arriba y cuerpo cuadrado son un portafolio. Y no es un plato de
-/// comida concreto —una hamburguesa le diría «comida rápida» a un restaurante
-/// de menú del día.
-Path _construirComida() {
-  // Cúpula: media elipse ANCHA. Con media circunferencia parecía un iglú.
-  // El ángulo crece en sentido horario y la y va hacia abajo, así que barrer
-  // media vuelta desde 180° pasa por ARRIBA — el mismo giro que el `pieslice`
-  // 180→360 del script de previsualización.
-  const cupula = Rect.fromLTRB(6, 8, 38, 38);
-  final p = Path()
-    ..moveTo(cupula.left, cupula.center.dy)
-    ..arcTo(cupula, math.pi, math.pi, false)
-    ..close()
-    ..addOval(const Rect.fromLTRB(19.2, 4.4, 24.8, 10.0)) // pomo
-    // Plato: UNA sola pieza y más ancha que la cúpula. Con borde de campana Y
-    // plato se leían como dos barras apiladas, y el conjunto parecía una
-    // hamburguesa de rayas.
-    ..addRRect(RRect.fromLTRBR(3.5, 30.5, 40.5, 35, const Radius.circular(2.2)));
-  return p;
-}
-
-Path? _cacheComida;
-
-/// Pinta la campana. Un solo color: es una silueta, como los glifos.
-class ZipaComidaPainter extends CustomPainter {
-  const ZipaComidaPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final trazo = _cacheComida ??= _construirComida();
-    final s = size.shortestSide / _rejillaComida;
-    canvas.save();
-    canvas.translate(
-      (size.width - _rejillaComida * s) / 2,
-      (size.height - _rejillaComida * s) / 2,
-    );
-    canvas.scale(s);
-    canvas.drawPath(trazo, Paint()
-      ..color = color
-      ..isAntiAlias = true);
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(ZipaComidaPainter old) => old.color != color;
 }
 
 /// La silueta que corresponde al tipo que manda el servidor (VAN|BUSETA|BUS).

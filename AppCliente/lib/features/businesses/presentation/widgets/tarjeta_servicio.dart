@@ -21,6 +21,12 @@ import 'package:nexum_client/app/theme/zipa_tokens.dart';
 /// sigue ahí como respaldo, pero en pantalla un taxi ilustrado se reconoce
 /// antes que una silueta de un solo tono y comunica a qué huele cada puerta.
 ///
+/// Las cuatro ilustraciones son las de la MARCA, en `assets/`. Dos puertas
+/// llegaron a dibujarse a mano porque di por hecho que no existían archivos
+/// para ellas; existían —`servicios/restaurantes.png` y `categorias/bus.png`—
+/// y el dibujo terminó tapando el icono propio de ZIPA. Antes de dibujar un
+/// glifo de servicio: mirar en `assets/`.
+///
 /// El subtítulo va acotado a tres palabras a propósito. En una rejilla de dos
 /// columnas, una frase más larga parte en tres líneas y descuadra la fila
 /// entera; y si se deja en una línea con puntos suspensivos, no dice nada.
@@ -32,7 +38,6 @@ class TarjetaServicio extends StatefulWidget {
     required this.subtitulo,
     required this.onTap,
     this.ilustracion,
-    this.dibujo,
     super.key,
   });
 
@@ -48,14 +53,6 @@ class TarjetaServicio extends StatefulWidget {
   /// color al lado de un glifo monocromo canta, y se vio en cuanto se montó
   /// solo la de Envíos. O todas, o ninguna.
   final String? ilustracion;
-
-  /// Ilustración DIBUJADA, para las dos puertas que no tienen archivo.
-  ///
-  /// Las imágenes que había para Restaurantes e Intermunicipal no servían —un
-  /// bus de frente es un rectángulo a este tamaño, y la de comida eran cuatro
-  /// objetos superpuestos—, así que se dibujan. Tiene la ventaja de que toman
-  /// los colores del tinte y funcionan en claro y oscuro sin exportar nada.
-  final Widget? dibujo;
 
   final ZipaTinte tinte;
   final String titulo;
@@ -154,20 +151,7 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
                     // puertas se leían flojas. Se escala desde el tamaño del
                     // catálogo en vez de añadir una medida a `ZipaIconSize`,
                     // que tiene dos y una prueba lo vigila.
-                    // `SizedBox.expand` NO sobra: los dibujos que llegan aquí
-                    // son `CustomPaint` sin hijo, y un CustomPaint sin hijo y
-                    // sin `size` mide CERO. Dentro de este Container, que
-                    // centra y por tanto deja al hijo elegir su tamaño, el
-                    // painter se quedaba sin superficie y no pintaba nada:
-                    // Restaurantes e Intermunicipal salían con el cuadro de
-                    // color vacío mientras las otras dos, que traen PNG (y el
-                    // PNG sí tiene tamaño propio), se veían bien.
-                    child: widget.dibujo != null
-                        ? Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: SizedBox.expand(child: widget.dibujo),
-                          )
-                        : widget.ilustracion != null
+                    child: widget.ilustracion != null
                         ? Padding(
                             padding: const EdgeInsets.all(3),
                             child: Image.asset(

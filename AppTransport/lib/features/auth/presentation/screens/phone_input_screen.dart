@@ -130,8 +130,14 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                     const SizedBox(height: AppConstants.spacingXXL),
 
                     // ── Title ────────────────────────────────────────────
+                    //
+                    // Dice que ES las dos cosas. Antes ponía «Ingresa tu
+                    // número de celular» y quien abría la app por primera vez
+                    // buscaba un botón de «Registrarse» que no existe: el
+                    // registro viene DESPUÉS del código, y solo si eres nuevo.
+                    // No encontrarlo se lee como que la app está incompleta.
                     Text(
-                      'Ingresa tu número de celular',
+                      'Entra o regístrate',
                       style: theme.textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: isDark
@@ -145,7 +151,8 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
 
                     // ── Subtitle ─────────────────────────────────────────
                     Text(
-                      'Te enviaremos un código de verificación',
+                      'Te enviamos un código a tu celular. Si eres nuevo, '
+                      'después pedimos tus datos y los del vehículo.',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: context.textSecondaryColor,
                       ),
@@ -312,7 +319,12 @@ class _PhoneTextField extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('🇨🇴', style: TextStyle(fontSize: 20)),
+              // La bandera va DIBUJADA, no como emoji. `🇨🇴` son dos
+              // caracteres regionales que el sistema combina en una bandera
+              // solo si la fuente la trae: en buena parte de los Android sale
+              // como un recuadro con «CO» dentro. Y esto es lo primero que ve
+              // quien abre la app.
+              const _BanderaCO(),
               const SizedBox(width: AppConstants.spacingS),
               Text(
                 '+57',
@@ -444,6 +456,38 @@ class _ColombianPhoneFormatter extends TextInputFormatter {
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+/// La bandera de Colombia, dibujada.
+///
+/// Tres franjas horizontales: la amarilla ocupa la mitad de arriba, y azul y
+/// roja se reparten la mitad de abajo. Son proporciones oficiales, así que se
+/// escriben tal cual en vez de repartir a ojo.
+///
+/// Se dibuja en vez de usar el emoji `🇨🇴` porque ese emoji son dos caracteres
+/// indicadores regionales que el sistema combina SOLO si la fuente trae la
+/// bandera: en muchos Android sale un recuadro con las letras «CO». Aquí, en
+/// la primera pantalla de la app, eso se lee como un fallo de la app.
+class _BanderaCO extends StatelessWidget {
+  const _BanderaCO();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: SizedBox(
+        width: 22,
+        height: 15,
+        child: Column(
+          children: const [
+            Expanded(flex: 2, child: ColoredBox(color: Color(0xFFFCD116))),
+            Expanded(child: ColoredBox(color: Color(0xFF003893))),
+            Expanded(child: ColoredBox(color: Color(0xFFCE1126))),
+          ],
+        ),
+      ),
     );
   }
 }

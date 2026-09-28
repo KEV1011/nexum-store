@@ -1,32 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nexum_client/app/theme/zipa_icon.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'tarjeta_servicio.dart';
-
-/// Painter que solo anota con qué superficie lo llamaron.
-///
-/// Es la única forma de cazar esto: un `CustomPaint` sin hijo y sin `size`
-/// mide CERO cuando le llegan restricciones flojas, y eso no falla, no avisa y
-/// no se ve en el árbol de widgets — simplemente no pinta. En pantalla quedaba
-/// el cuadro de color vacío, que parece un icono que no cargó.
-class _PainterEspia extends CustomPainter {
-  _PainterEspia(this.visto);
-
-  /// Lista de un elemento donde se deja la medida: un campo mutable dentro del
-  /// painter no sirve porque el widget se reconstruye.
-  final List<Size> visto;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    visto.add(size);
-    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF000000));
-  }
-
-  @override
-  bool shouldRepaint(covariant _PainterEspia old) => false;
-}
 
 Widget _montar(Widget tarjeta) => MaterialApp(
       home: Scaffold(
@@ -36,31 +15,7 @@ Widget _montar(Widget tarjeta) => MaterialApp(
     );
 
 void main() {
-  testWidgets('un dibujo recibe superficie de verdad, no cero', (tester) async {
-    final visto = <Size>[];
-
-    await tester.pumpWidget(_montar(
-      TarjetaServicio(
-        icono: ZipaIconName.restaurantes,
-        tinte: ZipaTokens.restaurantes,
-        titulo: 'Restaurantes',
-        subtitulo: 'Comida a domicilio',
-        onTap: () {},
-        dibujo: CustomPaint(painter: _PainterEspia(visto)),
-      ),
-    ));
-    await tester.pump();
-
-    expect(visto, isNotEmpty, reason: 'el painter nunca llegó a pintarse');
-    // El cuadro son 54 px con 4 de margen: 46 de lado. Se comprueba contra un
-    // mínimo holgado para no atarse al número exacto, pero muy por encima de
-    // cero, que es lo que daba el fallo.
-    expect(visto.last.width, greaterThan(30));
-    expect(visto.last.height, greaterThan(30));
-  });
-
-  testWidgets('sin dibujo ni ilustración se pinta el glifo del catálogo',
-      (tester) async {
+  testWidgets('sin ilustración se pinta el glifo del catálogo', (tester) async {
     await tester.pumpWidget(_montar(
       TarjetaServicio(
         icono: ZipaIconName.movilidad,
@@ -91,5 +46,65 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tocada, 1);
+  });
+
+  // ── Las ilustraciones que el código pide tienen que EXISTIR ────────────────
+  //
+  // Este es el fallo que no avisa: si la ruta está mal escrita o el archivo no
+  // está, `Image.asset` dispara su `errorBuilder` y la puerta cae al glifo
+  // monocromo. No hay excepción, no hay log, y en pantalla parece una decisión
+  // de diseño — una puerta con icono de un solo tono al lado de tres a color.
+  //
+  // Y guarda además el error que de verdad se cometió: dar por hecho que no
+  // había ilustración para Restaurantes e Intermunicipal, dibujar dos glifos a
+  // mano, y tapar con ellos los iconos propios de la marca, que llevaban todo
+  // el tiempo en `assets/`. Si mañana alguien vuelve a quitar un
+  // `ilustracion:`, esta prueba lo dice.
+  group('las ilustraciones de las puertas', () {
+    /// Cada `ilustracion:` que aparece en `lib/`, con el archivo que pide.
+    List<({String archivo, int linea, String origen})> rutasPedidas() {
+      final encontradas = <({String archivo, int linea, String origen})>[];
+      final expr = RegExp(r"""ilustracion:\s*'([^']+)'""");
+      for (final f in Directory('lib').listSync(recursive: true)) {
+        if (f is! File || !f.path.endsWith('.dart')) continue;
+        final lineas = f.readAsLinesSync();
+        for (var i = 0; i < lineas.length; i++) {
+          final m = expr.firstMatch(lineas[i]);
+          if (m != null) {
+            encontradas.add((archivo: m.group(1)!, linea: i + 1, origen: f.path));
+          }
+        }
+      }
+      return encontradas;
+    }
+
+    test('se piden las cuatro de la home', () {
+      // Menos de cuatro significa que alguien volvió a cambiar una ilustración
+      // por otra cosa. El widget lo dice claro: o todas, o ninguna — una a
+      // color al lado de un glifo monocromo canta.
+      expect(rutasPedidas().length, greaterThanOrEqualTo(4),
+          reason: 'faltan ilustraciones en las puertas de la home');
+    });
+
+    test('todas existen en disco', () {
+      for (final r in rutasPedidas()) {
+        expect(File(r.archivo).existsSync(), isTrue,
+            reason: '${r.origen}:${r.linea} pide "${r.archivo}" y no está en el repo; '
+                'la puerta caería al glifo monocromo sin avisar');
+      }
+    });
+
+    test('y su carpeta está declarada en el pubspec', () {
+      // Existir en disco no basta: un asset sin declarar no se empaqueta, así
+      // que funciona en el repo y falla en el teléfono, que es la peor forma
+      // de fallar.
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      for (final r in rutasPedidas()) {
+        final carpeta = '${r.archivo.substring(0, r.archivo.lastIndexOf('/'))}/';
+        expect(pubspec.contains('- $carpeta'), isTrue,
+            reason: '"$carpeta" no está declarada en pubspec.yaml: '
+                '"${r.archivo}" no se empaquetaría en el APK');
+      }
+    });
   });
 }

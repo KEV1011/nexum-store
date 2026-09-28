@@ -196,7 +196,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                     icon: Icons.photo_camera_rounded,
                     label: photoLabel,
                     color: accent,
-                    badge: _photoPath != null ? '✓ Capturada' : null,
+                    badge: _photoPath != null ? 'Capturada' : null,
                   ),
                   const SizedBox(height: AppConstants.spacingM),
                   _PhotoCapture(
@@ -217,7 +217,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                           icon: Icons.draw_rounded,
                           label: 'Firma del destinatario',
                           color: accent,
-                          badge: _hasSignature ? '✓ Firmado' : null,
+                          badge: _hasSignature ? 'Firmado' : null,
                         ),
                       ),
                       if (_hasSignature)

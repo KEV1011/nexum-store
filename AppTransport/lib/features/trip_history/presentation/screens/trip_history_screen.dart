@@ -414,7 +414,7 @@ class _SummaryBanner extends StatelessWidget {
             label: 'Calificación',
             value: avgRating == null
                 ? '--'
-                : '★ ${avgRating.toStringAsFixed(1)}',
+                : avgRating.toStringAsFixed(1),
           ),
         ],
       ),
