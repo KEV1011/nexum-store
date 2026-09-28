@@ -821,7 +821,7 @@ class _GoalCard extends StatelessWidget {
                 ),
                 Text(
                   reached
-                      ? '¡Meta alcanzada! 🎉'
+                      ? '¡Meta alcanzada!'
                       : 'Faltan ${CurrencyFormatter.format(remaining)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color:
@@ -913,11 +913,15 @@ class _AnimatedBarChart extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          // Best day crown
+                          // El mejor día del período. Era el emoji `👑`, que a
+                          // 10 px sale como una mancha de colores ajenos a la
+                          // paleta y cambia de dibujo según el teléfono. Una
+                          // estrella del color de marca se lee a ese tamaño.
                           if (isBest && !isSelected)
-                            const Text(
-                              '👑',
-                              style: TextStyle(fontSize: 10),
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 11,
+                              color: AppColors.primary,
                             ),
                           // Selected value label
                           if (isSelected)

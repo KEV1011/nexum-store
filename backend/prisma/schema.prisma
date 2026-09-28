@@ -678,6 +678,12 @@ model Order {
   pickedUpAt       DateTime?
   deliveredAt      DateTime?
 
+  /// Ver `IntercityBooking.noDriverNotifiedAt`: el aviso se da UNA vez.
+  /// El pedido NO se cierra a propósito (el negocio tiene la comida hecha y es
+  /// quien decide si lo entrega él o lo cancela), así que la marca es lo único
+  /// que impide repetirle el aviso cada 5 minutos.
+  noDriverNotifiedAt DateTime?
+
   /// Remito con el que viaja, si es una encomienda ya subida a un despacho.
   manifest FreightManifest?
   user     User?            @relation(fields: [userId], references: [id])
@@ -1053,6 +1059,9 @@ model Errand {
   acceptedAt       DateTime?
   deliveredAt      DateTime?
 
+  /// Ver `IntercityBooking.noDriverNotifiedAt`: el aviso se da UNA vez.
+  noDriverNotifiedAt DateTime?
+
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
@@ -1114,6 +1123,13 @@ model IntercityBooking {
 
   // Empresa bajo la cual se prestó el servicio (troncales legales + liquidación).
   operatorId String?
+
+  // Cuándo se avisó de que no hay conductor. Es la marca que impide repetir el
+  // aviso: la reserva se queda en SEARCHING a propósito (el pasajero decide si
+  // mira las salidas programadas o insiste), así que sin esto el barrido de
+  // rescate la vuelve a encontrar cada 5 minutos y manda el mismo push otra vez,
+  // para siempre.
+  noDriverNotifiedAt DateTime?
 
   user      User      @relation(fields: [userId], references: [id])
   // Marcas de la trazabilidad: alimentan la línea de tiempo del pasajero.

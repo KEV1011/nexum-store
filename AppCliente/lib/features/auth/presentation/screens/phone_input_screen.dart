@@ -122,8 +122,15 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        // Dice que ES las dos cosas. Antes ponía «Ingresa tu
+                        // celular» a secas, y quien abría la app por primera
+                        // vez buscaba un botón de «Registrarse» que no existe
+                        // —ni hace falta: no hay dos caminos, hay uno—. Un
+                        // usuario que no encuentra dónde crear su cuenta no
+                        // concluye que no hace falta: concluye que la app está
+                        // incompleta y la cierra.
                         Text(
-                          'Ingresa tu celular',
+                          'Entra o crea tu cuenta',
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.5,
@@ -131,8 +138,8 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                         ),
                         const SizedBox(height: AppConstants.spacingXS),
                         Text(
-                          'Te enviaremos un código por SMS para verificar '
-                          'tu cuenta.',
+                          'Con tu número de celular. Te enviamos un código por '
+                          'SMS; si es tu primera vez, la cuenta se crea sola.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: context.textSecondaryColor,
                             height: 1.45,

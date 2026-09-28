@@ -288,7 +288,7 @@ class _PickupProofSheetState extends State<PickupProofSheet> {
                     label: photoLabel,
                     color: accent,
                     badge: _photoPath != null
-                        ? '✓ Capturada'
+                        ? 'Capturada'
                         : 'Requerida',
                     badgeIsWarning: _photoPath == null,
                   ),

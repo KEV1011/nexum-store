@@ -19,6 +19,24 @@ describe('el veredicto del push', () => {
     // «apagado» a secas no le dice al operador qué pierde.
     const v = veredictoPush({ ...base, activo: false });
     expect(v).toMatch(/app abierta/i);
+    expect(v).toMatch(/Sin FIREBASE_SERVICE_ACCOUNT/);
+  });
+
+  it('con la variable PUESTA y Firebase caído no dice que falte la variable', () => {
+    // El caso que dejaba sin salida: el operador la había puesto, leía «sin
+    // FIREBASE_SERVICE_ACCOUNT» y concluía que Render no la había guardado.
+    const v = veredictoPush({
+      ...base, activo: false,
+      motivoInactivo: 'Unexpected token a in JSON at position 0',
+    });
+    expect(v).not.toMatch(/Sin FIREBASE_SERVICE_ACCOUNT/);
+    expect(v).toMatch(/está puesta pero Firebase NO inicializó/);
+    // Y dice el error exacto, que es lo que identifica el contenido pegado.
+    expect(v).toContain('Unexpected token a in JSON');
+    // Más qué se espera ahí, porque el error de JSON por sí solo no lo dice.
+    expect(v).toContain('private_key');
+    // La consecuencia se mantiene en los dos caminos.
+    expect(v).toMatch(/app abierta/i);
   });
 
   it('CERO tokens NO se reporta como operativo', () => {

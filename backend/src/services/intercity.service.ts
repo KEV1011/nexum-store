@@ -378,12 +378,30 @@ export function rendirBusquedaIntercity(bookingId: string): void {
 }
 
 async function _notifyIntercityNoDriver(bookingId: string): Promise<void> {
-  console.log(`[Intercity] Sin conductor para la reserva ${bookingId} tras agotar los reintentos`);
   const b = await prisma.intercityBooking.findUnique({
     where: { id: bookingId },
     select: { userId: true, status: true, driverId: true },
   });
   if (!b || b.status !== 'SEARCHING' || b.driverId != null || !b.userId) return;
+
+  // Una sola vez, pase lo que pase.
+  //
+  // La reserva se queda en SEARCHING a propósito —el pasajero decide si mira
+  // las salidas programadas o insiste—, así que el barrido de rescate la vuelve
+  // a encontrar cada cinco minutos. Sin esta marca, cada barrido repetía el
+  // mismo push: en producción se vio a dos pasajeros recibiendo «sin conductor»
+  // cada 5 minutos durante más de media hora.
+  //
+  // El `updateMany` con `noDriverNotifiedAt: null` en el WHERE es lo que lo
+  // hace atómico: si Render levanta dos instancias, solo una escribe la fila y
+  // solo esa avisa.
+  const marca = await prisma.intercityBooking.updateMany({
+    where: { id: bookingId, noDriverNotifiedAt: null },
+    data: { noDriverNotifiedAt: new Date() },
+  });
+  if (marca.count === 0) return;
+
+  console.log(`[Intercity] Sin conductor para la reserva ${bookingId} tras agotar los reintentos`);
   void sendPushToClient(b.userId, {
     title: 'Sin conductor por ahora',
     body: 'No encontramos conductor para tu viaje intermunicipal. Mira las salidas programadas o inténtalo más tarde.',

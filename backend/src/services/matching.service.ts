@@ -893,12 +893,22 @@ async function _notifyTripNoDriver(tripId: string): Promise<void> {
 }
 
 async function _notifyErrandNoDriver(errandId: string): Promise<void> {
-  console.log(`[Matching] Sin conductor para el mandado ${errandId} tras agotar los reintentos`);
   const e = await prisma.errand.findUnique({
     where: { id: errandId },
     select: { userId: true, driverId: true, requestRef: true },
   });
   if (!e || e.driverId != null || !e.userId) return;
+
+  // Una sola vez: ver `IntercityBooking.noDriverNotifiedAt` en el esquema. El
+  // mandado sigue abierto (el cliente decide si cancela o espera), así que el
+  // barrido lo vuelve a ver cada cinco minutos.
+  const marca = await prisma.errand.updateMany({
+    where: { id: errandId, noDriverNotifiedAt: null },
+    data: { noDriverNotifiedAt: new Date() },
+  });
+  if (marca.count === 0) return;
+
+  console.log(`[Matching] Sin conductor para el mandado ${errandId} tras agotar los reintentos`);
   void sendPushToClient(e.userId, {
     title: 'No encontramos quien haga tu mandado',
     body: `Nadie disponible por ahora para ${e.requestRef}. Puedes cancelarlo o intentar más tarde.`,
@@ -1063,12 +1073,23 @@ function _retryOrSurrenderOrder(orderId: string, attempt: number): void {
 
 /** Avisa al cliente y al negocio que no apareció repartidor. */
 async function _notifyOrderNoDriver(orderId: string): Promise<void> {
-  console.log(`[Matching] Sin repartidor para el pedido ${orderId} tras agotar los reintentos`);
   const o = await prisma.order.findUnique({
     where: { id: orderId },
     select: { userId: true, orderRef: true, status: true, driverId: true, businessId: true },
   });
   if (!o || o.driverId != null) return;
+
+  // Una sola vez: ver `IntercityBooking.noDriverNotifiedAt` en el esquema. El
+  // pedido NO se cierra (el negocio decide), así que el barrido lo reencuentra
+  // cada cinco minutos y sin la marca le repetía el aviso al cliente Y al
+  // negocio — una campana en la cocina cada cinco minutos.
+  const marca = await prisma.order.updateMany({
+    where: { id: orderId, noDriverNotifiedAt: null },
+    data: { noDriverNotifiedAt: new Date() },
+  });
+  if (marca.count === 0) return;
+
+  console.log(`[Matching] Sin repartidor para el pedido ${orderId} tras agotar los reintentos`);
   if (o.userId) {
     void sendPushToClient(o.userId, {
       title: 'Seguimos buscando repartidor',

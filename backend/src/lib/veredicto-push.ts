@@ -11,6 +11,15 @@
 export interface EntradaVeredictoPush {
   /** Firebase inicializó de verdad. */
   activo: boolean;
+  /**
+   * Con `activo` en false: por qué falló la inicialización, o `null` si la
+   * variable de entorno no está puesta.
+   *
+   * La distinción importa porque los dos casos se arreglan distinto y el
+   * segundo es el que deja al operador sin salida: puso la variable, lee «sin
+   * FIREBASE_SERVICE_ACCOUNT» y da por sentado que Render no la guardó.
+   */
+  motivoInactivo?: string | null;
   conductoresTotal: number;
   conductoresConToken: number;
   enviados: number;
@@ -20,8 +29,15 @@ export interface EntradaVeredictoPush {
 
 export function veredictoPush(e: EntradaVeredictoPush): string {
   if (!e.activo) {
-    return 'Sin FIREBASE_SERVICE_ACCOUNT: los avisos se escriben en el log y no sale ninguno. '
-      + 'El conductor solo se entera con la app abierta.';
+    const consecuencia = 'Los avisos se escriben en el log y no sale ninguno: '
+      + 'el conductor solo se entera con la app abierta.';
+    if (e.motivoInactivo) {
+      return `FIREBASE_SERVICE_ACCOUNT está puesta pero Firebase NO inicializó: ${e.motivoInactivo}. `
+        + 'El valor tiene que ser el contenido del archivo JSON de la cuenta de servicio '
+        + '(empieza por «{» y trae "private_key"), no el fragmento de código de ejemplo. '
+        + consecuencia;
+    }
+    return `Sin FIREBASE_SERVICE_ACCOUNT. ${consecuencia}`;
   }
 
   // Todos los envíos fallando: son credenciales o proyecto equivocado, y se ve

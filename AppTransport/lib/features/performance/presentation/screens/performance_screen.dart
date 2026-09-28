@@ -262,16 +262,35 @@ class _TierCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(
-                rating == null
-                    ? 'Sin calificaciones aún'
-                    : '⭐ ${rating!.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                  color: tier.color,
+              // La estrella era el emoji `⭐`, que cada sistema dibuja a su
+              // manera y con su propio tamaño: al lado de un número en negrita
+              // se veía desalineada. Con el icono toma el color del nivel y se
+              // alinea con el texto.
+              if (rating == null)
+                Text(
+                  'Sin calificaciones aún',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: tier.color,
+                  ),
+                )
+              else
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.star_rounded, size: 18, color: tier.color),
+                    const SizedBox(width: 3),
+                    Text(
+                      rating!.toStringAsFixed(2),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: tier.color,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
             ],
           ),
           const SizedBox(height: AppConstants.spacingM),
