@@ -53,12 +53,23 @@ const APNS = {
 let _messaging: Messaging | null = null;
 let _initAttempted = false;
 
+// ── Por qué NO inicializó ────────────────────────────────────────────────────
+//
+// «Firebase apagado» tiene dos causas que se arreglan de forma distinta: la
+// variable no está puesta, o está puesta con un contenido que no es el JSON de
+// la cuenta de servicio (pegar el fragmento de código de ejemplo de la consola
+// de Firebase en vez del archivo es el error real y frecuente). El diagnóstico
+// culpaba siempre a la primera, así que quien SÍ había puesto la variable leía
+// que no la había puesto y no tenía por dónde seguir.
+let _motivoInactivo: string | null = null;
+
 function _getMessaging(): Messaging | null {
   if (_initAttempted) return _messaging;
   _initAttempted = true;
 
   const raw = process.env['FIREBASE_SERVICE_ACCOUNT'];
   if (!raw) {
+    _motivoInactivo = null;
     console.log('[Push] FIREBASE_SERVICE_ACCOUNT not set — running in mock mode');
     return null;
   }
@@ -80,10 +91,25 @@ function _getMessaging(): Messaging | null {
     _messaging = adminMessaging.getMessaging(app);
     console.log('[Push] Firebase Admin initialized — push notifications enabled');
   } catch (err) {
-    console.error('[Push] Failed to initialize Firebase Admin:', err instanceof Error ? err.message : 'unknown error');
+    _motivoInactivo = err instanceof Error ? err.message : 'error desconocido';
+    console.error('[Push] Failed to initialize Firebase Admin:', _motivoInactivo);
     _messaging = null;
   }
   return _messaging;
+}
+
+/**
+ * El modo REAL del push, para `/health`.
+ *
+ * Antes ese campo era `FIREBASE_SERVICE_ACCOUNT ? 'firebase' : 'apagado'`, o sea
+ * que decía «firebase» con solo existir la variable — aunque su contenido no
+ * fuera el JSON de la cuenta de servicio y no llegara un solo aviso. Un
+ * diagnóstico que afirma que algo funciona cuando no funciona es peor que no
+ * tenerlo: se deja de buscar ahí. Ahora se pregunta al que lo sabe.
+ */
+export function modoPush(): 'firebase' | 'credenciales-invalidas' | 'apagado' {
+  if (_getMessaging() != null) return 'firebase';
+  return _motivoInactivo ? 'credenciales-invalidas' : 'apagado';
 }
 
 // ── Contabilidad de envíos ────────────────────────────────────────────────────
@@ -204,6 +230,7 @@ export async function probePush(): Promise<PushProbe> {
 
   const veredicto = veredictoPush({
     activo,
+    motivoInactivo: _motivoInactivo,
     conductoresTotal: condTotal,
     conductoresConToken: condConToken,
     enviados: stats.enviados,

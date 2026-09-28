@@ -50,6 +50,7 @@ import { contactoLegalConfigurado } from './lib/contacto';
 import { exigirDocumentoDePasajero } from './lib/pasajeros-tiquete';
 import { whatsappMode } from './services/whatsapp.service';
 import { purgarEnlacesMagicos } from './services/enlace-magico.service';
+import { modoPush } from './services/push.service';
 import { purgarAvisosDeReserva } from './services/reservas.service';
 
 import authRouter from './routes/auth.routes';
@@ -170,7 +171,10 @@ app.get('/health', async (_req, res) => {
     // Diagnóstico de infraestructura: una mirada dice si las fotos sobreviven
     // al redeploy y si los push llegan con la app cerrada.
     uploads: process.env['S3_BUCKET'] ? 's3-r2' : 'disco-efimero',
-    push: process.env['FIREBASE_SERVICE_ACCOUNT'] ? 'firebase' : 'apagado',
+    // 'credenciales-invalidas' = la variable está puesta pero Firebase no
+    // inicializó (el caso real: pegar el fragmento de código de ejemplo en vez
+    // del JSON de la cuenta de servicio). El detalle está en /admin → Sondeos.
+    push: modoPush(),
     // Entrada por WhatsApp: 'cloud-api' = el pasajero puede escribir al número
     // y recibe el enlace para pedir. 'configuracion-incompleta' avisa del caso
     // más fácil de dejar a medias — poder mandar pero no poder recibir (o al
