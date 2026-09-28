@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { veredictoPush } from '../lib/veredicto-push';
+import { tokenMuerto } from '../lib/token-muerto';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Push notification service (Firebase Cloud Messaging).
@@ -138,11 +139,24 @@ function _anotarSinToken(logRef: string): void {
   console.log(`[Push] Sin token registrado: ${logRef}`);
 }
 
-async function _sendToToken(token: string, payload: PushPayload, logRef: string): Promise<void> {
+/**
+ * Resultado del envío, para que quien conoce al destinatario pueda limpiar.
+ *
+ * `muerto` = el token ya no sirve y hay que borrarlo de la fila. Sin esto se
+ * reintentaba para siempre: en producción, un usuario con la app desinstalada
+ * dejaba un `Send failed … NotRegistered` cada cinco minutos.
+ */
+type ResultadoEnvio = 'ok' | 'fallo' | 'muerto' | 'mock';
+
+async function _sendToToken(
+  token: string,
+  payload: PushPayload,
+  logRef: string,
+): Promise<ResultadoEnvio> {
   const messaging = _getMessaging();
   if (!messaging) {
     console.log(`[Push:mock] ${logRef} — "${payload.title}"`);
-    return;
+    return 'mock';
   }
   try {
     await messaging.send({
@@ -155,11 +169,13 @@ async function _sendToToken(token: string, payload: PushPayload, logRef: string)
     _cuentas.enviados++;
     _ultimoEnvio = new Date().toISOString();
     console.log(`[Push] Sent ${logRef}`);
+    return 'ok';
   } catch (err) {
     // Token inválido/expirado es esperable (app desinstalada); no es fatal.
     _cuentas.fallidos++;
     _ultimoError = err instanceof Error ? err.message : 'error desconocido';
     console.warn(`[Push] Send failed ${logRef}:`, _ultimoError);
+    return tokenMuerto(err) ? 'muerto' : 'fallo';
   }
 }
 
@@ -181,7 +197,10 @@ export async function sendPushToDriver(driverId: string, payload: PushPayload): 
     select: { fcmToken: true },
   });
   if (!driver?.fcmToken) { _anotarSinToken(`driver=${driverId}`); return; }
-  await _sendToToken(driver.fcmToken, payload, `driver=${driverId} type=${payload.data?.['type'] ?? 'generic'}`);
+  const r = await _sendToToken(
+    driver.fcmToken, payload, `driver=${driverId} type=${payload.data?.['type'] ?? 'generic'}`,
+  );
+  if (r === 'muerto') await _olvidarToken('driver', driverId, driver.fcmToken);
 }
 
 export async function sendPushToClient(userId: string, payload: PushPayload): Promise<void> {
@@ -190,7 +209,37 @@ export async function sendPushToClient(userId: string, payload: PushPayload): Pr
     select: { fcmToken: true },
   });
   if (!user?.fcmToken) { _anotarSinToken(`user=${userId}`); return; }
-  await _sendToToken(user.fcmToken, payload, `user=${userId} type=${payload.data?.['type'] ?? 'generic'}`);
+  const r = await _sendToToken(
+    user.fcmToken, payload, `user=${userId} type=${payload.data?.['type'] ?? 'generic'}`,
+  );
+  if (r === 'muerto') await _olvidarToken('user', userId, user.fcmToken);
+}
+
+/**
+ * Borra un token que Google declaró inservible.
+ *
+ * El `fcmToken` va en el WHERE, no solo el id: entre el envío fallido y este
+ * borrado la persona pudo reabrir la app y registrar uno nuevo, y borrarlo a
+ * ciegas la dejaría sin avisos justo después de haberlos recuperado.
+ *
+ * Es best-effort: un fallo aquí no puede tumbar el aviso que lo provocó.
+ */
+async function _olvidarToken(
+  quien: 'driver' | 'user',
+  id: string,
+  token: string,
+): Promise<void> {
+  try {
+    const where = { id, fcmToken: token };
+    const r = quien === 'driver'
+      ? await prisma.driver.updateMany({ where, data: { fcmToken: null } })
+      : await prisma.user.updateMany({ where, data: { fcmToken: null } });
+    if (r.count > 0) {
+      console.log(`[Push] Token inservible borrado ${quien}=${id} (se vuelve a registrar al abrir la app)`);
+    }
+  } catch (e) {
+    console.warn(`[Push] No se pudo borrar el token de ${quien}=${id}:`, (e as Error).message);
+  }
 }
 
 // ── Diagnóstico real del push ─────────────────────────────────────────────────
