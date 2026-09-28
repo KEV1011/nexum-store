@@ -399,6 +399,20 @@ async function main(): Promise<void> {
       });
       check(intacta?.rating === 5, 'y la nota del primero no se movió', intacta);
       await prisma.business.delete({ where: { id: otro.id } });
+
+      // El dueño tiene que poder distinguir de dónde viene la queja: «llegó
+      // frío» del salón es su cocina, de un domicilio puede ser el repartidor.
+      await pedir(
+        'POST', `/carta/${codigo}/pedido/${pedidoMesa}/calificar`,
+        { estrellas: 5, comentario: 'Todo muy bueno' },
+      );
+      const rev = await pedir('GET', `/business/${negocio.token}/reviews`);
+      const comentarios = (rev.json.data as {
+        comentarios?: Array<{ comentario: string; origen?: string }>;
+      } | undefined)?.comentarios ?? [];
+      const mio = comentarios.find((c) => c.comentario === 'Todo muy bueno');
+      check(!!mio, 'el comentario del comensal LE LLEGA al dueño', comentarios);
+      check(mio?.origen === 'salon', 'marcado como del SALÓN, no como domicilio', mio);
     }
 
     console.log('\n[9] El comensal consulta su pedido, y solo el suyo');

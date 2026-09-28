@@ -890,7 +890,19 @@ export interface BusinessReviewsView {
   ratingCount: number;
   /** Cuántos pusieron 5, 4, 3… para ver de dónde sale el promedio. */
   distribucion: Record<number, number>;
-  comentarios: Array<{ estrellas: number; comentario: string; fecha: string }>;
+  comentarios: Array<{
+    estrellas: number;
+    comentario: string;
+    fecha: string;
+    /**
+     * De dónde viene la queja: `salon` o `domicilio`.
+     *
+     * Sin esto, el dueño lee «dos estrellas, llegó frío» y no sabe si el
+     * problema fue su cocina o el repartidor — y son dos cosas que arregla de
+     * formas opuestas. El dato existía en el pedido y no se le estaba dando.
+     */
+    origen: 'salon' | 'domicilio';
+  }>;
 }
 
 /**
@@ -903,7 +915,7 @@ export interface BusinessReviewsView {
 export async function getBusinessReviews(businessId: string): Promise<BusinessReviewsView> {
   const filas = await prisma.order.findMany({
     where: { businessId, rating: { not: null } },
-    select: { rating: true, ratingComment: true, updatedAt: true },
+    select: { rating: true, ratingComment: true, updatedAt: true, mode: true },
     orderBy: { updatedAt: 'desc' },
     take: 200,
   });
@@ -926,6 +938,7 @@ export async function getBusinessReviews(businessId: string): Promise<BusinessRe
         estrellas: f.rating as number,
         comentario: f.ratingComment as string,
         fecha: f.updatedAt.toISOString(),
+        origen: (f.mode === 'DINE_IN' ? 'salon' : 'domicilio') as 'salon' | 'domicilio',
       })),
   };
 }

@@ -58,7 +58,13 @@ interface Reviews {
   rating: number | null
   ratingCount: number
   distribucion: Record<string, number>
-  comentarios: Array<{ estrellas: number; comentario: string; fecha: string }>
+  comentarios: Array<{
+    estrellas: number
+    comentario: string
+    fecha: string
+    /** De dónde viene: el salón o un domicilio. Se arreglan de formas opuestas. */
+    origen?: 'salon' | 'domicilio'
+  }>
 }
 
 interface Stats {
@@ -371,6 +377,20 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                               <span className="text-slate-400 font-normal ml-2">
                                 {new Date(c.fecha).toLocaleDateString('es-CO')}
                               </span>
+                              {/* «Llegó frío» del salón es tu cocina; de un
+                                  domicilio puede ser el repartidor. Sin esto,
+                                  la misma queja no se sabe a quién atribuirla. */}
+                              {c.origen && (
+                                <span
+                                  className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                    c.origen === 'salon'
+                                      ? 'bg-sky-100 text-sky-700'
+                                      : 'bg-teal-100 text-teal-700'
+                                  }`}
+                                >
+                                  {c.origen === 'salon' ? 'Salón' : 'Domicilio'}
+                                </span>
+                              )}
                             </p>
                             <p className="text-xs text-slate-700 mt-1">{c.comentario}</p>
                           </div>
