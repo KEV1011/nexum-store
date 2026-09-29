@@ -288,6 +288,33 @@ Familias, que son mucho más estrictas.
 queda en la pantalla del SMS, no puede ver nada y rechaza. Las dos variables
 van en Render, en `nexum-api`.
 
+### Apps gubernamentales
+**No.** La app no la desarrolla un gobierno ni nadie por encargo suyo. ZIPA es
+una empresa privada. (Marcar que sí exige documentación oficial de la entidad.)
+
+### Funciones financieras
+**Ninguna**, en las dos apps.
+
+La pregunta es por **productos financieros** que la app ofrezca —créditos,
+seguros, inversiones, cripto, cuentas de dinero electrónico—. Cobrar por un
+servicio propio no es uno: el pago en línea lo procesa **Wompi (Bancolombia)**,
+que es la entidad vigilada, y ZIPA no guarda ni un número de tarjeta.
+
+La billetera del conductor tampoco lo es, aunque lo parezca: es el **registro
+de lo que la plataforma le debe** por los servicios que prestó, y se le paga
+por transferencia. No guarda saldo de nadie ni mueve dinero de terceros. Es el
+mismo criterio con el que Uber, DiDi y Rappi declaran «sin funciones
+financieras».
+
+> Esto cambia el día que exista una billetera con saldo recargable, préstamos
+> o adelantos de ganancias. Si eso llega, hay que volver a esta declaración
+> ANTES de publicar: es una declaración con peso legal, no una casilla.
+
+### Salud
+**No.** La app no tiene funciones de salud ni bienestar. Que un mandado pueda
+ser «traer algo de la droguería» no la convierte en app de salud: no se piden
+ni se guardan datos médicos, y no hay diagnóstico, seguimiento ni consejo.
+
 ### Servicios en primer plano (solo ZIPA Conductor)
 Play pregunta por el uso de `FOREGROUND_SERVICE_LOCATION`. Respuesta:
 
