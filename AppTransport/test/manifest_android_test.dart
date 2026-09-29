@@ -37,4 +37,42 @@ void main() {
       expect(valores.contains(necesario), isTrue, reason: 'Falta $necesario.');
     }
   });
+  // ── ID de publicidad ───────────────────────────────────────────────────
+  //
+  // En Play se declara que la app NO usa ID de publicidad, y es cierto: no
+  // hay un solo SDK publicitario. Pero esa declaración se comprueba contra
+  // el APK, no contra lo que uno escribe en el formulario, y el manifiesto
+  // de cualquier librería puede traer `AD_ID` y colarlo en la fusión sin
+  // que nadie lo vea. Play detecta el desajuste y RECHAZA la versión.
+  //
+  // La línea `tools:node="remove"` hace que el «No» sea cierto por
+  // construcción. Si alguien la quita, la declaración pasa a ser falsa en
+  // silencio: de ahí esta prueba.
+  test('el permiso de ID de publicidad se retira de la fusión', () {
+    expect(
+      manifiesto.contains('com.google.android.gms.permission.AD_ID'),
+      isTrue,
+      reason: 'Debe estar declarado para poder retirarlo con tools:node.',
+    );
+    final bloque = RegExp(
+      r'<uses-permission[^>]*com\.google\.android\.gms\.permission\.AD_ID[^>]*>',
+      dotAll: true,
+    ).firstMatch(manifiesto);
+    expect(bloque, isNotNull);
+    expect(
+      bloque!.group(0)!.contains('tools:node="remove"'),
+      isTrue,
+      reason: 'Sin tools:node="remove" el permiso entra en el APK y Play '
+          'rechaza la version por declarar que no se usa ID de publicidad.',
+    );
+  });
+
+  test('el espacio de nombres tools esta declarado', () {
+    // Sin el xmlns, `tools:node` es un atributo desconocido y el fusionador
+    // lo ignora: el permiso se colaria igual y la prueba de arriba pasaria.
+    expect(
+      manifiesto.contains('xmlns:tools="http://schemas.android.com/tools"'),
+      isTrue,
+    );
+  });
 }
