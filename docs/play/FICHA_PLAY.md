@@ -366,16 +366,72 @@ analítica. **Nada de «datos usados para rastrearte»**: no hay SDK publicitari
 
 ---
 
+### El formulario, casilla por casilla
+
+Las mismas respuestas para los dos, salvo donde se marca. En **todos** los
+tipos: **Recopilados sí · Compartidos no · Efímera no**, y ninguna finalidad de
+publicidad, analítica ni personalización.
+
+| Tipo de dato | ZIPA | Conductor | Obligatorio | Finalidad |
+|---|:--:|:--:|---|---|
+| Nombre | ✓ | ✓ | Obligatorio | Funcionalidad + Cuenta |
+| Números de teléfono | ✓ | ✓ | Obligatorio | Funcionalidad + Cuenta |
+| Dirección de correo | ✓ | ✓ | Puede elegir | Funcionalidad + Cuenta |
+| IDs de usuario | ✓ | ✓ | Obligatorio | Funcionalidad + Cuenta |
+| Dirección | ✓ | — | Obligatorio | Funcionalidad |
+| Otra información personal | — | ✓ | Obligatorio | Funcionalidad |
+| Ubicación aproximada | ✓ | ✓ | Puede elegir / **Obligatorio** | Funcionalidad |
+| Ubicación precisa | ✓ | ✓ | Puede elegir / **Obligatorio** | Funcionalidad |
+| Historial de compras | ✓ | — | Obligatorio | Funcionalidad |
+| Otra información financiera | — | ✓ | Obligatorio | Funcionalidad |
+| Fotos | ✓ | ✓ | Puede elegir / **Obligatorio** | Funcionalidad (+ Comunicaciones en el cliente) |
+| Otros mensajes en la app | ✓ | ✓ | Puede elegir | Funcionalidad + Comunicaciones |
+| Otro contenido del usuario | ✓ | ✓ | Puede elegir | Funcionalidad |
+| ID del dispositivo | ✓ | ✓ | Obligatorio | Funcionalidad |
+
+Las tres diferencias del conductor, y por qué:
+
+- **Ubicación: obligatoria.** En el pasajero es opcional de verdad —niega el
+  permiso y escribe la dirección a mano—. El conductor **no puede trabajar sin
+  ella**: el despacho reparte por cercanía.
+- **Otra información personal** = cédula, licencia, SOAT y tarjeta de
+  propiedad. Obligatorio: sin documentos no se le habilita.
+- **Otra información financiera** = banco, tipo y número de cuenta, para
+  pagarle. Ojo: **no** «Información de pago del usuario», que es la tarjeta con
+  la que alguien compra. Aquí el dinero va en la dirección contraria.
+- **Fotos: obligatorio** en el conductor (los documentos y la selfie del KYC
+  no son opcionales), mientras que en el pasajero sí lo son.
+
+> **Registros de fallos y diagnóstico: NO en las dos.** `sentry_flutter` está
+> en el proyecto pero `crashReportingEnabled` es `kSentryDsn.isNotEmpty` y los
+> builds salen con el DSN vacío: `SentryFlutter.init` ni se llama. Si algún día
+> se define `SENTRY_DSN`, hay que volver aquí — ver `docs/PRIVACIDAD_DATOS.md`.
+
+Al terminar el del pasajero, usa **Exportar a CSV** e **Importar desde CSV** en
+el del conductor: se reaprovecha casi todo y solo se retocan esas cuatro filas.
+
+---
+
 ## 7. Lo que falta antes de poder subir el archivo
 
-1. **Crear las dos apps en Firebase** con `com.zipa.cliente` y
-   `com.zipa.conductor`, y renovar los secrets `GOOGLE_SERVICES_CLIENTE_BASE64`
-   y `GOOGLE_SERVICES_BASE64`. **Hoy el AAB se construye sin Firebase y no
-   recibe una sola notificación** — el build avisa pero no se detiene.
-2. **`REVIEW_DEMO_PHONE` y `REVIEW_DEMO_CODE`** en Render.
-3. **Publicar la versión nueva de la política** desde `/admin` → SOS →
+1. **`REVIEW_DEMO_PHONE` y `REVIEW_DEMO_CODE`** en Render. Se comprueba en
+   `/health`: el campo `demoRevision` tiene que decir `true`. Sin eso el
+   revisor se queda en la pantalla del código y rechaza — es el rechazo más
+   frecuente.
+2. **Publicar la versión nueva de la política** desde `/admin` → SOS →
    Documentos legales, para que lleve el correo de contacto.
-4. Tomar las capturas de pantalla.
+3. Tomar las capturas de pantalla de cada app.
+4. **Países: solo Colombia.** No es una opinión sobre la ambición del
+   proyecto: `isValidColombianPhone` es `/^\+57[3][0-9]{9}$/`, así que fuera de
+   Colombia **no se puede ni crear una cuenta**. Quien la instale en otro país
+   no ve una app vacía, ve una que lo rechaza — y deja una estrella. Ampliar
+   después es una casilla, sin versión nueva ni revisión.
+
+> Firebase **ya está resuelto** (comprobado en el log de los builds:
+> «Firebase configurado para com.zipa.conductor / com.zipa.cliente»). Estuvo
+> aquí listado como bloqueante por un error de lectura mío: confundí ese paso
+> con el de Firebase App Distribution, que es el que sigue sin configurar y
+> solo sirve para repartir el APK a probadores.
 
 El AAB sale del workflow de cada app, artefacto
 `zipa-{cliente,conductor}-aab-buildN`, ya firmado con la llave estable.
