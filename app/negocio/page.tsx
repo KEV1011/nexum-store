@@ -23,6 +23,7 @@ const CATEGORIA: Record<string, string> = {
   RESTAURANT: 'Restaurante',
   SUPERMARKET: 'Supermercado',
   PHARMACY: 'Farmacia',
+  STORE: 'Tienda',
   OTHER: 'Negocio',
 }
 

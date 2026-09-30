@@ -349,7 +349,21 @@ export interface WsTripCancelledMessage {
 
 // ─── Business ─────────────────────────────────────────────────────────────────
 
-export type BusinessCategory = 'restaurant' | 'supermarket' | 'pharmacy' | 'other';
+/**
+ * Qué vende el comercio.
+ *
+ * `store` es el almacén de mercancía (ropa, calzado, tecnología,
+ * electrodomésticos); `other` sigue siendo el cajón de lo que no encaja en
+ * ninguna —una peluquería, una lavandería—, que es justo por lo que no se
+ * reutilizó para la mercancía.
+ */
+export type BusinessCategory =
+  | 'restaurant' | 'supermarket' | 'pharmacy' | 'store' | 'other';
+
+/** Las categorías válidas, para validar lo que llega de fuera. */
+export const BUSINESS_CATEGORIES: readonly BusinessCategory[] = [
+  'restaurant', 'supermarket', 'pharmacy', 'store', 'other',
+] as const;
 
 export interface Business {
   id: string;

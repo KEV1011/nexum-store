@@ -1,0 +1,14 @@
+-- Categoría «Tiendas»: mercancía por catálogo (ropa, calzado, tecnología,
+-- electrodomésticos). Antes un almacén así tenía que registrarse como
+-- SUPERMARKET u OTHER, y en la app aparecía llamándose «Supermercado».
+--
+-- Aditiva y sin reasignar filas: no se puede saber cuál de los supermercados
+-- ya registrados era en realidad un almacén de mercancía, y adivinarlo le
+-- cambiaría la categoría a un negocio real sin que su dueño lo pidiera. Los
+-- que ya están se corrigen desde su portal.
+--
+-- Va BEFORE 'OTHER' para que el orden del enum siga leyéndose de lo concreto
+-- a lo genérico. `ADD VALUE` dentro de una transacción es válido en
+-- PostgreSQL 12+ mientras el valor nuevo no se USE en la misma transacción,
+-- y aquí no se usa: solo se declara.
+ALTER TYPE "BusinessCategory" ADD VALUE IF NOT EXISTS 'STORE' BEFORE 'OTHER';

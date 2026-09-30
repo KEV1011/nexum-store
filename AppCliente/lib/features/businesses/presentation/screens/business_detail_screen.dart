@@ -21,6 +21,8 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'precio_producto.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
+import 'package:nexum_client/features/intercity/domain/entities/'
+    'intercity_entity.dart';
 
 /// Detalle del negocio: cabecera + menú agrupado por categoría.
 class BusinessDetailScreen extends ConsumerWidget {
@@ -107,6 +109,19 @@ class _DetailViewState extends ConsumerState<_DetailView> {
           if (!business.isOpen || business.openingHours != null)
             SliverToBoxAdapter(
               child: _StatusBanner(business: business),
+            ),
+          // Despacha a otras ciudades. Va ARRIBA del catálogo porque cambia a
+          // qué distancia se puede comprar aquí, y quien no lo sabe ni entra:
+          // hasta ahora el dato existía en la base y no lo veía nadie.
+          if (business.despachaAOtrasCiudades)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.spacingM, AppConstants.spacingM,
+                  AppConstants.spacingM, 0,
+                ),
+                child: _EnviaAOtrasCiudades(destinos: business.shipsTo),
+              ),
             ),
           // La promoción de la tienda, con lo que lleva el carrito AHORA: el
           // mismo mínimo y el mismo descuento que aplicará el servidor.
@@ -345,6 +360,62 @@ class _BusinessAppBar extends StatelessWidget {
               ),
       ),
     );
+  }
+}
+
+/// «También envía a Cúcuta y Bucaramanga».
+///
+/// Lo que habilita esto es que las empresas intermunicipales de pasajeros ya
+/// salen todos los días y ya tienen taquilla en cada terminal: el comercio
+/// deja la caja y el cliente de otra ciudad la recoge allá. Aquí solo se
+/// ANUNCIA; el precio y el plazo los pone el propio comercio y se enseñan al
+/// confirmar, con la cifra que va a cobrar el servidor.
+class _EnviaAOtrasCiudades extends StatelessWidget {
+  const _EnviaAOtrasCiudades({required this.destinos});
+
+  final List<DestinoEnvio> destinos;
+
+  @override
+  Widget build(BuildContext context) {
+    final nombres = destinos
+        .map((d) => IntercityCity.bySlug(d.city).displayName)
+        .toList();
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: AppColors.infoContainer,
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.local_shipping_rounded,
+              color: AppColors.info, size: 20),
+          const SizedBox(width: AppConstants.spacingS),
+          Expanded(
+            child: Text(
+              'También envía a ${_enumerar(nombres)}. '
+              'Elige la ciudad al confirmar el pedido.',
+              // Color fijo porque el contenedor lo es: con el adaptativo, en
+              // modo oscuro saldría casi blanco sobre azul claro.
+              style: const TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: AppColors.secondaryDark,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// «Cúcuta, Bucaramanga y Bogotá». Con más de tres se corta: la lista
+  /// completa no cabe y el detalle está a un toque, al confirmar.
+  static String _enumerar(List<String> n) {
+    if (n.isEmpty) return 'otras ciudades';
+    if (n.length == 1) return n.first;
+    if (n.length > 3) return '${n.take(3).join(', ')} y ${n.length - 3} más';
+    return '${n.take(n.length - 1).join(', ')} y ${n.last}';
   }
 }
 

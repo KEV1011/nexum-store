@@ -1747,7 +1747,7 @@ function setDriverVerified(id, action) {
     .catch((e) => showMsg(e.message, true));
 }
 
-var BIZ_CATEGORY = { RESTAURANT: 'Restaurante', SUPERMARKET: 'Supermercado', PHARMACY: 'Farmacia', OTHER: 'Otro' };
+var BIZ_CATEGORY = { RESTAURANT: 'Restaurante', SUPERMARKET: 'Supermercado', PHARMACY: 'Farmacia', STORE: 'Tienda', OTHER: 'Otro' };
 var PORTAL_URL = '${PORTAL_BASE_URL}';
 
 function searchBusinesses(ev) { ev.preventDefault(); loadBusinesses(); }

@@ -36,6 +36,10 @@ class BusinessesRealDataSource {
       imageUrl: j['imageUrl'] as String?,
       openingHours: j['openingHours'] as String?,
       cerradoMotivo: j['cerradoMotivo'] as String?,
+      shipsTo: ((j['shipsTo'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(DestinoEnvio.fromJson)
+          .toList(),
       products: ((j['products'] as List?) ?? [])
           .cast<Map<String, dynamic>>()
           .map(_mapProduct)
@@ -47,6 +51,10 @@ class BusinessesRealDataSource {
     'restaurant' => BusinessCategory.restaurant,
     'supermarket' => BusinessCategory.supermarket,
     'pharmacy' => BusinessCategory.pharmacy,
+    'store' => BusinessCategory.store,
+    // Lo que no se reconozca cae al cajón en vez de reventar la lista: una
+    // categoría nueva en el servidor no puede dejar sin comercios a las apps
+    // que ya están instaladas.
     _ => BusinessCategory.other,
   };
 

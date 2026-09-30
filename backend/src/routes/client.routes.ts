@@ -9,6 +9,7 @@ import {
   verifyClientOtp,
   getClientBusinesses,
   getClientBusinessById,
+  cotizarEnvio,
   placeClientOrder,
   getClientOrders,
   getClientOrderById,
@@ -50,6 +51,7 @@ import {
   RideNegotiationError,
 } from '../services/ride-negotiation.service';
 import { getDriverPublicProfile } from '../services/driver-profile.service';
+import { getMunicipality } from '../services/municipality.service';
 import {
   searchPooledTrips,
   getPooledTripById,
@@ -418,6 +420,54 @@ router.get('/businesses', async (_req, res) => {
 router.get('/businesses/:id', async (req, res) => {
   try {
     res.json({ success: true, data: await getClientBusinessById(req.params['id']!) });
+  } catch {
+    res.status(404).json({ success: false, error: 'Business not found' });
+  }
+});
+
+// GET /client/businesses/:id/envio?lat=&lng=&lastMile=
+//
+// Cuánto cuesta mover el pedido a ESA dirección y cuándo llega, ANTES de
+// confirmarlo. Llama a la MISMA función que cobra la caja (`cotizarEnvio`):
+// sin esto la app tendría que recalcular el flete por su cuenta y acabaría
+// enseñando un total y cobrando otro — el fallo que ya se pagó con la
+// promoción de la tienda.
+//
+// Sin coordenadas responde la cotización local, que es lo que el servidor
+// hará: un dato que falta no convierte el pedido en intermunicipal.
+router.get('/businesses/:id/envio', async (req, res) => {
+  const lat = req.query['lat'] ? parseFloat(req.query['lat'] as string) : undefined;
+  const lng = req.query['lng'] ? parseFloat(req.query['lng'] as string) : undefined;
+  const lastMile = req.query['lastMile'] === 'true';
+
+  try {
+    const biz = await getClientBusinessById(req.params['id']!);
+    const envio = await cotizarEnvio(biz, {
+      lat: Number.isFinite(lat) ? lat : null,
+      lng: Number.isFinite(lng) ? lng : null,
+      lastMile,
+    });
+    const muni = envio.destCity ? await getMunicipality(envio.destCity) : null;
+    res.json({
+      success: true,
+      data: {
+        intercity: envio.intercity,
+        destCity: envio.destCity,
+        // El nombre legible lo resuelve el servidor: la app tendría que
+        // adivinarlo del slug («san-jose-de-cucuta») y le saldría mal.
+        destCityLabel: muni?.name ?? null,
+        intercityFee: envio.intercityFee,
+        deliveryFee: envio.deliveryFee,
+        envioTotal: envio.envioTotal,
+        lastMile: envio.lastMile,
+        // Si la última milla se puede OFRECER, que no es lo mismo que si se
+        // pidió: la app necesita saber si dibujar el interruptor.
+        puedeUltimaMilla: envio.intercity && envio.ultimaMillaMotivo === null,
+        etaMinutes: envio.etaMinutes,
+        promisedAt: envio.promisedAt?.toISOString() ?? null,
+        rechazo: envio.rechazo,
+      },
+    });
   } catch {
     res.status(404).json({ success: false, error: 'Business not found' });
   }

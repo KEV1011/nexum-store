@@ -36,7 +36,9 @@ import {
 } from '../lib/driver-card';
 import { sendPushToClient, sendPushToDriver } from './push.service';
 import { plazaDeCoordenadas } from './municipality.service';
-import { destinoPara, esEnvioAOtraCiudad } from '../lib/destinos-envio';
+import {
+  destinoPara, esEnvioAOtraCiudad, type DestinoEnvio,
+} from '../lib/destinos-envio';
 import { desgloseEnvio, motivoParaNoLlevarAPuerta } from '../lib/ultima-milla';
 import { estimaLlegada } from '../lib/corte-bodega';
 import {
@@ -210,6 +212,131 @@ export { getBusinessPublicById as getClientBusinessById } from './business.servi
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
+/**
+ * Lo que cuesta MOVER el pedido, y cuándo llega.
+ *
+ * Existe como función aparte porque la pantalla del cliente y la caja tienen
+ * que dar el MISMO número. Es la lección de la promoción de la tienda: cuando
+ * el banner y el cobro calculaban por su cuenta, la pantalla prometía un
+ * descuento que la caja no aplicaba. Aquí es peor todavía —el flete puede ser
+ * más caro que el domicilio—, así que `placeClientOrder` y el cotizador de la
+ * app llaman a esta misma función y nadie recalcula nada.
+ *
+ * No incluye el subtotal ni la promoción a propósito: esos salen del catálogo
+ * y ya los resuelve `resolverLineasDePedido`. Aquí solo vive el envío.
+ */
+export interface CotizacionEnvio {
+  /** Cruza de ciudad Y el comercio despacha allá. */
+  intercity: boolean;
+  /** Plaza de la dirección de entrega. Null si no se pudo resolver. */
+  destCity: string | null;
+  /** Plaza del comercio. Null si aún no ha fijado su punto en el mapa. */
+  originCity: string | null;
+  /** Flete intermunicipal, 0 en un pedido local. */
+  intercityFee: number;
+  /** Domicilio urbano. Cero cuando cruza de ciudad y se recoge en taquilla. */
+  deliveryFee: number;
+  /** Lo que se suma al subtotal por mover la caja. */
+  envioTotal: number;
+  /** Si va a ir hasta la puerta en destino (ya resuelto, no lo que se pidió). */
+  lastMile: boolean;
+  /** Por qué no se puede llevar a la puerta. Null = sí se puede ofrecer. */
+  ultimaMillaMotivo: string | null;
+  /** Instante prometido, solo en envíos a otra ciudad. */
+  promisedAt: Date | null;
+  etaMinutes: number;
+  /**
+   * Por qué este pedido NO se puede entregar ahí, en español y diciendo a
+   * dónde sí. Null = adelante.
+   */
+  rechazo: string | null;
+}
+
+interface ComercioParaCotizar {
+  name: string;
+  citySlug?: string | null;
+  deliveryFee: number;
+  etaMinutes: number;
+  shipsTo?: DestinoEnvio[];
+  hours?: unknown;
+}
+
+export async function cotizarEnvio(
+  biz: ComercioParaCotizar,
+  entrega: { lat?: number | null; lng?: number | null; lastMile?: boolean },
+): Promise<CotizacionEnvio> {
+  // La plaza de la entrega sale del MISMO resolutor que la del comercio y la
+  // de los viajes. Sin coordenadas no hay plaza, y entonces el pedido es
+  // local: **un dato que falta no puede convertirlo en intermunicipal y
+  // cobrarle un flete de más al cliente.**
+  const destCity = await plazaDeCoordenadas(
+    entrega.lat ?? undefined,
+    entrega.lng ?? undefined,
+  );
+  const originCity = biz.citySlug ?? null;
+  const cruzaDeCiudad = esEnvioAOtraCiudad(originCity, destCity);
+  const destino = cruzaDeCiudad ? destinoPara(biz.shipsTo ?? [], destCity) : null;
+
+  if (cruzaDeCiudad && !destino) {
+    // Se dice A DÓNDE sí despacha, no solo que no puede. Un «no disponible» a
+    // secas deja al cliente sin saber si el problema es su dirección, la
+    // tienda, o que se equivocó de ciudad.
+    const declarados = (biz.shipsTo ?? []).map((d) => d.city);
+    return {
+      intercity: false, destCity, originCity,
+      intercityFee: 0, deliveryFee: 0, envioTotal: 0,
+      lastMile: false, ultimaMillaMotivo: 'no-despacha-ahi',
+      promisedAt: null, etaMinutes: biz.etaMinutes,
+      rechazo: declarados.length === 0
+        ? `${biz.name} solo entrega dentro de su ciudad.`
+        : `${biz.name} no despacha a esa ciudad. Despacha a: ${declarados.join(', ')}.`,
+    };
+  }
+
+  // ¿Se la llevamos hasta la puerta en destino? Solo si lo pidió Y hay
+  // coordenadas: el despacho de última milla es PostGIS sobre un radio, y sin
+  // punto no hay a dónde mandar a nadie.
+  const ultimaMillaMotivo = motivoParaNoLlevarAPuerta({
+    intercity: !!destino,
+    deliveryLat: entrega.lat,
+    deliveryLng: entrega.lng,
+  });
+  const lastMile = !!destino && entrega.lastMile === true && ultimaMillaMotivo === null;
+
+  const envio = desgloseEnvio({
+    deliveryFee: biz.deliveryFee,
+    intercityFee: destino?.fee ?? null,
+    intercity: !!destino,
+    lastMile,
+  });
+
+  // La promesa, como instante concreto. Con hora de corte declarada, un pedido
+  // hecho después de que salió el bus se promete para el despacho siguiente.
+  const promisedAt = destino
+    ? estimaLlegada(
+        new Date(),
+        destino.cutoff ?? null,
+        destino.etaHours,
+        (biz.hours ?? []) as Franja[],
+      )
+    : null;
+
+  return {
+    intercity: !!destino,
+    destCity,
+    originCity,
+    intercityFee: envio.flete,
+    deliveryFee: envio.domicilio,
+    envioTotal: envio.total,
+    lastMile,
+    ultimaMillaMotivo,
+    // Un envío a otra ciudad no llega en 30 minutos.
+    etaMinutes: destino ? destino.etaHours * 60 : biz.etaMinutes,
+    promisedAt,
+    rechazo: null,
+  };
+}
+
 export async function placeClientOrder(
   clientId: string,
   _clientPhone: string,
@@ -229,67 +356,23 @@ export async function placeClientOrder(
         : 'El negocio no está recibiendo pedidos en este momento.',
     );
   }
-  // ── ¿Este pedido cruza de ciudad? ──────────────────────────────────────────
+  // ── ¿Este pedido cruza de ciudad, y cuánto cuesta moverlo? ─────────────────
   //
-  // La plaza de la entrega sale del MISMO resolutor que la del comercio y la de
-  // los viajes. Sin coordenadas de entrega no hay plaza, y entonces el pedido
-  // es local: **un dato que falta no puede convertirlo en intermunicipal y
-  // cobrarle un flete de más al cliente.**
-  const destCitySlug = await plazaDeCoordenadas(dto.deliveryLat, dto.deliveryLng);
-  const originCitySlug = biz.citySlug ?? null;
-  const cruzaDeCiudad = esEnvioAOtraCiudad(originCitySlug, destCitySlug);
-  const destino = cruzaDeCiudad
-    ? destinoPara(biz.shipsTo ?? [], destCitySlug)
-    : null;
-
-  if (cruzaDeCiudad && !destino) {
-    // Se dice A DÓNDE sí despacha, no solo que no puede. Un «no disponible» a
-    // secas deja al cliente sin saber si el problema es su dirección, la
-    // tienda, o que se equivocó de ciudad.
-    const declarados = (biz.shipsTo ?? []).map((d) => d.city);
-    throw new Error(
-      declarados.length === 0
-        ? `${biz.name} solo entrega dentro de su ciudad.`
-        : `${biz.name} no despacha a esa ciudad. Despacha a: ${declarados.join(', ')}.`,
-    );
-  }
-
-  // ── ¿Se la llevamos hasta la puerta en destino? ────────────────────────────
-  //
-  // Solo si el cliente lo pidió Y hay coordenadas de entrega: el despacho de
-  // última milla es PostGIS sobre un radio, y sin punto no hay a dónde mandar
-  // a nadie. Se decide aquí y se SELLA, porque de ello depende el cobro.
-  const ultimaMilla =
-    !!destino &&
-    dto.lastMile === true &&
-    motivoParaNoLlevarAPuerta({
-      intercity: true,
-      deliveryLat: dto.deliveryLat,
-      deliveryLng: dto.deliveryLng,
-    }) === null;
-
-  // Cuánto se cobra por mover la caja. La regla vive en lib/ultima-milla.ts
-  // porque decide plata: en un envío a otra ciudad SIN última milla no se cobra
-  // el domicilio, que es lo que se estaba cobrando por un servicio que nadie
-  // prestaba (el comercio deja la caja en la terminal y el cliente la recoge).
-  const envio = desgloseEnvio({
-    deliveryFee: biz.deliveryFee,
-    intercityFee: destino?.fee ?? null,
-    intercity: !!destino,
-    lastMile: ultimaMilla,
+  // La MISMA función que cotiza la pantalla del cliente. Antes esto era una
+  // copia aquí dentro y el precio del envío solo existía en la caja: la app
+  // enseñaba el domicilio urbano y el servidor cobraba el flete. Un solo
+  // cálculo, en un solo sitio.
+  const envio = await cotizarEnvio(biz, {
+    lat: dto.deliveryLat,
+    lng: dto.deliveryLng,
+    lastMile: dto.lastMile,
   });
+  if (envio.rechazo) throw new Error(envio.rechazo);
 
-  // La promesa, como instante concreto. Con hora de corte declarada, un pedido
-  // hecho después de que salió el bus se promete para el despacho siguiente.
-  const ahoraPedido = new Date();
-  const promisedAt = destino
-    ? estimaLlegada(
-        ahoraPedido,
-        destino.cutoff ?? null,
-        destino.etaHours,
-        (biz.hours ?? []) as Franja[],
-      )
-    : null;
+  const originCitySlug = envio.originCity;
+  const destCitySlug = envio.destCity;
+  const ultimaMilla = envio.lastMile;
+  const promisedAt = envio.promisedAt;
 
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
@@ -329,24 +412,24 @@ export async function placeClientOrder(
       // ubicación, este pedido no puede cambiar de ciudad ni de precio.
       originCitySlug,
       destCitySlug,
-      isIntercity: !!destino,
-      intercityFee: envio.flete || null,
+      isIntercity: envio.intercity,
+      intercityFee: envio.intercityFee || null,
       lastMile: ultimaMilla,
       promisedAt,
       subtotal,
       promoDiscount: descuentoPromo > 0 ? descuentoPromo : null,
       // Cero cuando cruza de ciudad y el cliente recoge en taquilla: ahí no hay
       // repartidor urbano a quien pagarle.
-      deliveryFee: envio.domicilio,
+      deliveryFee: envio.deliveryFee,
       // El descuento se resta del subtotal, NUNCA del domicilio: ese es el pago
       // del repartidor y no lo financia una promoción del restaurante. El flete
       // intermunicipal se SUMA aparte por la misma razón invertida: es plata de
       // la transportadora, no del repartidor, y mezclarlos descuadraría las dos
       // liquidaciones.
-      total: subtotal - descuentoPromo + envio.total,
+      total: subtotal - descuentoPromo + envio.envioTotal,
       // Un envío a otra ciudad no llega en 30 minutos. La promesa que se enseña
       // es la que declaró el comercio para ESE destino.
-      etaMinutes: destino ? destino.etaHours * 60 : biz.etaMinutes,
+      etaMinutes: envio.etaMinutes,
       // Cadena de custodia: el negocio guarda el PIN de recogida y el cliente
       // el de entrega. El repartidor los pide de viva voz en cada paso.
       ...generateCustodyPins(),

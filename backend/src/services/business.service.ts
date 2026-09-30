@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, $Enums } from '@prisma/client';
 import {
   Business,
   RegisterBusinessDTO,
@@ -30,19 +30,37 @@ import {
 
 // ─── Enum mappings ─────────────────────────────────────────────────────────────
 
-const CATEGORY_TO_PRISMA: Record<BusinessCategory, 'RESTAURANT' | 'SUPERMARKET' | 'PHARMACY' | 'OTHER'> = {
+type PrismaBusinessCategory = $Enums.BusinessCategory;
+
+// `Record<BusinessCategory, …>` a propósito en los dos sentidos: añadir un
+// valor al enum sin traducirlo aquí NO COMPILA. Es la misma guarda que ya
+// evitó que un estado de pedido nuevo llegara a la app sin traducir.
+const CATEGORY_TO_PRISMA: Record<BusinessCategory, PrismaBusinessCategory> = {
   restaurant: 'RESTAURANT',
   supermarket: 'SUPERMARKET',
   pharmacy: 'PHARMACY',
+  store: 'STORE',
   other: 'OTHER',
 };
 
-const CATEGORY_FROM_PRISMA: Record<string, BusinessCategory> = {
+const CATEGORY_FROM_PRISMA: Record<PrismaBusinessCategory, BusinessCategory> = {
   RESTAURANT: 'restaurant',
   SUPERMARKET: 'supermarket',
   PHARMACY: 'pharmacy',
+  STORE: 'store',
   OTHER: 'other',
 };
+
+/**
+ * La categoría tal como la lee la app, desde lo que hay en la columna.
+ *
+ * Tolera una cadena cualquiera —la columna se lee como `string` en varios
+ * helpers— y cae a `other`, que es el cajón: un valor que no se reconozca no
+ * puede tumbar el listado entero de comercios.
+ */
+function categoriaDesdeBD(valor: string): BusinessCategory {
+  return CATEGORY_FROM_PRISMA[valor as PrismaBusinessCategory] ?? 'other';
+}
 
 const DELIVERY_STATUS_FROM_PRISMA: Record<string, string> = {
   CONFIRMED: 'pending',
@@ -66,7 +84,7 @@ function _dbToBusinessInterface(b: {
     ownerName: b.ownerName ?? '',
     phone: b.phone ?? '',
     address: b.address,
-    category: CATEGORY_FROM_PRISMA[b.category] as BusinessCategory ?? 'other',
+    category: categoriaDesdeBD(b.category),
     accessToken: b.token,
     whatsapp: b.whatsapp ?? undefined,
     imageUrl: b.imageUrl ?? undefined,
@@ -1015,7 +1033,7 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
   return businesses.map((b) => ({
     id: b.id,
     name: b.name,
-    category: (CATEGORY_FROM_PRISMA[b.category] ?? 'other') as BusinessCategory,
+    category: categoriaDesdeBD(b.category),
     address: b.address,
     rating: b.ratingCount > 0 ? b.rating : null,
     ratingCount: b.ratingCount,
@@ -1045,7 +1063,7 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
   return {
     id: b.id,
     name: b.name,
-    category: (CATEGORY_FROM_PRISMA[b.category] ?? 'other') as BusinessCategory,
+    category: categoriaDesdeBD(b.category),
     address: b.address,
     rating: b.ratingCount > 0 ? b.rating : null,
     ratingCount: b.ratingCount,

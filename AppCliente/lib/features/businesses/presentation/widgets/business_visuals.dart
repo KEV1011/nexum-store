@@ -16,8 +16,10 @@ extension BusinessCategoryVisuals on BusinessCategory {
         return Icons.local_grocery_store_rounded;
       case BusinessCategory.pharmacy:
         return Icons.local_pharmacy_rounded;
-      case BusinessCategory.other:
+      case BusinessCategory.store:
         return Icons.storefront_rounded;
+      case BusinessCategory.other:
+        return Icons.store_mall_directory_rounded;
     }
   }
 
@@ -29,6 +31,8 @@ extension BusinessCategoryVisuals on BusinessCategory {
         return AppColors.serviceEnvios;
       case BusinessCategory.pharmacy:
         return AppColors.secondary;
+      case BusinessCategory.store:
+        return AppColors.serviceParticular;
       case BusinessCategory.other:
         return AppColors.serviceMotocarro;
     }
@@ -42,6 +46,8 @@ extension BusinessCategoryVisuals on BusinessCategory {
         return AppColors.serviceEnviosContainer;
       case BusinessCategory.pharmacy:
         return AppColors.secondaryContainer;
+      case BusinessCategory.store:
+        return AppColors.serviceParticularContainer;
       case BusinessCategory.other:
         return AppColors.serviceMotocarroContainer;
     }

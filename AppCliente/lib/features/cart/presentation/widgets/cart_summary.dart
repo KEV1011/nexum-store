@@ -10,12 +10,23 @@ class CartSummary extends StatelessWidget {
     required this.subtotal,
     required this.deliveryFee,
     required this.total,
+    this.intercityFee = 0,
+    this.intercityLabel,
     super.key,
   });
 
   final double subtotal;
   final double deliveryFee;
   final double total;
+
+  /// Flete a otra ciudad. Va en su PROPIA línea y no sumado al domicilio:
+  /// son dos servicios distintos con dos destinatarios distintos —la
+  /// transportadora y el repartidor—, y el cliente tiene derecho a ver por
+  /// qué paga cada peso.
+  final double intercityFee;
+
+  /// «Envío a Bucaramanga». Null cuando no hay flete.
+  final String? intercityLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +45,13 @@ class CartSummary extends StatelessWidget {
         children: [
           _Row(label: 'Subtotal', value: subtotal),
           const SizedBox(height: AppConstants.spacingS),
+          if (intercityFee > 0) ...[
+            _Row(label: intercityLabel ?? 'Envío', value: intercityFee),
+            const SizedBox(height: AppConstants.spacingS),
+          ],
+          // Con flete y sin última milla el domicilio es CERO y aun así se
+          // muestra: un renglón en cero dice «no te estamos cobrando esto»,
+          // que es justo lo que la gente quiere comprobar.
           _Row(label: 'Domicilio', value: deliveryFee),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: AppConstants.spacingS),

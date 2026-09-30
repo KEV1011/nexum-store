@@ -153,6 +153,10 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     required String deliveryAddress,
     double? deliveryLat,
     double? deliveryLng,
+    // Solo pesa en envíos a otra ciudad: que un repartidor de destino la
+    // lleve a la puerta en vez de recogerla el cliente en la taquilla. El
+    // servidor vuelve a decidir si se puede y SELLA el resultado.
+    bool lastMile = false,
   }) async {
     final business = cart.business!;
 
@@ -171,6 +175,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
           'deliveryAddress': deliveryAddress,
           if (deliveryLat != null) 'deliveryLat': deliveryLat,
           if (deliveryLng != null) 'deliveryLng': deliveryLng,
+          if (lastMile) 'lastMile': true,
           'items': cart.items
               .map(
                 (item) => {

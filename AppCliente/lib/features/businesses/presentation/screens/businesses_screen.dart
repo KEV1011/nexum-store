@@ -13,6 +13,8 @@ import 'package:nexum_client/features/businesses/presentation/providers/'
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'carrusel_destacados.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'fila_categorias_comercio.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
     'fila_comercio.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'sello_confianza.dart';
@@ -139,9 +141,25 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                 ],
               ] else
                 const SliverToBoxAdapter(child: SizedBox(height: 14)),
+              // Las píldoras de categoría van FUERA del bloque de explorar, al
+              // revés que las puertas: con un filtro puesto son la única forma
+              // de saltar a otro rubro sin quitarlo primero. Y se arman con lo
+              // que de verdad llegó, así que en una plaza sin droguerías no
+              // hay píldora «Droguerías» que lleve a una lista vacía.
+              if (comerciosAsync.valueOrNull != null) ...[
+                SliverToBoxAdapter(
+                  child: FilaCategoriasComercio(
+                    categorias:
+                        categoriasPresentes(comerciosAsync.valueOrNull!),
+                    seleccionada: _filtro,
+                    onSeleccionar: (c) => setState(() => _filtro = c),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 6)),
+              ],
               SliverToBoxAdapter(
                 child: _TituloSeccion(
-                  texto: _filtro == null ? 'Cerca de ti' : _filtro!.label,
+                  texto: _filtro == null ? 'Cerca de ti' : _filtro!.plural,
                   onQuitarFiltro:
                       _filtro == null ? null : () => setState(() => _filtro = null),
                 ),

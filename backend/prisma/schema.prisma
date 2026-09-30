@@ -473,10 +473,22 @@ model Business {
   @@map("businesses")
 }
 
+/// Qué vende el comercio.
+///
+/// `STORE` es el almacén de mercancía —ropa, calzado, tecnología,
+/// electrodomésticos—: lo que se compra por catálogo y no se cocina. Hasta
+/// que existió, un almacén así solo podía registrarse como `SUPERMARKET`
+/// («Supermercado / Tienda» decía el formulario) o como `OTHER`, y en la app
+/// salía llamándose supermercado.
+///
+/// `OTHER` sigue siendo el cajón de lo que no encaja —una peluquería, una
+/// lavandería—, y por eso no se reutilizó para la mercancía: si `OTHER`
+/// significara «tienda», el cajón dejaría de existir.
 enum BusinessCategory {
   RESTAURANT
   SUPERMARKET
   PHARMACY
+  STORE
   OTHER
 }
 
