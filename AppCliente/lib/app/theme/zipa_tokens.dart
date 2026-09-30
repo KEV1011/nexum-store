@@ -141,6 +141,14 @@ abstract final class ZipaTokens {
     glifo: ZipaColor(claro: Color(0xFF00695C), oscuro: Color(0xFF5EEAD4)),
   );
 
+  // Morado: es el único hueco libre de la paleta de categorías. El índigo ya
+  // es Movilidad y dos azules contiguos en la misma rejilla no se distinguen
+  // de un vistazo, que es justo para lo que sirve el tinte.
+  static const tiendas = ZipaTinte(
+    fondo: ZipaColor(claro: Color(0xFFF3E8FF), oscuro: Color(0xFF2A1B3D)),
+    glifo: ZipaColor(claro: Color(0xFF7E22CE), oscuro: Color(0xFFD8B4FE)),
+  );
+
   static const intermunicipal = ZipaTinte(
     fondo: ZipaColor(claro: Color(0xFFE3F2FD), oscuro: Color(0xFF16273D)),
     glifo: ZipaColor(claro: Color(0xFF1565C0), oscuro: Color(0xFF93C5FD)),

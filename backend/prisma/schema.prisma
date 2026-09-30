@@ -696,17 +696,65 @@ model Order {
   /// que impide repetirle el aviso cada 5 minutos.
   noDriverNotifiedAt DateTime?
 
+  /// Con qué paga el cliente. Los valores los define `lib/metodos-pago`, el
+  /// MISMO catálogo del viaje urbano: si el pedido tuviera su propia lista,
+  /// añadir un método en una superficie dejaría a la otra con un hueco.
+  ///
+  /// Se SELLA al crear. De él depende quién cobra: con `en_linea` la plata
+  /// entra por la pasarela y el repartidor no pide nada; con cualquier otro
+  /// le pagan a él en la puerta. Decírselo mal es dejar que se vaya sin
+  /// cobrar, así que no puede recalcularse después de una preferencia que el
+  /// cliente cambie mañana.
+  ///
+  /// Nulo en los pedidos anteriores a esto y en los que manden las apps ya
+  /// instaladas: se leen como efectivo, que es lo que de hecho ocurría.
+  paymentMethod String?
+
   /// Remito con el que viaja, si es una encomienda ya subida a un despacho.
   manifest FreightManifest?
   user     User?            @relation(fields: [userId], references: [id])
   business Business         @relation(fields: [businessId], references: [id])
   lines    OrderLine[]
+  events   OrderEvent[]
 
   @@index([userId])
   @@index([driverId])
   @@index([operatorId])
   @@index([status])
   @@map("orders")
+}
+
+/// Cada cambio de estado del pedido, con la hora a la que pasó.
+///
+/// POR QUÉ HACE FALTA UNA TABLA. El pedido guarda su estado ACTUAL y un puñado
+/// de instantes sueltos (`acceptedAt`, `readyAt`, `deliveredAt`), así que la
+/// línea de tiempo del cliente eran cinco etiquetas fijas sin una sola hora:
+/// no se podía decir a qué hora aceptó el negocio ni cuánto llevaba la caja
+/// en el bus. Derivarlo de `updatedAt` es imposible — se reescribe con
+/// cualquier cambio, incluida una propina.
+///
+/// Es un registro de HECHOS, no el estado: nunca se edita ni se borra una
+/// fila. Si un pedido se devuelve a un estado anterior, eso también es un
+/// hecho y entra como fila nueva.
+model OrderEvent {
+  id      String      @id @default(cuid())
+  orderId String
+  status  OrderStatus
+  at      DateTime    @default(now())
+
+  /// Quién lo movió: `cliente`, `negocio`, `conductor`, `empresa` o
+  /// `sistema`. Es texto y no un enum porque no decide nada en el código —
+  /// solo se muestra — y un enum obligaría a una migración para poder anotar
+  /// un actor nuevo.
+  actor String?
+
+  /// Detalle para el historial («Faltó 1 de 3 bultos», «Sin repartidor»).
+  note String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, at])
+  @@map("order_events")
 }
 
 /// Cómo se sirve un pedido. Ver `Order.mode`.

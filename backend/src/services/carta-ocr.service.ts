@@ -74,7 +74,12 @@ function llaveVision(): string {
 export function modoCartaOcr(): string {
   switch (proveedorCarta()) {
     case 'google-vision':
-      return llaveVision() ? 'google-vision' : 'google-vision-sin-llave';
+      if (!llaveVision()) return 'google-vision-sin-llave';
+      // Configurada y RECHAZANDO es un tercer estado. Sin él, `/health` dice
+      // «google-vision» mientras ningún dueño consigue leer una carta, y el
+      // diagnóstico apunta al sitio equivocado — el fallo que ya se pagó con
+      // `push: firebase` sobre una credencial inválida.
+      return _rechazoVision ? 'google-vision-rechazada' : 'google-vision';
     case 'azure-read':
       return 'azure-read';
     case 'fake': return 'pruebas';
@@ -102,6 +107,41 @@ const APAGADO =
 const NO_CONTESTO =
   'No pudimos leer la carta en este momento. Inténtalo de nuevo en un rato, '
   + 'o carga tus productos con el archivo CSV.';
+/**
+ * El fallo PERMANENTE, distinto del pasajero.
+ *
+ * Decirle «inténtalo en un rato» a quien tiene la llave sin permisos es
+ * mandarlo a repetir la foto para siempre: por mucho que espere, un 403 no se
+ * arregla solo, y el dueño acaba creyendo que su carta no se entiende. Eso
+ * fue exactamente lo que se reportó desde producción.
+ *
+ * Pero tampoco se le nombra la configuración: el dueño de una tienda no
+ * administra una cuenta de Google y «habilita Cloud Vision API» no es una
+ * instrucción que pueda seguir. Lo único que necesita saber es que **no es
+ * culpa de su foto** y qué puede hacer mientras tanto.
+ *
+ * El detalle accionable va a DOS sitios donde sí lo lee quien puede actuar:
+ * el log del servidor y `/health` (`cartaFoto: google-vision-rechazada`).
+ */
+const SIN_PERMISO =
+  'La lectura de cartas no está disponible por una configuración pendiente '
+  + 'de ZIPA, no por tu foto. Ya quedó registrado. Mientras tanto puedes '
+  + 'cargar tus productos con el archivo CSV o crearlos uno por uno.';
+
+/**
+ * Por qué Google rechazó la última lectura, si es que rechazó alguna.
+ *
+ * Mismo patrón que `_motivoInactivo` de push: `/health` decía «firebase» con
+ * solo existir la variable y el diagnóstico mentía. Una variable puesta y un
+ * proveedor que rechaza son dos estados distintos, y desde fuera se ven
+ * iguales — que es lo que costó una ronda entera de «sigue sin funcionar».
+ */
+let _rechazoVision: string | null = null;
+
+/** Para las pruebas: vuelve al estado de recién arrancado. */
+export function olvidarRechazoCarta(): void {
+  _rechazoVision = null;
+}
 
 /**
  * Saca el texto de la respuesta de Vision.
@@ -122,7 +162,19 @@ export function textoDeRespuestaVision(cuerpo: unknown): TextoDeCarta {
 
   if (raiz.error?.message) {
     console.error(`[CartaOCR] Vision devolvió error: ${raiz.error.status ?? ''} ${raiz.error.message}`);
-    return { disponible: false, texto: '', motivo: NO_CONTESTO };
+    // Vision devuelve 200 con `error.status: PERMISSION_DENIED` cuando la API
+    // no está habilitada: mirar solo el código HTTP dejaría este caso —que es
+    // el más común al estrenar— clasificado como pasajero.
+    const permanente = raiz.error.status === 'PERMISSION_DENIED'
+      || raiz.error.status === 'UNAUTHENTICATED';
+    if (permanente) {
+      _rechazoVision = `${raiz.error.status}: ${raiz.error.message}`;
+    }
+    return {
+      disponible: false,
+      texto: '',
+      motivo: permanente ? SIN_PERMISO : NO_CONTESTO,
+    };
   }
 
   const primera = raiz.responses?.[0];
@@ -191,18 +243,28 @@ async function leerConVision(imagen: ImagenDeCarta, traer: Traer): Promise<Texto
   }
 
   if (!res.ok) {
-    // 403 es el fallo de estreno más probable: la llave existe pero su
+    // 401/403 es el fallo de estreno más probable: la llave existe pero su
     // proyecto no tiene habilitada Cloud Vision API, o la llave está
-    // restringida a las APIs de mapas. Se nombra para no perder una tarde.
+    // restringida a las APIs de mapas. Se distingue del fallo pasajero porque
+    // NO se arregla esperando, y el mensaje tiene que decir qué tocar.
     const detalle = await res.text().catch(() => '');
+    const permanente = res.status === 401 || res.status === 403;
     console.error(
       `[CartaOCR] Vision respondió ${res.status}. ${
-        res.status === 403
-          ? 'Revisa que Cloud Vision API esté habilitada y que la llave la permita.'
+        permanente
+          ? 'Habilita Cloud Vision API en el proyecto de la llave y revisa sus restricciones.'
           : ''
       } ${detalle.slice(0, 300)}`,
     );
-    return { disponible: false, texto: '', motivo: NO_CONTESTO };
+    if (permanente) {
+      _rechazoVision = `HTTP ${res.status}: habilita Cloud Vision API en el `
+        + 'proyecto de la llave y revisa que no esté restringida a mapas.';
+    }
+    return {
+      disponible: false,
+      texto: '',
+      motivo: permanente ? SIN_PERMISO : NO_CONTESTO,
+    };
   }
 
   const json = await res.json().catch(() => null);

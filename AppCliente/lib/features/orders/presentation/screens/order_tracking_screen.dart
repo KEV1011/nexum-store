@@ -130,7 +130,10 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
           CustodyProofCard(order: order),
           const SizedBox(height: AppConstants.spacingL),
           _Card(
-            child: OrderStatusTimeline(status: order.status),
+            child: OrderStatusTimeline(
+              status: order.status,
+              pasos: order.timeline,
+            ),
           ),
           if (order.isDelivered) ...[
             const SizedBox(height: AppConstants.spacingL),

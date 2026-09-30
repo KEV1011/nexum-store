@@ -2706,7 +2706,7 @@ class _TripRequestModal extends StatelessWidget {
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
-                                  'Pasa por: ${trip.stops.join(' · ')}',
+                                  'Pasa por: ${trip.stops.map((s) => s.nombre).join(' · ')}',
                                   style: const TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,

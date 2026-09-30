@@ -80,6 +80,7 @@ enum ZipaIconName {
   movilidad,
   restaurantes,
   envios,
+  tiendas,
   intermunicipal,
 
   // Estados
@@ -113,6 +114,10 @@ const Map<ZipaIconName, IconData> _glifos = {
   ZipaIconName.movilidad: Icons.local_taxi_rounded,
   ZipaIconName.restaurantes: Icons.restaurant_rounded,
   ZipaIconName.envios: Icons.inventory_2_rounded,
+  // Sin glifo propio a propósito: la puerta «Tiendas» lleva ilustración de la
+  // marca, y este icono solo se ve si ese archivo falla. Dibujar una bolsa a
+  // mano para un respaldo que nadie ve sería deuda sin beneficio.
+  ZipaIconName.tiendas: Icons.shopping_bag_rounded,
   ZipaIconName.intermunicipal: Icons.airport_shuttle_rounded,
 
   ZipaIconName.sinFoto: Icons.image_outlined,

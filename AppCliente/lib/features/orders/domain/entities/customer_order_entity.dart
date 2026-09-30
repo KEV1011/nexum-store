@@ -69,6 +69,47 @@ extension CustomerOrderStatusX on CustomerOrderStatus {
       };
 }
 
+/// Un paso del recorrido del pedido, tal como lo arma el SERVIDOR.
+///
+/// Los pasos no se deducen aquí a propósito: dependen de la forma del pedido
+/// —en mesa, domicilio urbano, encomienda en taquilla o encomienda a la
+/// puerta— y si los dedujera la app, cada versión instalada contaría una
+/// historia distinta del mismo pedido. Además, un estado nuevo en el
+/// servidor aparecería sin publicar una versión nueva.
+class PasoPedido {
+  const PasoPedido({
+    required this.clave,
+    required this.titulo,
+    required this.estado,
+    this.detalle,
+    this.at,
+  });
+
+  factory PasoPedido.fromJson(Map<String, dynamic> j) => PasoPedido(
+        clave: j['clave']?.toString() ?? '',
+        titulo: j['titulo']?.toString() ?? '',
+        estado: j['estado']?.toString() ?? 'pendiente',
+        detalle: j['detalle'] as String?,
+        at: DateTime.tryParse(j['at'] as String? ?? '')?.toLocal(),
+      );
+
+  final String clave;
+  final String titulo;
+  final String? detalle;
+
+  /// Cuándo ocurrió. **Null cuando no hay registro**, y entonces no se
+  /// escribe ninguna hora: poner la de otro paso sería peor que el hueco,
+  /// porque el cliente cuenta desde ahí.
+  final DateTime? at;
+
+  /// `cumplido` | `actual` | `pendiente` | `cancelado`.
+  final String estado;
+
+  bool get cumplido => estado == 'cumplido';
+  bool get actual => estado == 'actual';
+  bool get cancelado => estado == 'cancelado';
+}
+
 /// Una línea del pedido (producto + cantidad).
 class OrderLineEntity {
   const OrderLineEntity({
@@ -144,6 +185,11 @@ class CustomerOrderEntity {
     this.rating,
     this.ratingComment,
     this.ratedAt,
+    this.timeline = const [],
+    this.paymentLabel,
+    this.paymentNote,
+    this.cobraElRepartidor = false,
+    this.promisedAt,
   });
 
   factory CustomerOrderEntity.fromJson(Map<String, dynamic> j) =>
@@ -169,6 +215,18 @@ class CustomerOrderEntity {
         driverName: j['driverName'] as String?,
         driverPhone: j['driverPhone'] as String?,
         driverCard: DriverCardInfo.fromJson(j),
+        // Vacía cuando el servidor no la manda (el listado no la trae, y un
+        // backend anterior a la bitácora tampoco): la pantalla cae entonces
+        // a los pasos fijos de siempre en vez de pintar una línea en blanco.
+        timeline: ((j['timeline'] as List<dynamic>?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(PasoPedido.fromJson)
+            .toList(),
+        paymentLabel: j['paymentLabel'] as String?,
+        paymentNote: j['paymentNote'] as String?,
+        cobraElRepartidor: (j['cobraElRepartidor'] as bool?) ?? false,
+        promisedAt:
+            DateTime.tryParse(j['promisedAt'] as String? ?? '')?.toLocal(),
         etaMinutes: j['etaMinutes'] as int?,
         prepMinutes: j['prepMinutes'] as int?,
         acceptedAt: j['acceptedAt'] != null
@@ -224,6 +282,18 @@ class CustomerOrderEntity {
         driverName: j['driverName'] as String?,
         driverPhone: j['driverPhone'] as String?,
         driverCard: DriverCardInfo.fromJson(j),
+        // Vacía cuando el servidor no la manda (el listado no la trae, y un
+        // backend anterior a la bitácora tampoco): la pantalla cae entonces
+        // a los pasos fijos de siempre en vez de pintar una línea en blanco.
+        timeline: ((j['timeline'] as List<dynamic>?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(PasoPedido.fromJson)
+            .toList(),
+        paymentLabel: j['paymentLabel'] as String?,
+        paymentNote: j['paymentNote'] as String?,
+        cobraElRepartidor: (j['cobraElRepartidor'] as bool?) ?? false,
+        promisedAt:
+            DateTime.tryParse(j['promisedAt'] as String? ?? '')?.toLocal(),
         etaMinutes: (j['etaMinutes'] as num?)?.toInt(),
         prepMinutes: (j['prepMinutes'] as num?)?.toInt(),
         acceptedAt: j['acceptedAt'] != null
@@ -316,6 +386,26 @@ class CustomerOrderEntity {
   final String? ratingComment;
   final DateTime? ratedAt;
 
+  /// El recorrido con su hora, armado por el servidor. Vacío cuando no llegó
+  /// (listado, o un backend anterior a la bitácora).
+  final List<PasoPedido> timeline;
+
+  /// «Nequi», «Llave Bre-B», «Efectivo»… El texto lo resuelve el servidor
+  /// desde su catálogo, para que añadir un método no deje un hueco en los
+  /// teléfonos que no se hayan actualizado.
+  final String? paymentLabel;
+
+  /// Lo que hay que hacer al recibir: «Le transfieres al repartidor», «Ya
+  /// pagado en la app».
+  final String? paymentNote;
+
+  /// Si el repartidor cobra en la puerta. Decidirlo mal cuesta plata real.
+  final bool cobraElRepartidor;
+
+  /// Cuándo se prometió la entrega. Solo en envíos a otra ciudad: ahí
+  /// «30 min» no significa nada y hace falta una fecha.
+  final DateTime? promisedAt;
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
   double get total => subtotal + deliveryFee;
@@ -373,6 +463,11 @@ class CustomerOrderEntity {
     int? rating,
     String? ratingComment,
     DateTime? ratedAt,
+    List<PasoPedido>? timeline,
+    String? paymentLabel,
+    String? paymentNote,
+    bool? cobraElRepartidor,
+    DateTime? promisedAt,
   }) {
     return CustomerOrderEntity(
       id: id,
@@ -412,6 +507,15 @@ class CustomerOrderEntity {
       rating: rating ?? this.rating,
       ratingComment: ratingComment ?? this.ratingComment,
       ratedAt: ratedAt ?? this.ratedAt,
+      // Se CONSERVAN igual que el PIN y la ficha del conductor: las
+      // actualizaciones en vivo no traen la bitácora ni el pago, y sin este
+      // `??` el primer cambio de estado vaciaría la línea de tiempo justo
+      // cuando el cliente la está mirando.
+      timeline: timeline ?? this.timeline,
+      paymentLabel: paymentLabel ?? this.paymentLabel,
+      paymentNote: paymentNote ?? this.paymentNote,
+      cobraElRepartidor: cobraElRepartidor ?? this.cobraElRepartidor,
+      promisedAt: promisedAt ?? this.promisedAt,
     );
   }
 
@@ -443,5 +547,12 @@ class CustomerOrderEntity {
         'rating': rating,
         'ratingComment': ratingComment,
         'ratedAt': ratedAt?.toIso8601String(),
+        // La caché local guarda el pago y la promesa; la bitácora NO: se
+        // vuelve a pedir al abrir el detalle, y guardarla congelaría una
+        // línea de tiempo vieja que al reabrir parecería la de ahora.
+        'paymentLabel': paymentLabel,
+        'paymentNote': paymentNote,
+        'cobraElRepartidor': cobraElRepartidor,
+        'promisedAt': promisedAt?.toIso8601String(),
       };
 }

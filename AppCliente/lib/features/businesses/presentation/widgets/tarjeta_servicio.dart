@@ -38,8 +38,18 @@ class TarjetaServicio extends StatefulWidget {
     required this.subtitulo,
     required this.onTap,
     this.ilustracion,
+    this.ancha = false,
     super.key,
   });
+
+  /// Ocupa el ancho entero en vez de media fila.
+  ///
+  /// Existe porque las puertas son CINCO y la rejilla es de dos columnas: con
+  /// cinco tarjetas iguales la última queda huérfana al lado de un hueco, que
+  /// se lee como que falta algo. Una tarjeta ancha se lee como una decisión.
+  /// En esa forma el icono va a la izquierda y el texto al lado —apilarlo
+  /// dejaría media tarjeta vacía—.
+  final bool ancha;
 
   final ZipaIconName icono;
 
@@ -118,8 +128,13 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
             // que buscaba.
             child: Padding(
               padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Flex(
+                // Apilada en media fila; en línea cuando ocupa el ancho
+                // entero, donde una columna dejaría la mitad derecha vacía.
+                direction: widget.ancha ? Axis.horizontal : Axis.vertical,
+                crossAxisAlignment: widget.ancha
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
@@ -168,21 +183,39 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
                             child: ZipaIcon(widget.icono, color: glifo),
                           ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    widget.titulo,
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      color: context.zTexto,
-                    ),
+                  SizedBox(
+                    width: widget.ancha ? 14 : 0,
+                    height: widget.ancha ? 0 : 12,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    widget.subtitulo,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12.5, color: context.zTexto2),
+                  // Ancha: el texto se lleva el resto de la fila. Sin el
+                  // Expanded, un subtítulo largo desbordaría en vez de
+                  // recortarse con puntos suspensivos.
+                  _envolver(
+                    ancha: widget.ancha,
+                    hijo: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.titulo,
+                          style: TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w800,
+                            color: context.zTexto,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.subtitulo,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: context.zTexto2,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -192,4 +225,9 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
       ),
     );
   }
+
+  /// `Expanded` solo tiene sentido dentro de una fila: en la forma apilada
+  /// haría que la tarjeta intentara crecer a lo alto sin límite.
+  static Widget _envolver({required bool ancha, required Widget hijo}) =>
+      ancha ? Expanded(child: hijo) : hijo;
 }

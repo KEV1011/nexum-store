@@ -490,6 +490,9 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
     // destino. Sin él, el cliente la recoge en la taquilla y no se le cobra
     // domicilio.
     lastMile?: boolean;
+    // Con qué paga. Se sanea contra el catálogo compartido dentro del
+    // servicio: aquí solo se transporta.
+    paymentMethod?: string;
   };
 
   if (!dto.businessId || !dto.deliveryAddress || !Array.isArray(dto.items) || dto.items.length === 0) {
@@ -504,6 +507,9 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
       deliveryLat: typeof dto.deliveryLat === 'number' ? dto.deliveryLat : undefined,
       deliveryLng: typeof dto.deliveryLng === 'number' ? dto.deliveryLng : undefined,
       lastMile: dto.lastMile === true,
+      ...(typeof dto.paymentMethod === 'string'
+        ? { paymentMethod: dto.paymentMethod }
+        : {}),
       // `optionIds` y `notes` viajan hasta el servicio: con los ids se
       // recalcula el precio contra el catálogo y se compone la comanda.
       items: dto.items as Array<{

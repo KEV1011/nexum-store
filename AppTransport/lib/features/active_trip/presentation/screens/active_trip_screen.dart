@@ -715,6 +715,29 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             icon: Icons.person_rounded,
           ),
         ),
+      // Paradas intermedias, numeradas en el orden en que hay que hacerlas.
+      //
+      // El pasajero las pidió y el conductor las aceptó, pero hasta ahora
+      // solo existían como texto en la tarjeta de la oferta: al arrancar
+      // desaparecían y había que acordarse. Numeradas y no con el pin de
+      // destino porque son PARADAS, y confundir la segunda con el final del
+      // viaje es pasarse de largo.
+      //
+      // Solo las que traen punto: una parada escrita a mano («donde la
+      // panadería») no se dibuja en un sitio inventado, se queda en la lista
+      // de la tarjeta.
+      for (final (i, parada) in trip.request.stops.indexed)
+        if (parada.tienePunto)
+          Marker(
+            point: LatLng(parada.lat!, parada.lng!),
+            width: MapPin.markerWidth,
+            height: MapPin.markerHeight,
+            alignment: Alignment.topCenter,
+            child: MapPin(
+              color: AppColors.warning,
+              numero: '${i + 1}',
+            ),
+          ),
       // Destino — pin gota.
       Marker(
         point: trip.request.destination.latLng,

@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { metodoPorValor } from '../lib/metodos-pago';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Información de oferta de PEDIDOS para el motor de matching.
@@ -26,6 +27,17 @@ export interface OrderRequestDTO {
   businessLng: number;
   deliveryLat: number | null;
   deliveryLng: number | null;
+
+  /**
+   * Cómo va a cobrar: «Te paga por Nequi», «Ya pagado en la app».
+   *
+   * Ausente en los pedidos anteriores a que esto se guardara, y entonces la
+   * app no enseña nada en vez de afirmar «efectivo» sobre un pedido del que
+   * no se sabe con qué se paga.
+   */
+  paymentNote?: string;
+  /** Si el dinero lo recibe él en la puerta. Confundirlo cuesta plata. */
+  cobraElRepartidor?: boolean;
 }
 
 export async function getOrderOfferInfo(orderId: string): Promise<{
@@ -73,6 +85,18 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
       businessLng,
       deliveryLat: o.deliveryLat,
       deliveryLng: o.deliveryLng,
+      // Con qué le van a pagar al llegar. Es lo que decide si tiene que
+      // cobrar en la puerta o si ya está pagado, y hasta ahora no le llegaba:
+      // el repartidor aceptaba sin saberlo. Lo redacta el servidor desde el
+      // catálogo, para que un método nuevo no le deje un hueco en blanco.
+      ...(() => {
+        const m = metodoPorValor(o.paymentMethod);
+        if (!m) return {};
+        return {
+          paymentNote: m.avisoAlConductor ?? 'Te paga en efectivo',
+          cobraElRepartidor: m.quienCobra === 'conductor',
+        };
+      })(),
     },
     lat: businessLat,
     lng: businessLng,

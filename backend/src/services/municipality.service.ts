@@ -107,6 +107,20 @@ export function coordsOfSync(slug: string): { lat: number; lng: number } | null 
   return fijo ?? null;
 }
 
+/**
+ * El nombre legible del municipio, sin esperar a la base.
+ *
+ * Existe para los textos que se arman dentro de un mapeador síncrono (la
+ * línea de tiempo del pedido nombra la ciudad de destino). Con la caché fría
+ * devuelve `null` en vez de inventar un nombre a partir del slug:
+ * «san-jose-de-cucuta» pasado a mayúsculas no es el nombre de nada, y el
+ * texto que lo usa ya tiene su forma de decirlo sin ciudad.
+ */
+export function nombreMunicipioSync(slug: string | null | undefined): string | null {
+  if (!slug) return null;
+  return _cache?.get(slug)?.name ?? null;
+}
+
 /** Carga la caché al arrancar para que `coordsOfSync` nunca esté fría. */
 export async function warmMunicipalities(): Promise<void> {
   try {

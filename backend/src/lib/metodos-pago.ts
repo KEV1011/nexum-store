@@ -74,6 +74,24 @@ export const METODOS_DE_PAGO: readonly MetodoDePago[] = [
     exigePasarela: false,
   },
   {
+    // Bre-B: el sistema de pagos inmediatos interoperable del Banco de la
+    // República. Se paga a una LLAVE (el celular, la cédula, un correo o un
+    // alfanumérico), no a un número de cuenta, y funciona entre bancos y
+    // billeteras distintos.
+    //
+    // Va como método del CONDUCTOR y no de la plataforma, igual que Nequi:
+    // el dinero entra a SU llave. Cobrarlo nosotros exigiría ser el
+    // destinatario y girárselo después, que es otra pieza —la del recaudo—
+    // y no está construida. Decir aquí «plataforma» haría que el conductor
+    // creyera que ya está cobrado y dejara bajar a quien no le transfirió.
+    valor: 'bre_b',
+    etiqueta: 'Llave Bre-B',
+    detalle: 'Le transfieres a su llave desde cualquier banco o billetera',
+    quienCobra: 'conductor',
+    avisoAlConductor: 'Te paga a tu llave Bre-B',
+    exigePasarela: false,
+  },
+  {
     // El valor genérico de siempre. Se conserva porque es lo que mandan las
     // apps ya instaladas y lo que quedó sellado en los viajes anteriores:
     // quitarlo dejaría esos viajes sin método y a esas apps sin poder elegir.

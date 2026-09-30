@@ -23,35 +23,19 @@ import 'package:nexum_client/features/intercity/domain/entities/'
 import 'package:nexum_client/features/orders/presentation/providers/'
     'orders_provider.dart';
 import 'package:nexum_client/features/payments/presentation/payment_checkout.dart';
+import 'package:nexum_client/features/payments/presentation/providers/'
+    'payment_method_provider.dart';
+import 'package:nexum_client/features/payments/presentation/widgets/'
+    'icono_metodo_pago.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 
-/// Métodos de pago disponibles. Efectivo se paga al recibir; tarjeta y Nequi se
-/// cobran en línea con Wompi (checkout abierto en el navegador).
-enum PaymentMethod { cash, card, nequi }
-
-extension on PaymentMethod {
-  String get label {
-    switch (this) {
-      case PaymentMethod.cash:
-        return 'Efectivo';
-      case PaymentMethod.card:
-        return 'Tarjeta';
-      case PaymentMethod.nequi:
-        return 'Nequi';
-    }
-  }
-
-  IconData get icon {
-    switch (this) {
-      case PaymentMethod.cash:
-        return Icons.payments_rounded;
-      case PaymentMethod.card:
-        return Icons.credit_card_rounded;
-      case PaymentMethod.nequi:
-        return Icons.phone_android_rounded;
-    }
-  }
-}
+// El pedido usa EL MISMO catálogo de pago que el viaje urbano
+// (`MetodoPago` ← `lib/metodos-pago.ts` del servidor). Aquí vivía un enum
+// propio de tres valores —efectivo, tarjeta, Nequi— que además **nunca salía
+// del teléfono**: solo decidía si abrir Wompi. El negocio y el repartidor no
+// se enteraban de con qué se paga, así que el repartidor llegaba sin saber
+// si tenía que cobrar. Y con dos listas, añadir un método en una dejaba a la
+// otra con un hueco.
 
 /// Pantalla de confirmación: dirección, pago y envío del pedido.
 class CheckoutScreen extends ConsumerStatefulWidget {
@@ -65,7 +49,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _notesController = TextEditingController();
   final _promoController = TextEditingController();
   final _otraCiudadController = TextEditingController();
-  PaymentMethod _payment = PaymentMethod.cash;
   bool _placing = false;
   bool _promoValidating = false;
 
@@ -268,6 +251,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             deliveryLat: entrega.lat,
             deliveryLng: entrega.lng,
             lastMile: _ultimaMilla,
+            // Viaja al servidor y se SELLA: es lo que leerán el negocio en
+            // su portal y el repartidor en la puerta. Antes esta elección no
+            // salía del teléfono.
+            paymentMethod: ref.read(metodoPagoEfectivoProvider).valorApi,
           );
     } catch (e) {
       // El negocio nunca recibió el pedido: informar en lugar de simular. Y
@@ -304,8 +291,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     }
     if (!mounted) return;
 
-    // Pago en línea (tarjeta/Nequi) vía Wompi. El efectivo se paga al recibir.
-    if (_payment != PaymentMethod.cash) {
+    // Solo el pago EN LÍNEA lo cobra la pasarela. Efectivo, Nequi, Bre-B y
+    // las transferencias las cobra el repartidor en la puerta: abrir Wompi
+    // para esas sería cobrar dos veces.
+    if (ref.read(metodoPagoEfectivoProvider) == MetodoPago.enLinea) {
       final amountToPay =
           (_totalAPagar(cart) - _promoDiscount).clamp(0, double.infinity).toDouble();
       await _startOnlinePayment(
@@ -442,13 +431,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             title: 'Método de pago',
           ),
           const SizedBox(height: AppConstants.spacingS),
-          ...PaymentMethod.values.map(
-            (method) => _PaymentOption(
-              method: method,
-              selected: _payment == method,
-              onTap: () => setState(() => _payment = method),
-            ),
-          ),
+          // La lista la manda el SERVIDOR: añadir un método allí lo hace
+          // aparecer sin publicar una versión de la app, y el pago en línea
+          // no se ofrece si no hay pasarela configurada (un botón que promete
+          // cobrar y no cobra deja al repartidor entregando sin recibir).
+          ...ref.watch(metodosDePagoProvider).map(
+                (metodo) => _PaymentOption(
+                  metodo: metodo,
+                  selected: ref.watch(metodoPagoEfectivoProvider) == metodo,
+                  onTap: () {
+                    // ignore: discarded_futures — se recuerda en segundo plano.
+                    ref.read(metodoPagoProvider.notifier).elegir(metodo);
+                  },
+                ),
+              ),
           const SizedBox(height: AppConstants.spacingL),
           const _SectionTitle(
             icon: Icons.local_offer_rounded,
@@ -973,12 +969,12 @@ class _SectionTitle extends StatelessWidget {
 
 class _PaymentOption extends StatelessWidget {
   const _PaymentOption({
-    required this.method,
+    required this.metodo,
     required this.selected,
     required this.onTap,
   });
 
-  final PaymentMethod method;
+  final MetodoPago metodo;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1009,24 +1005,37 @@ class _PaymentOption extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(
-                method.icon,
-                size: 20,
-                color: selected
-                    ? AppColors.primaryDim
-                    : context.textSecondaryColor,
-              ),
+              IconoMetodoPago(metodo: metodo, tamano: 34),
               const SizedBox(width: AppConstants.spacingM),
-              Text(
-                method.label,
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? AppColors.primaryDim : null,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      metodo.etiqueta,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? AppColors.primaryDim : null,
+                      ),
+                    ),
+                    // Quién cobra, con todas las letras. «Nequi» a secas hace
+                    // creer que lo cobra la app; lo cobra el repartidor y hay
+                    // que acordar el número con él.
+                    Text(
+                      metodo.detalle,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        height: 1.25,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: AppConstants.spacingS),
               if (selected)
                 const Icon(
                   Icons.check_circle_rounded,

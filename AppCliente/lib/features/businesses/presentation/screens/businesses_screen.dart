@@ -112,6 +112,9 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                     onFiltrarRestaurantes: () => setState(
                       () => _filtro = BusinessCategory.restaurant,
                     ),
+                    onFiltrarTiendas: () => setState(
+                      () => _filtro = BusinessCategory.store,
+                    ),
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 22)),
@@ -372,13 +375,17 @@ class _Buscador extends StatelessWidget {
 // ── 3. Qué quieres hacer ─────────────────────────────────────────────────────
 
 class _RejillaServicios extends ConsumerWidget {
-  const _RejillaServicios({required this.onFiltrarRestaurantes});
+  const _RejillaServicios({
+    required this.onFiltrarRestaurantes,
+    required this.onFiltrarTiendas,
+  });
 
   final VoidCallback onFiltrarRestaurantes;
+  final VoidCallback onFiltrarTiendas;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Rejilla de dos columnas con las CUATRO puertas. Antes había dos, y
+    // Rejilla de dos columnas con las CINCO puertas. Antes había dos, y
     // Envíos e Intermunicipal vivían bajo el pliegue o en ninguna parte —
     // que es la razón por la que «no daba opción de reservar intermunicipal».
     return Padding(
@@ -430,15 +437,28 @@ class _RejillaServicios extends ConsumerWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: TarjetaServicio(
-                  icono: ZipaIconName.intermunicipal,
-                  ilustracion: 'assets/categorias/bus.png',
-                  tinte: ZipaTokens.intermunicipal,
-                  titulo: 'Intermunicipal',
-                  subtitulo: 'Viajes entre ciudades',
-                  onTap: () => context.push(AppRoutes.intercityBooking),
+                  icono: ZipaIconName.tiendas,
+                  ilustracion: 'assets/servicios/tiendas.png',
+                  tinte: ZipaTokens.tiendas,
+                  titulo: 'Tiendas',
+                  subtitulo: 'Ropa, tecnología, hogar',
+                  onTap: onFiltrarTiendas,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          // Ancha porque son CINCO puertas: la quinta al lado de un hueco se
+          // lee como que falta una. Y le toca a Intermunicipal porque es la
+          // que nadie espera encontrar en una app de domicilios.
+          TarjetaServicio(
+            ancha: true,
+            icono: ZipaIconName.intermunicipal,
+            ilustracion: 'assets/categorias/bus.png',
+            tinte: ZipaTokens.intermunicipal,
+            titulo: 'Intermunicipal',
+            subtitulo: 'Viaja o envía entre ciudades',
+            onTap: () => context.push(AppRoutes.intercityBooking),
           ),
         ],
       ),

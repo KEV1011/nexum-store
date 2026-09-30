@@ -27,6 +27,7 @@ import { resolverLineasDePedido, descontarInventario } from './order-lines.servi
 import { avisarNegocioDePedidoNuevo, _guardarCalificacionDePedido } from './client.service';
 import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { nombreEstadoPedido } from '../lib/estado-pedido';
+import { registrarEventoPedido } from './pedido-eventos.service';
 
 /** La carta pública de un local, tal como la abre el comensal desde el QR. */
 export interface CartaPublicaDTO {
@@ -350,6 +351,10 @@ export async function marcarServido(
     data: { status: 'DELIVERED', deliveredAt: new Date() },
   });
   if (res.count === 0) return null;
+  await registrarEventoPedido(orderId, 'DELIVERED', {
+    actor: 'negocio',
+    note: 'Servido en la mesa',
+  });
   return avisarNegocioDePedidoNuevo(orderId);
 }
 

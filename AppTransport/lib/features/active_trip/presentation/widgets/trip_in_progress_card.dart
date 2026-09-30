@@ -133,6 +133,52 @@ class TripInProgressCard extends StatelessWidget {
 
           const SizedBox(height: AppConstants.spacingM),
 
+          // ── Paradas acordadas ────────────────────────────────────────────
+          //
+          // Van ANTES del destino porque van antes en la carretera. Se
+          // enseñaban solo en la tarjeta de la oferta: al aceptar
+          // desaparecían y el conductor tenía que acordarse de tres desvíos
+          // que el pasajero ya pagó. Numeradas igual que en el mapa.
+          if (trip.request.stops.isNotEmpty) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.alt_route_rounded,
+                  color: AppColors.warning,
+                  size: 22,
+                ),
+                const SizedBox(width: AppConstants.spacingS),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        trip.request.stops.length == 1
+                            ? 'Pasa por 1 parada'
+                            : 'Pasa por ${trip.request.stops.length} paradas',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: context.textSecondaryColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      for (final (i, p) in trip.request.stops.indexed)
+                        Text(
+                          '${i + 1}. ${p.nombre}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: context.textPrimaryColor,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
+
           // ── Destination row ──────────────────────────────────────────────
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,

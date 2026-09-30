@@ -35,7 +35,7 @@ import {
   type DriverCardFields,
 } from '../lib/driver-card';
 import { sendPushToClient, sendPushToDriver } from './push.service';
-import { plazaDeCoordenadas } from './municipality.service';
+import { nombreMunicipioSync, plazaDeCoordenadas } from './municipality.service';
 import {
   destinoPara, esEnvioAOtraCiudad, type DestinoEnvio,
 } from '../lib/destinos-envio';
@@ -50,7 +50,11 @@ import type { Franja } from '../lib/horario-tienda';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
 import { recalcularReputacionConductor } from './reputacion.service';
-import { saneaMetodoPago } from '../lib/metodos-pago';
+import { metodoPorValor, saneaMetodoPago } from '../lib/metodos-pago';
+import { registrarEventoPedido } from './pedido-eventos.service';
+import {
+  lineaDeTiempoPedido, type EstadoPedidoBD,
+} from '../lib/linea-tiempo-pedido';
 import { saneaElogios } from '../lib/elogios';
 import { planificar } from '../lib/viaje-programado';
 import { descuentoSellable, totalPasajero } from '../lib/descuento-viaje';
@@ -415,6 +419,11 @@ export async function placeClientOrder(
       isIntercity: envio.intercity,
       intercityFee: envio.intercityFee || null,
       lastMile: ultimaMilla,
+      // Se SANEA contra el catálogo compartido y se SELLA: lo que mande el
+      // teléfono no puede acabar en un campo del que depende si el
+      // repartidor cobra en la puerta. Un valor no reconocido cae a null,
+      // que se lee como efectivo.
+      paymentMethod: saneaMetodoPago(dto.paymentMethod),
       promisedAt,
       subtotal,
       promoDiscount: descuentoPromo > 0 ? descuentoPromo : null,
@@ -440,6 +449,12 @@ export async function placeClientOrder(
     },
     include: { lines: true },
   });
+
+  // El primer hecho de la bitácora. Podría derivarse de `createdAt`, y así se
+  // hace con los pedidos anteriores; registrarlo igual evita que el primer
+  // paso sea el único que se lee de otro sitio, que es como empiezan las dos
+  // fuentes que acaban discrepando.
+  await registrarEventoPedido(order.id, order.status, { actor: 'cliente' });
 
   const summary = _toSummary(order, biz.name, order.lines);
   // Aviso al portal del negocio (WS new_order) para que acepte y ponga el prep.
@@ -500,6 +515,10 @@ async function autoCancelUnacceptedOrder(orderId: string): Promise<void> {
     data: { status: 'CANCELLED' },
     include: { lines: true, business: { select: { name: true } } },
   });
+  await registrarEventoPedido(orderId, 'CANCELLED', {
+    actor: 'sistema',
+    note: 'El negocio no lo confirmó a tiempo',
+  });
 
   if (updated.userId) {
     void sendPushToClient(updated.userId, {
@@ -542,6 +561,10 @@ export async function acceptOrderByBusiness(
       etaMinutes: existing.mode === 'DINE_IN' ? prep : prep + DELIVERY_TRAVEL_MIN,
     },
     include: { lines: true, business: { select: { name: true } } },
+  });
+  await registrarEventoPedido(orderId, 'PREPARING', {
+    actor: 'negocio',
+    note: `Listo en ~${prep} min`,
   });
 
   if (updated.userId) {
@@ -589,6 +612,7 @@ export async function rejectOrderByBusiness(
     data: { status: 'CANCELLED' },
     include: { lines: true, business: { select: { name: true } } },
   });
+  await registrarEventoPedido(orderId, 'CANCELLED', { actor: 'negocio' });
 
   if (updated.userId) {
     void sendPushToClient(updated.userId, {
@@ -678,7 +702,14 @@ export async function getClientOrderById(
 ): Promise<ClientOrderWithPinDTO | null> {
   const o = await prisma.order.findFirst({
     where: { id: orderId, userId: clientId },
-    include: { lines: true, business: { select: { name: true, lat: true, lng: true } } },
+    include: {
+      lines: true,
+      business: { select: { name: true, lat: true, lng: true } },
+      // La bitácora va SOLO en el detalle. En el listado son veinte pedidos
+      // por sus eventos, y ahí no se pinta ninguna línea de tiempo: sería
+      // peso que nadie mira.
+      events: { orderBy: { at: 'asc' }, select: { status: true, at: true } },
+    },
   });
   if (!o) return null;
   return _withOrderGeo(
@@ -809,6 +840,7 @@ export async function acceptClientOrder(
     },
   });
   if (tomado.count === 0) return null; // otro llegó antes
+  await registrarEventoPedido(orderId, 'DRIVER_TO_PICKUP', { actor: 'conductor' });
 
   const updated = await prisma.order.findUnique({
     where: { id: orderId },
@@ -855,6 +887,7 @@ export async function cancelClientOrder(clientId: string, orderId: string): Prom
     data: { status: 'CANCELLED' },
     include: { lines: true, business: { select: { name: true } } },
   });
+  await registrarEventoPedido(orderId, 'CANCELLED', { actor: 'cliente' });
 
   if (order.driverId) {
     _sendToDriver?.(order.driverId, { type: 'order_cancelled', orderId });
@@ -1047,6 +1080,7 @@ export async function cancelOrderByAdmin(orderId: string): Promise<boolean> {
     data: { status: 'CANCELLED' },
   });
   if (res.count === 0) return false;
+  await registrarEventoPedido(orderId, 'CANCELLED', { actor: 'negocio' });
 
   if ((antesDeSalir as readonly string[]).includes(previo.status)) await restoreOrderStock(orderId);
 
@@ -1137,6 +1171,10 @@ export async function updateOrderStatusByDriver(
   if (avance.count === 0) {
     return _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
   }
+  // Después de la guarda: registrar antes dejaría en el historial pasos que
+  // el `updateMany` rechazó, y la bitácora dejaría de ser un registro de
+  // hechos para pasar a ser uno de intenciones.
+  await registrarEventoPedido(orderId, map[status], { actor: 'conductor' });
 
   if (status === 'delivered') {
     const tasa = await tasaComision({
@@ -1932,6 +1970,10 @@ type PrismaOrder = {
   // no vengan, el DTO simplemente no los lleva.
   promisedAt?: Date | null; lastMile?: boolean | null;
   mode?: 'DELIVERY' | 'DINE_IN'; tableLabel?: string | null;
+  paymentMethod?: string | null;
+  isIntercity?: boolean | null; destCitySlug?: string | null;
+  /** La bitácora, cuando la consulta la trae. Sin ella no se pinta línea. */
+  events?: Array<{ status: string; at: Date }>;
 };
 
 type PrismaOrderLine = {
@@ -1965,6 +2007,40 @@ function _toSummary(
     etaMinutes: o.etaMinutes ?? 30,
     promisedAt: o.promisedAt?.toISOString(),
     lastMile: o.lastMile || undefined,
+    // El pago, resuelto AQUÍ y no en cada pantalla. Tres superficies leen
+    // este DTO —la app del cliente, el portal del negocio y la oferta del
+    // repartidor— y si cada una tradujera el identificador por su cuenta,
+    // añadir un método dejaría dos de ellas con un hueco en blanco.
+    ...(() => {
+      const m = metodoPorValor(o.paymentMethod);
+      if (!m) return {};
+      return {
+        paymentMethod: m.valor,
+        paymentLabel: m.etiqueta,
+        // Lo que de verdad necesita saber quien entrega: si tiene que cobrar
+        // en la puerta o si ya está pagado.
+        paymentNote: m.avisoAlConductor ?? 'Te paga en efectivo',
+        cobraElRepartidor: m.quienCobra === 'conductor',
+      };
+    })(),
+    // La línea de tiempo, solo cuando la consulta trajo la bitácora: un
+    // `timeline` vacío en un DTO que no la pidió haría creer a la app que el
+    // pedido no tiene historial, y pintaría una línea en blanco.
+    ...(o.events
+      ? {
+          timeline: lineaDeTiempoPedido(
+            {
+              status: o.status as EstadoPedidoBD,
+              dineIn: o.mode === 'DINE_IN',
+              intercity: o.isIntercity === true,
+              lastMile: o.lastMile === true,
+              ciudadDestino: nombreMunicipioSync(o.destCitySlug),
+              createdAt: o.createdAt,
+            },
+            o.events.map((e) => ({ status: e.status as EstadoPedidoBD, at: e.at })),
+          ),
+        }
+      : {}),
     items: lines.map((l) => ({
       productName: l.productName,
       quantity: l.quantity,

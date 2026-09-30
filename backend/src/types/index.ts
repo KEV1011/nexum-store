@@ -753,6 +753,15 @@ export interface ClientPlaceOrderDTO {
    * Ausente o false = recoge en taquilla, y entonces NO se le cobra domicilio.
    */
   lastMile?: boolean;
+
+  /**
+   * Con qué va a pagar. Los valores los define `lib/metodos-pago`, el MISMO
+   * catálogo del viaje urbano.
+   *
+   * Ausente = efectivo, que es lo que hacían todos los pedidos antes de que
+   * esto existiera y lo que siguen mandando las apps ya instaladas.
+   */
+  paymentMethod?: string;
 }
 
 export interface ClientOrderSummaryDTO extends DriverCardFields {
@@ -786,6 +795,38 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   promisedAt?: string;
   /** Si se la llevan hasta la puerta en destino o la recoge en la taquilla. */
   lastMile?: boolean;
+
+  /** Con qué paga el cliente (`lib/metodos-pago`). Ausente = efectivo. */
+  paymentMethod?: string;
+  /** «Nequi», «Llave Bre-B»… El texto lo resuelve el servidor. */
+  paymentLabel?: string;
+  /** Lo que lee quien entrega: «Te paga por Nequi», «Ya pagado en la app». */
+  paymentNote?: string;
+  /**
+   * Si el dinero lo recibe el repartidor en la puerta.
+   *
+   * Es lo que separa «cobra» de «no cobra», y confundirlo cuesta plata real:
+   * decirle «ya está pagado» cuando le van a transferir es dejar que entregue
+   * sin recibir nada.
+   */
+  cobraElRepartidor?: boolean;
+
+  /**
+   * Qué pasó y cuándo, paso a paso.
+   *
+   * Lo arma el servidor (`lib/linea-tiempo-pedido`) porque los pasos dependen
+   * de la FORMA del pedido —en mesa, domicilio urbano, encomienda en taquilla
+   * o encomienda a la puerta— y cada versión instalada de la app contaría una
+   * historia distinta si los dedujera por su cuenta.
+   */
+  timeline?: Array<{
+    clave: string;
+    titulo: string;
+    detalle?: string;
+    /** ISO, o null si ese paso no dejó registro. Nunca se inventa. */
+    at: string | null;
+    estado: 'cumplido' | 'actual' | 'pendiente' | 'cancelado';
+  }>;
   items: Array<{
     productName: string;
     quantity: number;

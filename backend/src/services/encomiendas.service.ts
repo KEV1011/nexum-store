@@ -7,6 +7,7 @@ import {
 } from '../lib/encomiendas';
 import { sendPushToClient } from './push.service';
 import { puntoDeEntrega } from '../lib/ultima-milla';
+import { registrarEventoPedido } from './pedido-eventos.service';
 
 /**
  * Encomiendas: pedidos intermunicipales que viajan en el despacho de una
@@ -372,6 +373,16 @@ async function _ponerEnTransito(ids: string[]): Promise<number> {
     where: { id: { in: ids }, status: { in: ['CONFIRMED', 'PREPARING'] } },
     data: { status: 'IN_INTERCITY_TRANSIT' },
   });
+  // Uno por pedido: el despacho mueve varias cajas a la vez, y en la bitácora
+  // de cada cliente tiene que constar la suya.
+  if (avance.count > 0) {
+    for (const id of ids) {
+      await registrarEventoPedido(id, 'IN_INTERCITY_TRANSIT', {
+        actor: 'empresa',
+        note: 'Salió en el despacho',
+      });
+    }
+  }
 
   // Aviso al cliente: su caja salió. Es el push que más importa de este flujo
   // —lo siguiente que sabrá es que llegó— y va best-effort para que un fallo
@@ -434,6 +445,12 @@ export async function marcarEncomiendaEntregada(manifestId: string): Promise<boo
     data: { status: 'DELIVERED', deliveredAt: new Date() },
   });
   if (avance.count === 0) return false;
+  await registrarEventoPedido(m.orderId, 'DELIVERED', {
+    actor: 'empresa',
+    note: m.discrepancyCount > 0
+      ? `Entregado en taquilla con ${m.discrepancyCount} bulto(s) de diferencia`
+      : 'Entregado en la taquilla de destino',
+  });
 
   const o = await prisma.order.findUnique({
     where: { id: m.orderId },
@@ -498,6 +515,10 @@ async function _arrancarUltimaMilla(
     },
   });
   if (avance.count === 0) return false;
+  await registrarEventoPedido(orderId, 'AT_DESTINATION_HUB', {
+    actor: 'empresa',
+    note: 'Llegó a la ciudad de destino',
+  });
 
   const o = await prisma.order.findUnique({
     where: { id: orderId },

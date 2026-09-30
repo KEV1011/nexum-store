@@ -157,6 +157,9 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     // lleve a la puerta en vez de recogerla el cliente en la taquilla. El
     // servidor vuelve a decidir si se puede y SELLA el resultado.
     bool lastMile = false,
+    /// Con qué paga. Se sanea en el servidor contra su catálogo y se SELLA:
+    /// de él depende si el repartidor cobra en la puerta.
+    String? paymentMethod,
   }) async {
     final business = cart.business!;
 
@@ -176,6 +179,7 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
           if (deliveryLat != null) 'deliveryLat': deliveryLat,
           if (deliveryLng != null) 'deliveryLng': deliveryLng,
           if (lastMile) 'lastMile': true,
+          if (paymentMethod != null) 'paymentMethod': paymentMethod,
           'items': cart.items
               .map(
                 (item) => {
