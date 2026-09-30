@@ -1005,7 +1005,7 @@ class _PaymentOption extends StatelessWidget {
           ),
           child: Row(
             children: [
-              IconoMetodoPago(metodo: metodo, tamano: 34),
+              IconoMetodoPago(metodo, tamano: 34),
               const SizedBox(width: AppConstants.spacingM),
               Expanded(
                 child: Column(

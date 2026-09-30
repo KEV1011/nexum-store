@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/shared/widgets/map_location_picker.dart';
