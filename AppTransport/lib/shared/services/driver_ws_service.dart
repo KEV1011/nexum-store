@@ -587,6 +587,7 @@ class DriverWsService {
         // aquí solo hay que avisarle, que es lo que no ocurría antes.
         case 'reserva_nueva':
         case 'reserva_activa':
+        case 'reserva_recordatorio':
         case 'reserva_liberada':
           _reservaCtrl.add(msg);
 

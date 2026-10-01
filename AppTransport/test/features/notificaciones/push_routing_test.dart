@@ -39,6 +39,20 @@ void main() {
       expect(rutaDeNotificacion({'type': 'payout'}), AppRoutes.wallet);
     });
 
+    test('la reserva lleva al tablero, no al home', () {
+      // Una reserva apartada hace días NO entró por el socket en esta sesión,
+      // así que el home no la conoce: el botón de «Iniciar viaje» está en el
+      // tablero. Mandarlo al home le dejaría la notificación sin salida.
+      expect(
+        rutaDeNotificacion({'type': 'reserva_recordatorio'}),
+        AppRoutes.reservas,
+      );
+      expect(
+        rutaDeNotificacion({'type': 'reserva_activa'}),
+        AppRoutes.reservas,
+      );
+    });
+
     test('lo que no lleva a ningún sitio devuelve null, no el home', () {
       // Sacar al conductor de lo que estaba haciendo por un aviso que no le
       // pide nada es peor que no navegar.

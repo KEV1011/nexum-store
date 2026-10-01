@@ -51,6 +51,7 @@ import {
   RideNegotiationError,
 } from '../services/ride-negotiation.service';
 import { getDriverPublicProfile } from '../services/driver-profile.service';
+import { recogerEnTaquilla } from '../services/encomiendas.service';
 import { getMunicipality } from '../services/municipality.service';
 import {
   searchPooledTrips,
@@ -543,6 +544,20 @@ router.post('/orders/:id/cancel', clientAuthMiddleware, async (req, res) => {
   const ok = await cancelClientOrder(req.clientId!, req.params['id']!);
   if (!ok) {
     res.status(400).json({ success: false, error: 'El pedido no existe o ya no se puede cancelar' });
+    return;
+  }
+  res.json({ success: true });
+});
+
+// POST /client/orders/:id/recoger-en-taquilla — el cliente va por su encomienda.
+//
+// La salida para quien pidió entrega a la puerta y no apareció repartidor en
+// destino. Sin ella el pedido se quedaba en la taquilla sin forma de cerrarse,
+// y el aviso le decía que el negocio podía entregarlo — está en otra ciudad.
+router.post('/orders/:id/recoger-en-taquilla', clientAuthMiddleware, async (req, res) => {
+  const r = await recogerEnTaquilla(req.clientId!, req.params['id']!);
+  if (!r.ok) {
+    res.status(400).json({ success: false, error: r.motivo });
     return;
   }
   res.json({ success: true });

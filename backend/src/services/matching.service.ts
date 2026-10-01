@@ -15,7 +15,7 @@ import { tarifaDe } from '../lib/tarifa-categoria';
 import { metodoPorValor } from '../lib/metodos-pago';
 import { totalPasajero } from '../lib/descuento-viaje';
 import { avisoSinConductor } from '../lib/avisos-viaje';
-import { plazaDeCoordenadas } from './municipality.service';
+import { plazaDeCoordenadas, nombreMunicipioSync } from './municipality.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Geospatial matching service (PostGIS).
@@ -1075,7 +1075,10 @@ function _retryOrSurrenderOrder(orderId: string, attempt: number): void {
 async function _notifyOrderNoDriver(orderId: string): Promise<void> {
   const o = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { userId: true, orderRef: true, status: true, driverId: true, businessId: true },
+    select: {
+      userId: true, orderRef: true, status: true, driverId: true, businessId: true,
+      destCitySlug: true,
+    },
   });
   if (!o || o.driverId != null) return;
 
@@ -1090,6 +1093,30 @@ async function _notifyOrderNoDriver(orderId: string): Promise<void> {
   if (marca.count === 0) return;
 
   console.log(`[Matching] Sin repartidor para el pedido ${orderId} tras agotar los reintentos`);
+
+  // LA CAJA YA ESTÁ EN LA CIUDAD DE DESTINO: el aviso es OTRO.
+  //
+  // Con la caja esperando en la taquilla, el texto de un domicilio urbano
+  // —«el negocio puede entregarlo o cancelarlo»— es falso dos veces: el
+  // comercio está a seis horas de ahí y no tiene nada en la mano, y tocarle
+  // la campana de pedido sin repartidor le suena en la cocina por una caja
+  // que despachó ayer. Lo que el cliente necesita saber es que su paquete SÍ
+  // llegó y que puede recogerlo él.
+  if (o.status === 'AT_DESTINATION_HUB') {
+    const ciudad = nombreMunicipioSync(o.destCitySlug);
+    if (o.userId) {
+      void sendPushToClient(o.userId, {
+        title: 'Tu paquete te espera en la taquilla',
+        body:
+          `No encontramos repartidor para llevarte el pedido ${o.orderRef} a la puerta. `
+          + `Está en la taquilla${ciudad ? ` de ${ciudad}` : ''} y puedes recogerlo, `
+          + 'o seguimos buscando.',
+        data: { type: 'order_no_driver_hub', orderId },
+      });
+    }
+    return;
+  }
+
   if (o.userId) {
     void sendPushToClient(o.userId, {
       title: 'Seguimos buscando repartidor',

@@ -1969,6 +1969,7 @@ type PrismaOrder = {
   // Opcionales porque no todas las consultas los piden en su `select`: donde
   // no vengan, el DTO simplemente no los lleva.
   promisedAt?: Date | null; lastMile?: boolean | null;
+  noDriverNotifiedAt?: Date | null;
   mode?: 'DELIVERY' | 'DINE_IN'; tableLabel?: string | null;
   paymentMethod?: string | null;
   isIntercity?: boolean | null; destCitySlug?: string | null;
@@ -2007,6 +2008,10 @@ function _toSummary(
     etaMinutes: o.etaMinutes ?? 30,
     promisedAt: o.promisedAt?.toISOString(),
     lastMile: o.lastMile || undefined,
+    // Se agotó la búsqueda. La marca ya existía para no repetir el aviso; aquí
+    // además es lo que le permite a la pantalla ofrecer la recogida en taquilla
+    // en vez de dejar al cliente mirando un «buscando repartidor» eterno.
+    sinRepartidor: o.noDriverNotifiedAt != null ? true : undefined,
     // El pago, resuelto AQUÍ y no en cada pantalla. Tres superficies leen
     // este DTO —la app del cliente, el portal del negocio y la oferta del
     // repartidor— y si cada una tradujera el identificador por su cuenta,

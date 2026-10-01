@@ -41,6 +41,14 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
     case 'compliance_update':
       return AppRoutes.verification;
 
+    // La reserva: el recordatorio de media hora antes y el aviso de que ya
+    // empieza. Van al tablero de reservas, que es donde está el botón de
+    // «Iniciar viaje» de una carrera apartada hace días — el home no la
+    // conoce, porque no entró por el socket en esta sesión.
+    case 'reserva_recordatorio':
+    case 'reserva_activa':
+      return AppRoutes.reservas;
+
     case 'support_reply':
       return AppRoutes.support;
 

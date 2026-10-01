@@ -97,6 +97,16 @@ export interface Carta {
   tables: string[]
 }
 
+/** Un paso de la línea de tiempo, tal como lo arma el servidor. */
+export interface PasoPedido {
+  clave: string
+  titulo: string
+  detalle?: string
+  /** ISO del momento en que ocurrió, o null si no hay registro. */
+  at: string | null
+  estado: 'cumplido' | 'actual' | 'pendiente' | 'cancelado'
+}
+
 export interface PedidoEnMesa {
   id: string
   /** La estrella que ya dejó, si la dejó. Se puede corregir. */
@@ -110,6 +120,12 @@ export interface PedidoEnMesa {
   prepMinutes?: number
   acceptedAt?: string
   createdAt?: string
+  /**
+   * Los pasos con su hora. Ausente en un backend que todavía no los manda: la
+   * pantalla se queda con el estado de siempre en vez de pintar una línea
+   * vacía, que se leería como que el pedido no ha pasado por ningún sitio.
+   */
+  timeline?: PasoPedido[]
   items: Array<{
     productName: string
     quantity: number

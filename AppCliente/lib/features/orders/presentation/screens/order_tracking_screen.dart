@@ -127,6 +127,15 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
             _TrackingMap(order: order),
             const SizedBox(height: AppConstants.spacingM),
           ],
+          // Su envío está en la taquilla de destino y la búsqueda de
+          // repartidor se agotó. Sin esto el cliente se quedaba mirando
+          // «buscamos quién te lo lleve» sin saber que su paquete SÍ llegó y
+          // que puede ir por él.
+          if (order.status == CustomerOrderStatus.atDestinationHub &&
+              order.sinRepartidor) ...[
+            _RecogerEnTaquillaCard(order: order),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
           CustodyProofCard(order: order),
           const SizedBox(height: AppConstants.spacingL),
           _Card(
@@ -973,6 +982,135 @@ class _Card extends StatelessWidget {
         ),
       ),
       child: child,
+    );
+  }
+}
+
+/// Su envío llegó a la ciudad y no apareció repartidor: puede ir por él.
+///
+/// Solo se pinta cuando el servidor ya dio por agotada la búsqueda
+/// (`sinRepartidor`). Ofrecerlo antes haría que renunciara a un reparto que
+/// todavía iba a llegar, y no ofrecerlo nunca —lo que pasaba— lo dejaba
+/// esperando indefinidamente un repartidor que no existe en esa plaza a esa
+/// hora, sin saber que su paquete ya está a unas cuadras.
+class _RecogerEnTaquillaCard extends ConsumerStatefulWidget {
+  const _RecogerEnTaquillaCard({required this.order});
+
+  final CustomerOrderEntity order;
+
+  @override
+  ConsumerState<_RecogerEnTaquillaCard> createState() =>
+      _RecogerEnTaquillaCardState();
+}
+
+class _RecogerEnTaquillaCardState
+    extends ConsumerState<_RecogerEnTaquillaCard> {
+  bool _enviando = false;
+
+  Future<void> _confirmar() async {
+    final acepta = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Recogerlo en la taquilla',
+          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
+        ),
+        content: const Text(
+          'Tu envío queda como entregado en la taquilla y dejamos de buscar '
+          'repartidor. Lleva tu documento para reclamarlo.',
+          style: TextStyle(fontFamily: 'Inter'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Seguir esperando'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Voy por él'),
+          ),
+        ],
+      ),
+    );
+    if (acepta != true || !mounted) return;
+
+    setState(() => _enviando = true);
+    final motivo = await ref
+        .read(ordersProvider.notifier)
+        .recogerEnTaquilla(widget.order.id);
+    if (!mounted) return;
+    setState(() => _enviando = false);
+    if (motivo != null) {
+      AppSnackbar.showError(context, motivo);
+    } else {
+      AppSnackbar.showSuccess(
+        context, 'Listo. Tu envío te espera en la taquilla.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingL),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.inventory_2_rounded,
+                  color: AppColors.warning, size: 22),
+              const SizedBox(width: AppConstants.spacingS),
+              Expanded(
+                child: Text(
+                  'Tu envío te espera en la taquilla',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: context.textPrimaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppConstants.spacingS),
+          Text(
+            'No encontramos repartidor para llevártelo a la puerta. Puedes '
+            'recogerlo con tu documento, o seguimos buscando.',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              height: 1.35,
+              color: context.textSecondaryColor,
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _enviando ? null : _confirmar,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.warning,
+              ),
+              child: _enviando
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Lo recojo yo'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

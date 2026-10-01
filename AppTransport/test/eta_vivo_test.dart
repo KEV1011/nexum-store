@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:nexum_client/core/utils/eta_vivo.dart';
+import 'package:nexum_driver/core/utils/eta_vivo.dart';
 
 /// El ETA en vivo.
 ///

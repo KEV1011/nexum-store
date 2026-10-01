@@ -882,6 +882,14 @@ model Trip {
   /// barrido sea una consulta indexada y no tenga que hacer aritmética por
   /// fila.
   searchFrom         DateTime?
+  /// Cuándo se mandó el recordatorio de «tu carrera es en media hora».
+  ///
+  /// Marca, no bandera, y por el mismo motivo que `noDriverNotifiedAt`: el
+  /// barrido pasa cada minuto y sin dejar constancia le sonaría el teléfono al
+  /// pasajero y al conductor treinta veces seguidas. Guardar el INSTANTE y no
+  /// un booleano además deja auditar si el aviso salió a tiempo cuando alguien
+  /// reclame que nunca le llegó.
+  reminderSentAt     DateTime?
 
   /// Quién apartó esta reserva y NO APARECIÓ a la hora.
   ///

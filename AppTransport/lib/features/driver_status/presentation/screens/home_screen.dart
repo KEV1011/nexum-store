@@ -443,6 +443,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) return;
       final tipo = msg['type'];
       final esActiva = tipo == 'reserva_activa';
+      final esRecordatorio = tipo == 'reserva_recordatorio';
       final esLiberada = tipo == 'reserva_liberada';
       final donde = msg['originAddress'] ?? 'el punto acordado';
 
@@ -455,6 +456,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (esActiva) {
         texto = 'Tu reserva empieza ahora. Recoge en $donde.';
         color = const Color(0xFF059669);
+      } else if (esRecordatorio) {
+        // Media hora antes. No es «sal ya», es «no tomes otra carrera larga»:
+        // por eso lleva la hora y no la palabra «ahora».
+        texto = 'Tienes una carrera ${_cuandoReserva(msg['scheduledFor'])}. '
+            'Recoge en $donde.';
+        color = const Color(0xFFD97706);
       } else if (esLiberada) {
         texto = 'Se liberó una de tus reservas: no dimos contigo a la hora.';
         color = const Color(0xFFDC2626);

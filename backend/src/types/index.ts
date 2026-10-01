@@ -795,6 +795,15 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   promisedAt?: string;
   /** Si se la llevan hasta la puerta en destino o la recoge en la taquilla. */
   lastMile?: boolean;
+  /**
+   * Se agotó la búsqueda de repartidor y ya se avisó.
+   *
+   * Con el pedido esperando en la taquilla de destino, es lo que permite
+   * ofrecerle al cliente ir por él: antes de agotarse no se le propone nada
+   * —todavía puede aparecer alguien— y dárselo como opción desde el primer
+   * minuto haría que renunciara a un reparto que sí iba a llegar.
+   */
+  sinRepartidor?: boolean;
 
   /** Con qué paga el cliente (`lib/metodos-pago`). Ausente = efectivo. */
   paymentMethod?: string;

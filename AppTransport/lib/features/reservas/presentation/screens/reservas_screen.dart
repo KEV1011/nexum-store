@@ -340,6 +340,10 @@ class _TarjetaReserva extends StatelessWidget {
     final enCurso = reserva['enCurso'] == true;
     final tarifa = (reserva['estimatedFare'] as num?)?.toDouble();
     final km = (reserva['distanceKm'] as num?)?.toDouble();
+    final paradas = ((reserva['stops'] as List<dynamic>?) ?? const [])
+        .map((e) => e.toString())
+        .where((e) => e.isNotEmpty)
+        .toList();
     final pasajero = reserva['passengerName'] as String?;
     final telefono = reserva['passengerPhone'] as String?;
 
@@ -391,6 +395,16 @@ class _TarjetaReserva extends StatelessWidget {
           texto: reserva['originAddress'] as String? ?? '',
         ),
         const SizedBox(height: 6),
+        // Por dónde pasa, ANTES de apartarla: tres paradas cambian lo que dura
+        // la carrera, y quien apartó creyendo que era directo puede no poder
+        // cumplirla.
+        if (paradas.isNotEmpty) ...[
+          _Punto(
+            color: const Color(0xFFD97706),
+            texto: 'Pasa por: ${paradas.join(' · ')}',
+          ),
+          const SizedBox(height: 6),
+        ],
         _Punto(
           color: const Color(0xFFDC2626),
           texto: reserva['destAddress'] as String? ?? '',

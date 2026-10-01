@@ -190,6 +190,7 @@ class CustomerOrderEntity {
     this.paymentNote,
     this.cobraElRepartidor = false,
     this.promisedAt,
+    this.sinRepartidor = false,
   });
 
   factory CustomerOrderEntity.fromJson(Map<String, dynamic> j) =>
@@ -227,6 +228,7 @@ class CustomerOrderEntity {
         cobraElRepartidor: (j['cobraElRepartidor'] as bool?) ?? false,
         promisedAt:
             DateTime.tryParse(j['promisedAt'] as String? ?? '')?.toLocal(),
+        sinRepartidor: j['sinRepartidor'] as bool? ?? false,
         etaMinutes: j['etaMinutes'] as int?,
         prepMinutes: j['prepMinutes'] as int?,
         acceptedAt: j['acceptedAt'] != null
@@ -294,6 +296,7 @@ class CustomerOrderEntity {
         cobraElRepartidor: (j['cobraElRepartidor'] as bool?) ?? false,
         promisedAt:
             DateTime.tryParse(j['promisedAt'] as String? ?? '')?.toLocal(),
+        sinRepartidor: j['sinRepartidor'] as bool? ?? false,
         etaMinutes: (j['etaMinutes'] as num?)?.toInt(),
         prepMinutes: (j['prepMinutes'] as num?)?.toInt(),
         acceptedAt: j['acceptedAt'] != null
@@ -406,6 +409,13 @@ class CustomerOrderEntity {
   /// «30 min» no significa nada y hace falta una fecha.
   final DateTime? promisedAt;
 
+  /// Se agotó la búsqueda de repartidor y el servidor ya avisó.
+  ///
+  /// Con el envío esperando en la taquilla de destino es lo que habilita
+  /// ofrecerle ir por él: antes de agotarse no se le propone nada, porque
+  /// todavía puede aparecer alguien y renunciaría a un reparto que sí llegaba.
+  final bool sinRepartidor;
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
   double get total => subtotal + deliveryFee;
@@ -468,6 +478,7 @@ class CustomerOrderEntity {
     String? paymentNote,
     bool? cobraElRepartidor,
     DateTime? promisedAt,
+    bool? sinRepartidor,
   }) {
     return CustomerOrderEntity(
       id: id,
@@ -516,6 +527,7 @@ class CustomerOrderEntity {
       paymentNote: paymentNote ?? this.paymentNote,
       cobraElRepartidor: cobraElRepartidor ?? this.cobraElRepartidor,
       promisedAt: promisedAt ?? this.promisedAt,
+      sinRepartidor: sinRepartidor ?? this.sinRepartidor,
     );
   }
 
@@ -554,5 +566,6 @@ class CustomerOrderEntity {
         'paymentNote': paymentNote,
         'cobraElRepartidor': cobraElRepartidor,
         'promisedAt': promisedAt?.toIso8601String(),
+        'sinRepartidor': sinRepartidor,
       };
 }

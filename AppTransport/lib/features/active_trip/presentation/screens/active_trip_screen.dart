@@ -12,6 +12,7 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
+import 'package:nexum_driver/core/utils/eta_vivo.dart';
 import 'package:nexum_driver/core/domain/service_type_provider.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
@@ -81,8 +82,8 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   // Rumbo actual del vehículo (grados) para orientar el marcador.
   double _heading = 0;
 
-  Timer? _etaTimer;
-  int _etaSeconds = 0;
+  /// Minutos que faltan según el GPS. Null = todavía sin posición real.
+  int? _etaMin;
 
   // Ruta del tramo: dónde empezó y los puntos por los que pasa. Son para
   // DIBUJAR y para medir el avance; el conductor va donde dice el GPS.
@@ -132,7 +133,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           DriverWsService().sendTripStatus(trip.request.id, 'arriving');
         }
         _startSimulatedMovement(trip);
-        _startEtaCountdown(trip);
+        _recalcularEta(trip);
         _escucharOfertasEncadenadas();
 
         // Pedido cancelado por el cliente (permitido hasta la recogida): se
@@ -281,7 +282,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     _cuentaOferta?.cancel();
     _pulse.dispose();
     _posSub?.cancel();
-    _etaTimer?.cancel();
+
     _mapController.dispose();
     super.dispose();
   }
@@ -409,6 +410,8 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       final trip = ref.read(activeTripProvider);
       if (trip != null) _trazarTramo(trip);
       setState(() {});
+      // Primer fix: ya hay desde dónde medir el ETA.
+      _recalcularEta(trip);
       return;
     }
     setState(() {
@@ -416,6 +419,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       _driverPos = nueva;
       _waypointIndex = _indiceMasCercano(nueva);
     });
+    // Cada fix mueve el ETA: es la diferencia entre un número medido y un
+    // contador que baja solo.
+    _recalcularEta();
 
     // Aviso de "ya casi llegas" al 85 % del tramo. Ahora se dispara porque el
     // conductor recorrió el 85 %, no porque hayan pasado N segundos.
@@ -502,27 +508,44 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       ? 0.0
       : (_waypointIndex / _waypoints.length).clamp(0.0, 1.0);
 
-  void _startEtaCountdown(ActiveTripEntity trip) {
-    _etaTimer?.cancel();
-    _etaSeconds = trip.isInProgress
-        ? trip.request.durationMinutes * 60
-        : trip.request.etaToPickupMinutes * 60;
-
-    _etaTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      if (_etaSeconds > 0) setState(() => _etaSeconds--);
-    });
+  /// Cuánto falta para llegar, MEDIDO con el GPS del conductor.
+  ///
+  /// Antes era un contador a ciegas: arrancaba en la estimación del servidor y
+  /// bajaba un segundo por segundo pasara lo que pasara, así que marcaba
+  /// «< 1 min» con el conductor parado a diez cuadras en un trancón, y seguía
+  /// bajando con el carro quieto en un semáforo. Un número que no mira la
+  /// realidad deja de leerse, y es el mismo defecto que ya se corrigió en la
+  /// app del pasajero.
+  ///
+  /// Se calcula con `etaEnVivoMin`, el MISMO archivo que usa el cliente (una
+  /// prueba comprueba que las dos copias no se separen): así las dos apps
+  /// dicen lo mismo del mismo viaje, que es lo que impide la discusión de
+  /// «mi app dice tres minutos y la tuya diez».
+  void _recalcularEta([ActiveTripEntity? conocido]) {
+    final trip = conocido ?? ref.read(activeTripProvider);
+    if (trip == null) return;
+    final destino = trip.isInProgress
+        ? trip.request.destination.latLng
+        : trip.request.origin.latLng;
+    final min = etaEnVivoMin(
+      // Sin fix real no hay desde dónde medir: `_origenRealDeRuta` es la misma
+      // guarda con la que no se traza la ruta, y aquí evita dar un ETA
+      // calculado desde una posición que nadie reportó.
+      conductor: _origenRealDeRuta ? _driverPos : null,
+      destino: destino,
+      aBordo: trip.isInProgress,
+      etaTotalMin: trip.request.durationMinutes,
+      distanciaTotalKm: trip.request.distanceKm,
+    );
+    if (min == _etaMin) return;
+    setState(() => _etaMin = min);
   }
 
   static double _lerp(double a, double b, double t) => a + (b - a) * t;
 
-  String get _etaLabel {
-    if (_etaSeconds <= 0) return '< 1 min';
-    final mins = _etaSeconds ~/ 60;
-    final secs = _etaSeconds % 60;
-    if (mins > 0) return '$mins min ${secs}s';
-    return '${secs}s';
-  }
+  /// Sin GPS se dice que falta la señal, no un número de relleno: un «0 min»
+  /// o un «--» se leen como que la app se rompió.
+  String get _etaLabel => _etaMin == null ? 'Buscando señal' : '$_etaMin min';
 
   // ── Trip state transition handler ────────────────────────────────────────
 
@@ -533,7 +556,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     // toPickup → waiting: zoom in on pickup marker
     if (prev.isToPickup && next.isWaiting) {
       _zoomTo(next.request.origin.latLng, zoom: 17);
-      _startEtaCountdown(next);
+      _recalcularEta(next);
     }
 
     // waiting → inProgress: reset position to origin, re-fit for full route
@@ -545,7 +568,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         _autoFollow = true;
       });
       _startSimulatedMovement(next);
-      _startEtaCountdown(next);
+      _recalcularEta(next);
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) _fitBoundsToRoute([_driverPos, next.request.destination.latLng]);
       });
@@ -1472,7 +1495,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
   void _handleCancelled() {
     _posSub?.cancel();
-    _etaTimer?.cancel();
+
     ref.read(activeTripProvider.notifier).state = null;
     if (mounted) context.go('/home');
   }

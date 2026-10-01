@@ -41,6 +41,7 @@ import { motivoParaNoConectar } from './driver-online-guard';
 import { sendPushToClient, sendPushToDriver } from './push.service';
 import { maskPhone } from './safe-contact.service';
 import { startMatchingCycle, buildTripRequestDTO } from './matching.service';
+import { stopsFromDb } from '../lib/trip-stops';
 import { notifyClientTripUpdateById } from './client.service';
 
 /** Cuántas reservas puede tener apartadas un conductor a la vez. */
@@ -107,6 +108,16 @@ export interface ReservaDTO {
    * dar las 6:00 se le avisaba de un viaje que no podía empezar.
    */
   oferta?: unknown;
+  /**
+   * Por dónde pasa, en orden. Solo los nombres: en el tablero se LEE, no se
+   * dibuja.
+   *
+   * Hace falta antes de apartar y no después: tres paradas cambian lo que dura
+   * la carrera, y un taxista que apartó creyendo que era un trayecto directo
+   * puede no poder cumplirla — que es exactamente lo que esta función existe
+   * para evitar.
+   */
+  stops?: string[];
 }
 
 const _CAMPOS = {
@@ -119,6 +130,7 @@ const _CAMPOS = {
   destAddress: true,
   estimatedFare: true,
   distanceKm: true,
+  stops: true,
 } as const;
 
 interface _Fila {
@@ -131,6 +143,7 @@ interface _Fila {
   destAddress: string;
   estimatedFare: number | null;
   distanceKm: number | null;
+  stops?: unknown;
 }
 
 function _aDTO(t: _Fila): ReservaDTO {
@@ -146,6 +159,10 @@ function _aDTO(t: _Fila): ReservaDTO {
     // SCHEDULED = todavía falta; cualquier otro estado significa que el barrido
     // ya la activó y el conductor tiene que estar yendo.
     enCurso: t.status !== TripStatus.SCHEDULED,
+    ...(() => {
+      const p = (stopsFromDb(t.stops) ?? []).map((x) => x.name).filter(Boolean);
+      return p.length > 0 ? { stops: p } : {};
+    })(),
   };
 }
 
@@ -654,6 +671,105 @@ export async function activarReservas(): Promise<number> {
     activadas++;
   }
   return activadas;
+}
+
+// ── Barrido 1.5: el recordatorio de media hora antes ─────────────────────────
+
+/**
+ * Con cuánta antelación se avisa de la carrera.
+ *
+ * Son treinta minutos y no quince (lo que tarda la activación) porque esto no
+ * es el aviso de salir, es el de ORGANIZARSE: el taxista que tiene la reserva
+ * de las 6:00 necesita saber a las 5:30 que no puede tomar otra carrera larga,
+ * y el pasajero necesita estar listo cuando el carro llegue a la puerta.
+ */
+export const RECORDATORIO_MIN = Number(
+  process.env['RESERVA_RECORDATORIO_MIN'] ?? 30,
+);
+
+/**
+ * Avisa a LOS DOS que la carrera es en media hora.
+ *
+ * POR QUÉ HACÍA FALTA. La reserva solo avisaba al activarse —quince minutos
+ * antes, y el push al conductor decía «empieza ahora»—, así que quien apartó
+ * una carrera el lunes para el viernes a las 6:00 no recibía nada hasta ese
+ * momento: si no abría la app, se le pasaba. Y al pasajero no se le avisaba de
+ * nada hasta que el conductor ya iba en camino.
+ *
+ * SE AVISA UNA VEZ (`reminderSentAt`). El barrido corre cada minuto; sin la
+ * marca, al pasajero y al conductor les sonaría el teléfono treinta veces.
+ *
+ * SOLO A LAS RESERVAS QUE YA TIENEN CONDUCTOR, a propósito. A las que están
+ * esperando a que alguien las aparte no se les manda nada: la búsqueda no ha
+ * empezado todavía (arranca quince minutos antes) y decirle al pasajero a
+ * media hora que «aún no hay conductor» lo alarmaría por algo que es
+ * perfectamente normal en ese momento.
+ *
+ * Devuelve cuántos recordatorios salieron.
+ */
+export async function recordarReservas(): Promise<number> {
+  const limite = new Date(Date.now() + RECORDATORIO_MIN * 60 * 1000);
+
+  const proximas = await prisma.trip.findMany({
+    where: {
+      status: TripStatus.SCHEDULED,
+      driverId: { not: null },
+      reminderSentAt: null,
+      // Entre ahora y la ventana: una reserva cuya hora ya pasó no se
+      // «recuerda», la resuelve el barrido de activación o el de incumplidas.
+      scheduledFor: { not: null, gt: new Date(), lte: limite },
+    },
+    select: { ..._CAMPOS, driverId: true, passengerId: true },
+    take: 100,
+  });
+
+  let avisados = 0;
+  for (const t of proximas) {
+    if (!t.driverId || !t.scheduledFor) continue;
+
+    // La marca se escribe PRIMERO y con guarda: con dos instancias de Render
+    // —o con un barrido que se solapa con el anterior— los dos avisarían.
+    const marca = await prisma.trip.updateMany({
+      where: { id: t.id, reminderSentAt: null },
+      data: { reminderSentAt: new Date() },
+    });
+    if (marca.count === 0) continue;
+
+    // `hour12: false` NO es opcional: sin él sale «10:14 p. m.», que es lo
+    // que escribió la primera versión y cazó el E2E. Toda la plataforma dice
+    // la hora en 24 h —las apps la construyen a mano así— y mezclar los dos
+    // formatos en el mismo aviso es el camino a confundir las 6 de la mañana
+    // con las 6 de la tarde en una reserva.
+    const hora = t.scheduledFor.toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'America/Bogota',
+    });
+
+    _sendToDriver?.(t.driverId, {
+      type: 'reserva_recordatorio',
+      tripId: t.id,
+      scheduledFor: t.scheduledFor.toISOString(),
+      originAddress: t.originAddress,
+      destAddress: t.destAddress,
+    });
+    void sendPushToDriver(t.driverId, {
+      title: `Tu carrera es a las ${hora}`,
+      body: `En ${RECORDATORIO_MIN} minutos: recogida en ${t.originAddress}.`,
+      data: { type: 'reserva_recordatorio', tripId: t.id },
+    });
+    if (t.passengerId) {
+      void sendPushToClient(t.passengerId, {
+        title: `Tu viaje es a las ${hora}`,
+        body: `Tu conductor te recoge en ${RECORDATORIO_MIN} minutos en `
+          + `${t.originAddress}.`,
+        data: { type: 'reserva_recordatorio', tripId: t.id },
+      });
+    }
+    avisados++;
+  }
+  return avisados;
 }
 
 // ── Barrido 2: la reserva que no se cumplió ──────────────────────────────────

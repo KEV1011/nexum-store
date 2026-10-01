@@ -38,7 +38,9 @@ import { kycProviderName, kycEnforced, estadoPiloto } from './services/kyc.servi
 import { pruneRateLimits } from './services/fraud.service';
 import { pruneSafetyState, sweepOfflineDrivers } from './services/safety-alerts.service';
 import { despacharProgramados } from './services/client.service';
-import { activarReservas, liberarReservasIncumplidas } from './services/reservas.service';
+import {
+  activarReservas, liberarReservasIncumplidas, recordarReservas,
+} from './services/reservas.service';
 import { purgeOldTrackPoints, pruneTrackState } from './services/track.service';
 import { rescatarDespacho, BARRIDO_MS } from './services/dispatch-recovery.service';
 import { warmMunicipalities } from './services/municipality.service';
@@ -346,6 +348,10 @@ server.listen(PORT, () => {
   // el viaje sale a buscar como uno normal, que es lo único honesto que se
   // puede hacer con un pasajero que se confió.
   setInterval(() => {
+    // El recordatorio va PRIMERO: a media hora de la carrera se avisa a los
+    // dos, que es lo que permite organizarse. La activación (quince minutos)
+    // es otra cosa y dice «sal ya».
+    void recordarReservas();
     void activarReservas();
     void liberarReservasIncumplidas();
   }, 60 * 1000).unref();
