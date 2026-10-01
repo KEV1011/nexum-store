@@ -46,6 +46,8 @@ import {
   diagnoseMatching,
   listClientsForKyc,
   listBusinessesForAdmin,
+  abrirFichaDeComercio,
+  entregarFichaAlDueno,
   setBusinessActive,
   listOperatorDocumentsForAdmin,
   reviewOperatorDocument,
@@ -562,6 +564,42 @@ router.get('/businesses', async (req: Request, res: Response): Promise<void> => 
   }
 });
 
+// POST /admin/businesses/listado { name, address, category, phone?, city? }
+//
+// Abre la ficha de un comercio con el que todavía no se ha hablado. Nace sin
+// reclamar: sus precios se enseñan como referencia y sus pedidos salen como
+// mandados de compra. Devuelve el enlace del portal, que es con el que se le
+// carga la carta desde una foto — y el mismo que se le entrega el día que
+// diga que sí.
+router.post('/businesses/listado', async (req: Request, res: Response): Promise<void> => {
+  const b = req.body as Record<string, unknown>;
+  try {
+    const ficha = await abrirFichaDeComercio({
+      name: String(b['name'] ?? ''),
+      address: String(b['address'] ?? ''),
+      category: String(b['category'] ?? ''),
+      ...(typeof b['phone'] === 'string' ? { phone: b['phone'] } : {}),
+      ...(typeof b['city'] === 'string' ? { city: b['city'] } : {}),
+    });
+    res.status(201).json({ success: true, data: ficha });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo abrir la ficha',
+    });
+  }
+});
+
+// POST /admin/businesses/:id/entregar — el dueño se queda con su ficha.
+router.post('/businesses/:id/entregar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    await entregarFichaAlDueno(req.params['id']!);
+    res.json({ success: true });
+  } catch {
+    res.status(404).json({ success: false, error: 'Negocio no encontrado' });
+  }
+});
+
 // POST /admin/businesses/:id/activate · /deactivate
 router.post('/businesses/:id/:action', async (req: Request, res: Response): Promise<void> => {
   const action = req.params['action'];
@@ -1011,6 +1049,31 @@ const PANEL_HTML = `<!DOCTYPE html>
       </form>
       <table><thead><tr><th>Negocio</th><th>Categoría</th><th>Dueño</th><th>Teléfono</th><th>Prod./Ped.</th><th>Vitrina</th><th>Estado</th><th>Registrado</th><th>Acciones</th></tr></thead>
       <tbody id="businesses-body"><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody></table>
+
+      <div style="margin-top:22px;padding:16px;background:#fafafe;border:1px solid #e4e4ef;border-radius:12px">
+        <h3 style="margin:0 0 6px;font-size:.95rem">Abrir la ficha de un comercio que todavía no es cliente</h3>
+        <p style="font-size:.78rem;color:#64748b;margin:0 0 12px">
+          Para los locales con los que aún no se ha hablado. Su carta se carga desde una FOTO en
+          el portal que sale aquí abajo, sus precios se enseñan al cliente como REFERENCIA y sus
+          pedidos no van a ningún portal: salen como mandados de compra y va un repartidor de
+          ZIPA. El día que el dueño diga que sí, «Entregar al dueño» convierte la ficha en suya
+          con el catálogo ya cargado.
+        </p>
+        <form id="ficha-form" class="inline" onsubmit="abrirFicha(event)">
+          <div><label>Nombre del local</label><input id="ficha-nombre" placeholder="Ej: Asadero El Buen Sabor" required /></div>
+          <div><label>Dirección</label><input id="ficha-direccion" placeholder="Calle 5 # 3-40" required /></div>
+          <div><label>Categoría</label><select id="ficha-categoria">
+            <option value="restaurant">Restaurante</option>
+            <option value="supermarket">Supermercado</option>
+            <option value="pharmacy">Droguería</option>
+            <option value="store">Tienda</option>
+            <option value="other">Comercio</option>
+          </select></div>
+          <div><label>Teléfono (opcional)</label><input id="ficha-telefono" placeholder="3001112233" /></div>
+          <div><button type="submit" style="width:auto">Abrir ficha</button></div>
+        </form>
+        <div id="ficha-resultado" style="margin-top:10px;font-size:.82rem"></div>
+      </div>
     </section>
 
     <section id="tab-operators" style="display:none">
@@ -1757,18 +1820,59 @@ function loadBusinesses() {
   api('/admin/businesses' + (q ? '?q=' + encodeURIComponent(q) : '')).then((rows) => {
     const tb = document.getElementById('businesses-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">' + (q ? 'Ningún negocio coincide.' : 'Aún no hay negocios registrados.') + '</td></tr>'; return; }
-    tb.innerHTML = rows.map((b) => '<tr><td><strong>' + esc(b.name) + '</strong><div style="font-size:.72rem;color:#777">' + esc(b.address) + '</div></td><td>' +
+    tb.innerHTML = rows.map((b) => '<tr><td><strong>' + esc(b.name) + '</strong>' +
+      (b.claimed === false ? ' <span class="badge badge-PENDING">Sin reclamar</span>' : '') +
+      '<div style="font-size:.72rem;color:#777">' + esc(b.address) + '</div></td><td>' +
       esc(BIZ_CATEGORY[b.category] || b.category) + '</td><td>' + esc(b.ownerName || '—') + '</td><td>' + esc(b.phone || '—') +
       '</td><td>' + b.products + ' / ' + b.orders +
       '</td><td>' + (b.acceptingOrders ? '<span class="badge badge-ok">Abierta</span>' : '<span class="badge badge-PENDING">Pausada</span>') +
       '</td><td>' + (b.isOpen ? '<span class="badge badge-ok">Activo</span>' : '<span class="badge badge-REJECTED">Inactivo</span>') +
       '</td><td>' + when(b.createdAt) + '</td><td>' +
       '<a class="btn-sm" style="background:#e0f2f1;color:#00695c;text-decoration:none" href="' + PORTAL_URL + esc(b.portalPath) + '" target="_blank" rel="noopener">Abrir portal</a> ' +
+      (b.claimed === false
+        ? '<button class="btn-sm btn-approve" onclick="entregarFicha(\\'' + b.id + '\\', \\'' + esc(b.name) + '\\')">Entregar al dueño</button> '
+        : '') +
       (b.isOpen
         ? '<button class="btn-sm btn-reject" onclick="setBusiness(\\'' + b.id + '\\', \\'deactivate\\')">Desactivar</button>'
         : '<button class="btn-sm btn-approve" onclick="setBusiness(\\'' + b.id + '\\', \\'activate\\')">Activar</button>') +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
+}
+
+// Abre la ficha de un comercio con el que todavía no se ha hablado. Lo que
+// hace falta de verdad es el ENLACE que devuelve: con él se le carga la carta
+// desde una foto, y es el mismo que se le entrega el día que diga que sí.
+function abrirFicha(ev) {
+  ev.preventDefault();
+  const body = {
+    name: (document.getElementById('ficha-nombre') || {}).value || '',
+    address: (document.getElementById('ficha-direccion') || {}).value || '',
+    category: (document.getElementById('ficha-categoria') || {}).value || '',
+    phone: (document.getElementById('ficha-telefono') || {}).value || '',
+  };
+  api('/admin/businesses/listado', { method: 'POST', body: JSON.stringify(body) })
+    .then((f) => {
+      showMsg('Ficha abierta. Carga su carta desde el portal.', false);
+      const caja = document.getElementById('ficha-resultado');
+      if (caja) {
+        caja.innerHTML = 'Portal del comercio: <a href="' + PORTAL_URL + esc(f.portalPath) +
+          '/catalogo" target="_blank" rel="noopener">' + esc(f.portalPath) + '/catalogo</a>';
+      }
+      const form = document.getElementById('ficha-form');
+      if (form && form.reset) form.reset();
+      loadBusinesses();
+    })
+    .catch((e) => showMsg(e.message, true));
+}
+
+function entregarFicha(id, nombre) {
+  // Se pregunta porque es irreversible desde el panel: a partir de aquí sus
+  // pedidos dejan de salir como mandados de compra y van a su portal. Si el
+  // dueño todavía no lo está atendiendo, los pedidos se quedarían parados.
+  if (!confirm('¿' + nombre + ' ya está atendiendo su portal? Sus pedidos dejarán de salir como mandados de compra.')) return;
+  api('/admin/businesses/' + id + '/entregar', { method: 'POST' })
+    .then(() => { showMsg('Ficha entregada al dueño.', false); loadBusinesses(); })
+    .catch((e) => showMsg(e.message, true));
 }
 
 function setBusiness(id, action) {

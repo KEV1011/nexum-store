@@ -360,6 +360,22 @@ export async function placeClientOrder(
         : 'El negocio no está recibiendo pedidos en este momento.',
     );
   }
+  // Una ficha que publicamos nosotros desde una foto de su carta NO puede
+  // recibir un pedido normal: no hay nadie al otro lado del portal para
+  // aceptarlo, así que se quedaría en PENDING hasta caducar y el cliente
+  // esperando una comida que nadie empezó. Su camino es el mandado de compra
+  // (`comprarEnComercio`), y el mensaje lo dice en vez de dejarlo atascado.
+  {
+    const { motivoParaNoPedirDirecto } = await import('../lib/comercio-no-reclamado');
+    const sinReclamar = await prisma.business.findUnique({
+      where: { id: dto.businessId },
+      select: { name: true, claimed: true },
+    });
+    const motivo = sinReclamar
+      ? motivoParaNoPedirDirecto(sinReclamar)
+      : null;
+    if (motivo) throw new Error(motivo);
+  }
   // ── ¿Este pedido cruza de ciudad, y cuánto cuesta moverlo? ─────────────────
   //
   // La MISMA función que cotiza la pantalla del cliente. Antes esto era una

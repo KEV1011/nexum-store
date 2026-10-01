@@ -659,6 +659,16 @@ export interface BusinessPublicDTO {
   isOpen: boolean;
   /** Por qué está cerrada, si lo está: «Abre mañana a las 08:00», «Pausado». */
   cerradoMotivo?: string;
+  /**
+   * Si el local es nuestro cliente (`true`) o si la ficha la abrimos nosotros
+   * desde una foto de su carta (`false`).
+   *
+   * Es lo que cambia TODA la pantalla: con `false`, los precios se enseñan
+   * como REFERENCIA y el botón no dice «pedir» sino que vamos a comprarlo. Va
+   * ausente en los DTO que no lo consultan, y la app lo trata como `true`:
+   * una app vieja sigue viendo exactamente lo de hoy.
+   */
+  claimed?: boolean;
   imageUrl?: string;
   openingHours?: string;
   /** Horario estructurado, si el negocio lo declaró. */
@@ -1071,6 +1081,14 @@ export interface ClientErrandDTO extends DriverCardFields {
   /** Prueba de custodia del mandadero (recogida y entrega). */
   pickupPhotoUrl?: string;
   deliveryPhotoUrl?: string;
+  /**
+   * Minutos que PROMETIÓ el repartidor. Ausente = todavía no dijo nada, y
+   * entonces la pantalla no escribe ningún tiempo: inventarlo haría bajar al
+   * cliente a la portería a esperar algo que nadie prometió.
+   */
+  etaMinutes?: number;
+  /** Cuándo lo prometió, para saber si la promesa ya está vieja. */
+  etaSetAt?: string;
 }
 
 // Sent to driver when a mandado is dispatched
@@ -1083,6 +1101,20 @@ export interface ErrandRequestDTO {
   serviceFee: number;
   purchaseBudget?: number;
   notes?: string;
+  /**
+   * Dónde está el local al que hay que ir.
+   *
+   * El dato SIEMPRE existió en la base —`Errand.pickupLat/Lng`, que se
+   * guardan justamente para poder reanudar la búsqueda y pintar el mapa— y
+   * este DTO lo tiraba: el conductor recibía la oferta con el mapa apuntando
+   * al centro del pueblo. Con el comercio no reclamado eso pasa de molesto a
+   * bloqueante, porque TIENE que ir al local a comprar.
+   *
+   * Ausentes cuando el mandado se pidió sin punto (lo escribió a mano): la
+   * app cae a su respaldo en vez de dibujar un sitio inventado.
+   */
+  pickupLat?: number;
+  pickupLng?: number;
 }
 
 // ─── Intercity Bookings ───────────────────────────────────────────────────────

@@ -97,6 +97,7 @@ class BusinessEntity {
     this.imageUrl,
     this.openingHours,
     this.cerradoMotivo,
+    this.claimed = true,
     this.shipsTo = const [],
   });
 
@@ -152,6 +153,15 @@ class BusinessEntity {
   /// «Pausado temporalmente». Lo decide el servidor con el horario y la pausa
   /// del local; aquí solo se pinta.
   final String? cerradoMotivo;
+
+  /// Si el local es nuestro cliente, o si la ficha la abrimos nosotros desde
+  /// una foto de su carta.
+  ///
+  /// Cambia TODA la pantalla: con `false` los precios son REFERENCIA —salieron
+  /// de su menú, no de él— y el pedido no se le manda a ningún portal, va un
+  /// repartidor de ZIPA a comprarlo. Por defecto `true`: un backend viejo que
+  /// no mande el campo sigue comportándose como hasta hoy.
+  final bool claimed;
 
   /// A qué otras ciudades despacha. Vacía = solo entrega en la suya.
   final List<DestinoEnvio> shipsTo;

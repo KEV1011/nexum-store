@@ -52,6 +52,9 @@ import {
 } from '../services/ride-negotiation.service';
 import { getDriverPublicProfile } from '../services/driver-profile.service';
 import { recogerEnTaquilla } from '../services/encomiendas.service';
+import {
+  comprarEnComercio, CompraError,
+} from '../services/comercio-no-reclamado.service';
 import { getMunicipality } from '../services/municipality.service';
 import {
   searchPooledTrips,
@@ -788,6 +791,54 @@ router.put('/fcm-token', clientAuthMiddleware, async (req, res) => {
   await registerClientFcmToken(req.clientId!, token);
   res.json({ success: true, data: { registered: true } });
 });
+
+// POST /client/comercios/:id/comprar — pedirle a un comercio que aún no es
+// cliente nuestro.
+//
+// Su ficha la publicamos nosotros desde una foto de su carta, así que no hay
+// portal al otro lado: el pedido se convierte en un MANDADO de compra y va un
+// repartidor. El cliente autoriza un presupuesto y se le cobra lo que diga el
+// recibo. Ver `lib/comercio-no-reclamado.ts`.
+router.post(
+  '/comercios/:id/comprar',
+  clientAuthMiddleware,
+  clientRequestRateLimit,
+  async (req, res) => {
+    const body = req.body as {
+      items?: unknown; dropoffAddress?: unknown;
+      dropoffLat?: unknown; dropoffLng?: unknown; notes?: unknown;
+    };
+    try {
+      const r = await comprarEnComercio(req.clientId!, {
+        businessId: req.params['id']!,
+        items: Array.isArray(body.items) ? (body.items as never) : [],
+        dropoffAddress: String(body.dropoffAddress ?? ''),
+        ...(typeof body.dropoffLat === 'number' ? { dropoffLat: body.dropoffLat } : {}),
+        ...(typeof body.dropoffLng === 'number' ? { dropoffLng: body.dropoffLng } : {}),
+        ...(typeof body.notes === 'string' ? { notes: body.notes } : {}),
+      });
+      res.status(201).json({
+        success: true,
+        data: {
+          ...r.errand,
+          referencial: r.referencial,
+          presupuesto: r.presupuesto,
+        },
+      });
+
+      // El despacho se ancla al LOCAL, no al centro del pueblo: el repartidor
+      // que tiene que ir a comprar ahí es el que esté cerca de ahí.
+      const lat = r.pickup?.lat ?? INTERCITY_CITY_COORDS.pamplona.lat;
+      const lng = r.pickup?.lng ?? INTERCITY_CITY_COORDS.pamplona.lng;
+      void startErrandMatchingCycle(r.errand.id, lat, lng);
+    } catch (err) {
+      res.status(err instanceof CompraError ? 400 : 500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'No pudimos crear la compra.',
+      });
+    }
+  },
+);
 
 // ─── Errands (Mandados) ───────────────────────────────────────────────────────
 

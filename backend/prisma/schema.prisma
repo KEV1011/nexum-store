@@ -450,6 +450,19 @@ model Business {
   imageUrl  String?
   token     String   @unique @default(cuid())
 
+  /// Si el local es nuestro cliente o si la ficha la publicamos nosotros.
+  ///
+  /// `true` (todos los que ya existen) = se registró él, su catálogo lo
+  /// mantiene él y sus precios son firmes.
+  ///
+  /// `false` = ficha abierta desde una FOTO de su carta, sin haber hablado
+  /// con él todavía. Entonces **sus precios son referenciales** y el pedido
+  /// NO se le manda —no hay nadie al otro lado del portal—: se convierte en
+  /// un mandado de compra y va un repartidor. Ver `lib/comercio-no-reclamado`.
+  claimed   Boolean  @default(true)
+  /// Cuándo pidió el dueño quedarse con la ficha, y quién lo atendió.
+  claimedAt DateTime?
+
   /// Código PÚBLICO de la carta: lo que va en el QR de la mesa.
   ///
   /// NO es `token`. `token` es la llave del portal del dueño (catálogo,
@@ -1110,6 +1123,14 @@ model Errand {
   serviceFee       Float          @default(6000)
   purchaseBudget   Float?
   actualCost       Float?
+  /// Minutos que PROMETIÓ el repartidor, escritos por él.
+  ///
+  /// No es un cálculo: en una compra a un local que no está conectado no hay
+  /// cocina que declare un tiempo ni ruta que medir hasta que empiece, y el
+  /// único que sabe que hay quince personas en fila es quien está ahí. Ver
+  /// `lib/eta-declarada.ts`. Null = todavía no ha dicho nada.
+  etaMinutes       Int?
+  etaSetAt         DateTime?
   notes            String?
   status           ErrandStatus   @default(SEARCHING)
   proofPhotoUrl    String?

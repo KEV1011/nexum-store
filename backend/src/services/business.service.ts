@@ -62,6 +62,20 @@ function categoriaDesdeBD(valor: string): BusinessCategory {
   return CATEGORY_FROM_PRISMA[valor as PrismaBusinessCategory] ?? 'other';
 }
 
+/**
+ * La categoría de BD a partir de lo que se escribe en un formulario.
+ *
+ * Devuelve `null` en vez de caer a `OTHER`: cuando el admin se equivoca
+ * escribiendo la categoría, meterla en el cajón sin avisar deja un comercio
+ * mal clasificado que nadie va a revisar. Lo correcto es decírselo.
+ */
+export function categoriaDesdeEspanol(
+  valor: string | undefined,
+): PrismaBusinessCategory | null {
+  const v = (valor ?? '').trim().toLowerCase();
+  return CATEGORY_TO_PRISMA[v as BusinessCategory] ?? null;
+}
+
 const DELIVERY_STATUS_FROM_PRISMA: Record<string, string> = {
   CONFIRMED: 'pending',
   AT_PICKUP: 'at_pickup',
@@ -368,6 +382,7 @@ function _estadoVitrina(b: {
   pauseReason: string | null; openingHours: string | null;
   promoMinAmount: number | null; promoDiscount: number | null;
   promoFrom: Date | null; promoUntil: Date | null;
+  claimed?: boolean;
 }) {
   const estado = tiendaRecibiendo(b);
   const franjas = _franjas(b.hours);
@@ -375,6 +390,12 @@ function _estadoVitrina(b: {
   return {
     isOpen: estado.abierta,
     cerradoMotivo: estado.abierta ? undefined : (b.pauseReason || estado.motivo || undefined),
+    // Si el local es nuestro cliente o si la ficha la abrimos nosotros desde
+    // una foto de su carta. Sale de AQUÍ, el mismo sitio del que sale si está
+    // abierta, para que la lista y el detalle no puedan contradecirse: uno
+    // diciendo «precios de referencia» y el otro cobrando como si fueran
+    // firmes es exactamente la queja que esto quiere evitar.
+    claimed: b.claimed ?? true,
     // El horario en texto sale del estructurado si lo hay; si no, del campo
     // libre de siempre, que es lo único que tienen los negocios ya registrados.
     openingHours: horarioEnTexto(franjas) || b.openingHours || undefined,

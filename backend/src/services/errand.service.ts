@@ -9,6 +9,9 @@ import { DriverStatus, ErrandStatus as ErrandStatusDb } from '@prisma/client';
 import { fichaPorConductor, type DriverCardFields } from '../lib/driver-card';
 import { ERRAND_SERVICE_FEE } from '../config/constants';
 import { prisma } from '../lib/prisma';
+import {
+  ETA_MAXIMO_MIN, ETA_MINIMO_MIN, saneaEtaDeclarada, textoEtaDeclarada,
+} from '../lib/eta-declarada';
 import { nuevaReferencia } from '../lib/referencia';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { tasaComision } from './comision.service';
@@ -65,6 +68,9 @@ type DbErrand = {
   createdAt: Date; acceptedAt: Date | null; deliveredAt: Date | null;
   userId: string;
   proofPhotoUrl: string | null; deliveryPhotoUrl: string | null;
+  // Opcionales porque no todas las consultas los piden en su `select`: donde
+  // no vengan, el DTO simplemente no los lleva.
+  etaMinutes?: number | null; etaSetAt?: Date | null;
 };
 
 function _toDTO(e: DbErrand, ficha: DriverCardFields = {}): ClientErrandDTO {
@@ -94,6 +100,8 @@ function _toDTO(e: DbErrand, ficha: DriverCardFields = {}): ClientErrandDTO {
     // Prueba de custodia subida por el mandadero (recogida y entrega).
     pickupPhotoUrl: e.proofPhotoUrl ?? undefined,
     deliveryPhotoUrl: e.deliveryPhotoUrl ?? undefined,
+    etaMinutes: e.etaMinutes ?? undefined,
+    etaSetAt: e.etaSetAt?.toISOString(),
   };
 }
 
@@ -270,6 +278,57 @@ export async function updateErrandStatus(
   return dto;
 }
 
+/**
+ * El repartidor dice en cuánto entrega.
+ *
+ * POR QUÉ ES UNA RUTA Y NO UN CÁLCULO. En una compra a un comercio que no está
+ * conectado no hay cocina que declare un tiempo de preparación ni ruta que
+ * medir hasta que la compra empiece: el cliente no tiene NINGUNA forma de
+ * saber cuánto falta, y el único que lo sabe es quien está en el mostrador
+ * viendo la fila. Se le pregunta a él.
+ *
+ * Se puede corregir —la fila se mueve— y cada corrección vuelve a avisar: un
+ * tiempo que cambió y no se dijo es peor que no haber prometido nada.
+ */
+export async function declararEtaDeMandado(
+  driverId: string,
+  errandId: string,
+  minutos: unknown,
+): Promise<{ ok: true; minutos: number } | { ok: false; motivo: string }> {
+  const eta = saneaEtaDeclarada(minutos);
+  if (eta === null) {
+    return {
+      ok: false,
+      motivo: `Di un tiempo entre ${ETA_MINIMO_MIN} y ${ETA_MAXIMO_MIN} minutos.`,
+    };
+  }
+
+  // Pertenencia y estado en la MISMA escritura: ni el mandado de otro ni uno
+  // ya entregado admiten una promesa nueva.
+  const avance = await prisma.errand.updateMany({
+    where: {
+      id: errandId,
+      driverId,
+      status: guardaNoTerminal('errand') as { notIn: ErrandStatusDb[] },
+    },
+    data: { etaMinutes: eta, etaSetAt: new Date() },
+  });
+  if (avance.count === 0) {
+    return { ok: false, motivo: 'Este mandado ya no está activo o no es tuyo.' };
+  }
+
+  const e = await prisma.errand.findUnique({ where: { id: errandId } });
+  if (e) {
+    _notify(errandId, _toDTO(e, await fichaPorConductor(e.driverId)));
+    void sendPushToClient(e.userId, {
+      title: 'Tu mandado va en camino',
+      body: `${e.driverName ?? 'Tu repartidor'} lo entrega ${textoEtaDeclarada(eta)}.`,
+      data: { type: 'errand_eta', errandId },
+    });
+  }
+  return { ok: true, minutos: eta };
+}
+
 export async function cancelClientErrand(clientId: string, errandId: string): Promise<boolean> {
   cancelSearchRetry(`errand:${errandId}`);
   const errand = await prisma.errand.findUnique({ where: { id: errandId } });
@@ -396,7 +455,12 @@ export async function getClientErrandSnapshot(errandId: string): Promise<ClientE
   return errand ? _toDTO(errand, await fichaPorConductor(errand.driverId)) : null;
 }
 
-export function toErrandRequestDTO(errand: { id: string; category: string; description: string; pickupAddress: string; dropoffAddress: string; serviceFee: number; purchaseBudget: number | null; notes: string | null }): ErrandRequestDTO {
+export function toErrandRequestDTO(errand: {
+  id: string; category: string; description: string; pickupAddress: string;
+  dropoffAddress: string; serviceFee: number; purchaseBudget: number | null;
+  notes: string | null;
+  pickupLat?: number | null; pickupLng?: number | null;
+}): ErrandRequestDTO {
   return {
     id: errand.id,
     category: (CATEGORY_FROM_PRISMA[errand.category] ?? 'other') as ErrandCategory,
@@ -406,6 +470,11 @@ export function toErrandRequestDTO(errand: { id: string; category: string; descr
     serviceFee: errand.serviceFee,
     purchaseBudget: errand.purchaseBudget ?? undefined,
     notes: errand.notes ?? undefined,
+    // El punto del local, que hasta ahora se quedaba en la base: sin él la
+    // oferta llegaba con el mapa en el centro del pueblo y el repartidor no
+    // sabía a dónde ir a comprar.
+    ...(errand.pickupLat != null ? { pickupLat: errand.pickupLat } : {}),
+    ...(errand.pickupLng != null ? { pickupLng: errand.pickupLng } : {}),
   };
 }
 

@@ -31,6 +31,8 @@ import 'package:nexum_client/features/cart/presentation/screens/'
     'cart_screen.dart';
 import 'package:nexum_client/features/cart/presentation/screens/'
     'checkout_screen.dart';
+import 'package:nexum_client/features/cart/presentation/screens/'
+    'compra_comercio_screen.dart';
 import 'package:nexum_client/features/errands/domain/entities/'
     'errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/screens/'
@@ -88,6 +90,9 @@ abstract final class AppRoutes {
   static const String home = '/home';
   static const String cart = '/cart';
   static const String checkout = '/checkout';
+  /// Comprar en un comercio que todavía no es cliente: no es un checkout, es
+  /// un mandado de compra. Ver `CompraComercioScreen`.
+  static const String compraComercio = '/comprar-en-comercio';
   static const String addresses = '/addresses';
 
   // Rutas paramétricas
@@ -221,6 +226,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.slideLeft(
           pageKey: state.pageKey,
           child: const CheckoutScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.compraComercio,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const CompraComercioScreen(),
         ),
       ),
       GoRoute(

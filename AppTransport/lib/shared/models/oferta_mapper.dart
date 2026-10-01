@@ -161,9 +161,15 @@ TripRequestEntity? ofertaDeMandado(Map<String, dynamic> e) {
         totalTrips: 0,
         photoUrl: '',
       ),
+      // El punto REAL del local. El servidor lo guarda desde que se crea el
+      // mandado y la oferta lo tiraba: el repartidor veía el mapa en el
+      // centro del pueblo y no sabía a dónde ir a comprar. Sin punto —el
+      // cliente escribió la dirección a mano— se cae al centro, que sigue
+      // siendo mejor que no dibujar nada porque la dirección va escrita al
+      // lado.
       origin: LocationModel(
-        latitude: pamplonaCenterLat,
-        longitude: pamplonaCenterLng,
+        latitude: (e['pickupLat'] as num?)?.toDouble() ?? pamplonaCenterLat,
+        longitude: (e['pickupLng'] as num?)?.toDouble() ?? pamplonaCenterLng,
         address: e['pickupAddress'] as String? ?? '',
       ),
       destination: LocationModel(

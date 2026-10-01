@@ -31,6 +31,7 @@ import 'package:nexum_driver/features/active_trip/presentation/widgets/waiting_p
 import 'package:nexum_driver/features/active_trip/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/eta_mandado.dart';
 import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
@@ -1138,6 +1139,31 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                 const SizedBox(width: AppConstants.spacingS),
               ],
 
+              // «Entrego en X minutos», solo en los mandados.
+              //
+              // En una compra a un local que no está conectado no hay cocina
+              // que declare un tiempo ni ruta que medir hasta que la compra
+              // empiece: el cliente no tenía NINGUNA forma de saber cuánto
+              // falta. El único que lo sabe es quien está viendo la fila.
+              if (trip.request.isErrand) ...[
+                Material(
+                  color: AppColors.warning,
+                  elevation: 4,
+                  shadowColor: AppColors.shadow,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    onTap: () => _preguntarEta(trip),
+                    customBorder: const CircleBorder(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(Icons.schedule_rounded,
+                          size: 24, color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppConstants.spacingS),
+              ],
+
               // SOS — emergency, accessible throughout the active trip.
               Material(
                 color: AppColors.error,
@@ -1158,6 +1184,65 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         ),
       ),
     );
+  }
+
+  /// Le pregunta al repartidor en cuánto entrega y se lo manda al cliente.
+  ///
+  /// Opciones fijas y no un teclado: va conduciendo o está en una fila, y
+  /// escribir un número con el dedo en la calle es lo que hace que nadie lo
+  /// use. Se puede volver a tocar cuantas veces haga falta — la fila se
+  /// mueve, y un tiempo que cambió y no se dijo es peor que no haber
+  /// prometido nada.
+  Future<void> _preguntarEta(ActiveTripEntity trip) async {
+    final minutos = await showModalBottomSheet<int>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 18, 20, 4),
+              child: Text(
+                '¿En cuánto entregas?',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                'Se lo avisamos al cliente. Si cambia, vuelve a tocarlo.',
+                style: TextStyle(fontSize: 13),
+              ),
+            ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final m in [10, 15, 20, 30, 45, 60, 90])
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: ActionChip(
+                      label: Text('$m min'),
+                      onPressed: () => Navigator.of(ctx).pop(m),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+          ],
+        ),
+      ),
+    );
+    if (minutos == null || !mounted) return;
+
+    final motivo = await enviarEtaDeMandado(trip.request.id, minutos);
+    if (!mounted) return;
+    if (motivo != null) {
+      AppSnackbar.showError(context, motivo);
+    } else {
+      AppSnackbar.showSuccess(context, 'Le avisamos: entregas en ~$minutos min.');
+    }
   }
 
   String _statusLabel(ActiveTripEntity trip) {

@@ -110,6 +110,20 @@ class _DetailViewState extends ConsumerState<_DetailView> {
             SliverToBoxAdapter(
               child: _StatusBanner(business: business),
             ),
+          // Los precios de esta carta salieron de una FOTO de su menú, no del
+          // local. Decirlo ARRIBA y no en la caja: el cliente mira el precio
+          // aquí, y enterarse al final de que no era firme es peor que no
+          // haberlo sabido nunca.
+          if (!business.claimed)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.spacingM, AppConstants.spacingM,
+                  AppConstants.spacingM, 0,
+                ),
+                child: _PreciosDeReferencia(negocio: business.name),
+              ),
+            ),
           // Despacha a otras ciudades. Va ARRIBA del catálogo porque cambia a
           // qué distancia se puede comprar aquí, y quien no lo sabe ni entra:
           // hasta ahora el dato existía en la base y no lo veía nadie.
@@ -605,6 +619,66 @@ class _CartBar extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// El local todavía no es cliente de ZIPA: su carta la publicamos nosotros.
+///
+/// Lo que esto tiene que dejar claro es UNA cosa —el precio puede no ser el
+/// de hoy— porque es la queja más cara que existe: «pagué 18.000 y en el
+/// local son 22.000». Y la paga la plataforma, no el restaurante, que ni sabe
+/// que está aquí.
+class _PreciosDeReferencia extends StatelessWidget {
+  const _PreciosDeReferencia({required this.negocio});
+
+  final String negocio;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded,
+              color: AppColors.warning, size: 19),
+          const SizedBox(width: AppConstants.spacingS),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Precios de referencia',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: context.textPrimaryColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Esta carta la tomamos del menú de $negocio. Un repartidor '
+                  'de ZIPA va, lo compra y te lo lleva: se te cobra lo que '
+                  'diga el recibo.',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: context.textSecondaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

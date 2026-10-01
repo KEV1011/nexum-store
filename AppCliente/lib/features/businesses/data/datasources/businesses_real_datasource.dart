@@ -36,6 +36,7 @@ class BusinessesRealDataSource {
       imageUrl: j['imageUrl'] as String?,
       openingHours: j['openingHours'] as String?,
       cerradoMotivo: j['cerradoMotivo'] as String?,
+      claimed: j['claimed'] as bool? ?? true,
       shipsTo: ((j['shipsTo'] as List?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(DestinoEnvio.fromJson)
