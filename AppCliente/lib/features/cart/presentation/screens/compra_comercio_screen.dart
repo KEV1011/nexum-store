@@ -72,7 +72,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
     }
     setState(() => _enviando = true);
     try {
-      final r = await CompraApi.create().comprar(
+      final r = await ref.read(compraApiProvider).comprar(
         businessId: negocio.id,
         items: [
           for (final i in cart.items)

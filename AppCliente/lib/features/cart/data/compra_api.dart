@@ -7,6 +7,7 @@
 // cambiar.
 
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 
 class CompraError implements Exception {
@@ -36,10 +37,9 @@ class CompraCreada {
 }
 
 class CompraApi {
-  CompraApi(this._dio);
-  final Dio _dio;
+  const CompraApi(this._dio);
 
-  factory CompraApi.create() => CompraApi(DioClient().dio);
+  final Dio _dio;
 
   Future<CompraCreada> comprar({
     required String businessId,
@@ -81,3 +81,10 @@ class CompraApi {
     }
   }
 }
+
+/// El mismo `Dio` que el resto de la app —con su interceptor de sesión—, igual
+/// que `envioApiProvider`. La app cliente no tiene un singleton tipo
+/// `DioClient` (eso es del conductor): aquí el cliente HTTP viene por Riverpod.
+final compraApiProvider = Provider<CompraApi>(
+  (ref) => CompraApi(ref.watch(apiClientProvider)),
+);
