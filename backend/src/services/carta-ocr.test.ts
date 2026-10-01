@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   leerTextoDeCarta,
   modoCartaOcr,
+  olvidarRechazoCarta,
   textoDeRespuestaVision,
   type Traer,
 } from './carta-ocr.service';
@@ -147,12 +148,17 @@ describe('la llamada a Vision', () => {
 
   it('un 403 no se le echa en cara al dueño ni le nombra la configuración', async () => {
     // El fallo de estreno más probable: la llave existe pero su proyecto no
-    // tiene habilitada Cloud Vision API. Lo técnico va al log del servidor.
+    // tiene habilitada Cloud Vision API. Lo técnico va al log del servidor y
+    // a /health; al dueño se le dice que no es culpa de su foto.
     const { traer } = traerQueDevuelve({}, { ok: false, status: 403, texto: 'PERMISSION_DENIED' });
     const r = await leerTextoDeCarta(FOTO, traer);
     expect(r.disponible).toBe(false);
     expect(r.motivo).not.toMatch(/API|KEY|403|Vision/i);
+    // Y tampoco le manda a esperar: un 403 no se arregla solo, y repetir la
+    // foto era exactamente lo que estaba haciendo quien lo reportó.
+    expect(r.motivo).not.toMatch(/en un rato/);
     expect(console.error).toHaveBeenCalled();
+    olvidarRechazoCarta();
   });
 
   it('si la red falla, no se lanza: se contesta que no se pudo', async () => {
@@ -191,6 +197,40 @@ describe('el interruptor y lo que publica /health', () => {
     process.env['NODE_ENV'] = 'production';
     const r = await leerTextoDeCarta(FOTO);
     expect(r.disponible).toBe(false);
+  });
+
+  // ── El fallo que NO se arregla esperando ────────────────────────────────
+  //
+  // El dueño veía «inténtalo de nuevo en un rato» con una llave sin permisos,
+  // así que repetía la foto indefinidamente. El 403 no se arregla solo, y
+  // quien tiene que enterarse es quien administra la cuenta de Google.
+  it('el rechazo permanente SÍ se ve en /health, que es donde se actúa', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    olvidarRechazoCarta();
+    process.env['CARTA_OCR_PROVIDER'] = 'google-vision';
+    process.env['CARTA_OCR_API_KEY'] = 'k';
+    expect(modoCartaOcr()).toBe('google-vision');
+    textoDeRespuestaVision({
+      error: { status: 'PERMISSION_DENIED', message: 'not enabled' },
+    });
+    // Configurada y RECHAZANDO es un tercer estado. Sin él el diagnóstico
+    // dice «google-vision» mientras ningún dueño consigue leer una carta.
+    expect(modoCartaOcr()).toBe('google-vision-rechazada');
+    olvidarRechazoCarta();
+    vi.restoreAllMocks();
+  });
+
+  it('un 500 de Vision SÍ invita a reintentar: ese sí pasa solo', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    olvidarRechazoCarta();
+    const r = textoDeRespuestaVision({ error: { status: 'INTERNAL', message: 'boom' } });
+    expect(r.motivo).toContain('en un rato');
+    // Y no ensucia el diagnóstico: un fallo pasajero no puede dejar /health
+    // diciendo «rechazada» para siempre.
+    process.env['CARTA_OCR_PROVIDER'] = 'google-vision';
+    process.env['CARTA_OCR_API_KEY'] = 'k';
+    expect(modoCartaOcr()).toBe('google-vision');
+    vi.restoreAllMocks();
   });
 
   it('azure-read está admitido pero no finge funcionar', async () => {

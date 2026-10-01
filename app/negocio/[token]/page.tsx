@@ -58,6 +58,10 @@ interface ClientOrder {
   subtotal: number
   deliveryFee: number
   total: number
+  /** «Nequi», «Llave Bre-B», «Efectivo»… lo redacta el servidor. */
+  paymentLabel?: string
+  /** Si el dinero lo recibe el repartidor en la puerta o ya está cobrado. */
+  cobraElRepartidor?: boolean
   etaMinutes: number
   items: Array<{
     productName: string; quantity: number; unitPrice: number; subtotal: number
@@ -311,7 +315,21 @@ function ClientOrderCard({ order, token, onChanged }: {
           )}
           {enMesa && <span className="text-slate-400">· Se paga en el local</span>}
         </div>
-        <p className="text-sm font-bold text-slate-800">{formatCOP(order.total)}</p>
+        <div className="text-right">
+          <p className="text-sm font-bold text-slate-800">{formatCOP(order.total)}</p>
+          {/* Con qué paga. La cocina lo necesita para saber si el repartidor
+              va a recoger plata o si el pedido ya está cobrado; hasta ahora
+              esa elección no salía del teléfono del cliente. */}
+          {order.paymentLabel && (
+            <p className={`text-[11px] font-semibold ${
+              order.cobraElRepartidor ? 'text-amber-600' : 'text-emerald-600'
+            }`}>
+              {order.cobraElRepartidor
+                ? `Cobrar: ${order.paymentLabel}`
+                : `Pagado · ${order.paymentLabel}`}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Estado de cocina */}

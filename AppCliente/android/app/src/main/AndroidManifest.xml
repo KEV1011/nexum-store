@@ -1,9 +1,25 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Red: obligatorio declararlo aquí — el template de Flutter solo lo
          incluye en los manifests de debug/profile, y sin él el APK release
          no tiene acceso a internet. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- ─── ID de publicidad: se RETIRA a propósito ───────────────────────
+         ZIPA no muestra anuncios ni tiene un solo SDK publicitario, así que
+         en Play se declara «no usa ID de publicidad». El problema es que esa
+         declaración no depende solo de lo que escribimos aquí: el manifiesto
+         de una librería puede traer `AD_ID` y el fusionador lo mete en el APK
+         sin que nadie lo note. Play compara el APK con la declaración y
+         rechaza la versión si no coinciden.
+
+         Con `tools:node="remove"` la respuesta «No» pasa a ser cierta por
+         construcción y deja de depender de qué arrastre una dependencia
+         transitiva en su próxima actualización. -->
+    <uses-permission
+        android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove"/>
 
     <!-- Ubicación: obligatorio para tomar el origen del viaje y mostrar al
          cliente en el mapa. Sin esto Geolocator falla con "no se pudo obtener

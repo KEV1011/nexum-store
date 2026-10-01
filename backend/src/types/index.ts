@@ -349,7 +349,21 @@ export interface WsTripCancelledMessage {
 
 // ─── Business ─────────────────────────────────────────────────────────────────
 
-export type BusinessCategory = 'restaurant' | 'supermarket' | 'pharmacy' | 'other';
+/**
+ * Qué vende el comercio.
+ *
+ * `store` es el almacén de mercancía (ropa, calzado, tecnología,
+ * electrodomésticos); `other` sigue siendo el cajón de lo que no encaja en
+ * ninguna —una peluquería, una lavandería—, que es justo por lo que no se
+ * reutilizó para la mercancía.
+ */
+export type BusinessCategory =
+  | 'restaurant' | 'supermarket' | 'pharmacy' | 'store' | 'other';
+
+/** Las categorías válidas, para validar lo que llega de fuera. */
+export const BUSINESS_CATEGORIES: readonly BusinessCategory[] = [
+  'restaurant', 'supermarket', 'pharmacy', 'store', 'other',
+] as const;
 
 export interface Business {
   id: string;
@@ -645,6 +659,16 @@ export interface BusinessPublicDTO {
   isOpen: boolean;
   /** Por qué está cerrada, si lo está: «Abre mañana a las 08:00», «Pausado». */
   cerradoMotivo?: string;
+  /**
+   * Si el local es nuestro cliente (`true`) o si la ficha la abrimos nosotros
+   * desde una foto de su carta (`false`).
+   *
+   * Es lo que cambia TODA la pantalla: con `false`, los precios se enseñan
+   * como REFERENCIA y el botón no dice «pedir» sino que vamos a comprarlo. Va
+   * ausente en los DTO que no lo consultan, y la app lo trata como `true`:
+   * una app vieja sigue viendo exactamente lo de hoy.
+   */
+  claimed?: boolean;
   imageUrl?: string;
   openingHours?: string;
   /** Horario estructurado, si el negocio lo declaró. */
@@ -739,6 +763,15 @@ export interface ClientPlaceOrderDTO {
    * Ausente o false = recoge en taquilla, y entonces NO se le cobra domicilio.
    */
   lastMile?: boolean;
+
+  /**
+   * Con qué va a pagar. Los valores los define `lib/metodos-pago`, el MISMO
+   * catálogo del viaje urbano.
+   *
+   * Ausente = efectivo, que es lo que hacían todos los pedidos antes de que
+   * esto existiera y lo que siguen mandando las apps ya instaladas.
+   */
+  paymentMethod?: string;
 }
 
 export interface ClientOrderSummaryDTO extends DriverCardFields {
@@ -772,6 +805,47 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   promisedAt?: string;
   /** Si se la llevan hasta la puerta en destino o la recoge en la taquilla. */
   lastMile?: boolean;
+  /**
+   * Se agotó la búsqueda de repartidor y ya se avisó.
+   *
+   * Con el pedido esperando en la taquilla de destino, es lo que permite
+   * ofrecerle al cliente ir por él: antes de agotarse no se le propone nada
+   * —todavía puede aparecer alguien— y dárselo como opción desde el primer
+   * minuto haría que renunciara a un reparto que sí iba a llegar.
+   */
+  sinRepartidor?: boolean;
+
+  /** Con qué paga el cliente (`lib/metodos-pago`). Ausente = efectivo. */
+  paymentMethod?: string;
+  /** «Nequi», «Llave Bre-B»… El texto lo resuelve el servidor. */
+  paymentLabel?: string;
+  /** Lo que lee quien entrega: «Te paga por Nequi», «Ya pagado en la app». */
+  paymentNote?: string;
+  /**
+   * Si el dinero lo recibe el repartidor en la puerta.
+   *
+   * Es lo que separa «cobra» de «no cobra», y confundirlo cuesta plata real:
+   * decirle «ya está pagado» cuando le van a transferir es dejar que entregue
+   * sin recibir nada.
+   */
+  cobraElRepartidor?: boolean;
+
+  /**
+   * Qué pasó y cuándo, paso a paso.
+   *
+   * Lo arma el servidor (`lib/linea-tiempo-pedido`) porque los pasos dependen
+   * de la FORMA del pedido —en mesa, domicilio urbano, encomienda en taquilla
+   * o encomienda a la puerta— y cada versión instalada de la app contaría una
+   * historia distinta si los dedujera por su cuenta.
+   */
+  timeline?: Array<{
+    clave: string;
+    titulo: string;
+    detalle?: string;
+    /** ISO, o null si ese paso no dejó registro. Nunca se inventa. */
+    at: string | null;
+    estado: 'cumplido' | 'actual' | 'pendiente' | 'cancelado';
+  }>;
   items: Array<{
     productName: string;
     quantity: number;
@@ -1007,6 +1081,14 @@ export interface ClientErrandDTO extends DriverCardFields {
   /** Prueba de custodia del mandadero (recogida y entrega). */
   pickupPhotoUrl?: string;
   deliveryPhotoUrl?: string;
+  /**
+   * Minutos que PROMETIÓ el repartidor. Ausente = todavía no dijo nada, y
+   * entonces la pantalla no escribe ningún tiempo: inventarlo haría bajar al
+   * cliente a la portería a esperar algo que nadie prometió.
+   */
+  etaMinutes?: number;
+  /** Cuándo lo prometió, para saber si la promesa ya está vieja. */
+  etaSetAt?: string;
 }
 
 // Sent to driver when a mandado is dispatched
@@ -1019,6 +1101,20 @@ export interface ErrandRequestDTO {
   serviceFee: number;
   purchaseBudget?: number;
   notes?: string;
+  /**
+   * Dónde está el local al que hay que ir.
+   *
+   * El dato SIEMPRE existió en la base —`Errand.pickupLat/Lng`, que se
+   * guardan justamente para poder reanudar la búsqueda y pintar el mapa— y
+   * este DTO lo tiraba: el conductor recibía la oferta con el mapa apuntando
+   * al centro del pueblo. Con el comercio no reclamado eso pasa de molesto a
+   * bloqueante, porque TIENE que ir al local a comprar.
+   *
+   * Ausentes cuando el mandado se pidió sin punto (lo escribió a mano): la
+   * app cae a su respaldo en vez de dibujar un sitio inventado.
+   */
+  pickupLat?: number;
+  pickupLng?: number;
 }
 
 // ─── Intercity Bookings ───────────────────────────────────────────────────────

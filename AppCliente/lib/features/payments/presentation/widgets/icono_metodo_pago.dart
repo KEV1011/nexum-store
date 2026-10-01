@@ -26,6 +26,7 @@ class IconoMetodoPago extends StatelessWidget {
         MetodoPago.nequi => const Color(0xFF6C1EA0),
         MetodoPago.daviplata => const Color(0xFFD1232A),
         MetodoPago.bancolombia => const Color(0xFFB8860B),
+        MetodoPago.breB => const Color(0xFF0F766E),
         MetodoPago.transferencia => const Color(0xFF44546B),
         MetodoPago.enLinea => const Color(0xFF2B4CD1),
       };
@@ -38,6 +39,9 @@ class IconoMetodoPago extends StatelessWidget {
         MetodoPago.nequi => Icons.smartphone_rounded,
         MetodoPago.daviplata => Icons.account_balance_wallet_rounded,
         MetodoPago.bancolombia => Icons.account_balance_rounded,
+        // Una llave, que es literalmente como se llama el identificador de
+        // Bre-B y lo que la gente ve en su banco.
+        MetodoPago.breB => Icons.key_rounded,
         MetodoPago.transferencia => Icons.swap_horiz_rounded,
         MetodoPago.enLinea => Icons.credit_card_rounded,
       };

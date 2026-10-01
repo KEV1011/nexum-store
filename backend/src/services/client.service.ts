@@ -35,8 +35,10 @@ import {
   type DriverCardFields,
 } from '../lib/driver-card';
 import { sendPushToClient, sendPushToDriver } from './push.service';
-import { plazaDeCoordenadas } from './municipality.service';
-import { destinoPara, esEnvioAOtraCiudad } from '../lib/destinos-envio';
+import { nombreMunicipioSync, plazaDeCoordenadas } from './municipality.service';
+import {
+  destinoPara, esEnvioAOtraCiudad, type DestinoEnvio,
+} from '../lib/destinos-envio';
 import { desgloseEnvio, motivoParaNoLlevarAPuerta } from '../lib/ultima-milla';
 import { estimaLlegada } from '../lib/corte-bodega';
 import {
@@ -48,7 +50,11 @@ import type { Franja } from '../lib/horario-tienda';
 import { promoDeTienda } from '../lib/vitrina';
 import { saneaEstrellas, saneaComentario, promedioReputacion } from '../lib/reputacion';
 import { recalcularReputacionConductor } from './reputacion.service';
-import { saneaMetodoPago } from '../lib/metodos-pago';
+import { metodoPorValor, saneaMetodoPago } from '../lib/metodos-pago';
+import { registrarEventoPedido } from './pedido-eventos.service';
+import {
+  lineaDeTiempoPedido, type EstadoPedidoBD,
+} from '../lib/linea-tiempo-pedido';
 import { saneaElogios } from '../lib/elogios';
 import { planificar } from '../lib/viaje-programado';
 import { descuentoSellable, totalPasajero } from '../lib/descuento-viaje';
@@ -210,6 +216,131 @@ export { getBusinessPublicById as getClientBusinessById } from './business.servi
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
 
+/**
+ * Lo que cuesta MOVER el pedido, y cuándo llega.
+ *
+ * Existe como función aparte porque la pantalla del cliente y la caja tienen
+ * que dar el MISMO número. Es la lección de la promoción de la tienda: cuando
+ * el banner y el cobro calculaban por su cuenta, la pantalla prometía un
+ * descuento que la caja no aplicaba. Aquí es peor todavía —el flete puede ser
+ * más caro que el domicilio—, así que `placeClientOrder` y el cotizador de la
+ * app llaman a esta misma función y nadie recalcula nada.
+ *
+ * No incluye el subtotal ni la promoción a propósito: esos salen del catálogo
+ * y ya los resuelve `resolverLineasDePedido`. Aquí solo vive el envío.
+ */
+export interface CotizacionEnvio {
+  /** Cruza de ciudad Y el comercio despacha allá. */
+  intercity: boolean;
+  /** Plaza de la dirección de entrega. Null si no se pudo resolver. */
+  destCity: string | null;
+  /** Plaza del comercio. Null si aún no ha fijado su punto en el mapa. */
+  originCity: string | null;
+  /** Flete intermunicipal, 0 en un pedido local. */
+  intercityFee: number;
+  /** Domicilio urbano. Cero cuando cruza de ciudad y se recoge en taquilla. */
+  deliveryFee: number;
+  /** Lo que se suma al subtotal por mover la caja. */
+  envioTotal: number;
+  /** Si va a ir hasta la puerta en destino (ya resuelto, no lo que se pidió). */
+  lastMile: boolean;
+  /** Por qué no se puede llevar a la puerta. Null = sí se puede ofrecer. */
+  ultimaMillaMotivo: string | null;
+  /** Instante prometido, solo en envíos a otra ciudad. */
+  promisedAt: Date | null;
+  etaMinutes: number;
+  /**
+   * Por qué este pedido NO se puede entregar ahí, en español y diciendo a
+   * dónde sí. Null = adelante.
+   */
+  rechazo: string | null;
+}
+
+interface ComercioParaCotizar {
+  name: string;
+  citySlug?: string | null;
+  deliveryFee: number;
+  etaMinutes: number;
+  shipsTo?: DestinoEnvio[];
+  hours?: unknown;
+}
+
+export async function cotizarEnvio(
+  biz: ComercioParaCotizar,
+  entrega: { lat?: number | null; lng?: number | null; lastMile?: boolean },
+): Promise<CotizacionEnvio> {
+  // La plaza de la entrega sale del MISMO resolutor que la del comercio y la
+  // de los viajes. Sin coordenadas no hay plaza, y entonces el pedido es
+  // local: **un dato que falta no puede convertirlo en intermunicipal y
+  // cobrarle un flete de más al cliente.**
+  const destCity = await plazaDeCoordenadas(
+    entrega.lat ?? undefined,
+    entrega.lng ?? undefined,
+  );
+  const originCity = biz.citySlug ?? null;
+  const cruzaDeCiudad = esEnvioAOtraCiudad(originCity, destCity);
+  const destino = cruzaDeCiudad ? destinoPara(biz.shipsTo ?? [], destCity) : null;
+
+  if (cruzaDeCiudad && !destino) {
+    // Se dice A DÓNDE sí despacha, no solo que no puede. Un «no disponible» a
+    // secas deja al cliente sin saber si el problema es su dirección, la
+    // tienda, o que se equivocó de ciudad.
+    const declarados = (biz.shipsTo ?? []).map((d) => d.city);
+    return {
+      intercity: false, destCity, originCity,
+      intercityFee: 0, deliveryFee: 0, envioTotal: 0,
+      lastMile: false, ultimaMillaMotivo: 'no-despacha-ahi',
+      promisedAt: null, etaMinutes: biz.etaMinutes,
+      rechazo: declarados.length === 0
+        ? `${biz.name} solo entrega dentro de su ciudad.`
+        : `${biz.name} no despacha a esa ciudad. Despacha a: ${declarados.join(', ')}.`,
+    };
+  }
+
+  // ¿Se la llevamos hasta la puerta en destino? Solo si lo pidió Y hay
+  // coordenadas: el despacho de última milla es PostGIS sobre un radio, y sin
+  // punto no hay a dónde mandar a nadie.
+  const ultimaMillaMotivo = motivoParaNoLlevarAPuerta({
+    intercity: !!destino,
+    deliveryLat: entrega.lat,
+    deliveryLng: entrega.lng,
+  });
+  const lastMile = !!destino && entrega.lastMile === true && ultimaMillaMotivo === null;
+
+  const envio = desgloseEnvio({
+    deliveryFee: biz.deliveryFee,
+    intercityFee: destino?.fee ?? null,
+    intercity: !!destino,
+    lastMile,
+  });
+
+  // La promesa, como instante concreto. Con hora de corte declarada, un pedido
+  // hecho después de que salió el bus se promete para el despacho siguiente.
+  const promisedAt = destino
+    ? estimaLlegada(
+        new Date(),
+        destino.cutoff ?? null,
+        destino.etaHours,
+        (biz.hours ?? []) as Franja[],
+      )
+    : null;
+
+  return {
+    intercity: !!destino,
+    destCity,
+    originCity,
+    intercityFee: envio.flete,
+    deliveryFee: envio.domicilio,
+    envioTotal: envio.total,
+    lastMile,
+    ultimaMillaMotivo,
+    // Un envío a otra ciudad no llega en 30 minutos.
+    etaMinutes: destino ? destino.etaHours * 60 : biz.etaMinutes,
+    promisedAt,
+    rechazo: null,
+  };
+}
+
 export async function placeClientOrder(
   clientId: string,
   _clientPhone: string,
@@ -229,67 +360,39 @@ export async function placeClientOrder(
         : 'El negocio no está recibiendo pedidos en este momento.',
     );
   }
-  // ── ¿Este pedido cruza de ciudad? ──────────────────────────────────────────
-  //
-  // La plaza de la entrega sale del MISMO resolutor que la del comercio y la de
-  // los viajes. Sin coordenadas de entrega no hay plaza, y entonces el pedido
-  // es local: **un dato que falta no puede convertirlo en intermunicipal y
-  // cobrarle un flete de más al cliente.**
-  const destCitySlug = await plazaDeCoordenadas(dto.deliveryLat, dto.deliveryLng);
-  const originCitySlug = biz.citySlug ?? null;
-  const cruzaDeCiudad = esEnvioAOtraCiudad(originCitySlug, destCitySlug);
-  const destino = cruzaDeCiudad
-    ? destinoPara(biz.shipsTo ?? [], destCitySlug)
-    : null;
-
-  if (cruzaDeCiudad && !destino) {
-    // Se dice A DÓNDE sí despacha, no solo que no puede. Un «no disponible» a
-    // secas deja al cliente sin saber si el problema es su dirección, la
-    // tienda, o que se equivocó de ciudad.
-    const declarados = (biz.shipsTo ?? []).map((d) => d.city);
-    throw new Error(
-      declarados.length === 0
-        ? `${biz.name} solo entrega dentro de su ciudad.`
-        : `${biz.name} no despacha a esa ciudad. Despacha a: ${declarados.join(', ')}.`,
-    );
+  // Una ficha que publicamos nosotros desde una foto de su carta NO puede
+  // recibir un pedido normal: no hay nadie al otro lado del portal para
+  // aceptarlo, así que se quedaría en PENDING hasta caducar y el cliente
+  // esperando una comida que nadie empezó. Su camino es el mandado de compra
+  // (`comprarEnComercio`), y el mensaje lo dice en vez de dejarlo atascado.
+  {
+    const { motivoParaNoPedirDirecto } = await import('../lib/comercio-no-reclamado');
+    const sinReclamar = await prisma.business.findUnique({
+      where: { id: dto.businessId },
+      select: { name: true, claimed: true },
+    });
+    const motivo = sinReclamar
+      ? motivoParaNoPedirDirecto(sinReclamar)
+      : null;
+    if (motivo) throw new Error(motivo);
   }
-
-  // ── ¿Se la llevamos hasta la puerta en destino? ────────────────────────────
+  // ── ¿Este pedido cruza de ciudad, y cuánto cuesta moverlo? ─────────────────
   //
-  // Solo si el cliente lo pidió Y hay coordenadas de entrega: el despacho de
-  // última milla es PostGIS sobre un radio, y sin punto no hay a dónde mandar
-  // a nadie. Se decide aquí y se SELLA, porque de ello depende el cobro.
-  const ultimaMilla =
-    !!destino &&
-    dto.lastMile === true &&
-    motivoParaNoLlevarAPuerta({
-      intercity: true,
-      deliveryLat: dto.deliveryLat,
-      deliveryLng: dto.deliveryLng,
-    }) === null;
-
-  // Cuánto se cobra por mover la caja. La regla vive en lib/ultima-milla.ts
-  // porque decide plata: en un envío a otra ciudad SIN última milla no se cobra
-  // el domicilio, que es lo que se estaba cobrando por un servicio que nadie
-  // prestaba (el comercio deja la caja en la terminal y el cliente la recoge).
-  const envio = desgloseEnvio({
-    deliveryFee: biz.deliveryFee,
-    intercityFee: destino?.fee ?? null,
-    intercity: !!destino,
-    lastMile: ultimaMilla,
+  // La MISMA función que cotiza la pantalla del cliente. Antes esto era una
+  // copia aquí dentro y el precio del envío solo existía en la caja: la app
+  // enseñaba el domicilio urbano y el servidor cobraba el flete. Un solo
+  // cálculo, en un solo sitio.
+  const envio = await cotizarEnvio(biz, {
+    lat: dto.deliveryLat,
+    lng: dto.deliveryLng,
+    lastMile: dto.lastMile,
   });
+  if (envio.rechazo) throw new Error(envio.rechazo);
 
-  // La promesa, como instante concreto. Con hora de corte declarada, un pedido
-  // hecho después de que salió el bus se promete para el despacho siguiente.
-  const ahoraPedido = new Date();
-  const promisedAt = destino
-    ? estimaLlegada(
-        ahoraPedido,
-        destino.cutoff ?? null,
-        destino.etaHours,
-        (biz.hours ?? []) as Franja[],
-      )
-    : null;
+  const originCitySlug = envio.originCity;
+  const destCitySlug = envio.destCity;
+  const ultimaMilla = envio.lastMile;
+  const promisedAt = envio.promisedAt;
 
   const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
 
@@ -329,24 +432,29 @@ export async function placeClientOrder(
       // ubicación, este pedido no puede cambiar de ciudad ni de precio.
       originCitySlug,
       destCitySlug,
-      isIntercity: !!destino,
-      intercityFee: envio.flete || null,
+      isIntercity: envio.intercity,
+      intercityFee: envio.intercityFee || null,
       lastMile: ultimaMilla,
+      // Se SANEA contra el catálogo compartido y se SELLA: lo que mande el
+      // teléfono no puede acabar en un campo del que depende si el
+      // repartidor cobra en la puerta. Un valor no reconocido cae a null,
+      // que se lee como efectivo.
+      paymentMethod: saneaMetodoPago(dto.paymentMethod),
       promisedAt,
       subtotal,
       promoDiscount: descuentoPromo > 0 ? descuentoPromo : null,
       // Cero cuando cruza de ciudad y el cliente recoge en taquilla: ahí no hay
       // repartidor urbano a quien pagarle.
-      deliveryFee: envio.domicilio,
+      deliveryFee: envio.deliveryFee,
       // El descuento se resta del subtotal, NUNCA del domicilio: ese es el pago
       // del repartidor y no lo financia una promoción del restaurante. El flete
       // intermunicipal se SUMA aparte por la misma razón invertida: es plata de
       // la transportadora, no del repartidor, y mezclarlos descuadraría las dos
       // liquidaciones.
-      total: subtotal - descuentoPromo + envio.total,
+      total: subtotal - descuentoPromo + envio.envioTotal,
       // Un envío a otra ciudad no llega en 30 minutos. La promesa que se enseña
       // es la que declaró el comercio para ESE destino.
-      etaMinutes: destino ? destino.etaHours * 60 : biz.etaMinutes,
+      etaMinutes: envio.etaMinutes,
       // Cadena de custodia: el negocio guarda el PIN de recogida y el cliente
       // el de entrega. El repartidor los pide de viva voz en cada paso.
       ...generateCustodyPins(),
@@ -357,6 +465,12 @@ export async function placeClientOrder(
     },
     include: { lines: true },
   });
+
+  // El primer hecho de la bitácora. Podría derivarse de `createdAt`, y así se
+  // hace con los pedidos anteriores; registrarlo igual evita que el primer
+  // paso sea el único que se lee de otro sitio, que es como empiezan las dos
+  // fuentes que acaban discrepando.
+  await registrarEventoPedido(order.id, order.status, { actor: 'cliente' });
 
   const summary = _toSummary(order, biz.name, order.lines);
   // Aviso al portal del negocio (WS new_order) para que acepte y ponga el prep.
@@ -417,6 +531,10 @@ async function autoCancelUnacceptedOrder(orderId: string): Promise<void> {
     data: { status: 'CANCELLED' },
     include: { lines: true, business: { select: { name: true } } },
   });
+  await registrarEventoPedido(orderId, 'CANCELLED', {
+    actor: 'sistema',
+    note: 'El negocio no lo confirmó a tiempo',
+  });
 
   if (updated.userId) {
     void sendPushToClient(updated.userId, {
@@ -459,6 +577,10 @@ export async function acceptOrderByBusiness(
       etaMinutes: existing.mode === 'DINE_IN' ? prep : prep + DELIVERY_TRAVEL_MIN,
     },
     include: { lines: true, business: { select: { name: true } } },
+  });
+  await registrarEventoPedido(orderId, 'PREPARING', {
+    actor: 'negocio',
+    note: `Listo en ~${prep} min`,
   });
 
   if (updated.userId) {
@@ -506,6 +628,7 @@ export async function rejectOrderByBusiness(
     data: { status: 'CANCELLED' },
     include: { lines: true, business: { select: { name: true } } },
   });
+  await registrarEventoPedido(orderId, 'CANCELLED', { actor: 'negocio' });
 
   if (updated.userId) {
     void sendPushToClient(updated.userId, {
@@ -595,7 +718,14 @@ export async function getClientOrderById(
 ): Promise<ClientOrderWithPinDTO | null> {
   const o = await prisma.order.findFirst({
     where: { id: orderId, userId: clientId },
-    include: { lines: true, business: { select: { name: true, lat: true, lng: true } } },
+    include: {
+      lines: true,
+      business: { select: { name: true, lat: true, lng: true } },
+      // La bitácora va SOLO en el detalle. En el listado son veinte pedidos
+      // por sus eventos, y ahí no se pinta ninguna línea de tiempo: sería
+      // peso que nadie mira.
+      events: { orderBy: { at: 'asc' }, select: { status: true, at: true } },
+    },
   });
   if (!o) return null;
   return _withOrderGeo(
@@ -726,6 +856,7 @@ export async function acceptClientOrder(
     },
   });
   if (tomado.count === 0) return null; // otro llegó antes
+  await registrarEventoPedido(orderId, 'DRIVER_TO_PICKUP', { actor: 'conductor' });
 
   const updated = await prisma.order.findUnique({
     where: { id: orderId },
@@ -772,6 +903,7 @@ export async function cancelClientOrder(clientId: string, orderId: string): Prom
     data: { status: 'CANCELLED' },
     include: { lines: true, business: { select: { name: true } } },
   });
+  await registrarEventoPedido(orderId, 'CANCELLED', { actor: 'cliente' });
 
   if (order.driverId) {
     _sendToDriver?.(order.driverId, { type: 'order_cancelled', orderId });
@@ -964,6 +1096,7 @@ export async function cancelOrderByAdmin(orderId: string): Promise<boolean> {
     data: { status: 'CANCELLED' },
   });
   if (res.count === 0) return false;
+  await registrarEventoPedido(orderId, 'CANCELLED', { actor: 'negocio' });
 
   if ((antesDeSalir as readonly string[]).includes(previo.status)) await restoreOrderStock(orderId);
 
@@ -1054,6 +1187,10 @@ export async function updateOrderStatusByDriver(
   if (avance.count === 0) {
     return _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
   }
+  // Después de la guarda: registrar antes dejaría en el historial pasos que
+  // el `updateMany` rechazó, y la bitácora dejaría de ser un registro de
+  // hechos para pasar a ser uno de intenciones.
+  await registrarEventoPedido(orderId, map[status], { actor: 'conductor' });
 
   if (status === 'delivered') {
     const tasa = await tasaComision({
@@ -1848,7 +1985,12 @@ type PrismaOrder = {
   // Opcionales porque no todas las consultas los piden en su `select`: donde
   // no vengan, el DTO simplemente no los lleva.
   promisedAt?: Date | null; lastMile?: boolean | null;
+  noDriverNotifiedAt?: Date | null;
   mode?: 'DELIVERY' | 'DINE_IN'; tableLabel?: string | null;
+  paymentMethod?: string | null;
+  isIntercity?: boolean | null; destCitySlug?: string | null;
+  /** La bitácora, cuando la consulta la trae. Sin ella no se pinta línea. */
+  events?: Array<{ status: string; at: Date }>;
 };
 
 type PrismaOrderLine = {
@@ -1882,6 +2024,44 @@ function _toSummary(
     etaMinutes: o.etaMinutes ?? 30,
     promisedAt: o.promisedAt?.toISOString(),
     lastMile: o.lastMile || undefined,
+    // Se agotó la búsqueda. La marca ya existía para no repetir el aviso; aquí
+    // además es lo que le permite a la pantalla ofrecer la recogida en taquilla
+    // en vez de dejar al cliente mirando un «buscando repartidor» eterno.
+    sinRepartidor: o.noDriverNotifiedAt != null ? true : undefined,
+    // El pago, resuelto AQUÍ y no en cada pantalla. Tres superficies leen
+    // este DTO —la app del cliente, el portal del negocio y la oferta del
+    // repartidor— y si cada una tradujera el identificador por su cuenta,
+    // añadir un método dejaría dos de ellas con un hueco en blanco.
+    ...(() => {
+      const m = metodoPorValor(o.paymentMethod);
+      if (!m) return {};
+      return {
+        paymentMethod: m.valor,
+        paymentLabel: m.etiqueta,
+        // Lo que de verdad necesita saber quien entrega: si tiene que cobrar
+        // en la puerta o si ya está pagado.
+        paymentNote: m.avisoAlConductor ?? 'Te paga en efectivo',
+        cobraElRepartidor: m.quienCobra === 'conductor',
+      };
+    })(),
+    // La línea de tiempo, solo cuando la consulta trajo la bitácora: un
+    // `timeline` vacío en un DTO que no la pidió haría creer a la app que el
+    // pedido no tiene historial, y pintaría una línea en blanco.
+    ...(o.events
+      ? {
+          timeline: lineaDeTiempoPedido(
+            {
+              status: o.status as EstadoPedidoBD,
+              dineIn: o.mode === 'DINE_IN',
+              intercity: o.isIntercity === true,
+              lastMile: o.lastMile === true,
+              ciudadDestino: nombreMunicipioSync(o.destCitySlug),
+              createdAt: o.createdAt,
+            },
+            o.events.map((e) => ({ status: e.status as EstadoPedidoBD, at: e.at })),
+          ),
+        }
+      : {}),
     items: lines.map((l) => ({
       productName: l.productName,
       quantity: l.quantity,

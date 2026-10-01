@@ -153,6 +153,13 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     required String deliveryAddress,
     double? deliveryLat,
     double? deliveryLng,
+    // Solo pesa en envíos a otra ciudad: que un repartidor de destino la
+    // lleve a la puerta en vez de recogerla el cliente en la taquilla. El
+    // servidor vuelve a decidir si se puede y SELLA el resultado.
+    bool lastMile = false,
+    /// Con qué paga. Se sanea en el servidor contra su catálogo y se SELLA:
+    /// de él depende si el repartidor cobra en la puerta.
+    String? paymentMethod,
   }) async {
     final business = cart.business!;
 
@@ -171,6 +178,8 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
           'deliveryAddress': deliveryAddress,
           if (deliveryLat != null) 'deliveryLat': deliveryLat,
           if (deliveryLng != null) 'deliveryLng': deliveryLng,
+          if (lastMile) 'lastMile': true,
+          if (paymentMethod != null) 'paymentMethod': paymentMethod,
           'items': cart.items
               .map(
                 (item) => {
@@ -368,6 +377,42 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
     } catch (_) {
       // Silencioso: la cancelación local ya se reflejó en la UI.
     }
+  }
+
+  // ── recogerEnTaquilla ──────────────────────────────────────────────────────
+
+  /// El cliente renuncia a la entrega en la puerta y va por su envío.
+  ///
+  /// Devuelve el motivo si el servidor lo rechaza —puede haber aparecido un
+  /// repartidor justo ahora— y null si quedó cerrado. **No se adelanta el
+  /// estado localmente**: si se pintara «entregado» y la petición fallara, el
+  /// cliente se quedaría creyendo que renunció cuando el reparto sigue vivo.
+  Future<String?> recogerEnTaquilla(String id) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/orders/$id/recoger-en-taquilla',
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final motivo = data is Map<String, dynamic> ? data['error'] : null;
+      return motivo is String && motivo.isNotEmpty
+          ? motivo
+          : 'No pudimos registrarlo. Revisa tu conexión.';
+    } catch (_) {
+      return 'No pudimos registrarlo. Revisa tu conexión.';
+    }
+    for (final t in _timers[id] ?? <Timer>[]) {
+      t.cancel();
+    }
+    _timers.remove(id);
+    _updateOrder(
+      id,
+      (o) => o.copyWith(
+        status: CustomerOrderStatus.delivered,
+        deliveredAt: DateTime.now(),
+      ),
+    );
+    return null;
   }
 
   // ── rateOrder ──────────────────────────────────────────────────────────────

@@ -21,6 +21,8 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'precio_producto.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
+import 'package:nexum_client/features/intercity/domain/entities/'
+    'intercity_entity.dart';
 
 /// Detalle del negocio: cabecera + menú agrupado por categoría.
 class BusinessDetailScreen extends ConsumerWidget {
@@ -107,6 +109,33 @@ class _DetailViewState extends ConsumerState<_DetailView> {
           if (!business.isOpen || business.openingHours != null)
             SliverToBoxAdapter(
               child: _StatusBanner(business: business),
+            ),
+          // Los precios de esta carta salieron de una FOTO de su menú, no del
+          // local. Decirlo ARRIBA y no en la caja: el cliente mira el precio
+          // aquí, y enterarse al final de que no era firme es peor que no
+          // haberlo sabido nunca.
+          if (!business.claimed)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.spacingM, AppConstants.spacingM,
+                  AppConstants.spacingM, 0,
+                ),
+                child: _PreciosDeReferencia(negocio: business.name),
+              ),
+            ),
+          // Despacha a otras ciudades. Va ARRIBA del catálogo porque cambia a
+          // qué distancia se puede comprar aquí, y quien no lo sabe ni entra:
+          // hasta ahora el dato existía en la base y no lo veía nadie.
+          if (business.despachaAOtrasCiudades)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.spacingM, AppConstants.spacingM,
+                  AppConstants.spacingM, 0,
+                ),
+                child: _EnviaAOtrasCiudades(destinos: business.shipsTo),
+              ),
             ),
           // La promoción de la tienda, con lo que lleva el carrito AHORA: el
           // mismo mínimo y el mismo descuento que aplicará el servidor.
@@ -348,6 +377,62 @@ class _BusinessAppBar extends StatelessWidget {
   }
 }
 
+/// «También envía a Cúcuta y Bucaramanga».
+///
+/// Lo que habilita esto es que las empresas intermunicipales de pasajeros ya
+/// salen todos los días y ya tienen taquilla en cada terminal: el comercio
+/// deja la caja y el cliente de otra ciudad la recoge allá. Aquí solo se
+/// ANUNCIA; el precio y el plazo los pone el propio comercio y se enseñan al
+/// confirmar, con la cifra que va a cobrar el servidor.
+class _EnviaAOtrasCiudades extends StatelessWidget {
+  const _EnviaAOtrasCiudades({required this.destinos});
+
+  final List<DestinoEnvio> destinos;
+
+  @override
+  Widget build(BuildContext context) {
+    final nombres = destinos
+        .map((d) => IntercityCity.bySlug(d.city).displayName)
+        .toList();
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: AppColors.infoContainer,
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.local_shipping_rounded,
+              color: AppColors.info, size: 20),
+          const SizedBox(width: AppConstants.spacingS),
+          Expanded(
+            child: Text(
+              'También envía a ${_enumerar(nombres)}. '
+              'Elige la ciudad al confirmar el pedido.',
+              // Color fijo porque el contenedor lo es: con el adaptativo, en
+              // modo oscuro saldría casi blanco sobre azul claro.
+              style: const TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: AppColors.secondaryDark,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// «Cúcuta, Bucaramanga y Bogotá». Con más de tres se corta: la lista
+  /// completa no cabe y el detalle está a un toque, al confirmar.
+  static String _enumerar(List<String> n) {
+    if (n.isEmpty) return 'otras ciudades';
+    if (n.length == 1) return n.first;
+    if (n.length > 3) return '${n.take(3).join(', ')} y ${n.length - 3} más';
+    return '${n.take(n.length - 1).join(', ')} y ${n.last}';
+  }
+}
+
 class _InfoRow extends StatelessWidget {
   const _InfoRow({required this.business});
 
@@ -534,6 +619,66 @@ class _CartBar extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// El local todavía no es cliente de ZIPA: su carta la publicamos nosotros.
+///
+/// Lo que esto tiene que dejar claro es UNA cosa —el precio puede no ser el
+/// de hoy— porque es la queja más cara que existe: «pagué 18.000 y en el
+/// local son 22.000». Y la paga la plataforma, no el restaurante, que ni sabe
+/// que está aquí.
+class _PreciosDeReferencia extends StatelessWidget {
+  const _PreciosDeReferencia({required this.negocio});
+
+  final String negocio;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.spacingM),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded,
+              color: AppColors.warning, size: 19),
+          const SizedBox(width: AppConstants.spacingS),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Precios de referencia',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: context.textPrimaryColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Esta carta la tomamos del menú de $negocio. Un repartidor '
+                  'de ZIPA va, lo compra y te lo lleva: se te cobra lo que '
+                  'diga el recibo.',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: context.textSecondaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

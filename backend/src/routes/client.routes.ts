@@ -9,6 +9,7 @@ import {
   verifyClientOtp,
   getClientBusinesses,
   getClientBusinessById,
+  cotizarEnvio,
   placeClientOrder,
   getClientOrders,
   getClientOrderById,
@@ -50,6 +51,11 @@ import {
   RideNegotiationError,
 } from '../services/ride-negotiation.service';
 import { getDriverPublicProfile } from '../services/driver-profile.service';
+import { recogerEnTaquilla } from '../services/encomiendas.service';
+import {
+  comprarEnComercio, CompraError,
+} from '../services/comercio-no-reclamado.service';
+import { getMunicipality } from '../services/municipality.service';
 import {
   searchPooledTrips,
   getPooledTripById,
@@ -423,6 +429,54 @@ router.get('/businesses/:id', async (req, res) => {
   }
 });
 
+// GET /client/businesses/:id/envio?lat=&lng=&lastMile=
+//
+// Cuánto cuesta mover el pedido a ESA dirección y cuándo llega, ANTES de
+// confirmarlo. Llama a la MISMA función que cobra la caja (`cotizarEnvio`):
+// sin esto la app tendría que recalcular el flete por su cuenta y acabaría
+// enseñando un total y cobrando otro — el fallo que ya se pagó con la
+// promoción de la tienda.
+//
+// Sin coordenadas responde la cotización local, que es lo que el servidor
+// hará: un dato que falta no convierte el pedido en intermunicipal.
+router.get('/businesses/:id/envio', async (req, res) => {
+  const lat = req.query['lat'] ? parseFloat(req.query['lat'] as string) : undefined;
+  const lng = req.query['lng'] ? parseFloat(req.query['lng'] as string) : undefined;
+  const lastMile = req.query['lastMile'] === 'true';
+
+  try {
+    const biz = await getClientBusinessById(req.params['id']!);
+    const envio = await cotizarEnvio(biz, {
+      lat: Number.isFinite(lat) ? lat : null,
+      lng: Number.isFinite(lng) ? lng : null,
+      lastMile,
+    });
+    const muni = envio.destCity ? await getMunicipality(envio.destCity) : null;
+    res.json({
+      success: true,
+      data: {
+        intercity: envio.intercity,
+        destCity: envio.destCity,
+        // El nombre legible lo resuelve el servidor: la app tendría que
+        // adivinarlo del slug («san-jose-de-cucuta») y le saldría mal.
+        destCityLabel: muni?.name ?? null,
+        intercityFee: envio.intercityFee,
+        deliveryFee: envio.deliveryFee,
+        envioTotal: envio.envioTotal,
+        lastMile: envio.lastMile,
+        // Si la última milla se puede OFRECER, que no es lo mismo que si se
+        // pidió: la app necesita saber si dibujar el interruptor.
+        puedeUltimaMilla: envio.intercity && envio.ultimaMillaMotivo === null,
+        etaMinutes: envio.etaMinutes,
+        promisedAt: envio.promisedAt?.toISOString() ?? null,
+        rechazo: envio.rechazo,
+      },
+    });
+  } catch {
+    res.status(404).json({ success: false, error: 'Business not found' });
+  }
+});
+
 // ─── Orders (auth required) ───────────────────────────────────────────────────
 
 router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
@@ -440,6 +494,9 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
     // destino. Sin él, el cliente la recoge en la taquilla y no se le cobra
     // domicilio.
     lastMile?: boolean;
+    // Con qué paga. Se sanea contra el catálogo compartido dentro del
+    // servicio: aquí solo se transporta.
+    paymentMethod?: string;
   };
 
   if (!dto.businessId || !dto.deliveryAddress || !Array.isArray(dto.items) || dto.items.length === 0) {
@@ -454,6 +511,9 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
       deliveryLat: typeof dto.deliveryLat === 'number' ? dto.deliveryLat : undefined,
       deliveryLng: typeof dto.deliveryLng === 'number' ? dto.deliveryLng : undefined,
       lastMile: dto.lastMile === true,
+      ...(typeof dto.paymentMethod === 'string'
+        ? { paymentMethod: dto.paymentMethod }
+        : {}),
       // `optionIds` y `notes` viajan hasta el servicio: con los ids se
       // recalcula el precio contra el catálogo y se compone la comanda.
       items: dto.items as Array<{
@@ -487,6 +547,20 @@ router.post('/orders/:id/cancel', clientAuthMiddleware, async (req, res) => {
   const ok = await cancelClientOrder(req.clientId!, req.params['id']!);
   if (!ok) {
     res.status(400).json({ success: false, error: 'El pedido no existe o ya no se puede cancelar' });
+    return;
+  }
+  res.json({ success: true });
+});
+
+// POST /client/orders/:id/recoger-en-taquilla — el cliente va por su encomienda.
+//
+// La salida para quien pidió entrega a la puerta y no apareció repartidor en
+// destino. Sin ella el pedido se quedaba en la taquilla sin forma de cerrarse,
+// y el aviso le decía que el negocio podía entregarlo — está en otra ciudad.
+router.post('/orders/:id/recoger-en-taquilla', clientAuthMiddleware, async (req, res) => {
+  const r = await recogerEnTaquilla(req.clientId!, req.params['id']!);
+  if (!r.ok) {
+    res.status(400).json({ success: false, error: r.motivo });
     return;
   }
   res.json({ success: true });
@@ -717,6 +791,54 @@ router.put('/fcm-token', clientAuthMiddleware, async (req, res) => {
   await registerClientFcmToken(req.clientId!, token);
   res.json({ success: true, data: { registered: true } });
 });
+
+// POST /client/comercios/:id/comprar — pedirle a un comercio que aún no es
+// cliente nuestro.
+//
+// Su ficha la publicamos nosotros desde una foto de su carta, así que no hay
+// portal al otro lado: el pedido se convierte en un MANDADO de compra y va un
+// repartidor. El cliente autoriza un presupuesto y se le cobra lo que diga el
+// recibo. Ver `lib/comercio-no-reclamado.ts`.
+router.post(
+  '/comercios/:id/comprar',
+  clientAuthMiddleware,
+  clientRequestRateLimit,
+  async (req, res) => {
+    const body = req.body as {
+      items?: unknown; dropoffAddress?: unknown;
+      dropoffLat?: unknown; dropoffLng?: unknown; notes?: unknown;
+    };
+    try {
+      const r = await comprarEnComercio(req.clientId!, {
+        businessId: req.params['id']!,
+        items: Array.isArray(body.items) ? (body.items as never) : [],
+        dropoffAddress: String(body.dropoffAddress ?? ''),
+        ...(typeof body.dropoffLat === 'number' ? { dropoffLat: body.dropoffLat } : {}),
+        ...(typeof body.dropoffLng === 'number' ? { dropoffLng: body.dropoffLng } : {}),
+        ...(typeof body.notes === 'string' ? { notes: body.notes } : {}),
+      });
+      res.status(201).json({
+        success: true,
+        data: {
+          ...r.errand,
+          referencial: r.referencial,
+          presupuesto: r.presupuesto,
+        },
+      });
+
+      // El despacho se ancla al LOCAL, no al centro del pueblo: el repartidor
+      // que tiene que ir a comprar ahí es el que esté cerca de ahí.
+      const lat = r.pickup?.lat ?? INTERCITY_CITY_COORDS.pamplona.lat;
+      const lng = r.pickup?.lng ?? INTERCITY_CITY_COORDS.pamplona.lng;
+      void startErrandMatchingCycle(r.errand.id, lat, lng);
+    } catch (err) {
+      res.status(err instanceof CompraError ? 400 : 500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'No pudimos crear la compra.',
+      });
+    }
+  },
+);
 
 // ─── Errands (Mandados) ───────────────────────────────────────────────────────
 

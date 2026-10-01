@@ -59,14 +59,20 @@ void main() {
       expect(ofertaDeViaje(sinNota)!.passenger.rating, isNull);
     });
 
-    test('las paradas llegan como nombres, y las vacías no ocupan sitio', () {
+    // Las paradas dejaron de ser nombres sueltos: llegan con su punto para
+    // poder DIBUJARLAS en el mapa del conductor. Las vacías no ocupan sitio,
+    // porque una parada sin nombre no se puede ni anunciar.
+    test('las paradas llegan con su punto, y las vacías no ocupan sitio', () {
       final conParadas = crudo()
         ..['stops'] = [
-          {'name': 'Farmacia', 'order': 1},
+          {'name': 'Farmacia', 'lat': 7.372, 'lng': -72.645, 'order': 1},
           {'name': '', 'order': 2},
           {'order': 3},
         ];
-      expect(ofertaDeViaje(conParadas)!.stops, ['Farmacia']);
+      final stops = ofertaDeViaje(conParadas)!.stops;
+      expect(stops.map((p) => p.nombre), ['Farmacia']);
+      expect(stops.single.tienePunto, isTrue);
+      expect(stops.single.lat, 7.372);
     });
 
     test('sin paradas la lista va vacía, no nula', () {

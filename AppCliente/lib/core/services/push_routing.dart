@@ -38,6 +38,14 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
     case 'trip_no_driver':
       return AppRoutes.home;
 
+    // «Tu viaje es a las 6:00», media hora antes. Al seguimiento: ahí se ve la
+    // hora reservada, el conductor que apartó y el punto de recogida, que es
+    // lo que el pasajero quiere comprobar al leerlo.
+    case 'reserva_recordatorio':
+      return tripId is String && tripId.isNotEmpty
+          ? AppRoutes.transportTrackingPath(tripId)
+          : AppRoutes.home;
+
     case 'order_accepted':
     case 'order_preparing':
     case 'order_ready':

@@ -4,6 +4,8 @@ import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_client/core/utils/eta_vivo.dart';
 import 'package:nexum_client/shared/models/driver_card_info.dart';
+import 'package:nexum_client/features/transport/domain/entities/'
+    'trip_stop_entity.dart';
 
 export 'package:nexum_client/shared/models/driver_card_info.dart';
 
@@ -211,8 +213,11 @@ class TransportRequestEntity {
         driverVehicle: json['driverVehicle'] as String?,
         driverVehicleType: json['driverVehicleType'] as String?,
         stops: ((json['stops'] as List<dynamic>?) ?? const [])
-            .map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '')
-            .where((n) => n.isNotEmpty)
+            .whereType<Map<String, dynamic>>()
+            .map(TripStopEntity.fromJson)
+            // Sin nombre no se puede ni anunciar: una parada que el pasajero
+            // no sabe nombrar no le dice nada al conductor.
+            .where((p) => p.nombre.isNotEmpty)
             .toList(),
         driverCard: DriverCardInfo.fromJson(json),
         scheduledFor: json['scheduledFor'] != null
@@ -289,9 +294,9 @@ class TransportRequestEntity {
   /// — decide el ícono ilustrado del mapa.
   final String? driverVehicleType;
 
-  /// Paradas intermedias del trayecto, en orden. Solo los nombres: las
-  /// coordenadas ya las usó el servidor para medir y cobrar.
-  final List<String> stops;
+  /// Paradas intermedias del trayecto, en orden, **con su punto** cuando se
+  /// eligió en el mapa: es lo que permite dibujarlas. Ver `TripStopEntity`.
+  final List<TripStopEntity> stops;
 
   /// Foto, calificación, verificación y placa del conductor asignado.
   /// Null mientras se busca conductor.
@@ -347,7 +352,7 @@ class TransportRequestEntity {
     String? contactChannel,
     String? driverVehicle,
     String? driverVehicleType,
-    List<String>? stops,
+    List<TripStopEntity>? stops,
     DriverCardInfo? driverCard,
     DateTime? scheduledFor,
     DateTime? acceptedAt,

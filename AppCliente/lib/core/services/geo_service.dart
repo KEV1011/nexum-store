@@ -76,12 +76,26 @@ class GeoService {
 
   /// Sugerencias de direcciones para [input] (mínimo 3 caracteres).
   /// Devuelve lista vacía ante cualquier error para degradar sin romper la UI.
-  Future<List<PlaceSuggestion>> autocomplete(String input) async {
+  /// Sugerencias de dirección.
+  ///
+  /// [lat]/[lng] SESGAN la búsqueda hacia ese punto. Sin ellas el servidor
+  /// sesga hacia Pamplona, que es lo correcto para un domicilio de la esquina
+  /// y lo peor posible para escribir una calle de Bucaramanga: la sugerencia
+  /// buena queda enterrada o no sale, y el buscador parece roto.
+  Future<List<PlaceSuggestion>> autocomplete(
+    String input, {
+    double? lat,
+    double? lng,
+  }) async {
     if (input.trim().length < 3) return const [];
     try {
       final res = await _dio.get<Map<String, dynamic>>(
         '/geo/autocomplete',
-        queryParameters: {'input': input.trim()},
+        queryParameters: {
+          'input': input.trim(),
+          if (lat != null) 'lat': lat,
+          if (lng != null) 'lng': lng,
+        },
       );
       final data = res.data?['data'] as List<dynamic>? ?? const [];
       return data

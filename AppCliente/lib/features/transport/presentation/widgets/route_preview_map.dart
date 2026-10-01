@@ -24,6 +24,7 @@ class RoutePreviewMap extends ConsumerStatefulWidget {
     this.destLng,
     this.bottomPadding = 0,
     this.etaMinutos,
+    this.paradas = const [],
     super.key,
   });
 
@@ -31,6 +32,13 @@ class RoutePreviewMap extends ConsumerStatefulWidget {
   final double originLng;
   final double? destLat;
   final double? destLng;
+
+  /// Las paradas que el pasajero va agregando, con su punto, en orden.
+  ///
+  /// Se dibujan NUMERADAS mientras las escribe: una parada que se añade y no
+  /// aparece en ningún sitio no se puede comprobar, y el error típico —elegir
+  /// la sugerencia equivocada del buscador— solo se ve en el mapa.
+  final List<LatLng> paradas;
 
   /// Minutos hasta la recogida de la categoría elegida. Se pinta como etiqueta
   /// sobre el punto de recogida, igual que en las demás plataformas. Null =
@@ -103,9 +111,11 @@ class _RoutePreviewMapState extends ConsumerState<RoutePreviewMap> {
       ? LatLng(widget.destLat!, widget.destLng!)
       : null;
 
+  /// Todo lo que tiene que caber en el encuadre: recogida, paradas y destino.
+  /// Dejar las paradas fuera encuadraba un trayecto por el que el viaje no va.
   List<LatLng> get _puntos {
     final d = _destino;
-    return d == null ? [_origen] : [_origen, d];
+    return [_origen, ...widget.paradas, if (d != null) d];
   }
 
   /// El dedo movió el mapa: aparece el botón de reencuadrar.
@@ -260,6 +270,14 @@ class _RoutePreviewMapState extends ConsumerState<RoutePreviewMap> {
                 // taparlo.
                 alignment: Alignment.topCenter,
                 child: _EtiquetaEta(minutos: widget.etaMinutos!),
+              ),
+            for (final (i, parada) in widget.paradas.indexed)
+              Marker(
+                point: parada,
+                width: MapPin.markerWidth,
+                height: MapPin.markerHeight,
+                alignment: Alignment.topCenter,
+                child: MapPin(color: AppColors.warning, numero: '${i + 1}'),
               ),
             if (destino != null)
               Marker(

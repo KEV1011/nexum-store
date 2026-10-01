@@ -3,6 +3,7 @@ import { DocumentType } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { getMaxFarePerSeat, getIntercityRoute } from '../config/constants';
 import { getTripService } from '../services/trip.service';
+import { declararEtaDeMandado } from '../services/errand.service';
 import {
   publishPooledTrip,
   getDriverPooledTrips,
@@ -1176,6 +1177,30 @@ router.post(
     }
   },
 );
+
+// POST /driver/errands/:id/eta { minutos } — el repartidor dice en cuánto
+// entrega.
+//
+// En una compra a un comercio que no está conectado no hay cocina que declare
+// un tiempo ni ruta que medir hasta que la compra empiece: el cliente no tenía
+// NINGUNA forma de saber cuánto falta. Se le pregunta al único que lo sabe.
+router.post('/errands/:id/eta', async (req, res) => {
+  const driverId = req.driverId;
+  if (!driverId) {
+    res.status(401).json({ success: false, error: 'No autenticado' });
+    return;
+  }
+  const r = await declararEtaDeMandado(
+    driverId,
+    req.params['id']!,
+    (req.body as { minutos?: unknown }).minutos,
+  );
+  if (!r.ok) {
+    res.status(400).json({ success: false, error: r.motivo });
+    return;
+  }
+  res.json({ success: true, data: { minutos: r.minutos } });
+});
 
 // ─── Estado del viaje por HTTP ────────────────────────────────────────────────
 

@@ -13,6 +13,8 @@ import 'package:nexum_client/features/businesses/presentation/providers/'
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'carrusel_destacados.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'fila_categorias_comercio.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
     'fila_comercio.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'sello_confianza.dart';
@@ -110,6 +112,9 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                     onFiltrarRestaurantes: () => setState(
                       () => _filtro = BusinessCategory.restaurant,
                     ),
+                    onFiltrarTiendas: () => setState(
+                      () => _filtro = BusinessCategory.store,
+                    ),
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 22)),
@@ -139,9 +144,25 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                 ],
               ] else
                 const SliverToBoxAdapter(child: SizedBox(height: 14)),
+              // Las píldoras de categoría van FUERA del bloque de explorar, al
+              // revés que las puertas: con un filtro puesto son la única forma
+              // de saltar a otro rubro sin quitarlo primero. Y se arman con lo
+              // que de verdad llegó, así que en una plaza sin droguerías no
+              // hay píldora «Droguerías» que lleve a una lista vacía.
+              if (comerciosAsync.valueOrNull != null) ...[
+                SliverToBoxAdapter(
+                  child: FilaCategoriasComercio(
+                    categorias:
+                        categoriasPresentes(comerciosAsync.valueOrNull!),
+                    seleccionada: _filtro,
+                    onSeleccionar: (c) => setState(() => _filtro = c),
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 6)),
+              ],
               SliverToBoxAdapter(
                 child: _TituloSeccion(
-                  texto: _filtro == null ? 'Cerca de ti' : _filtro!.label,
+                  texto: _filtro == null ? 'Cerca de ti' : _filtro!.plural,
                   onQuitarFiltro:
                       _filtro == null ? null : () => setState(() => _filtro = null),
                 ),
@@ -354,13 +375,17 @@ class _Buscador extends StatelessWidget {
 // ── 3. Qué quieres hacer ─────────────────────────────────────────────────────
 
 class _RejillaServicios extends ConsumerWidget {
-  const _RejillaServicios({required this.onFiltrarRestaurantes});
+  const _RejillaServicios({
+    required this.onFiltrarRestaurantes,
+    required this.onFiltrarTiendas,
+  });
 
   final VoidCallback onFiltrarRestaurantes;
+  final VoidCallback onFiltrarTiendas;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Rejilla de dos columnas con las CUATRO puertas. Antes había dos, y
+    // Rejilla de dos columnas con las CINCO puertas. Antes había dos, y
     // Envíos e Intermunicipal vivían bajo el pliegue o en ninguna parte —
     // que es la razón por la que «no daba opción de reservar intermunicipal».
     return Padding(
@@ -412,15 +437,28 @@ class _RejillaServicios extends ConsumerWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: TarjetaServicio(
-                  icono: ZipaIconName.intermunicipal,
-                  ilustracion: 'assets/categorias/bus.png',
-                  tinte: ZipaTokens.intermunicipal,
-                  titulo: 'Intermunicipal',
-                  subtitulo: 'Viajes entre ciudades',
-                  onTap: () => context.push(AppRoutes.intercityBooking),
+                  icono: ZipaIconName.tiendas,
+                  ilustracion: 'assets/servicios/tiendas.png',
+                  tinte: ZipaTokens.tiendas,
+                  titulo: 'Tiendas',
+                  subtitulo: 'Ropa, tecnología, hogar',
+                  onTap: onFiltrarTiendas,
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          // Ancha porque son CINCO puertas: la quinta al lado de un hueco se
+          // lee como que falta una. Y le toca a Intermunicipal porque es la
+          // que nadie espera encontrar en una app de domicilios.
+          TarjetaServicio(
+            ancha: true,
+            icono: ZipaIconName.intermunicipal,
+            ilustracion: 'assets/categorias/bus.png',
+            tinte: ZipaTokens.intermunicipal,
+            titulo: 'Intermunicipal',
+            subtitulo: 'Viaja o envía entre ciudades',
+            onTap: () => context.push(AppRoutes.intercityBooking),
           ),
         ],
       ),

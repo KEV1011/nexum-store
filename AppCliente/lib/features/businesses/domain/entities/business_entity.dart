@@ -1,8 +1,19 @@
 /// Categoría de un negocio aliado en ZIPA.
+///
+/// `store` es el almacén de mercancía —ropa, calzado, tecnología,
+/// electrodomésticos—: lo que se compra por catálogo y no se cocina. Antes no
+/// existía, así que un almacén así se registraba como supermercado (era la
+/// única opción que decía «Tienda») y en la app aparecía como supermercado.
+///
+/// `other` es el cajón de lo que no encaja en ninguna —una peluquería, una
+/// lavandería— y por eso no se reutilizó para la mercancía: si `other`
+/// significara «tienda», el cajón dejaría de existir. Su etiqueta pasó de
+/// «Tienda» a «Comercio», que es lo que de verdad dice.
 enum BusinessCategory {
   restaurant,
   supermarket,
   pharmacy,
+  store,
   other,
 }
 
@@ -15,13 +26,59 @@ extension BusinessCategoryX on BusinessCategory {
         return 'Supermercado';
       case BusinessCategory.pharmacy:
         return 'Droguería';
-      case BusinessCategory.other:
+      case BusinessCategory.store:
         return 'Tienda';
+      case BusinessCategory.other:
+        return 'Comercio';
+    }
+  }
+
+  /// El plural con el que se nombra la categoría en un filtro o una pestaña.
+  String get plural {
+    switch (this) {
+      case BusinessCategory.restaurant:
+        return 'Restaurantes';
+      case BusinessCategory.supermarket:
+        return 'Supermercados';
+      case BusinessCategory.pharmacy:
+        return 'Droguerías';
+      case BusinessCategory.store:
+        return 'Tiendas';
+      case BusinessCategory.other:
+        return 'Otros';
     }
   }
 }
 
-/// Un negocio (restaurante, supermercado, droguería) donde el cliente
+/// Una ciudad a la que el comercio despacha, con lo que cobra y lo que tarda.
+///
+/// La lista vacía significa «a NINGUNA otra ciudad», no «a todas»: es como
+/// nace todo comercio hasta que su dueño declara destinos en su portal.
+class DestinoEnvio {
+  const DestinoEnvio({
+    required this.city,
+    required this.fee,
+    required this.etaHours,
+    this.cutoff,
+  });
+
+  factory DestinoEnvio.fromJson(Map<String, dynamic> j) => DestinoEnvio(
+        city: j['city'] as String? ?? '',
+        fee: (j['fee'] as num?)?.toDouble() ?? 0,
+        etaHours: (j['etaHours'] as num?)?.toInt() ?? 24,
+        cutoff: j['cutoff'] as String?,
+      );
+
+  /// Slug del municipio, tal como lo nombra `/geo/municipios`.
+  final String city;
+  final double fee;
+  final int etaHours;
+
+  /// Hasta qué hora se recibe para que salga hoy («16:00»). Null = sin corte.
+  final String? cutoff;
+}
+
+/// Un negocio (restaurante, tienda, supermercado, droguería) donde el cliente
 /// puede pedir un domicilio.
 class BusinessEntity {
   const BusinessEntity({
@@ -40,6 +97,8 @@ class BusinessEntity {
     this.imageUrl,
     this.openingHours,
     this.cerradoMotivo,
+    this.claimed = true,
+    this.shipsTo = const [],
   });
 
   final String id;
@@ -94,6 +153,22 @@ class BusinessEntity {
   /// «Pausado temporalmente». Lo decide el servidor con el horario y la pausa
   /// del local; aquí solo se pinta.
   final String? cerradoMotivo;
+
+  /// Si el local es nuestro cliente, o si la ficha la abrimos nosotros desde
+  /// una foto de su carta.
+  ///
+  /// Cambia TODA la pantalla: con `false` los precios son REFERENCIA —salieron
+  /// de su menú, no de él— y el pedido no se le manda a ningún portal, va un
+  /// repartidor de ZIPA a comprarlo. Por defecto `true`: un backend viejo que
+  /// no mande el campo sigue comportándose como hasta hoy.
+  final bool claimed;
+
+  /// A qué otras ciudades despacha. Vacía = solo entrega en la suya.
+  final List<DestinoEnvio> shipsTo;
+
+  /// Vende a otras ciudades (lo que habilita la compra al por mayor a
+  /// distancia: el comercio deja la caja en la terminal y el bus la lleva).
+  bool get despachaAOtrasCiudades => shipsTo.isNotEmpty;
 }
 
 /// Un producto del catálogo de un negocio.

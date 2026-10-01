@@ -16,6 +16,7 @@ import {
   type PedidoEnMesa,
   type Producto,
 } from '../api'
+import { LineaTiempo } from '../LineaTiempo'
 
 /**
  * La carta del restaurante, abierta desde el QR de la mesa.
@@ -214,6 +215,10 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
               </p>
             ) : null}
           </div>
+
+          {pedido.timeline && pedido.timeline.length > 0 && (
+            <LineaTiempo pasos={pedido.timeline} />
+          )}
 
           <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
             {pedido.items.map((it, i) => (

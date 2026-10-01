@@ -7,6 +7,7 @@ import {
 } from '../lib/encomiendas';
 import { sendPushToClient } from './push.service';
 import { puntoDeEntrega } from '../lib/ultima-milla';
+import { registrarEventoPedido } from './pedido-eventos.service';
 
 /**
  * Encomiendas: pedidos intermunicipales que viajan en el despacho de una
@@ -372,6 +373,16 @@ async function _ponerEnTransito(ids: string[]): Promise<number> {
     where: { id: { in: ids }, status: { in: ['CONFIRMED', 'PREPARING'] } },
     data: { status: 'IN_INTERCITY_TRANSIT' },
   });
+  // Uno por pedido: el despacho mueve varias cajas a la vez, y en la bitácora
+  // de cada cliente tiene que constar la suya.
+  if (avance.count > 0) {
+    for (const id of ids) {
+      await registrarEventoPedido(id, 'IN_INTERCITY_TRANSIT', {
+        actor: 'empresa',
+        note: 'Salió en el despacho',
+      });
+    }
+  }
 
   // Aviso al cliente: su caja salió. Es el push que más importa de este flujo
   // —lo siguiente que sabrá es que llegó— y va best-effort para que un fallo
@@ -434,6 +445,12 @@ export async function marcarEncomiendaEntregada(manifestId: string): Promise<boo
     data: { status: 'DELIVERED', deliveredAt: new Date() },
   });
   if (avance.count === 0) return false;
+  await registrarEventoPedido(m.orderId, 'DELIVERED', {
+    actor: 'empresa',
+    note: m.discrepancyCount > 0
+      ? `Entregado en taquilla con ${m.discrepancyCount} bulto(s) de diferencia`
+      : 'Entregado en la taquilla de destino',
+  });
 
   const o = await prisma.order.findUnique({
     where: { id: m.orderId },
@@ -498,6 +515,10 @@ async function _arrancarUltimaMilla(
     },
   });
   if (avance.count === 0) return false;
+  await registrarEventoPedido(orderId, 'AT_DESTINATION_HUB', {
+    actor: 'empresa',
+    note: 'Llegó a la ciudad de destino',
+  });
 
   const o = await prisma.order.findUnique({
     where: { id: orderId },
@@ -515,4 +536,60 @@ async function _arrancarUltimaMilla(
   const { startOrderMatchingCycle } = await import('./matching.service');
   void startOrderMatchingCycle(orderId);
   return true;
+}
+
+/**
+ * El cliente decide recogerlo él en la taquilla, en vez de esperar repartidor.
+ *
+ * POR QUÉ HACE FALTA. Con la última milla pedida, la caja queda en la taquilla
+ * esperando a que alguien la lleve a la puerta. Si no aparece repartidor —una
+ * plaza pequeña a las nueve de la noche— el pedido se quedaba ahí sin salida:
+ * el aviso decía que el negocio podía entregarlo, y el negocio está en otra
+ * ciudad. Esto le da la salida que de verdad tiene: ir por él.
+ *
+ * SE CIERRA COMO ENTREGADO, y es el MISMO punto de cierre que una encomienda
+ * en taquilla normal: ahí también se marca entregada cuando la empresa recibe
+ * el remito, no cuando el destinatario camina hasta el mostrador. Inventar un
+ * estado intermedio dejaría un pedido abierto para siempre, y el barrido de
+ * rescate le volvería a buscar repartidor — justo lo que el cliente acaba de
+ * decir que no quiere.
+ *
+ * Al apagar `lastMile`, la línea de tiempo pasa sola a la forma de taquilla y
+ * su último paso dice «Entregado en la taquilla», que es lo que pasó.
+ */
+export async function recogerEnTaquilla(
+  userId: string,
+  orderId: string,
+): Promise<{ ok: true } | { ok: false; motivo: string }> {
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { userId: true, status: true, lastMile: true },
+  });
+  if (!o || o.userId !== userId) return { ok: false, motivo: 'No encontramos ese pedido.' };
+  if (o.status !== 'AT_DESTINATION_HUB') {
+    return {
+      ok: false,
+      motivo: 'Este pedido no está esperando en la taquilla.',
+    };
+  }
+
+  // Guarda en la MISMA escritura: si entre la consulta y aquí un repartidor lo
+  // tomó, no se le quita de las manos ni se cierra dos veces.
+  const avance = await prisma.order.updateMany({
+    where: { id: orderId, status: 'AT_DESTINATION_HUB', driverId: null },
+    data: { status: 'DELIVERED', deliveredAt: new Date(), lastMile: false },
+  });
+  if (avance.count === 0) {
+    return { ok: false, motivo: 'Ya hay un repartidor en camino con tu pedido.' };
+  }
+
+  // Deja de insistir: sin esto el barrido seguiría ofreciéndolo diez minutos.
+  const { cancelSearchRetry } = await import('./matching.service');
+  cancelSearchRetry(`order:${orderId}`);
+
+  await registrarEventoPedido(orderId, 'DELIVERED', {
+    actor: 'cliente',
+    note: 'Recogida en la taquilla a petición del cliente',
+  });
+  return { ok: true };
 }
