@@ -548,6 +548,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   /// o un «--» se leen como que la app se rompió.
   String get _etaLabel => _etaMin == null ? 'Buscando señal' : '$_etaMin min';
 
+  /// Rojo cuando está al llegar, ámbar cuando falta poco, y el color del
+  /// servicio el resto del tiempo. Sin posición se queda en el del servicio:
+  /// pintar «urgente» sin saber dónde está sería inventar una urgencia.
+  Color _colorEta(ServiceType serviceType) {
+    final m = _etaMin;
+    if (m == null) return serviceType.color;
+    if (m <= 1) return AppColors.error;
+    if (m <= 3) return AppColors.warning;
+    return serviceType.color;
+  }
+
   // ── Trip state transition handler ────────────────────────────────────────
 
   void _onTripStateChanged(ActiveTripEntity? prev, ActiveTripEntity? next) {
@@ -1065,27 +1076,21 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
               const SizedBox(width: AppConstants.spacingS),
 
-              // ETA badge — changes color as time runs out
+              // La píldora del ETA. Cambia de color según lo que falta, y lo
+              // que falta ahora se MIDE con el GPS en vez de ser un contador
+              // que baja solo: sin posición no hay color de urgencia, porque
+              // no se sabe si está cerca o lejos.
               AnimatedContainer(
                 duration: const Duration(milliseconds: 500),
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _etaSeconds < 60
-                      ? AppColors.error
-                      : _etaSeconds < 180
-                          ? AppColors.warning
-                          : serviceType.color,
+                  color: _colorEta(serviceType),
                   borderRadius:
                       BorderRadius.circular(AppConstants.radiusCircular),
                   boxShadow: [
                     BoxShadow(
-                      color: (_etaSeconds < 60
-                              ? AppColors.error
-                              : _etaSeconds < 180
-                                  ? AppColors.warning
-                                  : serviceType.color)
-                          .withValues(alpha: 0.4),
+                      color: _colorEta(serviceType).withValues(alpha: 0.4),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),

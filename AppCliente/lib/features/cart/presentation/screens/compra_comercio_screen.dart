@@ -116,7 +116,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => safeBack(context, AppRoutes.home),
+            onPressed: () => safeBack(context, fallback: AppRoutes.home),
           ),
           title: const Text('Tu compra'),
         ),
@@ -128,7 +128,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => safeBack(context, AppRoutes.home),
+          onPressed: () => safeBack(context, fallback: AppRoutes.home),
         ),
         title: const Text('Vamos y lo compramos'),
       ),
