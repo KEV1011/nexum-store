@@ -51,11 +51,50 @@ export type Traer = (
  */
 const ESPERA_MS = 25_000;
 
+/**
+ * Los únicos valores que encienden algo. Lo que no esté aquí deja el lector
+ * APAGADO, nunca a medias: un valor que no entendemos no puede activar un
+ * proveedor «parecido».
+ */
+const PROVEEDORES_VALIDOS: readonly string[] = [
+  'none', 'fake', 'google-vision', 'azure-read',
+];
+
+function _valorCrudo(): string {
+  return (process.env['CARTA_OCR_PROVIDER'] ?? '').trim().toLowerCase();
+}
+
 export function proveedorCarta(): ProveedorCarta {
-  const p = (process.env['CARTA_OCR_PROVIDER'] ?? '').trim().toLowerCase();
+  const p = _valorCrudo();
   if (p === 'fake' || p === 'google-vision' || p === 'azure-read') return p;
   return 'none';
 }
+
+/**
+ * Hay algo escrito en la variable, pero no es ninguno de los válidos.
+ *
+ * POR QUÉ ESTO ES UN ESTADO PROPIO Y NO «apagado». Pasó de verdad: la variable
+ * estaba puesta como `google-vision3`. El `3` sobraba, no coincidía con nada,
+ * el código caía a `none` y `/health` decía `apagado` — exactamente lo mismo
+ * que si nunca se hubiera configurado. Desde fuera, «lo puse y no funciona» y
+ * «no lo he puesto» se veían idénticos, así que el diagnóstico apuntaba al
+ * sitio equivocado (a la llave de Google, que estaba bien).
+ *
+ * Es el mismo fallo que ya costó dos rondas con `push: firebase` sobre una
+ * credencial inválida y con `google-vision-rechazada`: una variable puesta y
+ * una ausente no se pueden reportar igual.
+ */
+export function proveedorNoReconocido(): boolean {
+  const p = _valorCrudo();
+  return p !== '' && !PROVEEDORES_VALIDOS.includes(p);
+}
+
+/**
+ * El último valor por el que ya se avisó. Evita repetir el aviso en cada
+ * llamada a `/health` —que se consulta a menudo— pero vuelve a avisar si
+ * alguien cambia la variable a otra cosa igual de equivocada.
+ */
+let _avisadoPara: string | null = null;
 
 /**
  * La llave con la que se llama a Vision. Se admite una propia para poder
@@ -72,6 +111,21 @@ function llaveVision(): string {
 
 /** Para `/health`: qué está activo, en español. */
 export function modoCartaOcr(): string {
+  if (proveedorNoReconocido()) {
+    // El valor va al LOG y no a `/health`, que es público: si alguien se
+    // equivoca de campo y pega ahí algo que no debía, no lo publicamos. Quien
+    // tiene acceso a los registros es quien puede corregir la variable.
+    const valor = _valorCrudo();
+    if (_avisadoPara !== valor) {
+      _avisadoPara = valor;
+      console.warn(
+        `[CartaOCR] CARTA_OCR_PROVIDER="${valor}" no es un valor válido; el `
+        + 'lector queda APAGADO. Valores admitidos: '
+        + `${PROVEEDORES_VALIDOS.join(' | ')}.`,
+      );
+    }
+    return 'configuracion-no-reconocida';
+  }
   switch (proveedorCarta()) {
     case 'google-vision':
       if (!llaveVision()) return 'google-vision-sin-llave';

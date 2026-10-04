@@ -192,6 +192,33 @@ describe('el interruptor y lo que publica /health', () => {
     expect(modoCartaOcr()).toBe('google-vision');
   });
 
+  it('un valor mal escrito NO se reporta como «apagado»', async () => {
+    // El caso real: la variable estaba puesta como `google-vision3`. El `3`
+    // sobraba, no coincidía con ningún proveedor y el código caía a `none`,
+    // así que /health decía `apagado` — lo mismo que si nunca se hubiera
+    // configurado. «Lo puse y no funciona» y «no lo he puesto» se veían
+    // iguales desde fuera, y el diagnóstico se fue a la llave de Google, que
+    // estaba bien.
+    process.env['CARTA_OCR_PROVIDER'] = 'google-vision3';
+    process.env['CARTA_OCR_API_KEY'] = 'k';
+    expect(modoCartaOcr()).toBe('configuracion-no-reconocida');
+    expect(modoCartaOcr()).not.toBe('apagado');
+
+    // Y sigue APAGADO de verdad: un valor que no entendemos no puede activar
+    // un proveedor «parecido» ni mandarle la foto a nadie.
+    const { traer, llamadas } = traerQueDevuelve(respuestaVision('x'));
+    expect((await leerTextoDeCarta(FOTO, traer)).disponible).toBe(false);
+    expect(llamadas).toHaveLength(0);
+  });
+
+  it('la variable vacía sigue siendo «apagado», no un error de configuración', () => {
+    // La otra mitad: quien no la ha puesto no tiene nada que corregir, y
+    // decirle que su configuración es inválida lo mandaría a buscar un fallo
+    // que no existe.
+    process.env['CARTA_OCR_PROVIDER'] = '   ';
+    expect(modoCartaOcr()).toBe('apagado');
+  });
+
   it('el modo de pruebas NUNCA responde en producción', async () => {
     process.env['CARTA_OCR_PROVIDER'] = 'fake';
     process.env['NODE_ENV'] = 'production';
