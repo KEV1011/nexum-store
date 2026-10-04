@@ -89,9 +89,16 @@ se finge que la carta no se entiende.
 
 1. `GET /health` → el campo **`cartaFoto`**:
    - `google-vision` → listo.
+   - `google-vision-rechazada` → la llave existe y Google la rechaza: falta
+     habilitar Cloud Vision API, o la llave está restringida a otras APIs.
    - `google-vision-sin-llave` → falta la llave (ni `CARTA_OCR_API_KEY` ni
      `GOOGLE_MAPS_API_KEY` en el entorno).
-   - `apagado` → falta `CARTA_OCR_PROVIDER`.
+   - **`configuracion-no-reconocida`** → la variable está puesta pero su valor
+     no es ninguno de los admitidos. Casi siempre es una errata: pasó con
+     `google-vision3`, donde el `3` sobraba. El valor exacto no se publica
+     aquí (`/health` es público) pero sí va a los registros de Render, con la
+     lista de valores válidos.
+   - `apagado` → falta `CARTA_OCR_PROVIDER`, o está vacía.
 2. Entra a `/negocio/<token>/catalogo` y pulsa **«Tomar foto de la carta»**.
 3. Si sale «No pudimos leer la carta en este momento», el motivo real está en
    los **logs de Render** (`[CartaOCR] …`). El más probable es un **403**: la
