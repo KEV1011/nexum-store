@@ -27,6 +27,10 @@ import { resolverLineasDePedido, descontarInventario } from './order-lines.servi
 import { avisarNegocioDePedidoNuevo, _guardarCalificacionDePedido } from './client.service';
 import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { nombreEstadoPedido } from '../lib/estado-pedido';
+import { registrarEventoPedido, historialDePedido } from './pedido-eventos.service';
+import {
+  lineaDeTiempoPedido, type EstadoPedidoBD, type PasoPedido,
+} from '../lib/linea-tiempo-pedido';
 
 /** La carta pública de un local, tal como la abre el comensal desde el QR. */
 export interface CartaPublicaDTO {
@@ -50,6 +54,15 @@ export interface PedidoEnMesaDTO {
   createdAt?: string;
   /** La estrella que ya dejó, si la dejó. Se puede corregir. */
   rating?: number | null;
+  /**
+   * Los pasos por los que va el plato, con su hora.
+   *
+   * Los arma el servidor con la forma del pedido (aquí, `dineIn`), que es lo
+   * que evita prometerle un repartidor a quien está sentado en el salón. Va
+   * ausente —no vacía— cuando el DTO se construyó sin consultar la bitácora:
+   * una lista vacía se leería como «este pedido no tiene historial».
+   */
+  timeline?: PasoPedido[];
   items: Array<{
     productName: string;
     quantity: number;
@@ -265,13 +278,21 @@ export async function crearPedidoEnMesa(
   // La cocina se entera EN EL MOMENTO, por el mismo canal y con el mismo DTO
   // que un domicilio: así el portal ya existente lo pinta, lo suena y lo cuenta
   // sin cambiarle nada.
+  // El primer hecho de la bitácora, igual que en un domicilio. Sin él la
+  // historia del pedido empezaría en «preparando», como si el plato hubiera
+  // aparecido en la cocina sin que nadie lo pidiera.
+  // Actor `cliente` y no un «comensal» nuevo: el catálogo de actores es
+  // cerrado a propósito y quien pide es el cliente en los dos canales. Que fue
+  // en el salón ya lo dice el `mode` del pedido.
+  await registrarEventoPedido(order.id, 'PENDING', { actor: 'cliente' });
+
   await avisarNegocioDePedidoNuevo(order.id);
 
   // A propósito NO hay auto-cancelación por no aceptar. En un domicilio, el
   // cliente que espera en su casa necesita que alguien corte; aquí está
   // sentado a diez metros de la cocina y puede preguntarle al mesero. Cancelar
   // solo le quitaría el pedido de la pantalla sin resolverle el almuerzo.
-  return _aDTO(order, biz.name, order.lines);
+  return _aDTO(order, biz.name, order.lines, await historialDePedido(order.id));
 }
 
 /** El pedido de una mesa, consultado por el comensal desde su pantalla. */
@@ -287,7 +308,9 @@ export async function getPedidoEnMesa(
   // Tiene que ser de ESTE local y de mesa: si no, el código de una carta
   // serviría para leer los pedidos a domicilio del negocio, con su dirección.
   if (!order || order.businessId !== carta.business.id || order.mode !== 'DINE_IN') return null;
-  return _aDTO(order, carta.business.name, order.lines);
+  return _aDTO(
+    order, carta.business.name, order.lines, await historialDePedido(order.id),
+  );
 }
 
 /**
@@ -350,6 +373,10 @@ export async function marcarServido(
     data: { status: 'DELIVERED', deliveredAt: new Date() },
   });
   if (res.count === 0) return null;
+  await registrarEventoPedido(orderId, 'DELIVERED', {
+    actor: 'negocio',
+    note: 'Servido en la mesa',
+  });
   return avisarNegocioDePedidoNuevo(orderId);
 }
 
@@ -364,6 +391,7 @@ function _aDTO(
     productName: string; quantity: number; unitPrice: number; subtotal: number;
     optionsSummary: string | null; notes: string | null;
   }>,
+  eventos?: Array<{ status: string; at: Date }>,
 ): PedidoEnMesaDTO {
   return {
     id: o.id,
@@ -376,6 +404,22 @@ function _aDTO(
     ...(o.prepMinutes != null ? { prepMinutes: o.prepMinutes } : {}),
     ...(o.acceptedAt ? { acceptedAt: o.acceptedAt.toISOString() } : {}),
     ...(o.rating != null ? { rating: o.rating } : {}),
+    // `dineIn: true` es lo único que hace falta decirle: de ahí salen los
+    // cuatro pasos del salón, sin el repartidor que aquí no existe.
+    ...(eventos
+      ? {
+          timeline: lineaDeTiempoPedido(
+            {
+              status: o.status as EstadoPedidoBD,
+              dineIn: true,
+              intercity: false,
+              lastMile: false,
+              createdAt: o.createdAt,
+            },
+            eventos.map((e) => ({ status: e.status as EstadoPedidoBD, at: e.at })),
+          ),
+        }
+      : {}),
     createdAt: o.createdAt.toISOString(),
     items: lines.map((l) => ({
       productName: l.productName,

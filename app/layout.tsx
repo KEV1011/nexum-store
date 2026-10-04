@@ -1,18 +1,44 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Montserrat } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 
-const inter = Inter({
-  subsets:  ['latin'],
+// ── Las fuentes viven en el repo, no se descargan al construir ──────────────
+//
+// POR QUÉ. `next/font/google` baja el .woff2 de fonts.gstatic.com DURANTE el
+// build. Es cómodo, pero convierte a Google en una dependencia de despliegue:
+// un tropiezo de red suyo —o del runner— tumba el deploy con un montón de
+// «module not found» sobre un CSS generado, sin que haya una sola línea rota
+// en el repositorio. Pasó aquí: el mismo commit falló y a la segunda salió
+// verde. Un build que depende del humor de la red no es reproducible, y el
+// error no se parece en nada a su causa, que es lo que lo hace caro.
+//
+// Autoalojarlas quita la descarga del camino crítico. El navegador ya recibía
+// los archivos desde nuestro dominio (eso lo hacía igual `next/font/google`,
+// que descarga en build y sirve local), así que para quien visita la web NO
+// cambia nada: ni una petición más ni una menos.
+//
+// Los dos archivos son el subconjunto **latin**, que cubre todo el español
+// (áéíóúñü¿¡ comprobado carácter por carácter) y son fuentes VARIABLES de
+// 100 a 900, así que un solo archivo por familia da todos los pesos: 86 KB
+// entre las dos, menos que los cuatro estáticos que se bajaban antes.
+//
+// Para actualizarlas: `tools/descargar-fuentes.py`.
+const inter = localFont({
+  src:      './fonts/Inter-latin.woff2',
   variable: '--font-inter',
   display:  'swap',
+  weight:   '100 900',
 })
 
-const montserrat = Montserrat({
-  subsets:  ['latin'],
+// El rango completo y no «600 800» como pedía la config vieja: `font-black`
+// (900) se usa en loading.tsx y not-found.tsx, y como 900 no estaba entre los
+// pesos cargados el navegador lo resolvía con el más cercano —800—. Pedía un
+// peso y recibía otro, en silencio. El archivo variable lo trae sin coste.
+const montserrat = localFont({
+  src:      './fonts/Montserrat-latin.woff2',
   variable: '--font-montserrat',
-  weight:   ['600', '700', '800'],
   display:  'swap',
+  weight:   '100 900',
 })
 
 export const metadata: Metadata = {

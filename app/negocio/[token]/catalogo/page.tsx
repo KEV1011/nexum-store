@@ -46,11 +46,18 @@ const CATEGORIES = ['General', 'Entradas', 'Platos fuertes', 'Bebidas', 'Postres
 const UNIDADES = ['unidad', 'kg', 'g', 'libra', 'litro', 'ml', 'paquete'] as const
 
 /**
- * Los negocios con inventario (supermercado, farmacia) necesitan código de
- * barras y existencias; un restaurante no — ahí esos campos solo estorban.
+ * Los negocios con inventario (tienda de mercancía, supermercado, farmacia)
+ * necesitan código de barras y existencias; un restaurante no — ahí esos
+ * campos solo estorban.
+ *
+ * Es una lista de los que SÍ y no una excepción para el restaurante: si fuera
+ * al revés, cada categoría nueva heredaría el formulario con inventario sin
+ * que nadie lo decidiera.
  */
+const CON_INVENTARIO = ['store', 'supermarket', 'pharmacy', 'other']
+
 function manejaInventario(categoria?: string): boolean {
-  return categoria === 'supermarket' || categoria === 'pharmacy' || categoria === 'other'
+  return categoria != null && CON_INVENTARIO.includes(categoria)
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

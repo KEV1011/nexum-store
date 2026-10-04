@@ -56,11 +56,14 @@ TripRequestEntity? ofertaDeViaje(Map<String, dynamic> t) {
       // El aviso ya redactado por el servidor. Si el backend es anterior a
       // este campo, la entidad lo compone con su propia tabla.
       paymentNote: t['paymentNote'] as String?,
-      // Solo el nombre: al conductor le sirve para decidir y para orientarse;
-      // las coordenadas ya las usó el servidor para medir y cobrar.
+      // Con su punto cuando lo hay: el conductor las necesita DIBUJADAS en
+      // el mapa, no solo enumeradas. Una parada sin nombre se descarta —sin
+      // nombre no se puede ni anunciar—, pero una sin coordenadas se
+      // conserva: se enseña en la lista aunque no se pueda pintar.
       stops: ((t['stops'] as List<dynamic>?) ?? const [])
-          .map((e) => (e as Map<String, dynamic>)['name']?.toString() ?? '')
-          .where((n) => n.isNotEmpty)
+          .whereType<Map<String, dynamic>>()
+          .map(TripStopEntity.fromJson)
+          .where((s) => s.nombre.isNotEmpty)
           .toList(),
     );
   } catch (_) {
@@ -112,6 +115,10 @@ TripRequestEntity? ofertaDePedido(Map<String, dynamic> o) {
       distanceToPickupKm: 0.5,
       etaToPickupMinutes: 3,
       requestedAt: DateTime.now(),
+      // Con qué le pagan al llegar. Lo redacta el servidor desde su catálogo
+      // («Te paga por Nequi», «Ya pagado en la app»): el repartidor aceptaba
+      // sin saber si tenía que cobrar en la puerta.
+      paymentNote: o['paymentNote'] as String?,
       errand: ErrandDetails(
         category: ErrandCategory.other,
         description:
@@ -154,9 +161,15 @@ TripRequestEntity? ofertaDeMandado(Map<String, dynamic> e) {
         totalTrips: 0,
         photoUrl: '',
       ),
+      // El punto REAL del local. El servidor lo guarda desde que se crea el
+      // mandado y la oferta lo tiraba: el repartidor veía el mapa en el
+      // centro del pueblo y no sabía a dónde ir a comprar. Sin punto —el
+      // cliente escribió la dirección a mano— se cae al centro, que sigue
+      // siendo mejor que no dibujar nada porque la dirección va escrita al
+      // lado.
       origin: LocationModel(
-        latitude: pamplonaCenterLat,
-        longitude: pamplonaCenterLng,
+        latitude: (e['pickupLat'] as num?)?.toDouble() ?? pamplonaCenterLat,
+        longitude: (e['pickupLng'] as num?)?.toDouble() ?? pamplonaCenterLng,
         address: e['pickupAddress'] as String? ?? '',
       ),
       destination: LocationModel(

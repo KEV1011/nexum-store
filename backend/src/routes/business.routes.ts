@@ -33,6 +33,7 @@ import {
 import { getMesasDelNegocio, guardarMesas, marcarServido } from '../services/mesa.service';
 import {
   RegisterBusinessDTO,
+  BUSINESS_CATEGORIES,
   CreateProductDTO,
   UpdateProductDTO,
   SetProductOptionsDTO,
@@ -57,6 +58,17 @@ router.post('/register', authLimiter, async (req: Request, res: Response): Promi
     res.status(400).json({
       success: false,
       error: 'Faltan campos requeridos: nombre, dueño, teléfono, dirección y categoría.',
+    });
+    return;
+  }
+
+  // Una categoría desconocida llegaba hasta Prisma como `undefined` y el
+  // registro fallaba con un error de base de datos que no le dice nada a
+  // nadie. Se valida aquí, con la lista y en español.
+  if (!BUSINESS_CATEGORIES.includes(dto.category)) {
+    res.status(400).json({
+      success: false,
+      error: `Categoría no válida. Las disponibles son: ${BUSINESS_CATEGORIES.join(', ')}.`,
     });
     return;
   }

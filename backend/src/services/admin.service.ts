@@ -879,6 +879,8 @@ export interface AdminBusinessRow {
   products: number;
   orders: number;
   portalPath: string;
+  /** `false` = ficha abierta por nosotros desde una foto de su carta. */
+  claimed: boolean;
   createdAt: string;
 }
 
@@ -913,8 +915,78 @@ export async function listBusinessesForAdmin(query?: string): Promise<AdminBusin
     // Ruta relativa: el panel la abre contra el portal configurado. Es lo que
     // el admin le reenvía al dueño que perdió su enlace.
     portalPath: `/negocio/${b.token}`,
+    // Si el local es nuestro cliente o si la ficha la abrimos nosotros desde
+    // una foto de su carta. El admin tiene que distinguirlas: en las no
+    // reclamadas los pedidos salen como mandados de compra, no al portal.
+    claimed: b.claimed,
     createdAt: b.createdAt.toISOString(),
   }));
+}
+
+/**
+ * Abre la ficha de un comercio con el que todavía no se ha hablado.
+ *
+ * Nace `claimed: false`, que es lo que hace que sus precios se enseñen como
+ * referencia y que sus pedidos salgan como mandados de compra. Devuelve el
+ * token del portal: con él se le carga la carta desde una foto en
+ * `/negocio/<token>/catalogo`, y es el mismo enlace que se le entrega el día
+ * que el dueño diga que sí.
+ *
+ * La geocodificación es best-effort: sin punto, el despacho del mandado se
+ * ancla al centro de la plaza, que es peor pero no bloquea nada.
+ */
+export async function abrirFichaDeComercio(dto: {
+  name: string;
+  address: string;
+  category: string;
+  phone?: string;
+  city?: string;
+}): Promise<{ id: string; token: string; portalPath: string }> {
+  const nombre = dto.name?.trim();
+  const direccion = dto.address?.trim();
+  if (!nombre || nombre.length < 2) throw new Error('Falta el nombre del comercio.');
+  if (!direccion) throw new Error('Falta la dirección: sin ella nadie puede ir a comprar.');
+
+  const { categoriaDesdeEspanol } = await import('./business.service');
+  const categoria = categoriaDesdeEspanol(dto.category);
+  if (!categoria) throw new Error(`Categoría desconocida: ${dto.category}`);
+
+  const { geocodeAddress } = await import('./geo.service');
+  const punto = await geocodeAddress(direccion, dto.city).catch(() => null);
+
+  const { plazaDeCoordenadas } = await import('./municipality.service');
+  const plaza = punto ? await plazaDeCoordenadas(punto.lat, punto.lng) : null;
+
+  const b = await prisma.business.create({
+    data: {
+      name: nombre,
+      address: direccion,
+      category: categoria,
+      ...(dto.phone?.trim() ? { phone: dto.phone.trim() } : {}),
+      ...(punto ? { lat: punto.lat, lng: punto.lng } : {}),
+      ...(plaza ? { citySlug: plaza } : {}),
+      claimed: false,
+      // No se le promete ningún tiempo de entrega: lo dice el repartidor
+      // cuando llega al local y ve la fila (`declararEtaDeMandado`).
+      acceptingOrders: true,
+    },
+    select: { id: true, token: true },
+  });
+  return { id: b.id, token: b.token, portalPath: `/negocio/${b.token}` };
+}
+
+/**
+ * El dueño se queda con la ficha: a partir de aquí es su local.
+ *
+ * Sus precios pasan a ser firmes y sus pedidos van a su portal, que es
+ * exactamente el momento que esta estrategia persigue. No se toca su
+ * catálogo: lo que cargamos de su carta es su punto de partida.
+ */
+export async function entregarFichaAlDueno(id: string): Promise<void> {
+  await prisma.business.update({
+    where: { id },
+    data: { claimed: true, claimedAt: new Date() },
+  });
 }
 
 /** Activa o desactiva la cuenta del negocio (isOpen = gate de acceso al portal). */

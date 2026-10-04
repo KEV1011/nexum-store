@@ -61,6 +61,20 @@ void main() {
       );
     });
 
+    test('el recordatorio de la reserva lleva al seguimiento de SU viaje', () {
+      // Ahí se ve la hora reservada, el conductor que la apartó y el punto de
+      // recogida: lo que el pasajero quiere comprobar al leer «tu viaje es a
+      // las 6:00». Sin tripId se cae al home en vez de romper la ruta.
+      expect(
+        rutaDeNotificacion({'type': 'reserva_recordatorio', 'tripId': 't1'}),
+        AppRoutes.transportTrackingPath('t1'),
+      );
+      expect(
+        rutaDeNotificacion({'type': 'reserva_recordatorio'}),
+        AppRoutes.home,
+      );
+    });
+
     test('lo desconocido devuelve null y no mueve al usuario', () {
       expect(rutaDeNotificacion({'type': 'promo_del_mes'}), isNull);
       expect(rutaDeNotificacion(<String, dynamic>{}), isNull);

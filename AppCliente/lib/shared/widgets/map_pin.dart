@@ -9,12 +9,19 @@ import 'package:flutter/material.dart';
 class MapPin extends StatelessWidget {
   const MapPin({
     required this.color,
-    required this.icon,
+    this.icon,
+    this.numero,
     super.key,
-  });
+  }) : assert(icon != null || numero != null, 'El pin necesita glifo o número');
 
   final Color color;
-  final IconData icon;
+  final IconData? icon;
+
+  /// Texto corto dentro de la cabeza, para las paradas: «1», «2»…
+  ///
+  /// Una parada con el mismo glifo del destino se lee como un segundo final, y
+  /// confundir la segunda parada con el final del viaje es pasarse de largo.
+  final String? numero;
 
   /// Tamaño recomendado del Marker que lo contiene.
   static const double markerWidth = 40;
@@ -60,7 +67,20 @@ class MapPin extends StatelessWidget {
                 color: Colors.white,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 13, color: color),
+              child: Center(
+                child: numero != null
+                    ? Text(
+                        numero!,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                          height: 1,
+                        ),
+                      )
+                    : Icon(icon, size: 13, color: color),
+              ),
             ),
           ),
         ],

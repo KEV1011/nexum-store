@@ -36,7 +36,15 @@ class CartScreen extends ConsumerWidget {
           ? null
           : _CheckoutBar(
               total: cart.total,
-              onCheckout: () => context.push(AppRoutes.checkout),
+              // Un comercio que todavía no es cliente nuestro no tiene a
+              // nadie al otro lado para aceptar el pedido: su camino es la
+              // compra por mandado, que NO es un checkout (no hay promoción
+              // que aplicar, ni envío a otra ciudad, ni precio firme).
+              onCheckout: () => context.push(
+                cart.business?.claimed == false
+                    ? AppRoutes.compraComercio
+                    : AppRoutes.checkout,
+              ),
             ),
     );
   }

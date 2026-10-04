@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nexum_client/app/theme/app_colors.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/shared/widgets/map_location_picker.dart';
@@ -23,6 +23,7 @@ class AddressAutocompleteField extends ConsumerStatefulWidget {
     this.onManualEdit,
     this.suffixIcon,
     this.allowMapPicker = true,
+    this.sesgo,
     super.key,
   });
 
@@ -45,6 +46,11 @@ class AddressAutocompleteField extends ConsumerStatefulWidget {
   /// cuando la dirección no existe en Google o la persona no sabe escribirla
   /// ("frente a la cancha"), que en pueblo es la mitad de los casos.
   final bool allowMapPicker;
+
+  /// Punto hacia el que sesgar las sugerencias. Se usa para escribir una
+  /// dirección de OTRA ciudad: sin él, Google ordena por cercanía a Pamplona
+  /// y una calle de Bucaramanga no aparece.
+  final ({double lat, double lng})? sesgo;
 
   @override
   ConsumerState<AddressAutocompleteField> createState() =>
@@ -74,7 +80,11 @@ class _AddressAutocompleteFieldState
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 350), () async {
-      final results = await ref.read(geoServiceProvider).autocomplete(value);
+      final results = await ref.read(geoServiceProvider).autocomplete(
+            value,
+            lat: widget.sesgo?.lat,
+            lng: widget.sesgo?.lng,
+          );
       if (!mounted) return;
       setState(() => _suggestions = results);
     });
@@ -97,9 +107,13 @@ class _AddressAutocompleteFieldState
   }
 
   Future<void> _elegirEnMapa() async {
+    final s = widget.sesgo;
     final picked = await MapLocationPicker.show(
       context,
       title: widget.label,
+      // Con sesgo, el mapa abre en ESA ciudad. Abrirlo en Pamplona para
+      // marcar un punto en Bucaramanga obliga a arrastrar medio país.
+      initial: s == null ? null : LatLng(s.lat, s.lng),
     );
     if (picked == null || !mounted) return;
     _lastSelectedText = picked.address;

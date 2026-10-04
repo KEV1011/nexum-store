@@ -19,6 +19,7 @@ enum MetodoPago {
   nequi,
   daviplata,
   bancolombia,
+  breB,
   transferencia,
   enLinea;
 
@@ -27,6 +28,7 @@ enum MetodoPago {
         MetodoPago.nequi => 'Nequi',
         MetodoPago.daviplata => 'Daviplata',
         MetodoPago.bancolombia => 'Bancolombia',
+        MetodoPago.breB => 'Llave Bre-B',
         MetodoPago.transferencia => 'Otra transferencia',
         MetodoPago.enLinea => 'Pago en línea',
       };
@@ -42,6 +44,11 @@ enum MetodoPago {
           'Le transfieres al conductor; acuerdan el número por el chat',
         MetodoPago.bancolombia =>
           'Transferencia o QR; acuerdan la cuenta por el chat',
+        // Bre-B se paga a una LLAVE (celular, cédula, correo), no a un número
+        // de cuenta, y sirve entre bancos distintos. Sigue cobrándolo el
+        // conductor: el dinero entra a su llave, no a la plataforma.
+        MetodoPago.breB =>
+          'Le transfieres a su llave desde cualquier banco o billetera',
         MetodoPago.enLinea => 'Tarjeta, PSE o Nequi, cobrado por la app',
       };
 
@@ -52,6 +59,7 @@ enum MetodoPago {
         MetodoPago.nequi => 'nequi',
         MetodoPago.daviplata => 'daviplata',
         MetodoPago.bancolombia => 'bancolombia',
+        MetodoPago.breB => 'bre_b',
         MetodoPago.transferencia => 'transferencia',
         MetodoPago.enLinea => 'en_linea',
       };

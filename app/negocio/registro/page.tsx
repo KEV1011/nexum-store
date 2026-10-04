@@ -24,9 +24,17 @@ const BACKEND_URL =
     ? 'http://localhost:3000'
     : 'https://nexum-api-trxr.onrender.com')
 
+// El orden es el de lo concreto a lo genérico, y «Otro» va al final porque es
+// el cajón: quien encuentra su rubro antes no llega a él.
+//
+// `supermarket` decía «Supermercado / Tienda» y era la causa de que un almacén
+// de ropa o electrodomésticos se registrara ahí —no había otro sitio— y luego
+// apareciera en la app llamándose supermercado. Ahora la mercancía tiene el
+// suyo y este dejó de nombrar «Tienda».
 const CATEGORIES = [
   { value: 'restaurant', label: 'Restaurante / Comida' },
-  { value: 'supermarket', label: 'Supermercado / Tienda' },
+  { value: 'store', label: 'Tienda / Almacén (ropa, tecnología, hogar)' },
+  { value: 'supermarket', label: 'Supermercado / Minimercado' },
   { value: 'pharmacy', label: 'Farmacia / Droguería' },
   { value: 'other', label: 'Otro' },
 ] as const

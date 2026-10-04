@@ -56,6 +56,30 @@ la cláusula de transferencia internacional del artículo 26.
 > escrita aquí cuando la contestes, para que la próxima subida no la vuelva a
 > decidir desde cero.
 
+## Sentry: hoy NO recoge nada, y encenderlo cambia dos documentos
+
+`sentry_flutter` está en las dos apps, pero `crashReportingEnabled` es
+`kSentryDsn.isNotEmpty` y **sin DSN `SentryFlutter.init` ni se llama**: no sale
+un solo byte. Los builds de CI se compilan con `SENTRY_DSN` vacío, así que en
+las tiendas hay que declarar **registros de fallos y diagnóstico: NO**.
+
+El día que se defina `SENTRY_DSN` hay que hacer las tres cosas, en el mismo
+movimiento:
+
+1. Marcar **Información y rendimiento de la app → Registros de fallos** en la
+   ficha de Play (y su equivalente en App Store).
+2. Añadir **Sentry** a la lista de encargados de la política de privacidad y a
+   la tabla de terceros de este archivo — `legal-privacidad.test.ts` vigila que
+   las dos coincidan, pero **no sabe que Sentry existe** hasta que alguien lo
+   añada.
+3. Publicar una versión nueva de la política desde `/admin` → SOS, porque el
+   texto vigente vive en la base de datos y cambiar el código no lo toca.
+
+Lo que ya está acotado en el código y no hay que volver a decidir:
+`attachScreenshot` y `attachViewHierarchy` en false (la pantalla lleva
+direcciones, teléfonos y nombres) y `sendDefaultPii` en false (sin IP ni datos
+del dispositivo).
+
 ## Notas operativas
 
 - **Cómo se recoge la ubicación del conductor, con precisión** (importa porque

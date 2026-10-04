@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
@@ -85,6 +86,14 @@ class _TransportBookingScreenState
       .where((p) => p.lat != null && p.lng != null)
       .map((p) => '${p.lat},${p.lng}')
       .join(';');
+
+  /// Las que SE PUEDEN dibujar, en su orden. Una parada escrita a mano no
+  /// tiene punto y no se pinta: ponerla en un sitio inventado haría creer que
+  /// el viaje pasa por ahí.
+  List<LatLng> get _paradasConPunto => _paradas
+      .where((p) => p.lat != null && p.lng != null)
+      .map((p) => LatLng(p.lat!, p.lng!))
+      .toList();
 
   /// Lo que se manda al pedir: aquí sí van todas, con punto o sin él. Una
   /// parada sin coordenada no cambia el precio pero el conductor tiene que
@@ -617,7 +626,11 @@ class _TransportBookingScreenState
     return RoutePreviewMap(
       // La clave fuerza a rehacer el mapa si cambia el trayecto: así el
       // encuadre se recalcula en vez de quedarse en el viaje anterior.
-      key: ValueKey('$_originLat,$_originLng>$_destLat,$_destLng'),
+      // Las paradas entran en la clave: sin ellas, agregar una no reencuadraba
+      // y el marcador nuevo podía nacer fuera de la vista.
+      key: ValueKey(
+        '$_originLat,$_originLng>$_destLat,$_destLng|$_paradasClave',
+      ),
       originLat: _originLat!,
       originLng: _originLng!,
       destLat: _destLat,
@@ -627,6 +640,7 @@ class _TransportBookingScreenState
       // elegida: cambiar de taxi a moto cambia la espera, y el mapa tiene que
       // decir lo mismo que la fila seleccionada.
       etaMinutos: _categoria?.etaMinutes,
+      paradas: _paradasConPunto,
     );
   }
 

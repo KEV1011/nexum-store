@@ -788,6 +788,23 @@ class _TripMapState extends ConsumerState<_TripMap>
                           height: 22,
                           child: const _OriginDot(),
                         ),
+                      // Las paradas, NUMERADAS y en su orden. Antes esta app
+                      // tiraba las coordenadas al parsear el viaje, así que el
+                      // pasajero las veía en una lista y en el mapa no había
+                      // nada. Una parada sin punto no se dibuja: inventarle un
+                      // sitio es peor que no pintarla.
+                      for (final (i, parada) in request.stops.indexed)
+                        if (parada.tienePunto)
+                          Marker(
+                            point: LatLng(parada.lat!, parada.lng!),
+                            width: MapPin.markerWidth,
+                            height: MapPin.markerHeight,
+                            alignment: Alignment.topCenter,
+                            child: MapPin(
+                              color: AppColors.warning,
+                              numero: '${i + 1}',
+                            ),
+                          ),
                       if (destination != null)
                         Marker(
                           point: destination,
@@ -1138,7 +1155,7 @@ class _TripDetails extends StatelessWidget {
               icon: Icons.alt_route_rounded,
               color: AppColors.warning,
               label: 'Parada ${i + 1}',
-              address: request.stops[i],
+              address: request.stops[i].nombre,
             ),
             Padding(
               padding: const EdgeInsets.only(left: 12),

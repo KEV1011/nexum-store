@@ -12,6 +12,29 @@ enum TripRequestStatus {
 
 /// Entidad de dominio que representa una solicitud de viaje entrante.
 /// Es el punto de partida para la transición al viaje activo.
+/// Una parada intermedia del trayecto.
+///
+/// El punto es opcional a propósito: el pasajero puede escribir «donde la
+/// panadería» sin elegir de las sugerencias, y eso sigue siendo una parada
+/// válida que hay que mostrarle al conductor — solo que no se puede dibujar.
+/// Inventarle una coordenada la pintaría en un sitio que nadie eligió.
+class TripStopEntity {
+  const TripStopEntity({required this.nombre, this.lat, this.lng});
+
+  factory TripStopEntity.fromJson(Map<String, dynamic> j) => TripStopEntity(
+        nombre: j['name']?.toString() ?? '',
+        lat: (j['lat'] as num?)?.toDouble(),
+        lng: (j['lng'] as num?)?.toDouble(),
+      );
+
+  final String nombre;
+  final double? lat;
+  final double? lng;
+
+  /// Se puede dibujar en el mapa.
+  bool get tienePunto => lat != null && lng != null;
+}
+
 class TripRequestEntity {
   const TripRequestEntity({
     required this.id,
@@ -88,7 +111,13 @@ class TripRequestEntity {
   /// Paradas intermedias, en orden. Llegan en la OFERTA: tres desvíos
   /// cambian el viaje que se está aceptando, y después ya no se puede
   /// rechazar.
-  final List<String> stops;
+  ///
+  /// Llevan su punto en el mapa cuando el pasajero lo eligió de las
+  /// sugerencias. Antes aquí solo viajaba el nombre —«las coordenadas ya las
+  /// usó el servidor para medir y cobrar»— y esa decisión estaba mal: el
+  /// conductor leía «Pasa por: Éxito» y tenía que adivinar cuál, sin verlo
+  /// dibujado en el trayecto que ya tiene delante.
+  final List<TripStopEntity> stops;
 
   bool get isPending => status == TripRequestStatus.pending;
   bool get isAccepted => status == TripRequestStatus.accepted;
@@ -168,7 +197,7 @@ class TripRequestEntity {
     bool? tarifaRegulada,
     String? paymentMethod,
     String? paymentNote,
-    List<String>? stops,
+    List<TripStopEntity>? stops,
   }) {
     return TripRequestEntity(
       id: id ?? this.id,

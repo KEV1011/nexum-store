@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/core/utils/eta_vivo.dart';
@@ -109,5 +111,34 @@ void main() {
       expect(eta, isNotNull);
       expect(eta!, greaterThan(0));
     });
+  });
+
+  test('las dos apps llevan EXACTAMENTE el mismo cálculo', () {
+    // Desde esta tanda el conductor también usa este archivo: su ETA era un
+    // contador a ciegas que bajaba un segundo por segundo aunque estuviera
+    // parado en un semáforo. No hay paquete compartido, así que el fichero
+    // está duplicado — y si las dos copias se separaran, la app del pasajero
+    // diría tres minutos y la del conductor diez para el MISMO viaje, que es
+    // una discusión en la puerta del carro que nadie puede arbitrar.
+    //
+    // Se comparan BYTE A BYTE: este archivo no importa nada del paquete
+    // propio, así que las dos copias son idénticas sin normalizar nada. Si
+    // esta prueba cae, la respuesta no es editarla: es copiar el fichero al
+    // otro lado. El mismo test corre en las dos apps y busca la otra copia a
+    // los dos lados, para no tener una versión por app.
+    const rel = 'lib/core/utils/eta_vivo.dart';
+    final aqui = File(rel);
+    final alla = [File('../AppTransport/$rel'), File('../AppCliente/$rel')]
+        .firstWhere(
+      (f) => f.existsSync() && f.absolute.path != aqui.absolute.path,
+      orElse: () => File('no-existe'),
+    );
+    expect(aqui.existsSync(), isTrue);
+    expect(alla.existsSync(), isTrue, reason: 'falta la copia de la otra app');
+    expect(
+      alla.readAsStringSync(),
+      aqui.readAsStringSync(),
+      reason: 'los dos ETA se separaron: copia el fichero al otro lado',
+    );
   });
 }
