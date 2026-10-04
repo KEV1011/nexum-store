@@ -2725,6 +2725,7 @@ shared_preferences
 shared_preferences_android
 shared_preferences_foundation
 shared_preferences_platform_interface
+url_launcher
 url_launcher_android
 url_launcher_ios
 url_launcher_linux
@@ -7981,12 +7982,11 @@ misrepresented as being the original software.
 --------------------------------------------------------------------------------
 frontend_server_client
 
-Copyright 2020, the Dart project authors. 
+Copyright 2012, the Dart project authors.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
 met:
-
     * Redistributions of source code must retain the above copyright
       notice, this list of conditions and the following disclaimer.
     * Redistributions in binary form must reproduce the above
@@ -12623,7 +12623,6 @@ plugin_platform_interface
 shared_preferences_linux
 shared_preferences_web
 shared_preferences_windows
-url_launcher
 url_launcher_platform_interface
 xdg_directories
 
