@@ -41,6 +41,7 @@ import {
 } from '../services/errand.service';
 import { registerComplianceSendToDriver } from '../services/document-expiry.service';
 import { registerReservaSendToDriver } from '../services/reservas.service';
+import { registerAvisoDeGiro } from '../services/giro-aliado.service';
 import { CustodyPinError } from '../lib/custody-pin';
 import {
   subscribeIntercityBooking,
@@ -1511,6 +1512,19 @@ export function setupWebSocket(wss: WebSocketServer): void {
   registerComplianceSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   // Reservas: «tu reserva empieza ahora» y «se te liberó por no aparecer».
   registerReservaSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+  // Giro a un aliado: «ya te pagamos», con la referencia de la transferencia.
+  // Es la mitad que vuelve aceptable que la plataforma recaude su plata: un
+  // giro silencioso obliga al dueño a revisar su banco a ciegas.
+  registerAvisoDeGiro((destino, msg) => {
+    if (destino.tipo === 'negocio') {
+      const sock = businessSockets.get(destino.id);
+      if (sock) sendTo(sock, msg);
+      return;
+    }
+    if (destino.tipo === 'empresa') {
+      for (const sock of operatorSockets.get(destino.id) ?? []) sendTo(sock, msg);
+    }
+  });
 
   // Bus de entrega entre instancias. Con REDIS_URL propaga las entregas por id
   // (sendToClient / sendToDriverById) a las demás instancias; sin él, entrega

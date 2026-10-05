@@ -1323,6 +1323,21 @@ export interface SeatBookingDTO {
    * veces como puestos, que sería inventar pasajeros.
    */
   passengers?: { tipoDoc: string; documento: string; nombre: string }[];
+  /**
+   * El código que el pasajero enseña al subir, agrupado para leerlo en voz
+   * alta («K7M 3PQ»).
+   *
+   * Ausente en las reservas anteriores a que existiera el tiquete: la app
+   * dice entonces que se identifique con su nombre, que es como funcionaba
+   * antes, en vez de enseñar un recuadro vacío.
+   */
+  ticketCode?: string;
+  /**
+   * Cuándo subió. Para el conductor es la mitad útil del manifiesto —ver de
+   * un vistazo quién falta— y para el pasajero la confirmación de que su
+   * tiquete ya se usó.
+   */
+  boardedAt?: string;
 }
 
 /** Client-supplied payload when reserving seats on a pooled trip. */

@@ -300,6 +300,15 @@ class _BookingCard extends StatelessWidget {
             ' · ${CurrencyFormatter.format(booking?.amountToPay ?? trip.farePerSeat * seats)}',
             destacado: booking != null && booking.seats.isNotEmpty,
           ),
+          // EL TIQUETE. Va justo bajo la silla y el precio porque es lo que
+          // se busca con el bus delante: el pasajero lo lee en voz alta y el
+          // conductor lo teclea. Sin tiquete (reservas viejas) no se enseña
+          // un recuadro vacío: se dice que se identifique con su nombre, que
+          // es como funcionaba antes.
+          if (booking?.ticketCode != null) ...[
+            const SizedBox(height: 10),
+            _Tiquete(codigo: booking!.ticketCode!, usado: booking.tiqueteUsado),
+          ],
           if ((booking?.discount ?? 0) > 0)
             _row(
               context,
@@ -549,6 +558,80 @@ class _HojaCalificarState extends State<_HojaCalificar> {
               child: const Text('Enviar'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// El tiquete que se enseña al subir.
+///
+/// Grande y con las letras separadas a propósito: se lee en voz alta en la
+/// puerta de un bus, muchas veces a oscuras y con ruido. Un código pequeño
+/// obliga a acercar el teléfono, y eso con lluvia no pasa.
+class _Tiquete extends StatelessWidget {
+  const _Tiquete({required this.codigo, required this.usado});
+
+  final String codigo;
+  final bool usado;
+
+  @override
+  Widget build(BuildContext context) {
+    // Usado se ve distinto, no escondido: el pasajero tiene que poder
+    // comprobar que su tiquete ya se registró, y si desapareciera creería
+    // que lo perdió.
+    final color = usado ? AppColors.textSecondary : AppColors.primary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(usado ? Icons.check_circle_rounded : Icons.confirmation_number_rounded,
+                  size: 16, color: color),
+              const SizedBox(width: 6),
+              Text(
+                usado ? 'Ya abordaste' : 'Tu tiquete',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            codigo,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              // Separadas para dictarlas sin que se peguen las sílabas.
+              letterSpacing: 4,
+              color: usado ? AppColors.textSecondary : AppColors.textPrimary,
+            ),
+          ),
+          if (!usado) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Dícelo al conductor cuando subas.',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                color: context.textSecondaryColor,
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -100,6 +100,9 @@ import {
 import {
   operatorCreatePromo, operatorListPromos, operatorTogglePromo,
 } from '../services/promo.service';
+import {
+  saldoDelAliado, creditosPendientes, girosDelAliado,
+} from '../services/giro-aliado.service';
 
 const router = Router();
 
@@ -1233,3 +1236,22 @@ router.get('/cargo-trips/:id/report', async (req: Request, res: Response): Promi
 });
 
 export default router;
+
+// ─── Lo que ZIPA le debe a la empresa ────────────────────────────────────────
+
+router.get('/giros', async (req: Request, res: Response): Promise<void> => {
+  const b = { operatorId: req.operatorId! };
+  try {
+    const [saldo, pendientes, giros] = await Promise.all([
+      saldoDelAliado(b),
+      creditosPendientes(b),
+      girosDelAliado(b),
+    ]);
+    res.json({ success: true, data: { saldo, pendientes, giros } });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos cargar tus giros',
+    });
+  }
+});

@@ -21,6 +21,7 @@ import ManifestsManager from './ManifestsManager'
 import CargoTripsManager from './CargoTripsManager'
 import CobrosManager from './CobrosManager'
 import FinancePanel from './FinancePanel'
+import GirosPanel from './GirosPanel'
 import AnalyticsPanel from './AnalyticsPanel'
 import VehiclesManager from './VehiclesManager'
 import DocumentsManager from './DocumentsManager'
@@ -697,6 +698,9 @@ function Dashboard({ token, operator, onLogout }: {
           {section === 'finanzas' && (
             <>
               <h1 className="font-bold text-slate-900 text-lg">Finanzas</h1>
+              {/* Primero lo que se le debe: es lo que una empresa abre a
+                  mirar. El resumen de la operación va debajo. */}
+              <GirosPanel api={api} />
               <FinancePanel api={api} />
             </>
           )}

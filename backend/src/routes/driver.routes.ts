@@ -100,6 +100,7 @@ import {
   addRequesterMessage,
   SupportError,
 } from '../services/support.service';
+import { abordarConTiquete } from '../services/intercity-pool.service';
 
 const router = Router();
 
@@ -1431,3 +1432,31 @@ router.post('/manifests/:id/receipt-photo', (req: Request, res: Response): void 
 });
 
 export default router;
+
+// ─── El tiquete en la puerta del bus ─────────────────────────────────────────
+//
+// El conductor teclea el código que el pasajero le dicta. Validar y marcar
+// como abordado es UNA sola llamada: si fueran dos, el conductor podría
+// validar y olvidarse de marcar —va con el motor andando— y el mismo tiquete
+// serviría dos veces, que es justo lo que esto impide.
+router.post('/pool/:id/abordar', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) {
+    res.status(401).json({ success: false, error: 'Sesión no válida' });
+    return;
+  }
+  const { id } = req.params as { id: string };
+  const { codigo } = (req.body ?? {}) as { codigo?: string };
+  try {
+    const r = await abordarConTiquete(driverId, id, codigo ?? '');
+    // 200 también cuando no puede subir: no es un error de la petición, es la
+    // respuesta —y la app necesita el motivo y la hora para enseñárselos al
+    // conductor, no un código de estado.
+    res.json({ success: r.ok, data: r, ...(r.ok ? {} : { error: r.motivo }) });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos validar el tiquete',
+    });
+  }
+});
