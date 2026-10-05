@@ -101,7 +101,7 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
       builder: (_) => _HojaAbordaje(salidaId: salidaId),
     );
     // Al cerrar se recarga: el manifiesto tiene que reflejar quién ya subió.
-    if (mounted) await ref.read(pooledDriverProvider.notifier).load();
+    if (mounted) await ref.read(pooledDriverProvider.notifier).loadMine();
   }
 
   Future<void> _run(Future<String?> Function() action, String okMsg) async {
