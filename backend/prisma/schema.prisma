@@ -968,6 +968,37 @@ model Trip {
   recipientName      String?
   recipientPhone     String?
   packageDescription String?
+  /// ── Quién manda el envío, y qué declara que va dentro ───────────────────
+  ///
+  /// Antes solo quedaba el nombre de la CUENTA y una descripción de texto
+  /// libre. Con eso, si abren el vehículo en la carretera y dentro hay algo
+  /// que no debería ir, no se puede decir quién lo entregó ni qué dijo que
+  /// era — y responde quien maneja. Operando en frontera eso es exposición
+  /// penal real, no un hueco de producto.
+  ///
+  /// El remitente NO es siempre el titular de la cuenta: muchas veces es el
+  /// bodeguero, el empleado o el vecino que lleva el paquete.
+  ///
+  /// Todo nullable: las apps ya instaladas no lo mandan. La exigencia se
+  /// enciende con `ENVIO_EXIGIR_REMITENTE` (ver `lib/remitente`).
+  senderName        String?
+  senderDocType     String?
+  senderDocNumber   String?
+  senderPhone       String?
+  /// Categoría del catálogo cerrado de `lib/remitente`. La descripción libre
+  /// sigue donde estaba; esto es lo que se puede filtrar y cruzar después.
+  cargoCategory     String?
+  /// Lo que el remitente DICE que vale. No es un seguro: se guarda para
+  /// poder discutir un reclamo con una cifra encima de la mesa.
+  declaredValue     Float?
+  /// Versión de la lista de mercancía no admitida que se le mostró y aceptó.
+  /// Sin ella, añadir un renglón mañana haría creer que lo aceptado ayer
+  /// incluía algo que nadie vio.
+  cargoTermsVersion Int?
+  /// Cuándo declaró. Null = no hay declaración, que es distinto de una
+  /// declaración vacía.
+  declaredAt        DateTime?
+
   passengerName      String?
   passengerRating    Float?
   /// Lo que el pasajero destacó del conductor («Puntual», «Carro limpio»).
@@ -1801,6 +1832,37 @@ model FreightRequest {
   offeredPrice     Float
   scheduledFor     DateTime? // null = lo antes posible
   status           FreightStatus @default(REQUESTED)
+  /// ── Quién manda el envío, y qué declara que va dentro ───────────────────
+  ///
+  /// Antes solo quedaba el nombre de la CUENTA y una descripción de texto
+  /// libre. Con eso, si abren el vehículo en la carretera y dentro hay algo
+  /// que no debería ir, no se puede decir quién lo entregó ni qué dijo que
+  /// era — y responde quien maneja. Operando en frontera eso es exposición
+  /// penal real, no un hueco de producto.
+  ///
+  /// El remitente NO es siempre el titular de la cuenta: muchas veces es el
+  /// bodeguero, el empleado o el vecino que lleva el paquete.
+  ///
+  /// Todo nullable: las apps ya instaladas no lo mandan. La exigencia se
+  /// enciende con `ENVIO_EXIGIR_REMITENTE` (ver `lib/remitente`).
+  senderName        String?
+  senderDocType     String?
+  senderDocNumber   String?
+  senderPhone       String?
+  /// Categoría del catálogo cerrado de `lib/remitente`. La descripción libre
+  /// sigue donde estaba; esto es lo que se puede filtrar y cruzar después.
+  cargoCategory     String?
+  /// Lo que el remitente DICE que vale. No es un seguro: se guarda para
+  /// poder discutir un reclamo con una cifra encima de la mesa.
+  declaredValue     Float?
+  /// Versión de la lista de mercancía no admitida que se le mostró y aceptó.
+  /// Sin ella, añadir un renglón mañana haría creer que lo aceptado ayer
+  /// incluía algo que nadie vio.
+  cargoTermsVersion Int?
+  /// Cuándo declaró. Null = no hay declaración, que es distinto de una
+  /// declaración vacía.
+  declaredAt        DateTime?
+
   // Cadena de custodia por PIN (ver Order): el remitente entrega la carga
   // contra `pickupPin` y el destinatario la recibe contra `deliveryPin`.
   pickupPin        String?

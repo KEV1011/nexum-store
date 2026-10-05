@@ -9,6 +9,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
+import 'package:nexum_client/shared/widgets/declaracion_envio.dart';
 
 /// Fletes y acarreos con camiones (turbo / camión / mula).
 ///
@@ -35,6 +36,17 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
   DateTime? _scheduledFor;
   DateTime? _promisedAt;
   bool _sending = false;
+
+  /// Quién entrega la carga y qué declara. Null mientras falte algo: en un
+  /// flete la responsabilidad por el contenido es lo primero que se discute
+  /// si algo sale mal en la carretera.
+  DatosDeEnvio? _datosEnvio;
+
+  /// Cambia al publicar para que el formulario de declaración se reconstruya
+  /// VACÍO. Sin esto los campos quedarían llenos con la carga anterior y el
+  /// botón apagado sin explicación — y, peor, el siguiente flete podría salir
+  /// con la declaración del anterior.
+  int _seqDeclaracion = 0;
   bool _loading = true;
   List<Map<String, dynamic>> _mine = const [];
 
@@ -123,6 +135,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
         'offeredPrice': price,
         if (_scheduledFor != null) 'scheduledFor': _scheduledFor!.toUtc().toIso8601String(),
         if (_promisedAt != null) 'promisedAt': _promisedAt!.toUtc().toIso8601String(),
+        if (_datosEnvio != null) 'remitente': _datosEnvio!.remitente,
+        if (_datosEnvio != null) 'declaracion': _datosEnvio!.declaracion,
       });
       _origin.clear();
       _dest.clear();
@@ -132,6 +146,11 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
       setState(() {
         _scheduledFor = null;
         _promisedAt = null;
+        // La declaración NO se conserva entre fletes: cada carga es otra, y
+        // reutilizar la anterior dejaría una constancia diciendo que se
+        // declaró algo que nadie volvió a mirar.
+        _datosEnvio = null;
+        _seqDeclaracion++;
       });
       _snack('Flete publicado. Las flotas de carga ya pueden tomarlo.', error: false);
       await _loadMine();
@@ -357,10 +376,16 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 20),
+          DeclaracionEnvio(
+            key: ValueKey('declaracion-$_seqDeclaracion'),
+            dio: ref.read(apiClientProvider),
+            onChanged: (d) => setState(() => _datosEnvio = d),
+          ),
           const SizedBox(height: 14),
 
           FilledButton.icon(
-            onPressed: _sending ? null : _submit,
+            onPressed: (_sending || _datosEnvio == null) ? null : _submit,
             icon: _sending
                 ? const SizedBox(
                     width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))

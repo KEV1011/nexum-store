@@ -968,6 +968,24 @@ export interface ClientTripDTO {
   recipientPhone?: string;
   packageDescription?: string;
   /**
+   * Quién ENTREGÓ el paquete y qué declaró que iba dentro.
+   *
+   * Viaja al conductor a propósito: el que recoge es el que tiene que
+   * contrastar el documento con la persona que tiene enfrente, y el que
+   * carga responde por lo que lleva.
+   */
+  senderName?: string;
+  senderDocType?: string;
+  senderDocNumber?: string;
+  senderPhone?: string;
+  cargoCategory?: string;
+  /** La etiqueta en español, redactada por el servidor. Sin ella la app
+   *  pintaría la clave interna («materiales_construccion»). */
+  cargoCategoryLabel?: string;
+  /** Lo que el remitente DICE que vale. No es un seguro. */
+  declaredValue?: number;
+  declaredAt?: string;
+  /**
    * La firma de quien recibió el envío, con su nombre y la hora.
    *
    * Sí viaja al conductor, al revés que el PIN: el PIN es un secreto que se
@@ -997,6 +1015,15 @@ export interface RequestClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
+  /**
+   * Quién ENTREGA el paquete, con documento, y qué declara que va dentro.
+   *
+   * Solo tienen sentido en un ENVÍO: en una carrera de pasajeros no hay
+   * remitente y guardar una «declaración de contenido» ahí haría que el
+   * registro dijera algo falso. Las reglas viven en `lib/remitente`.
+   */
+  remitente?: unknown;
+  declaracion?: unknown;
   /** Los valores los define `lib/metodos-pago`. Ausente = efectivo. */
   paymentMethod?: string;
   /**

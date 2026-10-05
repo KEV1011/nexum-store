@@ -312,6 +312,16 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
             '${f['cargoDescription']} · ${f['weightKg']} kg · ${f['vehicleType']}',
             style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
           ),
+          // Quién entrega la carga, con documento, y qué declaró.
+          //
+          // Va en la tarjeta del conductor porque es ÉL quien carga: tiene
+          // que poder contrastar la cédula contra la persona que tiene
+          // enfrente antes de subir nada al camión, y si lo paran en la vía
+          // el que responde es él. Sin remitente declarado se dice, no se
+          // deja el hueco en blanco.
+          const SizedBox(height: 4),
+          _FichaRemitente(f: f),
+
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -395,6 +405,16 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
             '${f['cargoDescription']} · ${f['weightKg']} kg · ${f['vehicleType']}',
             style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
           ),
+          // Quién entrega la carga, con documento, y qué declaró.
+          //
+          // Va en la tarjeta del conductor porque es ÉL quien carga: tiene
+          // que poder contrastar la cédula contra la persona que tiene
+          // enfrente antes de subir nada al camión, y si lo paran en la vía
+          // el que responde es él. Sin remitente declarado se dice, no se
+          // deja el hueco en blanco.
+          const SizedBox(height: 4),
+          _FichaRemitente(f: f),
+
           if (!done && phone != null && phone.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('Cliente: ${f['clientName'] ?? ''} · $phone',
@@ -776,6 +796,62 @@ class _FreightEventSheetState extends State<_FreightEventSheet> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Quién entrega la carga y qué declaró que va dentro.
+///
+/// Nada se inventa cuando el dato falta: un flete publicado desde una app
+/// anterior a esto sale diciendo que no hay remitente declarado, que es
+/// información útil —el conductor sabe que ahí tiene que preguntar él— en
+/// vez de un hueco que se lee como un fallo de la pantalla.
+class _FichaRemitente extends StatelessWidget {
+  const _FichaRemitente({required this.f});
+
+  final Map<String, dynamic> f;
+
+  @override
+  Widget build(BuildContext context) {
+    final nombre = f['senderName'] as String?;
+    final tipo = f['senderDocType'] as String?;
+    final doc = f['senderDocNumber'] as String?;
+    final categoria = f['cargoCategoryLabel'] as String?;
+    final valor = (f['declaredValue'] as num?)?.toDouble();
+
+    if (nombre == null || nombre.isEmpty) {
+      return Row(
+        children: [
+          Icon(Icons.help_outline_rounded, size: 14, color: Colors.orange.shade700),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              'Sin remitente declarado — pide la cédula de quien te entregue.',
+              style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final partes = <String>[
+      'Entrega: $nombre',
+      if (tipo != null && doc != null && doc.isNotEmpty) '$tipo $doc',
+      if (categoria != null && categoria.isNotEmpty) categoria,
+      if (valor != null && valor > 0) 'Declara \$${valor.toStringAsFixed(0)}',
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.assignment_ind_outlined, size: 14, color: Colors.grey.shade600),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
+            partes.join(' · '),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+        ),
+      ],
     );
   }
 }

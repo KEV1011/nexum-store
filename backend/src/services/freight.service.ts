@@ -28,6 +28,10 @@ import {
 import { freightTimes, onTimeStats, type OnTimeStats } from '../lib/freight-times';
 import { fuelEfficiency, type VehicleEfficiency } from '../lib/fuel-efficiency';
 import { directions } from './geo.service';
+import {
+  saneaRemitente, saneaDeclaracion, exigirRemitente, RemitenteInvalido,
+  etiquetaDeCategoria,
+} from '../lib/remitente';
 
 export class FreightError extends Error {}
 
@@ -85,6 +89,14 @@ export interface CreateFreightDTO {
   scheduledFor?: string; // ISO — futuro = acarreo/flete programado
   /** Fecha comprometida de entrega. Sin ella no hay cumplimiento medible. */
   promisedAt?: string;
+  /**
+   * Quién ENTREGA la carga, con documento. No es el titular de la cuenta:
+   * muchas veces es el bodeguero o el empleado, y es quien responde por el
+   * contenido. Ausente = app vieja (ver `lib/remitente`).
+   */
+  remitente?: unknown;
+  /** Qué declara que va dentro y la aceptación de lo no admitido. */
+  declaracion?: unknown;
 }
 
 function _toDTO(f: {
@@ -98,6 +110,10 @@ function _toDTO(f: {
   startedAt?: Date | null; promisedAt?: Date | null;
   originLat?: number | null; originLng?: number | null;
   destLat?: number | null; destLng?: number | null;
+  senderName?: string | null; senderDocType?: string | null;
+  senderDocNumber?: string | null; senderPhone?: string | null;
+  cargoCategory?: string | null; declaredValue?: number | null;
+  cargoTermsVersion?: number | null; declaredAt?: Date | null;
 }, driverPos?: { lat: number | null; lng: number | null } | null) {
   return {
     id: f.id,
@@ -141,6 +157,18 @@ function _toDTO(f: {
     // en fletes ACCEPTED/IN_PROGRESS, para el mapa de seguimiento.
     driverLat: driverPos?.lat ?? undefined,
     driverLng: driverPos?.lng ?? undefined,
+    // Quién entrega la carga y qué declaró. Va al conductor y a la flota a
+    // propósito: el que carga el camión es el que tiene que poder contrastar
+    // el documento contra la persona que tiene enfrente, y el que decide si
+    // acepta el flete merece saber qué dice que es antes de aceptarlo.
+    senderName: f.senderName ?? undefined,
+    senderDocType: f.senderDocType ?? undefined,
+    senderDocNumber: f.senderDocNumber ?? undefined,
+    senderPhone: f.senderPhone ?? undefined,
+    cargoCategory: f.cargoCategory ?? undefined,
+    cargoCategoryLabel: etiquetaDeCategoria(f.cargoCategory),
+    declaredValue: f.declaredValue ?? undefined,
+    declaredAt: f.declaredAt?.toISOString(),
   };
 }
 export type FreightDTO = ReturnType<typeof _toDTO>;
@@ -211,6 +239,26 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
     throw new FreightError('La entrega comprometida no puede ser anterior a la salida programada.');
   }
 
+  // Quién entrega y qué declara. Las reglas viven en `lib/remitente`: ausente
+  // = app vieja y se sigue como hasta hoy; presente se valida entero, porque
+  // medio remitente parece identificación y no lo es.
+  // El motivo de `RemitenteInvalido` ya está escrito en español para que lo
+  // lea quien envía; se traduce a `FreightError` para que la ruta responda
+  // 400 con ese texto en vez de un 500 mudo.
+  let remitente, declaracion;
+  try {
+    remitente = saneaRemitente(dto.remitente);
+    declaracion = saneaDeclaracion(dto.declaracion);
+  } catch (e) {
+    if (e instanceof RemitenteInvalido) throw new FreightError(e.message);
+    throw e;
+  }
+  if (exigirRemitente() && (!remitente || !declaracion)) {
+    throw new FreightError(
+      'Para enviar carga hay que decir quién la entrega, con documento, y qué va dentro.',
+    );
+  }
+
   const user = await prisma.user.findUnique({ where: { id: clientId }, select: { name: true, phone: true } });
 
   // Trayectoria para el mapa: centroide de cada ciudad (fallback Pamplona).
@@ -236,6 +284,16 @@ export async function createFreightRequest(clientId: string, dto: CreateFreightD
       originLng: oc.lng,
       destLat: dc.lat,
       destLng: dc.lng,
+      // Quién entrega y qué declaró. `declaredAt` lo sella el SERVIDOR: una
+      // constancia con la hora que elige quien declara no es constancia.
+      senderName: remitente?.nombre ?? null,
+      senderDocType: remitente?.tipoDoc ?? null,
+      senderDocNumber: remitente?.documento ?? null,
+      senderPhone: remitente?.telefono ?? null,
+      cargoCategory: declaracion?.categoria ?? null,
+      declaredValue: declaracion?.valorDeclarado ?? null,
+      cargoTermsVersion: declaracion?.versionLista ?? null,
+      declaredAt: declaracion ? new Date() : null,
       // Cadena de custodia: PIN de carga (remitente) y de entrega (destinatario).
       ...generateCustodyPins(),
     },

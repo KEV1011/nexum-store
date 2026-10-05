@@ -25,6 +25,9 @@ import { calcFare, liquidarViaje } from '../lib/fare';
 import { categoriaDeServicio } from '../lib/tarifa-categoria';
 import { precioServidor, medirConParadas } from './trip-options.service';
 import { sanitizeStops, stopsFromDb } from '../lib/trip-stops';
+import {
+  saneaRemitente, saneaDeclaracion, exigirRemitente, etiquetaDeCategoria,
+} from '../lib/remitente';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
 import { resolverLineasDePedido, descontarInventario } from './order-lines.service';
 import { exigirPuntoRecogida, exigirPuntoDestino } from '../lib/trip-coords';
@@ -1281,6 +1284,20 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
   const paradas = sanitizeStops(dto.stops);
   const paradasCoord = (dto.stops ?? []).map((p) => ({ lat: p.lat, lng: p.lng }));
 
+  // Quién entrega el paquete y qué declara que va dentro. SOLO en envíos: en
+  // una carrera de pasajeros no hay remitente, y guardar una declaración de
+  // contenido ahí dejaría un registro diciendo algo que no pasó. Lo que llegue
+  // en un viaje de pasajeros se IGNORA en silencio en vez de rechazarse: no es
+  // culpa de quien pide el taxi que su app mande un campo de más.
+  const esEnvioConCarga = serviceType === 'ENVIOS';
+  const remitente = esEnvioConCarga ? saneaRemitente(dto.remitente) : null;
+  const declaracion = esEnvioConCarga ? saneaDeclaracion(dto.declaracion) : null;
+  if (esEnvioConCarga && exigirRemitente() && (!remitente || !declaracion)) {
+    throw new Error(
+      'Para enviar un paquete hay que decir quién lo entrega, con documento, y qué va dentro.',
+    );
+  }
+
   const categoria = categoriaDeServicio(serviceType);
   let estimatedFare: number | undefined;
   let distanceKm: number | undefined;
@@ -1384,6 +1401,17 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       recipientName: dto.recipientName,
       recipientPhone: dto.recipientPhone,
       packageDescription: dto.packageDescription,
+      // Quién entrega y qué declaró, SOLO en envíos (ver arriba). `declaredAt`
+      // lo sella el servidor: una constancia con la hora que elige quien
+      // declara no es una constancia.
+      senderName: remitente?.nombre ?? null,
+      senderDocType: remitente?.tipoDoc ?? null,
+      senderDocNumber: remitente?.documento ?? null,
+      senderPhone: remitente?.telefono ?? null,
+      cargoCategory: declaracion?.categoria ?? null,
+      declaredValue: declaracion?.valorDeclarado ?? null,
+      cargoTermsVersion: declaracion?.versionLista ?? null,
+      declaredAt: declaracion ? new Date() : null,
     },
   });
 
@@ -2140,6 +2168,10 @@ type PrismaTrip = {
   distanceKm: number | null; etaMinutes: number | null;
   createdAt: Date; acceptedAt: Date | null; completedAt: Date | null;
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
+  senderName?: string | null; senderDocType?: string | null;
+  senderDocNumber?: string | null; senderPhone?: string | null;
+  cargoCategory?: string | null; declaredValue?: number | null;
+  declaredAt?: Date | null;
   signatureUrl?: string | null; signedByName?: string | null; signedAt?: Date | null;
   deliveryPin?: string | null;
   paymentMethod?: string | null;
@@ -2236,6 +2268,17 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConduct
     recipientName: trip.recipientName ?? undefined,
     recipientPhone: trip.recipientPhone ?? undefined,
     packageDescription: trip.packageDescription ?? undefined,
+    // Quién entrega y qué declaró. Va también al CONDUCTOR a propósito: el
+    // que recoge el paquete es el que tiene que contrastar el documento con
+    // la persona que tiene enfrente, y el que carga responde por lo que lleva.
+    senderName: trip.senderName ?? undefined,
+    senderDocType: trip.senderDocType ?? undefined,
+    senderDocNumber: trip.senderDocNumber ?? undefined,
+    senderPhone: trip.senderPhone ?? undefined,
+    cargoCategory: trip.cargoCategory ?? undefined,
+    cargoCategoryLabel: etiquetaDeCategoria(trip.cargoCategory),
+    declaredValue: trip.declaredValue ?? undefined,
+    declaredAt: trip.declaredAt?.toISOString(),
     signatureUrl: trip.signatureUrl ?? undefined,
     signedByName: trip.signedByName ?? undefined,
     signedAt: trip.signedAt?.toISOString(),
