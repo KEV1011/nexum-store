@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:nexum_client/app/app.dart';
@@ -46,6 +47,21 @@ Future<void> _arrancar() async {
       // La app funciona sin Firebase si google-services.json no está.
     }
   }
+
+  // ── Borde a borde, declarado y no heredado ──────────────────────────────
+  //
+  // Desde Android 15 una app con targetSdk 35+ se dibuja de borde a borde
+  // SIEMPRE, lo pida o no, y Play lo avisa. La auditoría dice que las
+  // pantallas ya están bien: las que van a pantalla completa son los mapas,
+  // y lo hacen a propósito; el resto tiene AppBar, SafeArea o se suma
+  // `padding.top` a mano.
+  //
+  // Lo que faltaba era DECIRLO. `edgeToEdge` es la forma soportada por
+  // Flutter de declararlo, y además quita el velo que el motor dibuja
+  // detrás de la barra de navegación en versiones anteriores — así en
+  // Android 14 y en Android 15 se ve igual, en vez de depender de la
+  // versión del teléfono.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   runApp(
     const ProviderScope(

@@ -72,6 +72,14 @@ android {
         release {
             signingConfig = if (keystoreFile.exists()) signingConfigs.getByName("release")
                            else signingConfigs.getByName("debug")
+            // Esto es lo que esta app YA hacía, pero por el valor por defecto
+            // del plugin de Flutter y no porque nadie lo hubiera escrito. Se
+            // declara para que las dos apps digan lo mismo: la del conductor
+            // llevaba un `false` suelto y acabó publicando 15,9 MB de DEX
+            // contra los 2,81 MB de esta, sin que la diferencia estuviera
+            // decidida en ninguna parte. `build-release.test.ts` lo vigila.
+            isMinifyEnabled = true
+            isShrinkResources = true
         }
     }
 }
