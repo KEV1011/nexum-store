@@ -685,6 +685,22 @@ model Order {
   readyAt          DateTime?
   pickupPhotoUrl   String?
   deliveryPhotoUrl String?
+  /// La firma de quien recibe, tal como la dibujó en la pantalla.
+  ///
+  /// ANTES SE DESCARTABA: la hoja de prueba de entrega capturaba los trazos y
+  /// solo pasaba un booleano `hasSignature`. El destinatario firmaba creyendo
+  /// que firmaba algo y lo único que quedaba era un `true` —que además NADIE
+  /// escribía: la columna nació en `false` y murió en `false`—. Para un envío
+  /// es feo; para carga es inservible, porque esa firma ES la prueba que se
+  /// reclama cuando alguien dice que no le llegó.
+  ///
+  /// El booleano del DTO se DERIVA de aquí y ya no se guarda: un flag guardado
+  /// al lado del archivo acaba diciendo que hay firma donde no la hay.
+  signatureUrl     String?
+  /// Quién firmó. Una firma sin nombre es un garabato: no prueba quién
+  /// recibió, que es justo lo que hay que probar.
+  signedByName     String?
+  signedAt         DateTime?
   // Cadena de custodia por PIN: el negocio entrega el pedido al repartidor
   // contra `pickupPin`, y el cliente lo recibe contra `deliveryPin`. Nunca se
   // exponen al conductor: él los pide de viva voz y los teclea.
@@ -692,7 +708,6 @@ model Order {
   deliveryPin      String?
   pickupPinAt      DateTime?
   deliveryPinAt    DateTime?
-  hasSignature     Boolean   @default(false)
   customerName     String?
   driverName       String?
   driverPhone      String?
@@ -934,6 +949,22 @@ model Trip {
   cancelReason       String?
   pickupPhotoUrl     String?
   deliveryPhotoUrl   String?
+  /// La firma de quien recibe, tal como la dibujó en la pantalla.
+  ///
+  /// ANTES SE DESCARTABA: la hoja de prueba de entrega capturaba los trazos y
+  /// solo pasaba un booleano `hasSignature`. El destinatario firmaba creyendo
+  /// que firmaba algo y lo único que quedaba era un `true` —que además NADIE
+  /// escribía: la columna nació en `false` y murió en `false`—. Para un envío
+  /// es feo; para carga es inservible, porque esa firma ES la prueba que se
+  /// reclama cuando alguien dice que no le llegó.
+  ///
+  /// El booleano del DTO se DERIVA de aquí y ya no se guarda: un flag guardado
+  /// al lado del archivo acaba diciendo que hay firma donde no la hay.
+  signatureUrl       String?
+  /// Quién firmó. Una firma sin nombre es un garabato: no prueba quién
+  /// recibió, que es justo lo que hay que probar.
+  signedByName       String?
+  signedAt           DateTime?
   recipientName      String?
   recipientPhone     String?
   packageDescription String?
@@ -1184,12 +1215,27 @@ model Errand {
   status           ErrandStatus   @default(SEARCHING)
   proofPhotoUrl    String?
   deliveryPhotoUrl String?
+  /// La firma de quien recibe, tal como la dibujó en la pantalla.
+  ///
+  /// ANTES SE DESCARTABA: la hoja de prueba de entrega capturaba los trazos y
+  /// solo pasaba un booleano `hasSignature`. El destinatario firmaba creyendo
+  /// que firmaba algo y lo único que quedaba era un `true` —que además NADIE
+  /// escribía: la columna nació en `false` y murió en `false`—. Para un envío
+  /// es feo; para carga es inservible, porque esa firma ES la prueba que se
+  /// reclama cuando alguien dice que no le llegó.
+  ///
+  /// El booleano del DTO se DERIVA de aquí y ya no se guarda: un flag guardado
+  /// al lado del archivo acaba diciendo que hay firma donde no la hay.
+  signatureUrl     String?
+  /// Quién firmó. Una firma sin nombre es un garabato: no prueba quién
+  /// recibió, que es justo lo que hay que probar.
+  signedByName     String?
+  signedAt         DateTime?
   // Cadena de custodia por PIN (ver Order): recogida y entrega.
   pickupPin        String?
   deliveryPin      String?
   pickupPinAt      DateTime?
   deliveryPinAt    DateTime?
-  hasSignature     Boolean        @default(false)
   driverName       String?
   driverPhone      String?
   createdAt        DateTime       @default(now())

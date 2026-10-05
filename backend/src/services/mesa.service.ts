@@ -269,7 +269,6 @@ export async function crearPedidoEnMesa(
       // Sin PIN de custodia: no hay repartidor a quien entregarle nada.
       // Y sin nombre: en la mesa la identidad es la mesa.
       customerName: null,
-      hasSignature: false,
       lines: { create: lines },
     },
     include: { lines: true },

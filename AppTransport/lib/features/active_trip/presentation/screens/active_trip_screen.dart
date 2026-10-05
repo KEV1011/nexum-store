@@ -1545,6 +1545,26 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         ));
       }
 
+      // La FIRMA, por el mismo camino. Antes se perdía: la hoja capturaba
+      // los trazos y solo devolvía un booleano, así que el destinatario
+      // firmaba y no quedaba nada. Para un envío es feo; para carga es
+      // inservible, porque esa firma es la prueba que se reclama.
+      final firma = proof?.signatureBytes;
+      if (tripBeforeFinish != null && firma != null) {
+        unawaited(uploadSignature(
+          kind: tripBeforeFinish.request.isOrder
+              ? 'order'
+              : workMode.isErrand
+                  ? 'errand'
+                  : 'trip',
+          id: tripBeforeFinish.request.isOrder
+              ? tripBeforeFinish.request.orderId!
+              : tripBeforeFinish.request.id,
+          bytes: firma,
+          signedBy: proof?.signedBy,
+        ));
+      }
+
       final tripModel =
           await ref.read(activeTripProvider.notifier).finishTrip();
       // El neto del servidor manda. `tripModel.netEarning` lo calcula el

@@ -320,6 +320,10 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
             order.deliveryPhotoPath,
         hasSignature:
             payload['hasSignature'] as bool? ?? order.hasSignature,
+        signaturePath:
+            payload['signatureUrl'] as String? ?? order.signaturePath,
+        signedByName:
+            payload['signedByName'] as String? ?? order.signedByName,
       );
     });
   }

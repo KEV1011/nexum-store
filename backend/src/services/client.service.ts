@@ -458,7 +458,6 @@ export async function placeClientOrder(
       // Cadena de custodia: el negocio guarda el PIN de recogida y el cliente
       // el de entrega. El repartidor los pide de viva voz en cada paso.
       ...generateCustodyPins(),
-      hasSignature: false,
       lines: {
         create: lines,
       },
@@ -1977,7 +1976,8 @@ type PrismaOrder = {
   id: string; orderRef: string; businessId: string; status: string; subtotal: number;
   promoDiscount?: number | null;
   deliveryFee: number; total: number; etaMinutes: number | null; deliveryAddress: string;
-  pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
+  pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null;
+  signatureUrl?: string | null; signedByName?: string | null; signedAt?: Date | null;
   createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
   driverName: string | null; driverPhone: string | null; customerName: string | null;
   prepMinutes: number | null; acceptedAt: Date | null; readyAt: Date | null;
@@ -2083,7 +2083,12 @@ function _toSummary(
     ...ficha,
     pickupPhotoUrl: o.pickupPhotoUrl ?? undefined,
     deliveryPhotoUrl: o.deliveryPhotoUrl ?? undefined,
-    hasSignature: o.hasSignature,
+    // Derivado del archivo: el booleano ya no se guarda, así que no puede
+    // discrepar de la firma que de verdad hay.
+    hasSignature: !!o.signatureUrl,
+    signatureUrl: o.signatureUrl ?? undefined,
+    signedByName: o.signedByName ?? undefined,
+    signedAt: o.signedAt?.toISOString(),
     createdAt: o.createdAt.toISOString(),
     pickedUpAt: o.pickedUpAt?.toISOString(),
     deliveredAt: o.deliveredAt?.toISOString(),
@@ -2135,6 +2140,7 @@ type PrismaTrip = {
   distanceKm: number | null; etaMinutes: number | null;
   createdAt: Date; acceptedAt: Date | null; completedAt: Date | null;
   recipientName: string | null; recipientPhone: string | null; packageDescription: string | null;
+  signatureUrl?: string | null; signedByName?: string | null; signedAt?: Date | null;
   deliveryPin?: string | null;
   paymentMethod?: string | null;
   promoCode?: string | null;
@@ -2230,5 +2236,8 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConduct
     recipientName: trip.recipientName ?? undefined,
     recipientPhone: trip.recipientPhone ?? undefined,
     packageDescription: trip.packageDescription ?? undefined,
+    signatureUrl: trip.signatureUrl ?? undefined,
+    signedByName: trip.signedByName ?? undefined,
+    signedAt: trip.signedAt?.toISOString(),
   };
 }

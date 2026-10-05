@@ -101,6 +101,7 @@ import {
   SupportError,
 } from '../services/support.service';
 import { abordarConTiquete } from '../services/intercity-pool.service';
+import { faseDePrueba, nombreDeFirmante } from '../lib/prueba-de-entrega';
 
 const router = Router();
 
@@ -1131,7 +1132,12 @@ router.post(
     }
     const kind = req.params['kind'];
     const id = req.params['id']!;
-    const phase = (req.body as { phase?: string }).phase === 'pickup' ? 'pickup' : 'delivery';
+    // Las dos reglas viven en `lib/prueba-de-entrega` con sus pruebas: lo
+    // desconocido cae en 'delivery' (una app vieja no sabe de firmas) y
+    // nunca en 'signature'.
+    const body = req.body as { phase?: unknown; signedBy?: unknown };
+    const phase = faseDePrueba(body.phase);
+    const firmante = nombreDeFirmante(body.signedBy);
     if (!req.file) {
       res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
       return;
@@ -1144,23 +1150,38 @@ router.post(
     try {
       // updateMany con driverId en el where = verificación de pertenencia
       // y escritura en una sola operación.
+      // La firma lleva su nombre y su hora; las fotos, solo la URL. El
+      // `signedAt` se sella aquí y no en el teléfono: la hora del servidor
+      // es la que vale como constancia, y la del dispositivo se puede
+      // cambiar en ajustes.
+      const datosFirma = {
+        signatureUrl: url,
+        signedByName: firmante,
+        signedAt: new Date(),
+      };
       let count = 0;
       if (kind === 'trip') {
         const r = await prisma.trip.updateMany({
           where: { id, driverId },
-          data: phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
+          data: phase === 'signature'
+            ? datosFirma
+            : phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
         });
         count = r.count;
       } else if (kind === 'order') {
         const r = await prisma.order.updateMany({
           where: { id, driverId },
-          data: phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
+          data: phase === 'signature'
+            ? datosFirma
+            : phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
         });
         count = r.count;
       } else if (kind === 'errand') {
         const r = await prisma.errand.updateMany({
           where: { id, driverId },
-          data: phase === 'pickup' ? { proofPhotoUrl: url } : { deliveryPhotoUrl: url },
+          data: phase === 'signature'
+            ? datosFirma
+            : phase === 'pickup' ? { proofPhotoUrl: url } : { deliveryPhotoUrl: url },
         });
         count = r.count;
       } else {

@@ -68,6 +68,7 @@ type DbErrand = {
   createdAt: Date; acceptedAt: Date | null; deliveredAt: Date | null;
   userId: string;
   proofPhotoUrl: string | null; deliveryPhotoUrl: string | null;
+  signatureUrl?: string | null; signedByName?: string | null; signedAt?: Date | null;
   // Opcionales porque no todas las consultas los piden en su `select`: donde
   // no vengan, el DTO simplemente no los lleva.
   etaMinutes?: number | null; etaSetAt?: Date | null;
@@ -100,6 +101,9 @@ function _toDTO(e: DbErrand, ficha: DriverCardFields = {}): ClientErrandDTO {
     // Prueba de custodia subida por el mandadero (recogida y entrega).
     pickupPhotoUrl: e.proofPhotoUrl ?? undefined,
     deliveryPhotoUrl: e.deliveryPhotoUrl ?? undefined,
+    signatureUrl: e.signatureUrl ?? undefined,
+    signedByName: e.signedByName ?? undefined,
+    signedAt: e.signedAt?.toISOString(),
     etaMinutes: e.etaMinutes ?? undefined,
     etaSetAt: e.etaSetAt?.toISOString(),
   };

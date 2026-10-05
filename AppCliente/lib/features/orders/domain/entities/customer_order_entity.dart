@@ -182,6 +182,9 @@ class CustomerOrderEntity {
     this.driverLat,
     this.driverLng,
     this.hasSignature = false,
+    this.signaturePath,
+    this.signedByName,
+    this.signedAt,
     this.rating,
     this.ratingComment,
     this.ratedAt,
@@ -253,6 +256,9 @@ class CustomerOrderEntity {
         driverLat: (j['driverLat'] as num?)?.toDouble(),
         driverLng: (j['driverLng'] as num?)?.toDouble(),
         hasSignature: j['hasSignature'] as bool? ?? false,
+        signaturePath: j['signatureUrl'] as String?,
+        signedByName: j['signedByName'] as String?,
+        signedAt: DateTime.tryParse(j['signedAt'] as String? ?? ''),
         rating: j['rating'] as int?,
         ratingComment: j['ratingComment'] as String?,
         ratedAt: j['ratedAt'] != null
@@ -321,6 +327,9 @@ class CustomerOrderEntity {
         driverLat: (j['driverLat'] as num?)?.toDouble(),
         driverLng: (j['driverLng'] as num?)?.toDouble(),
         hasSignature: j['hasSignature'] as bool? ?? false,
+        signaturePath: j['signatureUrl'] as String?,
+        signedByName: j['signedByName'] as String?,
+        signedAt: DateTime.tryParse(j['signedAt'] as String? ?? ''),
       );
 
   final String id;
@@ -381,8 +390,17 @@ class CustomerOrderEntity {
   /// Foto de la entrega al cliente.
   final String? deliveryPhotoPath;
 
-  /// Si el cliente firmó al recibir.
+  /// Si quien recibió firmó. Lo deriva el servidor de que exista la firma:
+  /// aquí no hay dos datos que puedan contradecirse.
   final bool hasSignature;
+
+  /// La firma dibujada, para poder MIRARLA. Antes solo llegaba el booleano:
+  /// la app afirmaba «Firmado» y no había nada detrás que enseñar.
+  final String? signaturePath;
+
+  /// Quién firmó. Una firma sin nombre no prueba quién recibió.
+  final String? signedByName;
+  final DateTime? signedAt;
 
   /// Calificación del cliente (1-5 estrellas). Null si aún no ha calificado.
   final int? rating;
@@ -470,6 +488,9 @@ class CustomerOrderEntity {
     double? driverLat,
     double? driverLng,
     bool? hasSignature,
+    String? signaturePath,
+    String? signedByName,
+    DateTime? signedAt,
     int? rating,
     String? ratingComment,
     DateTime? ratedAt,
@@ -515,6 +536,9 @@ class CustomerOrderEntity {
       driverLat: driverLat ?? this.driverLat,
       driverLng: driverLng ?? this.driverLng,
       hasSignature: hasSignature ?? this.hasSignature,
+      signaturePath: signaturePath ?? this.signaturePath,
+      signedByName: signedByName ?? this.signedByName,
+      signedAt: signedAt ?? this.signedAt,
       rating: rating ?? this.rating,
       ratingComment: ratingComment ?? this.ratingComment,
       ratedAt: ratedAt ?? this.ratedAt,
@@ -556,6 +580,9 @@ class CustomerOrderEntity {
         'pickupPhotoPath': pickupPhotoPath,
         'deliveryPhotoPath': deliveryPhotoPath,
         'hasSignature': hasSignature,
+        'signatureUrl': signaturePath,
+        'signedByName': signedByName,
+        'signedAt': signedAt?.toIso8601String(),
         'rating': rating,
         'ratingComment': ratingComment,
         'ratedAt': ratedAt?.toIso8601String(),

@@ -79,6 +79,8 @@ interface ClientOrder {
   deliveredAt?: string
   pickupPhotoUrl?: string
   deliveryPhotoUrl?: string
+  signatureUrl?: string
+  signedByName?: string
   /** PIN que el negocio dicta al repartidor para entregarle el pedido. */
   pickupPin?: string
   prepMinutes?: number
@@ -265,7 +267,7 @@ function ClientOrderCard({ order, token, onChanged }: {
         ))}
       </div>
 
-      {(order.pickupPhotoUrl || order.deliveryPhotoUrl) && (
+      {(order.pickupPhotoUrl || order.deliveryPhotoUrl || order.signatureUrl) && (
         <div className="flex gap-2 mb-3">
           {order.pickupPhotoUrl && (
             <a
@@ -299,6 +301,27 @@ function ClientOrderCard({ order, token, onChanged }: {
                 className="h-16 w-full object-cover rounded-lg border border-slate-200"
               />
               <p className="text-[10px] text-slate-400 mt-0.5 text-center">Entrega ✓</p>
+            </a>
+          )}
+          {order.signatureUrl && (
+            <a
+              href={resolveImg(order.signatureUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 min-w-0"
+              title="Ver la firma de quien recibió"
+            >
+              {/* `object-contain` y fondo blanco, no `cover`: una firma
+                  recortada deja de servir como prueba. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={resolveImg(order.signatureUrl)}
+                alt="Firma de quien recibió"
+                className="h-16 w-full object-contain rounded-lg border border-slate-200 bg-white"
+              />
+              <p className="text-[10px] text-slate-400 mt-0.5 text-center truncate">
+                {order.signedByName ? `Firmó ${order.signedByName}` : 'Firma ✓'}
+              </p>
             </a>
           )}
         </div>
