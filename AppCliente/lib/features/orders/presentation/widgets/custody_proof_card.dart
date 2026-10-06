@@ -65,7 +65,96 @@ class CustodyProofCard extends StatelessWidget {
               ),
             ],
           ),
+          if (order.signaturePath != null) ...[
+            const SizedBox(height: AppConstants.spacingM),
+            _FirmaRecibida(order: order),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// La firma de quien recibió, para poder MIRARLA.
+///
+/// Antes esto era un chip que decía «Firmado» y nada más: la app afirmaba
+/// que alguien había firmado y no había forma de ver qué ni de quién.
+///
+/// La tira entera solo se dibuja si HAY firma, así que no puede afirmar una
+/// que no existe. Si la imagen no carga (sin red, disco efímero purgado) se
+/// marca el hueco en vez de dejar un recuadro en blanco que se leería como
+/// una firma vacía.
+class _FirmaRecibida extends StatelessWidget {
+  const _FirmaRecibida({required this.order});
+
+  final CustomerOrderEntity order;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = order.signaturePath;
+    if (url == null) return const SizedBox.shrink();
+    final quien = order.signedByName;
+    return GestureDetector(
+      onTap: () => _verAPantallaCompleta(context, url),
+      child: Container(
+        padding: const EdgeInsets.all(AppConstants.spacingS),
+        decoration: BoxDecoration(
+          color: context.surfaceVariantColor,
+          borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
+          border: Border.all(color: context.outlineColor),
+        ),
+        child: Row(
+          children: [
+            // Fondo blanco fijo y `contain`: una firma recortada o sobre un
+            // fondo oscuro deja de servir como prueba.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                width: 76,
+                height: 44,
+                color: Colors.white,
+                child: Image.network(
+                  ApiConfig.resolveUrl(url),
+                  fit: BoxFit.contain,
+                  errorBuilder: (ctx, _, __) => const Icon(
+                    Icons.broken_image_rounded,
+                    size: 18,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: AppConstants.spacingS),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    quien != null && quien.isNotEmpty
+                        ? 'Firmó $quien'
+                        : 'Firma de quien recibió',
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (order.signedAt != null)
+                    Text(
+                      DateFormatter.formatTime(order.signedAt!),
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 11,
+                        color: context.textTertiaryColor,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Icon(Icons.zoom_in_rounded,
+                size: 18, color: context.textTertiaryColor),
+          ],
+        ),
       ),
     );
   }
@@ -213,6 +302,39 @@ class _ProofSlot extends StatelessWidget {
   }
 }
 
+/// Abre una prueba a pantalla completa con zoom. Compartido por la foto y
+/// por la firma: si cada una tuviera su visor, acabarían comportándose
+/// distinto ante la misma imagen.
+void _verAPantallaCompleta(BuildContext context, String url) {
+  final resolved = ApiConfig.resolveUrl(url);
+  showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (ctx) => GestureDetector(
+      onTap: () => Navigator.of(ctx).pop(),
+      child: Stack(
+        children: [
+          Center(
+            child: InteractiveViewer(
+              maxScale: 4,
+              child: Image.network(resolved, fit: BoxFit.contain),
+            ),
+          ),
+          Positioned(
+            top: 40,
+            right: 20,
+            child: IconButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              icon: const Icon(Icons.close_rounded,
+                  color: Colors.white, size: 28),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Foto REAL de custodia subida por el repartidor. Tap = pantalla completa
 /// con zoom. Si la imagen no carga (sin red, archivo purgado del disco
 /// efímero), cae al recibo estilizado [fallback].
@@ -231,41 +353,11 @@ class _RealPhoto extends StatelessWidget {
   final DateTime? timestamp;
   final bool hasSignature;
 
-  void _openFullScreen(BuildContext context) {
-    final resolved = ApiConfig.resolveUrl(url);
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (ctx) => GestureDetector(
-        onTap: () => Navigator.of(ctx).pop(),
-        child: Stack(
-          children: [
-            Center(
-              child: InteractiveViewer(
-                maxScale: 4,
-                child: Image.network(resolved, fit: BoxFit.contain),
-              ),
-            ),
-            Positioned(
-              top: 40,
-              right: 20,
-              child: IconButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                icon: const Icon(Icons.close_rounded,
-                    color: Colors.white, size: 28),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final resolved = ApiConfig.resolveUrl(url);
     return GestureDetector(
-      onTap: () => _openFullScreen(context),
+      onTap: () => _verAPantallaCompleta(context, url),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
         child: Stack(

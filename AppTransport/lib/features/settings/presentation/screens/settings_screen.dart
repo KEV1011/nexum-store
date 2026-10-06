@@ -14,6 +14,7 @@ import 'package:nexum_driver/features/settings/presentation/screens/legal_doc_sc
 import 'package:nexum_driver/features/settings/presentation/screens/privacy_screen.dart';
 import 'package:nexum_driver/shared/services/navegacion_externa.dart';
 import 'package:nexum_driver/features/moderacion/presentation/bloqueados_screen.dart';
+import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -529,127 +530,130 @@ class _ChangePinSheetState extends State<_ChangePinSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppConstants.spacingL,
-        AppConstants.spacingL,
-        AppConstants.spacingL,
-        MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'Cambiar PIN',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppConstants.spacingL,
+          AppConstants.spacingL,
+          AppConstants.spacingL,
+          MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Cambiar PIN',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              TextFormField(
+                controller: _currentCtrl,
+                decoration: InputDecoration(
+                  labelText: 'PIN actual',
+                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureCurrent
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined),
+                    onPressed: () =>
+                        setState(() => _obscureCurrent = !_obscureCurrent),
+                  ),
                 ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
+                obscureText: _obscureCurrent,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                validator: (v) {
+                  if (v == null || v.length < 4) return 'El PIN debe tener 4 dígitos';
+                  if (v != '1234') return 'PIN incorrecto';
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              TextFormField(
+                controller: _newCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Nuevo PIN',
+                  prefixIcon: const Icon(Icons.lock_rounded),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureNew
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined),
+                    onPressed: () =>
+                        setState(() => _obscureNew = !_obscureNew),
+                  ),
                 ),
-              ],
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            TextFormField(
-              controller: _currentCtrl,
-              decoration: InputDecoration(
-                labelText: 'PIN actual',
-                prefixIcon: const Icon(Icons.lock_outline_rounded),
-                suffixIcon: IconButton(
-                  icon: Icon(_obscureCurrent
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined),
-                  onPressed: () =>
-                      setState(() => _obscureCurrent = !_obscureCurrent),
+                obscureText: _obscureNew,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                validator: (v) {
+                  if (v == null || v.length < 4) return 'El PIN debe tener 4 dígitos';
+                  if (v == _currentCtrl.text) {
+                    return 'El nuevo PIN no puede ser igual al actual';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              TextFormField(
+                controller: _confirmCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Confirmar nuevo PIN',
+                  prefixIcon: const Icon(Icons.lock_rounded),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscureConfirm
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined),
+                    onPressed: () =>
+                        setState(() => _obscureConfirm = !_obscureConfirm),
+                  ),
+                ),
+                obscureText: _obscureConfirm,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(4),
+                ],
+                validator: (v) {
+                  if (v != _newCtrl.text) return 'Los PINs no coinciden';
+                  return null;
+                },
+              ),
+              const SizedBox(height: AppConstants.spacingXS),
+              Text(
+                'PIN actual de prueba: 1234',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: context.textTertiaryColor),
+              ),
+              const SizedBox(height: AppConstants.spacingL),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _submit,
+                  child: const Text('Actualizar PIN'),
                 ),
               ),
-              obscureText: _obscureCurrent,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(4),
-              ],
-              validator: (v) {
-                if (v == null || v.length < 4) return 'El PIN debe tener 4 dígitos';
-                if (v != '1234') return 'PIN incorrecto';
-                return null;
-              },
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            TextFormField(
-              controller: _newCtrl,
-              decoration: InputDecoration(
-                labelText: 'Nuevo PIN',
-                prefixIcon: const Icon(Icons.lock_rounded),
-                suffixIcon: IconButton(
-                  icon: Icon(_obscureNew
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined),
-                  onPressed: () =>
-                      setState(() => _obscureNew = !_obscureNew),
-                ),
-              ),
-              obscureText: _obscureNew,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(4),
-              ],
-              validator: (v) {
-                if (v == null || v.length < 4) return 'El PIN debe tener 4 dígitos';
-                if (v == _currentCtrl.text) {
-                  return 'El nuevo PIN no puede ser igual al actual';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            TextFormField(
-              controller: _confirmCtrl,
-              decoration: InputDecoration(
-                labelText: 'Confirmar nuevo PIN',
-                prefixIcon: const Icon(Icons.lock_rounded),
-                suffixIcon: IconButton(
-                  icon: Icon(_obscureConfirm
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined),
-                  onPressed: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
-                ),
-              ),
-              obscureText: _obscureConfirm,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(4),
-              ],
-              validator: (v) {
-                if (v != _newCtrl.text) return 'Los PINs no coinciden';
-                return null;
-              },
-            ),
-            const SizedBox(height: AppConstants.spacingXS),
-            Text(
-              'PIN actual de prueba: 1234',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: context.textTertiaryColor),
-            ),
-            const SizedBox(height: AppConstants.spacingL),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _submit,
-                child: const Text('Actualizar PIN'),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

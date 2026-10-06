@@ -71,6 +71,32 @@ interface Freight {
   promisedAt?: string
   startedAt?: string
   times?: FreightTimes
+  // Quién ENTREGA la carga y qué declaró. La flota decide con esto si la
+  // toma: un flete sin remitente identificado es el que después nadie puede
+  // explicar si lo paran en la vía.
+  senderName?: string
+  senderDocType?: string
+  senderDocNumber?: string
+  cargoCategoryLabel?: string
+  declaredValue?: number
+}
+
+/** Quién entrega y qué declaró, o que no lo declaró — nunca un hueco. */
+function Remitente({ f }: { f: Freight }) {
+  if (!f.senderName) {
+    return (
+      <p className="text-xs text-amber-700">
+        Sin remitente declarado — pide la cédula al cargar.
+      </p>
+    )
+  }
+  const partes = [
+    `Entrega: ${f.senderName}`,
+    f.senderDocType && f.senderDocNumber ? `${f.senderDocType} ${f.senderDocNumber}` : null,
+    f.cargoCategoryLabel ?? null,
+    f.declaredValue ? `Declara ${cop(f.declaredValue)}` : null,
+  ].filter(Boolean)
+  return <p className="text-xs text-slate-500 truncate">{partes.join(' · ')}</p>
 }
 
 interface DriverOption { id: string; name: string; phone: string }
@@ -327,6 +353,7 @@ export default function FreightManager({ api, token }: { api: OperatorApi; token
                     {f.originCity && f.destCity && f.originCity !== f.destCity ? ` · ${f.originCity} → ${f.destCity}` : ''}
                   </p>
                   <p className="text-xs text-slate-400 truncate">{f.cargoDescription}</p>
+                  <Remitente f={f} />
                 </div>
                 <p className="font-bold text-emerald-700 text-sm shrink-0">{cop(f.offeredPrice)}</p>
               </div>

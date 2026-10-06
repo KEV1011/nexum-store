@@ -7,6 +7,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -300,6 +301,15 @@ class _BookingCard extends StatelessWidget {
             ' · ${CurrencyFormatter.format(booking?.amountToPay ?? trip.farePerSeat * seats)}',
             destacado: booking != null && booking.seats.isNotEmpty,
           ),
+          // EL TIQUETE. Va justo bajo la silla y el precio porque es lo que
+          // se busca con el bus delante: el pasajero lo lee en voz alta y el
+          // conductor lo teclea. Sin tiquete (reservas viejas) no se enseña
+          // un recuadro vacío: se dice que se identifique con su nombre, que
+          // es como funcionaba antes.
+          if (booking?.ticketCode != null) ...[
+            const SizedBox(height: 10),
+            _Tiquete(codigo: booking!.ticketCode!, usado: booking.tiqueteUsado),
+          ],
           if ((booking?.discount ?? 0) > 0)
             _row(
               context,
@@ -491,64 +501,141 @@ class _HojaCalificarState extends State<_HojaCalificar> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.empresa == null
+                  ? '¿Qué tal estuvo el viaje?'
+                  : '¿Qué tal viajaste con ${widget.empresa}?',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Tu calificación ayuda a los demás pasajeros a elegir.',
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 1; i <= 5; i++)
+                  IconButton(
+                    onPressed: () => setState(() => _estrellas = i),
+                    icon: Icon(
+                      i <= _estrellas ? Icons.star_rounded : Icons.star_border_rounded,
+                      size: 38,
+                      color: AppColors.starText,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _comentario,
+              maxLength: 300,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Cuéntanos (opcional)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _estrellas == 0
+                    ? null
+                    : () => Navigator.pop(context, (_estrellas, _comentario.text)),
+                style: FilledButton.styleFrom(backgroundColor: _kPooledColor),
+                child: const Text('Enviar'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// El tiquete que se enseña al subir.
+///
+/// Grande y con las letras separadas a propósito: se lee en voz alta en la
+/// puerta de un bus, muchas veces a oscuras y con ruido. Un código pequeño
+/// obliga a acercar el teléfono, y eso con lluvia no pasa.
+class _Tiquete extends StatelessWidget {
+  const _Tiquete({required this.codigo, required this.usado});
+
+  final String codigo;
+  final bool usado;
+
+  @override
+  Widget build(BuildContext context) {
+    // Usado se ve distinto, no escondido: el pasajero tiene que poder
+    // comprobar que su tiquete ya se registró, y si desapareciera creería
+    // que lo perdió.
+    final color = usado ? AppColors.textSecondary : AppColors.primary;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            widget.empresa == null
-                ? '¿Qué tal estuvo el viaje?'
-                : '¿Qué tal viajaste con ${widget.empresa}?',
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Tu calificación ayuda a los demás pasajeros a elegir.',
-            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
-          ),
-          const SizedBox(height: 16),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              for (var i = 1; i <= 5; i++)
-                IconButton(
-                  onPressed: () => setState(() => _estrellas = i),
-                  icon: Icon(
-                    i <= _estrellas ? Icons.star_rounded : Icons.star_border_rounded,
-                    size: 38,
-                    color: AppColors.starText,
-                  ),
+              Icon(usado ? Icons.check_circle_rounded : Icons.confirmation_number_rounded,
+                  size: 16, color: color),
+              const SizedBox(width: 6),
+              Text(
+                usado ? 'Ya abordaste' : 'Tu tiquete',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: color,
                 ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _comentario,
-            maxLength: 300,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Cuéntanos (opcional)',
-              border: OutlineInputBorder(),
+          const SizedBox(height: 6),
+          Text(
+            codigo,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              // Separadas para dictarlas sin que se peguen las sílabas.
+              letterSpacing: 4,
+              color: usado ? AppColors.textSecondary : AppColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _estrellas == 0
-                  ? null
-                  : () => Navigator.pop(context, (_estrellas, _comentario.text)),
-              style: FilledButton.styleFrom(backgroundColor: _kPooledColor),
-              child: const Text('Enviar'),
+          if (!usado) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Dícelo al conductor cuando subas.',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                color: context.textSecondaryColor,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

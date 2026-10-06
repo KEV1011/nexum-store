@@ -700,6 +700,7 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
     estimatedFare?: number; distanceKm?: number; etaMinutes?: number;
     originLat?: number; originLng?: number; destLat?: number; destLng?: number;
     recipientName?: string; recipientPhone?: string; packageDescription?: string;
+    remitente?: unknown; declaracion?: unknown;
     paymentMethod?: string;
     promoCode?: string;
     scheduledFor?: string;
@@ -729,6 +730,8 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
       recipientName: dto.recipientName,
       recipientPhone: dto.recipientPhone,
       packageDescription: dto.packageDescription,
+      remitente: dto.remitente,
+      declaracion: dto.declaracion,
       paymentMethod: dto.paymentMethod,
     });
     res.status(201).json({ success: true, data: trip });

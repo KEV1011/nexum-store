@@ -114,11 +114,15 @@ function _dbToBusinessInterface(b: {
 function _toSummaryDTO(order: {
   id: string; orderRef: string; customerName: string | null; deliveryAddress: string;
   status: string; total: number; createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
-  pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null; hasSignature: boolean;
+  pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null;
+  signatureUrl: string | null; signedByName: string | null; signedAt: Date | null;
   driverName: string | null; driverPhone: string | null; pickupPin?: string | null;
 }): DeliveryOrderSummaryDTO {
   const hasPickupProof = !!order.pickupPhotoUrl;
-  const hasDeliveryProof = !!order.deliveryPhotoUrl || order.hasSignature;
+  // Derivado del archivo, nunca de un flag guardado: si fueran dos datos,
+  // acabarían diciendo que hay firma donde no la hay.
+  const hasSignature = !!order.signatureUrl;
+  const hasDeliveryProof = !!order.deliveryPhotoUrl || hasSignature;
   return {
     id: order.id,
     orderRef: order.orderRef,
@@ -134,7 +138,10 @@ function _toSummaryDTO(order: {
     // PIN que el negocio dicta al repartidor para entregarle el pedido. Este
     // portal es del dueño del negocio (token propio); el repartidor no lo ve.
     pickupPin: order.pickupPin ?? undefined,
-    hasSignature: order.hasSignature,
+    hasSignature,
+    signatureUrl: order.signatureUrl ?? undefined,
+    signedByName: order.signedByName ?? undefined,
+    signedAt: order.signedAt?.toISOString(),
     driverName: order.driverName ?? '',
     // Privacy: the driver's real number is never exposed to the business.
     driverPhone: maskPhone(order.driverPhone) ?? '',

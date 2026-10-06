@@ -1,5 +1,6 @@
 import { Payout, PayoutStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { avisarGiroPagado } from './giro-aliado.service';
 import { MIN_PAYOUT_COP } from '../config/constants';
 import { saldoDelConductor } from '../lib/saldo-conductor';
 
@@ -38,8 +39,24 @@ export interface PayoutDTO {
   processedAt: string | null;
 }
 
+/**
+ * Un giro visto por la operación, sea a quien sea.
+ *
+ * Los tres tipos de aliado viven en la MISMA tabla y en la misma pantalla
+ * porque para quien hace la transferencia son el mismo trabajo: un monto, un
+ * destino y una referencia que registrar. `driverId` pasó a opcional al
+ * extender el giro a negocios y empresas; `beneficiarioTipo` dice cuál es sin
+ * obligar a nadie a deducirlo de qué campo viene lleno.
+ */
 export interface AdminPayoutDTO extends PayoutDTO {
-  driverId: string;
+  driverId: string | null;
+  businessId: string | null;
+  operatorId: string | null;
+  beneficiarioTipo: 'conductor' | 'negocio' | 'empresa';
+  beneficiarioNombre: string;
+  /** Teléfono de contacto del beneficiario, para resolver dudas del pago. */
+  beneficiarioTelefono: string | null;
+  /** Mantenidos para el panel que ya los leía. */
   driverName: string;
   driverPhone: string;
 }
@@ -160,18 +177,70 @@ export async function getDriverPayouts(driverId: string): Promise<PayoutDTO[]> {
 
 // ─── Operación (panel admin) ──────────────────────────────────────────────────
 
+/**
+ * Resuelve quién cobra este giro.
+ *
+ * Mira en el orden en que los campos son excluyentes (lo garantiza
+ * `tipoDeAliado` al crearlos), así que el primero que venga lleno es el bueno.
+ * El respaldo 'conductor' con nombre vacío NO debería alcanzarse nunca: existe
+ * para que una fila corrupta se vea rara en el panel en vez de tumbar la tabla
+ * entera, que es lo que pasaría con un `!`.
+ */
+function _beneficiario(p: {
+  driverId: string | null; businessId: string | null; operatorId: string | null;
+  driver?: { name: string; phone: string } | null;
+  business?: { name: string; phone: string | null } | null;
+  operator?: { tradeName: string | null; legalName: string; contactPhone: string | null } | null;
+}): Pick<AdminPayoutDTO,
+  'beneficiarioTipo' | 'beneficiarioNombre' | 'beneficiarioTelefono' | 'driverName' | 'driverPhone'
+> {
+  if (p.driverId) {
+    const nombre = p.driver?.name ?? '';
+    const tel = p.driver?.phone ?? null;
+    return {
+      beneficiarioTipo: 'conductor', beneficiarioNombre: nombre,
+      beneficiarioTelefono: tel, driverName: nombre, driverPhone: tel ?? '',
+    };
+  }
+  if (p.businessId) {
+    const nombre = p.business?.name ?? '';
+    const tel = p.business?.phone ?? null;
+    return {
+      beneficiarioTipo: 'negocio', beneficiarioNombre: nombre,
+      beneficiarioTelefono: tel, driverName: nombre, driverPhone: tel ?? '',
+    };
+  }
+  if (p.operatorId) {
+    const nombre = p.operator?.tradeName ?? p.operator?.legalName ?? '';
+    const tel = p.operator?.contactPhone ?? null;
+    return {
+      beneficiarioTipo: 'empresa', beneficiarioNombre: nombre,
+      beneficiarioTelefono: tel, driverName: nombre, driverPhone: tel ?? '',
+    };
+  }
+  return {
+    beneficiarioTipo: 'conductor', beneficiarioNombre: '(sin beneficiario)',
+    beneficiarioTelefono: null, driverName: '(sin beneficiario)', driverPhone: '',
+  };
+}
+
 /** Lista los retiros para la operación, opcionalmente filtrados por estado. */
 export async function listPayoutsForAdmin(status?: PayoutStatus): Promise<AdminPayoutDTO[]> {
   const rows = await prisma.payout.findMany({
     where: status ? { status } : undefined,
     orderBy: { requestedAt: 'desc' },
-    include: { driver: { select: { name: true, phone: true } } },
+    include: {
+      driver: { select: { name: true, phone: true } },
+      business: { select: { name: true, phone: true } },
+      operator: { select: { tradeName: true, legalName: true, contactPhone: true } },
+    },
   });
   return rows.map((p) => ({
     ...toDTO(p),
     driverId: p.driverId,
-    driverName: p.driver.name,
-    driverPhone: p.driver.phone,
+    businessId: p.businessId,
+    operatorId: p.operatorId,
+    ..._beneficiario(p),
   }));
 }
 
@@ -197,12 +266,32 @@ export async function adminUpdatePayout(
       processedBy: params.processedBy,
       processedAt: isTerminal ? new Date() : existing.processedAt,
     },
-    include: { driver: { select: { name: true, phone: true } } },
+    include: {
+      driver: { select: { name: true, phone: true } },
+      business: { select: { name: true, phone: true } },
+      operator: { select: { tradeName: true, legalName: true, contactPhone: true } },
+    },
   });
-  return {
+  const dto: AdminPayoutDTO = {
     ...toDTO(updated),
     driverId: updated.driverId,
-    driverName: updated.driver.name,
-    driverPhone: updated.driver.phone,
+    businessId: updated.businessId,
+    operatorId: updated.operatorId,
+    ..._beneficiario(updated),
   };
+
+  // Al marcar PAGADO se le avisa al aliado, con la referencia de la
+  // transferencia para que pueda buscarla en su banco. Solo aplica a negocios
+  // y empresas: el conductor ve su retiro en la billetera de su app.
+  //
+  // Sin `await` a propósito: el giro ya está escrito y quien lo procesó no
+  // tiene por qué esperar a un socket. Si el aviso falla, el giro sigue hecho
+  // y visible en el portal.
+  if (status === 'PAID' && (updated.businessId || updated.operatorId)) {
+    void avisarGiroPagado(updated.id).catch((e) => {
+      console.error('[Giro] no se pudo avisar del pago:', e);
+    });
+  }
+
+  return dto;
 }

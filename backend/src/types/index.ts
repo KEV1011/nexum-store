@@ -403,39 +403,12 @@ export type DeliveryOrderStatus =
   | 'in_transit'  // picked up with photo, heading to customer
   | 'delivered';  // delivered with proof
 
-export interface DeliveryOrder {
-  id: string;
-  businessId: string;
-  orderRef: string;           // e.g. "#4521"
-  customerName: string;
-  customerAddress: string;
-  driverId: string;
-  driverName: string;
-  driverPhone: string;
-  status: DeliveryOrderStatus;
-  grossFare: number;
-  createdAt: Date;
-  pickedUpAt?: Date;
-  deliveredAt?: Date;
-  pickupPhotoUrl?: string;
-  deliveryPhotoUrl?: string;
-  hasSignature: boolean;
-}
-
-export interface CreateDeliveryOrderDTO {
-  businessId: string;
-  orderRef: string;
-  customerName: string;
-  customerAddress: string;
-  grossFare: number;
-}
-
-export interface OrderStatusUpdateDTO {
-  status: DeliveryOrderStatus;
-  pickupPhotoUrl?: string;
-  deliveryPhotoUrl?: string;
-  hasSignature?: boolean;
-}
+// `DeliveryOrder`, `CreateDeliveryOrderDTO` y `OrderStatusUpdateDTO` vivían
+// aquí sin un solo consumidor: eran los tipos de `POST /business/orders` y
+// `PATCH /business/orders/:id/status`, dos rutas retiradas por inseguras. Se
+// borran con la firma porque dos de ellos declaraban el `hasSignature` que
+// nadie escribía, y un tipo muerto que menciona un campo muerto es la forma
+// más fácil de resucitar los dos.
 
 export interface DeliveryOrderSummaryDTO {
   id: string;
@@ -451,7 +424,13 @@ export interface DeliveryOrderSummaryDTO {
   deliveryPhotoUrl?: string;
   /** PIN que el negocio dicta al repartidor al entregarle el pedido. */
   pickupPin?: string;
+  /** Derivado de `signatureUrl`. No hay columna: un flag guardado al lado del
+   *  archivo acaba diciendo que hay firma donde no la hay. */
   hasSignature: boolean;
+  /** La firma dibujada por quien recibió, para poder abrirla. */
+  signatureUrl?: string;
+  signedByName?: string;
+  signedAt?: string;
   driverName: string;
   driverPhone: string;
   contactChannel?: 'in_app_chat' | 'call_proxy';
@@ -862,7 +841,11 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   maskedPhone?: string;
   pickupPhotoUrl?: string;
   deliveryPhotoUrl?: string;
+  /** Derivado de `signatureUrl`; no hay columna que pueda discrepar. */
   hasSignature: boolean;
+  signatureUrl?: string;
+  signedByName?: string;
+  signedAt?: string;
   createdAt: string;
   pickedUpAt?: string;
   deliveredAt?: string;
@@ -984,6 +967,35 @@ export interface ClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
+  /**
+   * Quién ENTREGÓ el paquete y qué declaró que iba dentro.
+   *
+   * Viaja al conductor a propósito: el que recoge es el que tiene que
+   * contrastar el documento con la persona que tiene enfrente, y el que
+   * carga responde por lo que lleva.
+   */
+  senderName?: string;
+  senderDocType?: string;
+  senderDocNumber?: string;
+  senderPhone?: string;
+  cargoCategory?: string;
+  /** La etiqueta en español, redactada por el servidor. Sin ella la app
+   *  pintaría la clave interna («materiales_construccion»). */
+  cargoCategoryLabel?: string;
+  /** Lo que el remitente DICE que vale. No es un seguro. */
+  declaredValue?: number;
+  declaredAt?: string;
+  /**
+   * La firma de quien recibió el envío, con su nombre y la hora.
+   *
+   * Sí viaja al conductor, al revés que el PIN: el PIN es un secreto que se
+   * pide, la firma es una constancia ya dada. Que el repartidor pueda volver
+   * a verla es lo que le permite defenderse cuando alguien dice que no le
+   * entregaron.
+   */
+  signatureUrl?: string;
+  signedByName?: string;
+  signedAt?: string;
   // El PIN de entrega NO vive aquí a propósito: este DTO viaja al conductor
   // (`trip_accepted`) y a los suscriptores del WS. Lo expone únicamente
   // `ClientTripWithPinDTO`, en las vistas propias del cliente.
@@ -1003,6 +1015,15 @@ export interface RequestClientTripDTO {
   recipientName?: string;
   recipientPhone?: string;
   packageDescription?: string;
+  /**
+   * Quién ENTREGA el paquete, con documento, y qué declara que va dentro.
+   *
+   * Solo tienen sentido en un ENVÍO: en una carrera de pasajeros no hay
+   * remitente y guardar una «declaración de contenido» ahí haría que el
+   * registro dijera algo falso. Las reglas viven en `lib/remitente`.
+   */
+  remitente?: unknown;
+  declaracion?: unknown;
   /** Los valores los define `lib/metodos-pago`. Ausente = efectivo. */
   paymentMethod?: string;
   /**
@@ -1081,6 +1102,10 @@ export interface ClientErrandDTO extends DriverCardFields {
   /** Prueba de custodia del mandadero (recogida y entrega). */
   pickupPhotoUrl?: string;
   deliveryPhotoUrl?: string;
+  /** La firma de quien recibió, con su nombre. Ausente = nadie firmó. */
+  signatureUrl?: string;
+  signedByName?: string;
+  signedAt?: string;
   /**
    * Minutos que PROMETIÓ el repartidor. Ausente = todavía no dijo nada, y
    * entonces la pantalla no escribe ningún tiempo: inventarlo haría bajar al
@@ -1323,6 +1348,21 @@ export interface SeatBookingDTO {
    * veces como puestos, que sería inventar pasajeros.
    */
   passengers?: { tipoDoc: string; documento: string; nombre: string }[];
+  /**
+   * El código que el pasajero enseña al subir, agrupado para leerlo en voz
+   * alta («K7M 3PQ»).
+   *
+   * Ausente en las reservas anteriores a que existiera el tiquete: la app
+   * dice entonces que se identifique con su nombre, que es como funcionaba
+   * antes, en vez de enseñar un recuadro vacío.
+   */
+  ticketCode?: string;
+  /**
+   * Cuándo subió. Para el conductor es la mitad útil del manifiesto —ver de
+   * un vistazo quién falta— y para el pasajero la confirmación de que su
+   * tiquete ya se usó.
+   */
+  boardedAt?: string;
 }
 
 /** Client-supplied payload when reserving seats on a pooled trip. */

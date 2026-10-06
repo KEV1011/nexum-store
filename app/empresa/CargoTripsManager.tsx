@@ -30,6 +30,11 @@ export interface CargoTrip {
   originPlace?: string
   weightKg?: number
   freightAmount?: number
+  /** Lo que se le paga al conductor. OTRA cifra que el flete; el RNDC pide las dos. */
+  driverPayAmount?: number
+  rndcRemesa?: string
+  rndcManifiesto?: string
+  rndcReportedAt?: string
   isUrban: boolean
   driverId?: string
   vehicleId?: string
@@ -287,6 +292,16 @@ function FilaViaje({
               Facturado
             </span>
           )}
+          {/* Se ve de un vistazo si el viaje ya está en el RNDC. Sin esto,
+              saber cuáles faltan por reportar obliga a abrirlos uno a uno. */}
+          {t.rndcManifiesto && (
+            <span
+              title={`RNDC · remesa ${t.rndcRemesa} · manifiesto ${t.rndcManifiesto}`}
+              className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[11px] font-semibold"
+            >
+              RNDC ✓
+            </span>
+          )}
           <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${STATUS_TONE[t.status] ?? 'bg-slate-100 text-slate-600'}`}>
             {STATUS_LABEL[t.status] ?? t.status}
           </span>
@@ -384,6 +399,7 @@ function FilaViaje({
             {t.freightAmount ? 'Cambiar valor' : 'Ponerle valor'}
           </button>
         )}
+        <RndcBoton t={t} api={api} onAccion={onAccion} />
       </div>
 
       {(t.status === 'DISPATCHED' || t.status === 'COMPLETED') && (
@@ -502,4 +518,118 @@ function Campo({
       />
     </div>
   )
+}
+
+/**
+ * El botón del RNDC: qué falta para reportar, y dónde anotar la constancia.
+ *
+ * El trámite se hace en el portal del Ministerio, con el usuario de la
+ * EMPRESA. ZIPA no es una empresa de transporte habilitada y no puede
+ * reportar en nombre de nadie. Lo que este botón quita es la parte cara:
+ * recopilar los datos de cuatro sitios distintos, y descubrir que falta uno
+ * cuando ya se está dentro del portal del Ministerio.
+ */
+function RndcBoton({
+  t, api, onAccion,
+}: {
+  t: CargoTrip
+  api: OperatorApi
+  onAccion: (fn: () => Promise<unknown>) => Promise<void>
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const [prep, setPrep] = useState<PreparacionRndc | null>(null)
+  const [fallo, setFallo] = useState(false)
+  const [cargando, setCargando] = useState(false)
+
+  const abrir = async () => {
+    if (abierto) { setAbierto(false); return }
+    setAbierto(true)
+    setCargando(true)
+    setFallo(false)
+    try {
+      setPrep(await api<PreparacionRndc>(`/cargo-trips/${t.id}/rndc`))
+    } catch {
+      // Cargando, falló y «no falta nada» son tres cosas distintas: decir
+      // «está listo» cuando ni siquiera se pudo preguntar mandaría a la
+      // empresa al portal del Ministerio con datos a medias.
+      setFallo(true)
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  const anotar = () => {
+    const remesa = prompt('Número de la REMESA que te devolvió el RNDC:', t.rndcRemesa ?? '')
+    if (remesa === null) return
+    const manifiesto = prompt('Número del MANIFIESTO electrónico:', t.rndcManifiesto ?? '')
+    if (manifiesto === null) return
+    void onAccion(() =>
+      api(`/cargo-trips/${t.id}/rndc`, {
+        method: 'POST',
+        body: JSON.stringify({ remesa, manifiesto }),
+      }),
+    )
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => void abrir()}
+        className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900"
+      >
+        {abierto ? 'Cerrar RNDC' : 'RNDC'}
+      </button>
+      {abierto && (
+        <div className="w-full mt-2 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 space-y-2">
+          {cargando && <p className="text-[11px] text-slate-500">Revisando…</p>}
+          {fallo && (
+            <p className="text-[11px] text-red-700">
+              No pudimos revisar qué falta. Inténtalo otra vez.
+            </p>
+          )}
+          {!cargando && !fallo && prep && (
+            <>
+              {prep.reportado ? (
+                <p className="text-[11px] text-indigo-900">
+                  Reportado el {fecha(prep.reportado.fecha)} · remesa{' '}
+                  <b>{prep.reportado.remesa}</b> · manifiesto{' '}
+                  <b>{prep.reportado.manifiesto}</b>
+                </p>
+              ) : prep.listo ? (
+                <p className="text-[11px] text-emerald-800">
+                  Este viaje tiene todos los datos. Repórtalo en el portal del
+                  Ministerio y anota aquí los dos números.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold text-amber-800">
+                    Antes de reportar hace falta:
+                  </p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    {prep.faltan.map((f) => (
+                      <li key={f.campo} className="text-[11px] text-amber-900">
+                        {f.queHacer}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <button
+                onClick={anotar}
+                className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 underline"
+              >
+                {prep.reportado ? 'Corregir los números' : 'Ya lo reporté: anotar números'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+interface PreparacionRndc {
+  listo: boolean
+  faltan: Array<{ campo: string; queHacer: string }>
+  reportado?: { remesa: string; manifiesto: string; fecha: string }
 }

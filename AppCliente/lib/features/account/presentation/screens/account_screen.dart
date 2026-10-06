@@ -26,6 +26,7 @@ import 'package:nexum_client/features/account/presentation/screens/legal_doc_scr
 import 'package:nexum_client/features/account/presentation/screens/privacy_screen.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_client/features/moderacion/presentation/bloqueados_screen.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 
 /// Pestaña "Cuenta": perfil del cliente y preferencias.
 class AccountScreen extends ConsumerWidget {
@@ -551,166 +552,169 @@ class _PromosSheetState extends ConsumerState<_PromosSheet> {
     final reward = (data?['referralRewardCop'] as num?)?.toDouble() ?? 0;
     final alreadyReferred = data?['alreadyReferred'] == true;
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppConstants.spacingM,
-        right: AppConstants.spacingM,
-        top: AppConstants.spacingM,
-        bottom:
-            MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Invita y gana',
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: AppConstants.spacingS),
-          if (_error != null)
-            Text(_error!, style: const TextStyle(color: AppColors.error))
-          else if (data == null)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(AppConstants.spacingL),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else ...[
-            Text(
-              'Comparte tu código: cuando un amigo lo canjee, ambos reciben '
-              'un cupón de ${CurrencyFormatter.format(reward)}.',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 13,
-                color: context.textSecondaryColor,
-              ),
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            if (referralCode != null)
-              InkWell(
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: referralCode));
-                  AppSnackbar.showSuccess(context, 'Código copiado');
-                },
-                borderRadius:
-                    BorderRadius.circular(AppConstants.radiusMedium),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(AppConstants.spacingM),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryContainer,
-                    borderRadius:
-                        BorderRadius.circular(AppConstants.radiusMedium),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        referralCode,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.5,
-                          color: AppColors.primaryDim,
-                        ),
-                      ),
-                      const Icon(Icons.copy_rounded,
-                          color: AppColors.primaryDim),
-                    ],
-                  ),
-                ),
-              ),
-            if (!alreadyReferred) ...[
-              const SizedBox(height: AppConstants.spacingM),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _codeController,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        hintText: '¿Te invitaron? Ingresa el código',
-                      ),
-                      onSubmitted: (_) => _redeemReferral(),
-                    ),
-                  ),
-                  const SizedBox(width: AppConstants.spacingS),
-                  SizedBox(
-                    height: 48,
-                    child: OutlinedButton(
-                      onPressed: _redeeming ? null : _redeemReferral,
-                      child: _redeeming
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Canjear'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: AppConstants.spacingL),
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.only(
+          left: AppConstants.spacingM,
+          right: AppConstants.spacingM,
+          top: AppConstants.spacingM,
+          bottom:
+              MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             const Text(
-              'Mis cupones',
+              'Invita y gana',
               style: TextStyle(
                 fontFamily: 'Inter',
-                fontSize: 15,
+                fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: AppConstants.spacingS),
-            if (coupons.isEmpty)
+            if (_error != null)
+              Text(_error!, style: const TextStyle(color: AppColors.error))
+            else if (data == null)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(AppConstants.spacingL),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else ...[
               Text(
-                'Aún no tienes cupones. Invita a un amigo para ganar el primero.',
+                'Comparte tu código: cuando un amigo lo canjee, ambos reciben '
+                'un cupón de ${CurrencyFormatter.format(reward)}.',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
                   color: context.textSecondaryColor,
                 ),
-              )
-            else
-              ...coupons.map((c) {
-                final isPercent = c['type'] == 'PERCENT';
-                final value = (c['value'] as num?)?.toDouble() ?? 0;
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.local_offer_rounded,
-                      color: AppColors.primary),
-                  title: Text(
-                    c['code'] as String? ?? '',
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w700,
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              if (referralCode != null)
+                InkWell(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: referralCode));
+                    AppSnackbar.showSuccess(context, 'Código copiado');
+                  },
+                  borderRadius:
+                      BorderRadius.circular(AppConstants.radiusMedium),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppConstants.spacingM),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryContainer,
+                      borderRadius:
+                          BorderRadius.circular(AppConstants.radiusMedium),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          referralCode,
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.5,
+                            color: AppColors.primaryDim,
+                          ),
+                        ),
+                        const Icon(Icons.copy_rounded,
+                            color: AppColors.primaryDim),
+                      ],
                     ),
                   ),
-                  subtitle: Text(
-                    (c['description'] as String?) ?? 'Cupón de descuento',
-                    style: const TextStyle(fontFamily: 'Inter', fontSize: 12),
-                  ),
-                  trailing: Text(
-                    isPercent
-                        ? '${value.toStringAsFixed(0)}%'
-                        : '-${CurrencyFormatter.format(value)}',
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.primary,
+                ),
+              if (!alreadyReferred) ...[
+                const SizedBox(height: AppConstants.spacingM),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _codeController,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          hintText: '¿Te invitaron? Ingresa el código',
+                        ),
+                        onSubmitted: (_) => _redeemReferral(),
+                      ),
                     ),
+                    const SizedBox(width: AppConstants.spacingS),
+                    SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed: _redeeming ? null : _redeemReferral,
+                        child: _redeeming
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('Canjear'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: AppConstants.spacingL),
+              const Text(
+                'Mis cupones',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacingS),
+              if (coupons.isEmpty)
+                Text(
+                  'Aún no tienes cupones. Invita a un amigo para ganar el primero.',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13,
+                    color: context.textSecondaryColor,
                   ),
-                );
-              }),
+                )
+              else
+                ...coupons.map((c) {
+                  final isPercent = c['type'] == 'PERCENT';
+                  final value = (c['value'] as num?)?.toDouble() ?? 0;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.local_offer_rounded,
+                        color: AppColors.primary),
+                    title: Text(
+                      c['code'] as String? ?? '',
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    subtitle: Text(
+                      (c['description'] as String?) ?? 'Cupón de descuento',
+                      style: const TextStyle(fontFamily: 'Inter', fontSize: 12),
+                    ),
+                    trailing: Text(
+                      isPercent
+                          ? '${value.toStringAsFixed(0)}%'
+                          : '-${CurrencyFormatter.format(value)}',
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  );
+                }),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

@@ -50,6 +50,7 @@ import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
 import { contactoLegalConfigurado } from './lib/contacto';
 import { exigirDocumentoDePasajero } from './lib/pasajeros-tiquete';
+import { exigirRemitente, VERSION_LISTA_NO_ADMITIDA } from './lib/remitente';
 import { whatsappMode } from './services/whatsapp.service';
 import { purgarEnlacesMagicos } from './services/enlace-magico.service';
 import { modoPush } from './services/push.service';
@@ -219,6 +220,11 @@ app.get('/health', async (_req, res) => {
     // pasajero. Se enciende cuando los APK nuevos estén repartidos; antes
     // dejaría sin reservar a quien no haya actualizado.
     pasajerosConDocumento: exigirDocumentoDePasajero() ? 'activo' : 'apagado',
+    // Si se exige remitente identificado y declaración de contenido para
+    // enviar. Se publica para que no se quede encendido —o apagado— sin
+    // querer: desde fuera los dos casos se ven igual.
+    envioConRemitente: exigirRemitente() ? 'activo' : 'apagado',
+    listaNoAdmitida: VERSION_LISTA_NO_ADMITIDA,
     // Canal de atención al titular. 'sin-configurar' significa que la política
     // de privacidad publicada remite al soporte DENTRO de la app, y eso es
     // circular: quien la desinstaló no puede pedir que borremos sus datos.

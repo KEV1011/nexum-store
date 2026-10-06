@@ -44,6 +44,9 @@ import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
 import { parsearCarta, filasACsv } from '../lib/carta-foto';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { PORTAL_BASE_URL } from '../config/constants';
+import {
+  saldoDelAliado, creditosPendientes, girosDelAliado, GiroError,
+} from '../services/giro-aliado.service';
 
 const router = Router();
 
@@ -864,3 +867,28 @@ router.post(
 );
 
 export default router;
+
+// ─── Lo que ZIPA le debe al negocio y los giros que le ha hecho ──────────────
+//
+// Existe desde que la plataforma puede recaudar: si cobramos nosotros, le
+// debemos al negocio. Esta es la pantalla donde el dueño lo ve, que es la
+// mitad que vuelve aceptable que le toquemos la plata.
+
+router.get('/:token/giros', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const b = { businessId: business.id };
+    const [saldo, pendientes, giros] = await Promise.all([
+      saldoDelAliado(b),
+      creditosPendientes(b),
+      girosDelAliado(b),
+    ]);
+    res.json({ success: true, data: { saldo, pendientes, giros } });
+  } catch (err) {
+    res.status(err instanceof GiroError ? 400 : 404).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos cargar tus giros',
+    });
+  }
+});

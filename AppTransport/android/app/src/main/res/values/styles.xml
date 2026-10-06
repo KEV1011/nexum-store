@@ -4,8 +4,15 @@
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
         <item name="android:forceDarkAllowed">false</item>
-        <item name="android:windowFullscreen">true</item>
-        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- `windowFullscreen` y `windowDrawsSystemBarBackgrounds` RETIRADOS.
+             Son las banderas del modo inmersivo de antes de Android 15: en
+             SDK 35+ el sistema ya dibuja de borde a borde por su cuenta y
+             estas o se ignoran o pelean con ello, justo en el tema que está
+             vivo mientras Flutter arranca — que es cuando se ve el salto.
+             El borde a borde se declara ahora en `main.dart`, con
+             `SystemUiMode.edgeToEdge`, que es la forma soportada.
+             `shortEdges` SÍ se queda: dice que el contenido puede usar el
+             área de la muesca, y eso sigue siendo cierto. -->
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
     <!-- Tema normal de la app (Flutter toma control) -->

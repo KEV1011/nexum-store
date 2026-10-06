@@ -107,6 +107,8 @@ class SeatBookingEntity {
     this.discount = 0,
     this.promoCode,
     this.amountToPay,
+    this.ticketCode,
+    this.boardedAt,
   });
 
   final String id;
@@ -135,6 +137,20 @@ class SeatBookingEntity {
   final String? promoCode;
   final double? amountToPay;
 
+  /// El código que se enseña y se dicta al subir, ya agrupado («K7M 3PQ»).
+  ///
+  /// Nulo en las reservas hechas antes de que existiera el tiquete: la
+  /// pantalla dice entonces que se identifique con su nombre, que es como
+  /// funcionaba antes, en vez de enseñar un recuadro vacío.
+  final String? ticketCode;
+
+  /// Cuándo subió. Nulo = todavía no, y es lo que distingue «tu tiquete está
+  /// listo» de «ya lo usaste».
+  final DateTime? boardedAt;
+
+  /// Si el tiquete sigue sirviendo para subir.
+  bool get tiqueteUsado => boardedAt != null;
+
   /// Lo que hay que enseñarle al subir: «Silla 4» o «Sillas 3, 4». Sin
   /// numeración cae a los puestos, que es lo único cierto ahí — un número
   /// inventado lo sentaría donde no le toca.
@@ -161,6 +177,10 @@ class SeatBookingEntity {
         discount: (j['discount'] as num?)?.toDouble() ?? 0,
         promoCode: j['promoCode'] as String?,
         amountToPay: (j['amountToPay'] as num?)?.toDouble(),
+        ticketCode: j['ticketCode'] as String?,
+        // `tryParse` y no `parse`: una fecha que no se entienda no puede
+        // tumbar la pantalla donde el pasajero busca su tiquete.
+        boardedAt: DateTime.tryParse(j['boardedAt'] as String? ?? ''),
       );
 }
 

@@ -12,6 +12,7 @@ import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/shared/widgets/declaracion_envio.dart';
 import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
@@ -46,6 +47,11 @@ class _TransportBookingScreenState
   final _formKey = GlobalKey<FormState>();
   final _originCtrl = TextEditingController();
   final _destCtrl = TextEditingController();
+  /// Quién entrega y qué declara. Null mientras falte algo: el botón se
+  /// apaga con esto en vez de dejar que el servidor rechace al final, que
+  /// es cuando el cliente ya dio el envío por pedido.
+  DatosDeEnvio? _datosEnvio;
+
   final _recipientNameCtrl = TextEditingController();
   final _recipientPhoneCtrl = TextEditingController();
   final _packageCtrl = TextEditingController();
@@ -654,8 +660,14 @@ class _TransportBookingScreenState
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      onPressed:
-          (_loading || _faltaPunto != null || _faltaCategoria) ? null : _submit,
+      onPressed: (_loading ||
+              _faltaPunto != null ||
+              _faltaCategoria ||
+              // En un envío hace falta saber quién lo entrega y qué va
+              // dentro antes de llamar a nadie.
+              (_isEnvios && _datosEnvio == null))
+          ? null
+          : _submit,
       child: _loading
           ? const SizedBox(
               height: 20,
@@ -840,6 +852,13 @@ class _TransportBookingScreenState
             alignLabelWithHint: true,
           ),
         ),
+        const SizedBox(height: 24),
+        _SectionTitle(title: 'Remitente y contenido'),
+        const SizedBox(height: 12),
+        DeclaracionEnvio(
+          dio: ref.read(apiClientProvider),
+          onChanged: (d) => setState(() => _datosEnvio = d),
+        ),
       ],
     ];
   }
@@ -952,6 +971,8 @@ class _TransportBookingScreenState
                     ? null
                     : _packageCtrl.text.trim())
                 : null,
+            remitente: _isEnvios ? _datosEnvio?.remitente : null,
+            declaracion: _isEnvios ? _datosEnvio?.declaracion : null,
             surgeMultiplier: surgeMultiplier,
           );
     } catch (e) {

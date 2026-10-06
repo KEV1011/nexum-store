@@ -55,11 +55,30 @@ Future<void> _arrancar() async {
     DeviceOrientation.portraitDown,
   ]);
 
+  // ── Borde a borde, declarado y no heredado ──────────────────────────────
+  //
+  // Desde Android 15 una app con targetSdk 35+ se dibuja de borde a borde
+  // SIEMPRE, lo pida o no, y Play lo avisa. La auditoría dice que las
+  // pantallas ya están bien: las que van a pantalla completa son los mapas,
+  // y lo hacen a propósito; el resto tiene AppBar, SafeArea o se suma
+  // `padding.top` a mano.
+  //
+  // Lo que faltaba era DECIRLO. `edgeToEdge` es la forma soportada por
+  // Flutter de declararlo, y además quita el velo que el motor dibuja
+  // detrás de la barra de navegación en versiones anteriores — así en
+  // Android 14 y en Android 15 se ve igual, en vez de depender de la
+  // versión del teléfono.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+  // Solo el BRILLO de los iconos: `statusBarColor` y
+  // `systemNavigationBarColor` están obsoletos y Android 15 los IGNORA, así
+  // que pedir «transparente» era código que no hacía nada y que hacía
+  // pensar que el borde a borde estaba resuelto aquí.
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.transparent,
+      statusBarBrightness: Brightness.light,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
 

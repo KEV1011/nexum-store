@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { PortalTabs } from '../PortalTabs'
+import GirosNegocio from '../GirosNegocio'
 import { LocationPicker } from './LocationPicker'
 import { DestinosEnvio, type Destino } from './DestinosEnvio'
 import { MesasManager } from './MesasManager'
@@ -545,6 +546,11 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                 {saved ? 'Guardado' : 'Guardar cambios'}
               </button>
             </section>
+
+            {/* Lo que ZIPA le debe por los pedidos que cobramos nosotros.
+                Va en Ajustes porque es donde el dueño mira lo suyo, y
+                debajo del resto porque se consulta, no se configura. */}
+            <GirosNegocio token={token} backendUrl={BACKEND_URL} />
           </>
         ) : null}
       </div>

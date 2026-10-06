@@ -438,17 +438,17 @@ model Business {
   /// conductores (`plazaDeCoordenadas`: centroide más cercano, 40 km). Si aquí
   /// se usara otro, un pedido podría ser «de Cúcuta» para el comercio y «de
   /// otra parte» para el tablero.
-  citySlug  String?
+  citySlug String?
   /// A qué otras ciudades despacha, a qué precio y en cuánto tiempo.
   /// `[{city, fee, etaHours}]` — ver `lib/destinos-envio.ts`.
   /// VACÍA SIGNIFICA «A NINGUNA», que es como nacen todos los comercios ya
   /// registrados: lo contrario habría abierto de golpe el catálogo local a
   /// todo el país el día del despliegue.
-  shipsTo   Json?
+  shipsTo  Json?
   // Foto de portada del local (subida por el dueño desde el portal). Null = sin
   // portada (el cliente cae al color/ícono de la categoría).
-  imageUrl  String?
-  token     String   @unique @default(cuid())
+  imageUrl String?
+  token    String  @unique @default(cuid())
 
   /// Si el local es nuestro cliente o si la ficha la publicamos nosotros.
   ///
@@ -459,7 +459,7 @@ model Business {
   /// con él todavía. Entonces **sus precios son referenciales** y el pedido
   /// NO se le manda —no hay nadie al otro lado del portal—: se convierte en
   /// un mandado de compra y va un repartidor. Ver `lib/comercio-no-reclamado`.
-  claimed   Boolean  @default(true)
+  claimed   Boolean   @default(true)
   /// Cuándo pidió el dueño quedarse con la ficha, y quién lo atendió.
   claimedAt DateTime?
 
@@ -469,18 +469,20 @@ model Business {
   /// pedidos, ajustes, portada): imprimirlo en un individual de mesa sería
   /// entregarle la administración del local a cualquiera que se siente. Este
   /// código solo abre la carta y permite pedir.
-  menuCode  String?  @unique
+  menuCode String? @unique
   /// Las mesas que el dueño declaró: `["1","2","Terraza 1"]`.
   /// Ver `lib/mesas.ts`. Vacía = el local todavía no tiene servicio en mesa y
   /// la carta pública no deja pedir (un pedido sin mesa no le sirve a la
   /// cocina: no sabría a dónde llevarlo).
-  tables    Json?
+  tables   Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products Product[]
-  orders   Order[]
+  products       Product[]
+  orders         Order[]
+  payouts        Payout[]
+  partnerCredits PartnerCredit[]
 
   @@index([category])
   @@map("businesses")
@@ -601,14 +603,14 @@ model ProductPhoto {
 // ── Pedidos de domicilio ──────────────────────────────────────────────────────
 
 model Order {
-  id              String      @id @default(cuid())
-  orderRef        String      @unique
-  userId          String?
-  businessId      String
-  driverId        String?
+  id         String      @id @default(cuid())
+  orderRef   String      @unique
+  userId     String?
+  businessId String
+  driverId   String?
   // Empresa del conductor al momento de aceptar (sellado para liquidación).
-  operatorId      String?
-  status          OrderStatus @default(CONFIRMED)
+  operatorId String?
+  status     OrderStatus @default(CONFIRMED)
 
   /// Cómo se sirve este pedido. `DINE_IN` = el comensal está SENTADO en el
   /// local y pidió desde el QR de su mesa.
@@ -619,12 +621,12 @@ model Order {
   ///
   /// Un `DINE_IN` NO se despacha a ningún repartidor, no cobra domicilio y no
   /// lleva PIN de custodia: no hay nadie a quien entregarle la caja.
-  mode            OrderMode   @default(DELIVERY)
+  mode       OrderMode @default(DELIVERY)
   /// La mesa, tal como la declaró el dueño («5», «Terraza 2»). Es lo único que
   /// la cocina necesita para saber a dónde llevar el plato, así que se SELLA:
   /// si mañana el dueño renombra sus mesas, el pedido de hoy no puede cambiar
   /// de sitio.
-  tableLabel      String?
+  tableLabel String?
 
   deliveryAddress String
   deliveryLat     Float?
@@ -683,6 +685,22 @@ model Order {
   readyAt          DateTime?
   pickupPhotoUrl   String?
   deliveryPhotoUrl String?
+  /// La firma de quien recibe, tal como la dibujó en la pantalla.
+  ///
+  /// ANTES SE DESCARTABA: la hoja de prueba de entrega capturaba los trazos y
+  /// solo pasaba un booleano `hasSignature`. El destinatario firmaba creyendo
+  /// que firmaba algo y lo único que quedaba era un `true` —que además NADIE
+  /// escribía: la columna nació en `false` y murió en `false`—. Para un envío
+  /// es feo; para carga es inservible, porque esa firma ES la prueba que se
+  /// reclama cuando alguien dice que no le llegó.
+  ///
+  /// El booleano del DTO se DERIVA de aquí y ya no se guarda: un flag guardado
+  /// al lado del archivo acaba diciendo que hay firma donde no la hay.
+  signatureUrl     String?
+  /// Quién firmó. Una firma sin nombre es un garabato: no prueba quién
+  /// recibió, que es justo lo que hay que probar.
+  signedByName     String?
+  signedAt         DateTime?
   // Cadena de custodia por PIN: el negocio entrega el pedido al repartidor
   // contra `pickupPin`, y el cliente lo recibe contra `deliveryPin`. Nunca se
   // exponen al conductor: él los pide de viva voz y los teclea.
@@ -690,7 +708,6 @@ model Order {
   deliveryPin      String?
   pickupPinAt      DateTime?
   deliveryPinAt    DateTime?
-  hasSignature     Boolean   @default(false)
   customerName     String?
   driverName       String?
   driverPhone      String?
@@ -856,45 +873,45 @@ model OrderLine {
 // ── Viajes de movilidad ───────────────────────────────────────────────────────
 
 model Trip {
-  id                 String        @id @default(cuid())
-  requestRef         String        @unique
-  passengerId        String?
-  driverId           String?
-  vehicleId          String?
-  serviceType        TransportType
-  status             TripStatus    @default(SEARCHING)
-  originAddress      String
-  originLat          Float
-  originLng          Float
-  destAddress        String
-  destLat            Float
-  destLng            Float
+  id              String        @id @default(cuid())
+  requestRef      String        @unique
+  passengerId     String?
+  driverId        String?
+  vehicleId       String?
+  serviceType     TransportType
+  status          TripStatus    @default(SEARCHING)
+  originAddress   String
+  originLat       Float
+  originLng       Float
+  destAddress     String
+  destLat         Float
+  destLng         Float
   // Paradas intermedias del trayecto: [{name, lat?, lng?, order}] (máx. 6).
   // Mismo formato que el intermunicipal y los cupos, para que `lib/trip-stops`
   // valide y lea los tres igual.
-  stops              Json?
-  estimatedFare      Float
-  surgeMultiplier    Float         @default(1.0)
+  stops           Json?
+  estimatedFare   Float
+  surgeMultiplier Float         @default(1.0)
   /// Cómo acordó pagar el pasajero. Los valores los define `lib/metodos-pago`.
   /// Null = efectivo (viajes anteriores a este campo). Salvo 'en_linea', que sí
   /// cobra Wompi, el dinero se mueve entre pasajero y conductor y la comisión
   /// se descuenta igual de la billetera del conductor.
-  paymentMethod      String?
-  finalFare          Float?
+  paymentMethod   String?
+  finalFare       Float?
   /// Cupón aplicado, si lo hubo. Se sella el CÓDIGO y el MONTO, no el
   /// porcentaje: cambiar mañana la promoción no puede reescribir lo que se
   /// cobró hoy. El descuento sale de NUESTRA comisión — `finalFare`,
   /// `netEarning` y `commission` son los mismos que sin cupón, y lo que paga
   /// el pasajero se deriva restando (ver `lib/descuento-viaje`).
-  promoCode          String?
-  promoDiscount      Int?
+  promoCode       String?
+  promoDiscount   Int?
   /// Para cuándo lo reservó el pasajero. Null = viaje inmediato.
-  scheduledFor       DateTime?
+  scheduledFor    DateTime?
   /// Cuándo hay que empezar a buscar conductor: la hora reservada MENOS la
   /// antelación (ver `lib/viaje-programado`). Se guarda calculado para que el
   /// barrido sea una consulta indexada y no tenga que hacer aritmética por
   /// fila.
-  searchFrom         DateTime?
+  searchFrom      DateTime?
   /// Cuándo se mandó el recordatorio de «tu carrera es en media hora».
   ///
   /// Marca, no bandera, y por el mismo motivo que `noDriverNotifiedAt`: el
@@ -902,7 +919,7 @@ model Trip {
   /// pasajero y al conductor treinta veces seguidas. Guardar el INSTANTE y no
   /// un booleano además deja auditar si el aviso salió a tiempo cuando alguien
   /// reclame que nunca le llegó.
-  reminderSentAt     DateTime?
+  reminderSentAt  DateTime?
 
   /// Quién apartó esta reserva y NO APARECIÓ a la hora.
   ///
@@ -919,41 +936,88 @@ model Trip {
   ///
   /// Soltarla a tiempo NO cuenta aquí: avisar de que no se puede es legítimo y
   /// deja tiempo a que otro la tome. Lo que se registra es no aparecer.
-  noShowDriverId     String?
-  noShowAt           DateTime?
+  noShowDriverId String?
+  noShowAt       DateTime?
   /// Por qué se le quitó: `sin_senal` (no apareció) o `documentos` (entre
   /// apartarla y la hora se le venció un papel). Se distingue porque son dos
   /// conversaciones distintas con el conductor: seis por papeles vencidos es un
   /// trámite, seis por no aparecer es dejar tirada a seis personas.
-  noShowReason       String?
+  noShowReason   String?
 
   distanceKm         Float?
   etaMinutes         Int?
   cancelReason       String?
   pickupPhotoUrl     String?
   deliveryPhotoUrl   String?
+  /// La firma de quien recibe, tal como la dibujó en la pantalla.
+  ///
+  /// ANTES SE DESCARTABA: la hoja de prueba de entrega capturaba los trazos y
+  /// solo pasaba un booleano `hasSignature`. El destinatario firmaba creyendo
+  /// que firmaba algo y lo único que quedaba era un `true` —que además NADIE
+  /// escribía: la columna nació en `false` y murió en `false`—. Para un envío
+  /// es feo; para carga es inservible, porque esa firma ES la prueba que se
+  /// reclama cuando alguien dice que no le llegó.
+  ///
+  /// El booleano del DTO se DERIVA de aquí y ya no se guarda: un flag guardado
+  /// al lado del archivo acaba diciendo que hay firma donde no la hay.
+  signatureUrl       String?
+  /// Quién firmó. Una firma sin nombre es un garabato: no prueba quién
+  /// recibió, que es justo lo que hay que probar.
+  signedByName       String?
+  signedAt           DateTime?
   recipientName      String?
   recipientPhone     String?
   packageDescription String?
-  passengerName      String?
-  passengerRating    Float?
+  /// ── Quién manda el envío, y qué declara que va dentro ───────────────────
+  ///
+  /// Antes solo quedaba el nombre de la CUENTA y una descripción de texto
+  /// libre. Con eso, si abren el vehículo en la carretera y dentro hay algo
+  /// que no debería ir, no se puede decir quién lo entregó ni qué dijo que
+  /// era — y responde quien maneja. Operando en frontera eso es exposición
+  /// penal real, no un hueco de producto.
+  ///
+  /// El remitente NO es siempre el titular de la cuenta: muchas veces es el
+  /// bodeguero, el empleado o el vecino que lleva el paquete.
+  ///
+  /// Todo nullable: las apps ya instaladas no lo mandan. La exigencia se
+  /// enciende con `ENVIO_EXIGIR_REMITENTE` (ver `lib/remitente`).
+  senderName         String?
+  senderDocType      String?
+  senderDocNumber    String?
+  senderPhone        String?
+  /// Categoría del catálogo cerrado de `lib/remitente`. La descripción libre
+  /// sigue donde estaba; esto es lo que se puede filtrar y cruzar después.
+  cargoCategory      String?
+  /// Lo que el remitente DICE que vale. No es un seguro: se guarda para
+  /// poder discutir un reclamo con una cifra encima de la mesa.
+  declaredValue      Float?
+  /// Versión de la lista de mercancía no admitida que se le mostró y aceptó.
+  /// Sin ella, añadir un renglón mañana haría creer que lo aceptado ayer
+  /// incluía algo que nadie vio.
+  cargoTermsVersion  Int?
+  /// Cuándo declaró. Null = no hay declaración, que es distinto de una
+  /// declaración vacía.
+  declaredAt         DateTime?
+
+  passengerName   String?
+  passengerRating Float?
   /// Lo que el pasajero destacó del conductor («Puntual», «Carro limpio»).
   /// Claves del catálogo cerrado de `lib/elogios`; máximo tres. Se sellan en
   /// el viaje que las produjo, que es lo que las hace auditables: el conteo
   /// del perfil se RECALCULA de aquí, nunca se suma encima.
-  ratingTags         Json?
-  netEarning         Float?
-  commission         Float?
-  tipAmount          Float         @default(0)
-  tipPaid            Boolean       @default(false)
-  rating             Int?
-  ratingComment      String?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  acceptedAt         DateTime?
-  startedAt          DateTime?
-  arrivedAt          DateTime?
-  completedAt        DateTime?
+  ratingTags      Json?
+  netEarning      Float?
+  commission      Float?
+  tipAmount       Float     @default(0)
+  tipPaid         Boolean   @default(false)
+  rating          Int?
+  ratingComment   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  acceptedAt      DateTime?
+  startedAt       DateTime?
+  arrivedAt       DateTime?
+  completedAt     DateTime?
 
   // Empresa bajo la cual se prestó el servicio (trazabilidad legal + liquidación).
   operatorId String?
@@ -973,6 +1037,11 @@ model Trip {
   // ENVIOS: un pasajero no necesita PIN para bajarse del carro.
   deliveryPin   String?
   deliveryPinAt DateTime?
+
+  /// Los papeles del ENVÍO: remesa, factura, guía, acta firmada. Solo se
+  /// usan en viajes de tipo ENVIOS; una carrera de pasajeros no lleva
+  /// papeles y por eso la relación queda vacía en vez de estorbar.
+  documentos ShipmentDocument[]
 
   @@index([passengerId])
   @@index([driverId])
@@ -1019,24 +1088,24 @@ enum TripStatus {
 // ── Ganancias del conductor ───────────────────────────────────────────────────
 
 model DriverEarning {
-  id         String   @id @default(cuid())
-  driverId   String
-  date       DateTime @db.Date
-  grossFare  Float
-  commission Float
+  id           String   @id @default(cuid())
+  driverId     String
+  date         DateTime @db.Date
+  grossFare    Float
+  commission   Float
   /// Lo que GANÓ ese día, cobrara quien cobrara. Es la cifra del panel de
   /// ganancias, y NO es lo que puede retirar: ver las dos de abajo.
-  netEarning Float
-  tripCount  Int
+  netEarning   Float
+  tripCount    Int
   /// Lo que ZIPA recaudó y tiene que girarle (solo los servicios pagados en
   /// línea). Antes se usaba `netEarning` para esto, y como se escribía también
   /// en los viajes en efectivo, la billetera le debía al conductor una plata
   /// que él ya tenía en el bolsillo. Ver `lib/saldo-conductor.ts`.
-  platformHeld Float  @default(0)
+  platformHeld Float    @default(0)
   /// La comisión de los servicios que cobró él de su mano (efectivo, Nequi,
   /// transferencia): eso NO se le debe, se le debe A NOSOTROS.
-  driverOwes   Float  @default(0)
-  createdAt  DateTime @default(now())
+  driverOwes   Float    @default(0)
+  createdAt    DateTime @default(now())
 
   driver Driver @relation(fields: [driverId], references: [id])
 
@@ -1055,7 +1124,13 @@ model DriverEarning {
 // paso posterior; hoy el saldo y el ciclo de vida del retiro son reales.
 model Payout {
   id          String       @id @default(cuid())
-  driverId    String
+  /// Exactamente UNO de los tres va informado (ver `lib/giro-aliado.ts`).
+  /// `driverId` pasó a opcional al extender el giro a negocios y empresas:
+  /// un giro es un giro, y duplicar la tabla por tipo de aliado es el error
+  /// que ya se pagó con CargoTrip al lado de FreightRequest.
+  driverId    String?
+  businessId  String?
+  operatorId  String?
   amount      Float
   status      PayoutStatus @default(REQUESTED)
   /// Canal de pago: 'bank' | 'nequi' | 'daviplata'.
@@ -1070,11 +1145,52 @@ model Payout {
   requestedAt DateTime     @default(now())
   processedAt DateTime?
 
-  driver Driver @relation(fields: [driverId], references: [id])
+  driver   Driver?         @relation(fields: [driverId], references: [id])
+  business Business?       @relation(fields: [businessId], references: [id])
+  operator Operator?       @relation(fields: [operatorId], references: [id])
+  creditos PartnerCredit[]
 
   @@index([driverId])
+  @@index([businessId])
+  @@index([operatorId])
   @@index([status])
   @@map("payouts")
+}
+
+/// Lo que la plataforma le debe a un aliado por una venta que COBRAMOS nosotros.
+///
+/// Una fila por venta, con los importes SELLADOS en el momento del cobro: si
+/// mañana se renegocia la comisión, lo cobrado ayer no cambia. El saldo del
+/// aliado NO se guarda: se deriva sumando las filas sin girar
+/// (`lib/giro-aliado.ts`), igual que el saldo de una cuenta de cobro.
+model PartnerCredit {
+  id          String   @id @default(cuid())
+  /// Exactamente uno, igual que en Payout.
+  businessId  String?
+  operatorId  String?
+  /// De dónde salió: 'order' | 'booking'. Con `sourceId` forma la llave que
+  /// hace el abono IDEMPOTENTE — un webhook de la pasarela se reintenta, y sin
+  /// esto un reintento le acreditaría la misma venta dos veces al aliado.
+  source      String
+  sourceId    String
+  /// Lo que pagó el cliente por la parte del aliado.
+  grossAmount Float
+  /// La comisión de ZIPA sobre esa venta, con la tasa vigente ese día.
+  commission  Float
+  /// Lo que le queda. Sellado, no derivado: es lo que se le va a girar.
+  netAmount   Float
+  /// El giro que lo saldó. Nulo = pendiente.
+  payoutId    String?
+  createdAt   DateTime @default(now())
+
+  business Business? @relation(fields: [businessId], references: [id])
+  operator Operator? @relation(fields: [operatorId], references: [id])
+  payout   Payout?   @relation(fields: [payoutId], references: [id])
+
+  @@unique([source, sourceId])
+  @@index([businessId, payoutId])
+  @@index([operatorId, payoutId])
+  @@map("partner_credits")
 }
 
 enum PayoutStatus {
@@ -1135,12 +1251,27 @@ model Errand {
   status           ErrandStatus   @default(SEARCHING)
   proofPhotoUrl    String?
   deliveryPhotoUrl String?
+  /// La firma de quien recibe, tal como la dibujó en la pantalla.
+  ///
+  /// ANTES SE DESCARTABA: la hoja de prueba de entrega capturaba los trazos y
+  /// solo pasaba un booleano `hasSignature`. El destinatario firmaba creyendo
+  /// que firmaba algo y lo único que quedaba era un `true` —que además NADIE
+  /// escribía: la columna nació en `false` y murió en `false`—. Para un envío
+  /// es feo; para carga es inservible, porque esa firma ES la prueba que se
+  /// reclama cuando alguien dice que no le llegó.
+  ///
+  /// El booleano del DTO se DERIVA de aquí y ya no se guarda: un flag guardado
+  /// al lado del archivo acaba diciendo que hay firma donde no la hay.
+  signatureUrl     String?
+  /// Quién firmó. Una firma sin nombre es un garabato: no prueba quién
+  /// recibió, que es justo lo que hay que probar.
+  signedByName     String?
+  signedAt         DateTime?
   // Cadena de custodia por PIN (ver Order): recogida y entrega.
   pickupPin        String?
   deliveryPin      String?
   pickupPinAt      DateTime?
   deliveryPinAt    DateTime?
-  hasSignature     Boolean        @default(false)
   driverName       String?
   driverPhone      String?
   createdAt        DateTime       @default(now())
@@ -1420,7 +1551,7 @@ model SeatBooking {
   /// Descuento aplicado y con qué código. Lo pone la EMPRESA que emitió el
   /// cupón: en un pasaje de bus el dinero no pasa por la plataforma, así que
   /// no hay comisión de la que descontarlo (ver `lib/cupon-pasaje.ts`).
-  discount       Float    @default(0)
+  discount       Float             @default(0)
   promoCode      String?
   /// Quién viaja en cada silla: `[{tipoDoc,documento,nombre}]`, uno por
   /// puesto. Ver `lib/pasajeros-tiquete.ts`. Es la planilla con la que la
@@ -1428,11 +1559,17 @@ model SeatBooking {
   /// una app que aún no los manda: se muestra como «sin datos», no se inventa.
   passengers     Json?
 
-  trip  PooledTrip       @relation(fields: [tripId], references: [id])
-  user  User             @relation(fields: [userId], references: [id])
+  trip       PooledTrip       @relation(fields: [tripId], references: [id])
+  user       User             @relation(fields: [userId], references: [id])
   /// Qué sillas concretas le tocaron. Vacío en las salidas sin numeración,
   /// donde `seatsBooked` sigue siendo todo lo que se sabe.
-  seats SeatAssignment[]
+  seats      SeatAssignment[]
+  /// El código que el pasajero enseña y dicta al subir. Seis caracteres
+  /// de un alfabeto sin 0/O ni 1/I/L (ver `lib/tiquete-abordaje.ts`).
+  ticketCode String?          @unique
+  /// Cuándo lo validó el conductor. Un tiquete aborda UNA sola vez: el
+  /// segundo intento le dice al conductor que ya se usó, y a qué hora.
+  boardedAt  DateTime?
 
   @@index([tripId])
   @@index([userId])
@@ -1555,12 +1692,14 @@ model Operator {
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
-  documents   OperatorDocument[]
-  members     OperatorMember[]
-  routes      OperatorRoute[]
-  vehicles    Vehicle[]
-  drivers     Driver[]
-  assignments FleetAssignment[]
+  documents      OperatorDocument[]
+  members        OperatorMember[]
+  routes         OperatorRoute[]
+  vehicles       Vehicle[]
+  drivers        Driver[]
+  assignments    FleetAssignment[]
+  payouts        Payout[]
+  partnerCredits PartnerCredit[]
 
   @@map("operators")
 }
@@ -1682,57 +1821,89 @@ enum FreightStatus {
 }
 
 model FreightRequest {
-  id               String        @id @default(cuid())
-  clientId         String
-  clientName       String?
-  clientPhone      String?
-  originAddress    String
-  destAddress      String
+  id                String        @id @default(cuid())
+  clientId          String
+  clientName        String?
+  clientPhone       String?
+  originAddress     String
+  destAddress       String
   // Ciudades (texto libre): iguales u omitidas = acarreo urbano; distintas =
   // flete intermunicipal. La fecha futura lo vuelve "programado".
-  originCity       String?
-  destCity         String?
-  cargoDescription String
-  weightKg         Int
-  vehicleType      VehicleType // TURBO | CAMION | MULA
-  offeredPrice     Float
-  scheduledFor     DateTime? // null = lo antes posible
-  status           FreightStatus @default(REQUESTED)
+  originCity        String?
+  destCity          String?
+  cargoDescription  String
+  weightKg          Int
+  vehicleType       VehicleType // TURBO | CAMION | MULA
+  offeredPrice      Float
+  scheduledFor      DateTime? // null = lo antes posible
+  status            FreightStatus @default(REQUESTED)
+  /// ── Quién manda el envío, y qué declara que va dentro ───────────────────
+  ///
+  /// Antes solo quedaba el nombre de la CUENTA y una descripción de texto
+  /// libre. Con eso, si abren el vehículo en la carretera y dentro hay algo
+  /// que no debería ir, no se puede decir quién lo entregó ni qué dijo que
+  /// era — y responde quien maneja. Operando en frontera eso es exposición
+  /// penal real, no un hueco de producto.
+  ///
+  /// El remitente NO es siempre el titular de la cuenta: muchas veces es el
+  /// bodeguero, el empleado o el vecino que lleva el paquete.
+  ///
+  /// Todo nullable: las apps ya instaladas no lo mandan. La exigencia se
+  /// enciende con `ENVIO_EXIGIR_REMITENTE` (ver `lib/remitente`).
+  senderName        String?
+  senderDocType     String?
+  senderDocNumber   String?
+  senderPhone       String?
+  /// Categoría del catálogo cerrado de `lib/remitente`. La descripción libre
+  /// sigue donde estaba; esto es lo que se puede filtrar y cruzar después.
+  cargoCategory     String?
+  /// Lo que el remitente DICE que vale. No es un seguro: se guarda para
+  /// poder discutir un reclamo con una cifra encima de la mesa.
+  declaredValue     Float?
+  /// Versión de la lista de mercancía no admitida que se le mostró y aceptó.
+  /// Sin ella, añadir un renglón mañana haría creer que lo aceptado ayer
+  /// incluía algo que nadie vio.
+  cargoTermsVersion Int?
+  /// Cuándo declaró. Null = no hay declaración, que es distinto de una
+  /// declaración vacía.
+  declaredAt        DateTime?
+
   // Cadena de custodia por PIN (ver Order): el remitente entrega la carga
   // contra `pickupPin` y el destinatario la recibe contra `deliveryPin`.
-  pickupPin        String?
-  deliveryPin      String?
-  pickupPinAt      DateTime?
-  deliveryPinAt    DateTime?
-  operatorId       String?
-  driverId         String?
-  vehicleId        String?
-  finalPrice       Float?
-  commission       Float?
-  netEarning       Float?
+  pickupPin     String?
+  deliveryPin   String?
+  pickupPinAt   DateTime?
+  deliveryPinAt DateTime?
+  operatorId    String?
+  driverId      String?
+  vehicleId     String?
+  finalPrice    Float?
+  commission    Float?
+  netEarning    Float?
   // Coordenadas de la trayectoria (para dibujar el mapa del flete). Se
   // resuelven al crear el flete desde el centroide de la ciudad (fallback
   // Pamplona); permiten mostrar origen→destino en la app del conductor.
-  originLat        Float?
-  originLng        Float?
-  destLat          Float?
-  destLng          Float?
+  originLat     Float?
+  originLng     Float?
+  destLat       Float?
+  destLng       Float?
   // Fecha comprometida de entrega. Sin ella no se puede medir cumplimiento:
   // "llegó tarde" es una opinión hasta que hay una hora contra la cual medir.
-  promisedAt       DateTime?
-  createdAt        DateTime      @default(now())
-  acceptedAt       DateTime?
+  promisedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  acceptedAt    DateTime?
   // Salida real (paso a IN_PROGRESS). Separa "aceptado pero sin salir de
   // bodega" de "en ruta" — es justo la demora que discute el cliente, y con
   // solo acceptedAt/completedAt quedaba escondida dentro del viaje.
-  startedAt        DateTime?
-  completedAt      DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
 
   events      FreightEvent[]
+  documentos  ShipmentDocument[]
   // Viaje de carga creado al aceptar la solicitud: ahí vive toda la
   // trazabilidad (rastro, gastos, tiempos, remitos y cobro).
-  cargoTripId String?        @unique
-  cargoTrip   CargoTrip?     @relation(fields: [cargoTripId], references: [id])
+  cargoTripId String?            @unique
+  cargoTrip   CargoTrip?         @relation(fields: [cargoTripId], references: [id])
 
   @@index([status])
   @@index([operatorId])
@@ -1949,6 +2120,25 @@ model CargoTrip {
   // el total esté respaldado por su detalle y se pueda auditar viaje por viaje.
   freightAmount Float?
 
+  /// Lo que se le paga al conductor o al propietario del vehículo.
+  ///
+  /// Es OTRA cifra que `freightAmount`: ese es lo que cobra la empresa al
+  /// cliente, este es lo que recibe quien maneja. El RNDC pide las dos, y
+  /// hasta ahora solo existía la primera.
+  driverPayAmount Float?
+
+  /// Constancia del reporte al RNDC: los dos números que devuelve el
+  /// Ministerio. Los escribe la EMPRESA, que es quien reporta con su
+  /// usuario y su clave — ZIPA no es una empresa de transporte habilitada y
+  /// no puede reportar en nombre de nadie (ver `lib/rndc` y `docs/RNDC.md`).
+  ///
+  /// Se guardan los DOS o ninguno: un manifiesto sin su remesa no describe
+  /// un despacho completo, y medio reporte haría figurar el viaje como
+  /// reportado cuando no lo está.
+  rndcRemesa     String?
+  rndcManifiesto String?
+  rndcReportedAt DateTime?
+
   // Destino principal del viaje. Las líneas llevan cada una su destinatario y
   // su ciudad; este es el punto contra el que se miden geocerca y desvío.
   destCity String?
@@ -1970,12 +2160,14 @@ model CargoTrip {
   cobroId String?
   cobro   CobroAccount? @relation(fields: [cobroId], references: [id])
 
-  manifests FreightManifest[]
+  manifests  FreightManifest[]
   // Bitácora de ruta del viaje: tanqueos, peajes, viáticos, paradas y notas.
-  events    FreightEvent[]
+  events     FreightEvent[]
+  // Los papeles que viajan CON la carga: remesa, manifiesto, factura, guía.
+  documentos ShipmentDocument[]
   // Solicitud del marketplace que originó este viaje (null = despacho propio
   // de la flota). Es el puente que unifica los dos caminos.
-  freight   FreightRequest?
+  freight    FreightRequest?
 
   @@unique([operatorId, number])
   @@index([operatorId, createdAt])
@@ -2450,4 +2642,58 @@ model MagicLink {
   @@index([userId, createdAt])
   @@index([expiresAt])
   @@map("magic_links")
+}
+
+/// Los papeles que viajan CON la carga.
+///
+/// El repo ya guardaba los documentos del CONDUCTOR (`DriverDocument`:
+/// cédula, licencia, SOAT) y los de la EMPRESA (`OperatorDocument`: la
+/// habilitación), pero no los del ENVÍO — que son los que piden en la
+/// carretera. Hoy van en una carpeta en la cabina, y cuando se mojan, se
+/// pierden o se quedan en la bodega, el viaje se para.
+///
+/// UNA SOLA TABLA PARA LOS TRES DUEÑOS, igual que `FreightEvent`. Es la
+/// lección que este repo ya pagó con `CargoTrip` construido al lado de
+/// `FreightRequest`: la trazabilidad quedó repartida y hubo que
+/// unificarla después. Un documento cuelga de exactamente UNO.
+model ShipmentDocument {
+  id   String @id @default(cuid())
+  /// Del catálogo cerrado de `lib/documentos-envio`.
+  type String
+
+  fileUrl  String
+  /// El número del papel: «066», «FE-1234». Se guarda TAL CUAL se escribió:
+  /// normalizar un consecutivo ajeno es inventarse el número de un
+  /// documento que existe en papel.
+  number   String?
+  /// La fecha DEL DOCUMENTO, que no es la de la subida.
+  issuedOn DateTime?
+  note     String?
+
+  /// La firma de quien lo entregó o lo recibió, cuando la hay. Misma forma
+  /// que la prueba de entrega: un trazo, un nombre y una hora del servidor.
+  signatureUrl String?
+  signedByName String?
+  signedAt     DateTime?
+
+  /// Quién lo subió. Uno de los dos: el conductor desde la cabina o la
+  /// flota desde el portal. Sin esto, un documento equivocado no se puede
+  /// ni preguntar a quién.
+  uploadedByDriverId   String?
+  uploadedByOperatorId String?
+  uploadedAt           DateTime @default(now())
+
+  freightId   String?
+  cargoTripId String?
+  tripId      String?
+
+  freight   FreightRequest? @relation(fields: [freightId], references: [id])
+  cargoTrip CargoTrip?      @relation(fields: [cargoTripId], references: [id])
+  trip      Trip?           @relation(fields: [tripId], references: [id])
+
+  @@index([freightId])
+  @@index([cargoTripId])
+  @@index([tripId])
+  @@index([type])
+  @@map("shipment_documents")
 }

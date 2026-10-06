@@ -6,6 +6,7 @@ import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:nexum_client/features/addresses/domain/entities/address_entity.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
 
@@ -207,52 +208,55 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppConstants.spacingM,
-        right: AppConstants.spacingM,
-        top: AppConstants.spacingM,
-        bottom:
-            MediaQuery.viewInsetsOf(context).bottom + AppConstants.spacingL,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Nueva dirección',
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.only(
+          left: AppConstants.spacingM,
+          right: AppConstants.spacingM,
+          top: AppConstants.spacingM,
+          bottom:
+              MediaQuery.viewInsetsOf(context).bottom + AppConstants.spacingL,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Nueva dirección',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          TextField(
-            controller: _aliasCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Nombre',
-              hintText: 'Ej: Casa, Oficina, Gym',
+            const SizedBox(height: AppConstants.spacingM),
+            TextField(
+              controller: _aliasCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Nombre',
+                hintText: 'Ej: Casa, Oficina, Gym',
+              ),
+              textCapitalization: TextCapitalization.words,
             ),
-            textCapitalization: TextCapitalization.words,
-          ),
-          const SizedBox(height: AppConstants.spacingS),
-          // Con sugerencias de Google y el mapa como salida: una dirección
-          // guardada mal escrita se paga en CADA pedido que se haga con ella.
-          AddressAutocompleteField(
-            controller: _addressCtrl,
-            label: 'Dirección',
-            hint: 'Calle, número, barrio',
-            requiredField: true,
-            onPlaceSelected: (p) => _place = p,
-            onManualEdit: () => _place = null,
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          ElevatedButton(
-            onPressed: _save,
-            child: const Text('Guardar'),
-          ),
-        ],
+            const SizedBox(height: AppConstants.spacingS),
+            // Con sugerencias de Google y el mapa como salida: una dirección
+            // guardada mal escrita se paga en CADA pedido que se haga con ella.
+            AddressAutocompleteField(
+              controller: _addressCtrl,
+              label: 'Dirección',
+              hint: 'Calle, número, barrio',
+              requiredField: true,
+              onPlaceSelected: (p) => _place = p,
+              onManualEdit: () => _place = null,
+            ),
+            const SizedBox(height: AppConstants.spacingM),
+            ElevatedButton(
+              onPressed: _save,
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
       ),
     );
   }

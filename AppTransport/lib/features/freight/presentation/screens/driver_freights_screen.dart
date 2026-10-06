@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/shared/widgets/custody_pin_dialog.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
+import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 
 /// Tipos de la bitácora del flete. Los cuatro primeros son GASTO (suman al
 /// costo del viaje y exigen monto); parada y nota solo dejan constancia.
@@ -312,6 +313,16 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
             '${f['cargoDescription']} · ${f['weightKg']} kg · ${f['vehicleType']}',
             style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
           ),
+          // Quién entrega la carga, con documento, y qué declaró.
+          //
+          // Va en la tarjeta del conductor porque es ÉL quien carga: tiene
+          // que poder contrastar la cédula contra la persona que tiene
+          // enfrente antes de subir nada al camión, y si lo paran en la vía
+          // el que responde es él. Sin remitente declarado se dice, no se
+          // deja el hueco en blanco.
+          const SizedBox(height: 4),
+          _FichaRemitente(f: f),
+
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -395,6 +406,16 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
             '${f['cargoDescription']} · ${f['weightKg']} kg · ${f['vehicleType']}',
             style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
           ),
+          // Quién entrega la carga, con documento, y qué declaró.
+          //
+          // Va en la tarjeta del conductor porque es ÉL quien carga: tiene
+          // que poder contrastar la cédula contra la persona que tiene
+          // enfrente antes de subir nada al camión, y si lo paran en la vía
+          // el que responde es él. Sin remitente declarado se dice, no se
+          // deja el hueco en blanco.
+          const SizedBox(height: 4),
+          _FichaRemitente(f: f),
+
           if (!done && phone != null && phone.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('Cliente: ${f['clientName'] ?? ''} · $phone',
@@ -665,117 +686,176 @@ class _FreightEventSheetState extends State<_FreightEventSheet> {
   Widget build(BuildContext context) {
     final isFuel = _type == 'FUEL';
     final isExpense = kFreightExpenseTypes.contains(_type);
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Registrar en la bitácora',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          // Seis tipos no caben en un SegmentedButton: en un teléfono se
-          // aplastan hasta ser ilegibles. Chips que fluyen en varias filas.
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final t in kFreightEventTypes)
-                ChoiceChip(
-                  selected: _type == t,
-                  onSelected: (_) => setState(() => _type = t),
-                  avatar: Icon(_eventIcon(t), size: 16),
-                  label: Text(kFreightEventLabel[t] ?? t),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (isExpense) ...[
-            TextField(
-              controller: _amountCtrl,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Monto (COP) *',
-                prefixText: r'$ ',
-                helperText: isFuel
-                    ? 'Los galones y el odómetro permiten calcular el rendimiento del camión.'
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (isFuel) ...[
-            Row(
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Registrar en la bitácora',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            // Seis tipos no caben en un SegmentedButton: en un teléfono se
+            // aplastan hasta ser ilegibles. Chips que fluyen en varias filas.
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _gallonsCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration:
-                        const InputDecoration(labelText: 'Galones'),
+                for (final t in kFreightEventTypes)
+                  ChoiceChip(
+                    selected: _type == t,
+                    onSelected: (_) => setState(() => _type = t),
+                    avatar: Icon(_eventIcon(t), size: 16),
+                    label: Text(kFreightEventLabel[t] ?? t),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _odoCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration:
-                        const InputDecoration(labelText: 'Odómetro (km)'),
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 8),
-          ],
-          TextField(
-            controller: _noteCtrl,
-            maxLines: 2,
-            decoration: InputDecoration(
-              labelText: isFuel
-                  ? 'Estación / nota (opcional)'
-                  : 'Descripción (dónde y por qué)',
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              OutlinedButton.icon(
-                onPressed: _pickPhoto,
-                icon: Icon(
-                    _photo == null
-                        ? Icons.photo_camera_outlined
-                        : Icons.check_circle_rounded,
-                    size: 17),
-                label: Text(_photo == null ? 'Foto del recibo' : 'Foto lista'),
+            const SizedBox(height: 12),
+            if (isExpense) ...[
+              TextField(
+                controller: _amountCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Monto (COP) *',
+                  prefixText: r'$ ',
+                  helperText: isFuel
+                      ? 'Los galones y el odómetro permiten calcular el rendimiento del camión.'
+                      : null,
+                ),
               ),
-              const Spacer(),
-              Text('Se guarda tu ubicación',
-                  style:
-                      TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              const SizedBox(height: 8),
             ],
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(_error!,
-                  style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+            if (isFuel) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _gallonsCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration:
+                          const InputDecoration(labelText: 'Galones'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _odoCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration:
+                          const InputDecoration(labelText: 'Odómetro (km)'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+            TextField(
+              controller: _noteCtrl,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: isFuel
+                    ? 'Estación / nota (opcional)'
+                    : 'Descripción (dónde y por qué)',
+              ),
             ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _saving ? null : _save,
-              child: Text(_saving ? 'Guardando…' : 'Guardar en la bitácora'),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _pickPhoto,
+                  icon: Icon(
+                      _photo == null
+                          ? Icons.photo_camera_outlined
+                          : Icons.check_circle_rounded,
+                      size: 17),
+                  label: Text(_photo == null ? 'Foto del recibo' : 'Foto lista'),
+                ),
+                const Spacer(),
+                Text('Se guarda tu ubicación',
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              ],
+            ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_error!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12.5)),
+              ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _saving ? null : _save,
+                child: Text(_saving ? 'Guardando…' : 'Guardar en la bitácora'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Quién entrega la carga y qué declaró que va dentro.
+///
+/// Nada se inventa cuando el dato falta: un flete publicado desde una app
+/// anterior a esto sale diciendo que no hay remitente declarado, que es
+/// información útil —el conductor sabe que ahí tiene que preguntar él— en
+/// vez de un hueco que se lee como un fallo de la pantalla.
+class _FichaRemitente extends StatelessWidget {
+  const _FichaRemitente({required this.f});
+
+  final Map<String, dynamic> f;
+
+  @override
+  Widget build(BuildContext context) {
+    final nombre = f['senderName'] as String?;
+    final tipo = f['senderDocType'] as String?;
+    final doc = f['senderDocNumber'] as String?;
+    final categoria = f['cargoCategoryLabel'] as String?;
+    final valor = (f['declaredValue'] as num?)?.toDouble();
+
+    if (nombre == null || nombre.isEmpty) {
+      return Row(
+        children: [
+          Icon(Icons.help_outline_rounded, size: 14, color: Colors.orange.shade700),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              'Sin remitente declarado — pide la cédula de quien te entregue.',
+              style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
             ),
           ),
         ],
-      ),
+      );
+    }
+
+    final partes = <String>[
+      'Entrega: $nombre',
+      if (tipo != null && doc != null && doc.isNotEmpty) '$tipo $doc',
+      if (categoria != null && categoria.isNotEmpty) categoria,
+      if (valor != null && valor > 0) 'Declara \$${valor.toStringAsFixed(0)}',
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.assignment_ind_outlined, size: 14, color: Colors.grey.shade600),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
+            partes.join(' · '),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+        ),
+      ],
     );
   }
 }

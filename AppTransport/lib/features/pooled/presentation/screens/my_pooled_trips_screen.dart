@@ -9,6 +9,8 @@ import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
+import 'package:nexum_driver/shared/services/abordaje_tiquete.dart';
+import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -91,6 +93,18 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
 
   /// Ejecuta la acción y SIEMPRE da feedback: éxito o el motivo del rechazo
   /// del backend (antes el error se perdía y el botón parecía roto).
+/// Abre la hoja donde el conductor teclea el código que le dictan.
+  Future<void> _abrirAbordaje(String salidaId) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _HojaAbordaje(salidaId: salidaId),
+    );
+    // Al cerrar se recarga: el manifiesto tiene que reflejar quién ya subió.
+    if (mounted) await ref.read(pooledDriverProvider.notifier).loadMine();
+  }
+
   Future<void> _run(Future<String?> Function() action, String okMsg) async {
     final error = await action();
     if (!mounted) return;
@@ -173,6 +187,10 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
                         'Viaje finalizado.',
                       ),
                     ),
+                    // Validar tiquetes: solo tiene sentido con la salida
+                    // ya publicada y antes de cerrarla. Después de terminar
+                    // no hay a quién subir.
+                    onAbordar: () => _abrirAbordaje(trip.id),
                     onCancel: () => _confirm(
                       'Cancelar viaje',
                       'Se cancelará el viaje y se notificará a los pasajeros.',
@@ -281,12 +299,14 @@ class _PooledTripCard extends StatelessWidget {
     required this.trip,
     required this.onDepart,
     required this.onComplete,
+    required this.onAbordar,
     required this.onCancel,
   });
 
   final PooledTripEntity trip;
   final VoidCallback onDepart;
   final VoidCallback onComplete;
+  final VoidCallback onAbordar;
   final VoidCallback onCancel;
 
   @override
@@ -524,6 +544,18 @@ class _PooledTripCard extends StatelessWidget {
     );
   }
 
+/// El botón de validar tiquetes. Icono y no texto: va al lado de acciones
+  /// con nombre largo y en pantallas de 320 px la fila se parte.
+  Widget _botonTiquete() => OutlinedButton(
+        onPressed: onAbordar,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _kPooledColor,
+          side: const BorderSide(color: _kPooledColor),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+        ),
+        child: const Icon(Icons.confirmation_number_rounded, size: 20),
+      );
+
   Widget _actions() {
     switch (trip.status) {
       case PooledTripStatus.open:
@@ -542,6 +574,8 @@ class _PooledTripCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
+            _botonTiquete(),
+            const SizedBox(width: 10),
             OutlinedButton(
               onPressed: onCancel,
               style: OutlinedButton.styleFrom(
@@ -553,17 +587,24 @@ class _PooledTripCard extends StatelessWidget {
           ],
         );
       case PooledTripStatus.departed:
-        return SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: onComplete,
-            icon: const Icon(Icons.flag_rounded, size: 18),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.success,
-              foregroundColor: Colors.white,
+        // En camino sigue habiendo gente que sube: los puntos de embarque
+        // están repartidos por la ciudad de origen, no solo en la terminal.
+        return Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: onComplete,
+                icon: const Icon(Icons.flag_rounded, size: 18),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
+                ),
+                label: const Text('Finalizar viaje'),
+              ),
             ),
-            label: const Text('Finalizar viaje'),
-          ),
+            const SizedBox(width: 10),
+            _botonTiquete(),
+          ],
         );
       case PooledTripStatus.completed:
       case PooledTripStatus.cancelled:
@@ -692,6 +733,229 @@ class _TarjetaLibre extends StatelessWidget {
               child: const Text('Tomar este viaje'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// La hoja donde el conductor teclea el código que el pasajero le dicta.
+///
+/// Pensada para usarse de pie, en la puerta del bus, con una mano: campo
+/// grande, teclado abierto solo, y el resultado en un color que se entiende
+/// sin leer. El foco vuelve al campo tras cada validación porque lo normal
+/// es que suban varios seguidos.
+class _HojaAbordaje extends StatefulWidget {
+  const _HojaAbordaje({required this.salidaId});
+
+  final String salidaId;
+
+  @override
+  State<_HojaAbordaje> createState() => _HojaAbordajeState();
+}
+
+class _HojaAbordajeState extends State<_HojaAbordaje> {
+  final _codigo = TextEditingController();
+  final _foco = FocusNode();
+  ResultadoAbordaje? _resultado;
+  bool _validando = false;
+
+  @override
+  void dispose() {
+    _codigo.dispose();
+    _foco.dispose();
+    super.dispose();
+  }
+
+  Future<void> _validar() async {
+    final texto = _codigo.text.trim();
+    if (texto.isEmpty || _validando) return;
+    setState(() => _validando = true);
+    final r = await validarTiquete(widget.salidaId, texto);
+    if (!mounted) return;
+    setState(() {
+      _resultado = r;
+      _validando = false;
+    });
+    if (r.ok) {
+      // Se limpia solo cuando SÍ subió: si falló, el conductor quiere ver
+      // lo que tecleó para comprobar si se equivocó de carácter.
+      _codigo.clear();
+    }
+    _foco.requestFocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = _resultado;
+    return envolverHoja(
+      context,
+      Padding(
+        // El teclado se suma al margen: sin esto tapa el campo, que es el
+        // mismo fallo ya corregido en pedidos y en la hoja de pedir viaje.
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          decoration: BoxDecoration(
+            color: context.surfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 38, height: 4,
+                  decoration: BoxDecoration(
+                    color: context.textSecondaryColor.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Validar tiquete',
+                style: TextStyle(
+                  fontFamily: 'Inter', fontSize: 18, fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Pídele el código al pasajero y escríbelo.',
+                style: TextStyle(
+                  fontFamily: 'Inter', fontSize: 13, color: context.textSecondaryColor,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _codigo,
+                focusNode: _foco,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                // `text` y no `number`: el código lleva letras. Con el teclado
+                // numérico habría que cambiar de capa para cada letra.
+                keyboardType: TextInputType.text,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _validar(),
+                style: const TextStyle(
+                  fontFamily: 'Inter', fontSize: 26, fontWeight: FontWeight.w900,
+                  letterSpacing: 6,
+                ),
+                decoration: const InputDecoration(
+                  hintText: 'K7M3PQ',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _validando ? null : _validar,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kPooledColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: _validando
+                      ? const SizedBox(
+                          height: 20, width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Validar'),
+                ),
+              ),
+              if (r != null) ...[
+                const SizedBox(height: 14),
+                _ResultadoTiquete(resultado: r),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// El veredicto, en un color que se entiende sin leer.
+class _ResultadoTiquete extends StatelessWidget {
+  const _ResultadoTiquete({required this.resultado});
+
+  final ResultadoAbordaje resultado;
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = resultado.ok;
+    final color = ok ? AppColors.success : AppColors.error;
+    final hora = resultado.abordoEn?.toLocal();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(ok ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                  color: color, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  ok ? 'Puede subir' : (resultado.motivo ?? 'No puede subir'),
+                  style: TextStyle(
+                    fontFamily: 'Inter', fontSize: 15, fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (ok) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${resultado.pasajero ?? 'Pasajero'} · '
+              '${resultado.puestos ?? 1} puesto${(resultado.puestos ?? 1) == 1 ? '' : 's'}',
+              style: TextStyle(
+                fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w700,
+                color: context.textPrimaryColor,
+              ),
+            ),
+            if (resultado.aCobrar != null)
+              Text(
+                'Cóbrale ${CurrencyFormatter.format(resultado.aCobrar!)}',
+                style: TextStyle(
+                  fontFamily: 'Inter', fontSize: 14, color: context.textPrimaryColor,
+                ),
+              ),
+            if (resultado.recogeEn != null && resultado.recogeEn!.isNotEmpty)
+              Text(
+                'Recoge en: ${resultado.recogeEn}',
+                style: TextStyle(
+                  fontFamily: 'Inter', fontSize: 13, color: context.textSecondaryColor,
+                ),
+              ),
+          ],
+          // La hora del primer abordaje es lo que resuelve el caso de alguien
+          // que fotografió el tiquete de otro: no es una acusación, es un
+          // dato con el que el conductor zanja la conversación.
+          if (!ok && hora != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Se usó a las '
+                '${hora.hour.toString().padLeft(2, '0')}:'
+                '${hora.minute.toString().padLeft(2, '0')}.',
+                style: TextStyle(
+                  fontFamily: 'Inter', fontSize: 13, color: context.textSecondaryColor,
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -9,6 +9,7 @@ import 'package:nexum_driver/features/safety/data/safety_api.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 
 /// Línea única de emergencias en Colombia (no es 911).
 const String kEmergencyNumber = '123';
@@ -568,73 +569,76 @@ class _AddContactSheetState extends State<_AddContactSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppConstants.spacingL,
-        AppConstants.spacingL,
-        AppConstants.spacingL,
-        MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
-      ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'Agregar contacto',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppConstants.spacingL,
+          AppConstants.spacingL,
+          AppConstants.spacingL,
+          MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Agregar contacto',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              TextFormField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre completo',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
                 ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              TextFormField(
+                controller: _relationCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Relación (ej. Familiar, Amigo)',
+                  prefixIcon: Icon(Icons.people_outline_rounded),
                 ),
-              ],
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            TextFormField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Nombre completo',
-                prefixIcon: Icon(Icons.person_outline_rounded),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
               ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Requerido' : null,
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            TextFormField(
-              controller: _relationCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Relación (ej. Familiar, Amigo)',
-                prefixIcon: Icon(Icons.people_outline_rounded),
+              const SizedBox(height: AppConstants.spacingM),
+              TextFormField(
+                controller: _phoneCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Teléfono',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+                keyboardType: TextInputType.phone,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Requerido' : null,
               ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Requerido' : null,
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            TextFormField(
-              controller: _phoneCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Teléfono',
-                prefixIcon: Icon(Icons.phone_outlined),
+              const SizedBox(height: AppConstants.spacingL),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _submit,
+                  child: const Text('Guardar contacto'),
+                ),
               ),
-              keyboardType: TextInputType.phone,
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Requerido' : null,
-            ),
-            const SizedBox(height: AppConstants.spacingL),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _submit,
-                child: const Text('Guardar contacto'),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

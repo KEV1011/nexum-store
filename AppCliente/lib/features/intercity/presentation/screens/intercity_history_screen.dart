@@ -9,6 +9,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 
 const _kInterColor = AppColors.intercityBrand;
 
@@ -319,129 +320,132 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
   Widget build(BuildContext context) {
     final trip = widget.trip;
 
-    return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.intercitySurface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.intercityOutline,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '¿Cómo estuvo tu viaje?',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${trip.origin.displayName} → '
-              '${trip.destination.displayName}'
-              '${trip.driverName != null ? ' con ${trip.driverName}' : ''}',
-              style: const TextStyle(color: AppColors.intercityTextDim, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var s = 1; s <= 5; s++)
-                    IconButton(
-                      onPressed: () {
-                        HapticFeedback.selectionClick();
-                        setState(() => _stars = s);
-                      },
-                      iconSize: 40,
-                      icon: Icon(
-                        s <= _stars
-                            ? Icons.star_rounded
-                            : Icons.star_outline_rounded,
-                        color: s <= _stars
-                            ? AppColors.star
-                            : AppColors.intercityOutlineSoft,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _commentCtrl,
-              maxLines: 2,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Cuéntanos más (opcional)',
-                hintStyle:
-                    const TextStyle(color: AppColors.intercityOutlineSoft, fontSize: 13),
-                filled: true,
-                fillColor: AppColors.intercityBg,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.intercityOutline),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.intercityOutline),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide:
-                      const BorderSide(color: _kInterColor, width: 1.5),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _stars == 0 || _submitting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _kInterColor,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: AppColors.intercityOutline,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+    return envolverHoja(
+      context,
+      Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.intercitySurface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.intercityOutline,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Enviar calificación',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '¿Cómo estuvo tu viaje?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${trip.origin.displayName} → '
+                '${trip.destination.displayName}'
+                '${trip.driverName != null ? ' con ${trip.driverName}' : ''}',
+                style: const TextStyle(color: AppColors.intercityTextDim, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var s = 1; s <= 5; s++)
+                      IconButton(
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          setState(() => _stars = s);
+                        },
+                        iconSize: 40,
+                        icon: Icon(
+                          s <= _stars
+                              ? Icons.star_rounded
+                              : Icons.star_outline_rounded,
+                          color: s <= _stars
+                              ? AppColors.star
+                              : AppColors.intercityOutlineSoft,
                         ),
                       ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: _commentCtrl,
+                maxLines: 2,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'Cuéntanos más (opcional)',
+                  hintStyle:
+                      const TextStyle(color: AppColors.intercityOutlineSoft, fontSize: 13),
+                  filled: true,
+                  fillColor: AppColors.intercityBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.intercityOutline),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.intercityOutline),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: _kInterColor, width: 1.5),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _stars == 0 || _submitting ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kInterColor,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: AppColors.intercityOutline,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Enviar calificación',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

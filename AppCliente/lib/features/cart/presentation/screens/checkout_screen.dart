@@ -28,6 +28,7 @@ import 'package:nexum_client/features/payments/presentation/providers/'
 import 'package:nexum_client/features/payments/presentation/widgets/'
     'icono_metodo_pago.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 
 // El pedido usa EL MISMO catálogo de pago que el viaje urbano
 // (`MetodoPago` ← `lib/metodos-pago.ts` del servidor). Aquí vivía un enum
@@ -637,51 +638,54 @@ class _HojaDestinos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.cardColor2,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(AppConstants.spacingM),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '¿A dónde lo enviamos?',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
+    return envolverHoja(
+      context,
+      SafeArea(
+        child: Container(
+          decoration: BoxDecoration(
+            color: context.cardColor2,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(AppConstants.spacingM),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '¿A dónde lo enviamos?',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            const SizedBox(height: AppConstants.spacingS),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.home_rounded, color: AppColors.primary),
-              title: const Text('Entregar en mi ciudad'),
-              subtitle: const Text('Domicilio normal'),
-              onTap: () => Navigator.pop(context, _kMiCiudad),
-            ),
-            const Divider(height: 1),
-            ...destinos.map(
-              (d) => ListTile(
+              const SizedBox(height: AppConstants.spacingS),
+              ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(
-                  Icons.local_shipping_rounded,
-                  color: AppColors.info,
-                ),
-                title: Text(_nombreCiudad(d.city)),
-                subtitle: Text(
-                  '${CurrencyFormatter.format(d.fee)} · '
-                  '${_plazo(d.etaHours)}'
-                  '${d.cutoff != null ? ' · Pide antes de las ${d.cutoff}' : ''}',
-                ),
-                onTap: () => Navigator.pop(context, d),
+                leading: const Icon(Icons.home_rounded, color: AppColors.primary),
+                title: const Text('Entregar en mi ciudad'),
+                subtitle: const Text('Domicilio normal'),
+                onTap: () => Navigator.pop(context, _kMiCiudad),
               ),
-            ),
-          ],
+              const Divider(height: 1),
+              ...destinos.map(
+                (d) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.local_shipping_rounded,
+                    color: AppColors.info,
+                  ),
+                  title: Text(_nombreCiudad(d.city)),
+                  subtitle: Text(
+                    '${CurrencyFormatter.format(d.fee)} · '
+                    '${_plazo(d.etaHours)}'
+                    '${d.cutoff != null ? ' · Pide antes de las ${d.cutoff}' : ''}',
+                  ),
+                  onTap: () => Navigator.pop(context, d),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

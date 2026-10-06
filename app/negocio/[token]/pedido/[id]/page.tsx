@@ -46,6 +46,8 @@ interface OrderDetail {
   hasFullCustody: boolean
   pickupPhotoUrl?: string
   deliveryPhotoUrl?: string
+  signatureUrl?: string
+  signedByName?: string
   custodyEvents: CustodyEvent[]
   driverName: string
   driverPhone: string
@@ -475,11 +477,36 @@ export default function PedidoDetailPage({
             noProofLabel="Sin foto de entrega"
             photoUrl={order.deliveryPhotoUrl}
             extraChip={
+              // «Firmado» a secas era un sello sin nada detrás: afirmaba una
+              // firma que no se podía mirar. Ahora abre el trazo real y dice
+              // quién lo hizo, que es lo que convierte la constancia en
+              // prueba cuando alguien dice que no recibió.
               deliveryComplete && order.hasSignature ? (
-                <div className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
-                  <PenLine className="w-3.5 h-3.5 text-teal-600 shrink-0" />
-                  <span className="text-xs font-medium text-teal-700">Firmado</span>
-                </div>
+                order.signatureUrl ? (
+                  <a
+                    href={resolveImg(order.signatureUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Ver la firma completa"
+                    className="flex items-center gap-2 bg-teal-50 border border-teal-200
+                               rounded-lg px-2 py-1.5 hover:border-teal-400 transition-colors"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={resolveImg(order.signatureUrl)}
+                      alt="Firma de quien recibió"
+                      className="w-14 h-10 object-contain rounded bg-white"
+                    />
+                    <span className="text-xs font-medium text-teal-700">
+                      {order.signedByName ? `Firmó ${order.signedByName}` : 'Firmado'} · Ver
+                    </span>
+                  </a>
+                ) : (
+                  <div className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
+                    <PenLine className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                    <span className="text-xs font-medium text-teal-700">Firmado</span>
+                  </div>
+                )
               ) : undefined
             }
             isLast={true}

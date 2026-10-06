@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,10 +16,24 @@ class DeliveryProof {
   const DeliveryProof({
     required this.hasSignature,
     this.photoPath,
+    this.signatureBytes,
+    this.signedBy,
   });
 
   final String? photoPath;
   final bool hasSignature;
+
+  /// La firma RENDERIZADA, lista para subir.
+  ///
+  /// Antes solo viajaba `hasSignature`: el destinatario dibujaba su firma y
+  /// lo único que sobrevivía era un booleano. Para un envío es feo; para
+  /// carga es inservible, porque esa firma es la prueba que se reclama
+  /// cuando alguien dice que no le llegó.
+  final Uint8List? signatureBytes;
+
+  /// Quién firmó. Una firma sin nombre es un garabato: no prueba quién
+  /// recibió, que es justo lo que hay que probar.
+  final String? signedBy;
 }
 
 /// Bottom sheet que recoge prueba de entrega para viajes de reparto
@@ -62,6 +79,16 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
   List<Offset> _currentStroke = [];
   bool get _hasSignature => _strokes.isNotEmpty;
 
+  /// Para medir el lienzo al renderizar: la firma se dibuja en coordenadas
+  /// del pad, así que el PNG tiene que tener exactamente ese tamaño o los
+  /// trazos saldrían recortados o diminutos.
+  final GlobalKey _padKey = GlobalKey();
+
+  /// Quién recibe. Se pregunta aquí y no se deduce del pedido: quien firma
+  /// muchas veces no es quien compró — es la portera, el vecino o el de la
+  /// tienda de al lado, y eso es justo lo que hay que dejar por escrito.
+  final TextEditingController _quienRecibe = TextEditingController();
+
   bool get _canConfirm => _photoPath != null || _hasSignature;
 
   Future<void> _capturePhoto() async {
@@ -82,6 +109,37 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
     }
   }
 
+  @override
+  void dispose() {
+    _quienRecibe.dispose();
+    super.dispose();
+  }
+
+  /// Convierte los trazos en un PNG con el MISMO painter que los dibuja en
+  /// pantalla: así lo que se guarda es exactamente lo que la persona vio
+  /// firmar, sin una segunda implementación que pueda divergir.
+  Future<Uint8List?> _renderizarFirma() async {
+    if (_strokes.isEmpty) return null;
+    final caja = _padKey.currentContext?.findRenderObject();
+    if (caja is! RenderBox || !caja.hasSize) return null;
+    final size = caja.size;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    // Fondo BLANCO y no transparente: un PNG transparente se ve vacío sobre
+    // cualquier visor oscuro, y esto lo va a abrir alguien meses después
+    // para resolver un reclamo.
+    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
+    _StrokePainter(strokes: _strokes).paint(canvas, size);
+
+    final imagen = await recorder
+        .endRecording()
+        .toImage(size.width.ceil(), size.height.ceil());
+    final datos = await imagen.toByteData(format: ui.ImageByteFormat.png);
+    imagen.dispose();
+    return datos?.buffer.asUint8List();
+  }
+
   void _clearSignature() {
     HapticFeedback.selectionClick();
     setState(() {
@@ -90,10 +148,21 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
     });
   }
 
-  void _confirm() {
+  Future<void> _confirm() async {
     HapticFeedback.mediumImpact();
+    // Se renderiza ANTES de cerrar: al desmontarse la hoja el lienzo deja de
+    // existir y no habría de dónde sacar el tamaño.
+    final firma = await _renderizarFirma();
+    if (!mounted) return;
     Navigator.of(context).pop(
-      DeliveryProof(hasSignature: _hasSignature, photoPath: _photoPath),
+      DeliveryProof(
+        hasSignature: _hasSignature,
+        photoPath: _photoPath,
+        signatureBytes: firma,
+        signedBy: _quienRecibe.text.trim().isEmpty
+            ? null
+            : _quienRecibe.text.trim(),
+      ),
     );
   }
 
@@ -255,7 +324,19 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                     ),
                   ),
                   const SizedBox(height: AppConstants.spacingM),
+                  TextField(
+                    controller: _quienRecibe,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: '¿Quién recibe?',
+                      hintText: 'Nombre de quien firma',
+                      prefixIcon: Icon(Icons.person_outline_rounded),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: AppConstants.spacingM),
                   _SignaturePad(
+                    padKey: _padKey,
                     strokes: _strokes,
                     accentColor: accent,
                     onPanStart: (d) {
@@ -501,7 +582,12 @@ class _SignaturePad extends StatelessWidget {
     required this.accentColor,
     required this.onPanStart,
     required this.onPanUpdate,
+    required this.padKey,
   });
+
+  /// Clave del lienzo: al confirmar hay que medirlo para renderizar la firma
+  /// al mismo tamaño en que se dibujó.
+  final Key padKey;
 
   final List<List<Offset>> strokes;
   final Color accentColor;
@@ -515,6 +601,7 @@ class _SignaturePad extends StatelessWidget {
       onPanStart: onPanStart,
       onPanUpdate: onPanUpdate,
       child: Container(
+        key: padKey,
         height: 180,
         decoration: BoxDecoration(
           color: isEmpty

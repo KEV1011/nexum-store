@@ -175,6 +175,11 @@ class TransportNotifier extends StateNotifier<TransportState> {
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
+    /// Quién ENTREGA el paquete, con documento, y qué declara que va dentro.
+    /// Solo en envíos: el servidor ignora lo que llegue en una carrera de
+    /// pasajeros, y con razón — ahí no hay nada que declarar.
+    Map<String, dynamic>? remitente,
+    Map<String, dynamic>? declaracion,
     double surgeMultiplier = 1.0,
     double? originLat,
     double? originLng,
@@ -220,6 +225,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
           if (recipientName != null) 'recipientName': recipientName,
           if (recipientPhone != null) 'recipientPhone': recipientPhone,
           if (packageDescription != null) 'packageDescription': packageDescription,
+          if (remitente != null) 'remitente': remitente,
+          if (declaracion != null) 'declaracion': declaracion,
           if (paymentMethod != null) 'paymentMethod': paymentMethod,
           if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
           if (scheduledFor != null) 'scheduledFor': scheduledFor,

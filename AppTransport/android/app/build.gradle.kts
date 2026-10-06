@@ -76,8 +76,26 @@ android {
         release {
             signingConfig = if (keystoreFile.exists()) signingConfigs.getByName("release")
                            else signingConfigs.getByName("debug")
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 ENCENDIDO. Estaba en `false` desde que este fichero se
+            // convirtió a .kts —sin un motivo escrito, era el valor que
+            // quedó— y Play lo reportaba: «Optimización de código DEX:
+            // Baja», 2 % de ofuscación y 15,9 MB de DEX, contra los 2,81 MB
+            // de la app del cliente, que sí lo tiene. Son trece megas de más
+            // que descarga cada conductor y que ocupa cada teléfono.
+            //
+            // Se declara EXPLÍCITO en las dos apps y no se deja al valor por
+            // defecto del plugin de Flutter: así es exactamente esto lo que
+            // cambia si algún día cambia, y no una app optimizada y la otra
+            // no sin que nadie lo haya decidido. `build-release.test.ts` lo
+            // vigila.
+            //
+            // Sin reglas propias de ProGuard a propósito: la app del cliente
+            // corre con esta misma configuración en producción y el único
+            // añadido de esta son `audioplayers` y `qr_flutter`, que traen
+            // las suyas. Si apareciera un fallo de reflexión, el sitio donde
+            // ponerlo es un `proguard-rules.pro` aquí al lado.
+            isMinifyEnabled = true
+            isShrinkResources = true
         }
     }
 }

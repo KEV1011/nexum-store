@@ -100,6 +100,14 @@ import {
   addRequesterMessage,
   SupportError,
 } from '../services/support.service';
+import { abordarConTiquete } from '../services/intercity-pool.service';
+import { faseDePrueba, nombreDeFirmante } from '../lib/prueba-de-entrega';
+import {
+  subirDocumentoEnvio, listarDocumentosEnvio, borrarDocumentoEnvio,
+  DocumentoEnvioInvalido,
+} from '../services/documentos-envio.service';
+import { leerRemesa } from '../lib/remesa-foto';
+import { leerTextoDeCarta } from '../services/carta-ocr.service';
 
 const router = Router();
 
@@ -1130,7 +1138,12 @@ router.post(
     }
     const kind = req.params['kind'];
     const id = req.params['id']!;
-    const phase = (req.body as { phase?: string }).phase === 'pickup' ? 'pickup' : 'delivery';
+    // Las dos reglas viven en `lib/prueba-de-entrega` con sus pruebas: lo
+    // desconocido cae en 'delivery' (una app vieja no sabe de firmas) y
+    // nunca en 'signature'.
+    const body = req.body as { phase?: unknown; signedBy?: unknown };
+    const phase = faseDePrueba(body.phase);
+    const firmante = nombreDeFirmante(body.signedBy);
     if (!req.file) {
       res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
       return;
@@ -1143,23 +1156,38 @@ router.post(
     try {
       // updateMany con driverId en el where = verificación de pertenencia
       // y escritura en una sola operación.
+      // La firma lleva su nombre y su hora; las fotos, solo la URL. El
+      // `signedAt` se sella aquí y no en el teléfono: la hora del servidor
+      // es la que vale como constancia, y la del dispositivo se puede
+      // cambiar en ajustes.
+      const datosFirma = {
+        signatureUrl: url,
+        signedByName: firmante,
+        signedAt: new Date(),
+      };
       let count = 0;
       if (kind === 'trip') {
         const r = await prisma.trip.updateMany({
           where: { id, driverId },
-          data: phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
+          data: phase === 'signature'
+            ? datosFirma
+            : phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
         });
         count = r.count;
       } else if (kind === 'order') {
         const r = await prisma.order.updateMany({
           where: { id, driverId },
-          data: phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
+          data: phase === 'signature'
+            ? datosFirma
+            : phase === 'pickup' ? { pickupPhotoUrl: url } : { deliveryPhotoUrl: url },
         });
         count = r.count;
       } else if (kind === 'errand') {
         const r = await prisma.errand.updateMany({
           where: { id, driverId },
-          data: phase === 'pickup' ? { proofPhotoUrl: url } : { deliveryPhotoUrl: url },
+          data: phase === 'signature'
+            ? datosFirma
+            : phase === 'pickup' ? { proofPhotoUrl: url } : { deliveryPhotoUrl: url },
         });
         count = r.count;
       } else {
@@ -1430,4 +1458,164 @@ router.post('/manifests/:id/receipt-photo', (req: Request, res: Response): void 
   });
 });
 
+// ─── Los papeles que viajan CON la carga ─────────────────────────────────────
+//
+// Remesa, manifiesto, factura, guía. Hasta ahora iban en una carpeta en la
+// cabina: cuando se mojan, se pierden o se quedan en la bodega, el viaje se
+// para. El conductor los sube desde donde esté y los abre en un retén.
+//
+// `clase` es cargoTrip | freight | trip. La pertenencia la comprueba el
+// servicio contra la fila real, no contra lo que diga la petición.
+
+router.get('/envio-docs/:clase/:id', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    const data = await listarDocumentosEnvio(
+      req.params['clase'], req.params['id'], { rol: 'conductor', id: driverId },
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post(
+  '/envio-docs/:clase/:id',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId;
+    if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ningún archivo.' }); return; }
+    // Imagen o PDF: una remesa llega tanto como foto del papel como en el
+    // PDF que manda el cliente por correo. Rechazar el PDF obligaría a
+    // imprimirlo para fotografiarlo, que es lo que esto viene a quitar.
+    const tipo = req.file.mimetype ?? '';
+    if (!tipo.startsWith('image/') && tipo !== 'application/pdf') {
+      res.status(400).json({ success: false, error: 'El documento debe ser una imagen o un PDF.' });
+      return;
+    }
+    try {
+      const data = await subirDocumentoEnvio({
+        clase: req.params['clase'],
+        servicioId: req.params['id'],
+        quien: { rol: 'conductor', id: driverId },
+        fileUrl: fileToUrl(req.file),
+        datos: req.body,
+      });
+      res.status(201).json({ success: true, data });
+    } catch (err) {
+      const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+      res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
+
+router.delete('/envio-docs/:docId', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    await borrarDocumentoEnvio(req.params['docId']!, { rol: 'conductor', id: driverId });
+    res.json({ success: true });
+  } catch (err) {
+    const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// ─── Leer la remesa desde la foto del papel ──────────────────────────────────
+//
+// PROPONE, NO GUARDA. Devuelve el número, la fecha y el destinatario que se
+// leen en el papel para que la persona los apruebe; lo aprobado entra por
+// `POST /…/envio-docs/:clase/:id`, el mismo camino de siempre, con su
+// validación y su comprobación de pertenencia. No hay un segundo camino de
+// escritura, igual que con la carta del restaurante.
+//
+// Y ante la duda, campo vacío: medio minuto de teclear frente a un número
+// equivocado que viaja hasta la cuenta de cobro y vuelve como una factura
+// devuelta.
+
+router.post(
+  '/envio-docs/leer',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    if (!req.driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ninguna foto.' }); return; }
+    // Solo imagen: el lector de texto trabaja sobre píxeles. Un PDF sí se
+    // puede ADJUNTAR (la otra ruta lo acepta), pero no se puede leer aquí, y
+    // decirlo es mejor que devolver una lectura vacía que parece una avería.
+    if (!(req.file.mimetype ?? '').startsWith('image/')) {
+      res.status(400).json({
+        success: false,
+        error: 'Para leerlo automáticamente hace falta una FOTO. Un PDF puedes adjuntarlo, pero escribe los datos a mano.',
+      });
+      return;
+    }
+    const lectura = await leerTextoDeCarta({
+      bytes: req.file.buffer,
+      mimetype: req.file.mimetype,
+    });
+    if (!lectura.disponible) {
+      // 503 y no 400: no se equivocó quien subió la foto, es que el lector
+      // no está. El `motivo` del motor está redactado para el dueño de un
+      // restaurante, así que aquí se traduce a lo que puede hacer ESTA
+      // persona: escribir los datos, que es lo que hacía hasta ayer.
+      res.status(503).json({
+        success: false,
+        error: 'La lectura automática no está disponible. Escribe los datos del documento a mano.',
+      });
+      return;
+    }
+    res.json({
+      success: true,
+      data: {
+        ...leerRemesa(lectura.texto),
+        // El texto leído, para que quien mira pueda distinguir «la foto
+        // salió mal» de «el papel no dice el número con una etiqueta que
+        // reconozcamos». Sin esto, los dos casos se ven iguales.
+        textoCrudo: lectura.texto,
+      },
+    });
+  },
+);
+
 export default router;
+
+// ─── El tiquete en la puerta del bus ─────────────────────────────────────────
+//
+// El conductor teclea el código que el pasajero le dicta. Validar y marcar
+// como abordado es UNA sola llamada: si fueran dos, el conductor podría
+// validar y olvidarse de marcar —va con el motor andando— y el mismo tiquete
+// serviría dos veces, que es justo lo que esto impide.
+router.post('/pool/:id/abordar', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) {
+    res.status(401).json({ success: false, error: 'Sesión no válida' });
+    return;
+  }
+  const { id } = req.params as { id: string };
+  const { codigo } = (req.body ?? {}) as { codigo?: string };
+  try {
+    const r = await abordarConTiquete(driverId, id, codigo ?? '');
+    // 200 también cuando no puede subir: no es un error de la petición, es la
+    // respuesta —y la app necesita el motivo y la hora para enseñárselos al
+    // conductor, no un código de estado.
+    res.json({ success: r.ok, data: r, ...(r.ok ? {} : { error: r.motivo }) });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos validar el tiquete',
+    });
+  }
+});

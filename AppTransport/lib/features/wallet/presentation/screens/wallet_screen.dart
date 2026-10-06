@@ -9,6 +9,7 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/wallet/domain/entities/payout_entity.dart';
 import 'package:nexum_driver/features/wallet/presentation/providers/wallet_provider.dart';
+import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 
 /// Billetera del conductor: saldo disponible, solicitud de retiro e historial,
 /// conectada al backend de payouts (/driver/payouts/*).
@@ -511,81 +512,84 @@ class _WithdrawSheetState extends ConsumerState<_WithdrawSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: EdgeInsets.only(
-        left: AppConstants.spacingL,
-        right: AppConstants.spacingL,
-        top: AppConstants.spacingL,
-        bottom: MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(AppConstants.spacingL),
-        decoration: BoxDecoration(
-          color: isDark ? AppColors.surfaceDark : Colors.white,
-          borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.only(
+          left: AppConstants.spacingL,
+          right: AppConstants.spacingL,
+          top: AppConstants.spacingL,
+          bottom: MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Solicitar retiro',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Disponible: ${CurrencyFormatter.format(widget.balance.available)}',
-              style: TextStyle(
-                fontSize: 13,
-                color: context.textSecondaryColor,
+        child: Container(
+          padding: const EdgeInsets.all(AppConstants.spacingL),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.surfaceDark : Colors.white,
+            borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Solicitar retiro',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            TextField(
-              controller: _amountCtrl,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                prefixText: r'$ ',
-                labelText: 'Monto a retirar (COP)',
+              const SizedBox(height: 4),
+              Text(
+                'Disponible: ${CurrencyFormatter.format(widget.balance.available)}',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: context.textSecondaryColor,
+                ),
               ),
-            ),
-            const SizedBox(height: AppConstants.spacingM),
-            Text(
-              'Método',
-              style: TextStyle(fontSize: 12, color: context.textTertiaryColor),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              children: [
-                _methodChip('bank', 'Banco'),
-                _methodChip('nequi', 'Nequi'),
-                _methodChip('daviplata', 'Daviplata'),
-              ],
-            ),
-            const SizedBox(height: AppConstants.spacingL),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _submitting ? null : _submit,
-                child: _submitting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation(Colors.white),
+              const SizedBox(height: AppConstants.spacingM),
+              TextField(
+                controller: _amountCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(
+                  prefixText: r'$ ',
+                  labelText: 'Monto a retirar (COP)',
+                ),
+              ),
+              const SizedBox(height: AppConstants.spacingM),
+              Text(
+                'Método',
+                style: TextStyle(fontSize: 12, color: context.textTertiaryColor),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                children: [
+                  _methodChip('bank', 'Banco'),
+                  _methodChip('nequi', 'Nequi'),
+                  _methodChip('daviplata', 'Daviplata'),
+                ],
+              ),
+              const SizedBox(height: AppConstants.spacingL),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _submitting ? null : _submit,
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          'Confirmar retiro',
+                          style: TextStyle(fontWeight: FontWeight.w700),
                         ),
-                      )
-                    : const Text(
-                        'Confirmar retiro',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

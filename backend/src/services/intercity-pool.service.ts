@@ -20,6 +20,9 @@ import {
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import {
+  generarCodigoTiquete, normalizarCodigo, motivoParaNoAbordar, codigoLegible,
+} from '../lib/tiquete-abordaje';
+import {
   esTipoConSillas,
   motivoParaNoReservar,
   plantillaPara,
@@ -145,6 +148,8 @@ type DbSeatBooking = {
   discount?: number | null; promoCode?: string | null;
   passengers?: unknown;
   seats?: { seatNumber: number }[];
+  ticketCode?: string | null;
+  boardedAt?: Date | null;
 };
 
 function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
@@ -180,6 +185,11 @@ function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
     ...(pasajerosGuardados(b.passengers).length > 0 && {
       passengers: pasajerosGuardados(b.passengers),
     }),
+    // El tiquete, ya agrupado para dictarlo. Ausente en las reservas viejas:
+    // la app dice entonces que se identifique con su nombre en vez de
+    // enseñar un recuadro vacío.
+    ...(b.ticketCode && { ticketCode: codigoLegible(b.ticketCode) }),
+    ...(b.boardedAt && { boardedAt: b.boardedAt.toISOString() }),
   };
 }
 
@@ -790,6 +800,7 @@ export async function publicarPuestoDePasajero(
         // mañana, lo que él aceptó fue esto.
         fareTotal: tarifa * dto.seatsForMe,
         status: 'CONFIRMED',
+        ticketCode: await _codigoDeTiqueteLibre(tx),
       },
     });
 
@@ -1214,6 +1225,36 @@ export async function searchPooledTrips(query: SearchPooledTripsQuery): Promise<
     });
 }
 
+
+/**
+ * Un código de tiquete que no choque con otro.
+ *
+ * Con ~887 millones de combinaciones un choque es remotísimo, pero
+ * `ticketCode` es único en la base: si ocurriera dentro de la transacción de
+ * compra, la reserva del pasajero se caería entera por un problema que no es
+ * suyo. Reintentar es barato y lo vuelve imposible de notar.
+ *
+ * Tras los intentos se devuelve null en vez de lanzar: un tiquete es una
+ * comodidad para abordar, y quedarse sin él no justifica tumbar una compra que
+ * por lo demás está bien. El conductor siempre puede buscar por nombre en el
+ * manifiesto, que es lo que se hacía antes de que esto existiera.
+ */
+async function _codigoDeTiqueteLibre(
+  tx: Prisma.TransactionClient,
+  intentos = 5,
+): Promise<string | null> {
+  for (let i = 0; i < intentos; i++) {
+    const codigo = generarCodigoTiquete();
+    const usado = await tx.seatBooking.findUnique({
+      where: { ticketCode: codigo },
+      select: { id: true },
+    });
+    if (!usado) return codigo;
+  }
+  console.error('[Tiquete] no se encontró un código libre tras varios intentos');
+  return null;
+}
+
 /**
  * Dónde va el bus, del último latido del conductor.
  *
@@ -1417,6 +1458,7 @@ export async function bookSeats(
         discount: plata.descuento,
         promoCode: codigo,
         ...(pasajeros && { passengers: pasajeros as unknown as Prisma.InputJsonValue }),
+        ticketCode: await _codigoDeTiqueteLibre(tx),
       },
     });
 
@@ -1704,4 +1746,96 @@ export function subscribePooledTrip(tripId: string, cb: TripCallback): () => voi
 export async function getPooledTripSnapshot(tripId: string): Promise<PooledTripDTO | null> {
   const t = await _fetchWithBookings(tripId);
   return t ? _toDTO(t, false) : null;
+}
+
+// ─── El tiquete en la puerta del bus ─────────────────────────────────────────
+
+export interface AbordajeDTO {
+  ok: boolean;
+  /** Por qué no, si no. */
+  motivo?: string;
+  /** Para el caso «ya se usó»: cuándo fue. Es lo que zanja la discusión. */
+  abordoEn?: string;
+  /** Quién es, para que el conductor lo confirme en voz alta. */
+  pasajero?: string;
+  puestos?: number;
+  /** Cuánto cobrarle, ya con su descuento. */
+  aCobrar?: number;
+  /** Dónde lo recoge, si no es en la terminal. */
+  recogeEn?: string | null;
+}
+
+/**
+ * El conductor valida un tiquete y marca a la persona como abordada.
+ *
+ * MARCAR ES PARTE DE VALIDAR, no un segundo paso. Si fueran dos llamadas, el
+ * conductor podría validar y olvidarse de marcar —va con el motor andando y
+ * gente detrás—, y entonces el mismo tiquete serviría dos veces. Eso es
+ * exactamente lo que esto viene a impedir.
+ *
+ * El marcado es ATÓMICO (`boardedAt: null` en el `where`): dos validaciones
+ * simultáneas del mismo código —el conductor y el ayudante en la otra puerta—
+ * no pueden dar las dos «adelante».
+ */
+export async function abordarConTiquete(
+  driverId: string,
+  salidaId: string,
+  codigoCrudo: string,
+): Promise<AbordajeDTO> {
+  const salida = await prisma.pooledTrip.findUnique({
+    where: { id: salidaId },
+    select: { id: true, driverId: true },
+  });
+  // Solo el conductor de esa salida valida sus tiquetes. Sin esto, cualquier
+  // conductor podría quemar el tiquete de un pasajero de otro viaje.
+  if (!salida || salida.driverId !== driverId) {
+    return { ok: false, motivo: 'Esa salida no es tuya.' };
+  }
+
+  const codigo = normalizarCodigo(codigoCrudo);
+  if (!codigo) return { ok: false, motivo: 'Escribe el código del tiquete.' };
+
+  const reserva = await prisma.seatBooking.findUnique({
+    where: { ticketCode: codigo },
+    select: {
+      id: true, tripId: true, status: true, boardedAt: true,
+      seatsBooked: true, passengerName: true, pickupAddress: true,
+      fareTotal: true, discount: true, ticketCode: true,
+    },
+  });
+
+  const veredicto = motivoParaNoAbordar(
+    reserva && {
+      codigo: reserva.ticketCode,
+      pooledTripId: reserva.tripId,
+      estado: reserva.status,
+      abordoEn: reserva.boardedAt,
+      puestos: reserva.seatsBooked,
+    },
+    salidaId,
+  );
+  if (veredicto.motivo) {
+    return {
+      ok: false,
+      motivo: veredicto.motivo,
+      ...(veredicto.abordoEn ? { abordoEn: veredicto.abordoEn.toISOString() } : {}),
+    };
+  }
+
+  const marca = await prisma.seatBooking.updateMany({
+    where: { id: reserva!.id, boardedAt: null },
+    data: { boardedAt: new Date() },
+  });
+  if (marca.count === 0) {
+    // Se lo llevó otra validación entre la lectura y la escritura.
+    return { ok: false, motivo: 'Ese tiquete acaba de usarse para abordar.' };
+  }
+
+  return {
+    ok: true,
+    pasajero: reserva!.passengerName,
+    puestos: reserva!.seatsBooked,
+    aCobrar: Math.max(0, Math.round((reserva!.fareTotal ?? 0) - (reserva!.discount ?? 0))),
+    recogeEn: reserva!.pickupAddress,
+  };
 }
