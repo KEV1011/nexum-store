@@ -72,6 +72,8 @@ import {
 } from './reputacion.service';
 import { maskPhone } from './safe-contact.service';
 import { marcarEncomiendasDeSalidaEnTransito } from './encomiendas.service';
+import { sendPushToDriver } from './push.service';
+import { cuerpoDeNuevaReserva, TITULO_NUEVA_RESERVA } from '../lib/aviso-reserva-puesto';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type TripCallback = (tripId: string, trip: PooledTripDTO) => void;
@@ -1499,6 +1501,43 @@ export async function bookSeats(
     const tripWithBooking = { ...updatedTrip, bookings: allBookings } as DbPooledTrip;
     const tripDto = _toDTO(tripWithBooking, false);
     _notify(tripId, tripDto);
+
+    // ── Y AL CONDUCTOR ──────────────────────────────────────────────────
+    //
+    // `_notify` es para quien está MIRANDO esa salida en pantalla: los
+    // pasajeros. Al conductor no le llegaba nada — reportado desde
+    // producción como «se aparta una van y no le sale al conductor
+    // asignado». La reserva SÍ estaba en su consulta (comprobado con
+    // `e2e/reserva-llega-al-conductor-pooled.ts`), pero solo la veía si se
+    // le ocurría abrir la pantalla y deslizar. Un pasajero esperando en una
+    // esquina a las cinco de la mañana no puede depender de eso.
+    //
+    // UNO POR RESERVA, Y NO AGRUPADO. En un bus de cuarenta sillas serán
+    // varios avisos, y eso se puede volver ruido; pero hoy no llega
+    // NINGUNO, y un push de más molesta mientras que cero push deja a
+    // alguien tirado. El texto lleva el acumulado («3 de 12»), así que cada
+    // aviso sigue sirviendo aunque lleguen seguidos. Si molesta, el sitio
+    // de agruparlo es aquí.
+    //
+    // Fuera de la transacción no se puede —estamos dentro— pero sí sin
+    // `await`: un fallo de notificación jamás puede tumbar una compra que
+    // ya está escrita.
+    if (updatedTrip.driverId) {
+      const total = tripDto.totalSeats;
+      void sendPushToDriver(updatedTrip.driverId, {
+        title: TITULO_NUEVA_RESERVA,
+        // El texto vive en `lib/aviso-reserva-puesto` con sus pruebas: el
+        // acumulado es lo que impide que el quinto aviso de un bus sea
+        // ruido, y eso se rompe sin que falle nada.
+        body: cuerpoDeNuevaReserva({
+          pasajero: passengerName,
+          puestos: booking.seatsBooked,
+          vendidos: total - tripDto.availableSeats,
+          total,
+        }),
+        data: { type: 'pooled_booking', tripId },
+      }).catch(() => undefined);
+    }
 
     // La reserva vuelve CON sus sillas. `create` no devuelve las relaciones,
     // así que sin esta relectura la confirmación de compra salía con la lista
