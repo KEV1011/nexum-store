@@ -53,6 +53,17 @@ void main() {
       );
     });
 
+    test('un puesto vendido lleva al manifiesto, no al home', () {
+      // Reportado desde producción: se apartaba una van y el conductor no se
+      // enteraba. Ahora llega el aviso, y tocarlo tiene que dejarlo donde
+      // están el nombre del pasajero y dónde recogerlo — el home no sabe
+      // nada de una salida publicada hace días.
+      expect(
+        rutaDeNotificacion({'type': 'pooled_booking', 'tripId': 'abc'}),
+        AppRoutes.pooledTrips,
+      );
+    });
+
     test('lo que no lleva a ningún sitio devuelve null, no el home', () {
       // Sacar al conductor de lo que estaba haciendo por un aviso que no le
       // pide nada es peor que no navegar.

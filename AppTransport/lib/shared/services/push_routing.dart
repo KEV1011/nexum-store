@@ -49,6 +49,12 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
     case 'reserva_activa':
       return AppRoutes.reservas;
 
+    // Alguien compró un puesto en una salida suya. Va a «Mis salidas»,
+    // donde está el manifiesto con el nombre y dónde recoger a cada uno:
+    // el home no sabe nada de esa salida, que se publicó hace días.
+    case 'pooled_booking':
+      return AppRoutes.pooledTrips;
+
     case 'support_reply':
       return AppRoutes.support;
 

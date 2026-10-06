@@ -46,6 +46,8 @@ import 'package:nexum_driver/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
+import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -198,6 +200,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(intercityDriverProvider.notifier).loadAvailability();
         // Preferencias de servicio (qué solicitudes recibe).
         ref.read(servicePrefsProvider.notifier).load();
+        // Sus salidas intermunicipales publicadas, para poder decirle en la
+        // tarjeta cuánta gente compró. Sin esta carga la lista llega vacía
+        // y el acceso a «Mis salidas» no aparecería nunca — el provider
+        // solo lo cargaba la propia pantalla de salidas, que es justo a la
+        // que no sabía llegar.
+        ref.read(pooledDriverProvider.notifier).loadMine();
         // Demanda real por zona: alimenta el banner de oportunidad y la capa
         // del mapa. Si falla, sencillamente no hay banner.
         ref.read(demandZonesProvider.notifier).load();
@@ -1517,6 +1525,24 @@ class _IntercityPanelCard extends ConsumerWidget {
     final intercity = ref.watch(intercityDriverProvider);
     final pending = intercity.requests.length;
 
+    // LAS SALIDAS QUE ÉL PUBLICÓ, y cuánta gente compró.
+    //
+    // Reportado desde producción: «se aparta una van y no le sale al
+    // conductor asignado». La reserva SÍ llegaba a su consulta —comprobado
+    // contra la base— pero desde esta tarjeta no había NINGÚN camino hasta
+    // ella: los dos botones eran «Solicitudes» (que son las de a demanda,
+    // otra cosa) y «Publicar viaje». Sus pasajeros vivían en el menú
+    // lateral, bajo un nombre distinto, sin contador. El conductor miraba
+    // donde era razonable mirar y ahí no había nada.
+    final salidas = ref.watch(pooledDriverProvider).trips
+        .where((t) => t.status == PooledTripStatus.open
+            || t.status == PooledTripStatus.full
+            || t.status == PooledTripStatus.departed)
+        .toList();
+    final pasajeros = salidas.fold<int>(
+      0, (n, t) => n + t.bookings.fold<int>(0, (m, b) => m + b.seatsBooked),
+    );
+
     return Material(
       color: AppColors.intercityBrand.withValues(alpha: 0.16),
       borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
@@ -1631,7 +1657,7 @@ class _IntercityPanelCard extends ConsumerWidget {
                 child: FilledButton.icon(
                   onPressed: () => context.push('/pooled-publish'),
                   icon: const Icon(Icons.add_road_rounded, size: 16),
-                  label: const Text('Publicar viaje', style: TextStyle(fontSize: 12.5)),
+                  label: const Text('Publicar', style: TextStyle(fontSize: 12.5)),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.intercityBrand,
                     padding: const EdgeInsets.symmetric(vertical: 8),
@@ -1640,6 +1666,32 @@ class _IntercityPanelCard extends ConsumerWidget {
               ),
             ],
           ),
+          // Solo con salidas publicadas: a quien no ha publicado ninguna,
+          // una fila más vacía le estorba. Y el número es de PASAJEROS, no
+          // de salidas — es el dato que hace levantar la vista.
+          if (salidas.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => context.push('/pooled-trips'),
+                icon: const Icon(Icons.groups_rounded, size: 16),
+                label: Text(
+                  pasajeros == 0
+                      ? 'Mis salidas (${salidas.length}) · sin pasajeros aún'
+                      : 'Mis salidas · $pasajeros '
+                          '${pasajeros == 1 ? 'pasajero' : 'pasajeros'}',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: pasajeros > 0
+                      ? AppColors.success
+                      : AppColors.intercityBrand.withValues(alpha: 0.35),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+            ),
+          ],
             ],
           ),
         ),
