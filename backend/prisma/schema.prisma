@@ -981,43 +981,43 @@ model Trip {
   ///
   /// Todo nullable: las apps ya instaladas no lo mandan. La exigencia se
   /// enciende con `ENVIO_EXIGIR_REMITENTE` (ver `lib/remitente`).
-  senderName        String?
-  senderDocType     String?
-  senderDocNumber   String?
-  senderPhone       String?
+  senderName         String?
+  senderDocType      String?
+  senderDocNumber    String?
+  senderPhone        String?
   /// Categoría del catálogo cerrado de `lib/remitente`. La descripción libre
   /// sigue donde estaba; esto es lo que se puede filtrar y cruzar después.
-  cargoCategory     String?
+  cargoCategory      String?
   /// Lo que el remitente DICE que vale. No es un seguro: se guarda para
   /// poder discutir un reclamo con una cifra encima de la mesa.
-  declaredValue     Float?
+  declaredValue      Float?
   /// Versión de la lista de mercancía no admitida que se le mostró y aceptó.
   /// Sin ella, añadir un renglón mañana haría creer que lo aceptado ayer
   /// incluía algo que nadie vio.
-  cargoTermsVersion Int?
+  cargoTermsVersion  Int?
   /// Cuándo declaró. Null = no hay declaración, que es distinto de una
   /// declaración vacía.
-  declaredAt        DateTime?
+  declaredAt         DateTime?
 
-  passengerName      String?
-  passengerRating    Float?
+  passengerName   String?
+  passengerRating Float?
   /// Lo que el pasajero destacó del conductor («Puntual», «Carro limpio»).
   /// Claves del catálogo cerrado de `lib/elogios`; máximo tres. Se sellan en
   /// el viaje que las produjo, que es lo que las hace auditables: el conteo
   /// del perfil se RECALCULA de aquí, nunca se suma encima.
-  ratingTags         Json?
-  netEarning         Float?
-  commission         Float?
-  tipAmount          Float     @default(0)
-  tipPaid            Boolean   @default(false)
-  rating             Int?
-  ratingComment      String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  acceptedAt         DateTime?
-  startedAt          DateTime?
-  arrivedAt          DateTime?
-  completedAt        DateTime?
+  ratingTags      Json?
+  netEarning      Float?
+  commission      Float?
+  tipAmount       Float     @default(0)
+  tipPaid         Boolean   @default(false)
+  rating          Int?
+  ratingComment   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  acceptedAt      DateTime?
+  startedAt       DateTime?
+  arrivedAt       DateTime?
+  completedAt     DateTime?
 
   // Empresa bajo la cual se prestó el servicio (trazabilidad legal + liquidación).
   operatorId String?
@@ -1037,6 +1037,11 @@ model Trip {
   // ENVIOS: un pasajero no necesita PIN para bajarse del carro.
   deliveryPin   String?
   deliveryPinAt DateTime?
+
+  /// Los papeles del ENVÍO: remesa, factura, guía, acta firmada. Solo se
+  /// usan en viajes de tipo ENVIOS; una carrera de pasajeros no lleva
+  /// papeles y por eso la relación queda vacía en vez de estorbar.
+  documentos ShipmentDocument[]
 
   @@index([passengerId])
   @@index([driverId])
@@ -1816,22 +1821,22 @@ enum FreightStatus {
 }
 
 model FreightRequest {
-  id               String        @id @default(cuid())
-  clientId         String
-  clientName       String?
-  clientPhone      String?
-  originAddress    String
-  destAddress      String
+  id                String        @id @default(cuid())
+  clientId          String
+  clientName        String?
+  clientPhone       String?
+  originAddress     String
+  destAddress       String
   // Ciudades (texto libre): iguales u omitidas = acarreo urbano; distintas =
   // flete intermunicipal. La fecha futura lo vuelve "programado".
-  originCity       String?
-  destCity         String?
-  cargoDescription String
-  weightKg         Int
-  vehicleType      VehicleType // TURBO | CAMION | MULA
-  offeredPrice     Float
-  scheduledFor     DateTime? // null = lo antes posible
-  status           FreightStatus @default(REQUESTED)
+  originCity        String?
+  destCity          String?
+  cargoDescription  String
+  weightKg          Int
+  vehicleType       VehicleType // TURBO | CAMION | MULA
+  offeredPrice      Float
+  scheduledFor      DateTime? // null = lo antes posible
+  status            FreightStatus @default(REQUESTED)
   /// ── Quién manda el envío, y qué declara que va dentro ───────────────────
   ///
   /// Antes solo quedaba el nombre de la CUENTA y una descripción de texto
@@ -1865,39 +1870,40 @@ model FreightRequest {
 
   // Cadena de custodia por PIN (ver Order): el remitente entrega la carga
   // contra `pickupPin` y el destinatario la recibe contra `deliveryPin`.
-  pickupPin        String?
-  deliveryPin      String?
-  pickupPinAt      DateTime?
-  deliveryPinAt    DateTime?
-  operatorId       String?
-  driverId         String?
-  vehicleId        String?
-  finalPrice       Float?
-  commission       Float?
-  netEarning       Float?
+  pickupPin     String?
+  deliveryPin   String?
+  pickupPinAt   DateTime?
+  deliveryPinAt DateTime?
+  operatorId    String?
+  driverId      String?
+  vehicleId     String?
+  finalPrice    Float?
+  commission    Float?
+  netEarning    Float?
   // Coordenadas de la trayectoria (para dibujar el mapa del flete). Se
   // resuelven al crear el flete desde el centroide de la ciudad (fallback
   // Pamplona); permiten mostrar origen→destino en la app del conductor.
-  originLat        Float?
-  originLng        Float?
-  destLat          Float?
-  destLng          Float?
+  originLat     Float?
+  originLng     Float?
+  destLat       Float?
+  destLng       Float?
   // Fecha comprometida de entrega. Sin ella no se puede medir cumplimiento:
   // "llegó tarde" es una opinión hasta que hay una hora contra la cual medir.
-  promisedAt       DateTime?
-  createdAt        DateTime      @default(now())
-  acceptedAt       DateTime?
+  promisedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  acceptedAt    DateTime?
   // Salida real (paso a IN_PROGRESS). Separa "aceptado pero sin salir de
   // bodega" de "en ruta" — es justo la demora que discute el cliente, y con
   // solo acceptedAt/completedAt quedaba escondida dentro del viaje.
-  startedAt        DateTime?
-  completedAt      DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
 
   events      FreightEvent[]
+  documentos  ShipmentDocument[]
   // Viaje de carga creado al aceptar la solicitud: ahí vive toda la
   // trazabilidad (rastro, gastos, tiempos, remitos y cobro).
-  cargoTripId String?        @unique
-  cargoTrip   CargoTrip?     @relation(fields: [cargoTripId], references: [id])
+  cargoTripId String?            @unique
+  cargoTrip   CargoTrip?         @relation(fields: [cargoTripId], references: [id])
 
   @@index([status])
   @@index([operatorId])
@@ -2135,12 +2141,14 @@ model CargoTrip {
   cobroId String?
   cobro   CobroAccount? @relation(fields: [cobroId], references: [id])
 
-  manifests FreightManifest[]
+  manifests  FreightManifest[]
   // Bitácora de ruta del viaje: tanqueos, peajes, viáticos, paradas y notas.
-  events    FreightEvent[]
+  events     FreightEvent[]
+  // Los papeles que viajan CON la carga: remesa, manifiesto, factura, guía.
+  documentos ShipmentDocument[]
   // Solicitud del marketplace que originó este viaje (null = despacho propio
   // de la flota). Es el puente que unifica los dos caminos.
-  freight   FreightRequest?
+  freight    FreightRequest?
 
   @@unique([operatorId, number])
   @@index([operatorId, createdAt])
@@ -2615,4 +2623,58 @@ model MagicLink {
   @@index([userId, createdAt])
   @@index([expiresAt])
   @@map("magic_links")
+}
+
+/// Los papeles que viajan CON la carga.
+///
+/// El repo ya guardaba los documentos del CONDUCTOR (`DriverDocument`:
+/// cédula, licencia, SOAT) y los de la EMPRESA (`OperatorDocument`: la
+/// habilitación), pero no los del ENVÍO — que son los que piden en la
+/// carretera. Hoy van en una carpeta en la cabina, y cuando se mojan, se
+/// pierden o se quedan en la bodega, el viaje se para.
+///
+/// UNA SOLA TABLA PARA LOS TRES DUEÑOS, igual que `FreightEvent`. Es la
+/// lección que este repo ya pagó con `CargoTrip` construido al lado de
+/// `FreightRequest`: la trazabilidad quedó repartida y hubo que
+/// unificarla después. Un documento cuelga de exactamente UNO.
+model ShipmentDocument {
+  id   String @id @default(cuid())
+  /// Del catálogo cerrado de `lib/documentos-envio`.
+  type String
+
+  fileUrl  String
+  /// El número del papel: «066», «FE-1234». Se guarda TAL CUAL se escribió:
+  /// normalizar un consecutivo ajeno es inventarse el número de un
+  /// documento que existe en papel.
+  number   String?
+  /// La fecha DEL DOCUMENTO, que no es la de la subida.
+  issuedOn DateTime?
+  note     String?
+
+  /// La firma de quien lo entregó o lo recibió, cuando la hay. Misma forma
+  /// que la prueba de entrega: un trazo, un nombre y una hora del servidor.
+  signatureUrl String?
+  signedByName String?
+  signedAt     DateTime?
+
+  /// Quién lo subió. Uno de los dos: el conductor desde la cabina o la
+  /// flota desde el portal. Sin esto, un documento equivocado no se puede
+  /// ni preguntar a quién.
+  uploadedByDriverId   String?
+  uploadedByOperatorId String?
+  uploadedAt           DateTime @default(now())
+
+  freightId   String?
+  cargoTripId String?
+  tripId      String?
+
+  freight   FreightRequest? @relation(fields: [freightId], references: [id])
+  cargoTrip CargoTrip?      @relation(fields: [cargoTripId], references: [id])
+  trip      Trip?           @relation(fields: [tripId], references: [id])
+
+  @@index([freightId])
+  @@index([cargoTripId])
+  @@index([tripId])
+  @@index([type])
+  @@map("shipment_documents")
 }

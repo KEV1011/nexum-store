@@ -102,6 +102,10 @@ import {
 } from '../services/support.service';
 import { abordarConTiquete } from '../services/intercity-pool.service';
 import { faseDePrueba, nombreDeFirmante } from '../lib/prueba-de-entrega';
+import {
+  subirDocumentoEnvio, listarDocumentosEnvio, borrarDocumentoEnvio,
+  DocumentoEnvioInvalido,
+} from '../services/documentos-envio.service';
 
 const router = Router();
 
@@ -1450,6 +1454,77 @@ router.post('/manifests/:id/receipt-photo', (req: Request, res: Response): void 
       res.status(201).json({ success: true, data: { url: fileToUrl(req.file) } });
     })();
   });
+});
+
+// ─── Los papeles que viajan CON la carga ─────────────────────────────────────
+//
+// Remesa, manifiesto, factura, guía. Hasta ahora iban en una carpeta en la
+// cabina: cuando se mojan, se pierden o se quedan en la bodega, el viaje se
+// para. El conductor los sube desde donde esté y los abre en un retén.
+//
+// `clase` es cargoTrip | freight | trip. La pertenencia la comprueba el
+// servicio contra la fila real, no contra lo que diga la petición.
+
+router.get('/envio-docs/:clase/:id', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    const data = await listarDocumentosEnvio(
+      req.params['clase'], req.params['id'], { rol: 'conductor', id: driverId },
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post(
+  '/envio-docs/:clase/:id',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const driverId = req.driverId;
+    if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ningún archivo.' }); return; }
+    // Imagen o PDF: una remesa llega tanto como foto del papel como en el
+    // PDF que manda el cliente por correo. Rechazar el PDF obligaría a
+    // imprimirlo para fotografiarlo, que es lo que esto viene a quitar.
+    const tipo = req.file.mimetype ?? '';
+    if (!tipo.startsWith('image/') && tipo !== 'application/pdf') {
+      res.status(400).json({ success: false, error: 'El documento debe ser una imagen o un PDF.' });
+      return;
+    }
+    try {
+      const data = await subirDocumentoEnvio({
+        clase: req.params['clase'],
+        servicioId: req.params['id'],
+        quien: { rol: 'conductor', id: driverId },
+        fileUrl: fileToUrl(req.file),
+        datos: req.body,
+      });
+      res.status(201).json({ success: true, data });
+    } catch (err) {
+      const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+      res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
+
+router.delete('/envio-docs/:docId', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId;
+  if (!driverId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+  try {
+    await borrarDocumentoEnvio(req.params['docId']!, { rol: 'conductor', id: driverId });
+    res.json({ success: true });
+  } catch (err) {
+    const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
 });
 
 export default router;

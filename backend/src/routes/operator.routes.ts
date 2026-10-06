@@ -57,6 +57,10 @@ import {
 import { isValidColombianPhone } from '../services/auth.service';
 import { documentUpload, fileToUrl } from '../lib/upload';
 import {
+  subirDocumentoEnvio, listarDocumentosEnvio, borrarDocumentoEnvio,
+  DocumentoEnvioInvalido,
+} from '../services/documentos-envio.service';
+import {
   configuracionesPara,
   esTipoConSillas,
   plantillaDeConfig,
@@ -1234,6 +1238,72 @@ router.get('/cargo-trips/:id/report', async (req: Request, res: Response): Promi
   if (!r) { res.status(404).json({ success: false, error: 'Ese viaje no pertenece a tu empresa.' }); return; }
   res.json({ success: true, data: r });
 });
+
+// ─── Los papeles que viajan CON la carga ─────────────────────────────────────
+//
+// La misma tabla que ve el conductor desde la cabina. La flota los sube
+// cuando el cliente se los manda por correo —muchas veces en PDF— y los
+// necesita al facturar; el conductor los abre en un retén. Si cada lado
+// tuviera su propia lista, el camión saldría con la del portal y el
+// conductor enseñaría otra.
+
+router.get('/envio-docs/:clase/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await listarDocumentosEnvio(
+      req.params['clase'], req.params['id'], { rol: 'empresa', id: req.operatorId! },
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+    res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.post(
+  '/envio-docs/:clase/:id',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ningún archivo.' }); return; }
+    const tipo = req.file.mimetype ?? '';
+    if (!tipo.startsWith('image/') && tipo !== 'application/pdf') {
+      res.status(400).json({ success: false, error: 'El documento debe ser una imagen o un PDF.' });
+      return;
+    }
+    try {
+      const data = await subirDocumentoEnvio({
+        clase: req.params['clase'],
+        servicioId: req.params['id'],
+        quien: { rol: 'empresa', id: req.operatorId! },
+        fileUrl: fileToUrl(req.file),
+        datos: req.body,
+      });
+      res.status(201).json({ success: true, data });
+    } catch (err) {
+      const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+      res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
+
+router.delete(
+  '/envio-docs/:docId',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      await borrarDocumentoEnvio(req.params['docId']!, { rol: 'empresa', id: req.operatorId! });
+      res.json({ success: true });
+    } catch (err) {
+      const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+      res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
 
 export default router;
 
