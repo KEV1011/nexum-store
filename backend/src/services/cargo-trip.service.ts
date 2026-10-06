@@ -48,6 +48,8 @@ export interface CreateCargoTripDTO {
    */
   promisedAt?: string;
   notes?: string;
+  /** Lo que se le paga al conductor o al propietario. El RNDC lo pide. */
+  driverPayAmount?: number;
 }
 
 export function toCargoTripDTO(t: TripConLineas) {
@@ -69,6 +71,12 @@ export function toCargoTripDTO(t: TripConLineas) {
     destCity: t.destCity ?? undefined,
     weightKg: t.weightKg ?? undefined,
     freightAmount: t.freightAmount ?? undefined,
+    driverPayAmount: t.driverPayAmount ?? undefined,
+    // Constancia del reporte al RNDC, para que el portal pueda enseñar si
+    // este viaje ya se reportó y con qué números.
+    rndcRemesa: t.rndcRemesa ?? undefined,
+    rndcManifiesto: t.rndcManifiesto ?? undefined,
+    rndcReportedAt: t.rndcReportedAt?.toISOString(),
     isUrban: t.isUrban,
     driverId: t.driverId ?? undefined,
     vehicleId: t.vehicleId ?? undefined,
@@ -134,6 +142,7 @@ export async function createCargoTrip(
       destCity: dto.destCity?.trim() || null,
       weightKg: dto.weightKg ?? null,
       freightAmount: dto.freightAmount ?? null,
+      driverPayAmount: dto.driverPayAmount ?? null,
       isUrban: dto.isUrban ?? false,
       driverId: dto.driverId || null,
       vehicleId: dto.vehicleId || null,
@@ -221,6 +230,7 @@ export async function updateCargoTrip(
       ...(dto.destCity !== undefined ? { destCity: dto.destCity?.trim() || null } : {}),
       ...(dto.weightKg !== undefined ? { weightKg: dto.weightKg ?? null } : {}),
       ...(dto.freightAmount !== undefined ? { freightAmount: dto.freightAmount ?? null } : {}),
+      ...(dto.driverPayAmount !== undefined ? { driverPayAmount: dto.driverPayAmount ?? null } : {}),
       ...(dto.isUrban !== undefined ? { isUrban: dto.isUrban } : {}),
       ...(dto.driverId !== undefined ? { driverId: dto.driverId || null } : {}),
       ...(dto.vehicleId !== undefined ? { vehicleId: dto.vehicleId || null } : {}),

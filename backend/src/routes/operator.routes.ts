@@ -60,6 +60,9 @@ import {
   subirDocumentoEnvio, listarDocumentosEnvio, borrarDocumentoEnvio,
   DocumentoEnvioInvalido,
 } from '../services/documentos-envio.service';
+import { leerRemesa } from '../lib/remesa-foto';
+import { prepararRndc, anotarConstanciaRndc, RndcInvalido } from '../services/rndc.service';
+import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import {
   configuracionesPara,
   esTipoConSillas,
@@ -1300,6 +1303,94 @@ router.delete(
       res.json({ success: true });
     } catch (err) {
       const status = err instanceof DocumentoEnvioInvalido ? 400 : 500;
+      res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+    }
+  },
+);
+
+// ─── Leer la remesa desde la foto del papel ──────────────────────────────────
+//
+// PROPONE, NO GUARDA. Devuelve el número, la fecha y el destinatario que se
+// leen en el papel para que la persona los apruebe; lo aprobado entra por
+// `POST /…/envio-docs/:clase/:id`, el mismo camino de siempre, con su
+// validación y su comprobación de pertenencia. No hay un segundo camino de
+// escritura, igual que con la carta del restaurante.
+//
+// Y ante la duda, campo vacío: medio minuto de teclear frente a un número
+// equivocado que viaja hasta la cuenta de cobro y vuelve como una factura
+// devuelta.
+
+router.post(
+  '/envio-docs/leer',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    if (!req.operatorId) { res.status(401).json({ success: false, error: 'No autenticado' }); return; }
+    if (!req.file) { res.status(400).json({ success: false, error: 'No se recibió ninguna foto.' }); return; }
+    // Solo imagen: el lector de texto trabaja sobre píxeles. Un PDF sí se
+    // puede ADJUNTAR (la otra ruta lo acepta), pero no se puede leer aquí, y
+    // decirlo es mejor que devolver una lectura vacía que parece una avería.
+    if (!(req.file.mimetype ?? '').startsWith('image/')) {
+      res.status(400).json({
+        success: false,
+        error: 'Para leerlo automáticamente hace falta una FOTO. Un PDF puedes adjuntarlo, pero escribe los datos a mano.',
+      });
+      return;
+    }
+    const lectura = await leerTextoDeCarta({
+      bytes: req.file.buffer,
+      mimetype: req.file.mimetype,
+    });
+    if (!lectura.disponible) {
+      // 503 y no 400: no se equivocó quien subió la foto, es que el lector
+      // no está. El `motivo` del motor está redactado para el dueño de un
+      // restaurante, así que aquí se traduce a lo que puede hacer ESTA
+      // persona: escribir los datos, que es lo que hacía hasta ayer.
+      res.status(503).json({
+        success: false,
+        error: 'La lectura automática no está disponible. Escribe los datos del documento a mano.',
+      });
+      return;
+    }
+    res.json({
+      success: true,
+      data: {
+        ...leerRemesa(lectura.texto),
+        // El texto leído, para que quien mira pueda distinguir «la foto
+        // salió mal» de «el papel no dice el número con una etiqueta que
+        // reconozcamos». Sin esto, los dos casos se ven iguales.
+        textoCrudo: lectura.texto,
+      },
+    });
+  },
+);
+
+// ─── RNDC: qué falta para reportar, y la constancia de lo reportado ──────────
+//
+// Reporta la EMPRESA con su usuario del Ministerio; ZIPA no es una empresa de
+// transporte habilitada y no puede reportar en nombre de nadie. Lo que sí
+// puede es tener los datos listos —hoy la empresa los recopila a mano de
+// cuatro sitios— y guardar por escrito qué se reportó.
+
+router.get('/cargo-trips/:id/rndc', async (req: Request, res: Response): Promise<void> => {
+  const data = await prepararRndc(req.operatorId!, req.params['id']!);
+  if (!data) { res.status(404).json({ success: false, error: 'Viaje no encontrado' }); return; }
+  res.json({ success: true, data });
+});
+
+router.post(
+  '/cargo-trips/:id/rndc',
+  requireOperatorRole('OWNER', 'DISPATCHER'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const data = await anotarConstanciaRndc(req.operatorId!, req.params['id']!, req.body);
+      res.status(201).json({ success: true, data });
+    } catch (err) {
+      const status = err instanceof RndcInvalido ? 400 : 500;
       res.status(status).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
     }
   },

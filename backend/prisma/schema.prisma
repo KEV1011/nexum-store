@@ -2120,6 +2120,25 @@ model CargoTrip {
   // el total esté respaldado por su detalle y se pueda auditar viaje por viaje.
   freightAmount Float?
 
+  /// Lo que se le paga al conductor o al propietario del vehículo.
+  ///
+  /// Es OTRA cifra que `freightAmount`: ese es lo que cobra la empresa al
+  /// cliente, este es lo que recibe quien maneja. El RNDC pide las dos, y
+  /// hasta ahora solo existía la primera.
+  driverPayAmount Float?
+
+  /// Constancia del reporte al RNDC: los dos números que devuelve el
+  /// Ministerio. Los escribe la EMPRESA, que es quien reporta con su
+  /// usuario y su clave — ZIPA no es una empresa de transporte habilitada y
+  /// no puede reportar en nombre de nadie (ver `lib/rndc` y `docs/RNDC.md`).
+  ///
+  /// Se guardan los DOS o ninguno: un manifiesto sin su remesa no describe
+  /// un despacho completo, y medio reporte haría figurar el viaje como
+  /// reportado cuando no lo está.
+  rndcRemesa     String?
+  rndcManifiesto String?
+  rndcReportedAt DateTime?
+
   // Destino principal del viaje. Las líneas llevan cada una su destinatario y
   // su ciudad; este es el punto contra el que se miden geocerca y desvío.
   destCity String?

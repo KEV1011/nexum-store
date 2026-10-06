@@ -323,6 +323,107 @@ async function main() {
     check(claseRara.status === 400, 'ni colgarlo de un tipo de servicio que no existe',
       { status: claseRara.status });
 
+    // ── 8. Leer la remesa desde la foto ───────────────────────────────────
+    console.log('\n[8] La lectura automática del papel');
+    const leerPng = await (async () => {
+      const form = new FormData();
+      form.append('file', new Blob([new Uint8Array(PNG_1X1)], { type: 'image/png' }), 'remesa.png');
+      const r = await fetch(`${BASE}/driver/envio-docs/leer`, {
+        method: 'POST', headers: { Authorization: `Bearer ${tCond}` }, body: form,
+      });
+      let j: Res['json'] = {};
+      try { j = (await r.json()) as Res['json']; } catch { /* sin JSON */ }
+      return { status: r.status, json: j };
+    })();
+    // Sin proveedor configurado —que es como está producción hoy— la ruta lo
+    // DICE en vez de devolver una lectura vacía que se leería como «mi foto
+    // no sirve» y haría repetirla tres veces.
+    check(leerPng.status === 503,
+      'sin lector configurado responde 503', { status: leerPng.status });
+    check((leerPng.json.error ?? '').includes('a mano'),
+      'y dice qué hacer: escribirlo, que es lo que se hacía hasta ayer', leerPng.json.error);
+    check(!(leerPng.json.error ?? '').toLowerCase().includes('carta'),
+      'sin hablarle al conductor de cartas de restaurante ni de CSV',
+      leerPng.json.error);
+
+    const leerPdf = await (async () => {
+      const form = new FormData();
+      form.append('file', new Blob([new Uint8Array(PDF_MIN)], { type: 'application/pdf' }), 'r.pdf');
+      const r = await fetch(`${BASE}/driver/envio-docs/leer`, {
+        method: 'POST', headers: { Authorization: `Bearer ${tCond}` }, body: form,
+      });
+      let j: Res['json'] = {};
+      try { j = (await r.json()) as Res['json']; } catch { /* sin JSON */ }
+      return { status: r.status, json: j };
+    })();
+    check(leerPdf.status === 400,
+      'un PDF no se puede leer…', { status: leerPdf.status });
+    check((leerPdf.json.error ?? '').toLowerCase().includes('adjuntarlo'),
+      '…y se aclara que SÍ se puede adjuntar: la otra ruta lo acepta',
+      leerPdf.json.error);
+
+    const sinSesion = await fetch(`${BASE}/driver/envio-docs/leer`, { method: 'POST' });
+    check(sinSesion.status === 401 || sinSesion.status === 403,
+      'y sin sesión no se gasta una lectura', { status: sinSesion.status });
+
+    // ── 9. RNDC: qué falta para reportar ──────────────────────────────────
+    console.log('\n[9] Lo que hace falta para reportar al Ministerio');
+    type Prep = {
+      listo: boolean;
+      faltan: Array<{ campo: string; queHacer: string }>;
+      datos: Record<string, unknown>;
+      reportado?: { remesa: string; manifiesto: string };
+    };
+    const prep1 = await pedir('GET', `/operator/cargo-trips/${viaje.id}/rndc`, { token: tEmp });
+    const p1 = prep1.json.data as Prep | undefined;
+    check(prep1.status === 200, 'la empresa consulta qué le falta', { status: prep1.status });
+    check(p1?.listo === false, 'este viaje todavía NO está listo', p1?.listo);
+    check((p1?.faltan.length ?? 0) > 0, 'y se listan los faltantes', p1?.faltan.length);
+    // Los datos que SÍ tenemos no se vuelven a pedir: ese es todo el valor.
+    check(p1?.datos['nitEmpresa'] === `900${suf}`,
+      'el NIT sale solo de la ficha de la empresa', p1?.datos['nitEmpresa']);
+    check(p1?.datos['destinatario'] === 'Destinatario E2E',
+      'y el destinatario de la línea de mercancía', p1?.datos['destinatario']);
+    check(
+      (p1?.faltan ?? []).every((f) => f.queHacer.length > 15 && f.queHacer.endsWith('.')),
+      'cada faltante es una frase que dice dónde se arregla, no un nombre de campo',
+    );
+    const faltaPago = (p1?.faltan ?? []).some((f) => f.campo === 'valorPagoConductor');
+    check(faltaPago,
+      'incluido lo que se le paga al conductor, que es OTRA cifra que el flete');
+
+    // ── 10. La constancia ─────────────────────────────────────────────────
+    console.log('\n[10] La constancia de lo reportado');
+    const medio = await pedir('POST', `/operator/cargo-trips/${viaje.id}/rndc`, {
+      token: tEmp, body: { remesa: 'R-0099' },
+    });
+    check(medio.status === 400,
+      'medio reporte NO es una constancia', { status: medio.status, err: medio.json.error });
+    const igual = await pedir('POST', `/operator/cargo-trips/${viaje.id}/rndc`, {
+      token: tEmp, body: { remesa: 'X-9', manifiesto: 'X-9' },
+    });
+    check(igual.status === 400,
+      'ni el mismo número pegado dos veces', { status: igual.status });
+
+    const anota = await pedir('POST', `/operator/cargo-trips/${viaje.id}/rndc`, {
+      token: tEmp, body: { remesa: 'R-0099', manifiesto: 'M-114455' },
+    });
+    check(anota.status === 201, 'los dos números sí se anotan', { status: anota.status, err: anota.json.error });
+    const prep2 = (await pedir('GET', `/operator/cargo-trips/${viaje.id}/rndc`, { token: tEmp }))
+      .json.data as Prep | undefined;
+    check(prep2?.reportado?.manifiesto === 'M-114455',
+      'y quedan visibles para auditar el viaje después', prep2?.reportado);
+
+    const ajena = await pedir('POST', `/operator/cargo-trips/${viaje.id}/rndc`, {
+      token: tVecina, body: { remesa: 'R-1', manifiesto: 'M-1' },
+    });
+    check(ajena.status === 400,
+      'la empresa vecina no puede anotar nada en un viaje ajeno', { status: ajena.status });
+    const prep3 = (await pedir('GET', `/operator/cargo-trips/${viaje.id}/rndc`, { token: tEmp }))
+      .json.data as Prep | undefined;
+    check(prep3?.reportado?.remesa === 'R-0099',
+      'y la constancia legítima queda intacta', prep3?.reportado?.remesa);
+
     // ── Limpieza ──────────────────────────────────────────────────────────
     await prisma.shipmentDocument.deleteMany({ where: { cargoTripId: viaje.id } });
     await prisma.cargoTrip.delete({ where: { id: viaje.id } });
