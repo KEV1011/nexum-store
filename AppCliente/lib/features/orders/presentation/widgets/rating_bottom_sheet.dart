@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 import 'package:nexum_client/features/orders/domain/entities/'
     'customer_order_entity.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
@@ -68,31 +69,34 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : context.surfaceColor,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppConstants.radiusXLarge),
+    return envolverHoja(
+      context,
+      Container(
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.cardDark : context.surfaceColor,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppConstants.radiusXLarge),
+          ),
         ),
+        padding: EdgeInsets.only(
+          left: AppConstants.spacingL,
+          right: AppConstants.spacingL,
+          top: AppConstants.spacingM,
+          bottom:
+              MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingXL,
+        ),
+        child: _submitted
+            ? const _SuccessView()
+            : _FormView(
+                order: widget.order,
+                stars: _stars,
+                commentController: _commentController,
+                onStarTap: (s) => setState(() => _stars = s),
+                onSubmit: _submit,
+                onSkip: () => Navigator.of(context).pop(),
+                isDark: isDark,
+              ),
       ),
-      padding: EdgeInsets.only(
-        left: AppConstants.spacingL,
-        right: AppConstants.spacingL,
-        top: AppConstants.spacingM,
-        bottom:
-            MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingXL,
-      ),
-      child: _submitted
-          ? const _SuccessView()
-          : _FormView(
-              order: widget.order,
-              stars: _stars,
-              commentController: _commentController,
-              onStarTap: (s) => setState(() => _stars = s),
-              onSubmit: _submit,
-              onSkip: () => Navigator.of(context).pop(),
-              isDark: isDark,
-            ),
     );
   }
 }

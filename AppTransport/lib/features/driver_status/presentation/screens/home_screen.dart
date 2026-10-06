@@ -45,6 +45,7 @@ import 'package:nexum_driver/shared/widgets/lupa_vidrio.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
+import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -1321,80 +1322,83 @@ class _GlassNavBarState extends State<_GlassNavBar> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-      child: Container(
-        // Sombra fuera del clip: un clip recorta su propia sombra.
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.30),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(30),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-            child: Container(
-              height: 66,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1D27).withValues(alpha: 0.66),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.16),
-                ),
+    return envolverHoja(
+      context,
+      SafeArea(
+        minimum: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+        child: Container(
+          // Sombra fuera del clip: un clip recorta su propia sombra.
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.30),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
               ),
-              child: LayoutBuilder(
-                builder: (context, c) => Stack(
-                  children: [
-                    // Lupa de vidrio sobre el ítem activo, o bajo el dedo si
-                    // alguien la está arrastrando. Columnas visuales:
-                    // [ítem0, Conectar, resto]. El botón central ocupa una, así
-                    // que el índice del ítem no es la columna: hay que correrlo
-                    // una posición a partir del segundo.
-                    // (66 de barra − 52 de píldora) / 2 = 7.
-                    Builder(builder: (context) {
-                      final activeIdx = items.indexWhere((i) => i.active);
-                      return LupaVidrio(
-                        columnas: _columnas,
-                        activa: activeIdx <= 0 ? activeIdx : activeIdx + 1,
-                        arrastre: _arrastre,
-                      );
-                    }),
-                    Row(
-                      children: [
-                        Expanded(child: _buildItem(items[0])),
-                        Expanded(child: _buildConnect()),
-                        for (final item in items.skip(1))
-                          Expanded(child: _buildItem(item)),
-                      ],
-                    ),
-                    // Arrastrar la lupa con el dedo. `translucent` deja que el
-                    // toque siga llegando a los botones de abajo: un toque sin
-                    // movimiento no es un arrastre horizontal.
-                    Positioned.fill(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.translucent,
-                        onHorizontalDragStart: (d) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _arrastre = columnaDesdeX(
-                                d.localPosition.dx, c.maxWidth, _columnas,
-                              ));
-                        },
-                        onHorizontalDragUpdate: (d) => setState(
-                          () => _arrastre = columnaDesdeX(
-                            d.localPosition.dx, c.maxWidth, _columnas,
-                          ),
-                        ),
-                        onHorizontalDragEnd: (_) => _soltar(),
-                        onHorizontalDragCancel: _soltar,
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Container(
+                height: 66,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1D27).withValues(alpha: 0.66),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                  ),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, c) => Stack(
+                    children: [
+                      // Lupa de vidrio sobre el ítem activo, o bajo el dedo si
+                      // alguien la está arrastrando. Columnas visuales:
+                      // [ítem0, Conectar, resto]. El botón central ocupa una, así
+                      // que el índice del ítem no es la columna: hay que correrlo
+                      // una posición a partir del segundo.
+                      // (66 de barra − 52 de píldora) / 2 = 7.
+                      Builder(builder: (context) {
+                        final activeIdx = items.indexWhere((i) => i.active);
+                        return LupaVidrio(
+                          columnas: _columnas,
+                          activa: activeIdx <= 0 ? activeIdx : activeIdx + 1,
+                          arrastre: _arrastre,
+                        );
+                      }),
+                      Row(
+                        children: [
+                          Expanded(child: _buildItem(items[0])),
+                          Expanded(child: _buildConnect()),
+                          for (final item in items.skip(1))
+                            Expanded(child: _buildItem(item)),
+                        ],
                       ),
-                    ),
-                  ],
+                      // Arrastrar la lupa con el dedo. `translucent` deja que el
+                      // toque siga llegando a los botones de abajo: un toque sin
+                      // movimiento no es un arrastre horizontal.
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragStart: (d) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _arrastre = columnaDesdeX(
+                                  d.localPosition.dx, c.maxWidth, _columnas,
+                                ));
+                          },
+                          onHorizontalDragUpdate: (d) => setState(
+                            () => _arrastre = columnaDesdeX(
+                              d.localPosition.dx, c.maxWidth, _columnas,
+                            ),
+                          ),
+                          onHorizontalDragEnd: (_) => _soltar(),
+                          onHorizontalDragCancel: _soltar,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

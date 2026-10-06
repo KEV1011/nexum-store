@@ -10,6 +10,7 @@ import 'package:nexum_driver/features/freight/presentation/widgets/freight_route
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 import 'package:nexum_driver/shared/services/abordaje_tiquete.dart';
+import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -787,87 +788,90 @@ class _HojaAbordajeState extends State<_HojaAbordaje> {
   @override
   Widget build(BuildContext context) {
     final r = _resultado;
-    return Padding(
-      // El teclado se suma al margen: sin esto tapa el campo, que es el
-      // mismo fallo ya corregido en pedidos y en la hoja de pedir viaje.
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.surfaceColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 38, height: 4,
-                decoration: BoxDecoration(
-                  color: context.textSecondaryColor.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
+    return envolverHoja(
+      context,
+      Padding(
+        // El teclado se suma al margen: sin esto tapa el campo, que es el
+        // mismo fallo ya corregido en pedidos y en la hoja de pedir viaje.
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          decoration: BoxDecoration(
+            color: context.surfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 38, height: 4,
+                  decoration: BoxDecoration(
+                    color: context.textSecondaryColor.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Validar tiquete',
-              style: TextStyle(
-                fontFamily: 'Inter', fontSize: 18, fontWeight: FontWeight.w800,
-                color: context.textPrimaryColor,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Pídele el código al pasajero y escríbelo.',
-              style: TextStyle(
-                fontFamily: 'Inter', fontSize: 13, color: context.textSecondaryColor,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _codigo,
-              focusNode: _foco,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              // `text` y no `number`: el código lleva letras. Con el teclado
-              // numérico habría que cambiar de capa para cada letra.
-              keyboardType: TextInputType.text,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _validar(),
-              style: const TextStyle(
-                fontFamily: 'Inter', fontSize: 26, fontWeight: FontWeight.w900,
-                letterSpacing: 6,
-              ),
-              decoration: const InputDecoration(
-                hintText: 'K7M3PQ',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _validando ? null : _validar,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _kPooledColor,
-                  foregroundColor: Colors.white,
+              const SizedBox(height: 16),
+              Text(
+                'Validar tiquete',
+                style: TextStyle(
+                  fontFamily: 'Inter', fontSize: 18, fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
                 ),
-                child: _validando
-                    ? const SizedBox(
-                        height: 20, width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('Validar'),
               ),
-            ),
-            if (r != null) ...[
-              const SizedBox(height: 14),
-              _ResultadoTiquete(resultado: r),
+              const SizedBox(height: 4),
+              Text(
+                'Pídele el código al pasajero y escríbelo.',
+                style: TextStyle(
+                  fontFamily: 'Inter', fontSize: 13, color: context.textSecondaryColor,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _codigo,
+                focusNode: _foco,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                // `text` y no `number`: el código lleva letras. Con el teclado
+                // numérico habría que cambiar de capa para cada letra.
+                keyboardType: TextInputType.text,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _validar(),
+                style: const TextStyle(
+                  fontFamily: 'Inter', fontSize: 26, fontWeight: FontWeight.w900,
+                  letterSpacing: 6,
+                ),
+                decoration: const InputDecoration(
+                  hintText: 'K7M3PQ',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _validando ? null : _validar,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kPooledColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: _validando
+                      ? const SizedBox(
+                          height: 20, width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Validar'),
+                ),
+              ),
+              if (r != null) ...[
+                const SizedBox(height: 14),
+                _ResultadoTiquete(resultado: r),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

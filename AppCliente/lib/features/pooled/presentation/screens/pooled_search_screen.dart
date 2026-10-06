@@ -16,6 +16,7 @@ import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -735,29 +736,13 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
     final bruto = trip.farePerSeat * (trip.seatMap != null ? _sillas.length : _seats);
     final maxSel = _maxSelectable;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.surfaceColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: context.outlineColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
+    // El marco y el deslizamiento los pone `HojaDeslizable`. Antes esto era
+    // un `Column` suelto: con el mapa de sillas, la recogida, las notas, el
+    // cupón, las comodidades y un formulario POR pasajero, el botón de
+    // confirmar quedaba debajo del borde de la pantalla y no había forma de
+    // llegar a él.
+    return HojaDeslizable(
+      children: [
             Text('${trip.origin.displayName} → ${trip.destination.displayName}',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
@@ -1045,9 +1030,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
               ),
             ),
             const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      ],
     );
   }
 

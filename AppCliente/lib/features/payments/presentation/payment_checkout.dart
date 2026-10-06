@@ -7,6 +7,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/payments/data/payment_api.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 
 /// Desenlace del checkout de pago en línea.
 enum PaymentOutcome { approved, rejected, pending, cancelled, failed }
@@ -152,42 +153,45 @@ class _PaymentCheckoutSheetState extends ConsumerState<_PaymentCheckoutSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 28,
-      ),
-      decoration: BoxDecoration(
-        color: context.surfaceColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: context.outlineColor,
-              borderRadius: BorderRadius.circular(2),
+    return envolverHoja(
+      context,
+      Container(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+        ),
+        decoration: BoxDecoration(
+          color: context.surfaceColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: context.outlineColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          Text(
-            CurrencyFormatter.format(widget.amount),
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            widget.description,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
-          ),
-          const SizedBox(height: 24),
-          ..._body(context),
-        ],
+            Text(
+              CurrencyFormatter.format(widget.amount),
+              style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.description,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+            ),
+            const SizedBox(height: 24),
+            ..._body(context),
+          ],
+        ),
       ),
     );
   }

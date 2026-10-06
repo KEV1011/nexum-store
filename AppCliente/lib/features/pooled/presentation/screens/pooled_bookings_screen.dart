@@ -7,6 +7,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -500,65 +501,68 @@ class _HojaCalificarState extends State<_HojaCalificar> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 28,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.empresa == null
-                ? '¿Qué tal estuvo el viaje?'
-                : '¿Qué tal viajaste con ${widget.empresa}?',
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Tu calificación ayuda a los demás pasajeros a elegir.',
-            style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (var i = 1; i <= 5; i++)
-                IconButton(
-                  onPressed: () => setState(() => _estrellas = i),
-                  icon: Icon(
-                    i <= _estrellas ? Icons.star_rounded : Icons.star_border_rounded,
-                    size: 38,
-                    color: AppColors.starText,
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.empresa == null
+                  ? '¿Qué tal estuvo el viaje?'
+                  : '¿Qué tal viajaste con ${widget.empresa}?',
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Tu calificación ayuda a los demás pasajeros a elegir.',
+              style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 1; i <= 5; i++)
+                  IconButton(
+                    onPressed: () => setState(() => _estrellas = i),
+                    icon: Icon(
+                      i <= _estrellas ? Icons.star_rounded : Icons.star_border_rounded,
+                      size: 38,
+                      color: AppColors.starText,
+                    ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _comentario,
-            maxLength: 300,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Cuéntanos (opcional)',
-              border: OutlineInputBorder(),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _estrellas == 0
-                  ? null
-                  : () => Navigator.pop(context, (_estrellas, _comentario.text)),
-              style: FilledButton.styleFrom(backgroundColor: _kPooledColor),
-              child: const Text('Enviar'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _comentario,
+              maxLength: 300,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Cuéntanos (opcional)',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _estrellas == 0
+                    ? null
+                    : () => Navigator.pop(context, (_estrellas, _comentario.text)),
+                style: FilledButton.styleFrom(backgroundColor: _kPooledColor),
+                child: const Text('Enviar'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

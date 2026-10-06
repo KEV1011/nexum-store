@@ -8,6 +8,7 @@ import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/support/data/support_api.dart';
 import 'package:nexum_client/features/support/presentation/screens/support_ticket_detail_screen.dart';
 import 'package:nexum_client/features/support/presentation/widgets/support_common.dart';
+import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 
 /// Centro de ayuda: lista de tickets del usuario + abrir uno nuevo.
 /// Reutilizable por ambas apps vía [basePath] ('/client' o '/driver').
@@ -225,60 +226,63 @@ class _NewTicketSheetState extends State<_NewTicketSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Nuevo ticket de soporte',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            children: _categories.entries
-                .map((e) => ChoiceChip(
-                      label: Text(e.value),
-                      selected: _category == e.key,
-                      onSelected: (_) => setState(() => _category = e.key),
-                    ))
-                .toList(),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _subject,
-            decoration: const InputDecoration(labelText: 'Asunto'),
-            textCapitalization: TextCapitalization.sentences,
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _body,
-            decoration: const InputDecoration(labelText: 'Describe tu problema'),
-            maxLines: 4,
-            textCapitalization: TextCapitalization.sentences,
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              onPressed: _sending ? null : _submit,
-              child: _sending
-                  ? const SizedBox(
-                      width: 18, height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Enviar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+    return envolverHoja(
+      context,
+      Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Nuevo ticket de soporte',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              children: _categories.entries
+                  .map((e) => ChoiceChip(
+                        label: Text(e.value),
+                        selected: _category == e.key,
+                        onSelected: (_) => setState(() => _category = e.key),
+                      ))
+                  .toList(),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _subject,
+              decoration: const InputDecoration(labelText: 'Asunto'),
+              textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _body,
+              decoration: const InputDecoration(labelText: 'Describe tu problema'),
+              maxLines: 4,
+              textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: _sending ? null : _submit,
+                child: _sending
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Enviar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
