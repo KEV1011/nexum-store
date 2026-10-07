@@ -53,6 +53,12 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
     // donde está el manifiesto con el nombre y dónde recoger a cada uno:
     // el home no sabe nada de esa salida, que se publicó hace días.
     case 'pooled_booking':
+    // Un pasajero publicó un viaje por puestos y está esperando a que alguien
+    // lo tome: el aviso tiene que caer en el tablero donde se toma, no en el
+    // inicio. Sin esto, el push abriría la app y el taxista tendría que
+    // buscarlo en el cajón lateral — que es el problema que el aviso viene a
+    // resolver.
+    case 'pooled_urban_new':
       return AppRoutes.pooledTrips;
 
     case 'support_reply':
