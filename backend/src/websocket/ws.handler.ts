@@ -1531,8 +1531,55 @@ export function setupWebSocket(wss: WebSocketServer): void {
   // local — comportamiento de instancia única, idéntico al actual.
   void initBus(deliverLocally);
 
+  // ── Latido del socket ──────────────────────────────────────────────────────
+  //
+  // POR QUÉ. Reportado desde el portal del negocio: «hay una interrupción
+  // cuando dice offline o online». Medido: NINGUNO de los dos lados mandaba un
+  // ping. El servidor sabía CONTESTAR a `{type:'ping'}` con un `pong`, pero
+  // nadie se lo mandaba nunca, y él tampoco mandaba el suyo.
+  //
+  // Un WebSocket en silencio lo cierra cualquier intermediario —el proxy de
+  // Render, un router doméstico, la operadora móvil— al minuto o así de no ver
+  // tráfico. El portal reconectaba a los cinco segundos y volvía a caer: de ahí
+  // el «Offline / En vivo» parpadeando. Y en cada hueco se pierde el aviso de
+  // un pedido nuevo, que es justo para lo que existe el socket: el pedido
+  // aparece luego al refrescar, pero la campana no suena y el dueño no se
+  // entera.
+  //
+  // Esto es el ping del PROTOCOLO (`ws.ping()`), no un mensaje de aplicación:
+  // lo responde la librería del otro lado sin que la app tenga que hacer nada,
+  // así que arregla de golpe el portal, las dos apps y el portal de empresas,
+  // sin tocar ni una línea de cliente ni esperar a que nadie actualice.
+  //
+  // 30 s porque el corte típico está en 60: la mitad deja margen para que un
+  // latido se pierda sin que la conexión muera.
+  const INTERVALO_LATIDO_MS = 30_000;
+  const vivos = new WeakSet<WebSocket>();
+
+  const latido = setInterval(() => {
+    for (const ws of wss.clients) {
+      // No contestó al ping anterior: el socket está muerto aunque el sistema
+      // operativo todavía no lo sepa. Dejarlo abierto es peor que cerrarlo —
+      // los avisos se le mandarían a un cliente que no los recibe y nadie se
+      // enteraría, que es el fallo silencioso que esto viene a quitar.
+      if (!vivos.has(ws)) {
+        ws.terminate();
+        continue;
+      }
+      vivos.delete(ws);
+      try { ws.ping(); } catch { /* se cerró entre medias */ }
+    }
+  }, INTERVALO_LATIDO_MS);
+  // Que el latido no sea lo que impide al proceso terminar.
+  latido.unref?.();
+  wss.on('close', () => clearInterval(latido));
+
   wss.on('connection', (ws: WebSocket, _req: IncomingMessage) => {
     console.log('[WS] New connection');
+    // Nace vivo: si no, el primer barrido lo cerraría antes de darle tiempo a
+    // contestar su primer ping.
+    vivos.add(ws);
+    ws.on('pong', () => vivos.add(ws));
     // Un socket que no se identifica no sirve para nada. Sin este reloj, abrir
     // conexiones mudas es gratis: no cuestan una consulta, no dejan rastro y
     // se acumulan hasta agotar los descriptores del proceso.
