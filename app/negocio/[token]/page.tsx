@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 
 import { formatCOP } from '../../moneda'
+import { BOTON, CONTENEDOR, ESTADO, TARJETA, TARJETA_NUEVA, TINTE_ESTADO, type Estado } from '../ui'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DeliveryOrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
@@ -145,15 +146,27 @@ function formatTime(iso: string) {
 
 // ─── Client Order Badge ───────────────────────────────────────────────────────
 
+/**
+ * El estado del pedido, en los cuatro que SIGNIFICAN algo.
+ *
+ * Antes eran seis tintes decorativos —naranja, ámbar, violeta, azul, esmeralda,
+ * slate— y entre ellos no había ninguna jerarquía: un pedido entregado gritaba
+ * igual que uno recién llegado. Ahora solo el que PIDE ACCIÓN usa el ámbar, lo
+ * que va bien es verde y lo terminado se apaga a gris, de modo que la vista se
+ * va sola a lo único que hay que atender.
+ *
+ * «Driver en camino» y «Driver en local» decían *driver*, que en el mostrador
+ * de un local no significa nada; ahora dicen repartidor.
+ */
 const CLIENT_STATUS: Record<ClientOrderStatus, { label: string; className: string }> = {
-  pending:        { label: 'Nuevo · acepta',     className: 'bg-orange-100 text-orange-700 ring-1 ring-orange-200' },
-  confirmed:      { label: 'Confirmado',         className: 'bg-amber-100 text-amber-700' },
-  preparing:      { label: 'En preparación',     className: 'bg-violet-100 text-violet-700' },
-  driverToPickup: { label: 'Driver en camino',   className: 'bg-blue-100 text-blue-700' },
-  atPickup:       { label: 'Driver en local',    className: 'bg-violet-100 text-violet-700' },
-  inTransit:      { label: 'En camino',          className: 'bg-teal-100 text-teal-700' },
-  delivered:      { label: 'Entregado',          className: 'bg-emerald-100 text-emerald-700' },
-  cancelled:      { label: 'Cancelado',          className: 'bg-slate-100 text-slate-500' },
+  pending:        { label: 'Nuevo · acepta',        className: ESTADO.nuevo },
+  confirmed:      { label: 'Confirmado',            className: ESTADO.enCurso },
+  preparing:      { label: 'En preparación',        className: ESTADO.enCurso },
+  driverToPickup: { label: 'Repartidor en camino',  className: ESTADO.enCurso },
+  atPickup:       { label: 'Repartidor en el local', className: ESTADO.enCurso },
+  inTransit:      { label: 'En camino',             className: ESTADO.enCurso },
+  delivered:      { label: 'Entregado',             className: ESTADO.listo },
+  cancelled:      { label: 'Cancelado',             className: ESTADO.listo },
 }
 
 function ClientStatusBadge({ status }: { status: ClientOrderStatus }) {
@@ -203,9 +216,7 @@ function ClientOrderCard({ order, token, onChanged }: {
   }
 
   return (
-    <div className={`bg-white border rounded-xl shadow-sm p-4 transition-all ${
-      isNew ? 'border-orange-300 shadow-orange-100' : 'border-slate-200'
-    }`}>
+    <div className={`${isNew ? TARJETA_NUEVA : TARJETA} p-4 transition-all`}>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <p className="font-bold text-slate-900 text-sm">#{order.orderRef}</p>
@@ -217,10 +228,10 @@ function ClientOrderCard({ order, token, onChanged }: {
       {enMesa ? (
         /* Lo único que la cocina necesita para servir el plato. Grande, porque
            es el dato que se busca de un vistazo con el salón lleno. */
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
-          <Utensils className="h-4 w-4 shrink-0 text-sky-600" />
-          <span className="text-sm font-bold text-sky-900">Mesa {order.tableLabel}</span>
-          <span className="ml-auto text-[11px] font-semibold uppercase tracking-wide text-sky-600">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <Utensils className="h-4 w-4 shrink-0 text-slate-500" />
+          <span className="text-sm font-bold text-slate-900">Mesa {order.tableLabel}</span>
+          <span className="ml-auto text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             En el local
           </span>
         </div>
@@ -360,7 +371,10 @@ function ClientOrderCard({ order, token, onChanged }: {
         <p className="mt-2 text-xs font-semibold text-emerald-600">✓ Listo para recoger · {formatTime(order.readyAt)}</p>
       )}
       {order.status === 'preparing' && !order.readyAt && order.prepMinutes && (
-        <p className="mt-2 text-xs text-violet-600">🍳 Preparación: {order.prepMinutes} min</p>
+        <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+          <UtensilsCrossed className="h-3.5 w-3.5" />
+          Preparación: {order.prepMinutes} min
+        </p>
       )}
 
       {actionError && <p className="mt-2 text-xs text-red-600">{actionError}</p>}
@@ -401,8 +415,7 @@ function ClientOrderCard({ order, token, onChanged }: {
         <button
           onClick={() => act('ready')}
           disabled={busy !== null}
-          className="mt-3 w-full rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white
-                     hover:bg-violet-700 disabled:opacity-50"
+          className={`${BOTON.principal} mt-3 w-full`}
         >
           {busy === 'ready' ? 'Marcando…' : 'Marcar listo para recoger'}
         </button>
@@ -413,8 +426,7 @@ function ClientOrderCard({ order, token, onChanged }: {
         <button
           onClick={() => act('servido')}
           disabled={busy !== null}
-          className="mt-3 w-full rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white
-                     hover:bg-sky-700 disabled:opacity-50"
+          className={`${BOTON.principal} mt-3 w-full`}
         >
           {busy === 'servido' ? 'Marcando…' : `Servido en la mesa ${order.tableLabel}`}
         </button>
@@ -429,16 +441,16 @@ const DELIVERY_STATUS_LABELS: Record<DeliveryOrderStatus, string> = {
   pending: 'Pendiente', at_pickup: 'En recogida', in_transit: 'En camino', delivered: 'Entregado',
 }
 const DELIVERY_STATUS_CLASSES: Record<DeliveryOrderStatus, string> = {
-  pending: 'bg-slate-100 text-slate-600', at_pickup: 'bg-blue-100 text-blue-700',
-  in_transit: 'bg-teal-100 text-teal-700', delivered: 'bg-emerald-100 text-emerald-700',
+  pending: ESTADO.listo, at_pickup: ESTADO.enCurso,
+  in_transit: 'bg-emerald-100 text-emerald-700', delivered: 'bg-emerald-100 text-emerald-700',
 }
 
 function DeliveryOrderCard({ order, token }: { order: Order; token: string }) {
   return (
     <Link
       href={`/negocio/${token}/pedido/${order.id}`}
-      className="block bg-white border border-slate-200 rounded-xl shadow-sm
-                 hover:border-teal-300 hover:shadow-md transition-all duration-200 group"
+      className={`${TARJETA} group block transition-all duration-200
+                   hover:border-emerald-300 hover:shadow-md`}
     >
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
@@ -450,7 +462,7 @@ function DeliveryOrderCard({ order, token }: { order: Order; token: string }) {
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${DELIVERY_STATUS_CLASSES[order.status]}`}>
               {DELIVERY_STATUS_LABELS[order.status]}
             </span>
-            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-teal-600 transition-colors" />
+            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-emerald-600 transition-colors" />
           </div>
         </div>
         <p className="mt-2 text-xs text-slate-400 truncate">{order.customerAddress}</p>
@@ -465,16 +477,28 @@ function DeliveryOrderCard({ order, token }: { order: Order; token: string }) {
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({ icon: Icon, label, value, color }: {
-  icon: React.ElementType; label: string; value: string | number; color: string
+/**
+ * Una cifra del día.
+ *
+ * El `estado` sustituye al color suelto que recibía antes: así una tarjeta no
+ * puede pintarse de violeta porque sí. En el teléfono el icono va al lado del
+ * número en vez de encima — apilado, cuatro tarjetas se comían media pantalla
+ * antes de llegar al primer pedido, que es lo que el dueño viene a ver.
+ */
+function StatCard({ icon: Icon, label, value, estado }: {
+  icon: React.ElementType; label: string; value: string | number; estado: Estado
 }) {
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
-      <div className={`inline-flex p-2 rounded-lg ${color} mb-3`}>
-        <Icon className="w-4 h-4" />
+    <div className={`${TARJETA} p-3 sm:p-4`}>
+      <div className="flex items-center gap-2.5 sm:block">
+        <div className={`inline-flex shrink-0 rounded-lg p-2 sm:mb-3 ${TINTE_ESTADO[estado]}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xl font-bold leading-tight text-slate-900 sm:text-2xl">{value}</p>
+          <p className="mt-0.5 text-[11px] leading-tight text-slate-500 sm:text-xs">{label}</p>
+        </div>
       </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
     </div>
   )
 }
@@ -488,10 +512,10 @@ function Toast({ order, onDismiss }: { order: ClientOrder; onDismiss: () => void
   }, [onDismiss])
 
   return (
-    <div className="fixed bottom-6 right-4 z-50 max-w-xs w-full bg-white border border-orange-300 rounded-2xl shadow-xl p-4 animate-slide-in">
+    <div className="fixed bottom-6 right-4 z-50 max-w-xs w-full bg-white border-2 border-amber-300 rounded-2xl shadow-xl p-4 animate-slide-in">
       <div className="flex items-start gap-3">
-        <div className="w-9 h-9 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
-          <Bell className="w-4 h-4 text-orange-600" />
+        <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+          <Bell className="w-4 h-4 text-amber-700" />
         </div>
         <div className="min-w-0">
           <p className="font-bold text-slate-900 text-sm">¡Nuevo pedido!</p>
@@ -673,7 +697,7 @@ export default function PortalDashboard({
           {/* Un enlace viejo o mal copiado no puede ser un callejón sin salida:
               con el teléfono del registro se recupera el enlace correcto. */}
           <a href="/negocio"
-            className="mt-6 block w-full py-2.5 px-4 bg-teal-700 text-white rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors">
+            className="mt-6 block w-full py-2.5 px-4 bg-emerald-700 text-white rounded-lg text-sm font-medium hover:bg-emerald-800 transition-colors">
             Recuperar mi enlace
           </a>
           <a href="/negocio/registro"
@@ -703,7 +727,7 @@ export default function PortalDashboard({
 
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sm:sticky sm:top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className={`${CONTENEDOR} flex items-center justify-between py-3 sm:py-4`}>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-700 flex items-center justify-center">
               <ZipaLogo size={24} />
@@ -717,23 +741,32 @@ export default function PortalDashboard({
             {/* WS indicator */}
             <div className={`flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1 border ${
               wsConnected
-                ? 'text-teal-700 bg-teal-50 border-teal-200'
+                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
                 : 'text-slate-400 bg-slate-50 border-slate-200'
             }`}>
               {wsConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
               <span className="hidden sm:inline">{wsConnected ? 'En vivo' : 'Offline'}</span>
             </div>
-            {/* Active orders pill */}
+            {/*
+              Cuántos pedidos hay en curso. Estaba `hidden sm:flex`, así que en
+              el teléfono —que es como se usa este portal casi siempre—
+              desaparecía justo el número que el dueño quiere de un vistazo.
+              Ahora se ve en los dos: en móvil solo la cifra, que es lo único
+              que cabe al lado de la marca sin empujarla.
+            */}
             {(activeDeliveryCount + preparingCount) > 0 && (
-              <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-teal-700
-                              bg-teal-50 border border-teal-200 rounded-full px-2.5 py-1">
-                <Activity className="w-3 h-3 animate-pulse" />
-                {activeDeliveryCount + preparingCount} activo{(activeDeliveryCount + preparingCount) !== 1 ? 's' : ''}
+              <div className="flex items-center gap-1.5 rounded-full border border-emerald-200
+                              bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                <Activity className="h-3 w-3 animate-pulse" />
+                {activeDeliveryCount + preparingCount}
+                <span className="hidden sm:inline">
+                  {' '}activo{(activeDeliveryCount + preparingCount) !== 1 ? 's' : ''}
+                </span>
               </div>
             )}
             <Link href={`/negocio/${token}/catalogo`}
-              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700
-                         bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1.5 hover:bg-teal-100 transition-colors">
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700
+                         bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 hover:bg-emerald-100 transition-colors">
               <UtensilsCrossed className="w-3.5 h-3.5" />
               Catálogo
             </Link>
@@ -744,8 +777,9 @@ export default function PortalDashboard({
               Ajustes
             </Link>
             <button onClick={() => fetchOrders(true)} disabled={refreshing}
-              className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:border-teal-300 hover:text-teal-700 transition-colors disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              aria-label="Actualizar pedidos"
+              className={BOTON.icono}>
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
@@ -753,7 +787,7 @@ export default function PortalDashboard({
 
       <PortalTabs token={token} activa="pedidos" />
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
 
         {/* El navegador no deja sonar hasta que el usuario toca la página. Sin
             este aviso, el dueño creería que el portal avisa cuando en realidad
@@ -776,22 +810,22 @@ export default function PortalDashboard({
         )}
 
         {sinRepartidor && (
-          <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-            <span className="w-9 h-9 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0">
+          <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+            <span className="w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0">
               <AlertCircle className="w-4.5 h-4.5" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-bold text-rose-900 text-sm">
+              <p className="font-bold text-red-900 text-sm">
                 Sin repartidor para el pedido {sinRepartidor}
               </p>
-              <p className="text-xs text-rose-800/80">
+              <p className="text-xs text-red-800/80">
                 Estuvimos buscando 10 minutos y no apareció ninguno cerca. Puedes
                 llevarlo tú o cancelarlo desde el pedido.
               </p>
             </div>
             <button
               onClick={() => setSinRepartidor(null)}
-              className="shrink-0 text-xs font-semibold text-rose-700 hover:text-rose-900"
+              className="shrink-0 text-xs font-semibold text-red-700 hover:text-red-900"
             >
               Entendido
             </button>
@@ -801,9 +835,9 @@ export default function PortalDashboard({
         {/* Stats */}
         <section>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <StatCard icon={ShoppingBag} label="Pedidos online" value={clientOrders.length} color="bg-orange-50 text-orange-600" />
-            <StatCard icon={UtensilsCrossed} label="En preparación" value={preparingCount} color="bg-violet-50 text-violet-600" />
-            <StatCard icon={Truck} label="En tránsito" value={stats.inTransit} color="bg-teal-50 text-teal-700" />
+            <StatCard icon={ShoppingBag} label="Pedidos online" value={clientOrders.length} estado="enCurso" />
+            <StatCard icon={UtensilsCrossed} label="En preparación" value={preparingCount} estado="enCurso" />
+            <StatCard icon={Truck} label="En tránsito" value={stats.inTransit} estado="enCurso" />
             {/* «Entregados» cuenta lo de domicilio Y lo servido en mesa. Contar
                 solo domicilio fue el defecto: «En preparación» sí incluía los de
                 mesa, así que el dueño veía dos números del mismo día que no
@@ -812,7 +846,7 @@ export default function PortalDashboard({
               icon={CheckCircle2}
               label="Entregados"
               value={stats.delivered + (stats.servidosEnMesa ?? 0)}
-              color="bg-emerald-50 text-emerald-600"
+              estado="listo"
             />
           </div>
 
@@ -825,13 +859,13 @@ export default function PortalDashboard({
                 icon={Utensils}
                 label={`Salón · ${stats.servidosEnMesa ?? 0} servido${(stats.servidosEnMesa ?? 0) === 1 ? '' : 's'}`}
                 value={formatCOP(stats.ventaSalon)}
-                color="bg-sky-50 text-sky-700"
+                estado="listo"
               />
               <StatCard
                 icon={Truck}
                 label={`Domicilio · ${stats.delivered} entregado${stats.delivered === 1 ? '' : 's'}`}
                 value={formatCOP(stats.ventaDomicilio)}
-                color="bg-teal-50 text-teal-700"
+                estado="listo"
               />
             </div>
           )}
@@ -850,7 +884,7 @@ export default function PortalDashboard({
             <ShoppingBag className="w-4 h-4" />
             Pedidos online
             {newOnlineCount > 0 && (
-              <span className="bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+              <span className="bg-amber-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                 {newOnlineCount}
               </span>
             )}
@@ -866,7 +900,7 @@ export default function PortalDashboard({
             <Truck className="w-4 h-4" />
             Entregas
             {activeDeliveryCount > 0 && (
-              <span className="bg-teal-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+              <span className="bg-emerald-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                 {activeDeliveryCount}
               </span>
             )}
@@ -878,7 +912,7 @@ export default function PortalDashboard({
           <section>
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-orange-500" />
+                <ShoppingBag className="w-4 h-4 text-amber-600" />
                 Pedidos de clientes
                 <span className="text-slate-400 font-normal">({clientOrders.length})</span>
               </h2>
@@ -891,7 +925,7 @@ export default function PortalDashboard({
                 <p className="text-slate-400 text-sm mt-1">Los pedidos aparecerán aquí en tiempo real.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
                 {clientOrders.map((order) => (
                   <ClientOrderCard
                     key={order.id}
@@ -923,7 +957,7 @@ export default function PortalDashboard({
                 <p className="font-medium text-slate-600">Sin entregas por ahora</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
                 {orders.map((order) => (
                   <DeliveryOrderCard key={order.id} order={order} token={token} />
                 ))}
@@ -935,7 +969,7 @@ export default function PortalDashboard({
         <footer className="text-center py-4">
           <p className="text-xs text-slate-400">
             ZIPA Delivery ·{' '}
-            <Link href="/negocio/registro" className="text-teal-600 hover:underline">
+            <Link href="/negocio/registro" className="text-emerald-600 hover:underline">
               ¿Qué es este portal?
             </Link>
           </p>

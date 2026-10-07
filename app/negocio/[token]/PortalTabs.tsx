@@ -40,7 +40,7 @@ export function PortalTabs({ token, activa }: { token: string; activa: PortalTab
               // min-h-[52px]: objetivo táctil cómodo con el pulgar.
               className={`flex-1 min-h-[52px] flex flex-col items-center justify-center gap-0.5 border-b-2 transition-colors ${
                 esActiva
-                  ? 'border-teal-600 text-teal-700 bg-teal-50/50'
+                  ? 'border-emerald-600 text-emerald-700 bg-emerald-50/50'
                   : 'border-transparent text-slate-500 active:bg-slate-50'
               }`}
             >

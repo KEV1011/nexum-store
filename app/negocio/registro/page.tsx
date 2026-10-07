@@ -86,14 +86,14 @@ function Field({
 
 const INPUT_CLASS =
   'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 ' +
-  'placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 ' +
-  'focus:ring-teal-600/20 transition-colors'
+  'placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-2 ' +
+  'focus:ring-emerald-600/20 transition-colors'
 
 function BenefitRow({ icon: Icon, text }: { icon: React.ElementType; text: string }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center shrink-0">
-        <Icon className="w-4 h-4 text-teal-700" />
+      <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+        <Icon className="w-4 h-4 text-emerald-700" />
       </div>
       <p className="text-sm text-slate-600">{text}</p>
     </div>
@@ -118,8 +118,8 @@ function SuccessCard({ business }: { business: RegisteredBusiness }) {
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-5">
       <div className="text-center space-y-3">
-        <div className="w-14 h-14 mx-auto rounded-full bg-teal-50 flex items-center justify-center">
-          <CheckCircle2 className="w-7 h-7 text-teal-600" />
+        <div className="w-14 h-14 mx-auto rounded-full bg-emerald-50 flex items-center justify-center">
+          <CheckCircle2 className="w-7 h-7 text-emerald-600" />
         </div>
         <h2 className="text-xl font-bold text-slate-900">¡{business.name} está registrado!</h2>
         <p className="text-sm text-slate-500 leading-relaxed">
@@ -144,8 +144,8 @@ function SuccessCard({ business }: { business: RegisteredBusiness }) {
         </button>
         <a
           href={business.portalUrl}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5
-                     text-sm font-semibold text-white hover:bg-teal-800 transition-colors"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5
+                     text-sm font-semibold text-white hover:bg-emerald-800 transition-colors"
         >
           <ExternalLink className="w-4 h-4" />
           Abrir portal
@@ -225,7 +225,7 @@ export default function RegistroPage() {
       {/* ── Header ── */}
       <header className="bg-white border-b border-slate-200">
         <div className="max-w-xl mx-auto px-4 py-5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-teal-700 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-emerald-700 flex items-center justify-center">
             <Package className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -242,13 +242,13 @@ export default function RegistroPage() {
           <>
             {/* ── Hero ── */}
             <section className="text-center space-y-3">
-              <div className="inline-flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-full
-                              px-4 py-1.5 text-teal-700 text-xs font-semibold">
+              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-full
+                              px-4 py-1.5 text-emerald-700 text-xs font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Gratis · Sin apps que instalar
               </div>
               <h1 className="text-2xl font-bold text-slate-900 leading-tight">
-                Registra tu negocio <span className="text-teal-700">en 1 minuto</span>
+                Registra tu negocio <span className="text-emerald-700">en 1 minuto</span>
               </h1>
               <p className="text-sm text-slate-500 leading-relaxed max-w-md mx-auto">
                 Al terminar recibes el enlace único de tu portal: pedidos en tiempo real,
@@ -339,8 +339,8 @@ export default function RegistroPage() {
               <button
                 type="submit"
                 disabled={!canSubmit}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700
-                           px-4 py-3 text-sm font-bold text-white hover:bg-teal-800 transition-colors
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700
+                           px-4 py-3 text-sm font-bold text-white hover:bg-emerald-800 transition-colors
                            disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {submitting ? (

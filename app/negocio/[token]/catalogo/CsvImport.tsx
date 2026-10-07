@@ -231,7 +231,7 @@ export function CsvImport({ token, onImported }: { token: string; onImported: ()
             <button
               onClick={() => void importar()}
               disabled={importando || totalValido === 0}
-              className="flex-1 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 hover:bg-teal-800"
+              className="flex-1 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-800"
             >
               {importando ? 'Importando…' : `Aplicar ${totalValido} producto${totalValido === 1 ? '' : 's'}`}
             </button>

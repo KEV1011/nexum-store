@@ -34,7 +34,7 @@ const DIAS = [
 
 const HORA =
   'rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 ' +
-  'focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20'
+  'focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20'
 
 export function HorarioEditor({
   franjas,
@@ -77,7 +77,7 @@ export function HorarioEditor({
                   type="checkbox"
                   checked={abierto}
                   onChange={() => (abierto ? cerrarDia(n) : abrirDia(n))}
-                  className="w-4 h-4 accent-teal-700"
+                  className="w-4 h-4 accent-emerald-700"
                 />
                 <span className={`text-sm ${abierto ? 'font-semibold text-slate-900' : 'text-slate-400'}`}>
                   {corto}
@@ -121,7 +121,7 @@ export function HorarioEditor({
                     <button
                       type="button"
                       onClick={() => abrirDia(n)}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 hover:text-teal-900"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900"
                     >
                       <Plus className="w-3 h-3" /> Otra franja (cierro al mediodía)
                     </button>

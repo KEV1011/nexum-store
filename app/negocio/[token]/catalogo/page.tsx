@@ -168,7 +168,7 @@ function cartaMovida(
 
 const INPUT =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ' +
-  'placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20'
+  'placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20'
 
 // ─── Editor de variantes / opciones ──────────────────────────────────────────
 
@@ -281,18 +281,18 @@ function OptionsEditor({
               </button>
             </div>
           ))}
-          <button onClick={() => addOption(gi)} className="text-xs font-semibold text-teal-700 hover:text-teal-800 inline-flex items-center gap-1">
+          <button onClick={() => addOption(gi)} className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1">
             <Plus className="w-3.5 h-3.5" /> Agregar opción
           </button>
         </div>
       ))}
 
-      <button onClick={addGroup} className="w-full rounded-lg border-2 border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-500 hover:border-teal-500 hover:text-teal-600 inline-flex items-center justify-center gap-1">
+      <button onClick={addGroup} className="w-full rounded-lg border-2 border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-500 hover:border-emerald-500 hover:text-emerald-600 inline-flex items-center justify-center gap-1">
         <Plus className="w-4 h-4" /> Agregar grupo de opciones
       </button>
 
       <div className="flex gap-2 pt-1">
-        <button onClick={save} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white hover:bg-teal-800 disabled:opacity-50">
+        <button onClick={save} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800 disabled:opacity-50">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar opciones
         </button>
         <button onClick={onClose} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
@@ -448,7 +448,7 @@ function ProductCard({
           </span>
           {busy && (
             <span className="absolute inset-0 bg-white/60 flex items-center justify-center">
-              <Loader2 className="w-5 h-5 text-teal-600 animate-spin" />
+              <Loader2 className="w-5 h-5 text-emerald-600 animate-spin" />
             </span>
           )}
         </button>
@@ -479,7 +479,7 @@ function ProductCard({
                 <p className="rounded-lg bg-red-50 border border-red-200 px-2 py-1.5 text-[11px] text-red-700">{eError}</p>
               )}
               <div className="flex gap-2">
-                <button onClick={saveEdit} disabled={busy} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50">
+                <button onClick={saveEdit} disabled={busy} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
                   <Check className="w-3.5 h-3.5" /> Guardar
                 </button>
                 <button onClick={() => { setEditing(false); setEError(null); setEName(product.name); setEPrice(String(product.price)); setEAntes(product.compareAtPrice ? String(product.compareAtPrice) : ''); setECategory(product.category); setEDescription(product.description) }} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
@@ -493,7 +493,7 @@ function ProductCard({
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-semibold text-slate-900 text-sm truncate">{product.name}</p>
                   <div className="shrink-0 text-right">
-                    <p className="font-bold text-teal-700 text-sm">{formatCOP(product.price)}</p>
+                    <p className="font-bold text-emerald-700 text-sm">{formatCOP(product.price)}</p>
                     {/* El dueño ve exactamente lo que ve su cliente: si el
                         tachado quedó raro, se da cuenta aquí y no en una queja. */}
                     {product.descuentoPct != null && product.compareAtPrice != null && (
@@ -550,7 +550,7 @@ function ProductCard({
                     onClick={() => setShowOptions((v) => !v)}
                     disabled={busy}
                     className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                      optionCount > 0 ? 'bg-teal-50 text-teal-700' : 'text-slate-400 hover:text-teal-600'
+                      optionCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400 hover:text-emerald-600'
                     }`}
                   >
                     Opciones{optionCount > 0 ? ` (${optionCount})` : ''}
@@ -561,7 +561,7 @@ function ProductCard({
                   <button
                     onClick={() => onSubir?.()}
                     disabled={busy || !onSubir}
-                    className="text-slate-300 hover:text-teal-600 disabled:opacity-30 disabled:hover:text-slate-300 transition-colors p-1"
+                    className="text-slate-300 hover:text-emerald-600 disabled:opacity-30 disabled:hover:text-slate-300 transition-colors p-1"
                     aria-label="Subir en la carta"
                   >
                     <ChevronUp className="w-4 h-4" />
@@ -569,12 +569,12 @@ function ProductCard({
                   <button
                     onClick={() => onBajar?.()}
                     disabled={busy || !onBajar}
-                    className="text-slate-300 hover:text-teal-600 disabled:opacity-30 disabled:hover:text-slate-300 transition-colors p-1"
+                    className="text-slate-300 hover:text-emerald-600 disabled:opacity-30 disabled:hover:text-slate-300 transition-colors p-1"
                     aria-label="Bajar en la carta"
                   >
                     <ChevronDown className="w-4 h-4" />
                   </button>
-                  <button onClick={() => setEditing(true)} disabled={busy} className="text-slate-300 hover:text-teal-600 transition-colors p-1" aria-label="Editar producto">
+                  <button onClick={() => setEditing(true)} disabled={busy} className="text-slate-300 hover:text-emerald-600 transition-colors p-1" aria-label="Editar producto">
                     <Pencil className="w-4 h-4" />
                   </button>
                   <button onClick={remove} disabled={busy} className="text-slate-300 hover:text-red-500 transition-colors p-1" aria-label="Eliminar producto">
@@ -606,7 +606,7 @@ function ProductCard({
         <button
           onClick={() => galleryRef.current?.click()}
           disabled={busy}
-          className="w-14 h-14 shrink-0 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-teal-500 hover:text-teal-600"
+          className="w-14 h-14 shrink-0 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-emerald-500 hover:text-emerald-600"
           aria-label="Agregar foto a la galería"
         >
           <ImagePlus className="w-4 h-4" />
@@ -927,7 +927,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-teal-700 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-emerald-700 flex items-center justify-center">
               <Package className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -947,7 +947,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
         {/* Alta */}
         <form onSubmit={createProduct} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-3">
           <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-            <Plus className="w-4 h-4 text-teal-600" />
+            <Plus className="w-4 h-4 text-emerald-600" />
             Agregar producto
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1035,7 +1035,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           <button
             type="submit"
             disabled={creating}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-800 transition-colors disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 transition-colors disabled:opacity-50"
           >
             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             Agregar al catálogo
@@ -1055,7 +1055,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
         {/* Lista */}
         {loading ? (
           <div className="flex justify-center py-10">
-            <Loader2 className="w-7 h-7 text-teal-600 animate-spin" />
+            <Loader2 className="w-7 h-7 text-emerald-600 animate-spin" />
           </div>
         ) : error ? (
           <div className="bg-white border border-red-100 rounded-2xl p-6 text-center">
@@ -1109,7 +1109,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
               <button
                 type="button"
                 onClick={() => { setBusqueda(''); setSeccionFiltro('todas'); setSoloAgotados(false) }}
-                className="mt-2 text-sm font-semibold text-teal-700 hover:underline"
+                className="mt-2 text-sm font-semibold text-emerald-700 hover:underline"
               >
                 Limpiar filtros
               </button>
@@ -1132,7 +1132,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             {sectionNames.map((section) => (
               <section key={section} className="space-y-3">
                 <h2 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <span className="w-1.5 h-4 rounded-full bg-teal-600" />
+                  <span className="w-1.5 h-4 rounded-full bg-emerald-600" />
                   {section}
                   <span className="text-xs font-normal text-slate-400">({grouped[section].length})</span>
                 </h2>
