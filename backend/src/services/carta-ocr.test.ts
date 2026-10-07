@@ -247,6 +247,50 @@ describe('el interruptor y lo que publica /health', () => {
     vi.restoreAllMocks();
   });
 
+  it('y se APAGA en cuanto una lectura funciona', () => {
+    // El reverso, y es el que importa cuando alguien está arreglando el
+    // permiso: `_rechazoVision` se encendía al primer 403 y no se apagaba
+    // nunca, así que /health seguía diciendo «rechazada» aunque ya se hubiera
+    // habilitado la API — y solo volvía a la verdad al reiniciar el proceso.
+    // Quien arregla el permiso en Google Cloud NO reinicia Render: miraría el
+    // diagnóstico y creería que no sirvió.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    olvidarRechazoCarta();
+    process.env['CARTA_OCR_PROVIDER'] = 'google-vision';
+    process.env['CARTA_OCR_API_KEY'] = 'k';
+    textoDeRespuestaVision({
+      error: { status: 'PERMISSION_DENIED', message: 'not enabled' },
+    });
+    expect(modoCartaOcr()).toBe('google-vision-rechazada');
+
+    // Se habilita la API y la siguiente lectura sale bien.
+    const ok = textoDeRespuestaVision({
+      responses: [{ fullTextAnnotation: { text: 'Bandeja paisa $25.000' } }],
+    });
+    expect(ok.disponible).toBe(true);
+    expect(modoCartaOcr()).toBe('google-vision');
+
+    olvidarRechazoCarta();
+    vi.restoreAllMocks();
+  });
+
+  it('una foto ilegible NO cuenta como que el permiso volvió', () => {
+    // Si la limpieza se pusiera antes de comprobar el error de la imagen, una
+    // foto movida borraría la constancia del 403 y el diagnóstico diría que
+    // todo está bien mientras ninguna carta se lee.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    olvidarRechazoCarta();
+    process.env['CARTA_OCR_PROVIDER'] = 'google-vision';
+    process.env['CARTA_OCR_API_KEY'] = 'k';
+    textoDeRespuestaVision({
+      error: { status: 'PERMISSION_DENIED', message: 'not enabled' },
+    });
+    textoDeRespuestaVision({ responses: [{ error: { message: 'image too dark' } }] });
+    expect(modoCartaOcr()).toBe('google-vision-rechazada');
+    olvidarRechazoCarta();
+    vi.restoreAllMocks();
+  });
+
   it('un 500 de Vision SÍ invita a reintentar: ese sí pasa solo', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     olvidarRechazoCarta();

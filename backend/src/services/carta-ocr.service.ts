@@ -241,6 +241,17 @@ export function textoDeRespuestaVision(cuerpo: unknown): TextoDeCarta {
     return { disponible: false, texto: '', motivo: NO_CONTESTO };
   }
 
+  // Vision contestó: el permiso está bien AHORA, diga lo que dijera antes.
+  //
+  // Sin esto, `_rechazoVision` se encendía al primer 403 y no se apagaba
+  // nunca: `/health` seguiría diciendo «google-vision-rechazada» aunque se
+  // hubiera habilitado la API y las lecturas ya funcionaran, y solo volvería a
+  // la verdad al reiniciar el proceso. Es el mismo defecto que este archivo
+  // dice evitar —un estado que miente en una dirección— solo que en la otra,
+  // y es peor de lo que parece: quien arregla el permiso en Google Cloud NO
+  // reinicia Render, así que miraría el diagnóstico y creería que no sirvió.
+  _rechazoVision = null;
+
   // Foto ilegible (oscura, movida, sin texto). El lector SÍ funcionó, así que
   // esto no es una avería: la ruta devolverá cero filas y el portal le dice al
   // dueño cómo repetir la foto. Marcarlo como «no disponible» le haría pensar
