@@ -11,6 +11,8 @@
 // dependencias: Verify son dos endpoints REST con Basic Auth.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { LIMITES, traerConLimite } from '../lib/fetch-con-limite';
+
 const TWILIO_ACCOUNT_SID = process.env['TWILIO_ACCOUNT_SID'] ?? '';
 const TWILIO_AUTH_TOKEN = process.env['TWILIO_AUTH_TOKEN'] ?? '';
 const TWILIO_VERIFY_SID = process.env['TWILIO_VERIFY_SID'] ?? '';
@@ -44,14 +46,17 @@ function _authHeader(): string {
 }
 
 async function _post(path: string, form: Record<string, string>): Promise<Record<string, unknown>> {
-  const res = await fetch(`${VERIFY_BASE}/${TWILIO_VERIFY_SID}/${path}`, {
+  // Es la puerta de entrada a las dos apps: si Twilio se queda callado, nadie
+  // puede iniciar sesión. Con el límite, al menos sale un error que el OTP
+  // sabe traducir en vez de una pantalla girando.
+  const res = await traerConLimite(`${VERIFY_BASE}/${TWILIO_VERIFY_SID}/${path}`, {
     method: 'POST',
     headers: {
       Authorization: _authHeader(),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams(form).toString(),
-  });
+  }, LIMITES.SMS);
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     // Twilio devuelve { message, code } en errores; nunca propagar el token.
@@ -118,9 +123,9 @@ export async function probeSms(): Promise<{ mode: string; check: string; veredic
     };
   }
   try {
-    const res = await fetch(`${VERIFY_BASE}/${TWILIO_VERIFY_SID}`, {
+    const res = await traerConLimite(`${VERIFY_BASE}/${TWILIO_VERIFY_SID}`, {
       headers: { Authorization: _authHeader() },
-    });
+    }, LIMITES.DIAGNOSTICO);
     if (res.ok) {
       return {
         mode: 'twilio-sms',
@@ -177,14 +182,14 @@ export async function sendSms(to: string, body: string): Promise<boolean> {
     if (TWILIO_MESSAGING_SERVICE_SID) form['MessagingServiceSid'] = TWILIO_MESSAGING_SERVICE_SID;
     else form['From'] = TWILIO_FROM_NUMBER;
 
-    const res = await fetch(MESSAGES_URL, {
+    const res = await traerConLimite(MESSAGES_URL, {
       method: 'POST',
       headers: {
         Authorization: _authHeader(),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams(form).toString(),
-    });
+    }, LIMITES.SMS);
     if (!res.ok) {
       const err = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       console.error(`[SMS] Twilio rechazó el envío (HTTP ${res.status}): ${String(err['message'] ?? '')}`);

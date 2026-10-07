@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { sendPushToClient } from './push.service';
 import { creditDriverTip } from './earnings.service';
+import { LIMITES, traerConLimite } from '../lib/fetch-con-limite';
 
 const WOMPI_PUBLIC_KEY = process.env['WOMPI_PUBLIC_KEY'] ?? '';
 const WOMPI_PRIVATE_KEY = process.env['WOMPI_PRIVATE_KEY'] ?? '';
@@ -244,9 +245,10 @@ export async function reconcilePayment(referenceCode: string): Promise<void> {
   if (!payment || payment.status !== 'pending') return;
 
   try {
-    const res = await fetch(
+    const res = await traerConLimite(
       `${_wompiApiBase()}/transactions?reference=${encodeURIComponent(referenceCode)}`,
       { headers: { Authorization: `Bearer ${WOMPI_PRIVATE_KEY}` } },
+      LIMITES.PAGO,
     );
     if (!res.ok) return;
     const body = (await res.json()) as { data?: Array<{ status?: string }> };
