@@ -101,6 +101,7 @@ import {
   reconcilePayment,
 } from '../services/payment.service';
 import { metodosDisponibles } from '../lib/metodos-pago';
+import { motivoParaNoPedirIntermunicipal } from '../lib/intermunicipal-abierto';
 import { ELOGIOS_AL_CONDUCTOR, MAX_ELOGIOS_POR_VIAJE } from '../lib/elogios';
 import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
 import {
@@ -913,6 +914,15 @@ router.get('/intercity/routes', (_req, res) => {
 });
 
 router.post('/intercity/request', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
+  // APLAZADO. Las apps nuevas ya no ofrecen el botón, pero una app ya
+  // instalada sigue teniendo la interfaz vieja: sin esta comprobación, quien
+  // no actualice seguiría creando reservas que nadie va a despachar y se
+  // quedaría esperando sin que nadie se enterara.
+  const cerrado = motivoParaNoPedirIntermunicipal();
+  if (cerrado) {
+    res.status(422).json({ success: false, error: cerrado });
+    return;
+  }
   const dto = req.body as Partial<RequestIntercityDTO>;
   if (!dto.origin || !dto.destination || !dto.departureTime || !dto.seats || dto.offeredFare === undefined) {
     res.status(400).json({ success: false, error: 'origin, destination, departureTime, seats, offeredFare are required' });
@@ -1110,6 +1120,13 @@ router.get('/intercity/pool/:id', clientAuthMiddleware, async (req, res) => {
 });
 
 router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) => {
+  // Igual que arriba. El puesto URBANO (`/pool/urbano/*`) NO se toca: es
+  // movilidad dentro de la ciudad, que es justo donde está el foco.
+  const cerradoPool = motivoParaNoPedirIntermunicipal();
+  if (cerradoPool) {
+    res.status(422).json({ success: false, error: cerradoPool });
+    return;
+  }
   const dto = req.body as Partial<BookSeatsDTO>;
   if (dto.seatsBooked === undefined) { res.status(400).json({ success: false, error: 'seatsBooked is required' }); return; }
   const passengerName = (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero ZIPA';

@@ -80,6 +80,10 @@ async function arrancarServidor(): Promise<ChildProcess> {
       NODE_ENV: 'development',
       OTP_DEV_CODE: OTP,
       OTP_FALLBACK_CODE: OTP,
+      // El intermunicipal está APLAZADO al público, pero esta prueba
+      // verifica el código de las sillas, que sigue existiendo. Si no se
+      // abriera aquí, lo que fallaría es la prueba y no el producto.
+      INTERMUNICIPAL_ABIERTO: 'true',
       JWT_SECRET: process.env['JWT_SECRET'] ?? 'e2e-secreto-largo-para-firmar-0123456789',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
