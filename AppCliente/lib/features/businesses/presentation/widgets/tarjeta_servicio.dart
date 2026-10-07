@@ -208,14 +208,25 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // El título va en `Flexible` porque dentro de un `Row`
+                        // el texto deja de envolverse: recibe ancho infinito y
+                        // desborda la columna en vez de recortarse. Un `Text`
+                        // suelto en el `Column` sí envolvía, y al meterlo en
+                        // una fila para poner la píldora se perdió — lo cazó
+                        // `tarjeta_servicio_test` con un desborde de 1,8 px en
+                        // la tarjeta estrecha.
                         Row(
                           children: [
-                            Text(
-                              widget.titulo,
-                              style: TextStyle(
-                                fontSize: 15.5,
-                                fontWeight: FontWeight.w800,
-                                color: pronto ? context.zTexto2 : context.zTexto,
+                            Flexible(
+                              child: Text(
+                                widget.titulo,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: pronto ? context.zTexto2 : context.zTexto,
+                                ),
                               ),
                             ),
                             if (pronto) ...[
