@@ -28,6 +28,15 @@ export const DIAS_MAX_ADELANTE = 7;
  */
 export const ABIERTAS_MAX_POR_PASAJERO = 2;
 
+/**
+ * Cuánto pasado se acepta como «ahora mismo» al publicar.
+ *
+ * No es laxitud: el reloj del teléfono es el que manda la hora y suele ir unos
+ * minutos desfasado. Cinco minutos cubren eso sin permitir publicar un viaje
+ * para una hora que de verdad ya pasó.
+ */
+export const TOLERANCIA_AHORA_MIN = 5;
+
 export interface PublicacionDePasajero {
   /** Puestos que se publican en total (incluye los del que publica). */
   puestos: number;
@@ -63,8 +72,17 @@ export function motivoParaNoPublicarComoPasajero(
     return 'Deja al menos un puesto libre para alguien más. Si vas a ir solo, pide una carrera normal.';
   }
 
-  if (Number.isNaN(p.salida.getTime()) || p.salida.getTime() <= ahora.getTime()) {
-    return 'La hora de salida tiene que ser en el futuro.';
+  if (Number.isNaN(p.salida.getTime())) {
+    return 'No entendimos la hora de salida.';
+  }
+  // «Ahora mismo» tiene que poder publicarse, y para eso hay que aceptar un
+  // pasado corto: la app manda `DateTime.now()` y entre el teléfono y el
+  // servidor pasan décimas —más si el reloj del teléfono va unos minutos
+  // atrasado, que es lo normal—. Sin esta tolerancia, pedir un taxi para YA se
+  // rechazaba con «la hora tiene que ser en el futuro», que es incomprensible
+  // cuando acabas de tocar «lo antes posible».
+  if (p.salida.getTime() < ahora.getTime() - TOLERANCIA_AHORA_MIN * 60_000) {
+    return 'Esa hora ya pasó. Elige «lo antes posible» o una hora más adelante.';
   }
   const limite = ahora.getTime() + DIAS_MAX_ADELANTE * 24 * 60 * 60 * 1000;
   if (p.salida.getTime() > limite) {
@@ -98,14 +116,32 @@ export interface TomaDeSalida {
  */
 export const TIPOS_QUE_PUEDEN_TOMAR = ['TAXI', 'PARTICULAR'] as const;
 
+/**
+ * Cuántos minutos después de la hora de salida se puede seguir tomando.
+ *
+ * POR QUÉ HACE FALTA. Sin esta gracia, un viaje «para ahora» era IMPOSIBLE de
+ * usar: el pasajero ponía la hora más cercana que le dejaba el reloj, y al
+ * minuto siguiente el viaje desaparecía del tablero y dejaba de poderse tomar.
+ * Eso es justo lo que se reportó como «se solicita un servicio y no le sale a
+ * ningún conductor».
+ *
+ * Y es lo correcto aunque la hora sea futura: un taxi que ve el aviso a las
+ * 6:00 y lo toma a las 6:04 todavía hace el viaje. La hora de salida es cuándo
+ * quiere salir el pasajero, no el instante en que el trabajo deja de existir.
+ *
+ * Pasados los quince minutos sí se retira: el pasajero ya se fue en otra cosa,
+ * y un taxista que acepte entonces llega a una esquina vacía.
+ */
+export const GRACIA_TOMA_MIN = 15;
+
 /** Por qué ese conductor NO puede tomar esa salida, o `null` si puede. */
 export function motivoParaNoTomar(t: TomaDeSalida): string | null {
   const ahora = t.ahora ?? new Date();
 
   if (t.driverIdActual) return 'Otro conductor ya tomó este viaje.';
   if (t.estado !== 'OPEN') return 'Este viaje ya no está disponible.';
-  if (t.salida.getTime() <= ahora.getTime()) {
-    return 'La hora de salida de este viaje ya pasó.';
+  if (t.salida.getTime() + GRACIA_TOMA_MIN * 60_000 <= ahora.getTime()) {
+    return `La hora de salida de este viaje pasó hace más de ${GRACIA_TOMA_MIN} minutos.`;
   }
   if (!t.tipoVehiculo) {
     return 'Registra tu vehículo antes de tomar viajes por puestos.';

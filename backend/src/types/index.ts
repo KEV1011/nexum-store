@@ -1567,7 +1567,12 @@ export interface PublishUrbanSeatDTO {
   routeName?: string;
   departureTime: string;
   totalSeats: number;
-  farePerSeat: number;
+  /**
+   * @deprecated Lo IGNORA el servidor: el precio del puesto lo pone la
+   * plataforma (`precioDelPuesto`). Se conserva en el tipo para que una app ya
+   * instalada que lo manda siga compilando y funcionando.
+   */
+  farePerSeat?: number;
   vehicleDescription: string;
   notes?: string;
 }
@@ -1593,7 +1598,8 @@ export interface PublishPassengerSeatDTO {
   totalSeats: number;
   /** Cuántos de esos puestos ocupa quien publica (al menos 1, nunca todos). */
   seatsForMe: number;
-  farePerSeat: number;
+  /** @deprecated Igual que arriba: lo ignora el servidor. */
+  farePerSeat?: number;
   notes?: string;
 }
 

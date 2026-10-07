@@ -726,13 +726,15 @@ router.get('/pool/urbano/tope', async (req: Request, res: Response): Promise<voi
 // POST /driver/pool/urbano/publish
 router.post('/pool/urbano/publish', async (req: Request, res: Response): Promise<void> => {
   const dto = req.body as Partial<PublishUrbanSeatDTO>;
+  // `farePerSeat` ya NO se exige: el precio lo pone la plataforma
+  // (`precioDelPuesto`). Si una app instalada lo sigue mandando, se ignora.
   if (
     !dto.city || !dto.originLabel || !dto.destLabel || !dto.departureTime ||
-    dto.totalSeats === undefined || dto.farePerSeat === undefined || !dto.vehicleDescription
+    dto.totalSeats === undefined || !dto.vehicleDescription
   ) {
     res.status(400).json({
       success: false,
-      error: 'city, originLabel, destLabel, departureTime, totalSeats, farePerSeat y vehicleDescription son obligatorios',
+      error: 'city, originLabel, destLabel, departureTime, totalSeats y vehicleDescription son obligatorios',
     });
     return;
   }

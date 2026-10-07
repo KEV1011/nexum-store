@@ -1067,8 +1067,9 @@ router.post(
       typeof b.destLabel !== 'string' ||
       typeof b.departureTime !== 'string' ||
       typeof b.totalSeats !== 'number' ||
-      typeof b.seatsForMe !== 'number' ||
-      typeof b.farePerSeat !== 'number'
+      typeof b.seatsForMe !== 'number'
+      // `farePerSeat` ya no se exige ni se usa: el precio lo pone la
+      // plataforma. Una app instalada que lo siga mandando sigue funcionando.
     ) {
       res.status(400).json({ success: false, error: 'Faltan datos del viaje' });
       return;
@@ -1081,7 +1082,6 @@ router.post(
         departureTime: b.departureTime,
         totalSeats: b.totalSeats,
         seatsForMe: b.seatsForMe,
-        farePerSeat: b.farePerSeat,
         ...(typeof b.originLat === 'number' && { originLat: b.originLat }),
         ...(typeof b.originLng === 'number' && { originLng: b.originLng }),
         ...(typeof b.destLat === 'number' && { destLat: b.destLat }),
