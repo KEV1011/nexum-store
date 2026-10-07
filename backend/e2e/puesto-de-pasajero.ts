@@ -37,8 +37,12 @@ import {
 } from '../src/services/intercity-pool.service';
 import { getDriverBalance } from '../src/services/payout.service';
 import { tablaTarifas } from '../src/lib/tarifa-categoria';
-import { topePorPuesto } from '../src/lib/puesto-urbano';
-import { ABIERTAS_MAX_POR_PASAJERO } from '../src/lib/puesto-de-pasajero';
+import {
+  precioDelPuesto, repartoDeCarrera, tarifaDeCarrera, topePorPuesto,
+} from '../src/lib/puesto-urbano';
+import {
+  ABIERTAS_MAX_POR_PASAJERO, GRACIA_TOMA_MIN,
+} from '../src/lib/puesto-de-pasajero';
 
 let fallos = 0;
 let ok = 0;
@@ -120,9 +124,49 @@ async function main() {
     corredores.push({ id: d.id });
   }
 
+  // Un taxista de la plaza CON token de push: es a quien tiene que llegarle el
+  // aviso. Sin `fcmToken` el envío se descarta antes de salir y la
+  // comprobación del paso [1b] pasaría sin probar nada.
+  const avisado = await prisma.driver.create({
+    data: {
+      name: `${marca} Avisado`, phone: `+573009${sufijo()}`,
+      isVerified: true, status: 'ONLINE', citySlug: 'pamplona',
+      fcmToken: `tok-${sufijo()}`, lastSeenAt: new Date(),
+    },
+  });
+  await prisma.vehicle.create({
+    data: {
+      driverId: avisado.id, type: 'TAXI', brand: 'Chevrolet', model: 'Spark',
+      year: 2019, plate: `AV${sufijo() % 10000}`.slice(0, 6), color: 'Amarillo', isActive: true,
+    },
+  });
+  // Y uno de OTRA plaza, para comprobar que el aviso no se le va encima.
+  const ajenoPlaza = await prisma.driver.create({
+    data: {
+      name: `${marca} Cucuta`, phone: `+573008${sufijo()}`,
+      isVerified: true, status: 'ONLINE', citySlug: 'cucuta',
+      fcmToken: `tok-aj-${sufijo()}`, lastSeenAt: new Date(),
+    },
+  });
+  await prisma.vehicle.create({
+    data: {
+      driverId: ajenoPlaza.id, type: 'TAXI', brand: 'Kia', model: 'Rio',
+      year: 2019, plate: `AJ${sufijo() % 10000}`.slice(0, 6), color: 'Amarillo', isActive: true,
+    },
+  });
+
   const minimoTaxi = tablaTarifas().TAXI.minimo;
   const tope = topePorPuesto(minimoTaxi, 4);
-  const precio = Math.min(2000, tope);
+
+  // Se anota lo que el mock de push escribe en el registro: en desarrollo es el
+  // único sitio donde se puede ver un envío sin Firebase.
+  const registroPush: string[] = [];
+  const logOriginal = console.log;
+  console.log = (...args: unknown[]) => {
+    const linea = args.map(String).join(' ');
+    if (linea.includes('[Push:mock]')) registroPush.push(linea);
+    logOriginal(...args);
+  };
 
   console.log('\n[1] El pasajero publica el viaje y queda SIN conductor');
   let salidaId = '';
@@ -134,9 +178,20 @@ async function main() {
       departureTime: enHoras(3),
       totalSeats: 4,
       seatsForMe: 1,
-      farePerSeat: precio,
     });
     salidaId = salida.id;
+    // EL PRECIO LO PONE LA PLATAFORMA. Con la carrera a $8.000 y cuatro
+    // puestos, $2.000 cada uno.
+    check(
+      salida.farePerSeat === precioDelPuesto(4),
+      `el puesto cuesta lo que fija la plataforma ($${precioDelPuesto(4)})`,
+      salida.farePerSeat,
+    );
+    check(
+      salida.farePerSeat * 4 <= tarifaDeCarrera(),
+      'y los cuatro puestos no pasan de la carrera completa',
+      { puesto: salida.farePerSeat, carrera: tarifaDeCarrera() },
+    );
     check(salida.kind === 'urbano', 'es una salida urbana', salida.kind);
     check(salida.tripRef.startsWith('NXP-'), 'con su propio consecutivo', salida.tripRef);
     check(salida.sinConductor === true, 'el DTO dice que no tiene conductor');
@@ -150,6 +205,32 @@ async function main() {
     check(salida.soloFareRef === minimoTaxi, 'la carrera sola queda SELLADA', salida.soloFareRef);
   }
 
+  console.log('\n[1b] EL AVISO: ¿le llega a algún taxista?');
+  {
+    // ÉSTA es la comprobación de la tanda. Reportado: «se solicita un servicio
+    // y no le sale a ningún conductor». El viaje SÍ llegaba al tablero; lo que
+    // no había era aviso, así que funcionaba solo si al taxista se le ocurría
+    // ir a mirar.
+    await new Promise((r) => setTimeout(r, 400)); // el aviso sale sin `await`
+    const mios = registroPush.filter((l) => l.includes(`driver=${avisado.id}`));
+    check(mios.length >= 1, 'sale un push dirigido a un taxista de la plaza', mios[0]);
+    check(
+      (mios[0] ?? '').includes('type=pooled_urban_new'),
+      'con el tipo que su app sabe enrutar hasta el tablero',
+      mios[0],
+    );
+    check(
+      registroPush.every((l) => !l.includes(`driver=${ajenoPlaza.id}`)),
+      'y NO se le manda a un taxista de otra ciudad',
+      registroPush.filter((l) => l.includes(`driver=${ajenoPlaza.id}`)),
+    );
+    check(
+      registroPush.every((l) => !l.includes(`driver=${motociclista.id}`)),
+      'ni a una moto, que no podría tomarlo',
+      registroPush.filter((l) => l.includes(`driver=${motociclista.id}`)),
+    );
+  }
+
   console.log('\n[2] Quien publica VIAJA: su reserva se creó en la misma operación');
   {
     const reservas = await prisma.seatBooking.findMany({ where: { tripId: salidaId } });
@@ -157,7 +238,7 @@ async function main() {
     check(reservas[0]?.userId === autor.id, 'y es la del autor');
     check(reservas[0]?.seatsBooked === 1, 'con el puesto que dijo que ocupa');
     check(
-      reservas[0]?.fareTotal === precio,
+      reservas[0]?.fareTotal === precioDelPuesto(4),
       'y el importe sellado a lo que aceptó',
       reservas[0]?.fareTotal,
     );
@@ -225,8 +306,7 @@ async function main() {
     // las cuatro puede escribir; sin ella, todas creen habérselo llevado.
     const enDisputa = await publicarPuestoDePasajero(autor.id, {
       city: 'pamplona', originLabel: 'Plaza principal', destLabel: 'Terminal',
-      departureTime: enHoras(5), totalSeats: 4, seatsForMe: 1, farePerSeat: precio,
-    });
+      departureTime: enHoras(5), totalSeats: 4, seatsForMe: 1,     });
     const resultados = await Promise.allSettled(
       corredores.map((d) => tomarPuestoDePasajero(d.id, enDisputa.id)),
     );
@@ -256,6 +336,35 @@ async function main() {
 
     const ganancias = await prisma.driverEarning.findMany({ where: { driverId: taxista.id } });
     check(ganancias.length > 0, 'deja rastro en driver_earnings');
+
+    // EL REPARTO ACORDADO, y justo en el caso que lo hace interesante: el carro
+    // salió con TRES de los cuatro puestos (uno del autor, dos del pasajero
+    // que se sumó en el paso [3]), así que se recaudaron $6.000 de los $8.000
+    // de la carrera. El conductor se lleva $4.500 y la app $1.500 — su cuarta
+    // parte de lo que entró. Con $2.000 fijos la app se habría llevado un
+    // tercio, y ésa es la razón de que sea tasa.
+    const vendidos = 3;
+    const recaudado = precioDelPuesto(4) * vendidos;
+    const esperado = repartoDeCarrera(recaudado);
+    // `driver_earnings` agrega por conductor y DÍA (no hay fila por viaje), y
+    // este taxista no tiene otro servicio cerrado hoy: la fila es esta carrera.
+    const liq = ganancias[0];
+    check(
+      liq?.grossFare === recaudado,
+      `el bruto es lo que de verdad se cobró ($${recaudado} por ${vendidos} puestos), no la carrera completa`,
+      { bruto: liq?.grossFare, esperado: recaudado },
+    );
+    check(
+      liq?.netEarning === esperado.neto && liq?.commission === esperado.comision,
+      'y se reparte 75 / 25 sobre lo recaudado',
+      { neto: liq?.netEarning, comision: liq?.commission, esperado },
+    );
+    check(
+      repartoDeCarrera(tarifaDeCarrera()).neto === 6000
+        && repartoDeCarrera(tarifaDeCarrera()).comision === 2000,
+      'la carrera completa deja exactamente $6.000 al conductor y $2.000 a la app',
+      repartoDeCarrera(tarifaDeCarrera()),
+    );
     const despues = await getDriverBalance(taxista.id);
     check(
       despues.owed > antes.owed,
@@ -269,25 +378,87 @@ async function main() {
     );
   }
 
+  console.log('\n[8b] «Lo antes posible»: el caso que estaba roto');
+  {
+    // Antes, un viaje para AHORA no se podía ni publicar («la hora tiene que
+    // ser en el futuro», porque entre el teléfono y el servidor pasan
+    // décimas) y, si se publicaba al minuto siguiente, desaparecía del tablero
+    // y dejaba de poderse tomar. Era la causa de «se solicita un servicio y no
+    // le sale a ningún conductor».
+    const autorYa = await prisma.user.create({
+      data: { name: `${marca} Ya`, phone: `+5730066${sufijo()}` },
+    });
+    usuarios.push(autorYa.id);
+    const ya = await publicarPuestoDePasajero(autorYa.id, {
+      city: 'pamplona', originLabel: 'Calle 5 con 6', destLabel: 'Terminal',
+      departureTime: new Date().toISOString(),
+      totalSeats: 4, seatsForMe: 1,
+    });
+    check(!!ya.id, 'un viaje para AHORA MISMO se publica');
+
+    const tablero = await listarPuestosSinConductor('pamplona');
+    check(
+      tablero.some((x) => x.id === ya.id),
+      'y aparece en el tablero del conductor (antes se evaporaba)',
+      tablero.map((x) => x.id),
+    );
+
+    // Y la gracia: un viaje cuya hora pasó hace poco todavía se toma, porque
+    // un taxi que llega cuatro minutos tarde hace el viaje igual.
+    await prisma.pooledTrip.update({
+      where: { id: ya.id },
+      data: { departureTime: new Date(Date.now() - (GRACIA_TOMA_MIN - 2) * 60_000) },
+    });
+    const tomado = await motivoDe(() => tomarPuestoDePasajero(corredores[0]!.id, ya.id));
+    check(tomado === '', `se puede tomar hasta ${GRACIA_TOMA_MIN} min después de la hora`, tomado);
+
+    // Pasada la gracia sí se retira: el pasajero ya se fue en otra cosa.
+    const viejo2 = await publicarPuestoDePasajero(autorYa.id, {
+      city: 'pamplona', originLabel: 'Otro punto', destLabel: 'Otro destino',
+      departureTime: new Date().toISOString(), totalSeats: 4, seatsForMe: 1,
+    });
+    await prisma.pooledTrip.update({
+      where: { id: viejo2.id },
+      data: { departureTime: new Date(Date.now() - (GRACIA_TOMA_MIN + 5) * 60_000) },
+    });
+    const tarde = await motivoDe(() => tomarPuestoDePasajero(corredores[1]!.id, viejo2.id));
+    check(/pas/i.test(tarde), 'pero pasada la gracia ya no', tarde);
+    const sinEl = await listarPuestosSinConductor('pamplona');
+    check(!sinEl.some((x) => x.id === viejo2.id), 'y tampoco sigue en el tablero');
+
+    for (const id of [ya.id, viejo2.id]) {
+      await prisma.seatBooking.deleteMany({ where: { tripId: id } });
+      await prisma.pooledTrip.delete({ where: { id } });
+    }
+  }
+
   console.log('\n[9] Las guardas del pasajero, contra la base');
   {
     const todos = await motivoDe(() => publicarPuestoDePasajero(autor.id, {
       city: 'pamplona', originLabel: 'A', destLabel: 'B',
-      departureTime: enHoras(2), totalSeats: 3, seatsForMe: 3, farePerSeat: precio,
-    }));
+      departureTime: enHoras(2), totalSeats: 3, seatsForMe: 3,     }));
     check(/al menos un puesto libre/i.test(todos), 'no puede quedarse con todos los puestos', todos);
 
-    const caro = await motivoDe(() => publicarPuestoDePasajero(autor.id, {
-      city: 'pamplona', originLabel: 'A', destLabel: 'B',
+    // Esta comprobación ERA «no puede publicar un puesto por encima del tope».
+    // Se retira porque el precio dejó de ser un dato que alguien manda: se
+    // comprueba en su lugar que un precio inventado en el cuerpo se IGNORE,
+    // que es la versión fuerte de lo mismo.
+    const conPrecioInventado = await publicarPuestoDePasajero(autor.id, {
+      city: 'pamplona', originLabel: 'Colegio', destLabel: 'Plaza',
       departureTime: enHoras(2), totalSeats: 4, seatsForMe: 1,
       farePerSeat: minimoTaxi * 10,
-    }));
-    check(/no puede pasar de/i.test(caro), 'ni publicar un puesto por encima del tope', caro);
+    });
+    check(
+      conPrecioInventado.farePerSeat === precioDelPuesto(4),
+      'un precio mandado desde la app se descarta',
+      conPrecioInventado.farePerSeat,
+    );
+    await prisma.seatBooking.deleteMany({ where: { tripId: conPrecioInventado.id } });
+    await prisma.pooledTrip.delete({ where: { id: conPrecioInventado.id } });
 
     const inventada = await motivoDe(() => publicarPuestoDePasajero(autor.id, {
       city: 'no-existe', originLabel: 'A', destLabel: 'B',
-      departureTime: enHoras(2), totalSeats: 4, seatsForMe: 1, farePerSeat: precio,
-    }));
+      departureTime: enHoras(2), totalSeats: 4, seatsForMe: 1,     }));
     check(/municipios/i.test(inventada), 'ni en una ciudad que no está en la lista', inventada);
   }
 
@@ -300,13 +471,11 @@ async function main() {
     for (let i = 0; i < ABIERTAS_MAX_POR_PASAJERO; i++) {
       await publicarPuestoDePasajero(autorTope.id, {
         city: 'pamplona', originLabel: `Origen ${i}`, destLabel: `Destino ${i}`,
-        departureTime: enHoras(4 + i), totalSeats: 4, seatsForMe: 1, farePerSeat: precio,
-      });
+        departureTime: enHoras(4 + i), totalSeats: 4, seatsForMe: 1,       });
     }
     const pasado = await motivoDe(() => publicarPuestoDePasajero(autorTope.id, {
       city: 'pamplona', originLabel: 'Una más', destLabel: 'No cabe',
-      departureTime: enHoras(9), totalSeats: 4, seatsForMe: 1, farePerSeat: precio,
-    }));
+      departureTime: enHoras(9), totalSeats: 4, seatsForMe: 1,     }));
     check(/sin terminar/i.test(pasado), 'con el tope alcanzado se rechaza', pasado);
     check(
       pasado.includes(String(ABIERTAS_MAX_POR_PASAJERO)),

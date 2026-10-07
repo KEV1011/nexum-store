@@ -29,6 +29,7 @@ import {
 import { textoFueraDeCobertura, esFueraDeCobertura } from '../lib/whatsapp-cobertura';
 import { ejecutarPasoDelPedido } from './whatsapp-pedido.service';
 import { plazaDeCoordenadas, listMunicipalities } from './municipality.service';
+import { LIMITES, traerConLimite } from '../lib/fetch-con-limite';
 
 const PHONE_NUMBER_ID = process.env['WHATSAPP_PHONE_NUMBER_ID'] ?? '';
 const ACCESS_TOKEN = process.env['WHATSAPP_ACCESS_TOKEN'] ?? '';
@@ -130,14 +131,17 @@ async function _enviar(
 
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${PHONE_NUMBER_ID}/messages`;
   try {
-    const res = await fetch(url, {
+    // El webhook contesta 200 y procesa después, así que una llamada colgada
+    // aquí no bloquea a Meta — pero deja a la persona esperando una respuesta
+    // que no va a llegar y la conversación a medias.
+    const res = await traerConLimite(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${ACCESS_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ messaging_product: 'whatsapp', to: telefono, ...cuerpo }),
-    });
+    }, LIMITES.SMS);
     if (!res.ok) {
       const detalle = await res.text().catch(() => '');
       console.error(`[WhatsApp] envío rechazado (${res.status}): ${detalle.slice(0, 300)}`);

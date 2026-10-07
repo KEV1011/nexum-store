@@ -33,13 +33,20 @@
  *    pasajero de un taxi; de ahí para arriba es transporte colectivo, que
  *    tiene su propio permiso y en el motor ya exige empresa habilitada.
  *
- * 3. **El puesto tiene tope, y el tope sale de la carrera sola.** Se comparte
- *    para pagar menos. Si el conductor pudiera cobrar cualquier cosa por silla,
- *    llenar el carro valdría cuatro veces el taxímetro y «compartir» sería un
- *    recargo con otro nombre. El tope deja que el viaje le rinda —hasta una vez
- *    y media la carrera— y garantiza de paso que un puesto SIEMPRE cueste menos
- *    que el carro entero (con dos sillas el tope ya es tres cuartos de la
- *    carrera).
+ * 3. **El precio NO lo pone nadie: lo pone la plataforma.** La carrera
+ *    compartida vale una cifra fija (`tarifaDeCarrera()`, hoy $8.000) y el
+ *    puesto es esa cifra repartida entre las sillas que se publican: con
+ *    cuatro, $2.000 cada uno. Antes el conductor escribía el precio y había
+ *    que ponerle un tope derivado del taxímetro; eso tenía dos problemas —el
+ *    tope dependía de que Google resolviera la ruta (y si fallaba caía al piso
+ *    en silencio, cambiando la regla sin avisar), y dos taxistas cobraban
+ *    distinto por el mismo trayecto—. Con precio fijo no hay nada que topar:
+ *    el pasajero sabe de antemano lo que paga y el conductor lo que recibe.
+ *
+ *    El tope (`topePorPuesto`) se conserva porque sigue describiendo una
+ *    verdad útil —cuánto puede rendir un carro compartido frente a la carrera
+ *    sola— y lo usan el ahorro que se le enseña al pasajero y la auditoría del
+ *    precio sellado. Ya no es una puerta.
  */
 
 /** Sillas de pasajero de un taxi. Menos de dos no es compartir. */
@@ -58,6 +65,43 @@ export const FACTOR_TOPE = 1.5;
 
 /** Lo que se le propone al conductor en el formulario. Puede bajarlo. */
 export const FACTOR_SUGERIDO = 1.25;
+
+/**
+ * Lo que vale la carrera compartida COMPLETA, en pesos.
+ *
+ * Es un precio de plaza, igual que la tarifa del decreto: lo fija quien conoce
+ * la ciudad, no una fórmula. Por eso se lee del entorno y no es una constante
+ * compilada — subirlo el mes que viene no puede exigir un despliegue de código.
+ *
+ * Se lee en cada llamada a propósito: como constante de módulo quedaría
+ * congelada con el entorno del arranque, y cambiar la variable en Render no
+ * tendría efecto hasta reiniciar — eso ya pasó con los textos legales.
+ */
+export function tarifaDeCarrera(): number {
+  const crudo = Number(process.env['PUESTO_URBANO_CARRERA_COP']);
+  // Un valor inservible NO apaga el servicio ni lo deja en cero: se cae al
+  // precio acordado. Un puesto a $0 se cobraría a $0 y nadie lo notaría hasta
+  // cerrar el mes.
+  if (!Number.isFinite(crudo) || crudo < 1000) return 8000;
+  return Math.round(crudo);
+}
+
+/**
+ * Lo que se queda la plataforma de lo recaudado.
+ *
+ * Es TASA y no una cifra fija de $2.000 por una razón concreta: con el carro
+ * lleno las dos cosas dan igual ($2.000 de $8.000), pero si solo suben dos
+ * pasajeros se recaudan $4.000 — y $2.000 fijos serían la mitad de lo
+ * recaudado en vez de su cuarta parte. El conductor se llevaría lo mismo que
+ * la app por manejar.
+ *
+ * NO pasa por la precedencia flota → ciudad → global, al contrario que el
+ * resto de los servicios. Aquí el precio TAMBIÉN lo fija la plataforma, así
+ * que una flota con otra tasa rompería el reparto exacto que se le prometió al
+ * conductor ($6.000 de $8.000). Donde el precio es nuestro, la comisión
+ * también.
+ */
+export const COMISION_PUESTO_URBANO = 0.25;
 
 /** El efectivo no tiene monedas de $7. */
 function aMultiploDe50Abajo(v: number): number {
@@ -85,6 +129,35 @@ export function sugeridoPorPuesto(tarifaSolo: number, puestos: number): number {
   return Math.min(sugerido, topePorPuesto(tarifaSolo, puestos));
 }
 
+/**
+ * Lo que cuesta UN puesto: la carrera repartida entre las sillas publicadas.
+ *
+ * Redondea HACIA ABAJO al múltiplo de 50, en esa dirección a propósito: así lo
+ * recaudado nunca pasa de la carrera anunciada. Con tres puestos sale $2.650
+ * cada uno ($7.950 en total) en vez de $2.700 ($8.100) — cobrarle a la gente
+ * cien pesos más de lo publicado, aunque sea por el redondeo, es la clase de
+ * detalle por el que se discute a bordo, que es justo lo que esto viene a
+ * evitar. Y el efectivo no tiene monedas de $7.
+ */
+export function precioDelPuesto(puestos: number): number {
+  if (!Number.isInteger(puestos) || puestos < 1) return 0;
+  return aMultiploDe50Abajo(tarifaDeCarrera() / puestos);
+}
+
+/**
+ * Cómo se reparte lo que de verdad se recaudó.
+ *
+ * Se calcula sobre lo COBRADO y no sobre la carrera completa: si el carro no se
+ * llena, la app se lleva su cuarta parte de lo que entró, no su cuarta parte de
+ * lo que habría entrado.
+ */
+export function repartoDeCarrera(recaudado: number): { neto: number; comision: number } {
+  if (!esPositivo(recaudado)) return { neto: 0, comision: 0 };
+  const bruto = Math.round(recaudado);
+  const comision = Math.round(bruto * COMISION_PUESTO_URBANO);
+  return { neto: bruto - comision, comision };
+}
+
 export interface PublicacionDePuesto {
   /** Slug del municipio de donde sale. */
   ciudadOrigen: string;
@@ -94,12 +167,6 @@ export interface PublicacionDePuesto {
   origenTexto: string;
   destinoTexto: string;
   puestos: number;
-  tarifaPorPuesto: number;
-  /**
-   * La carrera sola del mismo trayecto: medida si se pudo, y si no el piso
-   * conocido (la carrera mínima del decreto). Nunca un invento.
-   */
-  tarifaSolo: number;
 }
 
 /**
@@ -130,14 +197,8 @@ export function motivoParaNoPublicarPuesto(p: PublicacionDePuesto): string | nul
     return `Un taxi lleva máximo ${PUESTOS_MAX} pasajeros. Para más puestos hace falta una empresa de transporte habilitada.`;
   }
 
-  if (!esPositivo(p.tarifaPorPuesto)) return 'Pon cuánto cuesta el puesto';
-
-  const tope = topePorPuesto(p.tarifaSolo, p.puestos);
-  if (tope <= 0) return 'No pudimos calcular el precio de la carrera para esta ruta';
-  if (Math.round(p.tarifaPorPuesto) > tope) {
-    return `El puesto no puede pasar de $${tope.toLocaleString('es-CO')} en esta ruta con ${p.puestos} puestos. Una carrera sola cuesta $${Math.round(p.tarifaSolo).toLocaleString('es-CO')}.`;
-  }
-
+  // El precio ya no se comprueba porque ya no se recibe: lo pone
+  // `precioDelPuesto`. Ver la regla 3 de la cabecera.
   return null;
 }
 

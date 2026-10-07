@@ -453,12 +453,25 @@ class _RejillaServicios extends ConsumerWidget {
           // que nadie espera encontrar en una app de domicilios.
           TarjetaServicio(
             ancha: true,
+            proximamente: true,
             icono: ZipaIconName.intermunicipal,
             ilustracion: 'assets/categorias/bus.png',
             tinte: ZipaTokens.intermunicipal,
             titulo: 'Intermunicipal',
-            subtitulo: 'Viaja o envía entre ciudades',
-            onTap: () => context.push(AppRoutes.intercityBooking),
+            subtitulo: 'Pronto: viaja o envía entre ciudades',
+            // APLAZADO. La puerta se queda y EXPLICA por qué no se puede
+            // todavía, en vez de llevar a un formulario que nadie atiende: el
+            // intermunicipal exige empresas de transporte habilitadas y
+            // verificadas. Para rehabilitarlo basta quitar `proximamente` y
+            // devolver el `push` a `AppRoutes.intercityBooking`.
+            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'El servicio intermunicipal abre pronto: estamos habilitando '
+                  'las empresas de transporte de la región.',
+                ),
+              ),
+            ),
           ),
         ],
       ),

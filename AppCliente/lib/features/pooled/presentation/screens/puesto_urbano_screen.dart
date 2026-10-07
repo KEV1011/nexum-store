@@ -23,6 +23,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
+import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 
 const _kUrbano = AppColors.serviceTaxi;
 
@@ -494,15 +495,17 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
             ),
             const SizedBox(height: 12),
 
-            TextField(
+            // Con Google y con mapa, igual que al publicar. Es el campo que ve
+            // quien se SUMA a un viaje, y era texto libre: el taxista recibía
+            // «frente a la panadería» sin más. La reserva guarda solo el
+            // texto, así que lo que aporta el buscador es que la dirección
+            // esté bien escrita — y el mapa, que exista aunque no se sepa
+            // escribir.
+            AddressAutocompleteField(
               controller: _dondeCtrl,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: '¿Dónde te recogemos? (opcional)',
-                hintText: 'Ej: Calle 6 # 4-20, frente a la panadería',
-                prefixIcon: Icon(Icons.my_location_rounded),
-                border: OutlineInputBorder(),
-              ),
+              label: '¿Dónde te recogemos? (opcional)',
+              hint: 'Ej: Calle 6 # 4-20, frente a la panadería',
+              requiredField: false,
             ),
             const SizedBox(height: 16),
 
@@ -611,44 +614,51 @@ class _HojaPublicar extends ConsumerStatefulWidget {
 class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
   final _origenCtrl = TextEditingController();
   final _destinoCtrl = TextEditingController();
-  final _precioCtrl = TextEditingController();
   final _notasCtrl = TextEditingController();
 
   int _puestos = 4;
   int _mios = 1;
-  DateTime _salida = DateTime.now().add(const Duration(minutes: 30));
+
+  /// `null` = «lo antes posible».
+  ///
+  /// Es el estado por defecto a propósito: la mayoría de quien publica un
+  /// puesto urbano quiere moverse AHORA. Antes había que elegir una hora en el
+  /// reloj, y poner la más cercana dejaba el viaje inservible.
+  DateTime? _salida;
+
+  /// Coordenadas de los dos extremos, cuando se eligieron de Google o del mapa.
+  /// Sin ellas el servidor geocodifica la frase, y si falla el taxista no ve
+  /// en el mapa dónde recoger.
+  double? _origenLat, _origenLng, _destinoLat, _destinoLng;
+
   bool _enviando = false;
-  bool _consultandoTope = false;
-  ({double carreraSola, double tope, double sugerido})? _tope;
+  bool _consultandoPrecio = false;
+  ({double carreraSola, double tope, double precio})? _precio;
+
+  DateTime get _salidaEfectiva => _salida ?? DateTime.now();
 
   @override
   void dispose() {
     _origenCtrl.dispose();
     _destinoCtrl.dispose();
-    _precioCtrl.dispose();
     _notasCtrl.dispose();
     super.dispose();
   }
 
   /// Se pregunta cuando ya hay los dos extremos y al cambiar los puestos: el
-  /// tope depende de entre cuántos se reparte la carrera.
-  Future<void> _consultarTope() async {
+  /// precio del puesto es la carrera repartida entre las sillas.
+  Future<void> _consultarPrecio() async {
     final o = _origenCtrl.text.trim();
     final d = _destinoCtrl.text.trim();
     if (o.isEmpty || d.isEmpty) return;
-    setState(() => _consultandoTope = true);
-    final t = await ref.read(pooledProvider.notifier).topeDePuesto(
+    setState(() => _consultandoPrecio = true);
+    final t = await ref.read(pooledProvider.notifier).precioDePuesto(
           ciudad: widget.ciudad, origen: o, destino: d, puestos: _puestos,
         );
     if (!mounted) return;
     setState(() {
-      _tope = t;
-      _consultandoTope = false;
-      // Se PRERRELLENA con lo sugerido, no se fija: el precio lo pone quien
-      // publica, la app solo le dice por dónde va.
-      if (t != null && _precioCtrl.text.trim().isEmpty) {
-        _precioCtrl.text = t.sugerido.round().toString();
-      }
+      _precio = t;
+      _consultandoPrecio = false;
     });
   }
 
@@ -656,14 +666,14 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
     final ahora = DateTime.now();
     final fecha = await showDatePicker(
       context: context,
-      initialDate: _salida,
+      initialDate: _salidaEfectiva,
       firstDate: ahora,
       lastDate: ahora.add(const Duration(days: 7)),
     );
     if (fecha == null || !mounted) return;
     final hora = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(_salida),
+      initialTime: TimeOfDay.fromDateTime(_salidaEfectiva),
     );
     if (hora == null || !mounted) return;
     setState(() {
@@ -674,9 +684,10 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
   String? _loQueFalta() {
     if (_origenCtrl.text.trim().isEmpty) return 'Escribe de dónde sales';
     if (_destinoCtrl.text.trim().isEmpty) return 'Escribe a dónde vas';
-    final precio = int.tryParse(_precioCtrl.text.trim().replaceAll('.', ''));
-    if (precio == null || precio <= 0) return 'Pon cuánto cuesta el puesto';
-    if (!_salida.isAfter(DateTime.now())) return 'La hora de salida ya pasó';
+    // El precio ya no se pide: lo pone la plataforma.
+    if (_salida != null && !_salida!.isAfter(DateTime.now())) {
+      return 'Esa hora ya pasó. Usa «lo antes posible» o elige otra.';
+    }
     return null;
   }
 
@@ -693,11 +704,16 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
           ciudad: widget.ciudad,
           origen: _origenCtrl.text.trim(),
           destino: _destinoCtrl.text.trim(),
-          salida: _salida,
+          // «Lo antes posible» manda la hora de AHORA: el servidor acepta un
+          // pasado corto, porque entre el teléfono y él pasan décimas.
+          salida: _salidaEfectiva,
           puestos: _puestos,
           puestosParaMi: _mios,
-          precioPorPuesto: int.parse(_precioCtrl.text.trim().replaceAll('.', '')),
           notas: _notasCtrl.text,
+          origenLat: _origenLat,
+          origenLng: _origenLng,
+          destinoLat: _destinoLat,
+          destinoLng: _destinoLng,
         );
     if (!mounted) return;
     if (error == null) {
@@ -715,8 +731,10 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
   @override
   Widget build(BuildContext context) {
     String dosDigitos(int n) => n.toString().padLeft(2, '0');
-    final cuando = '${dosDigitos(_salida.day)}/${dosDigitos(_salida.month)} · '
-        '${dosDigitos(_salida.hour)}:${dosDigitos(_salida.minute)}';
+    final cuando = _salida == null
+        ? 'Lo antes posible'
+        : 'Sale el ${dosDigitos(_salida!.day)}/${dosDigitos(_salida!.month)} · '
+            '${dosDigitos(_salida!.hour)}:${dosDigitos(_salida!.minute)}';
 
     return Padding(
       // El teclado no puede tapar el campo, el mismo fallo que ya se corrigió
@@ -759,18 +777,50 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
               ),
               const SizedBox(height: 16),
 
-              _Campo(
+              // Con Google y con mapa. Antes eran dos `TextField` pelados, así
+              // que el servidor tenía que geocodificar la frase y, si fallaba,
+              // el viaje quedaba sin punto: el taxista no veía en el mapa
+              // dónde recoger. `allowMapPicker` viene activado por defecto y
+              // es la salida cuando la dirección no existe en Google o no se
+              // sabe escribir («frente a la cancha»), que en pueblo es la
+              // mitad de los casos.
+              AddressAutocompleteField(
                 controller: _origenCtrl,
                 label: 'De dónde sales',
                 hint: 'Ej. Barrio El Rosario',
-                onEditado: _consultarTope,
+                requiredField: true,
+                onPlaceSelected: (p) {
+                  setState(() {
+                    _origenLat = p.lat;
+                    _origenLng = p.lng;
+                  });
+                  _consultarPrecio();
+                },
+                // Al escribir a mano se TIRAN las coordenadas de la selección
+                // anterior: conservarlas mandaría al taxi al sitio viejo con
+                // el texto nuevo, y nada en pantalla lo delataría.
+                onManualEdit: () => setState(() {
+                  _origenLat = null;
+                  _origenLng = null;
+                }),
               ),
               const SizedBox(height: 12),
-              _Campo(
+              AddressAutocompleteField(
                 controller: _destinoCtrl,
                 label: 'A dónde vas',
                 hint: 'Ej. Hospital San Juan de Dios',
-                onEditado: _consultarTope,
+                requiredField: true,
+                onPlaceSelected: (p) {
+                  setState(() {
+                    _destinoLat = p.lat;
+                    _destinoLng = p.lng;
+                  });
+                  _consultarPrecio();
+                },
+                onManualEdit: () => setState(() {
+                  _destinoLat = null;
+                  _destinoLng = null;
+                }),
               ),
               const SizedBox(height: 16),
 
@@ -787,7 +837,7 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
                     // servidor la vuelve a comprobar.
                     if (_mios >= _puestos) _mios = _puestos - 1;
                   });
-                  _consultarTope();
+                  _consultarPrecio();
                 },
               ),
               const SizedBox(height: 8),
@@ -800,53 +850,43 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
               ),
               const SizedBox(height: 16),
 
-              InkWell(
-                onTap: _elegirHora,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: context.outlineColor),
-                    borderRadius: BorderRadius.circular(12),
+              // Dos opciones, y «lo antes posible» de primera: es lo que
+              // quiere casi todo el mundo que publica un puesto urbano. Antes
+              // solo había reloj, y poner la hora más cercana dejaba el viaje
+              // inservible — se evaporaba del tablero al minuto.
+              Row(
+                children: [
+                  Expanded(
+                    child: _OpcionCuando(
+                      texto: 'Lo antes posible',
+                      icono: Icons.bolt_rounded,
+                      activa: _salida == null,
+                      onTap: () => setState(() => _salida = null),
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.schedule_rounded, size: 20, color: _kUrbano),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Sale el $cuando',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: context.textPrimaryColor,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _OpcionCuando(
+                      texto: _salida == null ? 'A una hora' : cuando,
+                      icono: Icons.schedule_rounded,
+                      activa: _salida != null,
+                      onTap: _elegirHora,
+                    ),
                   ),
-                ),
+                ],
               ),
               const SizedBox(height: 16),
 
-              _Campo(
-                controller: _precioCtrl,
-                label: 'Precio por puesto',
-                hint: 'Ej. 2000',
-                teclado: TextInputType.number,
+              // EL PRECIO NO SE PREGUNTA: lo pone la plataforma. Antes era un
+              // campo de texto con un tope, así que dos pasajeros publicaban
+              // el mismo trayecto a precios distintos y había que validarlo
+              // contra un cálculo que dependía de Google.
+              _PrecioFijo(
+                cargando: _consultandoPrecio,
+                precio: _precio?.precio,
+                carreraSola: _precio?.carreraSola,
+                puestos: _puestos,
               ),
-              if (_consultandoTope)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text('Calculando cuánto puede costar…',
-                      style: TextStyle(fontSize: 12)),
-                )
-              else if (_tope != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'La carrera sola cuesta ${CurrencyFormatter.format(_tope!.carreraSola)}. '
-                  'Máximo por puesto: ${CurrencyFormatter.format(_tope!.tope)}.',
-                  style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
-                ),
-              ],
               const SizedBox(height: 12),
 
               _Campo(
@@ -964,4 +1004,120 @@ class _FilaContador extends StatelessWidget {
           ),
         ],
       );
+}
+
+/// Una de las dos formas de decir cuándo: ya, o a una hora.
+class _OpcionCuando extends StatelessWidget {
+  const _OpcionCuando({
+    required this.texto,
+    required this.icono,
+    required this.activa,
+    required this.onTap,
+  });
+
+  final String texto;
+  final IconData icono;
+  final bool activa;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          decoration: BoxDecoration(
+            color: activa ? _kUrbano.withValues(alpha: 0.10) : null,
+            border: Border.all(
+              color: activa ? _kUrbano : context.outlineColor,
+              width: activa ? 1.6 : 1,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(icono, size: 18, color: activa ? _kUrbano : context.textSecondaryColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  texto,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: activa ? _kUrbano : context.textPrimaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+/// El precio del puesto, que pone la plataforma.
+///
+/// Enseña el ahorro frente a tomar el taxi solo cuando se sabe cuánto cuesta
+/// esa carrera: es el argumento del servicio. **Si no se sabe, no se inventa
+/// ningún ahorro** — un «ahorras $X» calculado sobre un número que no se pudo
+/// medir sería peor que no decir nada.
+class _PrecioFijo extends StatelessWidget {
+  const _PrecioFijo({
+    required this.cargando,
+    required this.precio,
+    required this.carreraSola,
+    required this.puestos,
+  });
+
+  final bool cargando;
+  final double? precio;
+  final double? carreraSola;
+  final int puestos;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = precio;
+    final sola = carreraSola;
+    final ahorro = (p != null && sola != null && sola > p) ? sola - p : null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: _kUrbano.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.confirmation_number_rounded, size: 20, color: _kUrbano),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  cargando || p == null
+                      ? 'Calculando el precio del puesto…'
+                      : '${CurrencyFormatter.format(p)} por puesto',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: context.textPrimaryColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  ahorro != null
+                      ? 'Ahorras ${CurrencyFormatter.format(ahorro)} frente a ir solo'
+                      : 'Precio fijo de ZIPA · la carrera entre $puestos puestos',
+                  style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

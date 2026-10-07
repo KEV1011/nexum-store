@@ -30,7 +30,6 @@ import 'package:nexum_driver/features/reservas/presentation/widgets/reservas_pan
 import 'package:nexum_driver/features/driver_status/presentation/providers/demand_zones_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/service_prefs_provider.dart';
-import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/notifications/presentation/providers/notification_provider.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/errand_details.dart';
@@ -196,8 +195,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) {
         ref.read(driverProfileProvider.notifier).load();
-        // Estado real del modo intermunicipal para el switch del panel.
-        ref.read(intercityDriverProvider.notifier).loadAvailability();
+        // El intermunicipal está aplazado y su interruptor deshabilitado, así
+        // que ya no hace falta consultar su estado al abrir el home. La carga
+        // se restituye junto con el `onChanged` cuando se rehabilite.
         // Preferencias de servicio (qué solicitudes recibe).
         ref.read(servicePrefsProvider.notifier).load();
         // Sus salidas intermunicipales publicadas, para poder decirle en la
@@ -206,6 +206,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // solo lo cargaba la propia pantalla de salidas, que es justo a la
         // que no sabía llegar.
         ref.read(pooledDriverProvider.notifier).loadMine();
+        // Y el TABLERO de viajes por puestos que publicaron pasajeros. Sin
+        // esta carga el contador de la tarjeta nace en cero y el taxista no
+        // tiene forma de saber que hay gente esperando — que es el bug que se
+        // reportó («se solicita un servicio y no le sale a ningún conductor»).
+        ref.read(pooledDriverProvider.notifier).cargarLibres();
         // Demanda real por zona: alimenta el banner de oportunidad y la capa
         // del mapa. Si falla, sencillamente no hay banner.
         ref.read(demandZonesProvider.notifier).load();
@@ -1040,10 +1045,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           const SizedBox(height: AppConstants.spacingM),
 
-          // Intermunicipal: el plus de ZIPA — switch de disponibilidad + acceso
-          // directo a las reservas (antes vivía escondido en el drawer).
-          _IntercityPanelCard(
-            onOpen: () => context.push('/intercity-requests'),
+          // Viajes por puestos: la carrera compartida dentro de la ciudad, con
+          // el número de pasajeros que están esperando por delante. El
+          // intermunicipal queda aplazado y se anuncia como próximamente en
+          // las preferencias, en vez de ofrecer un servicio que todavía no se
+          // opera.
+          _PuestosPanelCard(
+            onOpen: () => context.push('/pooled-trips'),
           ),
           const SizedBox(height: AppConstants.spacingS),
 
@@ -1128,12 +1136,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   String _servicePrefsSummary() {
     final prefs = ref.watch(servicePrefsProvider);
-    final intercity =
-        ref.watch(intercityDriverProvider.select((s) => s.enabled));
+    // El intermunicipal queda APLAZADO: no entra en el resumen porque no se
+    // puede activar. Enseñarlo aquí haría buscar un interruptor que está
+    // deshabilitado a propósito.
     final active = [
       if (prefs.trips) 'Pasajeros',
       if (prefs.errands && prefs.orders) 'Encargos',
-      if (intercity) 'Intermunicipal',
     ];
     if (active.isEmpty) return 'Nada activo';
     if (active.length == 3) return 'Todo activo';
@@ -1167,8 +1175,6 @@ class _ServicePrefsSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final prefs = ref.watch(servicePrefsProvider);
-    final intercity =
-        ref.watch(intercityDriverProvider.select((s) => s.enabled));
 
     Future<void> showIfError(Future<String?> op) async {
       final error = await op;
@@ -1226,14 +1232,16 @@ class _ServicePrefsSheet extends ConsumerWidget {
                   color: _sub, size: 22),
               contentPadding: EdgeInsets.zero,
             ),
+            // APLAZADO. Se deja visible y deshabilitado, no se esconde: así se
+            // sabe que el servicio viene, y no se ofrece poder activar algo
+            // que no se está operando todavía. Para rehabilitarlo basta con
+            // devolver el `onChanged` y volver a sumarlo al resumen.
             SwitchListTile(
-              value: intercity,
-              onChanged: (v) => showIfError(ref
-                  .read(intercityDriverProvider.notifier)
-                  .setAvailability(enabled: v)),
+              value: false,
+              onChanged: null,
               title: const Text('Intermunicipal',
-                  style: TextStyle(color: _text, fontSize: 14.5)),
-              subtitle: const Text('Reservas entre ciudades',
+                  style: TextStyle(color: _sub, fontSize: 14.5)),
+              subtitle: const Text('Próximamente · reservas entre ciudades',
                   style: TextStyle(color: _sub, fontSize: 11.5)),
               secondary:
                   const Icon(Icons.route_rounded, color: _sub, size: 22),
@@ -1507,13 +1515,14 @@ class _GlassNavBarState extends State<_GlassNavBar> {
   }
 }
 
-// ── Tarjeta intermunicipal del panel ─────────────────────────────────────────
-// Switch de disponibilidad (GET/PUT /driver/intercity/availability vía
-// intercityDriverProvider) + navegación a las reservas, con badge de
-// solicitudes pendientes. Tocar la tarjeta abre /intercity-requests.
+// ── Tarjeta de viajes por puestos ────────────────────────────────────────────
+// La carrera compartida dentro de la ciudad. Lleva por delante cuántos
+// pasajeros están esperando taxi ahora mismo (`pooledDriverProvider.libres`),
+// que es el dato que no existía: el tablero vivía en el cajón lateral y sin
+// contador, así que el conductor no sabía que había trabajo publicado.
 
-class _IntercityPanelCard extends ConsumerWidget {
-  const _IntercityPanelCard({required this.onOpen});
+class _PuestosPanelCard extends ConsumerWidget {
+  const _PuestosPanelCard({required this.onOpen});
 
   final VoidCallback onOpen;
 
@@ -1522,8 +1531,16 @@ class _IntercityPanelCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final intercity = ref.watch(intercityDriverProvider);
-    final pending = intercity.requests.length;
+    // El intermunicipal queda APLAZADO: se anuncia como próximamente en vez de
+    // ofrecer un servicio que todavía no se opera. La movilidad urbana por
+    // puestos pasa a ser la protagonista de esta tarjeta.
+    final pooled = ref.watch(pooledDriverProvider);
+
+    // LOS PASAJEROS QUE ESTÁN ESPERANDO UN TAXI AHORA. Es el número que hace
+    // levantar la vista, y el que no existía: el tablero vivía en el cajón
+    // lateral, sin contador, así que el conductor no tenía forma de saber que
+    // había trabajo publicado.
+    final libres = pooled.libres.length;
 
     // LAS SALIDAS QUE ÉL PUBLICÓ, y cuánta gente compró.
     //
@@ -1534,7 +1551,7 @@ class _IntercityPanelCard extends ConsumerWidget {
     // otra cosa) y «Publicar viaje». Sus pasajeros vivían en el menú
     // lateral, bajo un nombre distinto, sin contador. El conductor miraba
     // donde era razonable mirar y ahí no había nada.
-    final salidas = ref.watch(pooledDriverProvider).trips
+    final salidas = pooled.trips
         .where((t) => t.status == PooledTripStatus.open
             || t.status == PooledTripStatus.full
             || t.status == PooledTripStatus.departed)
@@ -1583,14 +1600,14 @@ class _IntercityPanelCard extends ConsumerWidget {
                     Row(
                       children: [
                         const Text(
-                          'Intermunicipal',
+                          'Viajes por puestos',
                           style: TextStyle(
                             color: _text,
                             fontWeight: FontWeight.w800,
                             fontSize: 14,
                           ),
                         ),
-                        if (pending > 0) ...[
+                        if (libres > 0) ...[
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -1602,7 +1619,7 @@ class _IntercityPanelCard extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              '$pending',
+                              '$libres',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 11,
@@ -1615,51 +1632,50 @@ class _IntercityPanelCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      intercity.enabled
-                          ? 'Recibes reservas entre ciudades'
-                          : 'Actívalo y recibe reservas entre ciudades',
+                      libres > 0
+                          ? '$libres ${libres == 1 ? 'pasajero está' : 'pasajeros están'} '
+                              'buscando taxi en tu ciudad'
+                          : 'Carreras compartidas dentro de tu ciudad',
                       style: const TextStyle(color: _sub, fontSize: 11.5),
                     ),
                   ],
                 ),
               ),
-              Switch(
-                value: intercity.enabled,
-                onChanged: (v) async {
-                  HapticFeedback.selectionClick();
-                  final error = await ref
-                      .read(intercityDriverProvider.notifier)
-                      .setAvailability(enabled: v);
-                  if (error != null && context.mounted) {
-                    AppSnackbar.showError(context, error);
-                  }
-                },
-              ),
             ],
+          ),
+          const SizedBox(height: 8),
+          // El acceso al tablero, con el número por delante: es el camino que
+          // no existía. Verde cuando hay gente esperando.
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => context.push('/pooled-trips'),
+              icon: const Icon(Icons.groups_rounded, size: 16),
+              label: Text(
+                libres > 0
+                    ? 'Ver $libres ${libres == 1 ? 'viaje' : 'viajes'} para tomar'
+                    : 'Ver el tablero',
+                style: const TextStyle(fontSize: 12.5),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: libres > 0
+                    ? AppColors.success
+                    : AppColors.intercityBrand.withValues(alpha: 0.45),
+                padding: const EdgeInsets.symmetric(vertical: 9),
+              ),
+            ),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => context.push('/intercity-requests'),
-                  icon: const Icon(Icons.list_alt_rounded, size: 16),
-                  label: const Text('Solicitudes', style: TextStyle(fontSize: 12.5)),
+                  onPressed: () => context.push('/pooled-publish'),
+                  icon: const Icon(Icons.add_road_rounded, size: 16),
+                  label: const Text('Publicar uno', style: TextStyle(fontSize: 12.5)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _text,
                     side: BorderSide(color: AppColors.intercityBrand.withValues(alpha: 0.6)),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => context.push('/pooled-publish'),
-                  icon: const Icon(Icons.add_road_rounded, size: 16),
-                  label: const Text('Publicar', style: TextStyle(fontSize: 12.5)),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.intercityBrand,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
                 ),
@@ -1678,8 +1694,8 @@ class _IntercityPanelCard extends ConsumerWidget {
                 icon: const Icon(Icons.groups_rounded, size: 16),
                 label: Text(
                   pasajeros == 0
-                      ? 'Mis salidas (${salidas.length}) · sin pasajeros aún'
-                      : 'Mis salidas · $pasajeros '
+                      ? 'Mis viajes (${salidas.length}) · sin pasajeros aún'
+                      : 'Mis viajes · $pasajeros '
                           '${pasajeros == 1 ? 'pasajero' : 'pasajeros'}',
                   style: const TextStyle(fontSize: 12.5),
                 ),

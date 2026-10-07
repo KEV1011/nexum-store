@@ -53,18 +53,25 @@ import { motivoParaNoCalificar, type EstadoSalida } from '../lib/calificar-salid
 import {
   ahorroDelPasajero,
   motivoParaNoPublicarPuesto,
-  sugeridoPorPuesto,
+  precioDelPuesto,
+  repartoDeCarrera,
+  tarifaDeCarrera,
   topePorPuesto,
 } from '../lib/puesto-urbano';
 import {
+  GRACIA_TOMA_MIN,
   motivoParaNoPublicarComoPasajero,
   motivoParaNoTomar,
+  TIPOS_QUE_PUEDEN_TOMAR,
 } from '../lib/puesto-de-pasajero';
+import {
+  TITULO_PUESTO_PUBLICADO,
+  cuerpoDePuestoPublicado,
+} from '../lib/aviso-puesto-urbano';
 import { precioCategoria, tablaTarifas } from '../lib/tarifa-categoria';
 import { medirTrayecto } from './trip-options.service';
 import { geocodeAddress } from './geo.service';
 import { getMunicipality, plazaDeCoordenadas } from './municipality.service';
-import { comisionPara } from './comision.service';
 import { recordCompletedTrip } from './earnings.service';
 import {
   recalcularReputacionEmpresa,
@@ -534,18 +541,38 @@ export async function medirCarreraSola(p: {
   };
 }
 
-/** Lo que el formulario del conductor necesita para proponer un precio. */
+/**
+ * Lo que cuesta el puesto en ese trayecto, y con qué se compara.
+ *
+ * `precioPorPuesto` es EL precio: ya no se propone nada, lo fija la plataforma.
+ * Lo demás viaja para poder enseñar el ahorro frente a tomar el taxi solo, que
+ * es el argumento del servicio.
+ *
+ * `sugerido` se conserva y devuelve el precio fijo —no la vieja sugerencia del
+ * 1,25×— para que una app ya instalada, que prerrellena ese campo y manda el
+ * número de vuelta, muestre la cifra correcta. El servidor ignora el precio
+ * que llegue de todos modos, pero una app enseñando $2.500 y cobrando $2.000
+ * sería una discrepancia sin motivo.
+ */
 export async function topeDelPuestoUrbano(p: {
   ciudad: string;
   origenTexto: string;
   destinoTexto: string;
   puestos: number;
-}): Promise<CarreraSolaMedida & { topePorPuesto: number; sugerido: number }> {
+}): Promise<CarreraSolaMedida & {
+  topePorPuesto: number;
+  sugerido: number;
+  precioPorPuesto: number;
+  tarifaCarrera: number;
+}> {
   const carrera = await medirCarreraSola(p);
+  const precio = precioDelPuesto(p.puestos);
   return {
     ...carrera,
     topePorPuesto: topePorPuesto(carrera.tarifaSolo, p.puestos),
-    sugerido: sugeridoPorPuesto(carrera.tarifaSolo, p.puestos),
+    sugerido: precio,
+    precioPorPuesto: precio,
+    tarifaCarrera: tarifaDeCarrera(),
   };
 }
 
@@ -590,10 +617,14 @@ export async function publicarPuestoUrbano(
     origenTexto: dto.originLabel ?? '',
     destinoTexto: dto.destLabel ?? '',
     puestos: dto.totalSeats,
-    tarifaPorPuesto: dto.farePerSeat,
-    tarifaSolo: carrera.tarifaSolo,
   });
   if (motivo) throw new PooledTripError(motivo);
+
+  // Lo pone la plataforma, igual que en el camino del pasajero: dos taxistas
+  // cobrando distinto por el mismo trayecto es lo que este precio fijo viene a
+  // quitar.
+  const tarifaPorPuesto = precioDelPuesto(dto.totalSeats);
+  if (tarifaPorPuesto <= 0) throw new PooledTripError('No pudimos calcular el precio del puesto');
 
   if (!dto.vehicleDescription?.trim()) {
     throw new PooledTripError('Escribe con qué vehículo vas (marca, color y placa)');
@@ -627,8 +658,9 @@ export async function publicarPuestoUrbano(
       soloFareRef: carrera.tarifaSolo,
       departureTime: departure,
       totalSeats: dto.totalSeats,
-      farePerSeat: Math.round(dto.farePerSeat),
-      // El tope de ESTA salida, sellado: es contra lo que se validó.
+      farePerSeat: tarifaPorPuesto,
+      // Sellado para auditar: el precio de hoy queda escrito, así que subir la
+      // tarifa de plaza mañana no reescribe lo que cobró esta carrera.
       maxFarePerSeat: topePorPuesto(carrera.tarifaSolo, dto.totalSeats),
       allowFleet: false,
       status: 'OPEN',
@@ -684,7 +716,10 @@ export async function buscarPuestosUrbanos(
       kind: 'URBANO',
       status: 'OPEN',
       origin: ciudad,
-      departureTime: { gt: ahora, lte: hasta },
+      // La misma gracia que el tablero del conductor: un viaje «para ahora»
+      // tiene que seguir visible unos minutos, o el segundo pasajero no
+      // alcanza a sumarse al que acaba de publicar el primero.
+      departureTime: { gt: new Date(ahora.getTime() - GRACIA_TOMA_MIN * 60_000), lte: hasta },
     },
     include: {
       bookings: { where: { status: 'CONFIRMED' }, include: { seats: true } },
@@ -753,14 +788,16 @@ export async function publicarPuestoDePasajero(
     origenTexto: dto.originLabel ?? '',
     destinoTexto: dto.destLabel ?? '',
     puestos: dto.totalSeats,
-    tarifaPorPuesto: dto.farePerSeat,
-    tarifaSolo: carrera.tarifaSolo,
   });
   if (motivo) throw new PooledTripError(motivo);
 
   const origenTexto = dto.originLabel.trim();
   const destinoTexto = dto.destLabel.trim();
-  const tarifa = Math.round(dto.farePerSeat);
+  // El precio NO viene del DTO: lo pone la plataforma. Si llegara uno desde la
+  // app se descarta, igual que el servidor descarta el precio que manda el
+  // cliente al pedir una carrera normal.
+  const tarifa = precioDelPuesto(dto.totalSeats);
+  if (tarifa <= 0) throw new PooledTripError('No pudimos calcular el precio del puesto');
 
   // Prefijo propio para distinguirlo en soporte de un NXU (puesto del taxista).
   const tripRef = `NXP-${Math.floor(1000 + Math.random() * 8000)}`;
@@ -813,8 +850,75 @@ export async function publicarPuestoDePasajero(
         seatAssignments: true,
       },
     });
-    return _toDTO(completo as DbPooledTrip, true);
+    const publicado = _toDTO(completo as DbPooledTrip, true);
+    // El aviso va DESPUÉS de que la transacción cuaje, fuera de ella y sin
+    // `await`: avisar de un viaje que luego no se guarda mandaría a un taxista
+    // a un trabajo inexistente, y un fallo de Firebase no puede tumbar una
+    // publicación que ya está en la base.
+    void _avisarTaxistasDeLaPlaza(ciudad, trip.id, {
+      origen: origenTexto,
+      destino: destinoTexto,
+      precioPorPuesto: tarifa,
+      puestos: publicado.totalSeats,
+      minutosHastaSalida: Math.round((salida.getTime() - Date.now()) / 60_000),
+    });
+    return publicado;
   });
+}
+
+/**
+ * Avisa a los taxistas de esa plaza de que hay un viaje por puestos publicado.
+ *
+ * ESTE ERA EL BUG. Antes no se avisaba a nadie: el viaje aparecía en el tablero
+ * y punto, así que funcionaba solo si al taxista se le ocurría abrir «Viajes
+ * compartidos». Ver `lib/aviso-puesto-urbano.ts` para por qué se avisa a varios
+ * en vez de ofrecer de a uno.
+ *
+ * A quién: los MISMOS que podrían tomarlo (`TIPOS_QUE_PUEDEN_TOMAR`), en su
+ * plaza y con token de push. Si el filtro fuera distinto del de la toma, se
+ * avisaría a gente que al tocar «Tomar» recibiría un rechazo — que es peor que
+ * no avisar.
+ *
+ * Best-effort de principio a fin: el viaje ya está publicado y visible en el
+ * tablero, así que un fallo aquí quita inmediatez, no el servicio.
+ */
+async function _avisarTaxistasDeLaPlaza(
+  ciudad: string,
+  tripId: string,
+  aviso: Parameters<typeof cuerpoDePuestoPublicado>[0],
+): Promise<void> {
+  try {
+    const taxistas = await prisma.driver.findMany({
+      where: {
+        citySlug: ciudad,
+        isVerified: true,
+        fcmToken: { not: null },
+        // El kill-switch documental vale aquí igual que en el despacho: a
+        // quien tiene los papeles vencidos no se le ofrece trabajo.
+        complianceStatus: { not: 'BLOCKED' },
+        acceptsTrips: true,
+        vehicles: {
+          some: { isActive: true, type: { in: [...TIPOS_QUE_PUEDEN_TOMAR] } },
+        },
+      },
+      select: { id: true },
+      // Tope de cordura: con una plaza grande esto no puede convertirse en
+      // cientos de envíos por cada publicación. Los más recientes primero, que
+      // son los que están trabajando ahora.
+      orderBy: { lastSeenAt: 'desc' },
+      take: 40,
+    });
+    const cuerpo = cuerpoDePuestoPublicado(aviso);
+    for (const t of taxistas) {
+      void sendPushToDriver(t.id, {
+        title: TITULO_PUESTO_PUBLICADO,
+        body: cuerpo,
+        data: { type: 'pooled_urban_new', tripId },
+      });
+    }
+  } catch {
+    /* el viaje ya está publicado: sin aviso se pierde inmediatez, no el viaje */
+  }
 }
 
 /**
@@ -834,6 +938,12 @@ export async function listarPuestosSinConductor(
   if (!slug) return [];
   const ahora = new Date();
   const hasta = new Date(ahora.getTime() + Math.min(Math.max(horas, 1), 168) * 3600_000);
+  // La MISMA gracia que al tomar. Antes era `gt: ahora`, y con eso un viaje
+  // pedido «para ahora» desaparecía del tablero al minuto siguiente: el
+  // taxista veía el aviso y al abrir la app no había nada. Si las dos
+  // condiciones no fueran la misma, el tablero mostraría viajes que al tocar
+  // «Tomar» se rechazan, o los escondería cuando todavía se pueden hacer.
+  const desde = new Date(ahora.getTime() - GRACIA_TOMA_MIN * 60_000);
 
   const trips = await prisma.pooledTrip.findMany({
     where: {
@@ -841,7 +951,7 @@ export async function listarPuestosSinConductor(
       status: 'OPEN',
       driverId: null,
       origin: slug,
-      departureTime: { gt: ahora, lte: hasta },
+      departureTime: { gt: desde, lte: hasta },
     },
     include: {
       bookings: { where: { status: 'CONFIRMED' }, include: { seats: true } },
@@ -935,13 +1045,12 @@ async function _liquidarPuestoUrbano(t: DbPooledTrip): Promise<void> {
   }, 0);
   if (bruto <= 0) return; // salió vacío: no hay nada que comisionar
 
-  const { tasa } = await comisionPara({
-    driverId: t.driverId,
-    operatorId: t.operatorId ?? null,
-    lat: t.originLat ?? null,
-    lng: t.originLng ?? null,
-  });
-  const comision = Math.round(bruto * tasa);
+  // El reparto de ESTE servicio no pasa por la precedencia flota → ciudad →
+  // global: aquí el precio también lo fija la plataforma ($8.000 la carrera),
+  // así que una flota con otra tasa rompería el $6.000 / $2.000 que se le
+  // prometió al conductor. Donde el precio es nuestro, la comisión también.
+  // El motivo largo está en `COMISION_PUESTO_URBANO`.
+  const { neto } = repartoDeCarrera(bruto);
 
   recordCompletedTrip(
     {
@@ -949,7 +1058,7 @@ async function _liquidarPuestoUrbano(t: DbPooledTrip): Promise<void> {
       origin: t.originLabel ?? t.origin,
       destination: t.destLabel ?? t.destination,
       grossFare: Math.round(bruto),
-      netEarning: Math.round(bruto) - comision,
+      netEarning: neto,
       completedAt: new Date().toISOString(),
     },
     t.driverId,

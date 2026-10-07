@@ -16,6 +16,7 @@ import { setupWebSocket } from './websocket/ws.handler';
 import { scheduleDocumentExpiryChecks, docKillSwitchEnforced } from './services/document-expiry.service';
 import { logger } from './lib/logger';
 import { initSentry, captureError } from './lib/sentry';
+import { intermunicipalAbierto } from './lib/intermunicipal-abierto';
 import { globalLimiter, authLimiter } from './middleware/rate-limit.middleware';
 import { prisma } from './lib/prisma';
 import { pagoEnLineaDisponible } from './services/payment.service';
@@ -167,6 +168,9 @@ app.get('/health', async (_req, res) => {
     // inventado, no uno real. En producción es imposible (se ignora la
     // variable), pero conviene poder verlo de un vistazo.
     intercity: INTERCITY_SIMULATE ? 'simulado' : 'conductores-reales',
+    // Si se puede PEDIR algo intermunicipal. Aplazado mientras se habilitan
+    // las empresas de la región; se reabre con `INTERMUNICIPAL_ABIERTO=true`.
+    intermunicipal: intermunicipalAbierto() ? 'abierto' : 'aplazado',
     // SOS: 'sms' = el botón de pánico avisa de verdad al contacto de confianza.
     // 'sin-canal' = solo se registra el evento y le queda el 123. Es el
     // diagnóstico que hay que mirar ANTES de que alguien lo necesite.

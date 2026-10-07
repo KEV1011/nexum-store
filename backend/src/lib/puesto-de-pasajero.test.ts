@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   ABIERTAS_MAX_POR_PASAJERO,
   DIAS_MAX_ADELANTE,
+  GRACIA_TOMA_MIN,
+  TOLERANCIA_AHORA_MIN,
   motivoParaNoPublicarComoPasajero,
   motivoParaNoTomar,
 } from './puesto-de-pasajero';
 
 const AHORA = new Date('2026-09-26T12:00:00Z');
 const enHoras = (h: number) => new Date(AHORA.getTime() + h * 3600_000);
+const enMinutos = (m: number) => new Date(AHORA.getTime() + m * 60_000);
 
 function publicacion(over: Partial<Parameters<typeof motivoParaNoPublicarComoPasajero>[0]> = {}) {
   return motivoParaNoPublicarComoPasajero({
@@ -41,13 +44,26 @@ describe('publicar un viaje por puestos siendo pasajero', () => {
     expect(publicacion({ puestos: 4, puestosDelCreador: 3 })).toBeNull();
   });
 
-  it('la salida tiene que ser en el futuro', () => {
-    expect(publicacion({ salida: enHoras(-1) })).toMatch(/futuro/i);
-    expect(publicacion({ salida: AHORA })).toMatch(/futuro/i);
+  // ESTAS DOS EXPECTATIVAS CAMBIARON, y el motivo importa: antes se exigía
+  // que la salida fuera estrictamente futura, y eso hacía IMPOSIBLE pedir un
+  // taxi «para ahora» — la app manda `DateTime.now()` y entre el teléfono y
+  // el servidor pasan décimas, así que el propio instante que el pasajero
+  // acaba de tocar llegaba ya en el pasado y se rechazaba con «la hora tiene
+  // que ser en el futuro». Fue una de las tres causas de «se solicita un
+  // servicio y no le sale a ningún conductor».
+  it('«ahora mismo» se puede publicar', () => {
+    expect(publicacion({ salida: AHORA })).toBeNull();
+    // Y un reloj de teléfono atrasado unos minutos tampoco bloquea.
+    expect(publicacion({ salida: enMinutos(-TOLERANCIA_AHORA_MIN + 1) })).toBeNull();
+  });
+
+  it('pero una hora que de verdad ya pasó sí se rechaza', () => {
+    expect(publicacion({ salida: enHoras(-1) })).toMatch(/ya pasó/i);
+    expect(publicacion({ salida: enMinutos(-TOLERANCIA_AHORA_MIN - 1) })).toMatch(/ya pasó/i);
   });
 
   it('una fecha ilegible se rechaza en vez de guardarse', () => {
-    expect(publicacion({ salida: new Date('no es una fecha') })).toMatch(/futuro/i);
+    expect(publicacion({ salida: new Date('no es una fecha') })).toMatch(/no entendimos/i);
   });
 
   it('no se publica para dentro de un mes', () => {
@@ -99,8 +115,18 @@ describe('tomar un viaje publicado por un pasajero', () => {
     }
   });
 
-  it('una salida cuya hora ya pasó no se toma', () => {
-    expect(toma({ salida: enHoras(-1) })).toMatch(/ya pasó/i);
+  it('se puede tomar unos minutos DESPUÉS de la hora de salida', () => {
+    // Un taxi que ve el aviso a las 6:00 y lo toma a las 6:04 todavía hace el
+    // viaje. Antes esto se rechazaba, así que un viaje «para ahora» dejaba de
+    // poderse tomar al minuto siguiente de publicarse: el taxista recibía el
+    // aviso y al abrir la app no había nada.
+    expect(toma({ salida: enMinutos(-GRACIA_TOMA_MIN + 1) })).toBeNull();
+  });
+
+  it('pasada la gracia sí se retira: el pasajero ya se fue', () => {
+    // Aceptar entonces manda al taxista a una esquina vacía.
+    expect(toma({ salida: enMinutos(-GRACIA_TOMA_MIN - 1) })).toMatch(/pasó/i);
+    expect(toma({ salida: enHoras(-1) })).toMatch(/pasó/i);
   });
 
   it('una moto no puede: la salida lleva de dos a cuatro pasajeros', () => {

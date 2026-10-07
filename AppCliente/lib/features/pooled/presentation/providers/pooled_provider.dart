@@ -184,7 +184,12 @@ class PooledNotifier extends StateNotifier<PooledState> {
   /// Se pregunta ANTES de dejar escribir el precio: sin esto el pasajero pone
   /// una cifra a ciegas y el servidor se la rechaza después, que es la forma
   /// más rápida de que abandone el formulario.
-  Future<({double carreraSola, double tope, double sugerido})?> topeDePuesto({
+  /// Lo que cuesta el puesto en ese trayecto, y con qué se compara.
+  ///
+  /// El precio lo pone la PLATAFORMA: esto no propone nada, informa. `tope` y
+  /// `carreraSola` solo sirven para enseñar el ahorro frente a tomar el taxi
+  /// solo, que es el argumento del servicio.
+  Future<({double carreraSola, double tope, double precio})?> precioDePuesto({
     required String ciudad,
     required String origen,
     required String destino,
@@ -202,11 +207,15 @@ class PooledNotifier extends StateNotifier<PooledState> {
       return (
         carreraSola: (d['tarifaSolo'] as num?)?.toDouble() ?? 0,
         tope: (d['topePorPuesto'] as num?)?.toDouble() ?? 0,
-        sugerido: (d['sugerido'] as num?)?.toDouble() ?? 0,
+        // `precioPorPuesto` es el campo nuevo; `sugerido` lo trae también para
+        // que un backend viejo no deje la pantalla sin precio.
+        precio: (d['precioPorPuesto'] as num?)?.toDouble()
+            ?? (d['sugerido'] as num?)?.toDouble() ?? 0,
       );
     } catch (_) {
-      // Sin tope no se bloquea el formulario: el servidor vuelve a validar al
-      // publicar y ahí sí dirá el número exacto.
+      // Sin precio no se bloquea el formulario: el servidor lo fija al
+      // publicar de todos modos, así que lo único que se pierde es enseñarlo
+      // antes.
       return null;
     }
   }
@@ -224,8 +233,11 @@ class PooledNotifier extends StateNotifier<PooledState> {
     required DateTime salida,
     required int puestos,
     required int puestosParaMi,
-    required int precioPorPuesto,
     String? notas,
+    double? origenLat,
+    double? origenLng,
+    double? destinoLat,
+    double? destinoLng,
   }) async {
     try {
       await _dio.post<Map<String, dynamic>>(
@@ -237,7 +249,18 @@ class PooledNotifier extends StateNotifier<PooledState> {
           'departureTime': salida.toUtc().toIso8601String(),
           'totalSeats': puestos,
           'seatsForMe': puestosParaMi,
-          'farePerSeat': precioPorPuesto,
+          // El precio NO se manda: lo pone la plataforma y el servidor
+          // descarta lo que llegue. Mandarlo haría creer que se decide aquí.
+          //
+          // Las coordenadas SÍ, cuando las hay: sin ellas el servidor tiene
+          // que geocodificar la frase y, si falla, el viaje queda sin punto y
+          // el taxista no ve en el mapa dónde recoger.
+          if (origenLat != null && origenLng != null) ...{
+            'originLat': origenLat, 'originLng': origenLng,
+          },
+          if (destinoLat != null && destinoLng != null) ...{
+            'destLat': destinoLat, 'destLng': destinoLng,
+          },
           if (notas != null && notas.trim().isNotEmpty) 'notes': notas.trim(),
         },
       );

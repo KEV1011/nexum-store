@@ -1024,7 +1024,7 @@ class _IntercityHeroCard extends StatelessWidget {
                   ),
                 ),
                 child: const Text(
-                  'NUEVO',
+                  'PRONTO',
                   style: TextStyle(
                     color: AppColors.liveGreenBright,
                     fontSize: 9,
@@ -1037,25 +1037,36 @@ class _IntercityHeroCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Viaja entre ciudades: Cúcuta, Bucaramanga y más',
+            'Cúcuta, Bucaramanga y más. Estamos habilitando las empresas de '
+            'transporte de la región: te avisamos en cuanto abra.',
             style: TextStyle(color: _lightBlue, fontSize: 11.5),
           ),
           const SizedBox(height: 12),
-          Row(
+          // APLAZADO. Los dos botones quedan deshabilitados en vez de
+          // retirados: así la tarjeta sigue contando que el servicio viene, y
+          // quien la toca no acaba en un formulario que nadie puede atender.
+          // El intermunicipal exige empresas habilitadas verificadas, y hasta
+          // que las haya, ofrecerlo es prometer un viaje que no se puede
+          // despachar.
+          //
+          // Para rehabilitarlo: devolver los dos `onTap` a
+          // `AppRoutes.intercityBooking` y `AppRoutes.pooledSearch`, el badge
+          // a «NUEVO» y el subtítulo a la lista de ciudades.
+          const Row(
             children: [
               Expanded(
                 child: _HeroAction(
                   icon: Icons.directions_car_filled_rounded,
                   label: 'Reservar privado',
-                  onTap: () => context.push(AppRoutes.intercityBooking),
+                  onTap: null,
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: _HeroAction(
                   icon: Icons.groups_rounded,
                   label: 'Cupos compartidos',
-                  onTap: () => context.push(AppRoutes.pooledSearch),
+                  onTap: null,
                 ),
               ),
             ],
@@ -1075,12 +1086,17 @@ class _HeroAction extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+
+  /// `null` = el servicio todavía no está abierto. Se dibuja apagado en vez de
+  /// esconderse, para que la tarjeta pueda anunciar lo que viene sin llevar a
+  /// nadie a un formulario que nadie atiende.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final activo = onTap != null;
     return Material(
-      color: Colors.white.withValues(alpha: 0.10),
+      color: Colors.white.withValues(alpha: activo ? 0.10 : 0.04),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -1089,20 +1105,26 @@ class _HeroAction extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: activo ? 0.18 : 0.08),
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 17, color: Colors.white),
+              Icon(
+                icon,
+                size: 17,
+                color: Colors.white.withValues(alpha: activo ? 1 : 0.45),
+              ),
               const SizedBox(width: 7),
               Flexible(
                 child: Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: activo ? 1 : 0.45),
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                   ),

@@ -77,18 +77,60 @@ A diferencia del código piloto, esto abre **una** cuenta y solo una.
 
 Comprobar: `/health` → `"demoRevision": true`.
 
-### 2.3 La tarifa del taxi — hay que poner el juego COMPLETO
+### 2.3 La tarifa del taxi — sale del decreto, no de nosotros
 
-| Variable |
-|---|
-| `TAXI_BANDERAZO_COP` |
-| `TAXI_POR_KM_COP` |
-| `TAXI_CARRERA_MINIMA_COP` |
-| `TAXI_POR_MIN_COP` (opcional) |
+**Pamplona no tarifa el taxi por kilómetro.** No hay banderazo ni valor por km
+en ninguna parte del decreto: el artículo primero es una tabla de sectores con
+precios fijos. Por eso las variables son las de abajo y no `TAXI_BANDERAZO_COP`
+/ `TAXI_POR_KM_COP`, que existen para una plaza que sí tarife así.
 
-Salen del **decreto municipal**, no de nosotros. Si falta alguna de las tres
-primeras se usa la tarifa genérica: media tarifa daría un número que no es ni
-el oficial ni el nuestro. Comprobar: `/health` → `"tarifaTaxi": "decreto-municipal"`.
+Valores del **Decreto 003 del 9 de enero de 2026** de la Alcaldía de Pamplona,
+que derogó el 049 de 2023 — listos para copiar:
+
+| Variable | Valor 2026 | De dónde sale |
+|---|---|---|
+| `TAXI_CARRERA_MINIMA_COP` | `6000` | Artículo segundo |
+| `TAXI_CARRERA_MAXIMA_COP` | `12000` | El tope de la tabla del artículo primero |
+| `TAXI_TARIFAS_SECTOR_COP` | `6000,7000,8000,9000,10000,12000` | Los seis precios distintos de las nueve filas |
+| `TAXI_RECARGO_NOCTURNO_COP` | `1000` | Artículo segundo, desde las 9:00 PM todos los días |
+| `TAXI_RECARGO_DOMINICAL_COP` | `1000` | Artículo segundo, domingos y festivos, por carrera |
+| `TAXI_KM_CARRERA_MAXIMA` | `7` | **NO sale del decreto** — ver abajo |
+
+`TAXI_KM_CARRERA_MAXIMA` es el único número que lo declara quien conoce la
+plaza: a cuántos kilómetros está el trayecto urbano más largo. Sirve para
+repartir los escalones por distancia; sin él, la pendiente genérica —calibrada
+para una ciudad grande— satura el techo a los 6 km y casi toda carrera se
+cotizaría en el sector **más caro**. Si el valor está mal, el síntoma es ese:
+precios pegados al máximo. Calíbralo con unas cuantas carreras reales.
+
+Lo que el decreto **no** tiene, y zanja una pregunta que se abrió antes: no
+existe recargo por pedir el taxi por teléfono, por radio ni por aplicación. El
+artículo segundo tiene cuatro renglones y ninguno es eso, así que cobrarlo
+sería cobrar por encima de lo autorizado. Por el mismo motivo la tarifa de taxi
+no lleva multiplicador por demanda.
+
+Si falta alguna de las tres primeras se usa la tarifa genérica, que es un
+precio que ponemos nosotros. Comprobar: `/health` → `"tarifaTaxi":
+"decreto-por-zonas"` y `"recargosTaxi"`.
+
+**Al salir un decreto nuevo solo se cambian estas variables.** Ningún número
+está escrito en el código; la documentación de `src/lib/tarifa-decreto.ts` cita
+el decreto vigente y su prueba usa estos mismos valores como fixture.
+
+### 2.3b El viaje por puestos
+
+| Variable | Valor | Qué es |
+|---|---|---|
+| `PUESTO_URBANO_CARRERA_COP` | `8000` | Lo que vale la carrera compartida completa |
+
+El puesto es esa cifra repartida entre las sillas publicadas: con cuatro, son
+$2.000 cada uno. La comisión de ZIPA es el 25 % de lo recaudado, así que con el
+carro lleno quedan $6.000 para el conductor y $2.000 para la plataforma. Sin la
+variable se usan los $8.000; no hace falta ponerla salvo para cambiar el precio.
+
+Este precio **no** lo fija el decreto: el decreto tarifa la carrera individual.
+Compartir un taxi por puestos es una práctica distinta y el precio lo pone la
+plataforma, igual para todos los taxis.
 
 ### 2.4 Cobrar en línea
 

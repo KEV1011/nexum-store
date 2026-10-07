@@ -39,8 +39,19 @@ class TarjetaServicio extends StatefulWidget {
     required this.onTap,
     this.ilustracion,
     this.ancha = false,
+    this.proximamente = false,
     super.key,
   });
+
+  /// La puerta se anuncia pero el servicio todavía no está abierto.
+  ///
+  /// Se dibuja apagada y con una píldora «Próximamente» en vez de retirarse:
+  /// esconderla haría que el servicio no existiera para quien abre la app, y
+  /// dejarla normal llevaría a un formulario que nadie puede atender. El
+  /// `onTap` sigue siendo obligatorio porque tiene que EXPLICAR por qué no se
+  /// puede todavía — un toque que no hace nada es lo que este repositorio ya
+  /// barrió una vez.
+  final bool proximamente;
 
   /// Ocupa el ancho entero en vez de media fila.
   ///
@@ -81,6 +92,7 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
 
   @override
   Widget build(BuildContext context) {
+    final pronto = widget.proximamente;
     final oscuro = Theme.of(context).brightness == Brightness.dark;
     final fondoIcono = oscuro ? widget.tinte.fondo.oscuro : widget.tinte.fondo.claro;
     final glifo = oscuro ? widget.tinte.glifo.oscuro : widget.tinte.glifo.claro;
@@ -196,13 +208,50 @@ class _TarjetaServicioState extends State<TarjetaServicio> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          widget.titulo,
-                          style: TextStyle(
-                            fontSize: 15.5,
-                            fontWeight: FontWeight.w800,
-                            color: context.zTexto,
-                          ),
+                        // El título va en `Flexible` porque dentro de un `Row`
+                        // el texto deja de envolverse: recibe ancho infinito y
+                        // desborda la columna en vez de recortarse. Un `Text`
+                        // suelto en el `Column` sí envolvía, y al meterlo en
+                        // una fila para poner la píldora se perdió — lo cazó
+                        // `tarjeta_servicio_test` con un desborde de 1,8 px en
+                        // la tarjeta estrecha.
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.titulo,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: pronto ? context.zTexto2 : context.zTexto,
+                                ),
+                              ),
+                            ),
+                            if (pronto) ...[
+                              const SizedBox(width: 7),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: context.zBorde,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  'PRONTO',
+                                  style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.6,
+                                    color: context.zTexto2,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(

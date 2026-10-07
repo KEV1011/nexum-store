@@ -30,7 +30,7 @@ import {
 } from '../src/services/intercity-pool.service';
 import { getDriverBalance } from '../src/services/payout.service';
 import { tablaTarifas } from '../src/lib/tarifa-categoria';
-import { topePorPuesto } from '../src/lib/puesto-urbano';
+import { precioDelPuesto, topePorPuesto } from '../src/lib/puesto-urbano';
 
 let fallos = 0;
 let ok = 0;
@@ -96,7 +96,27 @@ async function main() {
       'el tope por puesto es el de la regla pura',
       { api: tope.topePorPuesto, regla: topePorPuesto(tope.tarifaSolo, 4) },
     );
-    check(tope.sugerido <= tope.topePorPuesto, 'lo sugerido nunca pasa del tope', tope);
+    // ESTA EXPECTATIVA CAMBIÓ, y el motivo importa. Antes el precio se derivaba
+    // del taxímetro y el tope era su techo. Ahora la carrera compartida vale
+    // una cifra fija ($8.000) que la decide quien conoce la plaza, así que el
+    // tope PUEDE quedar por debajo: con la carrera sola en el mínimo ($5.000),
+    // el viejo tope daba $1.850 por silla y el precio fijo es $2.000. No es un
+    // descuido — es que el tope era una heurística nuestra, no un límite
+    // legal, y ya no gobierna el precio.
+    //
+    // Lo que SÍ sigue siendo invariante es que un puesto cuesta menos que la
+    // carrera entera, y eso lo garantiza `precioDelPuesto` por construcción
+    // (lo vigila su prueba unitaria).
+    check(
+      tope.precioPorPuesto === precioDelPuesto(4) && tope.sugerido === tope.precioPorPuesto,
+      'el precio que devuelve la ruta es el fijo de la plataforma',
+      { precio: tope.precioPorPuesto, sugerido: tope.sugerido },
+    );
+    check(
+      tope.precioPorPuesto * 4 <= tope.tarifaCarrera,
+      'y los cuatro puestos no pasan de la carrera completa',
+      { puesto: tope.precioPorPuesto, carrera: tope.tarifaCarrera },
+    );
     check(
       tope.topePorPuesto < tope.tarifaSolo,
       'un puesto siempre cuesta menos que la carrera entera',
@@ -105,7 +125,8 @@ async function main() {
   }
 
   const topeReal = topePorPuesto(minimoTaxi, 4);
-  const precioPuesto = Math.min(2000, topeReal);
+  // El precio lo fija la plataforma: la carrera entre las sillas publicadas.
+  const precioPuesto = precioDelPuesto(4);
 
   console.log('\n[2] Se publica el caso real: cuatro puestos Terminal → Universidad');
   let salidaId = '';
@@ -126,7 +147,7 @@ async function main() {
     check(salida.origin === 'pamplona' && salida.destination === 'pamplona', 'las dos puntas son la misma ciudad');
     check(salida.soloFareRef === minimoTaxi, 'la carrera sola queda SELLADA en la salida', salida.soloFareRef);
     check(
-      salida.savingsPerSeat === minimoTaxi - precioPuesto,
+      salida.savingsPerSeat === Math.max(0, minimoTaxi - precioPuesto),
       'y el ahorro del pasajero viene ya calculado',
       salida.savingsPerSeat,
     );
@@ -136,14 +157,23 @@ async function main() {
 
   console.log('\n[3] Los tres rechazos');
   {
-    const caro = await motivoDe(() =>
-      publicarPuestoUrbano(taxista.id, taxista.name, taxista.phone, {
+    // Antes esto comprobaba que un precio por encima del tope se rechazara
+    // DICIENDO el número. Se cambia por su versión fuerte: el precio que
+    // manda la app se descarta, igual que el servidor descarta el precio del
+    // cliente al pedir una carrera normal.
+    const conPrecioInventado = await publicarPuestoUrbano(
+      taxista.id, taxista.name, taxista.phone, {
         city: 'pamplona', originLabel: 'Terminal', destLabel: 'Universidad',
-        departureTime: enHoras(3), totalSeats: 4, farePerSeat: minimoTaxi,
+        departureTime: enHoras(3), totalSeats: 4, farePerSeat: minimoTaxi * 10,
         vehicleDescription: 'Spark • TAX 123',
-      }),
+      },
     );
-    check(caro.includes('no puede pasar de'), 'el puesto por encima del tope se rechaza DICIENDO el número', caro);
+    check(
+      conPrecioInventado.farePerSeat === precioDelPuesto(4),
+      'un precio mandado desde la app se descarta',
+      conPrecioInventado.farePerSeat,
+    );
+    await prisma.pooledTrip.delete({ where: { id: conPrecioInventado.id } });
 
     const uno = await motivoDe(() =>
       publicarPuestoUrbano(taxista.id, taxista.name, taxista.phone, {

@@ -4,10 +4,13 @@
 /// salen recogiendo persona por persona sobre un trayecto conocido. Aquí eso
 /// se publica, se reserva y el precio queda dicho antes de subirse.
 ///
-/// El formulario NO deja escribir el precio a ciegas: en cuanto hay ruta y
-/// puestos le pregunta al servidor cuánto costaría esa carrera llevando a una
-/// sola persona y enseña el tope y la sugerencia. Sin eso, el taxista pondría
-/// una cifra y se la rechazarían al pulsar publicar.
+/// EL PRECIO NO SE ESCRIBE: lo pone la plataforma. La carrera compartida vale
+/// una cifra fija y el puesto es esa cifra repartida entre las sillas que se
+/// publican. Antes había un campo de texto con un tope derivado del taxímetro,
+/// y eso tenía dos problemas: dos taxistas cobraban distinto por el mismo
+/// trayecto, y el tope dependía de que Google resolviera la ruta (si fallaba
+/// caía al piso en silencio). El formulario sigue enseñando la carrera sola
+/// para que se vea el ahorro, pero el número ya no se discute.
 library;
 
 import 'package:flutter/material.dart';
@@ -43,7 +46,6 @@ class _PublishUrbanSeatScreenState
 
   final _origenCtrl = TextEditingController();
   final _destinoCtrl = TextEditingController();
-  final _tarifaCtrl = TextEditingController();
   final _vehiculoCtrl = TextEditingController();
   final _notasCtrl = TextEditingController();
 
@@ -54,15 +56,9 @@ class _PublishUrbanSeatScreenState
   void dispose() {
     _origenCtrl.dispose();
     _destinoCtrl.dispose();
-    _tarifaCtrl.dispose();
     _vehiculoCtrl.dispose();
     _notasCtrl.dispose();
     super.dispose();
-  }
-
-  double? get _tarifa {
-    final raw = _tarifaCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
-    return raw.isEmpty ? null : double.tryParse(raw);
   }
 
   /// Pregunta el tope. Solo con los dos extremos escritos: sin ellos el
@@ -85,9 +81,6 @@ class _PublishUrbanSeatScreenState
     setState(() {
       _tope = tope;
       _consultando = false;
-      if (_tarifaCtrl.text.isEmpty && tope != null && tope.sugerido > 0) {
-        _tarifaCtrl.text = tope.sugerido.toStringAsFixed(0);
-      }
     });
   }
 
@@ -122,11 +115,6 @@ class _PublishUrbanSeatScreenState
       _aviso('Describe tu vehículo (ej: Chevrolet Spark Amarillo · TAX 123)');
       return;
     }
-    final tarifa = _tarifa;
-    if (tarifa == null || tarifa <= 0) {
-      _aviso('Pon cuánto cuesta el puesto');
-      return;
-    }
     if (_salida.isBefore(DateTime.now())) {
       _aviso('La hora de salida debe ser en el futuro');
       return;
@@ -140,7 +128,6 @@ class _PublishUrbanSeatScreenState
               destino: destino,
               salida: _salida,
               puestos: _puestos,
-              tarifaPorPuesto: tarifa,
               vehiculo: _vehiculoCtrl.text.trim(),
               notas: _notasCtrl.text.trim(),
             );
@@ -262,23 +249,10 @@ class _PublishUrbanSeatScreenState
           const SizedBox(height: 16),
 
           _label('Precio por puesto'),
-          TextField(
-            controller: _tarifaCtrl,
-            keyboardType: TextInputType.number,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              prefixText: r'$ ',
-              hintText: '2000',
-              prefixIcon: Icon(Icons.payments_rounded),
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 10),
           _PanelPrecio(
             tope: _tope,
             consultando: _consultando,
             puestos: _puestos,
-            tarifa: _tarifa,
           ),
           const SizedBox(height: 16),
 
@@ -419,21 +393,21 @@ class _Explicacion extends StatelessWidget {
       );
 }
 
-/// De dónde sale el precio: la carrera sola, el tope y lo que se llevaría con
-/// el carro lleno. Es la información con la que el taxista decide, y sin ella
-/// el campo de precio sería una adivinanza.
+/// El precio en firme, y con qué se compara.
+///
+/// Ya no hay nada que decidir: enseña lo que cuesta el puesto, lo que deja el
+/// carro lleno y lo que costaría esa carrera llevando a una sola persona —que
+/// es lo que le dice al taxista si le conviene—.
 class _PanelPrecio extends StatelessWidget {
   const _PanelPrecio({
     required this.tope,
     required this.consultando,
     required this.puestos,
-    required this.tarifa,
   });
 
   final TopePuestoUrbano? tope;
   final bool consultando;
   final int puestos;
-  final double? tarifa;
 
   @override
   Widget build(BuildContext context) {
@@ -456,48 +430,38 @@ class _PanelPrecio extends StatelessWidget {
     final t = tope;
     if (t == null) {
       return Text(
-        'Escribe de dónde sales y a dónde llegas para ver cuánto puedes cobrar.',
+        'Escribe de dónde sales y a dónde llegas para ver el precio del puesto.',
         style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
       );
     }
 
-    final lleno = (tarifa ?? 0) * puestos;
-    final seExcede = tarifa != null && tarifa! > t.topePorPuesto;
+    // `sugerido` trae el precio FIJO que fija la plataforma (el backend lo
+    // devuelve también en `precioPorPuesto`). No es una propuesta editable: es
+    // lo que se va a cobrar.
+    final porPuesto = t.sugerido;
+    final lleno = porPuesto * puestos;
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: context.surfaceVariantColor,
         borderRadius: BorderRadius.circular(10),
-        border: seExcede ? Border.all(color: AppColors.error) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _fila(context, 'Esa carrera, llevando a uno solo',
-              CurrencyFormatter.format(t.tarifaSolo)),
-          _fila(context, 'Máximo por puesto',
-              CurrencyFormatter.format(t.topePorPuesto)),
+          _fila(context, 'Cada puesto', CurrencyFormatter.format(porPuesto)),
           if (lleno > 0)
             _fila(context, 'Con el carro lleno ($puestos puestos)',
                 CurrencyFormatter.format(lleno), destacado: true),
-          if (seExcede) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Te pasas del máximo. Un puesto tiene que costar menos que la '
-              'carrera entera.',
-              style: const TextStyle(
-                  fontSize: 12, color: AppColors.error, fontWeight: FontWeight.w600),
-            ),
-          ],
-          if (!t.medida) ...[
-            const SizedBox(height: 6),
-            Text(
-              'No pudimos medir el recorrido, así que el máximo sale de la '
-              'carrera mínima.',
-              style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
-            ),
-          ],
+          _fila(context, 'Esa carrera, llevando a uno solo',
+              CurrencyFormatter.format(t.tarifaSolo)),
+          const SizedBox(height: 6),
+          Text(
+            'El precio lo fija ZIPA, igual para todos los taxis. No hay nada '
+            'que discutir a bordo.',
+            style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+          ),
         ],
       ),
     );

@@ -64,6 +64,17 @@ void main() {
       );
     });
 
+    test('un viaje por puestos publicado lleva al tablero donde se toma', () {
+      // Reportado: «se solicita un servicio de taxi por puestos y no le sale a
+      // ningún conductor». El aviso nuevo no sirve de nada si al tocarlo cae
+      // en el inicio: el tablero vive en el cajón lateral, que es justo donde
+      // el taxista no iba a mirar.
+      expect(
+        rutaDeNotificacion({'type': 'pooled_urban_new', 'tripId': 'xyz'}),
+        AppRoutes.pooledTrips,
+      );
+    });
+
     test('lo que no lleva a ningún sitio devuelve null, no el home', () {
       // Sacar al conductor de lo que estaba haciendo por un aviso que no le
       // pide nada es peor que no navegar.

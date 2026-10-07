@@ -16,6 +16,7 @@
 import { LruCache } from '../lib/lru-cache';
 import { normalizaDireccion } from '../lib/direccion-colombiana';
 import { ESTILO_MAPA_OSCURO } from '../config/estilo-mapa';
+import { LIMITES, traerConLimite, motivoDeFallo } from '../lib/fetch-con-limite';
 
 const GOOGLE_MAPS_API_KEY = process.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
@@ -98,7 +99,7 @@ export async function geoHealth(): Promise<GeoHealth> {
     const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
     url.searchParams.set('latlng', `${DEFAULT_LAT},${DEFAULT_LNG}`);
     url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
-    const res = await fetch(url);
+    const res = await traerConLimite(url, {}, LIMITES.DIAGNOSTICO);
     const json = (await res.json()) as Record<string, unknown>;
     return {
       status: json['status'] as string | undefined,
@@ -111,14 +112,14 @@ export async function geoHealth(): Promise<GeoHealth> {
   // Places API (New): autocompletado. REQUEST_DENIED aquí = Places no habilitada
   // o la key está restringida y no la permite.
   const places = await _probeApi('places', async () => {
-    const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+    const res = await traerConLimite('https://places.googleapis.com/v1/places:autocomplete', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
       },
       body: JSON.stringify({ input: 'cra', languageCode: 'es', regionCode: 'CO' }),
-    });
+    }, LIMITES.DIAGNOSTICO);
     const json = (await res.json()) as Record<string, unknown>;
     const err = (json['error'] as { message?: string } | undefined)?.message;
     return { error: err, httpOk: res.ok, httpStatus: res.status };
@@ -132,7 +133,7 @@ export async function geoHealth(): Promise<GeoHealth> {
   // dibujando la línea recta y el diagnóstico decía que todo estaba bien. Un
   // diagnóstico que no prueba lo que se usa no sirve de nada.
   const routes = await _probeApi('routes', async () => {
-    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    const res = await traerConLimite('https://routes.googleapis.com/directions/v2:computeRoutes', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -145,7 +146,7 @@ export async function geoHealth(): Promise<GeoHealth> {
         travelMode: 'DRIVE',
         languageCode: 'es',
       }),
-    });
+    }, LIMITES.DIAGNOSTICO);
     const json = (await res.json()) as Record<string, unknown>;
     const err = (json['error'] as { message?: string } | undefined)?.message;
     if (res.ok && !err) {
@@ -182,13 +183,14 @@ export async function geoHealth(): Promise<GeoHealth> {
   // diagnóstico seguía diciendo «ok», que es la peor combinación posible:
   // roto y sin forma de verlo.
   const mapTiles = await _probeApi('mapTiles', async () => {
-    const res = await fetch(
+    const res = await traerConLimite(
       `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(_cuerpoSesionMapa()),
       },
+      LIMITES.DIAGNOSTICO,
     );
     const json = (await res.json()) as Record<string, unknown>;
     const err = (json['error'] as { message?: string } | undefined)?.message;
@@ -212,9 +214,15 @@ export async function geoHealth(): Promise<GeoHealth> {
   };
 }
 
+/**
+ * `limiteMs` es OBLIGATORIO a propósito: quien añada una llamada nueva tiene
+ * que decidir cuánto puede esperar quien está al otro lado. Un valor por
+ * defecto convertiría esa decisión en un olvido, que es exactamente como se
+ * acumularon las trece llamadas sin límite que había antes.
+ */
 async function _googleFetch(
   url: string,
-  init: { method?: string; body?: unknown; fieldMask?: string },
+  init: { method?: string; body?: unknown; fieldMask?: string; limiteMs: number },
 ): Promise<Record<string, unknown>> {
   if (!isGeoConfigured()) {
     throw new GeoError('Geo service not configured', 503);
@@ -225,11 +233,23 @@ async function _googleFetch(
   };
   if (init.fieldMask) headers['X-Goog-FieldMask'] = init.fieldMask;
 
-  const res = await fetch(url, {
-    method: init.method ?? 'GET',
-    headers,
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await traerConLimite(
+      url,
+      {
+        method: init.method ?? 'GET',
+        headers,
+        body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      },
+      init.limiteMs,
+    );
+  } catch (err) {
+    // El corte por tiempo entra por aquí. Se convierte en `GeoError` para que
+    // los respaldos que ya existen —la línea recta del precio, el mapa de
+    // OpenStreetMap— lo traten igual que a cualquier otro fallo del proveedor.
+    throw new GeoError(motivoDeFallo(err, 'Google', init.limiteMs), 504);
+  }
   const json = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
     const error = json['error'] as { message?: string } | undefined;
@@ -258,6 +278,7 @@ export async function autocomplete(
     'https://places.googleapis.com/v1/places:autocomplete',
     {
       method: 'POST',
+      limiteMs: LIMITES.INTERACTIVO,
       body: {
         input,
         languageCode: 'es',
@@ -306,7 +327,7 @@ export interface PlaceDetails {
 export async function placeDetails(placeId: string): Promise<PlaceDetails> {
   const json = await _googleFetch(
     `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=es`,
-    { fieldMask: 'id,formattedAddress,location' },
+    { fieldMask: 'id,formattedAddress,location', limiteMs: LIMITES.INTERACTIVO },
   );
   const location = json['location'] as { latitude: number; longitude: number };
   return {
@@ -330,7 +351,12 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
   url.searchParams.set('result_type', 'street_address|route|neighborhood');
   url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
 
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    res = await traerConLimite(url, {}, LIMITES.INTERACTIVO);
+  } catch (err) {
+    throw new GeoError(motivoDeFallo(err, 'Google Geocoding', LIMITES.INTERACTIVO), 504);
+  }
   if (!res.ok) throw new GeoError(`Upstream error (${res.status})`);
   const json = (await res.json()) as Record<string, unknown>;
   const status = json['status'] as string;
@@ -367,7 +393,9 @@ export async function geocodeAddress(
   url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
 
   try {
-    const res = await fetch(url);
+    // Ya devuelve `null` ante cualquier fallo, así que el corte por tiempo
+    // entra por el mismo camino: quien llama sigue sin coordenadas.
+    const res = await traerConLimite(url, {}, LIMITES.INTERACTIVO);
     if (!res.ok) return null;
     const json = (await res.json()) as Record<string, unknown>;
     if (json['status'] !== 'OK') return null;
@@ -420,6 +448,9 @@ export async function directions(
     'https://routes.googleapis.com/directions/v2:computeRoutes',
     {
       method: 'POST',
+      // Es la llamada que cotiza el viaje: al otro lado hay un dedo sobre el
+      // botón «Pedir» y un respaldo (línea recta) que responde en el acto.
+      limiteMs: LIMITES.COTIZACION,
       fieldMask: 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
       body: {
         origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
@@ -488,13 +519,16 @@ export function _cuerpoSesionMapa(): Record<string, unknown> {
 }
 
 async function _createMapSession(): Promise<string> {
-  const res = await fetch(
+  // Esta llamada BLOQUEA todas las teselas: hay un `in-flight` compartido, así
+  // que si se queda colgada no se dibuja un solo trozo de mapa en ninguna app.
+  const res = await traerConLimite(
     `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(_cuerpoSesionMapa()),
     },
+    LIMITES.MAPA,
   );
   const json = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
@@ -557,16 +591,24 @@ export async function fetchMapTile(z: number, x: number, y: number): Promise<Map
     const url =
       `https://tile.googleapis.com/v1/2dtiles/${z}/${x}/${y}` +
       `?session=${encodeURIComponent(session)}&key=${encodeURIComponent(GOOGLE_MAPS_API_KEY)}`;
-    return fetch(url);
+    return traerConLimite(url, {}, LIMITES.MAPA);
   };
 
   let session = await _getMapSession();
-  let res = await doFetch(session);
-  // Sesión expirada/invalidada por Google → recrear una vez.
-  if (res.status === 401 || res.status === 403) {
-    _mapSession = null;
-    session = await _getMapSession();
+  let res: Response;
+  try {
     res = await doFetch(session);
+    // Sesión expirada/invalidada por Google → recrear una vez.
+    if (res.status === 401 || res.status === 403) {
+      _mapSession = null;
+      session = await _getMapSession();
+      res = await doFetch(session);
+    }
+  } catch (err) {
+    // Incluido el corte por tiempo. Se devuelve como error para que la app
+    // caiga a OpenStreetMap, que es lo que ya hace ante cualquier tesela que
+    // no llega: se ve peor, pero se ve.
+    throw new GeoError(motivoDeFallo(err, 'Google Map Tiles', LIMITES.MAPA), 504);
   }
   if (!res.ok) {
     throw new GeoError(`tile upstream (${res.status})`, res.status === 404 ? 404 : 502);

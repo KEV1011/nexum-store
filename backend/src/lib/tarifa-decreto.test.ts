@@ -32,13 +32,19 @@ afterEach(() => {
   }
 });
 
-/** Los valores reales del Decreto 049 de 2023 de Pamplona. */
+/**
+ * Los valores reales del **Decreto 003 del 9 de enero de 2026** de Pamplona,
+ * que derogó el 049 de 2023 con el que se escribieron estas pruebas.
+ *
+ * La tabla del artículo primero tiene NUEVE filas pero solo seis precios
+ * distintos; aquí van los precios, que es lo que el código acota.
+ */
 function cargarPamplona() {
-  process.env['TAXI_CARRERA_MINIMA_COP'] = '5000';
-  process.env['TAXI_CARRERA_MAXIMA_COP'] = '9500';
+  process.env['TAXI_CARRERA_MINIMA_COP'] = '6000';
+  process.env['TAXI_CARRERA_MAXIMA_COP'] = '12000';
   process.env['TAXI_RECARGO_NOCTURNO_COP'] = '1000';
   process.env['TAXI_RECARGO_DOMINICAL_COP'] = '1000';
-  process.env['TAXI_TARIFAS_SECTOR_COP'] = '5000,5500,6000,7500,8500,9500';
+  process.env['TAXI_TARIFAS_SECTOR_COP'] = '6000,7000,8000,9000,10000,12000';
 }
 
 describe('domingo de Pascua', () => {
@@ -159,68 +165,68 @@ describe('recargosDeCarrera', () => {
 
 describe('sobre del decreto', () => {
   it('exige el par completo: con medio sobre no hay sobre', () => {
-    process.env['TAXI_CARRERA_MINIMA_COP'] = '5000';
+    process.env['TAXI_CARRERA_MINIMA_COP'] = '6000';
     expect(sobreDelDecreto()).toBeNull();
     delete process.env['TAXI_CARRERA_MINIMA_COP'];
-    process.env['TAXI_CARRERA_MAXIMA_COP'] = '9500';
+    process.env['TAXI_CARRERA_MAXIMA_COP'] = '12000';
     expect(sobreDelDecreto()).toBeNull();
   });
 
   it('carga el rango y los escalones de Pamplona', () => {
     cargarPamplona();
     expect(sobreDelDecreto()).toEqual({
-      minimo: 5000,
-      maximo: 9500,
-      escalones: [5000, 5500, 6000, 7500, 8500, 9500],
+      minimo: 6000,
+      maximo: 12000,
+      escalones: [6000, 7000, 8000, 9000, 10000, 12000],
       kmTope: null,
     });
   });
 
   it('sin tabla de sectores quedan solo el mínimo y el máximo', () => {
-    process.env['TAXI_CARRERA_MINIMA_COP'] = '5000';
-    process.env['TAXI_CARRERA_MAXIMA_COP'] = '9500';
-    expect(sobreDelDecreto()?.escalones).toEqual([5000, 9500]);
+    process.env['TAXI_CARRERA_MINIMA_COP'] = '6000';
+    process.env['TAXI_CARRERA_MAXIMA_COP'] = '12000';
+    expect(sobreDelDecreto()?.escalones).toEqual([6000, 12000]);
   });
 
   it('descarta basura y valores fuera del sobre', () => {
-    process.env['TAXI_CARRERA_MINIMA_COP'] = '5000';
-    process.env['TAXI_CARRERA_MAXIMA_COP'] = '9500';
-    process.env['TAXI_TARIFAS_SECTOR_COP'] = '5500, ochomil, 99000, 6000, 100';
-    expect(sobreDelDecreto()?.escalones).toEqual([5000, 5500, 6000, 9500]);
+    process.env['TAXI_CARRERA_MINIMA_COP'] = '6000';
+    process.env['TAXI_CARRERA_MAXIMA_COP'] = '12000';
+    process.env['TAXI_TARIFAS_SECTOR_COP'] = '7000, ochomil, 99000, 8000, 100';
+    expect(sobreDelDecreto()?.escalones).toEqual([6000, 7000, 8000, 12000]);
   });
 
   it('un rango al revés se ignora en vez de adivinar', () => {
-    process.env['TAXI_CARRERA_MINIMA_COP'] = '9500';
-    process.env['TAXI_CARRERA_MAXIMA_COP'] = '5000';
+    process.env['TAXI_CARRERA_MINIMA_COP'] = '12000';
+    process.env['TAXI_CARRERA_MAXIMA_COP'] = '6000';
     expect(sobreDelDecreto()).toBeNull();
   });
 
   it('posa el precio en un escalón REAL de la tabla, bajando nunca subiendo', () => {
     cargarPamplona();
     const sobre = sobreDelDecreto();
-    // $5.350 no existe en el decreto: la fila más cercana por debajo es 5.000.
-    expect(acotarAlSobre(5350, sobre)).toBe(5000);
-    // Y $7.400 baja a 6.000, no sube a 7.500: subir cobraría más de lo que la
+    // $6.350 no existe en el decreto: la fila más cercana por debajo es 6.000.
+    expect(acotarAlSobre(6350, sobre)).toBe(6000);
+    // Y $8.900 baja a 8.000, no sube a 9.000: subir cobraría más de lo que la
     // estimación justifica, y en tarifa regulada ese es el error caro.
-    expect(acotarAlSobre(7400, sobre)).toBe(6000);
-    expect(acotarAlSobre(7500, sobre)).toBe(7500);
+    expect(acotarAlSobre(8900, sobre)).toBe(8000);
+    expect(acotarAlSobre(9000, sobre)).toBe(9000);
   });
 
   it('acota por arriba y por abajo', () => {
-    const sobre = { minimo: 5000, maximo: 9500, escalones: [5000, 9500] };
-    // La fórmula genérica cotizando una carrera urbana larga en $13.000:
+    const sobre = { minimo: 6000, maximo: 12000, escalones: [6000, 12000] };
+    // La fórmula genérica cotizando una carrera urbana larga en $16.000:
     // ninguna fila de la tabla del decreto autoriza tanto.
-    expect(acotarAlSobre(13000, sobre)).toBe(9500);
+    expect(acotarAlSobre(16000, sobre)).toBe(12000);
     // Y una corta por debajo de la carrera mínima.
-    expect(acotarAlSobre(3200, sobre)).toBe(5000);
-    // Con solo dos escalones declarados, $6.000 baja al mínimo: no hay ninguna
+    expect(acotarAlSobre(3200, sobre)).toBe(6000);
+    // Con solo dos escalones declarados, $8.000 baja al mínimo: no hay ninguna
     // casilla intermedia que el municipio haya publicado.
-    expect(acotarAlSobre(6000, sobre)).toBe(5000);
-    expect(acotarAlSobre(9500, sobre)).toBe(9500);
+    expect(acotarAlSobre(8000, sobre)).toBe(6000);
+    expect(acotarAlSobre(12000, sobre)).toBe(12000);
   });
 
   it('sin sobre cargado el precio pasa intacto', () => {
-    expect(acotarAlSobre(13000, null)).toBe(13000);
+    expect(acotarAlSobre(16000, null)).toBe(16000);
   });
 
   it('con el tamaño de la plaza declarado, el sobre se reparte por distancia', () => {
@@ -232,14 +238,14 @@ describe('sobre del decreto', () => {
     const sobre = sobreDelDecreto();
     expect(sobre?.kmTope).toBe(7);
     // Solo la carrera que cruza el municipio llega al escalón más caro.
-    expect(acotarAlSobre(99_999, sobre, 7)).toBe(9500);
-    expect(acotarAlSobre(99_999, sobre, 20)).toBe(9500);
-    expect(acotarAlSobre(99_999, sobre, 2)).toBeLessThan(9500);
+    expect(acotarAlSobre(99_999, sobre, 7)).toBe(12000);
+    expect(acotarAlSobre(99_999, sobre, 20)).toBe(12000);
+    expect(acotarAlSobre(99_999, sobre, 2)).toBeLessThan(12000);
 
     // El precio que entra deja de mandar: lo que manda es la distancia. Es lo
     // que impide que la pendiente genérica sature el techo.
-    expect(acotarAlSobre(1, sobre, 7)).toBe(9500);
-    expect(acotarAlSobre(99_999, sobre, 0.5)).toBe(5000);
+    expect(acotarAlSobre(1, sobre, 7)).toBe(12000);
+    expect(acotarAlSobre(99_999, sobre, 0.5)).toBe(6000);
 
     // Monótono y siempre sobre una casilla que existe en el decreto: no se
     // fija a qué km cambia cada escalón porque eso depende de la geografía de

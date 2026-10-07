@@ -175,7 +175,6 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
     required String destino,
     required DateTime salida,
     required int puestos,
-    required double tarifaPorPuesto,
     required String vehiculo,
     String? notas,
   }) async {
@@ -188,7 +187,8 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
           'destLabel': destino,
           'departureTime': salida.toIso8601String(),
           'totalSeats': puestos,
-          'farePerSeat': tarifaPorPuesto,
+          // El precio NO se manda: lo pone la plataforma y el servidor
+          // descarta lo que llegue. Mandarlo haría creer que se decide aquí.
           'vehicleDescription': vehiculo,
           if (notas != null && notas.isNotEmpty) 'notes': notas,
         },
