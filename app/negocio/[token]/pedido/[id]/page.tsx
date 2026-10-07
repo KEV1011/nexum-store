@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 
 import { formatCOP } from '../../../../moneda'
+import { CONTENEDOR, ESTADO, TARJETA } from '../../../ui'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type OrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
@@ -101,10 +102,10 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
 }
 
 const STATUS_CLASSES: Record<OrderStatus, string> = {
-  pending: 'bg-slate-100 text-slate-600',
-  at_pickup: 'bg-blue-100 text-blue-700',
-  in_transit: 'bg-emerald-100 text-emerald-700',
-  delivered: 'bg-emerald-100 text-emerald-700',
+  pending: ESTADO.listo,
+  at_pickup: ESTADO.enCurso,
+  in_transit: ESTADO.enCurso,
+  delivered: ESTADO.listo,
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -354,7 +355,7 @@ export default function PedidoDetailPage({
     <div className="min-h-screen bg-slate-50">
       {/* ── Sticky header ── */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+        <div className={`${CONTENEDOR} flex items-center gap-3 py-3 sm:py-4`}>
           <Link
             href={`/negocio/${token}`}
             className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-emerald-700
@@ -385,10 +386,10 @@ export default function PedidoDetailPage({
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      <div className={`${CONTENEDOR} space-y-4 py-5 sm:py-6`}>
 
         {/* ── Order header card ── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-4">
+        <div className={`${TARJETA} p-5 space-y-4`}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
@@ -441,7 +442,7 @@ export default function PedidoDetailPage({
         </div>
 
         {/* ── Chain of custody timeline ── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+        <div className={`${TARJETA} p-5`}>
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-semibold text-slate-900 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -536,7 +537,7 @@ export default function PedidoDetailPage({
         </div>
 
         {/* ── Driver info card ── */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+        <div className={`${TARJETA} p-5`}>
           <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
             <User className="w-4 h-4 text-emerald-600" />
             Repartidor

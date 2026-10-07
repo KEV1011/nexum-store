@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 
 import { formatCOP } from '../../../moneda'
+import { CONTENEDOR, TARJETA } from '../../ui'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const BACKEND_URL =
@@ -677,7 +678,7 @@ function CoverSection({ token }: { token: string }) {
   const img = resolveImg(cover ?? undefined)
 
   return (
-    <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <section className={`${TARJETA} overflow-hidden`}>
       <button
         onClick={() => fileRef.current?.click()}
         disabled={busy}
@@ -922,7 +923,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sm:sticky sm:top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+        <div className={`${CONTENEDOR} flex items-center gap-3 py-3 sm:py-4`}>
           <Link href={`/negocio/${token}`} className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100">
             <ArrowLeft className="w-5 h-5" />
           </Link>
@@ -940,12 +941,12 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
 
       <PortalTabs token={token} activa="catalogo" />
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
         {/* Portada del local */}
         <CoverSection token={token} />
 
         {/* Alta */}
-        <form onSubmit={createProduct} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-3">
+        <form onSubmit={createProduct} className={`${TARJETA} p-5 space-y-3`}>
           <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
             <Plus className="w-4 h-4 text-emerald-600" />
             Agregar producto

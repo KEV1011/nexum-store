@@ -60,6 +60,19 @@ export const ESTADO = {
 
 export type Estado = keyof typeof ESTADO
 
+/**
+ * Una ETIQUETA, que no es lo mismo que un estado.
+ *
+ * «Mesa 4», «Salón», «Domicilio», «Se actualiza»: dicen de qué CLASE es algo,
+ * no cómo va ni si hay que hacer nada. Si se pintaran de colores —como estaban,
+ * en celeste— competirían por la mirada con los estados, que son los que sí
+ * piden acción, y el color dejaría de significar nada.
+ *
+ * Van en gris a propósito: la palabra ya distingue «Salón» de «Domicilio» sin
+ * ayuda, y leer la queja es lo que se hace de todos modos.
+ */
+export const ETIQUETA = 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+
 /** Solo el tinte del icono de una estadística, sin el fondo de la tarjeta. */
 export const TINTE_ESTADO: Record<Estado, string> = {
   nuevo: 'bg-amber-100 text-amber-700',

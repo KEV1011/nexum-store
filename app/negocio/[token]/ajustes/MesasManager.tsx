@@ -123,7 +123,7 @@ export function MesasManager({ token }: { token: string }) {
   return (
     <section className="bg-white border border-slate-200 rounded-2xl p-4">
       <h2 className="flex items-center gap-2 font-bold text-slate-900 text-sm">
-        <QrCode className="h-4 w-4 text-sky-600" />
+        <QrCode className="h-4 w-4 text-emerald-600" />
         Pedido en la mesa
       </h2>
       <p className="text-xs text-slate-500 mt-0.5">
@@ -150,8 +150,8 @@ export function MesasManager({ token }: { token: string }) {
           )}
 
           {mesas.length === 0 && (
-            <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
-              <p className="text-xs font-semibold text-sky-900">
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs font-semibold text-amber-900">
                 Todavía no tienes mesas. Mientras no las agregues, nadie puede
                 pedir desde el salón.
               </p>
@@ -162,7 +162,7 @@ export function MesasManager({ token }: { token: string }) {
                     type="button"
                     onClick={() => numerar(n)}
                     disabled={guardando}
-                    className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+                    className="min-h-[40px] rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                   >
                     Crear mesas 1 a {n}
                   </button>

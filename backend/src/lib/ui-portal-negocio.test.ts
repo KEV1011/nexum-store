@@ -70,41 +70,18 @@ describe('el color significa algo', () => {
    */
   const DECORATIVAS = /\b(violet|sky|orange|rose|blue|indigo|fuchsia|lime|cyan)-\d/;
 
-  /**
-   * Lo que falta por pasar al sistema.
-   *
-   * La lista está aquí y no en un comentario para que la deuda sea VISIBLE y,
-   * sobre todo, para que no pueda crecer: un archivo nuevo con color
-   * decorativo rompe la prueba aunque estos sigan pendientes. Se va vaciando
-   * tanda a tanda, y el día que quede en cero se borra junto con el filtro.
-   */
-  const PENDIENTES = [
-    'app/negocio/[token]/catalogo/CsvImport.tsx',
-    'app/negocio/[token]/ajustes/page.tsx',
-    'app/negocio/[token]/ajustes/MesasManager.tsx',
-    'app/negocio/[token]/pedido/[id]/page.tsx',
-  ];
-
-  it('nada decorativo en lo ya pasado al sistema', () => {
-    const malos = infracciones(DECORATIVAS)
-      .filter((m) => !PENDIENTES.some((p) => m.startsWith(p)));
+  // Ya NO hay lista de pendientes, y es la diferencia que importa: la primera
+  // versión de esta prueba llevaba una lista de archivos exentos porque el
+  // portal estaba a medio migrar. Las cuatro pantallas ya están, así que la
+  // regla vale para TODO el portal sin excepciones — y una excepción que no
+  // existe no se puede ampliar «solo por este archivo».
+  it('ninguna pantalla del portal usa color decorativo', () => {
+    const malos = infracciones(DECORATIVAS);
     expect(
       malos,
-      `El color tiene que significar un estado (ver ESTADO en app/negocio/ui.ts). `
-      + `Si este archivo todavía no está migrado, añádelo a PENDIENTES:\n${malos.join('\n')}`,
+      'El color tiene que significar un estado (ESTADO) o ser una etiqueta '
+      + `(ETIQUETA). Ver app/negocio/ui.ts:\n${malos.join('\n')}`,
     ).toEqual([]);
-  });
-
-  it('la lista de pendientes no miente: todos existen y todos tienen deuda', () => {
-    // Un pendiente ya limpio es una excusa abierta para siempre, y uno que ya
-    // no existe esconde que el archivo se renombró. Las dos cosas vacían la
-    // guarda sin que nadie se entere.
-    const conDeuda = new Set(
-      infracciones(DECORATIVAS).map((m) => m.slice(0, m.indexOf('.tsx') + 4)),
-    );
-    const sobran = PENDIENTES.filter((p) => !conDeuda.has(p));
-    expect(sobran, `Ya están limpios o no existen: quítalos de PENDIENTES:\n${sobran.join('\n')}`)
-      .toEqual([]);
   });
 });
 

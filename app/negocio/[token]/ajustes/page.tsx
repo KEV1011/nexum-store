@@ -7,6 +7,7 @@ import GirosNegocio from '../GirosNegocio'
 import { LocationPicker } from './LocationPicker'
 import { DestinosEnvio, type Destino } from './DestinosEnvio'
 import { MesasManager } from './MesasManager'
+import { CONTENEDOR } from '../../ui'
 import { HorarioEditor, type Franja } from './HorarioEditor'
 import {
   ArrowLeft,
@@ -182,7 +183,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 sm:sticky sm:top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+        <div className={`${CONTENEDOR} flex items-center gap-3 py-3 sm:py-4`}>
           <Link href={`/negocio/${token}`} className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100">
             <ArrowLeft className="w-5 h-5" />
           </Link>
@@ -200,7 +201,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
 
       <PortalTabs token={token} activa="ajustes" />
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
         {loading ? (
           <div className="flex justify-center py-10"><Loader2 className="w-7 h-7 text-emerald-600 animate-spin" /></div>
         ) : error ? (
@@ -384,9 +385,11 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                               {c.origen && (
                                 <span
                                   className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                                    c.origen === 'salon'
-                                      ? 'bg-sky-100 text-sky-700'
-                                      : 'bg-emerald-100 text-emerald-700'
+                                    // Salón o domicilio es una CLASE, no un
+                                    // estado: la palabra ya los distingue y
+                                    // en color competirían con lo que sí pide
+                                    // acción. Ver ETIQUETA en ui.ts.
+                                    'bg-slate-100 text-slate-600'
                                   }`}
                                 >
                                   {c.origen === 'salon' ? 'Salón' : 'Domicilio'}
