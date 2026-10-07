@@ -124,7 +124,7 @@ export function DestinosEnvio({
     <div className="rounded-xl border border-slate-200 p-3 space-y-3">
       <div className="flex items-start gap-2.5">
         <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-          destinos.length > 0 ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-500'
+          destinos.length > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
         }`}>
           <Truck className="w-4.5 h-4.5" />
         </span>
@@ -183,7 +183,7 @@ export function DestinosEnvio({
             <select
               value={nueva}
               onChange={(e) => setNueva(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600 outline-none"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none"
             >
               <option value="">Elige una ciudad…</option>
               {disponibles.map((m) => (
@@ -204,12 +204,12 @@ export function DestinosEnvio({
               onChange={(e) => setPrecio(e.target.value)}
               inputMode="numeric"
               placeholder="Precio del envío"
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600 outline-none"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none"
             />
             <select
               value={horas}
               onChange={(e) => setHoras(e.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600 outline-none"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none"
             >
               <option value="12">Mismo día</option>
               <option value="24">Al día siguiente</option>
@@ -225,7 +225,7 @@ export function DestinosEnvio({
                 type="time"
                 value={corte}
                 onChange={(e) => setCorte(e.target.value)}
-                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600 outline-none"
+                className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-900 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none"
               />
               <span className="text-slate-400">
                 para que salga el mismo día (opcional)
@@ -238,7 +238,7 @@ export function DestinosEnvio({
           <button
             onClick={() => void guardar()}
             disabled={guardando}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
           >
             {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : guardado ? <Check className="w-4 h-4" /> : null}
             {guardado ? 'Guardado' : 'Guardar destinos'}

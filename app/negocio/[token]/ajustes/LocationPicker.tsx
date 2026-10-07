@@ -252,7 +252,7 @@ export function LocationPicker({
     <div className="rounded-xl border border-slate-200 p-3 space-y-3">
       <div className="flex items-start gap-2.5">
         <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-          yaTiene ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-600'
+          yaTiene ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-600'
         }`}>
           <MapPin className="w-4.5 h-4.5" />
         </span>
@@ -285,7 +285,7 @@ export function LocationPicker({
                 value={consulta}
                 onChange={(e) => setConsulta(e.target.value)}
                 placeholder="Escribe la dirección de tu negocio"
-                className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 focus:border-teal-600 focus:ring-1 focus:ring-teal-600 outline-none"
+                className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-300 text-sm text-slate-900 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 outline-none"
               />
               {buscando ? (
                 <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 animate-spin" />
@@ -312,10 +312,10 @@ export function LocationPicker({
                   mapRef.current?.setView([escrita.lat, escrita.lng], 18)
                   setEscrita(null)
                 }}
-                className="mb-2 w-full rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-left text-sm text-teal-900 hover:bg-teal-100"
+                className="mb-2 w-full rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-left text-sm text-emerald-900 hover:bg-emerald-100"
               >
                 Ir a <strong>{escrita.normalizada}</strong>
-                <span className="block text-xs text-teal-700">
+                <span className="block text-xs text-emerald-700">
                   Comprueba en el mapa que el pin cae en tu puerta.
                 </span>
               </button>
@@ -355,7 +355,7 @@ export function LocationPicker({
                   le olvidó. 500 queda por encima de los paneles y por debajo
                   de los controles de zoom. */}
               <div className="pointer-events-none absolute inset-0 z-[500] flex items-center justify-center">
-                <MapPin className="w-8 h-8 text-teal-700 drop-shadow" style={{ transform: 'translateY(-14px)' }} />
+                <MapPin className="w-8 h-8 text-emerald-700 drop-shadow" style={{ transform: 'translateY(-14px)' }} />
               </div>
             </div>
           </div>
@@ -375,7 +375,7 @@ export function LocationPicker({
             <button
               onClick={() => void guardar()}
               disabled={guardando}
-              className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50"
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
             >
               {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : guardado ? <Check className="w-4 h-4" /> : null}
               {guardado ? 'Guardado' : 'Confirmar este punto'}

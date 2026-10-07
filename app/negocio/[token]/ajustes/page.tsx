@@ -7,6 +7,7 @@ import GirosNegocio from '../GirosNegocio'
 import { LocationPicker } from './LocationPicker'
 import { DestinosEnvio, type Destino } from './DestinosEnvio'
 import { MesasManager } from './MesasManager'
+import { CONTENEDOR } from '../../ui'
 import { HorarioEditor, type Franja } from './HorarioEditor'
 import {
   ArrowLeft,
@@ -86,7 +87,7 @@ function soloFecha(iso?: string | null): string {
 
 const INPUT =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ' +
-  'placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20'
+  'placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20'
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -182,7 +183,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 sm:sticky sm:top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+        <div className={`${CONTENEDOR} flex items-center gap-3 py-3 sm:py-4`}>
           <Link href={`/negocio/${token}`} className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100">
             <ArrowLeft className="w-5 h-5" />
           </Link>
@@ -200,9 +201,9 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
 
       <PortalTabs token={token} activa="ajustes" />
 
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
         {loading ? (
-          <div className="flex justify-center py-10"><Loader2 className="w-7 h-7 text-teal-600 animate-spin" /></div>
+          <div className="flex justify-center py-10"><Loader2 className="w-7 h-7 text-emerald-600 animate-spin" /></div>
         ) : error ? (
           <div className="bg-white border border-red-100 rounded-2xl p-6 text-center">
             <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-2" />
@@ -303,7 +304,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
             {stats && (
               <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
                 <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-teal-600" /> Ventas de hoy
+                  <BarChart3 className="w-4 h-4 text-emerald-600" /> Ventas de hoy
                 </h2>
                 <div className="grid grid-cols-3 gap-3">
                   <StatBox label="Ingresos" value={formatCOP(stats.revenue)} />
@@ -317,7 +318,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                       {stats.topProducts.map((p, i) => (
                         <div key={i} className="flex items-center justify-between text-sm">
                           <span className="text-slate-700 truncate">
-                            <span className="font-semibold text-teal-700">{p.quantity}×</span> {p.name}
+                            <span className="font-semibold text-emerald-700">{p.quantity}×</span> {p.name}
                           </span>
                           <span className="text-slate-500 shrink-0 ml-2">{formatCOP(p.revenue)}</span>
                         </div>
@@ -384,9 +385,11 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                               {c.origen && (
                                 <span
                                   className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                                    c.origen === 'salon'
-                                      ? 'bg-sky-100 text-sky-700'
-                                      : 'bg-teal-100 text-teal-700'
+                                    // Salón o domicilio es una CLASE, no un
+                                    // estado: la palabra ya los distingue y
+                                    // en color competirían con lo que sí pide
+                                    // acción. Ver ETIQUETA en ui.ts.
+                                    'bg-slate-100 text-slate-600'
                                   }`}
                                 >
                                   {c.origen === 'salon' ? 'Salón' : 'Domicilio'}
@@ -540,7 +543,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
                   promoUntil: settings.promoUntil ?? null,
                 })}
                 disabled={saving}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-teal-800 transition-colors disabled:opacity-50"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 transition-colors disabled:opacity-50"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : null}
                 {saved ? 'Guardado' : 'Guardar cambios'}

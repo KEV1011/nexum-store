@@ -154,7 +154,7 @@ export function CsvImport({ token, onImported }: { token: string; onImported: ()
             <span className="rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-1">
               {preview.nuevos.length} nuevo{preview.nuevos.length === 1 ? '' : 's'}
             </span>
-            <span className="rounded-full bg-sky-50 text-sky-700 px-2.5 py-1">
+            <span className="rounded-full bg-slate-100 text-slate-600 px-2.5 py-1">
               {preview.actualizaciones.length} se actualiza{preview.actualizaciones.length === 1 ? '' : 'n'}
             </span>
             {preview.errores.length > 0 ? (
@@ -203,7 +203,7 @@ export function CsvImport({ token, onImported }: { token: string; onImported: ()
                         ) : null}
                       </td>
                       <td className="px-3 py-2 tabular-nums">{formatCOP(f.precio)}</td>
-                      <td className="px-3 py-2 text-sky-700 font-semibold">Se actualiza</td>
+                      <td className="px-3 py-2 font-semibold text-slate-500">Se actualiza</td>
                     </tr>
                   ))}
                   {preview.nuevos.slice(0, 15).map((f) => (
@@ -231,7 +231,7 @@ export function CsvImport({ token, onImported }: { token: string; onImported: ()
             <button
               onClick={() => void importar()}
               disabled={importando || totalValido === 0}
-              className="flex-1 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 hover:bg-teal-800"
+              className="flex-1 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 hover:bg-emerald-800"
             >
               {importando ? 'Importando…' : `Aplicar ${totalValido} producto${totalValido === 1 ? '' : 's'}`}
             </button>
