@@ -4,14 +4,26 @@
  *
  * DE DÓNDE SALE ESTO
  * ------------------
- * Del Decreto 049 de 2023 de la Alcaldía de Pamplona (7 de septiembre), que es
- * el que rige el taxi en la plaza donde arranca la operación. Leerlo obligó a
+ * Del **Decreto 003 del 9 de enero de 2026** de la Alcaldía de Pamplona, que
+ * DEROGA el 049 de 2023 con el que se escribió este archivo («deroga todas las
+ * disposiciones que le sean contrarias y anteriores», artículo séptimo). Es el
+ * que rige el taxi en la plaza donde arranca la operación. Leerlo obligó a
  * corregir una suposición del código:
  *
  *   **Pamplona NO tarifa el taxi por kilómetro.** No hay banderazo ni valor por
  *   km en ninguna parte del decreto. El artículo primero es una TABLA DE
- *   SECTORES con precios fijos ($5.000, $5.500, $6.000, $7.500, $8.500,
- *   $9.500) y el artículo segundo fija la carrera mínima y dos recargos.
+ *   SECTORES con precios fijos y el artículo segundo fija la carrera mínima y
+ *   dos recargos.
+ *
+ * Los valores vigentes (2026), en nueve filas con seis precios distintos:
+ * $6.000, $7.000, $8.000, $9.000, $10.000 y $12.000. Carrera mínima $6.000,
+ * servicio por hora $35.000, recargo nocturno $1.000 desde las 9:00 PM todos
+ * los días y recargo de domingos y festivos $1.000 por carrera.
+ *
+ * NINGUNO DE ESOS NÚMEROS ESTÁ ESCRITO EN EL CÓDIGO, y es deliberado: viven en
+ * variables de entorno porque cambian por decreto y porque otra plaza tendrá
+ * los suyos. La lista exacta para copiar a Render está en `docs/PILOTO.md`.
+ * Cuando salga el decreto del año que viene, se cambian ahí y no aquí.
  *
  * `tarifa-categoria.ts` exigía el juego completo banderazo + km + mínimo para
  * dar por cargada la tarifa oficial. Con este decreto ese juego NO EXISTE, así
@@ -25,14 +37,14 @@
  * ----------------------------------
  * Resuelve lo que el decreto fija de forma exacta y sin depender de geografía:
  *
- *   • La carrera mínima ($5.000) y la máxima urbana ($9.500, el tope de la
+ *   • La carrera mínima ($6.000) y la máxima urbana ($12.000, el tope de la
  *     tabla de sectores). Entre las dos hay un SOBRE: cualquier carrera urbana
  *     autorizada cae dentro. Cotizar fuera de ese rango es, por arriba, cobrar
  *     más de lo que autoriza cualquier fila de la tabla.
  *   • El recargo nocturno y el de domingos y festivos, que hoy no se cobran y
  *     son plata del conductor.
  *
- * NO resuelve cuál de las seis filas de la tabla aplica a un trayecto concreto:
+ * NO resuelve cuál de las nueve filas de la tabla aplica a un trayecto concreto:
  * eso exige saber en qué sector cae cada punta («San Pedro», «Cristo Rey»,
  * «Ciudadela Universitaria»…) y no tenemos los polígonos de esos barrios.
  * Mientras no los haya, el precio se estima y se ACOTA al sobre, y el modo se
@@ -267,7 +279,8 @@ export interface SobreDelDecreto {
    *
    * Sin ellos el precio acotado puede caer en cualquier cifra intermedia —
    * $5.350 para una carrera corta en Pamplona— y ese número NO APARECE en el
-   * decreto: la tabla solo tiene 5.000, 5.500, 6.000, 7.500, 8.500 y 9.500.
+   * decreto: la tabla de 2026 solo tiene 6.000, 7.000, 8.000, 9.000, 10.000
+   * y 12.000.
    * Con ellos, todo lo que cotiza la app es una casilla real del documento.
    */
   escalones: readonly number[];
@@ -288,7 +301,7 @@ export interface SobreDelDecreto {
  * El rango autorizado para una carrera urbana, si el municipio lo cargó.
  *
  * Hace falta el par completo: con solo el mínimo no hay techo y la fórmula
- * genérica podría cotizar $13.000 donde el decreto no autoriza más de $9.500;
+ * genérica podría cotizar $16.000 donde el decreto no autoriza más de $12.000;
  * con solo el techo, una carrera corta bajaría del mínimo legal.
  */
 export function sobreDelDecreto(): SobreDelDecreto | null {
@@ -312,7 +325,7 @@ export function sobreDelDecreto(): SobreDelDecreto | null {
 
 /**
  * Los precios de la tabla de sectores, de `TAXI_TARIFAS_SECTOR_COP`
- * («5000,5500,6000,7500,8500,9500»). Se descarta lo que no sea número o caiga
+ * («6000,7000,8000,9000,10000,12000»). Se descarta lo que no sea número o caiga
  * fuera del sobre, y el mínimo y el máximo entran siempre: son escalones por
  * definición.
  */
