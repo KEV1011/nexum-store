@@ -5,6 +5,14 @@ import { docKillSwitchEnforced } from './document-expiry.service';
 import { estadoPiloto, kycEnforced } from './kyc.service';
 import { contarDespachoAtascado, contarViajesColgados } from './dispatch-recovery.service';
 import {
+  MOTIVO_ATASCADO, avisoDeCancelacion, minParaAtascado, type TipoAtascado,
+} from '../lib/servicio-atascado';
+import { ESTADOS_DESPACHABLES } from '../lib/estado-pedido';
+import { sendPushToClient } from './push.service';
+import { cancelClientOrder, cancelClientTrip } from './client.service';
+import { cancelClientErrand } from './errand.service';
+import { cancelIntercityBooking } from './intercity.service';
+import {
   serieDeDias,
   emparejamiento,
   retencion,
@@ -1183,4 +1191,168 @@ export async function getMetricasReservas(
     canceladas,
     minutosHastaApartar,
   });
+}
+
+// ─── Servicios colgados sin conductor ────────────────────────────────────────
+
+export interface ServicioAtascado {
+  tipo: TipoAtascado;
+  id: string;
+  ref: string;
+  /** Quién lo está esperando. */
+  cliente: string;
+  telefono: string;
+  minutos: number;
+  detalle: string;
+}
+
+/**
+ * Los servicios que llevan demasiado tiempo esperando conductor.
+ *
+ * El panel ya los CONTABA; esto los enumera para poder actuar sobre uno
+ * concreto. El conteo y esta lista comparten el umbral (`minParaAtascado`),
+ * que es lo que impide que el aviso diga «hay 3» y la lista traiga otra cosa.
+ */
+export async function listarServiciosAtascados(): Promise<ServicioAtascado[]> {
+  const corte = new Date(Date.now() - minParaAtascado() * 60_000);
+  const desde = (d: Date): number => Math.round((Date.now() - d.getTime()) / 60_000);
+
+  const [viajes, mandados, pedidos, intercity] = await Promise.all([
+    // `Trip.passengerId` no tiene relación declarada en el esquema, así que el
+    // pasajero se busca aparte y en lote.
+    prisma.trip.findMany({
+      where: { status: 'SEARCHING', driverId: null, createdAt: { lt: corte } },
+      select: {
+        id: true, createdAt: true, originAddress: true, destAddress: true,
+        passengerId: true,
+      },
+      orderBy: { createdAt: 'asc' }, take: 50,
+    }),
+    prisma.errand.findMany({
+      where: { status: 'SEARCHING', driverId: null, createdAt: { lt: corte } },
+      select: {
+        id: true, createdAt: true, requestRef: true, description: true,
+        user: { select: { name: true, phone: true } },
+      },
+      orderBy: { createdAt: 'asc' }, take: 50,
+    }),
+    prisma.order.findMany({
+      where: { status: { in: ESTADOS_DESPACHABLES }, driverId: null, createdAt: { lt: corte } },
+      select: {
+        id: true, createdAt: true, orderRef: true, deliveryAddress: true,
+        business: { select: { name: true } },
+        user: { select: { name: true, phone: true } },
+      },
+      orderBy: { createdAt: 'asc' }, take: 50,
+    }),
+    prisma.intercityBooking.findMany({
+      where: { status: 'SEARCHING', driverId: null, createdAt: { lt: corte } },
+      select: {
+        id: true, createdAt: true, origin: true, destination: true,
+        user: { select: { name: true, phone: true } },
+      },
+      orderBy: { createdAt: 'asc' }, take: 50,
+    }),
+  ]);
+
+  const sinNombre = 'Pasajero';
+  const idsPasajeros = viajes.map((t) => t.passengerId).filter((v): v is string => !!v);
+  const pasajeros = idsPasajeros.length
+    ? await prisma.user.findMany({
+        where: { id: { in: idsPasajeros } },
+        select: { id: true, name: true, phone: true },
+      })
+    : [];
+  const porId = new Map(pasajeros.map((u) => [u.id, u]));
+
+  const filas: ServicioAtascado[] = [
+    ...viajes.map((t) => ({
+      tipo: 'viaje' as const, id: t.id, ref: t.id.slice(-6).toUpperCase(),
+      cliente: porId.get(t.passengerId ?? '')?.name ?? sinNombre,
+      telefono: porId.get(t.passengerId ?? '')?.phone ?? '',
+      minutos: desde(t.createdAt),
+      detalle: `${t.originAddress} → ${t.destAddress}`,
+    })),
+    ...mandados.map((e) => ({
+      tipo: 'mandado' as const, id: e.id, ref: e.requestRef,
+      cliente: e.user?.name ?? sinNombre, telefono: e.user?.phone ?? '',
+      minutos: desde(e.createdAt), detalle: e.description,
+    })),
+    ...pedidos.map((o) => ({
+      tipo: 'pedido' as const, id: o.id, ref: o.orderRef,
+      cliente: o.user?.name ?? sinNombre, telefono: o.user?.phone ?? '',
+      minutos: desde(o.createdAt),
+      detalle: `${o.business?.name ?? 'Negocio'} → ${o.deliveryAddress}`,
+    })),
+    ...intercity.map((b) => ({
+      tipo: 'intermunicipal' as const, id: b.id, ref: b.id.slice(-6).toUpperCase(),
+      cliente: b.user?.name ?? sinNombre, telefono: b.user?.phone ?? '',
+      minutos: desde(b.createdAt), detalle: `${b.origin} → ${b.destination}`,
+    })),
+  ];
+  // El que lleva más esperando, primero: es a quien hay que atender antes.
+  return filas.sort((a, b) => b.minutos - a.minutos);
+}
+
+/**
+ * Cancela un servicio colgado y libera a quien lo esperaba.
+ *
+ * REUTILIZA EL CAMINO DE CANCELACIÓN DEL CLIENTE en vez de escribir el estado
+ * a mano. Un `updateMany` directo dejaría sin hacer todo lo que cuelga de una
+ * cancelación —devolver el inventario del pedido, parar los reintentos de
+ * búsqueda, apagar los temporizadores, avisar al negocio— y esas omisiones no
+ * fallan: se notan semanas después, cuando el stock no cuadra. Por eso se
+ * busca el dueño y se llama a la misma función que llamaría él.
+ *
+ * Y se le AVISA. Una cancelación de la que el usuario no se entera no lo
+ * libera: su teléfono le sigue diciendo que hay un servicio en curso.
+ */
+export async function cancelarServicioAtascado(
+  tipo: TipoAtascado,
+  id: string,
+): Promise<{ ok: boolean; motivo?: string }> {
+  const avisar = (userId: string | null | undefined): void => {
+    if (!userId) return;
+    const aviso = avisoDeCancelacion(tipo);
+    void sendPushToClient(userId, {
+      title: aviso.title,
+      body: aviso.body,
+      data: { type: 'servicio_cancelado', servicioId: id },
+    });
+  };
+
+  if (tipo === 'viaje') {
+    const t = await prisma.trip.findUnique({ where: { id }, select: { passengerId: true } });
+    if (!t?.passengerId) return { ok: false, motivo: 'El viaje no existe' };
+    const ok = await cancelClientTrip(t.passengerId, id);
+    if (!ok) return { ok: false, motivo: 'El viaje ya no se puede cancelar' };
+    await prisma.trip.update({ where: { id }, data: { cancelReason: MOTIVO_ATASCADO } });
+    avisar(t.passengerId);
+    return { ok: true };
+  }
+
+  if (tipo === 'mandado') {
+    const e = await prisma.errand.findUnique({ where: { id }, select: { userId: true } });
+    if (!e?.userId) return { ok: false, motivo: 'El mandado no existe' };
+    const ok = await cancelClientErrand(e.userId, id);
+    if (!ok) return { ok: false, motivo: 'El mandado ya no se puede cancelar' };
+    avisar(e.userId);
+    return { ok: true };
+  }
+
+  if (tipo === 'pedido') {
+    const o = await prisma.order.findUnique({ where: { id }, select: { userId: true } });
+    if (!o?.userId) return { ok: false, motivo: 'El pedido no existe' };
+    const ok = await cancelClientOrder(o.userId, id);
+    if (!ok) return { ok: false, motivo: 'El pedido ya no se puede cancelar' };
+    avisar(o.userId);
+    return { ok: true };
+  }
+
+  const b = await prisma.intercityBooking.findUnique({ where: { id }, select: { userId: true } });
+  if (!b?.userId) return { ok: false, motivo: 'La reserva no existe' };
+  const ok = await cancelIntercityBooking(b.userId, id);
+  if (!ok) return { ok: false, motivo: 'La reserva ya no se puede cancelar' };
+  avisar(b.userId);
+  return { ok: true };
 }

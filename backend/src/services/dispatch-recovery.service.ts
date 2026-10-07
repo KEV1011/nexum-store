@@ -26,6 +26,7 @@
 // con el aviso que el propio despacho habría dado.
 
 import { prisma } from '../lib/prisma';
+import { minParaAtascado } from '../lib/servicio-atascado';
 import { ESTADOS_DESPACHABLES } from '../lib/estado-pedido';
 import {
   startMatchingCycle,
@@ -42,7 +43,10 @@ const PAMPLONA = INTERCITY_CITY_COORDS.pamplona;
  * A partir de esta edad, un servicio colgado se cierra en vez de reanudarse.
  * Por encima de media hora, quien lo pidió casi seguro que ya no está.
  */
-const MAX_EDAD_MIN = Number(process.env['DISPATCH_RECOVERY_MAX_AGE_MIN'] ?? 30);
+// El umbral vive en `lib/servicio-atascado` porque lo comparten el CONTEO de
+// este archivo y la LISTA que el admin cancela. Con dos copias, el aviso
+// diría «hay 3» y la lista traería otra cantidad.
+const MAX_EDAD_MIN = minParaAtascado();
 
 /** Cada cuánto se repite la comprobación con el proceso ya vivo. */
 export const BARRIDO_MS = Number(process.env['DISPATCH_SWEEP_MS'] ?? 5 * 60 * 1000);

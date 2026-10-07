@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { esTipoAtascado } from '../lib/servicio-atascado';
 import { DocumentStatus, PayoutStatus } from '@prisma/client';
 import { avisosDeReserva } from '../services/reservas.service';
 import {
@@ -43,6 +44,8 @@ import {
   setOperatorRouteAuthorized,
   setDriverVerified,
   releaseDriver,
+  listarServiciosAtascados,
+  cancelarServicioAtascado,
   diagnoseMatching,
   listClientsForKyc,
   listBusinessesForAdmin,
@@ -301,6 +304,27 @@ router.post('/drivers/:id/release', async (req: Request, res: Response): Promise
   const result = await releaseDriver(req.params['id']!);
   if (!result.ok) { res.status(404).json({ success: false, error: 'Conductor no encontrado' }); return; }
   res.json({ success: true, data: result });
+});
+
+// GET /admin/stuck — los servicios colgados sin conductor, uno a uno.
+//
+// El panel ya los CONTABA («3 servicios sin conductor desde hace más de 30
+// minutos») y no había forma de actuar sobre ninguno: `releaseDriver` trabaja
+// a través del conductor, y estos no tienen.
+router.get('/stuck', async (_req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listarServiciosAtascados() });
+});
+
+// POST /admin/stuck/:tipo/:id/cancel — cancela uno y libera a quien esperaba.
+router.post('/stuck/:tipo/:id/cancel', async (req: Request, res: Response): Promise<void> => {
+  const tipo = req.params['tipo'];
+  if (!esTipoAtascado(tipo)) {
+    res.status(400).json({ success: false, error: 'Tipo de servicio desconocido' });
+    return;
+  }
+  const r = await cancelarServicioAtascado(tipo, req.params['id']!);
+  if (!r.ok) { res.status(400).json({ success: false, error: r.motivo ?? 'No se pudo cancelar' }); return; }
+  res.json({ success: true, data: r });
 });
 
 // POST /admin/drivers/:id/compliance/clear — desbloqueo manual del kill-switch
@@ -1562,7 +1586,47 @@ function pintarAtascados(m) {
     esc(String(s.desdeMin)) + ' minutos: ' + esc(partes.join(' · ')) +
     '.<div style="margin-top:6px">Alguien está esperando. Mira si hay conductores en línea en la zona ' +
     '(pestaña Conductores → Diagnóstico de despacho); el sistema reintenta solo, ' +
-    'pero si no hay nadie conectado no va a aparecer de la nada.</div>' + huerfanos;
+    'pero si no hay nadie conectado no va a aparecer de la nada.</div>' +
+    '<div style="margin-top:8px"><button class="btn-sm" onclick="verAtascados()">' +
+    'Ver y liberar uno a uno</button></div>' +
+    '<div id="atascados-lista"></div>' + huerfanos;
+}
+
+// La lista de los colgados, con su botón.
+//
+// POR QUÉ. El aviso de arriba CONTABA los servicios y mandaba a mirar un
+// diagnóstico, sin ofrecer nada que hacer: la única acción que existía
+// —«Liberar conductor»— trabaja a través del conductor, y estos no tienen
+// ninguno. Quien espera se quedaba esperando.
+function verAtascados() {
+  const caja = document.getElementById('atascados-lista');
+  caja.innerHTML = '<p class="muted" style="margin-top:8px">Cargando…</p>';
+  api('/admin/stuck').then(function (r) {
+    const filas = (r && r.data) || [];
+    if (!filas.length) {
+      caja.innerHTML = '<p class="muted" style="margin-top:8px">Ya no queda ninguno.</p>';
+      return;
+    }
+    caja.innerHTML = '<table style="margin-top:8px"><tr><th>Tipo</th><th>Ref</th>' +
+      '<th>Quién espera</th><th>Qué pidió</th><th>Esperando</th><th></th></tr>' +
+      filas.map(function (f) {
+        return '<tr><td>' + esc(f.tipo) + '</td><td>' + esc(f.ref) + '</td><td>' +
+          esc(f.cliente) + '<br><span class="muted">' + esc(f.telefono) + '</span></td><td>' +
+          esc(f.detalle) + '</td><td>' + esc(String(f.minutos)) + ' min</td>' +
+          '<td><button class="btn-sm" style="background:#dc2626;color:#fff" ' +
+          'onclick="cancelarAtascado(\\'' + f.tipo + '\\',\\'' + f.id + '\\')">Cancelar</button></td></tr>';
+      }).join('') + '</table>';
+  });
+}
+
+function cancelarAtascado(tipo, id) {
+  // Se avisa de las dos cosas que pasan, porque las dos son irreversibles de
+  // hecho: al usuario le llega una notificación y el servicio queda cerrado.
+  if (!confirm('¿Cancelar este ' + tipo + '? Se le avisa al usuario de que nadie lo tomó ' +
+               'y de que no se le cobró. Queda cancelado, no borrado: el registro se conserva.')) return;
+  api('/admin/stuck/' + tipo + '/' + id + '/cancel', { method: 'POST' })
+    .then(function () { verAtascados(); loadMetrics(); })
+    .catch(function (e) { alert(e.message || 'No se pudo cancelar'); });
 }
 
 // El piloto sin verificación, con cara y números. "PILOT_SKIP_VERIFICATION

@@ -355,10 +355,16 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
                   <button
                     type="button"
                     disabled={sinMesa || sinServicioEnMesa || !negocio.isOpen}
-                    onClick={() => {
-                      if (p.optionGroups.length > 0) setEligiendo(p)
-                      else agregar(p, [], '', '')
-                    }}
+                    // La hoja se abre SIEMPRE, tenga opciones o no.
+                    //
+                    // Antes solo se abría con `optionGroups.length > 0`, y la
+                    // hoja es el único sitio donde se escribe la nota para la
+                    // cocina. En una carta corriente casi ningún plato tiene
+                    // variantes configuradas, así que en la práctica no había
+                    // dónde poner «sin salsa» NUNCA — que es justo lo que se
+                    // reportó. La app del cliente ya lo hacía bien; este menú
+                    // se quedó atrás.
+                    onClick={() => setEligiendo(p)}
                     className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left disabled:opacity-60"
                   >
                     {p.imageUrl && (
