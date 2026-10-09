@@ -143,14 +143,29 @@ class PooledNotifier extends StateNotifier<PooledState> {
   /// criterio con el que sella los viajes: si la app decidiera por su cuenta
   /// en qué ciudad está, podría pedir los puestos de una y el despacho
   /// contarla en otra.
-  Future<void> buscarPuestosUrbanos({double? lat, double? lng}) async {
+  ///
+  /// `ciudad` es la ANULACIÓN manual, y existe porque sin ella esta pantalla
+  /// era un callejón sin salida: con el GPS apagado, o estando a más de 40 km
+  /// de cualquier centroide, no había forma de ver un solo puesto. El
+  /// intermunicipal sí tiene su «Ver todas las salidas»; esto es su
+  /// equivalente. El servidor ya aceptaba el parámetro — lo que faltaba era
+  /// mandarlo.
+  Future<void> buscarPuestosUrbanos({
+    double? lat,
+    double? lng,
+    String? ciudad,
+  }) async {
     state = state.copyWith(isSearchingUrbano: true, urbanoError: null);
     try {
       final res = await _dio.get<Map<String, dynamic>>(
         '/client/pool/urbano',
         queryParameters: {
-          if (lat != null && lng != null) 'lat': lat,
-          if (lat != null && lng != null) 'lng': lng,
+          // La ciudad elegida a mano MANDA sobre el GPS: si la persona acaba
+          // de decir a qué ciudad va, enseñarle la que dice su teléfono sería
+          // deshacer lo que pidió.
+          if (ciudad != null && ciudad.isNotEmpty) 'ciudad': ciudad,
+          if (ciudad == null && lat != null && lng != null) 'lat': lat,
+          if (ciudad == null && lat != null && lng != null) 'lng': lng,
         },
       );
       final d = res.data?['data'] as Map<String, dynamic>?;

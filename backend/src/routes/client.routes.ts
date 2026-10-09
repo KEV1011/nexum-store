@@ -1012,7 +1012,20 @@ router.get('/pool/urbano', clientAuthMiddleware, async (req, res) => {
   const lng = Number(req.query['lng']);
   let ciudad = String(req.query['ciudad'] ?? '').trim();
   let nombre = '';
-  if (!ciudad && Number.isFinite(lat) && Number.isFinite(lng)) {
+  if (ciudad) {
+    // La ciudad pedida a mano se VALIDA y se le saca su nombre de verdad.
+    //
+    // Sin esto el parámetro ya funcionaba, pero mal de dos maneras: un slug
+    // inventado devolvía una lista vacía que se lee como «no hay ningún taxi
+    // por puestos» en vez de «esa ciudad no existe», y el nombre que la
+    // pantalla enseña salía del slug — «Saliendo pronto en villa-del-rosario».
+    const muni = await getMunicipality(ciudad);
+    if (!muni) {
+      res.status(400).json({ success: false, error: 'No conocemos esa ciudad.' });
+      return;
+    }
+    nombre = muni.name;
+  } else if (Number.isFinite(lat) && Number.isFinite(lng)) {
     const plaza = await plazaDelPasajero(lat, lng);
     if (plaza) { ciudad = plaza.slug; nombre = plaza.nombre; }
   }
