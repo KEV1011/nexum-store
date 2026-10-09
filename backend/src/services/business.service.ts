@@ -23,6 +23,7 @@ import {
 } from '../lib/destinos-envio';
 import { porcentajeDescuento, rankingMasPedido, saneaPrecioAntes, saneaPromoTienda } from '../lib/vitrina';
 import { promedioReputacion } from '../lib/reputacion';
+import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
 import {
   saneaHorario, estaDentroDelHorario, proximaApertura, horarioEnTexto,
   saneaPausa, enPausa, promoVigente, saneaVigencia, type Franja,
@@ -726,8 +727,9 @@ export async function createBusinessProduct(
   businessId: string,
   dto: CreateProductDTO,
 ): Promise<ProductDTO> {
-  const name = dto.name?.trim();
-  if (!name) throw new Error('El nombre del producto es obligatorio.');
+  // Quita los emojis y rechaza el nombre que era SOLO un emoji: la fuente del
+  // sitio no los dibuja y el plato aparecía sin nombre en la carta.
+  const name = nombreDeProducto(dto.name);
   if (!(dto.price >= 0)) throw new Error('El precio debe ser un número válido.');
   const p = await prisma.product.create({
     data: {
@@ -736,8 +738,8 @@ export async function createBusinessProduct(
       price: dto.price,
       // Lanza con el motivo si el «antes» está al revés o es increíble.
       compareAtPrice: saneaPrecioAntes(dto.price, dto.compareAtPrice),
-      description: dto.description?.trim() || null,
-      category: dto.category?.trim() || 'General',
+      description: limpiarTextoDeCarta(dto.description ?? '') || null,
+      category: limpiarTextoDeCarta(dto.category ?? '') || 'General',
       imageUrl: dto.imageUrl ?? null,
       ..._inventarioData(dto),
     },
@@ -759,7 +761,7 @@ export async function updateBusinessProduct(
   const p = await prisma.product.update({
     where: { id: productId },
     data: {
-      ...(dto.name !== undefined && { name: dto.name.trim() }),
+      ...(dto.name !== undefined && { name: nombreDeProducto(dto.name) }),
       ...(dto.price !== undefined && { price: dto.price }),
       // Se valida contra el precio que va a QUEDAR, no contra el que había:
       // bajar el precio sin tocar el «antes» debe seguir siendo coherente.

@@ -18,6 +18,7 @@ import {
   type Producto,
 } from '../api'
 import { LineaTiempo } from '../LineaTiempo'
+import { agruparVale, idDeSeccion, seccionConFotos } from '../reglas'
 
 /**
  * La carta del restaurante, abierta desde el QR de la mesa.
@@ -118,6 +119,15 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
     return [...mapa.entries()]
   }, [productos])
 
+  // ¿Vale la pena agrupar? Un local había puesto cada plato en su propia
+  // categoría: los chips llevaban a UN producto y el encabezado repetía el
+  // nombre del plato que tenía debajo. Sin agrupación útil, lista plana.
+  const agrupar = useMemo(
+    () => agruparVale(porSeccion.map(([, items]) => ({ items }))),
+    [porSeccion],
+  )
+
+
   // La sección que se está mirando, para resaltar su chip en la barra.
   //
   // Se observa con `IntersectionObserver` y no con el evento de scroll a
@@ -128,7 +138,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   const barraSecciones = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (porSeccion.length < 2) return
+    if (!agrupar) return
     const observador = new IntersectionObserver(
       (entradas) => {
         const visible = entradas
@@ -145,7 +155,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
       if (el) observador.observe(el)
     }
     return () => observador.disconnect()
-  }, [porSeccion])
+  }, [porSeccion, agrupar])
 
   // El chip activo se trae a la vista dentro de su propia fila: con ocho
   // secciones, la que se está leyendo puede quedar fuera de la pantalla y la
@@ -213,7 +223,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
 
   if (cargando) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50">
+      <main className="min-h-screen grid place-items-center bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-50">
         <p className="flex items-center gap-2 text-sm text-slate-500">
           <Loader2 className="h-4 w-4 animate-spin" /> Cargando la carta…
         </p>
@@ -223,7 +233,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
 
   if (error && !carta) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 px-6">
+      <main className="min-h-screen grid place-items-center bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-50 px-6">
         <div className="max-w-sm text-center">
           <AlertTriangle className="mx-auto h-10 w-10 text-amber-500" />
           <p className="mt-3 font-bold text-slate-900">{error}</p>
@@ -246,24 +256,29 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   // Pedido ya enviado: la pantalla pasa a ser su estado.
   if (pedido) {
     return (
-      <main className="min-h-screen bg-slate-50 px-4 py-6">
+      <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-50 px-4 py-6">
         <div className="mx-auto max-w-md">
-          <div className="rounded-2xl border border-emerald-200 bg-white p-5 text-center">
-            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-100">
-              <Check className="h-6 w-6 text-emerald-600" />
+          <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-emerald-800
+                          p-6 text-center shadow-[0_8px_24px_rgba(5,150,105,0.18)]">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-white/15
+                            ring-1 ring-inset ring-white/25">
+              <Check className="h-7 w-7 text-white" />
             </div>
-            <h1 className="mt-3 font-bold text-slate-900">{etiquetaEstado(pedido.status)}</h1>
-            <p className="mt-1 text-sm text-slate-500">
+            <h1 className="mt-3 text-xl font-extrabold tracking-tight text-white">
+              {etiquetaEstado(pedido.status)}
+            </h1>
+            <p className="mt-1 text-sm font-medium text-emerald-50/90">
               Mesa {pedido.tableLabel} · #{pedido.orderRef}
             </p>
             {pedido.prepMinutes ? (
               // `violet` no decía nada aquí: «la cocina lo tomó y va en N
               // minutos» es el estado «en curso», que en todo ZIPA es esmeralda.
-              <p className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${ESTADO.enCurso}`}>
+              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5
+                            text-xs font-bold text-white ring-1 ring-inset ring-white/25">
                 <Clock className="h-3.5 w-3.5" /> Listo en unos {pedido.prepMinutes} min
               </p>
             ) : pedido.status === 'pending' ? (
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="mt-3 text-xs leading-relaxed text-emerald-50/80">
                 La cocina lo está viendo. Si pasan varios minutos sin respuesta,
                 avísale al mesero.
               </p>
@@ -324,7 +339,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   const puedePedir = !sinMesa && !sinServicioEnMesa && negocio.isOpen && carrito.length > 0
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-[max(7rem,calc(6rem+env(safe-area-inset-bottom)))]">
+    <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-50 pb-[max(7rem,calc(6rem+env(safe-area-inset-bottom)))]">
       {/* Cabecera con la portada del local */}
       <header className="relative">
         {negocio.imageUrl ? (
@@ -396,7 +411,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
             bebidas sin recorrerlo todo. `-mx-4 px-4` la saca a todo el ancho
             dentro del contenedor con relleno, para que la línea de abajo cruce
             la pantalla y se lea como una barra y no como una tarjeta más. */}
-        {(negocio.products.length > 8 || porSeccion.length >= 2) && (
+        {(negocio.products.length > 8 || agrupar) && (
           <div className="sticky top-0 z-20 -mx-4 mt-4 border-b border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur">
             {negocio.products.length > 8 && (
               <div className="relative">
@@ -426,7 +441,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
 
             {/* Con una sola sección los chips no filtrarían nada: no se dibujan.
                 Misma regla que las píldoras de categoría del home del cliente. */}
-            {porSeccion.length >= 2 && (
+            {agrupar && (
               <div
                 ref={barraSecciones}
                 className="-mx-4 flex gap-2 overflow-x-auto px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -464,15 +479,27 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
           </p>
         )}
 
-        {porSeccion.map(([seccion, items]) => (
-          <section key={seccion} id={idDeSeccion(seccion)} className="mt-6 scroll-mt-24">
-            <h2 className="text-base font-bold tracking-tight text-slate-900">
-              {seccion}
-              <span className="ml-2 align-middle text-xs font-medium text-slate-400">
-                {items.length}
-              </span>
-            </h2>
-            <ul className="mt-3 space-y-2.5">
+        {porSeccion.map(([seccion, items], i) => (
+          <section
+            key={seccion}
+            id={idDeSeccion(seccion)}
+            className="mt-5 scroll-mt-24 animate-[entrar_.45s_ease-out_backwards]"
+            style={{ animationDelay: `${Math.min(i, 6) * 60}ms` }}
+          >
+            {/* Sin agrupación útil no hay encabezado: repetiría el nombre del
+                único plato que tiene debajo. */}
+            {agrupar && (
+              <h2 className="mb-2 flex items-baseline gap-2 px-0.5">
+                <span className="text-[17px] font-extrabold tracking-tight text-slate-900">
+                  {seccion}
+                </span>
+                <span className="h-px flex-1 bg-slate-200" />
+                <span className="text-xs font-semibold text-slate-400">
+                  {items.length}
+                </span>
+              </h2>
+            )}
+            <ul className="space-y-2.5">
               {items.map((p) => (
                 <li key={p.id}>
                   <Plato
@@ -603,38 +630,85 @@ interface LineaCarrito {
   nota: string
 }
 
-/**
- * El ancla de una sección, para que los chips puedan llevar hasta ella.
- *
- * Sin tildes y sin espacios porque va en un `id` de HTML y en un selector de
- * `querySelector`: «Platos fuertes» o «Bebidas frías» romperían el selector.
- */
-export function idDeSeccion(nombre: string): string {
-  const base = nombre
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-  // Una sección con un nombre entero en otro alfabeto dejaría el id vacío y
-  // todos los chips apuntarían al mismo sitio.
-  return `sec-${base || 'seccion'}`
-}
+function Plato({ producto: p, conFoto, deshabilitado, onElegir }: {
+  producto: Producto
+  conFoto: boolean
+  deshabilitado: boolean
+  onElegir: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={deshabilitado}
+      onClick={onElegir}
+      className={`group flex w-full items-stretch gap-3 overflow-hidden text-left
+                  transition-[transform,box-shadow] duration-150 active:scale-[0.985]
+                  disabled:opacity-60 disabled:active:scale-100
+                  ${TARJETA} hover:shadow-[0_2px_10px_rgba(15,23,42,0.07)]`}
+    >
+      {conFoto && (
+        <div className="relative h-[88px] w-[88px] shrink-0 bg-slate-100">
+          {p.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imagen(p.imageUrl)}
+              alt={p.name}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            // El plato sin foto en una sección que sí las tiene no se deja en
+            // blanco ni se le inventa una imagen: va su inicial.
+            <span className="grid h-full w-full place-items-center text-2xl font-black text-slate-300">
+              {p.name.trim().charAt(0).toUpperCase()}
+            </span>
+          )}
+          {p.descuentoPct ? (
+            <span className="absolute left-1 top-1 rounded-md bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+              −{p.descuentoPct}%
+            </span>
+          ) : null}
+        </div>
+      )}
 
-/**
- * ¿Esta sección se dibuja con fotos o como lista de texto?
- *
- * LA REGLA: con fotos solo si **alguna** de sus platos la tiene. Es la misma de
- * la que ya se aplica al carrusel del home del cliente —«solo entra quien TIENE
- * foto, y si ninguno la tiene la sección no se dibuja»— llevada al caso que
- * aquí no admite esconder el plato: una carta escrita desde un CSV o leída de
- * una foto del menú impreso no tiene ni una imagen, y cincuenta recuadros
- * grises se leen como una carta que no cargó. En texto, esa misma carta se ve
- * como lo que es: una carta, bien puesta.
- *
- * Mezclado dentro de una sección sí se admite —el plato sin foto lleva su
- * recuadro con la inicial— porque ahí la ausencia es del plato, no del local, y
- * alinear las filas a distinta altura se vería peor.
- */
-export function seccionConFotos(items: { imageUrl?: string | null }[]): boolean {
-  return items.some((p) => !!p.imageUrl)
+      {/* Con foto, el `gap-3` del contenedor ya separa; sin ella hay que dar el
+          relleno a mano o el texto queda pegado al borde de la tarjeta. */}
+      <div className={`min-w-0 flex-1 py-2.5 ${conFoto ? '' : 'pl-3.5'}`}>
+        {p.masPedidoPuesto ? (
+          <p className="mb-0.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+            <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+            #{p.masPedidoPuesto} más pedido
+          </p>
+        ) : null}
+        <p className="truncate text-[15px] font-semibold leading-snug text-slate-900">{p.name}</p>
+        {p.description && (
+          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{p.description}</p>
+        )}
+        <p className="mt-1 flex items-baseline gap-1.5">
+          <span className="text-[15px] font-bold text-slate-900">{formatCOP(p.price)}</span>
+          {p.compareAtPrice ? (
+            <span className="text-xs font-normal text-slate-400 line-through">
+              {formatCOP(p.compareAtPrice)}
+            </span>
+          ) : null}
+          {!conFoto && p.descuentoPct ? (
+            <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+              −{p.descuentoPct}%
+            </span>
+          ) : null}
+        </p>
+      </div>
+
+      {/* 44 px, no 32: es el objetivo táctil de `BOTON` y este botón se toca
+          con el pulgar, de pie, con el teléfono en una mano. */}
+      <span className="flex shrink-0 items-center pr-2.5">
+        <span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-600 text-white
+                         transition-colors group-hover:bg-emerald-700 group-disabled:bg-slate-300">
+          <Plus className="h-5 w-5" />
+        </span>
+      </span>
+    </button>
+  )
 }
 
 /**
@@ -703,98 +777,6 @@ function Estrellas({ codigo, pedido, onCalificado }: {
       )}
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
-  )
-}
-
-/**
- * Un plato de la carta.
- *
- * DOS MODOS, y la decisión la toma la sección entera (`seccionConFotos`), no el
- * plato: alinear unas filas con foto y otras sin ella a distinta altura se ve
- * peor que cualquiera de los dos modos puro.
- *
- * SE PINTAN `descuentoPct` Y `masPedidoPuesto`, que el servidor ya calculaba y
- * esta pantalla ignoraba —el mismo defecto que ya se corrigió tres veces en
- * este repositorio: el dato existía en la base y no llegaba a quien decide con
- * él—. El «-30 %» lo calcula el servidor UNA vez para que el del listado no
- * discrepe del de la hoja.
- */
-function Plato({ producto: p, conFoto, deshabilitado, onElegir }: {
-  producto: Producto
-  conFoto: boolean
-  deshabilitado: boolean
-  onElegir: () => void
-}) {
-  return (
-    <button
-      type="button"
-      disabled={deshabilitado}
-      onClick={onElegir}
-      className={`group flex w-full items-stretch gap-3 overflow-hidden text-left transition-shadow
-                  disabled:opacity-60 ${TARJETA} hover:shadow-[0_2px_10px_rgba(15,23,42,0.07)]`}
-    >
-      {conFoto && (
-        <div className="relative h-[88px] w-[88px] shrink-0 bg-slate-100">
-          {p.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imagen(p.imageUrl)}
-              alt={p.name}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            // El plato sin foto en una sección que sí las tiene no se deja en
-            // blanco ni se le inventa una imagen: va su inicial.
-            <span className="grid h-full w-full place-items-center text-2xl font-black text-slate-300">
-              {p.name.trim().charAt(0).toUpperCase()}
-            </span>
-          )}
-          {p.descuentoPct ? (
-            <span className="absolute left-1 top-1 rounded-md bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-              −{p.descuentoPct}%
-            </span>
-          ) : null}
-        </div>
-      )}
-
-      {/* Con foto, el `gap-3` del contenedor ya separa; sin ella hay que dar el
-          relleno a mano o el texto queda pegado al borde de la tarjeta. */}
-      <div className={`min-w-0 flex-1 py-2.5 ${conFoto ? '' : 'pl-3.5'}`}>
-        {p.masPedidoPuesto ? (
-          <p className="mb-0.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-            <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
-            #{p.masPedidoPuesto} más pedido
-          </p>
-        ) : null}
-        <p className="truncate text-[15px] font-semibold leading-snug text-slate-900">{p.name}</p>
-        {p.description && (
-          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{p.description}</p>
-        )}
-        <p className="mt-1 flex items-baseline gap-1.5">
-          <span className="text-[15px] font-bold text-slate-900">{formatCOP(p.price)}</span>
-          {p.compareAtPrice ? (
-            <span className="text-xs font-normal text-slate-400 line-through">
-              {formatCOP(p.compareAtPrice)}
-            </span>
-          ) : null}
-          {!conFoto && p.descuentoPct ? (
-            <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
-              −{p.descuentoPct}%
-            </span>
-          ) : null}
-        </p>
-      </div>
-
-      {/* 44 px, no 32: es el objetivo táctil de `BOTON` y este botón se toca
-          con el pulgar, de pie, con el teléfono en una mano. */}
-      <span className="flex shrink-0 items-center pr-2.5">
-        <span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-600 text-white
-                         transition-colors group-hover:bg-emerald-700 group-disabled:bg-slate-300">
-          <Plus className="h-5 w-5" />
-        </span>
-      </span>
-    </button>
   )
 }
 
@@ -871,7 +853,8 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
           <img
             src={imagen(producto.imageUrl)}
             alt={producto.name}
-            className="h-44 w-full rounded-t-3xl object-cover"
+            className="max-h-56 w-full rounded-t-3xl object-cover"
+            style={{ aspectRatio: '16 / 10' }}
           />
         )}
         {/* El asa de arrastre: dice que esto se cierra tirando hacia abajo, que
