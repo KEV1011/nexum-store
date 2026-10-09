@@ -60,6 +60,7 @@ class IntercityStatusScreen extends ConsumerWidget {
           centerTitle: false,
           elevation: 0,
           leading: IconButton(
+            tooltip: 'Volver',
             icon: const Icon(Icons.arrow_back_rounded),
             onPressed: () => _showCancelDialog(context, ref),
           ),

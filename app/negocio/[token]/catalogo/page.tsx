@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 
 import { formatCOP } from '../../../moneda'
-import { CONTENEDOR, TARJETA } from '../../ui'
+import { CONTENEDOR, TARJETA } from '../../../ui'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const BACKEND_URL =

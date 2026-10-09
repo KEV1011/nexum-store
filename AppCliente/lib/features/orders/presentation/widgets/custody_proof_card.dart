@@ -324,6 +324,7 @@ void _verAPantallaCompleta(BuildContext context, String url) {
             top: 40,
             right: 20,
             child: IconButton(
+              tooltip: 'Cerrar',
               onPressed: () => Navigator.of(ctx).pop(),
               icon: const Icon(Icons.close_rounded,
                   color: Colors.white, size: 28),

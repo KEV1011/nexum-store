@@ -42,6 +42,7 @@ class ErrandStatusScreen extends ConsumerWidget {
           ),
           centerTitle: false,
           leading: IconButton(
+            tooltip: 'Volver',
             icon: const Icon(Icons.arrow_back_rounded),
             onPressed: () => _handleBack(context, ref, errand),
           ),

@@ -593,6 +593,7 @@ class _AddContactSheetState extends State<_AddContactSheet> {
                   ),
                   const Spacer(),
                   IconButton(
+                    tooltip: 'Cerrar',
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                   ),
@@ -694,6 +695,7 @@ class _ContactTile extends StatelessWidget {
             ),
           ),
           IconButton(
+            tooltip: 'Llamar',
             onPressed: onCall,
             icon: const Icon(Icons.phone_rounded, color: AppColors.primary),
           ),

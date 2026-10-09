@@ -39,8 +39,11 @@ export function LineaTiempo({ pasos }: { pasos: PasoPedido[] }) {
               <span
                 className={
                   'grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 ' +
+                  // Rojo y no `rose`: un paso cancelado es el estado
+                  // «problema», y en todo ZIPA ese estado es rojo. `rose` era
+                  // un segundo rojo que no quería decir nada distinto.
                   (p.estado === 'cancelado'
-                    ? 'border-rose-300 bg-rose-50'
+                    ? 'border-red-300 bg-red-50'
                     : hecho
                       ? 'border-emerald-500 bg-emerald-500'
                       : activo

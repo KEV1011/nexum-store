@@ -21,6 +21,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
+import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
@@ -40,6 +41,14 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
   /// comprobó.
   bool _sinUbicacion = false;
 
+  /// La ciudad que la persona eligió a mano, si eligió alguna.
+  ///
+  /// Mientras sea nula manda el GPS, que es el caso normal: quien abre esta
+  /// pantalla quiere moverse donde está. En cuanto elige una, manda ella —
+  /// acaba de decir dónde quiere ver puestos, y volver a su posición sería
+  /// deshacer lo que pidió.
+  String? _ciudadElegida;
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +56,15 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
   }
 
   Future<void> _cargar() async {
+    // Con ciudad elegida no se pide el GPS: pedir un permiso que no se va a
+    // usar es la clase de cosa que enseña a decir «no».
+    if (_ciudadElegida != null) {
+      setState(() => _sinUbicacion = false);
+      await ref
+          .read(pooledProvider.notifier)
+          .buscarPuestosUrbanos(ciudad: _ciudadElegida);
+      return;
+    }
     double? lat;
     double? lng;
     try {
@@ -78,6 +96,7 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
         backgroundColor: _kUrbano,
         foregroundColor: Colors.white,
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => safeBack(context, fallback: '/home'),
         ),
@@ -104,22 +123,67 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
           children: [
             const _Explicacion(),
             const SizedBox(height: 16),
+            // La ciudad dejó de ser un rótulo y pasó a ser un botón: era el
+            // único sitio donde se decía en qué ciudad se está mirando, y no
+            // había forma de mirar otra.
             if (state.ciudadUrbano != null && !_sinUbicacion)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Row(
                   children: [
-                    const Icon(Icons.place_rounded, size: 16, color: _kUrbano),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Saliendo pronto en ${state.ciudadUrbano}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: context.textSecondaryColor,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          const Icon(Icons.place_rounded,
+                              size: 16, color: _kUrbano),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Saliendo pronto en ${state.ciudadUrbano}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: context.textSecondaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _elegirCiudad,
+                      icon: const Icon(Icons.travel_explore_rounded, size: 16),
+                      label: const Text('Otra ciudad'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: _kUrbano,
+                        visualDensity: VisualDensity.compact,
+                        minimumSize: const Size(0, 44),
+                        textStyle: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700),
                       ),
                     ),
                   ],
+                ),
+              ),
+            // Con una ciudad elegida a mano, la vuelta al GPS tiene que ser
+            // visible: si no, quien la eligió por probar se queda mirando otra
+            // ciudad sin saber por qué no ve la suya.
+            if (_ciudadElegida != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _volverAMiUbicacion,
+                    icon: const Icon(Icons.my_location_rounded, size: 16),
+                    label: const Text('Ver los de donde estoy'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: context.textSecondaryColor,
+                      minimumSize: const Size(0, 44),
+                      textStyle: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
                 ),
               ),
             ..._cuerpo(state),
@@ -136,9 +200,15 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
           icono: Icons.location_off_rounded,
           titulo: 'Necesitamos saber dónde estás',
           cuerpo: 'Los viajes por puestos son de tu ciudad. Activa la '
-              'ubicación para ver los que salen cerca.',
+              'ubicación para ver los que salen cerca, o dinos en qué '
+              'ciudad estás.',
           accion: 'Reintentar',
           onAccion: _cargar,
+          // La segunda salida es la que faltaba: sin GPS no había NINGUNA, y
+          // «Reintentar» no arregla un permiso denegado ni un teléfono sin
+          // señal dentro de un terminal.
+          accionSecundaria: 'Elegir ciudad',
+          onAccionSecundaria: _elegirCiudad,
         ),
       ];
     }
@@ -163,11 +233,16 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
     }
     if (state.ciudadUrbano == null && state.buscoUrbano) {
       return [
-        const _Aviso(
+        _Aviso(
           icono: Icons.explore_off_rounded,
           titulo: 'Todavía no estamos en tu ciudad',
           cuerpo: 'Los viajes por puestos funcionan en las ciudades donde ZIPA '
-              'ya opera.',
+              'ya opera. Puedes mirar la oferta de cualquiera de ellas.',
+          // Esto pasa también a 41 km del centro de una ciudad que SÍ opera, y
+          // ahí el cartel era falso de hecho: la ciudad existe, solo que el
+          // punto cayó fuera del radio.
+          accion: 'Ver otra ciudad',
+          onAccion: _elegirCiudad,
         ),
       ];
     }
@@ -193,6 +268,25 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
           child: _TarjetaPuesto(trip: t, onReservar: () => _reservar(t)),
         ),
     ];
+  }
+
+  /// Elegir la ciudad a mano: el equivalente del «Ver todas las salidas» del
+  /// intermunicipal.
+  ///
+  /// Sin esto, con el GPS apagado o estando a más de 40 km de cualquier
+  /// centroide, esta pantalla no enseñaba un solo puesto y no ofrecía ninguna
+  /// salida — mientras el servidor YA aceptaba el parámetro de ciudad.
+  Future<void> _elegirCiudad() async {
+    final c = await showCitySearchSheet(context, titulo: '¿En qué ciudad?');
+    if (c == null || !mounted) return;
+    setState(() => _ciudadElegida = c.name);
+    await _cargar();
+  }
+
+  /// Volver a lo que diga el teléfono.
+  Future<void> _volverAMiUbicacion() async {
+    setState(() => _ciudadElegida = null);
+    await _cargar();
   }
 
   Future<void> _publicar() async {
@@ -469,6 +563,7 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
             Row(
               children: [
                 IconButton.filled(
+                  tooltip: 'Quitar un puesto',
                   onPressed: _puestos > 1 ? () => setState(() => _puestos--) : null,
                   icon: const Icon(Icons.remove_rounded),
                   style: IconButton.styleFrom(
@@ -484,6 +579,7 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
                   ),
                 ),
                 IconButton.filled(
+                  tooltip: 'Agregar un puesto',
                   onPressed: _puestos < t.availableSeats
                       ? () => setState(() => _puestos++)
                       : null,
@@ -552,6 +648,8 @@ class _Aviso extends StatelessWidget {
     required this.cuerpo,
     this.accion,
     this.onAccion,
+    this.accionSecundaria,
+    this.onAccionSecundaria,
   });
 
   final IconData icono;
@@ -559,6 +657,13 @@ class _Aviso extends StatelessWidget {
   final String cuerpo;
   final String? accion;
   final VoidCallback? onAccion;
+
+  /// La segunda salida, cuando la primera puede no servir.
+  ///
+  /// Sin GPS, «Reintentar» no arregla un permiso denegado ni un teléfono sin
+  /// señal dentro de un terminal: hace falta poder decir la ciudad a mano.
+  final String? accionSecundaria;
+  final VoidCallback? onAccionSecundaria;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -585,6 +690,17 @@ class _Aviso extends StatelessWidget {
             if (accion != null && onAccion != null) ...[
               const SizedBox(height: 16),
               OutlinedButton(onPressed: onAccion, child: Text(accion!)),
+            ],
+            if (accionSecundaria != null && onAccionSecundaria != null) ...[
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: onAccionSecundaria,
+                style: TextButton.styleFrom(
+                  foregroundColor: _kUrbano,
+                  minimumSize: const Size(0, 44),
+                ),
+                child: Text(accionSecundaria!),
+              ),
             ],
           ],
         ),
@@ -984,6 +1100,9 @@ class _FilaContador extends StatelessWidget {
             ),
           ),
           IconButton.filledTonal(
+            // El título ya dice de qué es el número («Puestos»), así que la
+            // etiqueta lo reusa: «Quitar» a secas no dice de qué.
+            tooltip: 'Menos $titulo',
             onPressed: valor > minimo ? () => onCambio(valor - 1) : null,
             icon: const Icon(Icons.remove_rounded, size: 18),
           ),
@@ -999,6 +1118,7 @@ class _FilaContador extends StatelessWidget {
             ),
           ),
           IconButton.filledTonal(
+            tooltip: 'Más $titulo',
             onPressed: valor < maximo ? () => onCambio(valor + 1) : null,
             icon: const Icon(Icons.add_rounded, size: 18),
           ),

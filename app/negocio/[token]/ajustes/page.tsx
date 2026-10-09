@@ -7,7 +7,7 @@ import GirosNegocio from '../GirosNegocio'
 import { LocationPicker } from './LocationPicker'
 import { DestinosEnvio, type Destino } from './DestinosEnvio'
 import { MesasManager } from './MesasManager'
-import { CONTENEDOR } from '../../ui'
+import { CONTENEDOR } from '../../../ui'
 import { HorarioEditor, type Franja } from './HorarioEditor'
 import {
   ArrowLeft,

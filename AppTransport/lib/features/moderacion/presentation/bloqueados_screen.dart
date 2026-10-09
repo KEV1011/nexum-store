@@ -63,6 +63,7 @@ class _BloqueadosScreenState extends ConsumerState<BloqueadosScreen> {
       backgroundColor: context.backgroundColor,
       appBar: AppBar(
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back),
           onPressed: () => safeBack(context),
         ),

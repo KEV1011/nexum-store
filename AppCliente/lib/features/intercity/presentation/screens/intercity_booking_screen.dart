@@ -201,6 +201,7 @@ class _IntercityBookingScreenState
         centerTitle: false,
         elevation: 0,
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_rounded),
           // safeBack: llegar aquí con context.go deja la pila vacía y un
           // pop() a secas cerraría la app.

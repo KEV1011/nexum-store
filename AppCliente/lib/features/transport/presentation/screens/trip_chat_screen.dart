@@ -196,6 +196,7 @@ class _TripChatScreenState extends ConsumerState<TripChatScreen> {
               top: 4,
               right: 4,
               child: IconButton(
+                tooltip: 'Cerrar',
                 icon: const Icon(Icons.close_rounded, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               ),
@@ -313,6 +314,7 @@ class _TripChatScreenState extends ConsumerState<TripChatScreen> {
               CircleAvatar(
                 backgroundColor: AppColors.primary,
                 child: IconButton(
+                  tooltip: 'Enviar',
                   icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
                   onPressed: _send,
                 ),

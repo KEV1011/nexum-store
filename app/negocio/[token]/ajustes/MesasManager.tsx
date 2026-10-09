@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Check, Copy, Loader2, Plus, Printer, QrCode, Trash2 } from 'lucide-react'
+import { BOTON, ESTADO, TARJETA } from '../../../ui'
+import { dibujarQr, useLibreriaQr } from '../../../carta/qr'
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ??
@@ -22,6 +24,37 @@ const BACKEND_URL =
  * abre el catálogo, los precios y los pedidos: pegarlo en una mesa sería
  * entregarle la administración del local a cualquiera que se siente a almorzar.
  */
+/**
+ * El código de UNA mesa, pequeño, al lado de su nombre.
+ *
+ * POR QUÉ. Hasta ahora el QR solo existía en la hoja de imprimir: el dueño
+ * creaba «Terraza 2», se iba a imprimir y pegaba en la mesa un código que no
+ * había visto nunca. Verlo aquí es lo que permite escanearlo con el propio
+ * teléfono y comprobar que abre la carta ANTES de plastificar veinte tarjetas.
+ *
+ * Sin librería —CDN caído, local con mala conexión— se dibuja el icono y nada
+ * más: la pantalla sigue entera y el enlace se copia igual.
+ */
+function VistaQr({ enlace }: { enlace: string }) {
+  const listo = useLibreriaQr()
+  const [nodo, setNodo] = useState<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!nodo || !listo) return
+    dibujarQr(nodo, enlace, 56)
+  }, [nodo, listo, enlace])
+
+  return (
+    <div
+      ref={setNodo}
+      aria-hidden
+      className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg border border-slate-200 bg-white [&>img]:h-full [&>img]:w-full [&>canvas]:h-full [&>canvas]:w-full"
+    >
+      {!listo && <QrCode className="h-5 w-5 text-slate-300" />}
+    </div>
+  )
+}
+
 export function MesasManager({ token }: { token: string }) {
   const [mesas, setMesas] = useState<string[]>([])
   const [codigo, setCodigo] = useState('')
@@ -121,12 +154,14 @@ export function MesasManager({ token }: { token: string }) {
   }
 
   return (
-    <section className="bg-white border border-slate-200 rounded-2xl p-4">
-      <h2 className="flex items-center gap-2 font-bold text-slate-900 text-sm">
-        <QrCode className="h-4 w-4 text-emerald-600" />
+    <section className={`p-4 sm:p-5 ${TARJETA}`}>
+      <h2 className="flex items-center gap-2 text-base font-bold tracking-tight text-slate-900">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-50">
+          <QrCode className="h-4 w-4 text-emerald-600" />
+        </span>
         Pedido en la mesa
       </h2>
-      <p className="text-xs text-slate-500 mt-0.5">
+      <p className="mt-1 text-xs leading-relaxed text-slate-500">
         Pon un código QR en cada mesa. Tus clientes ven la carta, piden desde su
         celular y el pedido te llega aquí con el número de la mesa.
       </p>
@@ -138,20 +173,20 @@ export function MesasManager({ token }: { token: string }) {
       ) : (
         <>
           {error && (
-            <p className="mt-3 flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
+            <p className={`mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs ${ESTADO.problema}`}>
+              <AlertTriangle className="mt-px h-4 w-4 shrink-0" />
               <span>{error}</span>
             </p>
           )}
           {guardado && (
-            <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800">
-              <Check className="h-3.5 w-3.5" /> Mesas guardadas
+            <p className={`mt-3 flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-semibold ${ESTADO.enCurso}`}>
+              <Check className="h-4 w-4" /> Mesas guardadas
             </p>
           )}
 
           {mesas.length === 0 && (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-xs font-semibold text-amber-900">
+            <div className={`mt-3 rounded-xl p-3.5 ${ESTADO.nuevo}`}>
+              <p className="text-xs font-semibold leading-relaxed">
                 Todavía no tienes mesas. Mientras no las agregues, nadie puede
                 pedir desde el salón.
               </p>
@@ -162,7 +197,7 @@ export function MesasManager({ token }: { token: string }) {
                     type="button"
                     onClick={() => numerar(n)}
                     disabled={guardando}
-                    className="min-h-[40px] rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                    className={`${BOTON.principal} text-xs`}
                   >
                     Crear mesas 1 a {n}
                   </button>
@@ -173,7 +208,7 @@ export function MesasManager({ token }: { token: string }) {
 
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
+              <label className="mb-1 block text-xs font-medium text-slate-600">
                 Agregar una mesa
               </label>
               <input
@@ -182,42 +217,55 @@ export function MesasManager({ token }: { token: string }) {
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar() } }}
                 placeholder="5, Terraza 2, Barra…"
                 maxLength={14}
-                className="w-44 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="h-11 w-44 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm
+                           placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white
+                           focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               />
             </div>
             <button
               type="button"
               onClick={agregar}
               disabled={guardando || !nueva.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+              className={BOTON.principal}
             >
-              <Plus className="h-3.5 w-3.5" /> Agregar
+              <Plus className="h-4 w-4" /> Agregar
             </button>
             {mesas.length > 0 && (
               <a
                 href={`/carta/${encodeURIComponent(codigo)}/imprimir`}
                 target="_blank"
                 rel="noreferrer"
-                className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className={`${BOTON.secundario} ml-auto`}
               >
-                <Printer className="h-3.5 w-3.5" /> Imprimir los códigos
+                <Printer className="h-4 w-4" /> Imprimir los códigos
               </a>
             )}
           </div>
 
           {mesas.length > 0 && (
-            <ul className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">
+            <ul className="mt-4 grid gap-2 sm:grid-cols-2">
               {mesas.map((m) => (
-                <li key={m} className="flex items-center gap-2 px-3 py-2">
-                  <span className="text-sm font-semibold text-slate-800">Mesa {m}</span>
-                  <span className="ml-auto truncate text-[11px] text-slate-400 max-w-[220px]">
-                    {enlaceDe(m)}
-                  </span>
+                <li
+                  key={m}
+                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5"
+                >
+                  <VistaQr enlace={enlaceDe(m)} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-900">Mesa {m}</p>
+                    {/* El enlace se oculta en el teléfono: es largo, no se
+                        puede hacer nada con él —para eso está Copiar— y le
+                        quitaba el sitio al nombre de la mesa, que es lo único
+                        que el dueño necesita leer de un vistazo. */}
+                    <p className="hidden truncate text-[11px] text-slate-400 sm:block">
+                      {enlaceDe(m)}
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => copiar(m)}
+                    aria-label={`Copiar el enlace de la mesa ${m}`}
                     title="Copiar el enlace de esta mesa"
-                    className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    className={BOTON.icono}
                   >
                     {copiada === m
                       ? <Check className="h-4 w-4 text-emerald-600" />
@@ -229,8 +277,9 @@ export function MesasManager({ token }: { token: string }) {
                       if (!confirm(`¿Quitar la mesa ${m}? El código que tenga pegado dejará de servir.`)) return
                       void guardar(mesas.filter((x) => x !== m))
                     }}
+                    aria-label={`Quitar la mesa ${m}`}
                     title="Quitar esta mesa"
-                    className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"
+                    className={`${BOTON.icono} hover:border-red-300 hover:text-red-600`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

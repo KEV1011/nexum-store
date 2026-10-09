@@ -335,6 +335,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
                   ),
                   if (_scheduledFor != null)
                     IconButton(
+                      tooltip: 'Cerrar',
                       icon: const Icon(Icons.close_rounded, size: 18),
                       onPressed: () => setState(() => _scheduledFor = null),
                     ),
@@ -369,6 +370,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> {
                   ),
                   if (_promisedAt != null)
                     IconButton(
+                      tooltip: 'Cerrar',
                       icon: const Icon(Icons.close_rounded, size: 18),
                       onPressed: () => setState(() => _promisedAt = null),
                     ),

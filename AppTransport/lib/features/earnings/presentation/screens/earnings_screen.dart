@@ -188,6 +188,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen>
       appBar: AppBar(
         title: const Text('Mis ganancias'),
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => safeBack(context),
         ),

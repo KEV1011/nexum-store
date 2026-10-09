@@ -156,6 +156,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         backgroundColor: context.surfaceColor,
         leading: _currentStep > 0
             ? IconButton(
+              tooltip: 'Volver',
                 icon: const Icon(Icons.arrow_back_ios_new_rounded),
                 onPressed: isLoading ? null : _prevStep,
               )

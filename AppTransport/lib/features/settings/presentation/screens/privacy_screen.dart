@@ -15,6 +15,7 @@ class PrivacyScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Privacidad de datos'),
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => safeBack(context),
         ),

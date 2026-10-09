@@ -161,6 +161,7 @@ class _SupportTicketDetailScreenState extends ConsumerState<SupportTicketDetailS
               CircleAvatar(
                 backgroundColor: AppColors.primary,
                 child: IconButton(
+                  tooltip: _sending ? 'Enviando…' : 'Enviar',
                   icon: _sending
                       ? const SizedBox(
                           width: 18, height: 18,
