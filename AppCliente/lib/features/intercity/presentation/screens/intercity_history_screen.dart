@@ -71,6 +71,7 @@ class _IntercityHistoryScreenState
         centerTitle: false,
         elevation: 0,
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_rounded),
           // safeBack: al llegar desde el viaje recién completado (context.go)
           // la pila está vacía y un pop() a secas cerraría la app.
@@ -368,6 +369,10 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
                   children: [
                     for (var s = 1; s <= 5; s++)
                       IconButton(
+                        // Dice cuántas estrellas PONE, no cómo está
+                        // dibujada: pulsar la cuarta pone cuatro, esté
+                        // rellena o no.
+                        tooltip: '$s ${s == 1 ? 'estrella' : 'estrellas'}',
                         onPressed: () {
                           HapticFeedback.selectionClick();
                           setState(() => _stars = s);

@@ -78,6 +78,7 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
         backgroundColor: _kUrbano,
         foregroundColor: Colors.white,
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => safeBack(context, fallback: '/home'),
         ),
@@ -469,6 +470,7 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
             Row(
               children: [
                 IconButton.filled(
+                  tooltip: 'Quitar un puesto',
                   onPressed: _puestos > 1 ? () => setState(() => _puestos--) : null,
                   icon: const Icon(Icons.remove_rounded),
                   style: IconButton.styleFrom(
@@ -484,6 +486,7 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
                   ),
                 ),
                 IconButton.filled(
+                  tooltip: 'Agregar un puesto',
                   onPressed: _puestos < t.availableSeats
                       ? () => setState(() => _puestos++)
                       : null,
@@ -984,6 +987,9 @@ class _FilaContador extends StatelessWidget {
             ),
           ),
           IconButton.filledTonal(
+            // El título ya dice de qué es el número («Puestos»), así que la
+            // etiqueta lo reusa: «Quitar» a secas no dice de qué.
+            tooltip: 'Menos $titulo',
             onPressed: valor > minimo ? () => onCambio(valor - 1) : null,
             icon: const Icon(Icons.remove_rounded, size: 18),
           ),
@@ -999,6 +1005,7 @@ class _FilaContador extends StatelessWidget {
             ),
           ),
           IconButton.filledTonal(
+            tooltip: 'Más $titulo',
             onPressed: valor < maximo ? () => onCambio(valor + 1) : null,
             icon: const Icon(Icons.add_rounded, size: 18),
           ),

@@ -115,6 +115,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
       return Scaffold(
         appBar: AppBar(
           leading: IconButton(
+            tooltip: 'Volver',
             icon: const Icon(Icons.arrow_back_rounded),
             onPressed: () => safeBack(context, fallback: AppRoutes.home),
           ),
@@ -127,6 +128,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => safeBack(context, fallback: AppRoutes.home),
         ),

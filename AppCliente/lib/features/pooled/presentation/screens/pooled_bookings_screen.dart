@@ -531,6 +531,7 @@ class _HojaCalificarState extends State<_HojaCalificar> {
               children: [
                 for (var i = 1; i <= 5; i++)
                   IconButton(
+                    tooltip: '$i ${i == 1 ? 'estrella' : 'estrellas'}',
                     onPressed: () => setState(() => _estrellas = i),
                     icon: Icon(
                       i <= _estrellas ? Icons.star_rounded : Icons.star_border_rounded,

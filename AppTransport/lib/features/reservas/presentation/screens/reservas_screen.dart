@@ -180,6 +180,7 @@ class _ReservasScreenState extends ConsumerState<ReservasScreen> {
       appBar: AppBar(
         title: const Text('Reservas'),
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back),
           onPressed: () => safeBack(context, fallback: '/home'),
         ),

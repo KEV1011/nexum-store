@@ -145,6 +145,7 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
                   _runSearch();
                 })),
                 IconButton(
+                  tooltip: 'Invertir origen y destino',
                   icon: const Icon(Icons.swap_horiz_rounded, color: _kPooledColor),
                   onPressed: _swap,
                 ),
@@ -177,6 +178,7 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
               if (_date != null) ...[
                 const SizedBox(width: 8),
                 IconButton(
+                  tooltip: 'Limpiar',
                   icon: const Icon(Icons.clear_rounded, color: Colors.white70),
                   onPressed: () {
                     setState(() => _date = null);

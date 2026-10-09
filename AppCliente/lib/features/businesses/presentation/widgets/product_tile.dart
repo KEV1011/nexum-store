@@ -231,6 +231,7 @@ class _ProductGalleryViewerState extends State<_ProductGalleryViewer> {
           Align(
             alignment: Alignment.centerRight,
             child: IconButton(
+              tooltip: 'Cerrar',
               icon: const Icon(Icons.close_rounded, color: Colors.white),
               onPressed: () => Navigator.of(context).pop(),
             ),

@@ -191,6 +191,11 @@ class _CartLine extends StatelessWidget {
           Row(
             children: [
               IconButton(
+                // La etiqueta SIGUE al icono: con una unidad el botón vacía
+                // la línea, con varias quita una sola. Una etiqueta fija
+                // mentiría en uno de los dos casos, y TalkBack solo lee la
+                // etiqueta, no el icono.
+                tooltip: item.quantity == 1 ? 'Quitar del carrito' : 'Quitar uno',
                 onPressed: onRemove,
                 icon: Icon(
                   item.quantity == 1
@@ -208,6 +213,7 @@ class _CartLine extends StatelessWidget {
                 ),
               ),
               IconButton(
+                tooltip: 'Agregar uno',
                 onPressed: onAdd,
                 icon: const Icon(
                   Icons.add_circle_rounded,

@@ -101,6 +101,7 @@ class _OrderTrackingScreenState extends ConsumerState<OrderTrackingScreen> {
       appBar: AppBar(
         title: Text('Pedido ${order.orderRef}'),
         leading: IconButton(
+          tooltip: 'Cerrar',
           icon: const Icon(Icons.close_rounded),
           onPressed: () => context.go(AppRoutes.home),
         ),

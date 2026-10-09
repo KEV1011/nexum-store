@@ -49,6 +49,7 @@ class _ProStatusScreenState extends ConsumerState<ProStatusScreen> {
       appBar: AppBar(
         title: const Text('ZIPA Pro'),
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => safeBack(context),
         ),

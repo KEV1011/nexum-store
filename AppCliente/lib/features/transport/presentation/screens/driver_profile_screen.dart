@@ -69,6 +69,7 @@ class _DriverProfileScreenState extends ConsumerState<DriverProfileScreen> {
       backgroundColor: context.backgroundColor,
       appBar: AppBar(
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back),
           onPressed: () => safeBack(context),
         ),

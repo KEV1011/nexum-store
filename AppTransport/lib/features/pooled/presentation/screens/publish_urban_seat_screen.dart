@@ -163,6 +163,7 @@ class _PublishUrbanSeatScreenState
         backgroundColor: _kUrbano,
         foregroundColor: Colors.white,
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => safeBack(context, fallback: '/pooled-trips'),
         ),
@@ -224,7 +225,7 @@ class _PublishUrbanSeatScreenState
           _label('Puestos'),
           Row(
             children: [
-              _paso(Icons.remove_rounded, _puestos > 2, () {
+              _paso(Icons.remove_rounded, 'Quitar un puesto', _puestos > 2, () {
                 setState(() => _puestos--);
                 _refrescarTope();
               }),
@@ -240,7 +241,7 @@ class _PublishUrbanSeatScreenState
                   ),
                 ),
               ),
-              _paso(Icons.add_rounded, _puestos < 4, () {
+              _paso(Icons.add_rounded, 'Agregar un puesto', _puestos < 4, () {
                 setState(() => _puestos++);
                 _refrescarTope();
               }),
@@ -347,7 +348,12 @@ class _PublishUrbanSeatScreenState
         ),
       );
 
-  Widget _paso(IconData icon, bool activo, VoidCallback onTap) => IconButton.filled(
+  /// `etiqueta` no es opcional a propósito: este helper dibuja los dos pasos de
+  /// «cuántos puestos publico», y un botón de icono sin etiqueta se anuncia
+  /// como «botón» y nada más. Quien sabe qué hace cada uno es quien lo llama.
+  Widget _paso(IconData icon, String etiqueta, bool activo, VoidCallback onTap) =>
+      IconButton.filled(
+        tooltip: etiqueta,
         onPressed: activo ? onTap : null,
         icon: Icon(icon),
         style: IconButton.styleFrom(

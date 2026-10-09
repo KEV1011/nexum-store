@@ -554,6 +554,7 @@ class _ChangePinSheetState extends State<_ChangePinSheet> {
                   ),
                   const Spacer(),
                   IconButton(
+                    tooltip: 'Cerrar',
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                   ),
@@ -566,6 +567,7 @@ class _ChangePinSheetState extends State<_ChangePinSheet> {
                   labelText: 'PIN actual',
                   prefixIcon: const Icon(Icons.lock_outline_rounded),
                   suffixIcon: IconButton(
+                    tooltip: _obscureCurrent ? 'Mostrar el PIN' : 'Ocultar el PIN',
                     icon: Icon(_obscureCurrent
                         ? Icons.visibility_off_outlined
                         : Icons.visibility_outlined),
@@ -592,6 +594,7 @@ class _ChangePinSheetState extends State<_ChangePinSheet> {
                   labelText: 'Nuevo PIN',
                   prefixIcon: const Icon(Icons.lock_rounded),
                   suffixIcon: IconButton(
+                    tooltip: _obscureNew ? 'Mostrar el PIN' : 'Ocultar el PIN',
                     icon: Icon(_obscureNew
                         ? Icons.visibility_off_outlined
                         : Icons.visibility_outlined),
@@ -620,6 +623,7 @@ class _ChangePinSheetState extends State<_ChangePinSheet> {
                   labelText: 'Confirmar nuevo PIN',
                   prefixIcon: const Icon(Icons.lock_rounded),
                   suffixIcon: IconButton(
+                    tooltip: _obscureConfirm ? 'Mostrar el PIN' : 'Ocultar el PIN',
                     icon: Icon(_obscureConfirm
                         ? Icons.visibility_off_outlined
                         : Icons.visibility_outlined),

@@ -119,6 +119,7 @@ class _CitySearchSheetState extends State<_CitySearchSheet> {
                         suffixIcon: _q.isEmpty
                             ? null
                             : IconButton(
+                              tooltip: 'Cerrar',
                                 icon: const Icon(Icons.close_rounded,
                                     color: AppColors.intercityTextMuted,
                                     size: 18),

@@ -73,6 +73,7 @@ class ProfileScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Mi perfil'),
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => safeBack(context),
         ),

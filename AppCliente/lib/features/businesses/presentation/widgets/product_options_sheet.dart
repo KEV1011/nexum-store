@@ -209,6 +209,7 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
                   ),
                 ),
                 IconButton(
+                  tooltip: 'Cerrar',
                   icon: const Icon(Icons.close_rounded),
                   onPressed: () => Navigator.of(context).pop(),
                 ),

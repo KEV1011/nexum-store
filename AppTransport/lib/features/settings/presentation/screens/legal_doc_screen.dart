@@ -75,6 +75,7 @@ class _LegalDocScreenState extends State<LegalDocScreen> {
             ? 'Términos de servicio'
             : 'Política de privacidad'),
         leading: IconButton(
+          tooltip: 'Volver',
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => safeBack(context),
         ),

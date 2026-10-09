@@ -158,6 +158,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
               CircleAvatar(
                 backgroundColor: AppColors.primary,
                 child: IconButton(
+                  tooltip: 'Enviar',
                   icon: const Icon(Icons.send_rounded,
                       color: Colors.white, size: 20),
                   onPressed: _send,
