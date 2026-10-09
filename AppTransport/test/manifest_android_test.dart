@@ -75,4 +75,82 @@ void main() {
       isTrue,
     );
   });
+
+  // ─── Las dos que ya costaron caro y no las vigilaba nadie ──────────────
+
+  test('NO se declara ACCESS_BACKGROUND_LOCATION', () {
+    // Es de las causas más comunes de rechazo en Play: declararlo obliga a
+    // pasar el formulario de declaración de permisos, a grabar un video
+    // demostrativo y a tener la pantalla de divulgación previa. Esta app NO lo
+    // necesita —el rastreo vive en un foreground service de tipo `location`,
+    // que desde Android 10 puede leer la ubicación con el permiso «mientras se
+    // usa»— y el permiso se retiró a propósito antes de la primera subida.
+    //
+    // Sin esta comprobación, cualquier plugin nuevo que lo traiga en SU
+    // manifiesto entra por la fusión sin que nadie se entere. Por eso se mira
+    // también que, si llega, se retire con `tools:node="remove"`.
+    //
+    // SE MIRA EL XML SIN COMENTARIOS, y esto no es un detalle: la primera
+    // versión de esta prueba FALLABA en la app del conductor, porque su
+    // manifiesto NOMBRA el permiso en el comentario largo que explica por qué
+    // no lo declara. Comprobado ejecutándola. Es la misma trampa que hace pasar
+    // una guarda que encuentra la línea del `import` en vez del uso.
+    final xml = _sinComentarios(manifiesto);
+    final declarado = xml.contains('ACCESS_BACKGROUND_LOCATION') &&
+        !RegExp(r'ACCESS_BACKGROUND_LOCATION[^>]*tools:node="remove"',
+                dotAll: true)
+            .hasMatch(xml);
+    expect(
+      declarado,
+      isFalse,
+      reason: 'Declararlo exige el formulario de Play y un video. Si de verdad '
+          'hace falta, hay que añadir ADEMÁS la pantalla de divulgación previa '
+          'antes de pedirlo. Ver el comentario largo del manifiesto.',
+    );
+  });
+
+  test('no se declara ningún componente cuya clase no exista', () {
+    // ESTO YA ROMPIÓ LA APP. Había un `<receiver android:name=".BootReceiver">`
+    // escuchando BOOT_COMPLETED y MY_PACKAGE_REPLACED, y la clase no existía:
+    // Android intentaba instanciarla al encender el teléfono y JUSTO DESPUÉS DE
+    // CADA ACTUALIZACIÓN desde Play. Lo primero que veía un tester al
+    // actualizar era «ZIPA Conductor se detuvo».
+    //
+    // Se comprueban solo los nombres RELATIVOS (los que empiezan por punto),
+    // que son los del propio paquete: `com.google.…` y los de los plugins
+    // vienen de sus propios manifiestos y no están en `kotlin/`.
+    final kotlin = Directory('android/app/src/main/kotlin');
+    final clases = <String>{};
+    if (kotlin.existsSync()) {
+      for (final f in kotlin.listSync(recursive: true)) {
+        if (f is File && f.path.endsWith('.kt')) {
+          clases.add(f.uri.pathSegments.last.replaceAll('.kt', ''));
+        }
+      }
+    }
+
+    final fantasmas = <String>[];
+    for (final m in RegExp(r'android:name="\.([A-Za-z0-9_.]+)"')
+        .allMatches(_sinComentarios(manifiesto))) {
+      final nombre = m.group(1)!.split('.').last;
+      if (!clases.contains(nombre)) fantasmas.add('.${m.group(1)}');
+    }
+
+    expect(
+      fantasmas,
+      isEmpty,
+      reason: 'Declarados en el manifiesto pero sin clase en kotlin/. Android '
+          'los instancia al arrancar o al actualizar y la app se cae con '
+          'ClassNotFoundException: ${fantasmas.join(', ')}',
+    );
+  });
 }
+
+/// El manifiesto sin sus comentarios.
+///
+/// Hace falta: este archivo explica en comentarios LARGOS qué componentes se
+/// retiraron y por qué, nombrándolos. Sin quitarlos, la prueba encontraría
+/// `.BootReceiver` dentro del comentario que documenta su eliminación y
+/// fallaría acusando justo al arreglo.
+String _sinComentarios(String xml) =>
+    xml.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), '');

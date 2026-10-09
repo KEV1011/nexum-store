@@ -62,12 +62,19 @@
         NO se declara ACCESS_BACKGROUND_LOCATION, a propósito.
 
         La app no lo necesita: el rastreo corre dentro de un foreground service
-        con notificación persistente (ver el <service> de abajo, con
-        foregroundServiceType="location"), y desde Android 10 un servicio de ese
-        tipo puede leer la ubicación mientras está vivo con el permiso "mientras
-        se usa". El conductor arranca el servicio tocando "Conectarse", con la
-        app delante, así que tampoco cae en las restricciones de Android 11+
-        para servicios lanzados desde segundo plano.
+        con notificación persistente y foregroundServiceType="location", y desde
+        Android 10 un servicio de ese tipo puede leer la ubicación mientras está
+        vivo con el permiso "mientras se usa". El conductor arranca el servicio
+        tocando "Conectarse", con la app delante, así que tampoco cae en las
+        restricciones de Android 11+ para servicios lanzados desde segundo plano.
+
+        ESE <service> NO ESTÁ EN ESTE ARCHIVO, y conviene decirlo aquí porque
+        antes este comentario remitía a uno "de abajo" que no existe: lo declara
+        el plugin geolocator en su propio manifiesto y la fusión de manifiestos
+        de Gradle lo mete en el final. Se comprueba en el manifiesto FUSIONADO
+        (`build/app/intermediates/merged_manifests/release/AndroidManifest.xml`),
+        no aquí. El bloque del final de este archivo explica por qué no hay
+        ningún <service> ni <receiver> propio.
 
         Declararlo sin necesitarlo obliga a pasar el formulario de declaración
         de permisos de Play y a grabar un video demostrativo, y es de las causas
