@@ -1,5 +1,19 @@
 /**
- * El sistema visual del portal del negocio.
+ * El sistema visual de las superficies web de ZIPA.
+ *
+ * VIVE EN LA RAÍZ Y NO EN `app/negocio/` por una razón medida: nació para el
+ * portal del dueño y la **carta del QR** —`app/carta/`, la pantalla que ve el
+ * comensal sentado en la mesa— quedó fuera del sistema Y fuera de la guarda que
+ * lo vigila, que solo recorría `app/negocio`. El resultado era el esperable: dos
+ * primarios en el mismo flujo (el botón «Agregar» en negro y «Enviar a la
+ * cocina» en esmeralda), `violet` en una píldora y botones de 28 px. Un sistema
+ * de diseño que no cubre la pantalla que ve el cliente final no es un sistema.
+ *
+ * Lo que de verdad se comparte son `MARCA`, `BOTON` y `TARJETA`. `ESTADO`,
+ * `ETIQUETA` y `CONTENEDOR` son del tablero de pedidos y no tendrían sentido en
+ * una carta —un plato no está «en curso»—, pero se dejan en el mismo archivo:
+ * partirlo en dos obligaría a decidir en cada token nuevo a cuál pertenece, y
+ * esa decisión se acaba tomando mal.
  *
  * POR QUÉ EXISTE. Medido antes de escribirlo: el portal usaba DIEZ familias de
  * color en dieciséis archivos —slate 441 usos, teal 142, emerald 82, amber 66,
@@ -126,6 +140,34 @@ export const BOTON = {
     + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 '
     + 'disabled:opacity-50',
 } as const
+
+/**
+ * El paso de una cantidad (el `−` y el `+` de una línea del carrito).
+ *
+ * 40 px y no 28, que es lo que medían. No llega a los 44 de `BOTON` a propósito:
+ * van DOS pegados en una fila estrecha con el precio al lado, y a 44 cada uno el
+ * nombre del plato se queda sin sitio en un teléfono de 360 px. 40 con el área
+ * táctil ampliada por el `p-0.5` del contenedor es el compromiso; por debajo de
+ * 36 se falla el toque y se quita un plato queriendo añadirlo.
+ */
+export const PASO =
+  'grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-300 '
+  + 'text-slate-600 transition-colors hover:border-slate-400 active:bg-slate-100 '
+  + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500'
+
+/**
+ * Una barra pegada al fondo de la pantalla.
+ *
+ * `env(safe-area-inset-bottom)` NO es un detalle: sin él, en cualquier iPhone
+ * con barra de gestos el botón principal queda medio tapado por la barra del
+ * sistema y el pulgar arrastra la pantalla en vez de pulsar. Se nota solo en el
+ * dispositivo, que es la peor clase de defecto porque en el navegador del
+ * escritorio se ve perfecto. `max()` conserva el relleno en los que no tienen
+ * muesca, donde el inset vale cero.
+ */
+export const BARRA_FIJA =
+  'fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 '
+  + 'px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur'
 
 /**
  * El ancho de la página.

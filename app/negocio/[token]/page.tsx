@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 
 import { formatCOP } from '../../moneda'
-import { BOTON, CONTENEDOR, ESTADO, TARJETA, TARJETA_NUEVA, TINTE_ESTADO, type Estado } from '../ui'
+import { BOTON, CONTENEDOR, ESTADO, TARJETA, TARJETA_NUEVA, TINTE_ESTADO, type Estado } from '../../ui'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DeliveryOrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'

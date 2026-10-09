@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 
 import { formatCOP } from '../../../../moneda'
-import { CONTENEDOR, ESTADO, TARJETA } from '../../../ui'
+import { CONTENEDOR, ESTADO, TARJETA } from '../../../../ui'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type OrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'

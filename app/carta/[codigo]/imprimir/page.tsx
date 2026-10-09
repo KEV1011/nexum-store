@@ -2,6 +2,8 @@
 
 import { use, useEffect, useState } from 'react'
 import { llamar, type Carta } from '../../api'
+import { dibujarQr, useLibreriaQr } from '../../qr'
+import { BOTON } from '../../../ui'
 
 /**
  * La hoja para imprimir: un código QR por mesa, para recortar y poner encima.
@@ -16,7 +18,7 @@ export default function ImprimirPage({ params }: { params: Promise<{ codigo: str
   const { codigo } = use(params)
   const [carta, setCarta] = useState<Carta | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [qrListo, setQrListo] = useState(false)
+  const qrListo = useLibreriaQr()
 
   useEffect(() => {
     void llamar<Carta>(`/carta/${encodeURIComponent(codigo)}`)
@@ -24,20 +26,6 @@ export default function ImprimirPage({ params }: { params: Promise<{ codigo: str
       .catch(() => setError('No pudimos cargar tus mesas.'))
   }, [codigo])
 
-  // La librería de QR, por CDN. `qrcodejs` dibuja dentro de un elemento.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const w = window as unknown as { QRCode?: unknown }
-    if (w.QRCode) { setQrListo(true); return }
-    const s = document.createElement('script')
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'
-    s.async = true
-    s.onload = () => setQrListo(true)
-    // Sin QR no se falla: abajo se imprime el enlace y el código en texto.
-    s.onerror = () => setQrListo(false)
-    document.head.appendChild(s)
-    return () => { s.onerror = null; s.onload = null }
-  }, [])
 
   const base = typeof window === 'undefined' ? '' : window.location.origin
   const enlaceDe = (mesa: string) =>
@@ -73,7 +61,7 @@ export default function ImprimirPage({ params }: { params: Promise<{ codigo: str
         </div>
         <button
           onClick={() => window.print()}
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+          className={`${BOTON.principal} print:hidden`}
         >
           Imprimir
         </button>
@@ -106,22 +94,7 @@ function TarjetaMesa({ mesa, negocio, enlace, codigo, qrListo }: {
 
   useEffect(() => {
     if (!nodo || !qrListo) return
-    const w = window as unknown as {
-      QRCode?: new (el: HTMLElement, opts: Record<string, unknown>) => unknown
-    }
-    if (!w.QRCode) return
-    nodo.innerHTML = ''
-    try {
-      new w.QRCode(nodo, {
-        text: enlace,
-        width: 160,
-        height: 160,
-        // Corrección alta: estas tarjetas acaban con grasa y huellas encima.
-        correctLevel: 2,
-      })
-    } catch {
-      nodo.innerHTML = ''
-    }
+    dibujarQr(nodo, enlace, 160)
   }, [nodo, qrListo, enlace])
 
   return (

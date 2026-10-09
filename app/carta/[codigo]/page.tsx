@@ -1,8 +1,9 @@
 'use client'
 
-import { use, useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Check, ChevronLeft, Clock, Loader2, Minus, Plus, ShoppingBag, Star, Utensils } from 'lucide-react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Check, ChevronLeft, Clock, Loader2, Minus, Plus, Search, ShoppingBag, Star, Utensils } from 'lucide-react'
 import { formatCOP } from '../../moneda'
+import { BARRA_FIJA, BOTON, ESTADO, PASO, TARJETA } from '../../ui'
 import {
   ApiError,
   etiquetaEstado,
@@ -95,6 +96,10 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
     [carrito],
   )
 
+  // Unidades, no líneas: dos hamburguesas iguales son una línea del carrito y
+  // «1 producto» en la barra se leería como que se perdió una.
+  const unidades = useMemo(() => carrito.reduce((s, l) => s + l.cantidad, 0), [carrito])
+
   const productos = useMemo(() => {
     const todos = (carta?.business.products ?? []).filter((p) => p.isAvailable)
     const q = buscando.trim().toLowerCase()
@@ -112,6 +117,53 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
     }
     return [...mapa.entries()]
   }, [productos])
+
+  // La sección que se está mirando, para resaltar su chip en la barra.
+  //
+  // Se observa con `IntersectionObserver` y no con el evento de scroll a
+  // propósito: el scroll dispara decenas de veces por segundo y obliga a medir
+  // cada encabezado en cada disparo, que en un teléfono de gama baja —el que
+  // más probablemente tiene el comensal— se siente como un menú que se traba.
+  const [seccionActiva, setSeccionActiva] = useState<string | null>(null)
+  const barraSecciones = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (porSeccion.length < 2) return
+    const observador = new IntersectionObserver(
+      (entradas) => {
+        const visible = entradas
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0]
+        if (visible) setSeccionActiva(visible.target.id)
+      },
+      // El margen de arriba descuenta la barra pegajosa: sin él, la sección se
+      // marcaría como activa cuando su título ya está TAPADO por la barra.
+      { rootMargin: '-96px 0px -70% 0px', threshold: 0 },
+    )
+    for (const [nombre] of porSeccion) {
+      const el = document.getElementById(idDeSeccion(nombre))
+      if (el) observador.observe(el)
+    }
+    return () => observador.disconnect()
+  }, [porSeccion])
+
+  // El chip activo se trae a la vista dentro de su propia fila: con ocho
+  // secciones, la que se está leyendo puede quedar fuera de la pantalla y la
+  // barra parecería no responder.
+  useEffect(() => {
+    if (!seccionActiva || !barraSecciones.current) return
+    const chip = barraSecciones.current.querySelector(`[data-seccion="${seccionActiva}"]`)
+    chip?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [seccionActiva])
+
+  function irASeccion(nombre: string) {
+    const el = document.getElementById(idDeSeccion(nombre))
+    if (!el) return
+    // `scrollIntoView` dejaría el título debajo de la barra pegajosa, así que se
+    // resta su alto a mano.
+    const y = el.getBoundingClientRect().top + window.scrollY - 92
+    window.scrollTo({ top: y, behavior: 'smooth' })
+  }
 
   function agregar(producto: Producto, opciones: string[], resumen: string, nota: string) {
     const recargo = producto.optionGroups
@@ -180,7 +232,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
           </p>
           <button
             onClick={() => void cargar()}
-            className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+            className={`${BOTON.principal} mt-4`}
           >
             Intentar de nuevo
           </button>
@@ -205,7 +257,9 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
               Mesa {pedido.tableLabel} · #{pedido.orderRef}
             </p>
             {pedido.prepMinutes ? (
-              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
+              // `violet` no decía nada aquí: «la cocina lo tomó y va en N
+              // minutos» es el estado «en curso», que en todo ZIPA es esmeralda.
+              <p className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${ESTADO.enCurso}`}>
                 <Clock className="h-3.5 w-3.5" /> Listo en unos {pedido.prepMinutes} min
               </p>
             ) : pedido.status === 'pending' ? (
@@ -255,7 +309,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
           {pedido.status !== 'cancelled' && (
             <button
               onClick={() => { olvidarPedido(codigo); setPedido(null) }}
-              className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              className={`${BOTON.secundario} mt-3 w-full`}
             >
               Pedir algo más
             </button>
@@ -270,7 +324,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   const puedePedir = !sinMesa && !sinServicioEnMesa && negocio.isOpen && carrito.length > 0
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-28">
+    <main className="min-h-screen bg-slate-50 pb-[max(7rem,calc(6rem+env(safe-area-inset-bottom)))]">
       {/* Cabecera con la portada del local */}
       <header className="relative">
         {negocio.imageUrl ? (
@@ -281,12 +335,18 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
             className="h-36 w-full object-cover"
           />
         ) : (
-          <div className="h-24 w-full bg-gradient-to-br from-slate-800 to-slate-900" />
+          // Sin portada no se deja un degradado vacío: la inicial del local
+          // ocupa el sitio y la cabecera se lee como suya y no como un hueco.
+          <div className="grid h-36 w-full place-items-center bg-gradient-to-br from-emerald-700 via-emerald-800 to-slate-900">
+            <span className="select-none text-6xl font-black text-white/15">
+              {negocio.name.trim().charAt(0).toUpperCase()}
+            </span>
+          </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 p-4">
-          <h1 className="text-lg font-bold text-white">{negocio.name}</h1>
-          <p className="flex items-center gap-2 text-xs text-white/80">
+          <h1 className="text-xl font-bold tracking-tight text-white drop-shadow-sm">{negocio.name}</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/85">
             {negocio.rating != null ? (
               <span className="inline-flex items-center gap-1">
                 <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
@@ -329,13 +389,71 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
           </Aviso>
         )}
 
-        {negocio.products.length > 8 && (
-          <input
-            value={buscando}
-            onChange={(e) => setBuscando(e.target.value)}
-            placeholder="Buscar en la carta…"
-            className="mt-4 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm"
-          />
+        {/* La barra de navegar la carta: buscador y secciones.
+            PEGAJOSA a propósito. Antes el buscador era un campo suelto que se
+            iba con el scroll, y las secciones eran etiquetas grises de 10 px:
+            con ocho secciones y cincuenta platos no había forma de llegar a las
+            bebidas sin recorrerlo todo. `-mx-4 px-4` la saca a todo el ancho
+            dentro del contenedor con relleno, para que la línea de abajo cruce
+            la pantalla y se lea como una barra y no como una tarjeta más. */}
+        {(negocio.products.length > 8 || porSeccion.length >= 2) && (
+          <div className="sticky top-0 z-20 -mx-4 mt-4 border-b border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur">
+            {negocio.products.length > 8 && (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={buscando}
+                  onChange={(e) => setBuscando(e.target.value)}
+                  placeholder="Buscar en la carta…"
+                  aria-label="Buscar en la carta"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-9 text-sm
+                             placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white
+                             focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+                {buscando && (
+                  <button
+                    type="button"
+                    aria-label="Limpiar la búsqueda"
+                    onClick={() => setBuscando('')}
+                    className="absolute right-1 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center
+                               rounded-lg text-slate-400 hover:text-slate-600"
+                  >
+                    <Plus className="h-4 w-4 rotate-45" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Con una sola sección los chips no filtrarían nada: no se dibujan.
+                Misma regla que las píldoras de categoría del home del cliente. */}
+            {porSeccion.length >= 2 && (
+              <div
+                ref={barraSecciones}
+                className="-mx-4 flex gap-2 overflow-x-auto px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              >
+                {porSeccion.map(([seccion]) => {
+                  const id = idDeSeccion(seccion)
+                  const activa = seccionActiva === id
+                  return (
+                    <button
+                      key={seccion}
+                      type="button"
+                      data-seccion={id}
+                      onClick={() => irASeccion(seccion)}
+                      aria-current={activa ? 'true' : undefined}
+                      className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors ${
+                        activa
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {seccion}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         )}
 
         {porSeccion.length === 0 && (
@@ -347,14 +465,20 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
         )}
 
         {porSeccion.map(([seccion, items]) => (
-          <section key={seccion} className="mt-5">
-            <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">{seccion}</h2>
-            <ul className="mt-2 space-y-2">
+          <section key={seccion} id={idDeSeccion(seccion)} className="mt-6 scroll-mt-24">
+            <h2 className="text-base font-bold tracking-tight text-slate-900">
+              {seccion}
+              <span className="ml-2 align-middle text-xs font-medium text-slate-400">
+                {items.length}
+              </span>
+            </h2>
+            <ul className="mt-3 space-y-2.5">
               {items.map((p) => (
                 <li key={p.id}>
-                  <button
-                    type="button"
-                    disabled={sinMesa || sinServicioEnMesa || !negocio.isOpen}
+                  <Plato
+                    producto={p}
+                    conFoto={seccionConFotos(items)}
+                    deshabilitado={sinMesa || sinServicioEnMesa || !negocio.isOpen}
                     // La hoja se abre SIEMPRE, tenga opciones o no.
                     //
                     // Antes solo se abría con `optionGroups.length > 0`, y la
@@ -364,35 +488,8 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
                     // dónde poner «sin salsa» NUNCA — que es justo lo que se
                     // reportó. La app del cliente ya lo hacía bien; este menú
                     // se quedó atrás.
-                    onClick={() => setEligiendo(p)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left disabled:opacity-60"
-                  >
-                    {p.imageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={imagen(p.imageUrl)}
-                        alt={p.name}
-                        className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                      />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-slate-900">{p.name}</p>
-                      {p.description && (
-                        <p className="line-clamp-2 text-xs text-slate-500">{p.description}</p>
-                      )}
-                      <p className="mt-0.5 text-sm font-bold text-slate-900">
-                        {formatCOP(p.price)}
-                        {p.compareAtPrice ? (
-                          <span className="ml-1.5 text-xs font-normal text-slate-400 line-through">
-                            {formatCOP(p.compareAtPrice)}
-                          </span>
-                        ) : null}
-                      </p>
-                    </div>
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-900 text-white">
-                      <Plus className="h-4 w-4" />
-                    </span>
-                  </button>
+                    onElegir={() => setEligiendo(p)}
+                  />
                 </li>
               ))}
             </ul>
@@ -400,7 +497,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
         ))}
 
         {carrito.length > 0 && (
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
+          <section id="tu-pedido" className={`mt-6 scroll-mt-24 p-4 ${TARJETA}`}>
             <h2 className="text-sm font-bold text-slate-900">Tu pedido</h2>
             <ul className="mt-2 divide-y divide-slate-100">
               {carrito.map((l) => (
@@ -418,19 +515,19 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
                       aria-label="Quitar uno"
                       onClick={() => setCarrito((prev) => prev.flatMap((x) =>
                         x.key !== l.key ? [x] : x.cantidad > 1 ? [{ ...x, cantidad: x.cantidad - 1 }] : []))}
-                      className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-slate-600"
+                      className={PASO}
                     >
-                      <Minus className="h-3.5 w-3.5" />
+                      <Minus className="h-4 w-4" />
                     </button>
-                    <span className="w-5 text-center text-sm font-semibold">{l.cantidad}</span>
+                    <span className="w-6 text-center text-sm font-bold text-slate-900">{l.cantidad}</span>
                     <button
                       type="button"
                       aria-label="Agregar uno"
                       onClick={() => setCarrito((prev) => prev.map((x) =>
                         x.key === l.key ? { ...x, cantidad: x.cantidad + 1 } : x))}
-                      className="grid h-7 w-7 place-items-center rounded-full border border-slate-300 text-slate-600"
+                      className={PASO}
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <Plus className="h-4 w-4" />
                     </button>
                   </div>
                   <span className="w-20 shrink-0 text-right text-sm font-semibold text-slate-800">
@@ -455,16 +552,26 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
 
       {/* Barra de envío */}
       {carrito.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 p-4 backdrop-blur">
+        <div className={BARRA_FIJA}>
           <div className="mx-auto flex max-w-md items-center gap-3">
-            <div>
-              <p className="text-[11px] text-slate-500">Total</p>
-              <p className="text-lg font-bold text-slate-900">{formatCOP(total)}</p>
-            </div>
+            {/* El total LLEVA al carrito. Antes era texto muerto y las
+                cantidades solo se cambiaban en una tarjeta al final de la
+                página: con una carta larga había que recorrerla entera para
+                quitar un plato. */}
+            <button
+              type="button"
+              onClick={() => document.getElementById('tu-pedido')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              className="shrink-0 rounded-lg px-1 text-left"
+            >
+              <p className="text-[11px] font-medium text-slate-500">
+                {unidades} {unidades === 1 ? 'producto' : 'productos'}
+              </p>
+              <p className="text-lg font-bold leading-tight text-slate-900">{formatCOP(total)}</p>
+            </button>
             <button
               onClick={() => void enviar()}
               disabled={!puedePedir || enviando}
-              className="ml-auto inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+              className={`${BOTON.principal} ml-auto flex-1 text-[15px]`}
             >
               {enviando
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</>
@@ -494,6 +601,40 @@ interface LineaCarrito {
   optionIds: string[]
   resumen: string
   nota: string
+}
+
+/**
+ * El ancla de una sección, para que los chips puedan llevar hasta ella.
+ *
+ * Sin tildes y sin espacios porque va en un `id` de HTML y en un selector de
+ * `querySelector`: «Platos fuertes» o «Bebidas frías» romperían el selector.
+ */
+export function idDeSeccion(nombre: string): string {
+  const base = nombre
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  // Una sección con un nombre entero en otro alfabeto dejaría el id vacío y
+  // todos los chips apuntarían al mismo sitio.
+  return `sec-${base || 'seccion'}`
+}
+
+/**
+ * ¿Esta sección se dibuja con fotos o como lista de texto?
+ *
+ * LA REGLA: con fotos solo si **alguna** de sus platos la tiene. Es la misma de
+ * la que ya se aplica al carrusel del home del cliente —«solo entra quien TIENE
+ * foto, y si ninguno la tiene la sección no se dibuja»— llevada al caso que
+ * aquí no admite esconder el plato: una carta escrita desde un CSV o leída de
+ * una foto del menú impreso no tiene ni una imagen, y cincuenta recuadros
+ * grises se leen como una carta que no cargó. En texto, esa misma carta se ve
+ * como lo que es: una carta, bien puesta.
+ *
+ * Mezclado dentro de una sección sí se admite —el plato sin foto lleva su
+ * recuadro con la inicial— porque ahí la ausencia es del plato, no del local, y
+ * alinear las filas a distinta altura se vería peor.
+ */
+export function seccionConFotos(items: { imageUrl?: string | null }[]): boolean {
+  return items.some((p) => !!p.imageUrl)
 }
 
 /**
@@ -544,7 +685,10 @@ function Estrellas({ codigo, pedido, onCalificado }: {
             disabled={enviando}
             aria-label={`${n} estrella${n === 1 ? '' : 's'}`}
             onClick={() => void calificar(n)}
-            className="p-1 disabled:opacity-50"
+            // `p-1` sobre un icono de 28 px daba 36. Con cinco botones pegados,
+            // tocar la cuarta y poner la tercera es el error típico — y una
+            // calificación es justo lo que no conviene equivocar.
+            className="grid min-h-[44px] min-w-[44px] place-items-center rounded-lg transition-transform active:scale-95 disabled:opacity-50"
           >
             <Star
               className={`h-7 w-7 ${
@@ -559,6 +703,98 @@ function Estrellas({ codigo, pedido, onCalificado }: {
       )}
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
+  )
+}
+
+/**
+ * Un plato de la carta.
+ *
+ * DOS MODOS, y la decisión la toma la sección entera (`seccionConFotos`), no el
+ * plato: alinear unas filas con foto y otras sin ella a distinta altura se ve
+ * peor que cualquiera de los dos modos puro.
+ *
+ * SE PINTAN `descuentoPct` Y `masPedidoPuesto`, que el servidor ya calculaba y
+ * esta pantalla ignoraba —el mismo defecto que ya se corrigió tres veces en
+ * este repositorio: el dato existía en la base y no llegaba a quien decide con
+ * él—. El «-30 %» lo calcula el servidor UNA vez para que el del listado no
+ * discrepe del de la hoja.
+ */
+function Plato({ producto: p, conFoto, deshabilitado, onElegir }: {
+  producto: Producto
+  conFoto: boolean
+  deshabilitado: boolean
+  onElegir: () => void
+}) {
+  return (
+    <button
+      type="button"
+      disabled={deshabilitado}
+      onClick={onElegir}
+      className={`group flex w-full items-stretch gap-3 overflow-hidden text-left transition-shadow
+                  disabled:opacity-60 ${TARJETA} hover:shadow-[0_2px_10px_rgba(15,23,42,0.07)]`}
+    >
+      {conFoto && (
+        <div className="relative h-[88px] w-[88px] shrink-0 bg-slate-100">
+          {p.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imagen(p.imageUrl)}
+              alt={p.name}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            // El plato sin foto en una sección que sí las tiene no se deja en
+            // blanco ni se le inventa una imagen: va su inicial.
+            <span className="grid h-full w-full place-items-center text-2xl font-black text-slate-300">
+              {p.name.trim().charAt(0).toUpperCase()}
+            </span>
+          )}
+          {p.descuentoPct ? (
+            <span className="absolute left-1 top-1 rounded-md bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+              −{p.descuentoPct}%
+            </span>
+          ) : null}
+        </div>
+      )}
+
+      {/* Con foto, el `gap-3` del contenedor ya separa; sin ella hay que dar el
+          relleno a mano o el texto queda pegado al borde de la tarjeta. */}
+      <div className={`min-w-0 flex-1 py-2.5 ${conFoto ? '' : 'pl-3.5'}`}>
+        {p.masPedidoPuesto ? (
+          <p className="mb-0.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+            <Star className="h-2.5 w-2.5 fill-amber-500 text-amber-500" />
+            #{p.masPedidoPuesto} más pedido
+          </p>
+        ) : null}
+        <p className="truncate text-[15px] font-semibold leading-snug text-slate-900">{p.name}</p>
+        {p.description && (
+          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{p.description}</p>
+        )}
+        <p className="mt-1 flex items-baseline gap-1.5">
+          <span className="text-[15px] font-bold text-slate-900">{formatCOP(p.price)}</span>
+          {p.compareAtPrice ? (
+            <span className="text-xs font-normal text-slate-400 line-through">
+              {formatCOP(p.compareAtPrice)}
+            </span>
+          ) : null}
+          {!conFoto && p.descuentoPct ? (
+            <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+              −{p.descuentoPct}%
+            </span>
+          ) : null}
+        </p>
+      </div>
+
+      {/* 44 px, no 32: es el objetivo táctil de `BOTON` y este botón se toca
+          con el pulgar, de pie, con el teléfono en una mano. */}
+      <span className="flex shrink-0 items-center pr-2.5">
+        <span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-600 text-white
+                         transition-colors group-hover:bg-emerald-700 group-disabled:bg-slate-300">
+          <Plus className="h-5 w-5" />
+        </span>
+      </span>
+    </button>
   )
 }
 
@@ -625,19 +861,35 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
     .join(', ')
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/40">
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/50">
       <button type="button" aria-label="Cerrar" className="flex-1" onClick={onCerrar} />
-      <div className="max-h-[85vh] overflow-y-auto rounded-t-2xl bg-white p-4">
-        <button
-          type="button"
-          onClick={onCerrar}
-          className="mb-2 inline-flex items-center gap-1 text-xs font-semibold text-slate-500"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" /> Volver a la carta
-        </button>
-        <h2 className="text-base font-bold text-slate-900">{producto.name}</h2>
+      <div className="max-h-[88vh] overflow-y-auto rounded-t-3xl bg-white pb-[max(1rem,env(safe-area-inset-bottom))]">
+        {/* La foto del plato, que antes solo estaba en el listado a 56 px. Es
+            lo que se está decidiendo comprar: aquí es donde tiene que verse. */}
+        {producto.imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imagen(producto.imageUrl)}
+            alt={producto.name}
+            className="h-44 w-full rounded-t-3xl object-cover"
+          />
+        )}
+        {/* El asa de arrastre: dice que esto se cierra tirando hacia abajo, que
+            es lo que la mano intenta antes de buscar un botón. */}
+        <div className="sticky top-0 z-10 bg-white/95 px-4 pt-3 backdrop-blur">
+          <div className="mx-auto h-1 w-10 rounded-full bg-slate-300" />
+          <button
+            type="button"
+            onClick={onCerrar}
+            className="mt-2 inline-flex min-h-[40px] items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"
+          >
+            <ChevronLeft className="h-4 w-4" /> Volver a la carta
+          </button>
+        </div>
+        <div className="px-4">
+        <h2 className="text-lg font-bold tracking-tight text-slate-900">{producto.name}</h2>
         {producto.description && (
-          <p className="mt-0.5 text-xs text-slate-500">{producto.description}</p>
+          <p className="mt-1 text-sm leading-relaxed text-slate-500">{producto.description}</p>
         )}
 
         {producto.optionGroups.map((g) => (
@@ -658,7 +910,7 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
                     type="button"
                     disabled={!o.isAvailable}
                     onClick={() => alternar(g, o.id)}
-                    className="flex w-full items-center gap-2 py-2 text-left disabled:opacity-40"
+                    className="flex min-h-[44px] w-full items-center gap-2.5 py-2 text-left disabled:opacity-40"
                   >
                     <span className={`grid h-5 w-5 shrink-0 place-items-center border ${
                       g.maxSelect === 1 ? 'rounded-full' : 'rounded'
@@ -681,26 +933,35 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
           </section>
         ))}
 
-        <label className="mt-4 block text-sm font-semibold text-slate-800">
+        <label className="mt-5 block text-sm font-semibold text-slate-800">
           Algo para la cocina
           <input
             value={nota}
             onChange={(e) => setNota(e.target.value.slice(0, 140))}
             placeholder="Sin cebolla, término medio…"
-            className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-normal"
+            className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm
+                       font-normal placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white
+                       focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
           />
+          <span className="mt-1 block text-[11px] font-normal text-slate-400">
+            Llega escrito a la plancha, no de boca en boca.
+          </span>
         </label>
 
+        {/* Esmeralda, no negro. Era el único botón principal de todo el flujo
+            que iba en `slate-900`: dos primarios en la misma pantalla —este y
+            «Enviar a la cocina»— no se leen como una decisión. */}
         <button
           type="button"
           disabled={!!falta}
           onClick={() => onAgregar(elegidas, resumen, nota.trim())}
-          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white disabled:opacity-60"
+          className={`${BOTON.principal} mt-5 w-full text-[15px]`}
         >
           {falta
             ? `Elige ${falta.name.toLowerCase()}`
             : `Agregar · ${formatCOP(Math.max(0, producto.price + recargo))}`}
         </button>
+        </div>
       </div>
     </div>
   )
