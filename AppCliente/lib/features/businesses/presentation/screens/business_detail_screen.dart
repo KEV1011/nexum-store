@@ -296,23 +296,34 @@ class _BusinessAppBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final conFoto = business.imageUrl != null && business.imageUrl!.isNotEmpty;
     return SliverAppBar(
       pinned: true,
-      expandedHeight: 180,
+      // Sin portada la cabecera se ENCOGE: 180 px de tinte liso con un
+      // cubierto genérico no informan de nada y empujan la carta fuera de la
+      // pantalla. Con foto sí valen, porque la foto es la que vende.
+      expandedHeight: conFoto ? 180 : 128,
       flexibleSpace: FlexibleSpaceBar(
         title: Text(
           business.name,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Inter',
             fontSize: 16,
             fontWeight: FontWeight.w700,
+            // El color va EXPLÍCITO. Antes se heredaba del AppBar y sobre el
+            // respaldo —un tinte claro FIJO de la categoría— salía casi
+            // blanco: el nombre del local, ilegible. Es la co-ocurrencia que
+            // la regla de contraste prohíbe (fondo fijo + color adaptativo),
+            // así que sobre el tinte va el token oscuro fijo y sobre la foto
+            // —que lleva scrim— va blanco.
+            color: conFoto ? Colors.white : AppColors.textPrimary,
           ),
         ),
         titlePadding: const EdgeInsets.symmetric(
           horizontal: AppConstants.spacingXL,
           vertical: AppConstants.spacingM,
         ),
-        background: (business.imageUrl != null && business.imageUrl!.isNotEmpty)
+        background: conFoto
             ? Stack(
                 fit: StackFit.expand,
                 children: [

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -597,9 +598,28 @@ class _SignaturePad extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isEmpty = strokes.isEmpty;
-    return GestureDetector(
-      onPanStart: onPanStart,
-      onPanUpdate: onPanUpdate,
+    // `RawGestureDetector` con un reconocedor que GANA la arena al tocar.
+    //
+    // EL DEFECTO: el lienzo vive dentro del `SingleChildScrollView` de la
+    // hoja, y un `GestureDetector(onPan…)` corriente pierde la puja contra el
+    // arrastre vertical del padre en cuanto el trazo es más vertical que
+    // horizontal — el dedo desplazaba la hoja en vez de pintar. Se podía
+    // firmar en horizontal y no en vertical: «la firma no funciona en todo el
+    // parámetro», tal cual lo reportó el usuario.
+    //
+    // No se arregla combinando `onPan*` con `onVerticalDrag*` en el mismo
+    // `GestureDetector`: Flutter lanza una aserción. Se resuelve aceptando el
+    // puntero en el `down`, que además impide que la hoja se mueva mientras se
+    // firma.
+    return RawGestureDetector(
+      gestures: <Type, GestureRecognizerFactory>{
+        _FirmaRecognizer: GestureRecognizerFactoryWithHandlers<_FirmaRecognizer>(
+          _FirmaRecognizer.new,
+          (r) => r
+            ..onStart = onPanStart
+            ..onUpdate = onPanUpdate,
+        ),
+      },
       child: Container(
         key: padKey,
         height: 180,
@@ -700,4 +720,18 @@ class _StrokePainter extends CustomPainter {
   // Always repaint — stroke list is mutated in place during drawing.
   @override
   bool shouldRepaint(_StrokePainter old) => true;
+}
+
+/// Arrastre que se queda con el puntero en cuanto lo toca.
+///
+/// Sin esto, el lienzo de la firma compite con el desplazamiento de la hoja y
+/// pierde los trazos verticales. Es el patrón habitual para un pad de firma
+/// dentro de una vista desplazable: el hijo declara la victoria en el `down`,
+/// así que el padre no llega a reclamar el gesto.
+class _FirmaRecognizer extends PanGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
 }

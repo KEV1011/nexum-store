@@ -327,6 +327,8 @@ function ProductCard({
   onBajar: (() => void) | null
 }) {
   const [busy, setBusy] = useState(false)
+  // La foto que no carga: se recuerda para dejar el respaldo en su sitio.
+  const [fotoCaida, setFotoCaida] = useState(false)
   const [editing, setEditing] = useState(false)
   const [showOptions, setShowOptions] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -432,7 +434,7 @@ function ProductCard({
     }
   }
 
-  const img = resolveImg(product.imageUrl)
+  const img = fotoCaida ? null : resolveImg(product.imageUrl)
 
   return (
     <div className={`bg-white border rounded-xl shadow-sm overflow-hidden ${
@@ -446,8 +448,18 @@ function ProductCard({
           className="relative w-24 h-24 shrink-0 bg-slate-100 flex items-center justify-center group"
         >
           {img ? (
+            // `onError` retira la foto caída y deja el respaldo de abajo. Sin
+            // esto salía el icono de imagen rota del navegador, que se lee
+            // como «el portal está roto» y no como «falta la foto» — y pasa de
+            // verdad mientras las fotos vivan en el disco efímero del
+            // servidor, que las borra en cada despliegue.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={img} alt={product.name} className="w-full h-full object-cover" />
+            <img
+              src={img}
+              alt={product.name}
+              className="w-full h-full object-cover"
+              onError={() => setFotoCaida(true)}
+            />
           ) : (
             <ImageOff className="w-6 h-6 text-slate-300" />
           )}
@@ -544,21 +556,26 @@ function ProductCard({
                   </div>
                 ) : null}
               </div>
-              <div className="flex items-center justify-between mt-2">
+              {/* `flex-wrap`: son SEIS controles y la tarjeta ya cede 96 px a la
+                  foto. A 360 px no caben en una fila y el último —Eliminar— se
+                  salía por el borde derecho, que es lo que el dueño veía
+                  cortado en su celular. Envolver es la salida honesta:
+                  encogerlos más es como se llegó aquí. */}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-y-2">
                 <button
                   onClick={toggleAvailable}
                   disabled={busy}
-                  className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                  className={`min-h-[36px] text-xs font-semibold px-3 rounded-full ${
                     product.isAvailable ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
                   }`}
                 >
                   {product.isAvailable ? 'Disponible' : 'Agotado'}
                 </button>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5">
                   <button
                     onClick={() => setShowOptions((v) => !v)}
                     disabled={busy}
-                    className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                    className={`min-h-[36px] text-xs font-semibold px-3 rounded-full ${
                       optionCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400 hover:text-emerald-600'
                     }`}
                   >
@@ -570,7 +587,7 @@ function ProductCard({
                   <button
                     onClick={() => onSubir?.()}
                     disabled={busy || !onSubir}
-                    className="text-slate-300 hover:text-emerald-600 disabled:opacity-30 disabled:hover:text-slate-300 transition-colors p-1"
+                    className="grid h-10 w-10 place-items-center rounded-lg text-slate-400 hover:text-emerald-600 disabled:opacity-30 disabled:hover:text-slate-400 transition-colors"
                     aria-label="Subir en la carta"
                   >
                     <ChevronUp className="w-4 h-4" />
@@ -578,15 +595,15 @@ function ProductCard({
                   <button
                     onClick={() => onBajar?.()}
                     disabled={busy || !onBajar}
-                    className="text-slate-300 hover:text-emerald-600 disabled:opacity-30 disabled:hover:text-slate-300 transition-colors p-1"
+                    className="grid h-10 w-10 place-items-center rounded-lg text-slate-400 hover:text-emerald-600 disabled:opacity-30 disabled:hover:text-slate-400 transition-colors"
                     aria-label="Bajar en la carta"
                   >
                     <ChevronDown className="w-4 h-4" />
                   </button>
-                  <button onClick={() => setEditing(true)} disabled={busy} className="text-slate-300 hover:text-emerald-600 transition-colors p-1" aria-label="Editar producto">
+                  <button onClick={() => setEditing(true)} disabled={busy} className="grid h-10 w-10 place-items-center rounded-lg text-slate-400 hover:text-emerald-600 transition-colors" aria-label="Editar producto">
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button onClick={remove} disabled={busy} className="text-slate-300 hover:text-red-500 transition-colors p-1" aria-label="Eliminar producto">
+                  <button onClick={remove} disabled={busy} className="grid h-10 w-10 place-items-center rounded-lg text-slate-400 hover:text-red-500 transition-colors" aria-label="Eliminar producto">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>

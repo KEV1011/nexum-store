@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'precio_producto.dart';
 import 'package:nexum_client/features/moderacion/presentation/reportar_sheet.dart';
 
 /// Lo que el cliente armó en la hoja: qué eligió, cuántos quiere y qué le
@@ -223,6 +226,37 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
                 horizontal: AppConstants.spacingM,
               ),
               children: [
+                // ── Lo que la hoja NO pintaba ─────────────────────────────
+                //
+                // Estos cuatro datos llegaban del servidor en cada carga del
+                // catálogo y esta pantalla los ignoraba: foto, galería,
+                // descripción y el precio rebajado. Por eso la hoja era un
+                // título, una nota y un botón, mientras el LISTADO de la misma
+                // carta sí pintaba el tachado y el porcentaje.
+                _FotosDelPlato(fotos: widget.product.allPhotos),
+                if (widget.product.masPedidoPuesto != null) ...[
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: InsigniaMasPedido(
+                      puesto: widget.product.masPedidoPuesto!,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                // `grande: true` existía en `PrecioProducto` desde que se
+                // escribió —su comentario dice «el detalle lo pinta grande»— y
+                // nadie lo usaba. Es la misma función que la carta, así que el
+                // «-46 %» del listado y el del detalle no pueden discrepar.
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: PrecioProducto(product: widget.product, grande: true),
+                ),
+                if (widget.product.description.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _Descripcion(texto: widget.product.description.trim()),
+                ],
+                const SizedBox(height: 4),
                 for (final g in widget.product.optionGroups)
                   _GroupSection(
                     group: g,
@@ -526,6 +560,140 @@ class _Boton extends StatelessWidget {
               : context.textPrimaryColor,
         ),
       ),
+    );
+  }
+}
+
+/// Las fotos del plato, deslizables si hay más de una.
+///
+/// **Sin foto no se dibuja nada.** Un rectángulo gris de doscientos píxeles se
+/// lee como «la app no cargó» y empuja la descripción fuera de la pantalla:
+/// es peor que no tener foto. Mismo criterio que el carrusel del inicio, que
+/// solo admite comercios con portada.
+class _FotosDelPlato extends StatefulWidget {
+  const _FotosDelPlato({required this.fotos});
+
+  final List<String> fotos;
+
+  @override
+  State<_FotosDelPlato> createState() => _FotosDelPlatoState();
+}
+
+class _FotosDelPlatoState extends State<_FotosDelPlato> {
+  int _actual = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.fotos.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+          child: SizedBox(
+            height: 190,
+            width: double.infinity,
+            child: PageView.builder(
+              itemCount: widget.fotos.length,
+              onPageChanged: (i) => setState(() => _actual = i),
+              itemBuilder: (_, i) => Image.network(
+                ApiConfig.resolveUrl(widget.fotos[i]),
+                fit: BoxFit.cover,
+                // Una foto caída no deja un hueco roto: se retira el bloque y
+                // la hoja sigue siendo legible. Pasa de verdad mientras las
+                // fotos vivan en el disco efímero del servidor.
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ),
+        if (widget.fotos.length > 1) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < widget.fotos.length; i++)
+                Container(
+                  width: i == _actual ? 18 : 6,
+                  height: 6,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: i == _actual
+                        ? AppColors.primary
+                        : context.outlineColor,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// La descripción del plato, con «Ver más» cuando es larga.
+///
+/// Se recorta a tres renglones y no a un número de caracteres: lo que importa
+/// es cuánto ocupa en la pantalla, que es distinto en cada teléfono.
+class _Descripcion extends StatefulWidget {
+  const _Descripcion({required this.texto});
+
+  final String texto;
+
+  @override
+  State<_Descripcion> createState() => _DescripcionState();
+}
+
+class _DescripcionState extends State<_Descripcion> {
+  bool _abierta = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final estilo = TextStyle(
+      fontFamily: 'Inter',
+      fontSize: 14,
+      height: 1.4,
+      color: context.textSecondaryColor,
+    );
+    return LayoutBuilder(
+      builder: (ctx, c) {
+        // ¿Cabe entera en tres renglones? Si cabe, no se ofrece «Ver más»:
+        // un enlace que no despliega nada se toca una vez y no se vuelve a
+        // creer.
+        final tp = TextPainter(
+          text: TextSpan(text: widget.texto, style: estilo),
+          maxLines: 3,
+          textDirection: TextDirection.ltr,
+        )..layout(maxWidth: c.maxWidth);
+        final recortada = tp.didExceedMaxLines;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.texto,
+              style: estilo,
+              maxLines: _abierta ? null : 3,
+              overflow: _abierta ? null : TextOverflow.ellipsis,
+            ),
+            if (recortada)
+              GestureDetector(
+                onTap: () => setState(() => _abierta = !_abierta),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _abierta ? 'Ver menos' : 'Ver más',
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

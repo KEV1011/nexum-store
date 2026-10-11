@@ -1,5 +1,6 @@
 'use client'
 
+import { prepararAvisos, useAvisoComensal, type EstadoAviso } from '../aviso-comensal'
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, ChevronLeft, Clock, Loader2, Minus, Plus, Search, ShoppingBag, Star, Utensils } from 'lucide-react'
 import { formatCOP } from '../../moneda'
@@ -91,6 +92,19 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
     }, 10_000)
     return () => clearInterval(t)
   }, [codigo, pedido])
+
+  // El aviso al comensal. Antes el sondeo de arriba actualizaba la pantalla en
+  // silencio: con el teléfono guardado, nadie se enteraba de que la cocina
+  // había aceptado ni de que el plato ya estaba en la mesa — y por eso tampoco
+  // calificaba. Solo dos transiciones, que son las que le importan.
+  const estadoAviso: EstadoAviso | null = !pedido
+    ? null
+    : pedido.status === 'delivered'
+      ? 'servido'
+      : pedido.status === 'preparing' || pedido.status === 'confirmed'
+        ? 'aceptado'
+        : null
+  useAvisoComensal(estadoAviso, pedido?.prepMinutes ?? null)
 
   const total = useMemo(
     () => carrito.reduce((s, l) => s + l.precioUnitario * l.cantidad, 0),
@@ -196,6 +210,10 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   async function enviar() {
     setEnviando(true)
     setError(null)
+    // Desde el TOQUE: en iOS el audio solo se desbloquea con un gesto, y el
+    // permiso de notificación pedido en frío al abrir la carta se rechaza —y
+    // rechazado no se vuelve a preguntar—.
+    void prepararAvisos()
     try {
       const creado = await llamar<PedidoEnMesa>(`/carta/${encodeURIComponent(codigo)}/pedido`, {
         method: 'POST',
@@ -926,12 +944,22 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
         {/* La foto del plato, que antes solo estaba en el listado a 56 px. Es
             lo que se está decidiendo comprar: aquí es donde tiene que verse. */}
         {producto.imageUrl && (
+          // `contain` y no `cover`: es la ÚNICA pantalla donde el comensal
+          // quiere ver el plato entero, y recortar para llenar el ancho se
+          // come medio plato cuando la foto es vertical —«pierde la imagen por
+          // mucho zoom», tal cual—. En el LISTADO se queda `cover`, que ahí es
+          // lo correcto: miniaturas parejas. El alto va fijo para que la hoja
+          // no salte de tamaño entre un plato y otro, y el fondo oscuro deja
+          // las franjas como un marco en vez de como un hueco. El marco va
+          // CLARO y no negro a propósito: la guarda del primario único busca
+          // `bg-slate-900` en esta superficie y no puede distinguir el fondo
+          // de una foto del de un botón — un gris claro cumple igual y deja la
+          // guarda simple, que es lo que la mantiene viva.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={imagen(producto.imageUrl)}
             alt={producto.name}
-            className="max-h-56 w-full rounded-t-3xl object-cover"
-            style={{ aspectRatio: '16 / 10' }}
+            className="h-56 w-full rounded-t-3xl bg-slate-100 object-contain"
           />
         )}
         {/* El asa de arrastre: dice que esto se cierra tirando hacia abajo, que
