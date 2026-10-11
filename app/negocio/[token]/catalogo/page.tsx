@@ -99,6 +99,7 @@ interface Product {
   /** Lo que DEVUELVE el servidor (ya saneado). Al enviar se manda texto o null:
    *  el backend es quien decide si «$30.000» es válido, no el formulario. */
   compareAtPrice?: number
+  promoUntil?: string
   descuentoPct?: number
   category: string
   imageUrl?: string
@@ -337,14 +338,17 @@ function ProductCard({
   const [eName, setEName] = useState(product.name)
   const [ePrice, setEPrice] = useState(String(product.price))
   const [eAntes, setEAntes] = useState(product.compareAtPrice ? String(product.compareAtPrice) : '')
+  // `datetime-local` quiere «AAAA-MM-DDTHH:mm» y el servidor manda ISO con zona.
+  const [eHasta, setEHasta] = useState(product.promoUntil ? product.promoUntil.slice(0, 16) : '')
   // El backend RECHAZA un «antes» al revés o increíble, y su mensaje explica
   // cuál de las dos cosas pasó. Tragárselo dejaría al dueño reintentando.
   const [eError, setEError] = useState<string | null>(null)
   const [eCategory, setECategory] = useState(product.category)
   const [eDescription, setEDescription] = useState(product.description)
 
-  type CuerpoPatch = Omit<Partial<Product>, 'compareAtPrice'> & {
+  type CuerpoPatch = Omit<Partial<Product>, 'compareAtPrice' | 'promoUntil'> & {
     compareAtPrice?: string | number | null
+    promoUntil?: string | null
   }
 
   const patch = async (body: CuerpoPatch) => {
@@ -377,6 +381,7 @@ function ProductCard({
       // Vacío = quitar el descuento. Se manda siempre para que borrarlo
       // funcione, no solo ponerlo.
       compareAtPrice: eAntes.trim() === '' ? null : eAntes.trim(),
+      promoUntil: eHasta.trim() === '' ? null : new Date(eHasta).toISOString(),
       category: eCategory.trim() || 'General',
       description: eDescription.trim(),
     })
@@ -474,7 +479,8 @@ function ProductCard({
               <input className={INPUT} value={eName} onChange={(e) => setEName(e.target.value)} maxLength={80} placeholder="Nombre" />
               <div className="grid grid-cols-2 gap-2">
                 <input className={INPUT} value={ePrice} onChange={(e) => setEPrice(e.target.value)} inputMode="numeric" maxLength={12} placeholder="Precio" />
-                <input className={INPUT} value={eAntes} onChange={(e) => setEAntes(e.target.value)} inputMode="numeric" maxLength={12} placeholder="Antes (opcional)" title="Precio anterior real. Se muestra tachado con el % de descuento." />
+                <input className={INPUT} value={eAntes} onChange={(e) => setEAntes(e.target.value)} inputMode="numeric" maxLength={12} placeholder="Precio normal (sin promoción)" title="El precio de siempre. Se muestra tachado junto al % de descuento." />
+                <input className={INPUT} type="datetime-local" value={eHasta} onChange={(e) => setEHasta(e.target.value)} title="Hasta cuándo dura la promoción. Vacío = sin fecha de fin." />
                 <input className={INPUT} list="cat-list" value={eCategory} onChange={(e) => setECategory(e.target.value)} maxLength={40} placeholder="Sección" />
               </div>
               <input className={INPUT} value={eDescription} onChange={(e) => setEDescription(e.target.value)} maxLength={140} placeholder="Descripción" />
@@ -485,7 +491,7 @@ function ProductCard({
                 <button onClick={saveEdit} disabled={busy} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
                   <Check className="w-3.5 h-3.5" /> Guardar
                 </button>
-                <button onClick={() => { setEditing(false); setEError(null); setEName(product.name); setEPrice(String(product.price)); setEAntes(product.compareAtPrice ? String(product.compareAtPrice) : ''); setECategory(product.category); setEDescription(product.description) }} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                <button onClick={() => { setEditing(false); setEError(null); setEName(product.name); setEPrice(String(product.price)); setEAntes(product.compareAtPrice ? String(product.compareAtPrice) : ''); setEHasta(product.promoUntil ? product.promoUntil.slice(0, 16) : ''); setECategory(product.category); setEDescription(product.description) }} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>

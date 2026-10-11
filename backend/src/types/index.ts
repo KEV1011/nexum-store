@@ -544,6 +544,8 @@ export interface ProductDTO {
   price: number;
   /** Precio antes de la rebaja. Ausente = este producto no está en oferta. */
   compareAtPrice?: number;
+  /** Hasta cuándo rige la promoción de este producto. */
+  promoUntil?: string | null;
   /** El porcentaje ya calculado, para que la app no repita la aritmética. */
   descuentoPct?: number;
   /** Puesto en «lo más pedido» de SU tienda. Ausente = no está entre los primeros
@@ -588,6 +590,8 @@ export interface CreateProductDTO {
   price: number;
   /** Precio anterior para el tachado. Vacío/null = sin descuento. */
   compareAtPrice?: number | string | null;
+  /** Hasta cuándo rige la promoción de este producto. */
+  promoUntil?: string | null;
   description?: string;
   category?: string;
   imageUrl?: string;
@@ -609,6 +613,8 @@ export interface UpdateProductDTO {
   price?: number;
   /** Precio anterior para el tachado. Null/vacío = quitar el descuento. */
   compareAtPrice?: number | string | null;
+  /** Hasta cuándo rige la promoción de este producto. */
+  promoUntil?: string | null;
   description?: string;
   category?: string;
   imageUrl?: string;

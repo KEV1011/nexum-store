@@ -12,6 +12,7 @@
 
 import { prisma } from '../lib/prisma';
 import { resolverOpciones, sanearNota } from '../lib/order-options';
+import { precioVigente } from '../lib/promo-producto';
 
 /** Un renglón tal como lo pidió el cliente. */
 export interface ItemPedido {
@@ -105,16 +106,26 @@ export async function resolverLineasDePedido(
     let resumen: string | null;
     let idsOpciones: string[] = [];
 
+    // EL PRECIO BASE SALE DE `precioVigente`, no de `producto.price` a secas.
+    //
+    // Es la MISMA función que usa la vitrina, y tiene que serlo: con una
+    // promoción vencida, `price` todavía guarda el precio rebajado y la
+    // pantalla ya muestra el normal. Si la caja leyera `price` directamente
+    // cobraría el descuento de la semana pasada para siempre — y al revés,
+    // una pantalla que promete lo que el cobro no aplica es la peor queja
+    // posible. Esa lección ya se pagó con `promoDeTienda`.
+    const base = precioVigente(producto).precio;
+
     if (Array.isArray(line.optionIds)) {
       const resueltas = resolverOpciones(producto.optionGroups, line.optionIds, producto.name);
       // El recargo puede ser negativo si el negocio descuenta por quitar algo;
       // el precio de una línea nunca baja de cero.
-      precioUnitario = Math.max(0, producto.price + resueltas.recargo);
+      precioUnitario = Math.max(0, base + resueltas.recargo);
       resumen = resueltas.resumen;
       idsOpciones = resueltas.ids;
     } else {
       const enviado = Number(line.unitPrice) || 0;
-      precioUnitario = Math.min(Math.max(producto.price, enviado), producto.price * 3);
+      precioUnitario = Math.min(Math.max(base, enviado), base * 3);
       resumen = line.optionsSummary?.trim() || null;
     }
 

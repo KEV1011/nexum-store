@@ -25,6 +25,7 @@ import { porcentajeDescuento, rankingMasPedido, saneaPrecioAntes, saneaPromoTien
 import {
   LARGO_FRASE, MAX_FOTOS_LOCAL, paletaDeLocal, saneaColorMarca,
 } from '../lib/marca-local';
+import { precioVigente, saneaFinDePromo } from '../lib/promo-producto';
 import { promedioReputacion } from '../lib/reputacion';
 import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
 import {
@@ -312,6 +313,7 @@ function _productToDTO(p: {
   stock?: number | null;
   unit?: string | null;
   brand?: string | null;
+  promoUntil?: Date | string | null;
   model?: string | null;
   warrantyMonths?: number | null;
   photos?: { id: string; url: string }[];
@@ -324,21 +326,29 @@ function _productToDTO(p: {
     options: { id: string; name: string; priceDelta: number; isAvailable: boolean }[];
   }[];
 }): ProductDTO {
+  // El precio que SE COBRA ahora. Es la misma función que usa la caja
+  // (`order-lines.service`): con una promoción vencida, `price` todavía
+  // guarda el rebajado, y si cada lado lo resolviera por su cuenta la
+  // pantalla y el cobro acabarían diciendo cosas distintas.
+  const v = precioVigente(p);
   return {
     id: p.id,
     businessId: p.businessId,
     name: p.name,
     description: p.description ?? '',
-    price: p.price,
+    price: v.precio,
     category: p.category,
     imageUrl: p.imageUrl ?? undefined,
     isAvailable: p.isAvailable,
     sortOrder: p.sortOrder ?? 0,
-    compareAtPrice: p.compareAtPrice ?? undefined,
+    // Sin promoción viva no se tacha nada: un precio tachado que ya no rige
+    // anuncia un descuento que la caja no va a aplicar.
+    compareAtPrice: v.antes ?? undefined,
+    promoUntil: (v.enPromo && p.promoUntil) ? new Date(p.promoUntil).toISOString() : undefined,
     // El porcentaje se calcula UNA vez, aquí: si cada pantalla lo derivara,
     // acabarían redondeando distinto y el «-46 %» del listado no coincidiría
     // con el del detalle.
-    descuentoPct: porcentajeDescuento(p.price, p.compareAtPrice) ?? undefined,
+    descuentoPct: porcentajeDescuento(v.precio, v.antes) ?? undefined,
     barcode: p.barcode ?? undefined,
     sku: p.sku ?? undefined,
     stock: p.stock ?? undefined,
@@ -754,6 +764,9 @@ export async function createBusinessProduct(
       price: dto.price,
       // Lanza con el motivo si el «antes» está al revés o es increíble.
       compareAtPrice: saneaPrecioAntes(dto.price, dto.compareAtPrice),
+      // Y una fecha ya pasada se rechaza: guardarla dejaría una promoción que
+      // nace muerta y el dueño creería que el portal no guardó.
+      promoUntil: saneaFinDePromo(dto.promoUntil),
       description: limpiarTextoDeCarta(dto.description ?? '') || null,
       category: limpiarTextoDeCarta(dto.category ?? '') || 'General',
       imageUrl: dto.imageUrl ?? null,
@@ -778,6 +791,7 @@ export async function updateBusinessProduct(
     where: { id: productId },
     data: {
       ...(dto.name !== undefined && { name: nombreDeProducto(dto.name) }),
+      ...(dto.promoUntil !== undefined && { promoUntil: saneaFinDePromo(dto.promoUntil) }),
       ...(dto.price !== undefined && { price: dto.price }),
       // Se valida contra el precio que va a QUEDAR, no contra el que había:
       // bajar el precio sin tocar el «antes» debe seguir siendo coherente.
