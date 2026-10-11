@@ -26,6 +26,7 @@ import {
   LARGO_FRASE, MAX_FOTOS_LOCAL, paletaDeLocal, saneaColorMarca,
 } from '../lib/marca-local';
 import { precioVigente, saneaFinDePromo } from '../lib/promo-producto';
+import { sugerenciaDeCodigo, type SugerenciaDeCodigo } from '../lib/sugerencia-codigo';
 import { promedioReputacion } from '../lib/reputacion';
 import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
 import {
@@ -676,6 +677,33 @@ export async function findProductByBarcode(
     include: _photoInclude,
   });
   return p ? _productToDTO(p) : null;
+}
+
+/**
+ * Qué proponerle al dueño para un código que él NO tiene, a partir de cómo lo
+ * tienen registrado los demás comercios de la plataforma.
+ *
+ * El reporte era «solo se sube un código, mas no reconoce el producto»: el
+ * escáner rellenaba trece dígitos y el nombre quedaba en blanco, así que había
+ * que teclearlo igual. El dato ya estaba en la base.
+ *
+ * El PRECIO no se consulta ni se devuelve — ver `sugerencia-codigo.ts`. Se
+ * limita el número de filas porque un EAN muy común lo tienen cientos de
+ * comercios y para votar un nombre bastan unos pocos.
+ */
+export async function suggestProductByBarcode(
+  businessId: string,
+  barcode: string,
+): Promise<SugerenciaDeCodigo | null> {
+  const codigo = barcode.trim();
+  if (!codigo) return null;
+  const filas = await prisma.product.findMany({
+    where: { barcode: codigo, businessId: { not: businessId } },
+    select: { name: true, brand: true, unit: true },
+    orderBy: { createdAt: 'desc' },
+    take: 25,
+  });
+  return sugerenciaDeCodigo(filas);
 }
 
 /**

@@ -751,6 +751,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   const [seccionFiltro, setSeccionFiltro] = useState('todas')
   const [soloAgotados, setSoloAgotados] = useState(false)
   const [avisoEscaner, setAvisoEscaner] = useState<string | null>(null)
+  const [guardado, setGuardado] = useState<string | null>(null)
 
   /**
    * Un código leído. Si el negocio YA tiene ese producto se sube su ficha al
@@ -760,12 +761,17 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
    */
   const onCodigoLeido = useCallback(async (code: string) => {
     setBarcode(code)
+    setGuardado(null)
     try {
       const res = await fetch(
         `${BACKEND_URL}/business/${token}/products/barcode/${encodeURIComponent(code)}`,
         { cache: 'no-store' },
       )
-      const json = (await res.json()) as { success: boolean; data?: Product | null }
+      const json = (await res.json()) as {
+        success: boolean
+        data?: Product | null
+        sugerencia?: { name: string; brand?: string; unit?: string; comercios: number } | null
+      }
       const existente = json.success ? json.data : null
       if (existente) {
         // Reponer: se trae lo que ya estaba para no volver a teclearlo.
@@ -777,6 +783,21 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
         setStock(existente.stock !== undefined ? String(existente.stock) : '')
         setAvisoEscaner(
           `Ya tienes "${existente.name}". Ajusta el precio o las existencias y guarda para actualizarlo.`,
+        )
+        return
+      }
+      const s = json.success ? json.sugerencia : null
+      if (s) {
+        // El nombre lo PROPONE la plataforma a partir de cómo lo tienen otros
+        // comercios. El precio no: lo pone cada tienda, y proponer el de otra
+        // dejaría vendiendo al precio ajeno con un «Guardar» distraído.
+        setName(s.name)
+        if (s.brand) setBrand(s.brand)
+        if (s.unit) setUnit(s.unit)
+        setPrice('')
+        setAvisoEscaner(
+          `Propuesta: "${s.name}" — así lo tienen ${s.comercios === 1 ? 'otro comercio' : `${s.comercios} comercios`}. `
+          + 'Revisa el nombre y escribe TU precio.',
         )
       } else {
         setAvisoEscaner('Producto nuevo: completa el nombre y el precio.')
@@ -825,13 +846,20 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
     })()
   }, [token])
 
-  const createProduct = async (e: React.FormEvent) => {
-    e.preventDefault()
+  /**
+   * Crea el producto con lo que haya en el formulario y devuelve el motivo si
+   * no se pudo, o `null` si quedó guardado.
+   *
+   * Está separado del `submit` porque el mismo alta se dispara desde DENTRO de
+   * la cámara («Guardar y seguir»): un segundo camino de escritura acabaría
+   * mandando campos distintos que el de aquí, que es el defecto que ya se pagó
+   * con el formateador de moneda en diecisiete copias.
+   */
+  const guardarProducto = async (): Promise<string | null> => {
     const priceNum = Number(price.replace(/[^\d]/g, ''))
-    if (name.trim().length < 2) { setFormError('Escribe el nombre del producto.'); return }
-    if (!(priceNum > 0)) { setFormError('Escribe un precio válido.'); return }
+    if (name.trim().length < 2) return 'Escribe el nombre del producto.'
+    if (!(priceNum > 0)) return 'Escribe un precio válido.'
     setCreating(true)
-    setFormError(null)
     try {
       const res = await fetch(`${BACKEND_URL}/business/${token}/products`, {
         method: 'POST',
@@ -858,17 +886,40 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       })
       const json = (await res.json()) as { success: boolean; data?: Product; error?: string }
       if (!res.ok || !json.success || !json.data) {
-        setFormError(json.error ?? 'No se pudo crear el producto.')
-        return
+        return json.error ?? 'No se pudo crear el producto.'
       }
       setProducts((prev) => [...prev, json.data as Product])
       setName(''); setPrice(''); setDescription(''); setCategory(CATEGORIES[0])
       setBarcode(''); setBrand(''); setStock(''); setModel(''); setWarranty('')
+      return null
     } catch {
-      setFormError('No se pudo conectar con el servidor.')
+      return 'No se pudo conectar con el servidor.'
     } finally {
       setCreating(false)
     }
+  }
+
+  const createProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormError(null)
+    const motivo = await guardarProducto()
+    setFormError(motivo)
+  }
+
+  /**
+   * «Guardar y seguir» desde dentro de la cámara: el producto queda creado y el
+   * escáner NO se cierra, para pasar al siguiente de la estantería. Sin esto el
+   * dueño tenía que cerrar la cámara, bajar al formulario, guardar y volver a
+   * abrirla por cada producto.
+   */
+  const guardarYSeguir = async () => {
+    setFormError(null)
+    setGuardado(null)
+    const nombre = name.trim()
+    const motivo = await guardarProducto()
+    if (motivo) { setFormError(motivo); return }
+    setAvisoEscaner(null)
+    setGuardado(`"${nombre}" quedó en tu catálogo. Escanea el siguiente.`)
   }
 
   const onChanged = (p: Product) => setProducts((prev) => prev.map((x) => (x.id === p.id ? p : x)))
@@ -1221,6 +1272,57 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
         <BarcodeScanner
           onDetected={(code) => { void onCodigoLeido(code) }}
           onClose={() => setEscaneando(false)}
+          ficha={barcode ? (
+            // Los campos son los MISMOS estados del formulario de abajo: lo que
+            // se escribe aquí es literalmente ese formulario, así que cerrar la
+            // cámara no pierde nada a medio escribir.
+            <div className="w-full max-w-md rounded-2xl bg-white p-3 space-y-2 shadow-lg">
+              <p className="text-xs font-semibold text-slate-500">
+                Código <span className="font-mono text-slate-700">{barcode}</span>
+              </p>
+              {avisoEscaner ? (
+                <p className="text-xs text-emerald-700">{avisoEscaner}</p>
+              ) : null}
+              <input
+                className={INPUT}
+                placeholder="Nombre del producto"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={80}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  className={INPUT}
+                  placeholder="Precio"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={12}
+                />
+                {perfil.existencias ? (
+                  <input
+                    className={INPUT}
+                    placeholder="Existencias"
+                    value={stock}
+                    onChange={(e) => setStock(e.target.value)}
+                    inputMode="numeric"
+                    maxLength={7}
+                  />
+                ) : <span />}
+              </div>
+              {formError ? <p className="text-xs text-red-600">{formError}</p> : null}
+              <button
+                type="button"
+                onClick={() => { void guardarYSeguir() }}
+                disabled={creating}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Guardar y seguir
+              </button>
+            </div>
+          ) : null}
+          aviso={guardado}
         />
       ) : null}
     </div>

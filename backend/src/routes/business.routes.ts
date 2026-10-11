@@ -6,6 +6,7 @@ import {
   reorderBusinessProducts,
   createBusinessProduct,
   findProductByBarcode,
+  suggestProductByBarcode,
   getBarcodeIndexForBusiness,
   applyProductImport,
   updateBusinessProduct,
@@ -544,14 +545,18 @@ router.post('/:token/products/csv-import', async (req: Request, res: Response): 
 // GET /business/:token/products/barcode/:code — el escáner pregunta si el
 // negocio YA tiene ese producto. Si existe se abre su ficha para ajustar precio
 // o sumar existencias (el caso frecuente al reponer); si no, se crea uno nuevo
-// con el código ya rellenado.
+// con el código ya rellenado y con el nombre PROPUESTO a partir de cómo lo
+// tienen los demás comercios (nunca su precio — ver `sugerencia-codigo.ts`).
 router.get('/:token/products/barcode/:code', async (req: Request, res: Response): Promise<void> => {
   const { token, code } = req.params as { token: string; code: string };
   try {
     const business = await getBusinessService().getBusinessByToken(token);
     const product = await findProductByBarcode(business.id, code);
+    // La sugerencia solo se busca si NO lo tiene: teniéndolo, lo que manda es
+    // su propia ficha y proponerle el nombre de otra tienda sería cambiárselo.
+    const sugerencia = product ? null : await suggestProductByBarcode(business.id, code);
     // 200 con data:null — "no lo tienes" es una respuesta válida, no un error.
-    res.status(200).json({ success: true, data: product });
+    res.status(200).json({ success: true, data: product, sugerencia });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo buscar el producto';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
