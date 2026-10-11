@@ -22,6 +22,9 @@ import {
   saneaDestinos, destinosDesdeBD, type DestinoEnvio,
 } from '../lib/destinos-envio';
 import { porcentajeDescuento, rankingMasPedido, saneaPrecioAntes, saneaPromoTienda } from '../lib/vitrina';
+import {
+  LARGO_FRASE, MAX_FOTOS_LOCAL, paletaDeLocal, saneaColorMarca,
+} from '../lib/marca-local';
 import { promedioReputacion } from '../lib/reputacion';
 import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
 import {
@@ -1046,6 +1049,42 @@ export async function getBusinessStats(
   };
 }
 
+/**
+ * La identidad del local, tal como viaja al cliente.
+ *
+ * UN SOLO SITIO lo decide porque hay TRES mappers que construyen un
+ * `BusinessPublicDTO` —la lista, el detalle y la carta del QR— y lo que se
+ * copia en tres sitios se separa en cuanto alguien toca uno. Pasó con el
+ * formateador de moneda, que acabó en diecisiete copias y dos formatos.
+ *
+ * La ausencia es informativa y por eso va `undefined` y no una cadena vacía:
+ * la pantalla distingue «no declaró logo» de «logo vacío» y dibuja la inicial
+ * del local en vez de un hueco.
+ */
+export function marcaDelLocal(b: {
+  logoUrl?: string | null; tagline?: string | null;
+  gallery?: unknown; brandColor?: string | null;
+}): Pick<BusinessPublicDTO, 'logoUrl' | 'tagline' | 'gallery' | 'marca'> {
+  const fotos = Array.isArray(b.gallery)
+    ? (b.gallery as unknown[])
+        .map((f) => (typeof f === 'string' ? f : (f as { url?: unknown })?.url))
+        .filter((u): u is string => typeof u === 'string' && u.length > 0)
+        .slice(0, MAX_FOTOS_LOCAL)
+    : [];
+  // Se sanea AL SALIR además de al guardar: una fila vieja o escrita a mano no
+  // puede meter en el atributo `style` de la carta algo que no sea un color.
+  // Y si no hay color propio NO se manda la paleta: la ausencia es lo que le
+  // dice a la carta que use la de ZIPA, en vez de recibir un verde que
+  // parecería una elección del local.
+  const p = paletaDeLocal(b.brandColor);
+  return {
+    ...(b.logoUrl ? { logoUrl: b.logoUrl } : {}),
+    ...(b.tagline ? { tagline: b.tagline } : {}),
+    ...(fotos.length ? { gallery: fotos } : {}),
+    ...(p.propia ? { marca: { color: p.marca, sobre: p.sobreMarca, suave: p.suave } } : {}),
+  };
+}
+
 export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
   const businesses = await prisma.business.findMany({
     where: { isOpen: true },
@@ -1072,6 +1111,7 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     // "Abierto" para el cliente = la vitrina está recibiendo pedidos.
     ..._estadoVitrina(b),
     imageUrl: b.imageUrl ?? undefined,
+    ...marcaDelLocal(b),
     products: b.products.map(_productToDTO),
   }));
 }
@@ -1103,6 +1143,7 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     imageUrl: b.imageUrl ?? undefined,
     citySlug: b.citySlug,
     shipsTo: destinosDesdeBD(b.shipsTo),
+    ...marcaDelLocal(b),
     products: await _conMasPedido(b.id, b.products.map(_productToDTO)),
   };
 }
@@ -1226,4 +1267,93 @@ export async function updateBusinessShipping(
     data: { shipsTo: destinos as unknown as Prisma.InputJsonValue },
   });
   return destinos;
+}
+
+// ─── La identidad del local en su carta ───────────────────────────────────────
+
+/** El logo del local. Reemplaza al anterior; `null` lo quita. */
+export async function updateBusinessLogo(
+  businessId: string, logoUrl: string | null,
+): Promise<{ logoUrl: string | null }> {
+  const b = await prisma.business.update({
+    where: { id: businessId }, data: { logoUrl },
+    select: { logoUrl: true },
+  });
+  return b;
+}
+
+/**
+ * Añade una foto del LOCAL a la galería (el salón, la parrilla, la terraza).
+ *
+ * Se añade al final en vez de reemplazar porque el dueño las sube de una en
+ * una desde el teléfono, y pasado el tope se RECHAZA diciéndolo en vez de
+ * tirar la más antigua en silencio: la que se perdería es la que él acaba de
+ * decidir que quiere, y no se enteraría.
+ */
+export async function addFotoDelLocal(
+  businessId: string, url: string,
+): Promise<{ gallery: string[] }> {
+  const actual = await prisma.business.findUnique({
+    where: { id: businessId }, select: { gallery: true },
+  });
+  const fotos = marcaDelLocal({ gallery: actual?.gallery }).gallery ?? [];
+  if (fotos.length >= MAX_FOTOS_LOCAL) {
+    throw new Error(
+      `Ya tienes ${MAX_FOTOS_LOCAL} fotos del local, que es el máximo. `
+      + 'Quita alguna antes de subir otra.',
+    );
+  }
+  const siguiente = [...fotos, url];
+  await prisma.business.update({
+    where: { id: businessId }, data: { gallery: siguiente },
+  });
+  return { gallery: siguiente };
+}
+
+/** Quita una foto del local por su URL. */
+export async function quitarFotoDelLocal(
+  businessId: string, url: string,
+): Promise<{ gallery: string[] }> {
+  const actual = await prisma.business.findUnique({
+    where: { id: businessId }, select: { gallery: true },
+  });
+  const siguiente = (marcaDelLocal({ gallery: actual?.gallery }).gallery ?? [])
+    .filter((f) => f !== url);
+  await prisma.business.update({
+    where: { id: businessId }, data: { gallery: siguiente },
+  });
+  return { gallery: siguiente };
+}
+
+/**
+ * El color de marca y la frase del local.
+ *
+ * El color se sanea aquí y se guarda `null` si no es un color: guardar
+ * «granate» dejaría la carta pintando un `style` que el navegador ignora, y
+ * el dueño vería su carta en verde sin saber por qué.
+ *
+ * La frase se limpia como el nombre de un plato —los emojis no se dibujan
+ * igual en todos los teléfonos— y se corta, porque lo que no cabe en dos
+ * renglones sale con puntos suspensivos, que es peor que no escribirla.
+ */
+export async function updateMarcaDelLocal(
+  businessId: string,
+  dto: { brandColor?: string | null; tagline?: string | null },
+): Promise<{ brandColor: string | null; tagline: string | null }> {
+  const data: { brandColor?: string | null; tagline?: string | null } = {};
+  if (dto.brandColor !== undefined) {
+    data.brandColor = saneaColorMarca(dto.brandColor);
+    if (dto.brandColor && !data.brandColor) {
+      throw new Error('El color debe ir en formato #RRGGBB, por ejemplo #E11D48.');
+    }
+  }
+  if (dto.tagline !== undefined) {
+    const limpia = limpiarTextoDeCarta(dto.tagline ?? '').slice(0, LARGO_FRASE);
+    data.tagline = limpia || null;
+  }
+  const b = await prisma.business.update({
+    where: { id: businessId }, data,
+    select: { brandColor: true, tagline: true },
+  });
+  return b;
 }

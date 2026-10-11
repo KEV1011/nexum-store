@@ -92,6 +92,21 @@ export interface Carta {
     ratingCount: number
     isOpen: boolean
     cerradoMotivo?: string
+
+    /**
+     * La identidad del local. Los cuatro son opcionales y su ausencia es
+     * informativa: sin logo va la inicial, sin frase no va nada, sin fotos no
+     * se dibuja la galería y sin `marca` se usa el esmeralda de ZIPA.
+     *
+     * `marca` llega YA RESUELTA desde el servidor —qué texto se lee encima es
+     * una cuenta de contraste con garantía probada de 4,5:1, y repetirla aquí
+     * sería tenerla en dos sitios.
+     */
+    logoUrl?: string
+    tagline?: string
+    gallery?: string[]
+    marca?: { color: string; sobre: string; suave: string }
+
     products: Producto[]
   }
   tables: string[]

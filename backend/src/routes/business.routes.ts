@@ -32,6 +32,12 @@ import {
 } from '../services/client.service';
 import { getMesasDelNegocio, guardarMesas, marcarServido } from '../services/mesa.service';
 import {
+  addFotoDelLocal,
+  quitarFotoDelLocal,
+  updateBusinessLogo,
+  updateMarcaDelLocal,
+} from '../services/business.service';
+import {
   RegisterBusinessDTO,
   BUSINESS_CATEGORIES,
   CreateProductDTO,
@@ -827,6 +833,110 @@ router.delete('/:token/products/:productId/gallery/:photoId', async (req: Reques
     const message = err instanceof Error ? err.message : 'No se pudo eliminar la foto';
     const notFound = message.includes('not found') || message.includes('no encontrado');
     res.status(notFound ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// ─── La identidad del local en su carta del QR ───────────────────────────────
+//
+// En un menú QR el comensal está SENTADO en el restaurante: la marca que manda
+// ahí es la del local. Sin esto, los veinte locales de la plaza tienen una
+// carta idéntica y se lee como una plantilla.
+
+/** Multipart de una sola imagen, con el guard de tipo que ya usa la portada. */
+function unaImagen(queEs: string) {
+  return [
+    (req: Request, res: Response, next: () => void) => {
+      documentUpload.single('file')(req, res, (err) => {
+        if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+        next();
+      });
+    },
+    (req: Request, res: Response, next: () => void) => {
+      if (!req.file) {
+        res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+        return;
+      }
+      if (!req.file.mimetype.startsWith('image/')) {
+        res.status(400).json({
+          success: false,
+          error: `${queEs} debe ser una imagen (JPG, PNG o WebP).`,
+        });
+        return;
+      }
+      next();
+    },
+  ];
+}
+
+// POST /business/:token/logo — el logo del local (multipart 'file').
+router.post('/:token/logo', ...unaImagen('El logo'), async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await updateBusinessLogo(business.id, fileToUrl(req.file!));
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo subir el logo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// DELETE /business/:token/logo — quitarlo y volver a la inicial del local.
+router.delete('/:token/logo', async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.json({ success: true, data: await updateBusinessLogo(business.id, null) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo quitar el logo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// POST /business/:token/fotos — una foto del LOCAL (el salón, la parrilla).
+router.post('/:token/fotos', ...unaImagen('La foto'), async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await addFotoDelLocal(business.id, fileToUrl(req.file!));
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo subir la foto';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// DELETE /business/:token/fotos { url }
+router.delete('/:token/fotos', async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  const url = String((req.body as { url?: unknown } | undefined)?.url ?? '');
+  if (!url) {
+    res.status(400).json({ success: false, error: 'Falta la foto que se quiere quitar.' });
+    return;
+  }
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.json({ success: true, data: await quitarFotoDelLocal(business.id, url) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo quitar la foto';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// PUT /business/:token/marca { brandColor?, tagline? }
+router.put('/:token/marca', async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  const body = (req.body ?? {}) as { brandColor?: unknown; tagline?: unknown };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await updateMarcaDelLocal(business.id, {
+      ...(body.brandColor !== undefined ? { brandColor: String(body.brandColor ?? '') || null } : {}),
+      ...(body.tagline !== undefined ? { tagline: String(body.tagline ?? '') } : {}),
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo guardar la marca';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });
 

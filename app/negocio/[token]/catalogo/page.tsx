@@ -41,6 +41,7 @@ function resolveImg(url?: string): string | undefined {
 }
 
 // Sugerencias por defecto; el dueño puede escribir SUS propias secciones.
+import { MarcaDelLocal } from './MarcaDelLocal'
 const CATEGORIES = ['General', 'Entradas', 'Platos fuertes', 'Bebidas', 'Postres', 'Combos', 'Promociones']
 
 /** Unidades de venta para negocios que manejan inventario. */
@@ -944,6 +945,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
         {/* Portada del local */}
         <CoverSection token={token} />
+        <MarcaDelLocal token={token} />
 
         {/* Alta */}
         <form onSubmit={createProduct} className={`${TARJETA} p-5 space-y-3`}>

@@ -664,6 +664,28 @@ export interface BusinessPublicDTO {
    * comercio hasta que su dueño declare destinos.
    */
   shipsTo?: Array<{ city: string; fee: number; etaHours: number; cutoff?: string }>;
+
+  /**
+   * La identidad del local, para su propia carta del QR.
+   *
+   * Los cuatro son opcionales y su ausencia es informativa: sin logo va la
+   * inicial, sin frase no va nada, sin fotos no se dibuja la galería y sin
+   * color se usa el de ZIPA. Nada se rellena con un sustituto bonito, que en
+   * una carta haría creer que hay una foto donde no la hay.
+   *
+   * LA PALETA LA CALCULA EL SERVIDOR, no la pantalla. Qué texto se lee encima
+   * del color del local es una cuenta de contraste (WCAG), determinista y con
+   * una garantía probada de 4,5:1; hacerla también en TypeScript del navegador
+   * sería tener la misma cuenta en dos sitios, que es exactamente cómo el
+   * formateador de moneda acabó en diecisiete copias y dos formatos.
+   *
+   * `marca` ausente = el local no declaró color y la carta usa el de ZIPA.
+   */
+  logoUrl?: string;
+  tagline?: string;
+  gallery?: string[];
+  marca?: { color: string; sobre: string; suave: string };
+
   products: ProductDTO[];
 }
 

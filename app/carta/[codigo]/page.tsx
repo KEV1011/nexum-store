@@ -253,32 +253,55 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
 
   const negocio = carta!.business
 
+  // La paleta del local. Sin `marca` declarada se usa la de ZIPA, que es lo
+  // que la carta ha hecho hasta hoy: no se inventa una identidad que el local
+  // no declaró. Los valores van en variables CSS para que el tinte llegue a
+  // los hijos sin pasar una prop por cada componente.
+  const M = negocio.marca
+  const estiloMarca = {
+    '--marca': M?.color ?? '#059669',
+    '--sobre-marca': M?.sobre ?? '#ffffff',
+    '--marca-suave': M?.suave ?? '#ecfdf5',
+  } as React.CSSProperties
+
   // Pedido ya enviado: la pantalla pasa a ser su estado.
   if (pedido) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-50 px-4 py-6">
+      <main
+        style={estiloMarca}
+        className="min-h-screen bg-gradient-to-b from-[var(--marca-suave)] via-slate-50 to-slate-50 px-4 py-6"
+      >
         <div className="mx-auto max-w-md">
-          <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-emerald-800
-                          p-6 text-center shadow-[0_8px_24px_rgba(5,150,105,0.18)]">
-            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-white/15
-                            ring-1 ring-inset ring-white/25">
-              <Check className="h-7 w-7 text-white" />
+          <div
+            // COLOR PLANO, no degradado, y no es por gusto: la garantía de
+            // 4,5:1 de `textoSobre` está calculada para ESTE color. Un
+            // degradado hacia otro tono deja al texto sobre colores que nadie
+            // comprobó — con una marca clara, blanco sobre amarillo.
+            //
+            // Y todo lo de dentro hereda `currentColor` en vez de ir fijo en
+            // blanco: con una marca amarilla el texto es NEGRO, y un
+            // `text-white` escrito a mano sería invisible justo en los locales
+            // de marca clara.
+            style={{ background: 'var(--marca)', color: 'var(--sobre-marca)' }}
+            className="overflow-hidden rounded-3xl p-6 text-center shadow-[0_8px_24px_rgba(15,23,42,0.18)]"
+          >
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full
+                            bg-[currentColor]/15 ring-1 ring-inset ring-[currentColor]/25">
+              <Check className="h-7 w-7" />
             </div>
-            <h1 className="mt-3 text-xl font-extrabold tracking-tight text-white">
+            <h1 className="mt-3 text-xl font-extrabold tracking-tight">
               {etiquetaEstado(pedido.status)}
             </h1>
-            <p className="mt-1 text-sm font-medium text-emerald-50/90">
+            <p className="mt-1 text-sm font-medium opacity-80">
               Mesa {pedido.tableLabel} · #{pedido.orderRef}
             </p>
             {pedido.prepMinutes ? (
-              // `violet` no decía nada aquí: «la cocina lo tomó y va en N
-              // minutos» es el estado «en curso», que en todo ZIPA es esmeralda.
-              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5
-                            text-xs font-bold text-white ring-1 ring-inset ring-white/25">
+              <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[currentColor]/15
+                            px-3 py-1.5 text-xs font-bold ring-1 ring-inset ring-[currentColor]/25">
                 <Clock className="h-3.5 w-3.5" /> Listo en unos {pedido.prepMinutes} min
               </p>
             ) : pedido.status === 'pending' ? (
-              <p className="mt-3 text-xs leading-relaxed text-emerald-50/80">
+              <p className="mt-3 text-xs leading-relaxed opacity-80">
                 La cocina lo está viendo. Si pasan varios minutos sin respuesta,
                 avísale al mesero.
               </p>
@@ -339,7 +362,11 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   const puedePedir = !sinMesa && !sinServicioEnMesa && negocio.isOpen && carrito.length > 0
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-emerald-50 via-slate-50 to-slate-50 pb-[max(7rem,calc(6rem+env(safe-area-inset-bottom)))]">
+    <main
+      style={estiloMarca}
+      className="min-h-screen bg-gradient-to-b from-[var(--marca-suave)] via-slate-50 to-slate-50
+                 pb-[max(7rem,calc(6rem+env(safe-area-inset-bottom)))]"
+    >
       {/* Cabecera con la portada del local */}
       <header className="relative">
         {negocio.imageUrl ? (
@@ -352,15 +379,37 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
         ) : (
           // Sin portada no se deja un degradado vacío: la inicial del local
           // ocupa el sitio y la cabecera se lee como suya y no como un hueco.
-          <div className="grid h-36 w-full place-items-center bg-gradient-to-br from-emerald-700 via-emerald-800 to-slate-900">
-            <span className="select-none text-6xl font-black text-white/15">
+          // Sin portada, el fondo es el color del local: ya es suyo aunque no
+          // haya subido foto.
+          <div
+            className="grid h-36 w-full place-items-center"
+            style={{ background: 'var(--marca)', color: 'var(--sobre-marca)' }}
+          >
+            <span className="select-none text-6xl font-black opacity-20">
               {negocio.name.trim().charAt(0).toUpperCase()}
             </span>
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-4">
+        <div className="absolute bottom-0 left-0 right-0 flex items-end gap-3 p-4">
+          {/* El logo del local, si lo subió. Sin él NO se dibuja un recuadro
+              vacío: el nombre ocupa todo el ancho y ya está. */}
+          {negocio.logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imagen(negocio.logoUrl)}
+              alt={negocio.name}
+              className="h-14 w-14 shrink-0 rounded-2xl bg-white object-contain p-1
+                         shadow-[0_2px_12px_rgba(0,0,0,0.35)] ring-1 ring-white/30"
+            />
+          )}
+          <div className="min-w-0 flex-1">
           <h1 className="text-xl font-bold tracking-tight text-white drop-shadow-sm">{negocio.name}</h1>
+          {negocio.tagline && (
+            <p className="mt-0.5 text-[13px] font-medium leading-snug text-white/85 drop-shadow-sm">
+              {negocio.tagline}
+            </p>
+          )}
           <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/85">
             {negocio.rating != null ? (
               <span className="inline-flex items-center gap-1">
@@ -377,8 +426,28 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
               </span>
             )}
           </p>
+          </div>
         </div>
       </header>
+
+      {/* Las fotos del LOCAL —el salón, la parrilla, la terraza—, que no son
+          las de los platos. Es lo que hace que la carta se sienta de ESE
+          restaurante y no de una plantilla. Si no subió ninguna, no se dibuja
+          nada: una fila de recuadros grises se lee como que algo falló. */}
+      {negocio.gallery && negocio.gallery.length > 0 && (
+        <div className="-mb-1 flex gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {negocio.gallery.map((foto) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={foto}
+              src={imagen(foto)}
+              alt=""
+              loading="lazy"
+              className="h-20 w-28 shrink-0 rounded-xl object-cover shadow-[0_1px_4px_rgba(15,23,42,0.10)]"
+            />
+          ))}
+        </div>
+      )}
 
       <div className="mx-auto max-w-md px-4">
         {/* Los tres motivos por los que no se puede pedir son distintos y se
@@ -456,10 +525,11 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
                       data-seccion={id}
                       onClick={() => irASeccion(seccion)}
                       aria-current={activa ? 'true' : undefined}
+                      style={activa
+                        ? { background: 'var(--marca)', color: 'var(--sobre-marca)' }
+                        : undefined}
                       className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors ${
-                        activa
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        activa ? '' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
                       {seccion}
@@ -598,6 +668,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
             <button
               onClick={() => void enviar()}
               disabled={!puedePedir || enviando}
+              style={{ background: 'var(--marca)', color: 'var(--sobre-marca)' }}
               className={`${BOTON.principal} ml-auto flex-1 text-[15px]`}
             >
               {enviando
@@ -702,8 +773,14 @@ function Plato({ producto: p, conFoto, deshabilitado, onElegir }: {
       {/* 44 px, no 32: es el objetivo táctil de `BOTON` y este botón se toca
           con el pulgar, de pie, con el teléfono en una mano. */}
       <span className="flex shrink-0 items-center pr-2.5">
-        <span className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-600 text-white
-                         transition-colors group-hover:bg-emerald-700 group-disabled:bg-slate-300">
+        <span
+          // El color sale de la variable de la carta, así que este botón es
+          // del color del local y no del nuestro. Con el grupo deshabilitado
+          // se apaga a gris, que es más claro que atenuar su color.
+          style={deshabilitado ? undefined : { background: 'var(--marca)', color: 'var(--sobre-marca)' }}
+          className={`grid h-11 w-11 place-items-center rounded-xl transition-colors
+                      ${deshabilitado ? 'bg-slate-300 text-white' : ''}`}
+        >
           <Plus className="h-5 w-5" />
         </span>
       </span>
@@ -938,6 +1015,7 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
           type="button"
           disabled={!!falta}
           onClick={() => onAgregar(elegidas, resumen, nota.trim())}
+          style={{ background: 'var(--marca)', color: 'var(--sobre-marca)' }}
           className={`${BOTON.principal} mt-5 w-full text-[15px]`}
         >
           {falta

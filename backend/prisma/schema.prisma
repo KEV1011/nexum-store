@@ -448,6 +448,27 @@ model Business {
   // Foto de portada del local (subida por el dueño desde el portal). Null = sin
   // portada (el cliente cae al color/ícono de la categoría).
   imageUrl String?
+
+  /// La identidad del local dentro de su propia carta del QR.
+  ///
+  /// En un menú QR el comensal está SENTADO en el restaurante: la marca que
+  /// manda ahí es la del local, no la nuestra. Sin esto, los veinte locales de
+  /// la plaza tienen una carta idéntica y se lee como una plantilla.
+  ///
+  /// Los cuatro son opcionales y sin ellos la carta se comporta EXACTAMENTE
+  /// como hasta hoy: no se inventa un logo, ni una frase, ni un color.
+  /// `logoUrl` es la marca del local (va en la cabecera y en el pedido);
+  /// `imageUrl`, de arriba, sigue siendo la foto de PORTADA, que es otra cosa.
+  logoUrl    String?
+  /// Fotos del LOCAL —el salón, la parrilla, la terraza—, no de los platos.
+  /// `[{url}]`, como máximo `MAX_FOTOS_LOCAL`.
+  gallery    Json?
+  /// Color de marca en `#rrggbb`. El texto que va encima NO se guarda: lo
+  /// deriva `textoSobre` por contraste, porque un color elegido con buen gusto
+  /// puede dejar el texto ilegible y nadie lo revisaría.
+  brandColor String?
+  /// Una línea bajo el nombre: «Comida casera desde 1998».
+  tagline    String?
   token    String  @unique @default(cuid())
 
   /// Si el local es nuestro cliente o si la ficha la publicamos nosotros.
