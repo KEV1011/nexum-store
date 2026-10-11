@@ -41,6 +41,8 @@ function resolveImg(url?: string): string | undefined {
 }
 
 // Sugerencias por defecto; el dueño puede escribir SUS propias secciones.
+import { MarcaDelLocal } from './MarcaDelLocal'
+import { perfilDe } from '../../perfil-catalogo'
 const CATEGORIES = ['General', 'Entradas', 'Platos fuertes', 'Bebidas', 'Postres', 'Combos', 'Promociones']
 
 /** Unidades de venta para negocios que manejan inventario. */
@@ -55,11 +57,11 @@ const UNIDADES = ['unidad', 'kg', 'g', 'libra', 'litro', 'ml', 'paquete'] as con
  * al revés, cada categoría nueva heredaría el formulario con inventario sin
  * que nadie lo decidiera.
  */
-const CON_INVENTARIO = ['store', 'supermarket', 'pharmacy', 'other']
-
-function manejaInventario(categoria?: string): boolean {
-  return categoria != null && CON_INVENTARIO.includes(categoria)
-}
+// La lista de categorías con inventario y el helper que la leía se
+// retiraron: ahora lo decide `perfilDe()` en `app/negocio/perfil-catalogo.ts`,
+// que además dice qué OTRAS herramientas tienen sentido. Con dos fuentes
+// decidiendo lo mismo, la carta por foto acabaría otra vez en el cajón del
+// inventario — que es el defecto que esto corrige.
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,6 +99,7 @@ interface Product {
   /** Lo que DEVUELVE el servidor (ya saneado). Al enviar se manda texto o null:
    *  el backend es quien decide si «$30.000» es válido, no el formulario. */
   compareAtPrice?: number
+  promoUntil?: string
   descuentoPct?: number
   category: string
   imageUrl?: string
@@ -335,14 +338,17 @@ function ProductCard({
   const [eName, setEName] = useState(product.name)
   const [ePrice, setEPrice] = useState(String(product.price))
   const [eAntes, setEAntes] = useState(product.compareAtPrice ? String(product.compareAtPrice) : '')
+  // `datetime-local` quiere «AAAA-MM-DDTHH:mm» y el servidor manda ISO con zona.
+  const [eHasta, setEHasta] = useState(product.promoUntil ? product.promoUntil.slice(0, 16) : '')
   // El backend RECHAZA un «antes» al revés o increíble, y su mensaje explica
   // cuál de las dos cosas pasó. Tragárselo dejaría al dueño reintentando.
   const [eError, setEError] = useState<string | null>(null)
   const [eCategory, setECategory] = useState(product.category)
   const [eDescription, setEDescription] = useState(product.description)
 
-  type CuerpoPatch = Omit<Partial<Product>, 'compareAtPrice'> & {
+  type CuerpoPatch = Omit<Partial<Product>, 'compareAtPrice' | 'promoUntil'> & {
     compareAtPrice?: string | number | null
+    promoUntil?: string | null
   }
 
   const patch = async (body: CuerpoPatch) => {
@@ -375,6 +381,7 @@ function ProductCard({
       // Vacío = quitar el descuento. Se manda siempre para que borrarlo
       // funcione, no solo ponerlo.
       compareAtPrice: eAntes.trim() === '' ? null : eAntes.trim(),
+      promoUntil: eHasta.trim() === '' ? null : new Date(eHasta).toISOString(),
       category: eCategory.trim() || 'General',
       description: eDescription.trim(),
     })
@@ -472,7 +479,8 @@ function ProductCard({
               <input className={INPUT} value={eName} onChange={(e) => setEName(e.target.value)} maxLength={80} placeholder="Nombre" />
               <div className="grid grid-cols-2 gap-2">
                 <input className={INPUT} value={ePrice} onChange={(e) => setEPrice(e.target.value)} inputMode="numeric" maxLength={12} placeholder="Precio" />
-                <input className={INPUT} value={eAntes} onChange={(e) => setEAntes(e.target.value)} inputMode="numeric" maxLength={12} placeholder="Antes (opcional)" title="Precio anterior real. Se muestra tachado con el % de descuento." />
+                <input className={INPUT} value={eAntes} onChange={(e) => setEAntes(e.target.value)} inputMode="numeric" maxLength={12} placeholder="Precio normal (sin promoción)" title="El precio de siempre. Se muestra tachado junto al % de descuento." />
+                <input className={INPUT} type="datetime-local" value={eHasta} onChange={(e) => setEHasta(e.target.value)} title="Hasta cuándo dura la promoción. Vacío = sin fecha de fin." />
                 <input className={INPUT} list="cat-list" value={eCategory} onChange={(e) => setECategory(e.target.value)} maxLength={40} placeholder="Sección" />
               </div>
               <input className={INPUT} value={eDescription} onChange={(e) => setEDescription(e.target.value)} maxLength={140} placeholder="Descripción" />
@@ -483,7 +491,7 @@ function ProductCard({
                 <button onClick={saveEdit} disabled={busy} className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50">
                   <Check className="w-3.5 h-3.5" /> Guardar
                 </button>
-                <button onClick={() => { setEditing(false); setEError(null); setEName(product.name); setEPrice(String(product.price)); setEAntes(product.compareAtPrice ? String(product.compareAtPrice) : ''); setECategory(product.category); setEDescription(product.description) }} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                <button onClick={() => { setEditing(false); setEError(null); setEName(product.name); setEPrice(String(product.price)); setEAntes(product.compareAtPrice ? String(product.compareAtPrice) : ''); setEHasta(product.promoUntil ? product.promoUntil.slice(0, 16) : ''); setECategory(product.category); setEDescription(product.description) }} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -730,16 +738,20 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   // Inventario (solo visible en supermercado/farmacia/otro)
   const [barcode, setBarcode] = useState('')
   const [brand, setBrand] = useState('')
+  const [model, setModel] = useState('')
+  const [warranty, setWarranty] = useState('')
   const [unit, setUnit] = useState<string>(UNIDADES[0])
   const [stock, setStock] = useState('')
   // Categoría del negocio: decide qué campos se muestran.
   const [bizCategory, setBizCategory] = useState<string | undefined>(undefined)
-  const conInventario = manejaInventario(bizCategory)
+  // Todo lo que este local necesita ver, decidido en un solo sitio.
+  const perfil = perfilDe(bizCategory)
   const [escaneando, setEscaneando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [seccionFiltro, setSeccionFiltro] = useState('todas')
   const [soloAgotados, setSoloAgotados] = useState(false)
   const [avisoEscaner, setAvisoEscaner] = useState<string | null>(null)
+  const [guardado, setGuardado] = useState<string | null>(null)
 
   /**
    * Un código leído. Si el negocio YA tiene ese producto se sube su ficha al
@@ -749,12 +761,17 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
    */
   const onCodigoLeido = useCallback(async (code: string) => {
     setBarcode(code)
+    setGuardado(null)
     try {
       const res = await fetch(
         `${BACKEND_URL}/business/${token}/products/barcode/${encodeURIComponent(code)}`,
         { cache: 'no-store' },
       )
-      const json = (await res.json()) as { success: boolean; data?: Product | null }
+      const json = (await res.json()) as {
+        success: boolean
+        data?: Product | null
+        sugerencia?: { name: string; brand?: string; unit?: string; comercios: number } | null
+      }
       const existente = json.success ? json.data : null
       if (existente) {
         // Reponer: se trae lo que ya estaba para no volver a teclearlo.
@@ -766,6 +783,21 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
         setStock(existente.stock !== undefined ? String(existente.stock) : '')
         setAvisoEscaner(
           `Ya tienes "${existente.name}". Ajusta el precio o las existencias y guarda para actualizarlo.`,
+        )
+        return
+      }
+      const s = json.success ? json.sugerencia : null
+      if (s) {
+        // El nombre lo PROPONE la plataforma a partir de cómo lo tienen otros
+        // comercios. El precio no: lo pone cada tienda, y proponer el de otra
+        // dejaría vendiendo al precio ajeno con un «Guardar» distraído.
+        setName(s.name)
+        if (s.brand) setBrand(s.brand)
+        if (s.unit) setUnit(s.unit)
+        setPrice('')
+        setAvisoEscaner(
+          `Propuesta: "${s.name}" — así lo tienen ${s.comercios === 1 ? 'otro comercio' : `${s.comercios} comercios`}. `
+          + 'Revisa el nombre y escribe TU precio.',
         )
       } else {
         setAvisoEscaner('Producto nuevo: completa el nombre y el precio.')
@@ -814,13 +846,20 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
     })()
   }, [token])
 
-  const createProduct = async (e: React.FormEvent) => {
-    e.preventDefault()
+  /**
+   * Crea el producto con lo que haya en el formulario y devuelve el motivo si
+   * no se pudo, o `null` si quedó guardado.
+   *
+   * Está separado del `submit` porque el mismo alta se dispara desde DENTRO de
+   * la cámara («Guardar y seguir»): un segundo camino de escritura acabaría
+   * mandando campos distintos que el de aquí, que es el defecto que ya se pagó
+   * con el formateador de moneda en diecisiete copias.
+   */
+  const guardarProducto = async (): Promise<string | null> => {
     const priceNum = Number(price.replace(/[^\d]/g, ''))
-    if (name.trim().length < 2) { setFormError('Escribe el nombre del producto.'); return }
-    if (!(priceNum > 0)) { setFormError('Escribe un precio válido.'); return }
+    if (name.trim().length < 2) return 'Escribe el nombre del producto.'
+    if (!(priceNum > 0)) return 'Escribe un precio válido.'
     setCreating(true)
-    setFormError(null)
     try {
       const res = await fetch(`${BACKEND_URL}/business/${token}/products`, {
         method: 'POST',
@@ -830,9 +869,15 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           price: priceNum,
           category,
           description: description.trim() || undefined,
-          ...(conInventario && {
+          // La ficha se manda según el perfil, no según el inventario: son
+          // dos cosas distintas y antes iban juntas.
+          ...(perfil.marca !== 'ninguno' && { brand: brand.trim() || undefined }),
+          ...(perfil.marca === 'marca-modelo-garantia' && {
+            model: model.trim() || undefined,
+            warrantyMonths: warranty.trim() === '' ? null : Number(warranty),
+          }),
+          ...(perfil.existencias && {
             barcode: barcode.trim() || undefined,
-            brand: brand.trim() || undefined,
             unit,
             // Vacío = el negocio no controla existencias de este producto.
             stock: stock.trim() === '' ? null : Number(stock.replace(/[^\d]/g, '')),
@@ -841,17 +886,40 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       })
       const json = (await res.json()) as { success: boolean; data?: Product; error?: string }
       if (!res.ok || !json.success || !json.data) {
-        setFormError(json.error ?? 'No se pudo crear el producto.')
-        return
+        return json.error ?? 'No se pudo crear el producto.'
       }
       setProducts((prev) => [...prev, json.data as Product])
       setName(''); setPrice(''); setDescription(''); setCategory(CATEGORIES[0])
-      setBarcode(''); setBrand(''); setStock('')
+      setBarcode(''); setBrand(''); setStock(''); setModel(''); setWarranty('')
+      return null
     } catch {
-      setFormError('No se pudo conectar con el servidor.')
+      return 'No se pudo conectar con el servidor.'
     } finally {
       setCreating(false)
     }
+  }
+
+  const createProduct = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormError(null)
+    const motivo = await guardarProducto()
+    setFormError(motivo)
+  }
+
+  /**
+   * «Guardar y seguir» desde dentro de la cámara: el producto queda creado y el
+   * escáner NO se cierra, para pasar al siguiente de la estantería. Sin esto el
+   * dueño tenía que cerrar la cámara, bajar al formulario, guardar y volver a
+   * abrirla por cada producto.
+   */
+  const guardarYSeguir = async () => {
+    setFormError(null)
+    setGuardado(null)
+    const nombre = name.trim()
+    const motivo = await guardarProducto()
+    if (motivo) { setFormError(motivo); return }
+    setAvisoEscaner(null)
+    setGuardado(`"${nombre}" quedó en tu catálogo. Escanea el siguiente.`)
   }
 
   const onChanged = (p: Product) => setProducts((prev) => prev.map((x) => (x.id === p.id ? p : x)))
@@ -944,6 +1012,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
         {/* Portada del local */}
         <CoverSection token={token} />
+        <MarcaDelLocal token={token} />
 
         {/* Alta */}
         <form onSubmit={createProduct} className={`${TARJETA} p-5 space-y-3`}>
@@ -959,7 +1028,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             <input
               className={INPUT}
               list="cat-list"
-              placeholder="Sección (ej: Bebidas, Combos…)"
+              placeholder={`${perfil.seccion.una} (ej: ${perfil.ejemploSeccion})`}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               maxLength={40}
@@ -967,9 +1036,44 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             <input className={INPUT} placeholder="Descripción (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={140} />
           </div>
 
-          {/* Inventario: solo para negocios que lo manejan. Un restaurante no
-              lleva código de barras ni existencias, y verlos aquí solo estorba. */}
-          {conInventario ? (
+          {/* La ficha del producto. Va APARTE del inventario a propósito: un
+              local de electrodomésticos que no cuente unidades sigue
+              necesitando decir el modelo y la garantía, y antes esos campos
+              colgaban del bloque de existencias. */}
+          {perfil.marca !== 'ninguno' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input
+                className={INPUT}
+                placeholder={perfil.marca === 'marca' ? 'Marca (ej: Diana)' : 'Marca (ej: LG)'}
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+                maxLength={40}
+              />
+              {perfil.marca === 'marca-modelo-garantia' && (
+                <>
+                  <input
+                    className={INPUT}
+                    placeholder="Modelo (ej: WM-1200)"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    maxLength={60}
+                  />
+                  <input
+                    className={INPUT}
+                    placeholder="Garantía en meses"
+                    value={warranty}
+                    onChange={(e) => setWarranty(e.target.value.replace(/[^\d]/g, ''))}
+                    inputMode="numeric"
+                    maxLength={3}
+                  />
+                </>
+              )}
+            </div>
+          ) : null}
+
+          {/* Inventario: solo donde se cuentan unidades. Un restaurante marca
+              el plato como agotado, no lleva «quedan 7 bandejas». */}
+          {perfil.existencias ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
                 Inventario
@@ -982,13 +1086,6 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
                   onChange={(e) => setBarcode(e.target.value)}
                   inputMode="numeric"
                   maxLength={20}
-                />
-                <input
-                  className={INPUT}
-                  placeholder="Marca (ej: Diana)"
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                  maxLength={40}
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1014,8 +1111,8 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             </div>
           ) : null}
 
-          {/* Escáner: solo donde hay código de barras (supermercado/farmacia). */}
-          {conInventario ? (
+          {/* Escáner: solo donde los productos vienen con código impreso. */}
+          {perfil.codigoDeBarras ? (
             <button
               type="button"
               onClick={() => { setAvisoEscaner(null); setEscaneando(true) }}
@@ -1044,14 +1141,20 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           <p className="text-xs text-slate-400 text-center">La foto se agrega después, tocando la imagen del producto.</p>
         </form>
 
-        {/* Carga masiva: un supermercado no teclea 3.000 referencias una por una.
-            Va junto al inventario porque es el mismo tipo de negocio. */}
-        {conInventario ? (
-          <div className="mt-4">
-            <CartaFoto token={token} onImported={() => void load()} />
-            <CsvImport token={token} onImported={() => void load()} />
+        {/* Las dos formas de no teclear el catálogo, y NO son del mismo
+            público — estaban juntas y por eso la carta por foto quedó oculta
+            justo para los restaurantes, que son quienes tienen una carta
+            impresa. Un supermercado recibe un CSV de su proveedor. */}
+        {(perfil.cartaPorFoto || perfil.csvMasivo) && (
+          <div className="mt-4 space-y-4">
+            {perfil.cartaPorFoto && (
+              <CartaFoto token={token} onImported={() => void load()} />
+            )}
+            {perfil.csvMasivo && (
+              <CsvImport token={token} onImported={() => void load()} />
+            )}
           </div>
-        ) : null}
+        )}
 
         {/* Lista */}
         {loading ? (
@@ -1169,6 +1272,57 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
         <BarcodeScanner
           onDetected={(code) => { void onCodigoLeido(code) }}
           onClose={() => setEscaneando(false)}
+          ficha={barcode ? (
+            // Los campos son los MISMOS estados del formulario de abajo: lo que
+            // se escribe aquí es literalmente ese formulario, así que cerrar la
+            // cámara no pierde nada a medio escribir.
+            <div className="w-full max-w-md rounded-2xl bg-white p-3 space-y-2 shadow-lg">
+              <p className="text-xs font-semibold text-slate-500">
+                Código <span className="font-mono text-slate-700">{barcode}</span>
+              </p>
+              {avisoEscaner ? (
+                <p className="text-xs text-emerald-700">{avisoEscaner}</p>
+              ) : null}
+              <input
+                className={INPUT}
+                placeholder="Nombre del producto"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={80}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  className={INPUT}
+                  placeholder="Precio"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={12}
+                />
+                {perfil.existencias ? (
+                  <input
+                    className={INPUT}
+                    placeholder="Existencias"
+                    value={stock}
+                    onChange={(e) => setStock(e.target.value)}
+                    inputMode="numeric"
+                    maxLength={7}
+                  />
+                ) : <span />}
+              </div>
+              {formError ? <p className="text-xs text-red-600">{formError}</p> : null}
+              <button
+                type="button"
+                onClick={() => { void guardarYSeguir() }}
+                disabled={creating}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Guardar y seguir
+              </button>
+            </div>
+          ) : null}
+          aviso={guardado}
         />
       ) : null}
     </div>

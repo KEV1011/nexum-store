@@ -7,6 +7,8 @@
 // destrozaría el catálogo entero, y el dueño solo lo notaría cuando un cliente
 // comprara algo por el precio equivocado.
 
+import { limpiarTextoDeCarta } from './texto-carta';
+
 /** Columnas de la plantilla, en el orden en que se descargan. */
 export const CSV_COLUMNS = [
   'nombre',
@@ -137,9 +139,20 @@ export function parseProductCsv(
       return idx === -1 ? '' : (celdas[idx] ?? '').trim();
     };
 
-    const nombre = val('nombre');
+    // Se limpia igual que al crear desde el formulario: el CSV y la carta por
+    // foto son los otros dos caminos por los que entra un nombre, y un emoji
+    // que entre por aquí deja el mismo renglón sin plato en la carta.
+    const nombre = limpiarTextoDeCarta(val('nombre'));
     if (!nombre) {
-      preview.errores.push({ linea: numero, motivo: 'Falta el nombre.', contenido: linea });
+      preview.errores.push({
+        linea: numero,
+        // Si la celda traía algo pero era solo un adorno, decirlo: «falta el
+        // nombre» mandaría a mirar una celda que para el dueño no está vacía.
+        motivo: val('nombre')
+          ? 'El nombre no puede ser solo un emoji.'
+          : 'Falta el nombre.',
+        contenido: linea,
+      });
       return;
     }
 

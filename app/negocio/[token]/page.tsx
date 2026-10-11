@@ -21,6 +21,7 @@ import {
   UtensilsCrossed,
   Utensils,
   Settings,
+  BarChart3,
 } from 'lucide-react'
 
 import { formatCOP } from '../../moneda'
@@ -769,6 +770,12 @@ export default function PortalDashboard({
                          bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 hover:bg-emerald-100 transition-colors">
               <UtensilsCrossed className="w-3.5 h-3.5" />
               Catálogo
+            </Link>
+            <Link href={`/negocio/${token}/ventas`}
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600
+                         bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-100 transition-colors">
+              <BarChart3 className="w-3.5 h-3.5" />
+              Ventas
             </Link>
             <Link href={`/negocio/${token}/ajustes`}
               className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600

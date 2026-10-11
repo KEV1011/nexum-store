@@ -197,8 +197,18 @@ describe('la carta del QR es parte del sistema, no una pantalla aparte', () => {
     // cincuenta platos, llegar a las bebidas era recorrer la carta entera.
     expect(CARTA).toContain('irASeccion');
     expect(CARTA).toContain('idDeSeccion');
-    // Con UNA sola seccion los chips no filtran nada y no se dibujan: la misma
-    // regla que las pildoras de categoria del home del cliente.
-    expect(CARTA).toContain('porSeccion.length >= 2');
+
+    // La DECISIÓN de agrupar vive en `app/carta/reglas.ts`, que es TypeScript
+    // puro y tiene sus propias pruebas (`carta-reglas.test.ts`). Aquí solo se
+    // exige que la página la USE y no vuelva a decidirlo a mano.
+    //
+    // Esta comprobación pedía antes el texto literal `porSeccion.length >= 2`,
+    // y falló —correctamente— al sacar la regla a su fichero: una guarda atada
+    // a una EXPRESIÓN concreta estorba al primer refactor y no dice nada sobre
+    // lo que de verdad importa, que es que la decisión esté tomada en un solo
+    // sitio y probada.
+    expect(CARTA).toContain("from '../reglas'");
+    expect(CARTA).toContain('agruparVale(');
+    expect(CARTA).toMatch(/\{agrupar &&/);
   });
 });

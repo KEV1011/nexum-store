@@ -544,6 +544,8 @@ export interface ProductDTO {
   price: number;
   /** Precio antes de la rebaja. Ausente = este producto no está en oferta. */
   compareAtPrice?: number;
+  /** Hasta cuándo rige la promoción de este producto. */
+  promoUntil?: string | null;
   /** El porcentaje ya calculado, para que la app no repita la aritmética. */
   descuentoPct?: number;
   /** Puesto en «lo más pedido» de SU tienda. Ausente = no está entre los primeros
@@ -566,6 +568,8 @@ export interface ProductDTO {
   stock?: number;
   unit?: string;
   brand?: string;
+  model?: string;
+  warrantyMonths?: number | null;
 }
 
 // Payload para reemplazar TODAS las opciones de un producto de una vez (el
@@ -586,6 +590,8 @@ export interface CreateProductDTO {
   price: number;
   /** Precio anterior para el tachado. Vacío/null = sin descuento. */
   compareAtPrice?: number | string | null;
+  /** Hasta cuándo rige la promoción de este producto. */
+  promoUntil?: string | null;
   description?: string;
   category?: string;
   imageUrl?: string;
@@ -596,6 +602,8 @@ export interface CreateProductDTO {
   stock?: number | null;
   unit?: string;
   brand?: string;
+  model?: string;
+  warrantyMonths?: number | null;
 }
 
 export interface UpdateProductDTO {
@@ -605,6 +613,8 @@ export interface UpdateProductDTO {
   price?: number;
   /** Precio anterior para el tachado. Null/vacío = quitar el descuento. */
   compareAtPrice?: number | string | null;
+  /** Hasta cuándo rige la promoción de este producto. */
+  promoUntil?: string | null;
   description?: string;
   category?: string;
   imageUrl?: string;
@@ -616,6 +626,8 @@ export interface UpdateProductDTO {
   stock?: number | null;
   unit?: string;
   brand?: string;
+  model?: string;
+  warrantyMonths?: number | null;
 }
 
 export interface BusinessPublicDTO {
@@ -664,6 +676,28 @@ export interface BusinessPublicDTO {
    * comercio hasta que su dueño declare destinos.
    */
   shipsTo?: Array<{ city: string; fee: number; etaHours: number; cutoff?: string }>;
+
+  /**
+   * La identidad del local, para su propia carta del QR.
+   *
+   * Los cuatro son opcionales y su ausencia es informativa: sin logo va la
+   * inicial, sin frase no va nada, sin fotos no se dibuja la galería y sin
+   * color se usa el de ZIPA. Nada se rellena con un sustituto bonito, que en
+   * una carta haría creer que hay una foto donde no la hay.
+   *
+   * LA PALETA LA CALCULA EL SERVIDOR, no la pantalla. Qué texto se lee encima
+   * del color del local es una cuenta de contraste (WCAG), determinista y con
+   * una garantía probada de 4,5:1; hacerla también en TypeScript del navegador
+   * sería tener la misma cuenta en dos sitios, que es exactamente cómo el
+   * formateador de moneda acabó en diecisiete copias y dos formatos.
+   *
+   * `marca` ausente = el local no declaró color y la carta usa el de ZIPA.
+   */
+  logoUrl?: string;
+  tagline?: string;
+  gallery?: string[];
+  marca?: { color: string; sobre: string; suave: string };
+
   products: ProductDTO[];
 }
 

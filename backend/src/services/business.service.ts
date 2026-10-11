@@ -22,7 +22,14 @@ import {
   saneaDestinos, destinosDesdeBD, type DestinoEnvio,
 } from '../lib/destinos-envio';
 import { porcentajeDescuento, rankingMasPedido, saneaPrecioAntes, saneaPromoTienda } from '../lib/vitrina';
+import {
+  LARGO_FRASE, MAX_FOTOS_LOCAL, paletaDeLocal, saneaColorMarca,
+} from '../lib/marca-local';
+import { precioVigente, saneaFinDePromo } from '../lib/promo-producto';
+import { sugerenciaDeCodigo, type SugerenciaDeCodigo } from '../lib/sugerencia-codigo';
+import { reporteDeVentas, ventanaColombiana, type ReporteVentas } from '../lib/reporte-ventas';
 import { promedioReputacion } from '../lib/reputacion';
+import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
 import {
   saneaHorario, estaDentroDelHorario, proximaApertura, horarioEnTexto,
   saneaPausa, enPausa, promoVigente, saneaVigencia, type Franja,
@@ -308,6 +315,9 @@ function _productToDTO(p: {
   stock?: number | null;
   unit?: string | null;
   brand?: string | null;
+  promoUntil?: Date | string | null;
+  model?: string | null;
+  warrantyMonths?: number | null;
   photos?: { id: string; url: string }[];
   optionGroups?: {
     id: string;
@@ -318,26 +328,36 @@ function _productToDTO(p: {
     options: { id: string; name: string; priceDelta: number; isAvailable: boolean }[];
   }[];
 }): ProductDTO {
+  // El precio que SE COBRA ahora. Es la misma función que usa la caja
+  // (`order-lines.service`): con una promoción vencida, `price` todavía
+  // guarda el rebajado, y si cada lado lo resolviera por su cuenta la
+  // pantalla y el cobro acabarían diciendo cosas distintas.
+  const v = precioVigente(p);
   return {
     id: p.id,
     businessId: p.businessId,
     name: p.name,
     description: p.description ?? '',
-    price: p.price,
+    price: v.precio,
     category: p.category,
     imageUrl: p.imageUrl ?? undefined,
     isAvailable: p.isAvailable,
     sortOrder: p.sortOrder ?? 0,
-    compareAtPrice: p.compareAtPrice ?? undefined,
+    // Sin promoción viva no se tacha nada: un precio tachado que ya no rige
+    // anuncia un descuento que la caja no va a aplicar.
+    compareAtPrice: v.antes ?? undefined,
+    promoUntil: (v.enPromo && p.promoUntil) ? new Date(p.promoUntil).toISOString() : undefined,
     // El porcentaje se calcula UNA vez, aquí: si cada pantalla lo derivara,
     // acabarían redondeando distinto y el «-46 %» del listado no coincidiría
     // con el del detalle.
-    descuentoPct: porcentajeDescuento(p.price, p.compareAtPrice) ?? undefined,
+    descuentoPct: porcentajeDescuento(v.precio, v.antes) ?? undefined,
     barcode: p.barcode ?? undefined,
     sku: p.sku ?? undefined,
     stock: p.stock ?? undefined,
     unit: p.unit ?? undefined,
     brand: p.brand ?? undefined,
+    model: p.model ?? undefined,
+    warrantyMonths: p.warrantyMonths ?? undefined,
     images: (p.photos ?? []).map((ph) => ({ id: ph.id, url: ph.url })),
     optionGroups: (p.optionGroups ?? []).map((g) => ({
       id: g.id,
@@ -619,6 +639,7 @@ export async function setProductOptions(
  */
 function _inventarioData(dto: {
   barcode?: string; sku?: string; stock?: number | null; unit?: string; brand?: string;
+  model?: string; warrantyMonths?: number | null;
 }) {
   const limpio = (v?: string) => (v?.trim() ? v.trim() : null);
   return {
@@ -630,6 +651,14 @@ function _inventarioData(dto: {
     }),
     ...(dto.unit !== undefined && { unit: limpio(dto.unit) }),
     ...(dto.brand !== undefined && { brand: limpio(dto.brand) }),
+    ...(dto.model !== undefined && { model: limpio(dto.model) }),
+    // La garantía se guarda en MESES enteros y no negativos. Un «24» mal
+    // escrito como «-24» dejaría una ficha que promete una garantía imposible.
+    ...(dto.warrantyMonths !== undefined && {
+      warrantyMonths: dto.warrantyMonths === null
+        ? null
+        : Math.max(0, Math.trunc(Number(dto.warrantyMonths) || 0)) || null,
+    }),
   };
 }
 
@@ -649,6 +678,33 @@ export async function findProductByBarcode(
     include: _photoInclude,
   });
   return p ? _productToDTO(p) : null;
+}
+
+/**
+ * Qué proponerle al dueño para un código que él NO tiene, a partir de cómo lo
+ * tienen registrado los demás comercios de la plataforma.
+ *
+ * El reporte era «solo se sube un código, mas no reconoce el producto»: el
+ * escáner rellenaba trece dígitos y el nombre quedaba en blanco, así que había
+ * que teclearlo igual. El dato ya estaba en la base.
+ *
+ * El PRECIO no se consulta ni se devuelve — ver `sugerencia-codigo.ts`. Se
+ * limita el número de filas porque un EAN muy común lo tienen cientos de
+ * comercios y para votar un nombre bastan unos pocos.
+ */
+export async function suggestProductByBarcode(
+  businessId: string,
+  barcode: string,
+): Promise<SugerenciaDeCodigo | null> {
+  const codigo = barcode.trim();
+  if (!codigo) return null;
+  const filas = await prisma.product.findMany({
+    where: { barcode: codigo, businessId: { not: businessId } },
+    select: { name: true, brand: true, unit: true },
+    orderBy: { createdAt: 'desc' },
+    take: 25,
+  });
+  return sugerenciaDeCodigo(filas);
 }
 
 /**
@@ -726,8 +782,9 @@ export async function createBusinessProduct(
   businessId: string,
   dto: CreateProductDTO,
 ): Promise<ProductDTO> {
-  const name = dto.name?.trim();
-  if (!name) throw new Error('El nombre del producto es obligatorio.');
+  // Quita los emojis y rechaza el nombre que era SOLO un emoji: la fuente del
+  // sitio no los dibuja y el plato aparecía sin nombre en la carta.
+  const name = nombreDeProducto(dto.name);
   if (!(dto.price >= 0)) throw new Error('El precio debe ser un número válido.');
   const p = await prisma.product.create({
     data: {
@@ -736,8 +793,11 @@ export async function createBusinessProduct(
       price: dto.price,
       // Lanza con el motivo si el «antes» está al revés o es increíble.
       compareAtPrice: saneaPrecioAntes(dto.price, dto.compareAtPrice),
-      description: dto.description?.trim() || null,
-      category: dto.category?.trim() || 'General',
+      // Y una fecha ya pasada se rechaza: guardarla dejaría una promoción que
+      // nace muerta y el dueño creería que el portal no guardó.
+      promoUntil: saneaFinDePromo(dto.promoUntil),
+      description: limpiarTextoDeCarta(dto.description ?? '') || null,
+      category: limpiarTextoDeCarta(dto.category ?? '') || 'General',
       imageUrl: dto.imageUrl ?? null,
       ..._inventarioData(dto),
     },
@@ -759,7 +819,8 @@ export async function updateBusinessProduct(
   const p = await prisma.product.update({
     where: { id: productId },
     data: {
-      ...(dto.name !== undefined && { name: dto.name.trim() }),
+      ...(dto.name !== undefined && { name: nombreDeProducto(dto.name) }),
+      ...(dto.promoUntil !== undefined && { promoUntil: saneaFinDePromo(dto.promoUntil) }),
       ...(dto.price !== undefined && { price: dto.price }),
       // Se valida contra el precio que va a QUEDAR, no contra el que había:
       // bajar el precio sin tocar el «antes» debe seguir siendo coherente.
@@ -1044,6 +1105,42 @@ export async function getBusinessStats(
   };
 }
 
+/**
+ * La identidad del local, tal como viaja al cliente.
+ *
+ * UN SOLO SITIO lo decide porque hay TRES mappers que construyen un
+ * `BusinessPublicDTO` —la lista, el detalle y la carta del QR— y lo que se
+ * copia en tres sitios se separa en cuanto alguien toca uno. Pasó con el
+ * formateador de moneda, que acabó en diecisiete copias y dos formatos.
+ *
+ * La ausencia es informativa y por eso va `undefined` y no una cadena vacía:
+ * la pantalla distingue «no declaró logo» de «logo vacío» y dibuja la inicial
+ * del local en vez de un hueco.
+ */
+export function marcaDelLocal(b: {
+  logoUrl?: string | null; tagline?: string | null;
+  gallery?: unknown; brandColor?: string | null;
+}): Pick<BusinessPublicDTO, 'logoUrl' | 'tagline' | 'gallery' | 'marca'> {
+  const fotos = Array.isArray(b.gallery)
+    ? (b.gallery as unknown[])
+        .map((f) => (typeof f === 'string' ? f : (f as { url?: unknown })?.url))
+        .filter((u): u is string => typeof u === 'string' && u.length > 0)
+        .slice(0, MAX_FOTOS_LOCAL)
+    : [];
+  // Se sanea AL SALIR además de al guardar: una fila vieja o escrita a mano no
+  // puede meter en el atributo `style` de la carta algo que no sea un color.
+  // Y si no hay color propio NO se manda la paleta: la ausencia es lo que le
+  // dice a la carta que use la de ZIPA, en vez de recibir un verde que
+  // parecería una elección del local.
+  const p = paletaDeLocal(b.brandColor);
+  return {
+    ...(b.logoUrl ? { logoUrl: b.logoUrl } : {}),
+    ...(b.tagline ? { tagline: b.tagline } : {}),
+    ...(fotos.length ? { gallery: fotos } : {}),
+    ...(p.propia ? { marca: { color: p.marca, sobre: p.sobreMarca, suave: p.suave } } : {}),
+  };
+}
+
 export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
   const businesses = await prisma.business.findMany({
     where: { isOpen: true },
@@ -1070,6 +1167,7 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     // "Abierto" para el cliente = la vitrina está recibiendo pedidos.
     ..._estadoVitrina(b),
     imageUrl: b.imageUrl ?? undefined,
+    ...marcaDelLocal(b),
     products: b.products.map(_productToDTO),
   }));
 }
@@ -1101,6 +1199,7 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     imageUrl: b.imageUrl ?? undefined,
     citySlug: b.citySlug,
     shipsTo: destinosDesdeBD(b.shipsTo),
+    ...marcaDelLocal(b),
     products: await _conMasPedido(b.id, b.products.map(_productToDTO)),
   };
 }
@@ -1224,4 +1323,153 @@ export async function updateBusinessShipping(
     data: { shipsTo: destinos as unknown as Prisma.InputJsonValue },
   });
   return destinos;
+}
+
+// ─── La identidad del local en su carta ───────────────────────────────────────
+
+/** El logo del local. Reemplaza al anterior; `null` lo quita. */
+export async function updateBusinessLogo(
+  businessId: string, logoUrl: string | null,
+): Promise<{ logoUrl: string | null }> {
+  const b = await prisma.business.update({
+    where: { id: businessId }, data: { logoUrl },
+    select: { logoUrl: true },
+  });
+  return b;
+}
+
+/**
+ * Añade una foto del LOCAL a la galería (el salón, la parrilla, la terraza).
+ *
+ * Se añade al final en vez de reemplazar porque el dueño las sube de una en
+ * una desde el teléfono, y pasado el tope se RECHAZA diciéndolo en vez de
+ * tirar la más antigua en silencio: la que se perdería es la que él acaba de
+ * decidir que quiere, y no se enteraría.
+ */
+export async function addFotoDelLocal(
+  businessId: string, url: string,
+): Promise<{ gallery: string[] }> {
+  const actual = await prisma.business.findUnique({
+    where: { id: businessId }, select: { gallery: true },
+  });
+  const fotos = marcaDelLocal({ gallery: actual?.gallery }).gallery ?? [];
+  if (fotos.length >= MAX_FOTOS_LOCAL) {
+    throw new Error(
+      `Ya tienes ${MAX_FOTOS_LOCAL} fotos del local, que es el máximo. `
+      + 'Quita alguna antes de subir otra.',
+    );
+  }
+  const siguiente = [...fotos, url];
+  await prisma.business.update({
+    where: { id: businessId }, data: { gallery: siguiente },
+  });
+  return { gallery: siguiente };
+}
+
+/** Quita una foto del local por su URL. */
+export async function quitarFotoDelLocal(
+  businessId: string, url: string,
+): Promise<{ gallery: string[] }> {
+  const actual = await prisma.business.findUnique({
+    where: { id: businessId }, select: { gallery: true },
+  });
+  const siguiente = (marcaDelLocal({ gallery: actual?.gallery }).gallery ?? [])
+    .filter((f) => f !== url);
+  await prisma.business.update({
+    where: { id: businessId }, data: { gallery: siguiente },
+  });
+  return { gallery: siguiente };
+}
+
+/**
+ * El color de marca y la frase del local.
+ *
+ * El color se sanea aquí y se guarda `null` si no es un color: guardar
+ * «granate» dejaría la carta pintando un `style` que el navegador ignora, y
+ * el dueño vería su carta en verde sin saber por qué.
+ *
+ * La frase se limpia como el nombre de un plato —los emojis no se dibujan
+ * igual en todos los teléfonos— y se corta, porque lo que no cabe en dos
+ * renglones sale con puntos suspensivos, que es peor que no escribirla.
+ */
+export async function updateMarcaDelLocal(
+  businessId: string,
+  dto: { brandColor?: string | null; tagline?: string | null },
+): Promise<{ brandColor: string | null; tagline: string | null }> {
+  const data: { brandColor?: string | null; tagline?: string | null } = {};
+  if (dto.brandColor !== undefined) {
+    data.brandColor = saneaColorMarca(dto.brandColor);
+    if (dto.brandColor && !data.brandColor) {
+      throw new Error('El color debe ir en formato #RRGGBB, por ejemplo #E11D48.');
+    }
+  }
+  if (dto.tagline !== undefined) {
+    const limpia = limpiarTextoDeCarta(dto.tagline ?? '').slice(0, LARGO_FRASE);
+    data.tagline = limpia || null;
+  }
+  const b = await prisma.business.update({
+    where: { id: businessId }, data,
+    select: { brandColor: true, tagline: true },
+  });
+  return b;
+}
+
+/**
+ * Lo que el negocio vendió en un período, con su detalle.
+ *
+ * Es lo que pedían los dueños —«toda la facturación de lo que se pide»— y lo
+ * que el portal no tenía: solo había el panel de HOY, así que no se podía
+ * cerrar una semana ni un mes. NO es una factura electrónica (ver
+ * `reporte-ventas.ts`): es el reporte con el que se cuadra la caja.
+ *
+ * Se consulta por `createdAt` y no por `deliveredAt` porque es la fecha que el
+ * dueño reconoce —cuándo le pidieron— y es la que ya usa su panel del día; un
+ * pedido tomado a las 11 de la noche y entregado a medianoche cambiaría de día
+ * entre las dos pantallas.
+ */
+export async function getSalesReportForBusiness(
+  businessId: string,
+  from?: string,
+  to?: string,
+): Promise<ReporteVentas> {
+  // La ventana se calcula en hora de COLOMBIA, no con `rangoFechas`: aquél
+  // toma «2026-06-10» como medianoche UTC —las 7 de la tarde del 9 aquí—, y
+  // entonces la consulta cortaba el día a las 6:59 p. m. y la venta de la noche
+  // caía en el día siguiente. La consulta y el agrupamiento parten el día en el
+  // mismo instante o el total no cuadra con la suma de los días.
+  const rango = ventanaColombiana(from, to);
+  const pedidos = await prisma.order.findMany({
+    where: {
+      businessId,
+      status: 'DELIVERED',
+      ...(rango.gte || rango.lte ? { createdAt: rango } : {}),
+    },
+    select: {
+      orderRef: true, createdAt: true, mode: true, status: true,
+      subtotal: true, promoDiscount: true, deliveryFee: true, intercityFee: true,
+      tipAmount: true, paymentMethod: true,
+      lines: { select: { productName: true, quantity: true, unitPrice: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return reporteDeVentas(
+    pedidos.map((p) => ({
+      ref: p.orderRef,
+      fecha: p.createdAt,
+      mode: p.mode,
+      status: p.status,
+      subtotal: p.subtotal,
+      promoDiscount: p.promoDiscount,
+      deliveryFee: p.deliveryFee,
+      intercityFee: p.intercityFee,
+      tipAmount: p.tipAmount,
+      paymentMethod: p.paymentMethod,
+      lines: p.lines.map((l) => ({
+        nombre: l.productName, quantity: l.quantity, unitPrice: l.unitPrice,
+      })),
+    })),
+    rango.gte,
+    rango.lte,
+  );
 }

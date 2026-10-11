@@ -6,6 +6,8 @@ import {
   reorderBusinessProducts,
   createBusinessProduct,
   findProductByBarcode,
+  suggestProductByBarcode,
+  getSalesReportForBusiness,
   getBarcodeIndexForBusiness,
   applyProductImport,
   updateBusinessProduct,
@@ -32,6 +34,12 @@ import {
 } from '../services/client.service';
 import { getMesasDelNegocio, guardarMesas, marcarServido } from '../services/mesa.service';
 import {
+  addFotoDelLocal,
+  quitarFotoDelLocal,
+  updateBusinessLogo,
+  updateMarcaDelLocal,
+} from '../services/business.service';
+import {
   RegisterBusinessDTO,
   BUSINESS_CATEGORIES,
   CreateProductDTO,
@@ -41,7 +49,9 @@ import {
 } from '../types';
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
-import { parsearCarta, filasACsv } from '../lib/carta-foto';
+import { parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
+import { reporteACsv } from '../lib/reporte-ventas';
+import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { PORTAL_BASE_URL } from '../config/constants';
 import {
@@ -305,6 +315,41 @@ router.get('/:token/orders', async (req: Request, res: Response): Promise<void> 
   }
 });
 
+// GET /business/:token/ventas?from&to — el reporte de un período.
+//
+// NO es una factura electrónica: esa la emite un facturador autorizado por la
+// DIAN y el que responde ante ella es el dueño. Esto es con lo que cuadra la
+// caja y lo que le pide el contador. `.csv` devuelve lo mismo para Excel.
+router.get('/:token/ventas', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { from, to } = req.query as { from?: string; to?: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const reporte = await getSalesReportForBusiness(business.id, from, to);
+    res.status(200).json({ success: true, data: reporte });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo armar el reporte';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.get('/:token/ventas.csv', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { from, to } = req.query as { from?: string; to?: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const reporte = await getSalesReportForBusiness(business.id, from, to);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="ventas-zipa.csv"');
+    // El BOM hace que Excel abra el archivo en UTF-8: sin él, «Bandeja paisa»
+    // sale con la tilde partida y el dueño cree que el reporte está corrupto.
+    res.status(200).send('\uFEFF' + reporteACsv(reporte));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo armar el reporte';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
 // ─── Orders: detail ───────────────────────────────────────────────────────────
 
 router.get('/:token/orders/:orderId', async (req: Request, res: Response): Promise<void> => {
@@ -538,14 +583,18 @@ router.post('/:token/products/csv-import', async (req: Request, res: Response): 
 // GET /business/:token/products/barcode/:code — el escáner pregunta si el
 // negocio YA tiene ese producto. Si existe se abre su ficha para ajustar precio
 // o sumar existencias (el caso frecuente al reponer); si no, se crea uno nuevo
-// con el código ya rellenado.
+// con el código ya rellenado y con el nombre PROPUESTO a partir de cómo lo
+// tienen los demás comercios (nunca su precio — ver `sugerencia-codigo.ts`).
 router.get('/:token/products/barcode/:code', async (req: Request, res: Response): Promise<void> => {
   const { token, code } = req.params as { token: string; code: string };
   try {
     const business = await getBusinessService().getBusinessByToken(token);
     const product = await findProductByBarcode(business.id, code);
+    // La sugerencia solo se busca si NO lo tiene: teniéndolo, lo que manda es
+    // su propia ficha y proponerle el nombre de otra tienda sería cambiárselo.
+    const sugerencia = product ? null : await suggestProductByBarcode(business.id, code);
     // 200 con data:null — "no lo tienes" es una respuesta válida, no un error.
-    res.status(200).json({ success: true, data: product });
+    res.status(200).json({ success: true, data: product, sugerencia });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo buscar el producto';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
@@ -708,7 +757,13 @@ router.post(
         return;
       }
 
-      const carta = parsearCarta(lectura.texto);
+      // Con la geometría de la foto se lee columna por columna y el título se
+      // reconoce por el TAMAÑO de su letra. Sin ella —proveedor que no la
+      // manda, o `fake`— se cae al texto plano, que es como funcionaba antes.
+      const medidas = lectura.palabras ? lineasDeLaFoto(lectura.palabras) : [];
+      const carta = medidas.length > 0
+        ? parsearCartaMedida(medidas, altoDelCuerpo(medidas), esTituloPorTamano)
+        : parsearCarta(lectura.texto);
       res.status(200).json({
         success: true,
         data: {
@@ -827,6 +882,110 @@ router.delete('/:token/products/:productId/gallery/:photoId', async (req: Reques
     const message = err instanceof Error ? err.message : 'No se pudo eliminar la foto';
     const notFound = message.includes('not found') || message.includes('no encontrado');
     res.status(notFound ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// ─── La identidad del local en su carta del QR ───────────────────────────────
+//
+// En un menú QR el comensal está SENTADO en el restaurante: la marca que manda
+// ahí es la del local. Sin esto, los veinte locales de la plaza tienen una
+// carta idéntica y se lee como una plantilla.
+
+/** Multipart de una sola imagen, con el guard de tipo que ya usa la portada. */
+function unaImagen(queEs: string) {
+  return [
+    (req: Request, res: Response, next: () => void) => {
+      documentUpload.single('file')(req, res, (err) => {
+        if (err) { res.status(400).json({ success: false, error: err.message }); return; }
+        next();
+      });
+    },
+    (req: Request, res: Response, next: () => void) => {
+      if (!req.file) {
+        res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+        return;
+      }
+      if (!req.file.mimetype.startsWith('image/')) {
+        res.status(400).json({
+          success: false,
+          error: `${queEs} debe ser una imagen (JPG, PNG o WebP).`,
+        });
+        return;
+      }
+      next();
+    },
+  ];
+}
+
+// POST /business/:token/logo — el logo del local (multipart 'file').
+router.post('/:token/logo', ...unaImagen('El logo'), async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await updateBusinessLogo(business.id, fileToUrl(req.file!));
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo subir el logo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// DELETE /business/:token/logo — quitarlo y volver a la inicial del local.
+router.delete('/:token/logo', async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.json({ success: true, data: await updateBusinessLogo(business.id, null) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo quitar el logo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// POST /business/:token/fotos — una foto del LOCAL (el salón, la parrilla).
+router.post('/:token/fotos', ...unaImagen('La foto'), async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await addFotoDelLocal(business.id, fileToUrl(req.file!));
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo subir la foto';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// DELETE /business/:token/fotos { url }
+router.delete('/:token/fotos', async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  const url = String((req.body as { url?: unknown } | undefined)?.url ?? '');
+  if (!url) {
+    res.status(400).json({ success: false, error: 'Falta la foto que se quiere quitar.' });
+    return;
+  }
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.json({ success: true, data: await quitarFotoDelLocal(business.id, url) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo quitar la foto';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// PUT /business/:token/marca { brandColor?, tagline? }
+router.put('/:token/marca', async (req: Request, res: Response) => {
+  const { token } = req.params as { token: string };
+  const body = (req.body ?? {}) as { brandColor?: unknown; tagline?: unknown };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await updateMarcaDelLocal(business.id, {
+      ...(body.brandColor !== undefined ? { brandColor: String(body.brandColor ?? '') || null } : {}),
+      ...(body.tagline !== undefined ? { tagline: String(body.tagline ?? '') } : {}),
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo guardar la marca';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });
 

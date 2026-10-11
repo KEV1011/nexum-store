@@ -448,6 +448,27 @@ model Business {
   // Foto de portada del local (subida por el dueño desde el portal). Null = sin
   // portada (el cliente cae al color/ícono de la categoría).
   imageUrl String?
+
+  /// La identidad del local dentro de su propia carta del QR.
+  ///
+  /// En un menú QR el comensal está SENTADO en el restaurante: la marca que
+  /// manda ahí es la del local, no la nuestra. Sin esto, los veinte locales de
+  /// la plaza tienen una carta idéntica y se lee como una plantilla.
+  ///
+  /// Los cuatro son opcionales y sin ellos la carta se comporta EXACTAMENTE
+  /// como hasta hoy: no se inventa un logo, ni una frase, ni un color.
+  /// `logoUrl` es la marca del local (va en la cabecera y en el pedido);
+  /// `imageUrl`, de arriba, sigue siendo la foto de PORTADA, que es otra cosa.
+  logoUrl    String?
+  /// Fotos del LOCAL —el salón, la parrilla, la terraza—, no de los platos.
+  /// `[{url}]`, como máximo `MAX_FOTOS_LOCAL`.
+  gallery    Json?
+  /// Color de marca en `#rrggbb`. El texto que va encima NO se guarda: lo
+  /// deriva `textoSobre` por contraste, porque un color elegido con buen gusto
+  /// puede dejar el texto ilegible y nadie lo revisaría.
+  brandColor String?
+  /// Una línea bajo el nombre: «Comida casera desde 1998».
+  tagline    String?
   token    String  @unique @default(cuid())
 
   /// Si el local es nuestro cliente o si la ficha la publicamos nosotros.
@@ -517,6 +538,14 @@ model Product {
   /// Se valida al guardar (`saneaPrecioAntes`): un «antes» inflado no es una
   /// decisión de precio, es publicidad engañosa.
   compareAtPrice Float?
+  /// Hasta cuándo rige la promoción de ESTE producto.
+  ///
+  /// Nullable = sin fecha de fin, que es como se comportan todos los
+  /// productos ya cargados. Vencida, `precioVigente()` devuelve el precio
+  /// normal (el tachado) y el producto vuelve solo — no hay barrido que
+  /// reescriba precios: se DERIVA, porque un precio guardado y unas fechas
+  /// guardadas acaban discrepando y nadie sabe cuál miente.
+  promoUntil     DateTime?
   category       String   @default("General")
   /// Orden dentro de la carta. Una carta se lee en un orden concreto —
   /// entradas antes que postres— y por fecha de creación salen mezclados.
@@ -536,6 +565,14 @@ model Product {
   stock          Int?
   unit           String? // 'unidad' | 'kg' | 'g' | 'litro' | 'libra'
   brand          String?
+  /// Modelo y meses de garantía: lo que distingue el catálogo de un local de
+  /// electrodomésticos del de un supermercado. Nullables, y solo se MUESTRAN
+  /// en las categorías cuyo perfil los pide
+  /// (`app/negocio/perfil-catalogo.ts`); el backend los acepta siempre,
+  /// porque un comercio que cambie de categoría no puede perder lo que ya
+  /// había escrito.
+  model          String?
+  warrantyMonths Int?
   createdAt      DateTime @default(now())
 
   business     Business       @relation(fields: [businessId], references: [id])
