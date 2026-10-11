@@ -21,6 +21,8 @@
 // variable de entorno ni un código de Google: lo técnico va al log del
 // servidor, que es donde alguien puede arreglarlo.
 
+import { palabrasDeRespuestaVision, type PalabraOcr } from '../lib/carta-geometria';
+
 export type ProveedorCarta = 'none' | 'fake' | 'google-vision' | 'azure-read';
 
 export interface TextoDeCarta {
@@ -29,6 +31,15 @@ export interface TextoDeCarta {
   texto: string;
   /** Qué decirle al dueño cuando no se pudo. Vacío si salió bien. */
   motivo?: string;
+  /**
+   * Dónde está cada palabra en la foto, cuando el proveedor lo dice.
+   *
+   * Es lo que permite leer una carta a DOS COLUMNAS sin pegar el plato de la
+   * izquierda con el precio del de la derecha, y reconocer un título por el
+   * tamaño de su letra. Ausente = solo hay texto plano, y el lector cae a las
+   * pistas del texto, que es como funcionaba antes.
+   */
+  palabras?: PalabraOcr[];
 }
 
 /** La foto tal como llegó: el contenido, no una ruta a ninguna parte. */
@@ -256,7 +267,14 @@ export function textoDeRespuestaVision(cuerpo: unknown): TextoDeCarta {
   // esto no es una avería: la ruta devolverá cero filas y el portal le dice al
   // dueño cómo repetir la foto. Marcarlo como «no disponible» le haría pensar
   // que el problema es nuestro y esperaría en vez de volver a intentarlo.
-  return { disponible: true, texto: primera.fullTextAnnotation?.text ?? '' };
+  // La geometría viaja junto al texto: si el `select` de la respuesta cambiara
+  // y dejara de traerla, el lector sigue funcionando con el texto plano.
+  const palabras = palabrasDeRespuestaVision(cuerpo);
+  return {
+    disponible: true,
+    texto: primera.fullTextAnnotation?.text ?? '',
+    ...(palabras.length > 0 && { palabras }),
+  };
 }
 
 /**

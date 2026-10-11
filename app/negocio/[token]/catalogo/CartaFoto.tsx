@@ -47,6 +47,11 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   const [error, setError] = useState<string | null>(null)
   const [resultado, setResultado] = useState<string | null>(null)
   const [filas, setFilas] = useState<FilaEditable[] | null>(null)
+  // Las secciones que el lector reconoció en la foto. El backend ya las
+  // devolvía y este componente las IGNORABA, así que el dueño tenía que
+  // escribir «Hamburguesas» plato por plato — y cada variante tecleada
+  // («hamburguesas», «Hamburguesa») crea una sección distinta en su carta.
+  const [secciones, setSecciones] = useState<string[]>([])
 
   async function leerFoto(file: File) {
     setError(null)
@@ -61,7 +66,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
       })
       const json = (await res.json()) as {
         success: boolean
-        data?: { lineas: LineaCarta[] }
+        data?: { lineas: LineaCarta[]; secciones?: string[] }
         error?: string
       }
       if (!json.success || !json.data) {
@@ -75,6 +80,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
         )
         return
       }
+      setSecciones(json.data.secciones ?? [])
       setFilas(
         json.data.lineas.map((l, i) => ({
           id: i,
@@ -245,6 +251,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                       <td className="py-1 pr-2 align-top">
                         <input
                           value={f.seccion}
+                          list="carta-secciones"
                           onChange={(e) => editar(f.id, 'seccion', e.target.value)}
                           className="w-full rounded border border-slate-300 px-2 py-1"
                         />
@@ -264,6 +271,11 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                 })}
               </tbody>
             </table>
+            {/* Las secciones leídas, para elegirlas en vez de teclearlas: cada
+                variante escrita a mano acaba siendo otra sección en la carta. */}
+            <datalist id="carta-secciones">
+              {secciones.map((s) => <option key={s} value={s} />)}
+            </datalist>
           </div>
 
           {fuera > 0 && (

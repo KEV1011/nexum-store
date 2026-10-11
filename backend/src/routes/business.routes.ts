@@ -48,7 +48,8 @@ import {
 } from '../types';
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
-import { parsearCarta, filasACsv } from '../lib/carta-foto';
+import { parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
+import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { PORTAL_BASE_URL } from '../config/constants';
 import {
@@ -719,7 +720,13 @@ router.post(
         return;
       }
 
-      const carta = parsearCarta(lectura.texto);
+      // Con la geometría de la foto se lee columna por columna y el título se
+      // reconoce por el TAMAÑO de su letra. Sin ella —proveedor que no la
+      // manda, o `fake`— se cae al texto plano, que es como funcionaba antes.
+      const medidas = lectura.palabras ? lineasDeLaFoto(lectura.palabras) : [];
+      const carta = medidas.length > 0
+        ? parsearCartaMedida(medidas, altoDelCuerpo(medidas), esTituloPorTamano)
+        : parsearCarta(lectura.texto);
       res.status(200).json({
         success: true,
         data: {

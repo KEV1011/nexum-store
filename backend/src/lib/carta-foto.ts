@@ -96,20 +96,99 @@ function nombreDeLinea(linea: string): string {
 }
 
 /**
+ * Las palabras con las que una carta colombiana titula sus secciones.
+ *
+ * NO es una lista de categorías que se le imponga al dueño: es una pista para
+ * reconocer un título cuando las otras no alcanzan. «ADICIONES» tiene una sola
+ * palabra y mide nueve letras, así que la longitud ya lo acepta; lo que esto
+ * rescata es «Hamburguesas de la casa» o «BEBIDAS Y GASEOSAS FRÍAS», que son
+ * títulos y la longitud los rechazaba.
+ *
+ * Están sin tildes y en minúscula porque se comparan contra el texto
+ * normalizado: «DESAYUNOS» y «Desayúnos» tienen que casar igual.
+ */
+const PALABRAS_DE_SECCION = [
+  'entrada', 'entradas', 'plato', 'platos', 'fuerte', 'fuertes', 'especial', 'especiales',
+  'bebida', 'bebidas', 'gaseosa', 'gaseosas', 'jugo', 'jugos', 'cerveza', 'cervezas',
+  'licor', 'licores', 'coctel', 'cocteles', 'vino', 'vinos', 'cafe', 'cafes',
+  'postre', 'postres', 'adicion', 'adiciones', 'acompanamiento', 'acompanamientos',
+  'hamburguesa', 'hamburguesas', 'perro', 'perros', 'pizza', 'pizzas', 'sandwich',
+  'arepa', 'arepas', 'empanada', 'empanadas', 'asado', 'asados', 'parrilla',
+  'carne', 'carnes', 'pollo', 'pescado', 'pescados', 'mariscos', 'sopa', 'sopas',
+  'caldo', 'caldos', 'sancocho', 'ensalada', 'ensaladas', 'pasta', 'pastas',
+  'desayuno', 'desayunos', 'almuerzo', 'almuerzos', 'cena', 'cenas', 'corrientazo',
+  'combo', 'combos', 'promocion', 'promociones', 'picada', 'picadas', 'salchipapa',
+  'menu', 'carta', 'infantil', 'ninos', 'vegetariano', 'vegetariana', 'sin gluten',
+];
+
+/** Para comparar con el vocabulario: sin tildes, en minúscula, sin sobras. */
+function normalizado(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/** El texto va GRITADO, que en una carta impresa casi siempre es un título. */
+function vaEnMayusculas(texto: string): boolean {
+  const letras = texto.replace(/[^a-záéíóúñü]/gi, '');
+  // Con menos de tres letras no se puede distinguir un grito de una sigla.
+  if (letras.length < 3) return false;
+  return texto === texto.toUpperCase();
+}
+
+/** Alguna de sus palabras es de las que titulan secciones. */
+function suenaASeccion(texto: string): boolean {
+  const n = normalizado(texto);
+  if (!n) return false;
+  if (PALABRAS_DE_SECCION.includes(n)) return true;
+  const palabras = n.split(' ');
+  // Un título lleva pocas palabras. «Hamburguesa con queso y tocineta 18.000»
+  // menciona «hamburguesa» y es un plato, no la sección.
+  if (palabras.length > 4) return false;
+  return palabras.some((p) => PALABRAS_DE_SECCION.includes(p));
+}
+
+/**
  * Una línea SIN precio: ¿es el título de una sección o un plato al que el OCR
  * no le leyó el precio?
  *
- * No se puede saber con certeza, así que se elige por longitud: los
- * encabezados de una carta son cortos («BEBIDAS», «Platos fuertes») y el plato
- * al que se le perdió el precio suele traer su descripción detrás. Lo que NO
- * se hace es descartar la línea en silencio: si no es encabezado, sale como
- * fila con aviso y el dueño decide.
+ * No se puede saber con certeza, así que se juntan las pistas que la carta sí
+ * da, de la más fuerte a la más débil:
+ *
+ *   1. **El TAMAÑO de la letra**, cuando se leyó la geometría de la foto. En
+ *      papel un título no se reconoce por ser corto, se reconoce por ser más
+ *      grande; es la única pista que acierta con «PLATOS FUERTES Y ESPECIALES
+ *      DE LA CASA» (largo) y con «Pechuga» (corto, y es un plato).
+ *   2. Que vaya GRITADO, o que acabe en dos puntos.
+ *   3. El vocabulario con el que se titula una sección en una carta de aquí.
+ *   4. Y, de último, la longitud — que es lo único que había antes.
+ *
+ * Lo que NO se hace es descartar la línea en silencio: si no es encabezado,
+ * sale como fila con aviso y el dueño decide.
  */
-function pareceSeccion(nombre: string): boolean {
-  if (!nombre || nombre.length > LARGO_MAX_SECCION) return false;
-  // Una frase con puntuación de oración es un plato descrito, no un título.
-  if (/[.,;:]/.test(nombre)) return false;
-  return nombre.split(/\s+/).length <= 4;
+function pareceSeccion(nombre: string, grande?: boolean): boolean {
+  if (!nombre) return false;
+  // Una frase con punto o punto y coma es un plato descrito, nunca un título;
+  // los dos puntos, al contrario, son la forma de escribir «BEBIDAS:».
+  if (/[.;]/.test(nombre)) return false;
+  const sinDosPuntos = nombre.replace(/\s*:\s*$/, '');
+  if (/[,:]/.test(sinDosPuntos)) return false;
+
+  if (grande === true) return sinDosPuntos.split(/\s+/).length <= 7;
+  // Con geometría leída, un renglón del tamaño del cuerpo NO es un título
+  // aunque sea corto: ahí el tamaño ya respondió la pregunta, y hacerle caso a
+  // la longitud por encima devolvería el defecto que esto corrige.
+  if (grande === false) return false;
+
+  if (nombre.endsWith(':')) return sinDosPuntos.split(/\s+/).length <= 5;
+  if (vaEnMayusculas(sinDosPuntos) && sinDosPuntos.split(/\s+/).length <= 6) return true;
+  if (suenaASeccion(sinDosPuntos)) return true;
+  if (sinDosPuntos.length > LARGO_MAX_SECCION) return false;
+  return sinDosPuntos.split(/\s+/).length <= 4;
 }
 
 /**
@@ -136,21 +215,46 @@ function comoPesos(n: number): string {
  * dueño corrige antes de importar.
  */
 export function parsearCarta(texto: string): CartaLeida {
+  return parsearRenglones((texto ?? '').split(/\r?\n/).map((t) => ({ texto: t })));
+}
+
+/**
+ * La carta leída de los renglones MEDIDOS de la foto.
+ *
+ * Es el camino bueno: los renglones vienen columna por columna —así una carta
+ * a dos columnas deja de pegar el plato de la izquierda con el precio del de la
+ * derecha— y cada uno trae el tamaño de su letra, que es la pista con la que de
+ * verdad se reconoce un título.
+ */
+export function parsearCartaMedida(
+  lineas: Array<{ texto: string; alto: number }>,
+  altoCuerpo: number,
+  esTitulo: (alto: number, cuerpo: number) => boolean,
+): CartaLeida {
+  return parsearRenglones(lineas.map((l) => ({
+    texto: l.texto,
+    // Sin alto medido se deja `undefined` para que decidan las pistas del
+    // texto: un `false` diría «es del tamaño del cuerpo», que no se sabe.
+    grande: altoCuerpo > 0 && l.alto > 0 ? esTitulo(l.alto, altoCuerpo) : undefined,
+  })));
+}
+
+function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): CartaLeida {
   const salida: CartaLeida = { lineas: [], secciones: [] };
   let seccion = '';
 
-  const filas = (texto ?? '').split(/\r?\n/);
   for (let i = 0; i < filas.length; i++) {
-    const cruda = filas[i]!.replace(/\s{2,}/g, ' ').trim();
+    const cruda = filas[i]!.texto.replace(/\s{2,}/g, ' ').trim();
     if (!cruda) continue;
+    const grande = filas[i]!.grande;
 
     const precios = preciosDeLinea(cruda);
     const nombre = nombreDeLinea(cruda);
     const linea = i + 1;
 
     if (precios.length === 0) {
-      if (pareceSeccion(nombre)) {
-        seccion = tituloDeSeccion(nombre);
+      if (pareceSeccion(nombre, grande)) {
+        seccion = tituloDeSeccion(nombre.replace(/\s*:\s*$/, ''));
         if (!salida.secciones.includes(seccion)) salida.secciones.push(seccion);
         continue;
       }

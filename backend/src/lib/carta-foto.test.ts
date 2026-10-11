@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filasACsv, parsearCarta, preciosDeLinea, PRECIO_MIN } from './carta-foto';
+import { filasACsv, parsearCarta, parsearCartaMedida, preciosDeLinea, PRECIO_MIN } from './carta-foto';
 import { parseProductCsv } from './product-csv';
 
 /** La carta tal como sale de una foto de verdad: gritada y con puntos guía. */
@@ -164,5 +164,88 @@ describe('el CSV que se le entrega al importador de siempre', () => {
 
   it('sin ninguna fila válida queda solo la cabecera', () => {
     expect(filasACsv([{ nombre: 'X', precio: null }]).split('\n')).toHaveLength(1);
+  });
+});
+
+describe('reconocer la sección cuando la longitud no alcanza', () => {
+  // El reporte era que «no reconoce las secciones». La única pista que había
+  // era la longitud: ≤28 caracteres y ≤4 palabras. Con eso, un título largo
+  // pasaba a ser un plato sin precio y la sección desaparecía.
+  const seccionesDe = (texto: string) => parsearCarta(texto).secciones;
+
+  it('una frase larga en letra grande NO es un título: es un reclamo de la carta', () => {
+    // «Todos nuestros platos se preparan al momento con ingredientes frescos»
+    // va en grande en muchas cartas y no es una sección.
+    const c = parsearCartaMedida([
+      { texto: 'Todos nuestros platos se preparan al momento con ingredientes frescos', alto: 30 },
+    ], 20, (a: number, b: number) => a >= b * 1.18);
+    expect(c.secciones).toEqual([]);
+  });
+
+  it('un título GRITADO y largo es una sección', () => {
+    expect(seccionesDe('PLATOS FUERTES Y ESPECIALES\nBandeja paisa 25.000'))
+      .toEqual(['Platos fuertes y especiales']);
+  });
+
+  it('un título que acaba en dos puntos también', () => {
+    const c = parsearCarta('Bebidas frías y calientes:\nGaseosa 3.500');
+    expect(c.secciones).toEqual(['Bebidas frías y calientes']);
+    // Los dos puntos no se quedan pegados al nombre de la sección.
+    expect(c.lineas[0]!.seccion).toBe('Bebidas frías y calientes');
+  });
+
+  it('el vocabulario de una carta de aquí rescata lo demás', () => {
+    expect(seccionesDe('Hamburguesas de la casa\nSencilla 12.000'))
+      .toEqual(['Hamburguesas de la casa']);
+    expect(seccionesDe('Adiciones\nQueso 2.000')).toEqual(['Adiciones']);
+  });
+
+  it('pero un PLATO que menciona su categoría NO es la sección', () => {
+    // «Hamburguesa con queso, tocineta y papas» lleva «hamburguesa» y es un
+    // plato: tomarlo por sección dejaría los siguientes platos colgados de un
+    // título que es el nombre de otro plato.
+    const c = parsearCarta('Hamburguesa con queso, tocineta y papas criollas');
+    expect(c.secciones).toEqual([]);
+    expect(c.lineas[0]!.aviso).toMatch(/precio/i);
+  });
+
+  it('una frase con punto sigue siendo un plato descrito', () => {
+    expect(seccionesDe('Bandeja paisa. Incluye todo.')).toEqual([]);
+  });
+});
+
+describe('la carta MEDIDA: dos columnas y el tamaño de la letra', () => {
+  const titulo = (alto: number, cuerpo: number) => alto >= cuerpo * 1.18;
+
+  it('el título se reconoce por el tamaño aunque la longitud lo rechazara', () => {
+    const c = parsearCartaMedida([
+      // Cinco palabras y sin gritar: la longitud (≤4 palabras) lo rechaza y el
+      // vocabulario no lo reconoce. Solo el tamaño lo salva.
+      { texto: 'Lo que más nos piden', alto: 30 },
+      { texto: 'Bandeja paisa 25.000', alto: 20 },
+    ], 20, titulo);
+    expect(parsearCarta('Lo que más nos piden').secciones).toEqual([]);
+    expect(c.secciones).toEqual(['Lo que más nos piden']);
+    expect(c.lineas[0]!.seccion).toBe('Lo que más nos piden');
+  });
+
+  it('un renglón del TAMAÑO DEL CUERPO no es sección aunque sea corto', () => {
+    // Es la mitad que de verdad arregla el reporte: «Pechuga» es corta y el
+    // texto plano la tomaba por título, dejando los platos siguientes bajo una
+    // sección que era un plato al que no se le leyó el precio.
+    const c = parsearCartaMedida([
+      { texto: 'BEBIDAS', alto: 28 },
+      { texto: 'Pechuga', alto: 20 },
+      { texto: 'Gaseosa 3.500', alto: 20 },
+    ], 20, titulo);
+    expect(c.secciones).toEqual(['Bebidas']);
+    expect(c.lineas[0]!.nombre).toBe('Pechuga');
+    expect(c.lineas[0]!.aviso).toMatch(/precio/i);
+    expect(c.lineas[1]!.seccion).toBe('Bebidas');
+  });
+
+  it('sin alto medido deciden las pistas del texto', () => {
+    const c = parsearCartaMedida([{ texto: 'BEBIDAS', alto: 0 }], 0, titulo);
+    expect(c.secciones).toEqual(['Bebidas']);
   });
 });
