@@ -1,12 +1,14 @@
-# Prompt — los siete reportes del 11 de octubre
+# Prompt — los reportes del 11 de octubre
 
 Cada punto está MEDIDO contra el código antes de escribir esto: no hay suposiciones,
 y cada uno dice el archivo y la línea. **No se toca nada de lo que ya funciona**: los
 siete son o una capacidad construida que nadie puede alcanzar, o un defecto concreto
 y acotado.
 
-Orden recomendado: **5 → 1 → 3 → 7 → 4 → 6**. El 5 es el que destruye catálogos, el 1
-es el que ya está construido y solo hay que abrirle la puerta, y el 6 es cosmético.
+Orden recomendado: **1 → 8 → 2 → 7 → 3 → 5 → 4 → 6**. El 1 destruye catálogos; el 8 es
+una línea y evita que un dueño cargue su carta en el negocio equivocado; el 2 y el 7
+son capacidades YA construidas a las que solo les falta la pantalla —o sea, lo más
+barato por lo que más se nota—; el 6 es cosmético y en parte ni siquiera es código.
 
 Verificación de cada tanda: `cd backend` → `npm run typecheck` y `npm test`; raíz →
 `node_modules/.bin/tsc --noEmit` y `node_modules/.bin/next build`. Flutter solo en CI.
@@ -217,11 +219,107 @@ un fondo neutro, con alto fijo para que la hoja no salte de tamaño entre platos
 
 ---
 
+## 7. La hoja del producto IGNORA seis datos que el servidor ya le manda
+
+Referencia del usuario: Rappi. Comparando su captura con la nuestra, la hoja de
+producto de la app cliente es un título, un campo de notas, el contador y el botón.
+Nada más.
+
+**El hallazgo no es de diseño.** `ProductEntity`
+(`business_entity.dart:212`) ya trae **todo**: `imageUrl`, `images` (galería),
+`description`, `compareAtPrice`, `descuentoPct`, `masPedidoPuesto` y `optionGroups`.
+`product_options_sheet.dart` (531 líneas) **solo consume `optionGroups`** — los otros
+seis llegan del servidor en cada pedido de catálogo y la hoja no los pinta. Es el mismo
+patrón ya pagado tres veces en este repo: el dato existe en la base, viaja en el DTO, y
+la pantalla no lo lee.
+
+La LISTA sí está bien y **no se toca**: `product_tile.dart:79` ya usa
+`PrecioProducto` (tachado + insignia de descuento) y `business_detail_screen` ya ordena
+por `descuentoPct`.
+
+**Qué pintar en la hoja**, de arriba abajo:
+
+1. **Foto del plato a lo ancho**, con la galería deslizable si `images` trae más de
+   una. Es lo primero que mira quien pide comida.
+2. **Insignia «#N más pedido»** cuando `masPedidoPuesto` existe.
+3. **Precio grande, con el tachado y el `-N %`** reusando `PrecioProducto` en su
+   variante `grande` — que ya existe y por eso el porcentaje del listado y el del
+   detalle no pueden discrepar.
+4. **Descripción completa**, con «Ver más / Ver menos» si pasa de tres renglones.
+5. Los grupos de opciones como están hoy, pero **con la insignia «Obligatorio»** en los
+   que lo son (el dato ya está en la entidad) y el botón apagado DICIENDO qué falta
+   elegir, no mudo.
+6. El contador y **«Agregar · $X» con el total ya calculado** (precio + opciones ×
+   cantidad), que es lo que evita la sorpresa en el carrito.
+
+**Las reglas de siempre, que aquí deciden casi todo:**
+
+- **Sin foto NO se dibuja un marco gris grande.** La hoja arranca en el título y gana
+  altura la descripción. Un rectángulo vacío de 200 px se lee como «la app no cargó»;
+  es peor que no tener foto. Mismo criterio que el carrusel del home.
+- Sin descuento no hay insignia, sin ranking no hay «#N», sin descripción no hay
+  bloque. Nada de relleno.
+- **Si el producto está agotado**, la hoja lo dice y el botón no deja agregar — hoy se
+  entra igual.
+
+**Lo de Rappi que NO se copia, y por qué:**
+
+- **«Oferta Exclusiva Pro»**: es una suscripción con cobro recurrente. Ya se descartó
+  en este repo y el motivo sigue vigente: no hay pasarela operativa en producción.
+  Prometer un precio de socio que no se puede cobrar es la peor clase de promesa.
+- **El «90 % (+339)» de pulgares**: nosotros tenemos estrellas por PEDIDO, no pulgares
+  por producto. Inventar ese porcentaje a partir de la nota del negocio sería un número
+  que no mide lo que dice.
+- **«Tus opciones recomendadas»** (el upsell con otro producto): es una función aparte
+  —y mal hecha engaña, porque en su propia captura la bebida «recomendada» cuesta más
+  que el plato—. Si se quiere, va en su tanda, con la regla de que el precio mostrado
+  sea el que se cobra.
+
+**La cabecera del negocio** (segunda captura del usuario) también está desnutrida: el
+bloque crema con el cubierto genérico es el respaldo de `Business.imageUrl` cuando no
+hay portada, y encima el nombre «BETOS» queda casi ilegible sobre él. Dos cosas:
+subir el contraste del nombre sobre el respaldo —es la co-ocurrencia que la regla de
+contraste del repo prohíbe— y que el respaldo **no ocupe el mismo alto** que una
+portada real; sin foto, la cabecera debe encogerse y dejar sitio a la carta.
+
+**QA del usuario:** proporciones, altura de la foto y si la hoja tapa demasiado solo se
+juzgan en un teléfono.
+
+---
+
+## 8. Dos negocios con el mismo nombre en la lista
+
+En la captura del listado aparecen **«BETOS» dos veces y «Pieros Pizza» dos veces**.
+
+Medido: `registerBusiness` hace `prisma.business.create` **sin comprobar nada antes** —
+ni nombre repetido, ni teléfono repetido. `/business/register` es público, y en un
+celular con mala señal el segundo toque en «Registrar» (o un reintento) crea un segundo
+negocio con **otro enlace mágico**.
+
+El daño no es cosmético: el dueño carga su catálogo en uno y los clientes piden en el
+otro, que está vacío; y la recuperación por teléfono le devuelve dos enlaces sin poder
+decirle cuál es el bueno.
+
+**Qué hacer:** antes de crear, buscar un negocio del mismo teléfono normalizado con
+nombre equivalente (sin tildes, sin mayúsculas, sin espacios de más — la misma
+normalización que ya usa `findBusinessesByPhone`). Si existe, **no crear otro**:
+devolver el que ya está con su enlace, diciendo «ya tenías este negocio registrado».
+Reutilizar en vez de rechazar, porque quien pulsó dos veces quiere su portal, no un
+error.
+
+**No se borran los duplicados que ya están en producción desde el código**: eso es una
+limpieza del admin, que ya tiene la pestaña Negocios para activar y desactivar. Decirle
+al usuario cuáles son y que desactive el vacío.
+
+---
+
 ## Lo que NO se toca
 
 - El despacho, la liquidación, las tarifas y todo lo listado en HECHO.
 - `_assertParticipant` y las rutas de chat: ya están bien, el defecto es de UI.
 - El `object-cover` del LISTADO de la carta y del carrusel: ahí es correcto.
+- `product_tile.dart` y `PrecioProducto`: el listado del negocio ya pinta el tachado y
+  el porcentaje. Lo que falta es la HOJA.
 - Los push del pedido en la app cliente: la cadena está completa, falta la llave.
 
 ## Reglas del repo que aplican a esta tanda
