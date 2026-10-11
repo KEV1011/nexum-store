@@ -36,6 +36,13 @@ const ADORNOS = new RegExp(
     '\\u{1F300}-\\u{1FAFF}' + // pictogramas, emoticonos, objetos, comida
     '\\u{2190}-\\u{21FF}' + // flechas
     '\\u{2600}-\\u{27BF}' + // símbolos varios y dingbats
+    // Formas geométricas: de aquí salen las VIÑETAS de una carta impresa
+    // («● Carne asada», «▪ Pollo»), que el OCR copia tal cual. Se añadió
+    // porque faltaba: `⬤` (U+2B24) sí se quitaba y `●` (U+25CF) no, y el
+    // segundo es el que de verdad usa una carta. El bloque NO contiene ningún
+    // signo que aparezca en el nombre de un plato — «½», «°», «&» y las
+    // fracciones viven fuera de él, y hay pruebas que lo fijan.
+    '\\u{25A0}-\\u{25FF}' + // formas geométricas (viñetas)
     '\\u{2B00}-\\u{2BFF}' + // estrellas y figuras
     '\\u{FE0E}\\u{FE0F}' + // selectores de variación
     '\\u{200D}' + // unión de ancho cero

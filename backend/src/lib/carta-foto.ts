@@ -208,6 +208,105 @@ function comoPesos(n: number): string {
   return `$${n.toLocaleString('es-CO')}`;
 }
 
+/** Un renglón tal como entra al parser, antes de clasificarlo. */
+interface RenglonCrudo {
+  texto: string;
+  /** `true` = escrito más grande que el cuerpo (solo con geometría leída). */
+  grande?: boolean;
+  /** Columna de la página, cuando se leyó la geometría. */
+  columna?: number;
+}
+
+/**
+ * ¿La línea entera es UN PRECIO y nada más?
+ *
+ * Se exige que no quede ni una letra: «21.000» sí, «Jugo 5.000» no, «2x1» no,
+ * «(3)» no. Y que el número caiga en el rango de un precio, para que un «3»
+ * suelto —que suele ser cuántas unidades trae el plato— no se tome por uno.
+ */
+function soloPrecio(texto: string): boolean {
+  const t = texto.trim();
+  if (!/^\$?\s*\d[\d.,\s]*\d$|^\$?\s*\d$/.test(t)) return false;
+  return preciosDeLinea(t).length === 1;
+}
+
+/** Todas sus palabras son de las que titulan una sección. */
+function todoSuenaASeccion(texto: string): boolean {
+  const n = normalizado(texto);
+  if (!n) return false;
+  return n.split(' ').every((p) => PALABRAS_DE_SECCION.includes(p));
+}
+
+/**
+ * Une el precio que quedó SOLO en su renglón con el nombre del plato de arriba.
+ *
+ * EL DEFECTO QUE CORRIGE, y es el más caro de todo el lector. La carta impresa
+ * más común pone el nombre en un renglón y el precio en el siguiente:
+ *
+ *     Carne asada
+ *     21.000
+ *
+ * Sin esta pasada, «Carne asada» no tiene precio y es corta, así que se toma
+ * por SECCIÓN; y «21.000» entra en la rama de «no se pudo separar el nombre del
+ * precio» y se emite como un producto LLAMADO «21.000». Resultado: el plato
+ * desaparece del catálogo y su precio ocupa su lugar. Es exactamente lo que el
+ * dueño encontró en su carta: secciones con nombre de plato y productos
+ * llamados «$23.000».
+ *
+ * CUÁNDO **NO** SE UNE. Unir de más convierte un encabezado en producto —con
+ * precio y publicable—, así que ante la duda se deja como está: el dueño ve una
+ * fila con aviso en la vista previa y la corrige, que es el error barato.
+ *
+ *   1. Si el renglón de arriba YA tiene precio: son dos platos distintos.
+ *   2. Si va escrito MÁS GRANDE que el cuerpo: con geometría leída, el tamaño
+ *      es la mejor pista que existe y manda sobre todo lo demás.
+ *   3. Si TODAS sus palabras son de las que titulan secciones («BEBIDAS»,
+ *      «PLATOS FUERTES»). Se exige que lo sean todas a propósito: «CARNE ASADA»
+ *      lleva «carne» del vocabulario pero «asada» no, y es un plato. El empate
+ *      que queda —un plato llamado solo «POLLO»— sale como fila con aviso.
+ *   4. Si están en COLUMNAS distintas de la página: el precio de la columna
+ *      derecha no es el del último plato de la izquierda.
+ *   5. Si entre los dos hay un renglón en blanco: en el texto del OCR eso
+ *      separa bloques.
+ *   6. A un mismo nombre no se le pega más de un precio.
+ */
+export function unirPreciosHuerfanos(filas: RenglonCrudo[]): RenglonCrudo[] {
+  const salida: RenglonCrudo[] = [];
+  // Índice en `salida` del último renglón que puede absorber un precio.
+  // `null` cuando lo de arriba fue un blanco, un título grande o ya absorbió.
+  let candidato: number | null = null;
+
+  for (const fila of filas) {
+    const texto = (fila.texto ?? '').replace(/\s{2,}/g, ' ').trim();
+    if (!texto) {
+      salida.push(fila);
+      candidato = null;
+      continue;
+    }
+
+    if (candidato !== null && soloPrecio(texto)) {
+      const prev = salida[candidato]!;
+      const mismaColumna = prev.columna === undefined
+        || fila.columna === undefined
+        || prev.columna === fila.columna;
+      if (mismaColumna) {
+        salida[candidato] = { ...prev, texto: `${prev.texto.trim()} ${texto}` };
+        candidato = null;
+        continue;
+      }
+    }
+
+    salida.push({ ...fila, texto });
+    const puedeAbsorber = preciosDeLinea(texto).length === 0
+      && fila.grande !== true
+      && !todoSuenaASeccion(texto)
+      && texto.length >= 2;
+    candidato = puedeAbsorber ? salida.length - 1 : null;
+  }
+
+  return salida;
+}
+
 /**
  * Convierte el texto que devolvió el OCR en filas de catálogo.
  *
@@ -215,7 +314,9 @@ function comoPesos(n: number): string {
  * dueño corrige antes de importar.
  */
 export function parsearCarta(texto: string): CartaLeida {
-  return parsearRenglones((texto ?? '').split(/\r?\n/).map((t) => ({ texto: t })));
+  return parsearRenglones(
+    unirPreciosHuerfanos((texto ?? '').split(/\r?\n/).map((t) => ({ texto: t }))),
+  );
 }
 
 /**
@@ -227,16 +328,19 @@ export function parsearCarta(texto: string): CartaLeida {
  * verdad se reconoce un título.
  */
 export function parsearCartaMedida(
-  lineas: Array<{ texto: string; alto: number }>,
+  lineas: Array<{ texto: string; alto: number; columna?: number }>,
   altoCuerpo: number,
   esTitulo: (alto: number, cuerpo: number) => boolean,
 ): CartaLeida {
-  return parsearRenglones(lineas.map((l) => ({
+  return parsearRenglones(unirPreciosHuerfanos(lineas.map((l) => ({
     texto: l.texto,
     // Sin alto medido se deja `undefined` para que decidan las pistas del
     // texto: un `false` diría «es del tamaño del cuerpo», que no se sabe.
     grande: altoCuerpo > 0 && l.alto > 0 ? esTitulo(l.alto, altoCuerpo) : undefined,
-  })));
+    // La columna viaja para que un precio de la columna derecha no se le pegue
+    // al último plato de la izquierda.
+    ...(l.columna !== undefined && { columna: l.columna }),
+  }))));
 }
 
 function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): CartaLeida {

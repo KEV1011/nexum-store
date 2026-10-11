@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { filasACsv, parsearCarta, parsearCartaMedida, preciosDeLinea, PRECIO_MIN } from './carta-foto';
+import {
+  filasACsv,
+  parsearCarta,
+  parsearCartaMedida,
+  preciosDeLinea,
+  unirPreciosHuerfanos,
+  PRECIO_MIN,
+} from './carta-foto';
 import { parseProductCsv } from './product-csv';
 
 /** La carta tal como sale de una foto de verdad: gritada y con puntos guía. */
@@ -247,5 +254,118 @@ describe('la carta MEDIDA: dos columnas y el tamaño de la letra', () => {
   it('sin alto medido deciden las pistas del texto', () => {
     const c = parsearCartaMedida([{ texto: 'BEBIDAS', alto: 0 }], 0, titulo);
     expect(c.secciones).toEqual(['Bebidas']);
+  });
+});
+
+describe('el precio que quedó solo en su renglón', () => {
+  // ES EL DEFECTO MÁS CARO DEL LECTOR y el que reportó el dueño: la carta
+  // impresa más común pone el nombre arriba y el precio debajo. Sin unirlos,
+  // el plato se vuelve SECCIÓN y el precio se vuelve un producto llamado
+  // «21.000» — el plato desaparece del catálogo.
+  it('se pega al nombre del plato de arriba', () => {
+    const c = parsearCarta('ASADOS\nCarne asada\n21.000\nCostilla de cerdo BBQ\n23.000');
+    expect(c.secciones).toEqual(['Asados']);
+    expect(c.lineas.map((l) => [l.nombre, l.precio])).toEqual([
+      ['Carne asada', 21000],
+      ['Costilla de cerdo BBQ', 23000],
+    ]);
+    expect(c.lineas.every((l) => l.seccion === 'Asados')).toBe(true);
+    expect(c.lineas.some((l) => l.aviso)).toBe(false);
+  });
+
+  it('convive con los platos que ya traen su precio en la misma línea', () => {
+    const c = parsearCarta('Carne asada\n21.000\nPollo a la plancha  19.000');
+    expect(c.lineas.map((l) => [l.nombre, l.precio])).toEqual([
+      ['Carne asada', 21000],
+      ['Pollo a la plancha', 19000],
+    ]);
+  });
+});
+
+describe('cuándo NO se une, que es lo que impide inventar productos', () => {
+  it('no se une a un encabezado: todas sus palabras son de sección', () => {
+    // «BEBIDAS» seguido de un precio suelto no es un producto llamado
+    // «Bebidas»: unir de más publica un encabezado con precio.
+    const c = parsearCarta('BEBIDAS\n3.000');
+    expect(c.secciones).toEqual(['Bebidas']);
+    expect(c.lineas[0]!.precio).toBeNull();
+    expect(c.lineas[0]!.aviso).toBeTruthy();
+  });
+
+  it('«PLATOS FUERTES» tampoco, aunque sean dos palabras', () => {
+    expect(parsearCarta('PLATOS FUERTES\n25.000').secciones).toEqual(['Platos fuertes']);
+  });
+
+  it('pero «CARNE ASADA» SÍ se une: «asada» no es vocabulario de sección', () => {
+    // Se exige que lo sean TODAS justamente por este caso.
+    expect(parsearCarta('CARNE ASADA\n21.000').lineas[0])
+      .toMatchObject({ nombre: 'CARNE ASADA', precio: 21000 });
+  });
+
+  it('no se une si el de arriba ya tiene precio: son dos platos', () => {
+    const c = parsearCarta('Pollo 19.000\n21.000');
+    expect(c.lineas[0]).toMatchObject({ nombre: 'Pollo', precio: 19000 });
+    expect(c.lineas[1]!.precio).toBeNull();
+  });
+
+  it('un renglón en blanco corta la unión: separa bloques', () => {
+    const c = parsearCarta('Carne asada\n\n21.000');
+    expect(c.lineas[0]!.precio).toBeNull();
+  });
+
+  it('a un mismo nombre no se le pega más de un precio', () => {
+    const c = parsearCarta('Carne asada\n21.000\n23.000');
+    expect(c.lineas[0]).toMatchObject({ nombre: 'Carne asada', precio: 21000 });
+    expect(c.lineas[1]!.precio).toBeNull();
+  });
+
+  it('lo que no es SOLO un precio no se une', () => {
+    // «(3)» son cuántas unidades trae el plato y «2x1» es la oferta: ninguno
+    // es el precio del renglón de arriba. Se comprueba sobre la función que
+    // une, no sobre la carta ya clasificada: ahí los dos acaban como sección y
+    // el resultado no diría nada de la unión, que es lo que se está probando.
+    const unidas = (filas: string[]) =>
+      unirPreciosHuerfanos(filas.map((texto) => ({ texto }))).map((f) => f.texto);
+    expect(unidas(['Picada', '(3)'])).toEqual(['Picada', '(3)']);
+    expect(unidas(['Combo', '2x1'])).toEqual(['Combo', '2x1']);
+    // Y el contraste: un precio de verdad SÍ se une.
+    expect(unidas(['Choripapa', '21.000'])).toEqual(['Choripapa 21.000']);
+    // El empate conocido, escrito para que no sorprenda: un plato que se llama
+    // EXACTAMENTE como una palabra de sección («Picada») se trata como
+    // encabezado y no absorbe. Sale como fila con aviso y el dueño la corrige
+    // en la vista previa, que es el error barato de los dos.
+    expect(unidas(['Picada', '21.000'])).toEqual(['Picada', '21.000']);
+  });
+});
+
+describe('la carta MEDIDA: el tamaño y la columna mandan sobre la unión', () => {
+  const titulo = (alto: number, cuerpo: number) => alto >= cuerpo * 1.18;
+
+  it('un renglón GRANDE no absorbe el precio de abajo', () => {
+    // Con geometría, el tamaño es la mejor pista que existe: si va escrito
+    // más grande, es un título por mucho que le siga un número.
+    const c = parsearCartaMedida([
+      { texto: 'Especiales', alto: 30 },
+      { texto: '25.000', alto: 20 },
+    ], 20, titulo);
+    expect(c.secciones).toEqual(['Especiales']);
+    expect(c.lineas[0]!.precio).toBeNull();
+  });
+
+  it('un renglón del tamaño del cuerpo SÍ lo absorbe', () => {
+    const c = parsearCartaMedida([
+      { texto: 'Carne asada', alto: 20 },
+      { texto: '21.000', alto: 20 },
+    ], 20, titulo);
+    expect(c.lineas[0]).toMatchObject({ nombre: 'Carne asada', precio: 21000 });
+  });
+
+  it('el precio de otra COLUMNA no se le pega al plato de la izquierda', () => {
+    const c = parsearCartaMedida([
+      { texto: 'Carne asada', alto: 20, columna: 0 },
+      { texto: '23.000', alto: 20, columna: 1 },
+    ], 20, titulo);
+    expect(c.lineas[0]!.precio).toBeNull();
+    expect(c.lineas).toHaveLength(2);
   });
 });

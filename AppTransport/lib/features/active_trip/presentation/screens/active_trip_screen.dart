@@ -1108,9 +1108,17 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
               const SizedBox(width: AppConstants.spacingS),
 
-              // Chat con el pasajero — visible durante todo el viaje (viajes
-              // normales; pedidos/mandados no usan el chat de viaje).
-              if (!trip.request.isOrder && !trip.request.isErrand) ...[
+              // Chat — visible durante todo el servicio, sea viaje, pedido o
+              // mandado.
+              //
+              // Antes estaba cerrado a pedidos y mandados con un comentario que
+              // decía que «no usan el chat de viaje». Dejó de ser cierto cuando
+              // `_assertParticipant` del backend pasó a autorizar Trip, Errand
+              // U Order: el historial, el texto y la foto funcionan con
+              // cualquiera de los tres ids. Era una capacidad construida sin
+              // puerta — y el repartidor que no encuentra el portón llamaba por
+              // teléfono, que es lo que el contacto protegido evita.
+              ...[
                 Badge(
                   isLabelVisible: _unreadChat > 0,
                   label: Text('$_unreadChat'),
@@ -1125,8 +1133,18 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => TripChatScreen(
-                              tripId: trip.request.id,
-                              peerName: trip.request.passenger.name,
+                              // El id del SERVICIO: en un pedido es el del
+                              // pedido, en un viaje y en un mandado el de la
+                              // solicitud. Es el mismo que el backend resuelve
+                              // contra Trip, Errand u Order.
+                              tripId: trip.request.orderId ?? trip.request.id,
+                              // En un PEDIDO `passenger` es el negocio (así lo
+                              // arma la oferta), pero el chat es con quien
+                              // recibe: poner ahí el nombre del local sería un
+                              // dato falso, no uno que falta.
+                              peerName: trip.request.isOrder
+                                  ? 'Cliente'
+                                  : trip.request.passenger.name,
                               passengerId: trip.request.passenger.id,
                             ),
                           ),

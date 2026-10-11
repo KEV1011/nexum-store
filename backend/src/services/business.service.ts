@@ -30,6 +30,7 @@ import { sugerenciaDeCodigo, type SugerenciaDeCodigo } from '../lib/sugerencia-c
 import { reporteDeVentas, ventanaColombiana, type ReporteVentas } from '../lib/reporte-ventas';
 import { promedioReputacion } from '../lib/reputacion';
 import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
+import { esElMismoNegocio } from '../lib/negocio-duplicado';
 import {
   saneaHorario, estaDentroDelHorario, proximaApertura, horarioEnTexto,
   saneaPausa, enPausa, promoVigente, saneaVigencia, type Franja,
@@ -160,12 +161,54 @@ function _toSummaryDTO(order: {
   };
 }
 
+/**
+ * El negocio de este teléfono que ya se llama igual, o `null`.
+ *
+ * Solo caza el doble envío del mismo formulario: mismo teléfono Y mismo
+ * nombre. Un dueño con dos locales distintos («Pieros» y «Pieros Pizza») sigue
+ * pudiendo registrar los dos.
+ */
+async function _negocioYaRegistrado(
+  telefono: string,
+  nombre: string,
+): Promise<Business | null> {
+  const normal = normalizeColombianPhone(telefono);
+  const ultimos4 = normal.slice(-4);
+  if (!/^\d{4}$/.test(ultimos4)) return null;
+
+  const candidatos = await prisma.business.findMany({
+    where: { phone: { endsWith: ultimos4 } },
+    take: 50,
+  });
+  const yaEsta = candidatos.find(
+    (b) =>
+      normalizeColombianPhone(b.phone ?? '') === normal &&
+      esElMismoNegocio(b.name, nombre),
+  );
+  return yaEsta ? _dbToBusinessInterface(yaEsta) : null;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 const service = {
   // ── Business registration ────────────────────────────────────────────────
 
   async registerBusiness(dto: RegisterBusinessDTO): Promise<Business> {
+    // Un segundo toque en «Registrar» NO crea un segundo negocio.
+    //
+    // La ruta es pública y se usa desde un celular con mala señal: sin esta
+    // comprobación quedaban dos portales con enlaces distintos, el dueño
+    // cargaba el catálogo en uno y los clientes pedían en el otro, vacío.
+    // Se devuelve el que ya existe en vez de rechazar: quien pulsó dos veces
+    // quiere su portal, no un error.
+    //
+    // El criterio de teléfono es EL MISMO de `findBusinessesByPhone` —últimos
+    // cuatro dígitos y comparación normalizada— porque el teléfono se guardó
+    // como lo escribió el dueño. Con dos criterios, el registro diría «ya lo
+    // tienes» y la recuperación no lo encontraría.
+    const yaRegistrado = await _negocioYaRegistrado(dto.phone, dto.name);
+    if (yaRegistrado) return yaRegistrado;
+
     const token = randomUUID().replace(/-/g, '').slice(0, 12);
     // Coordenadas desde la dirección escrita: sin ellas, el despacho de sus
     // pedidos se ancla al centro del pueblo y el cliente no ve dónde está el
@@ -740,14 +783,19 @@ export async function applyProductImport(
   let creados = 0;
   let actualizados = 0;
 
+  // El nombre y la sección pasan por el limpiador IGUAL que en el alta normal.
+  // Antes se escribían crudos: `createBusinessProduct` sí aplica
+  // `nombreDeProducto`, pero esta ruta —que es por donde entran el CSV y la
+  // carta leída de una foto, o sea justo de donde vienen las viñetas del
+  // papel— escribía directo y se las saltaba.
   for (const n of nuevos) {
     await prisma.product.create({
       data: {
         businessId,
-        name: n.nombre,
+        name: nombreDeProducto(n.nombre),
         price: n.precio,
-        category: n.seccion,
-        description: n.descripcion ?? null,
+        category: limpiarTextoDeCarta(n.seccion) || 'General',
+        description: limpiarTextoDeCarta(n.descripcion ?? '') || null,
         barcode: n.barcode ?? null,
         brand: n.brand ?? null,
         unit: n.unit ?? null,
@@ -763,10 +811,12 @@ export async function applyProductImport(
     const res = await prisma.product.updateMany({
       where: { id: a.productId, businessId },
       data: {
-        name: a.nombre,
+        name: nombreDeProducto(a.nombre),
         price: a.precio,
-        category: a.seccion,
-        ...(a.descripcion !== undefined && { description: a.descripcion }),
+        category: limpiarTextoDeCarta(a.seccion) || 'General',
+        ...(a.descripcion !== undefined && {
+          description: limpiarTextoDeCarta(a.descripcion) || null,
+        }),
         ...(a.brand !== undefined && { brand: a.brand }),
         ...(a.unit !== undefined && { unit: a.unit }),
         ...(a.stock !== undefined && { stock: a.stock }),
