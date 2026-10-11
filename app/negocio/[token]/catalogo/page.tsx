@@ -42,6 +42,7 @@ function resolveImg(url?: string): string | undefined {
 
 // Sugerencias por defecto; el dueño puede escribir SUS propias secciones.
 import { MarcaDelLocal } from './MarcaDelLocal'
+import { perfilDe } from '../../perfil-catalogo'
 const CATEGORIES = ['General', 'Entradas', 'Platos fuertes', 'Bebidas', 'Postres', 'Combos', 'Promociones']
 
 /** Unidades de venta para negocios que manejan inventario. */
@@ -56,11 +57,11 @@ const UNIDADES = ['unidad', 'kg', 'g', 'libra', 'litro', 'ml', 'paquete'] as con
  * al revés, cada categoría nueva heredaría el formulario con inventario sin
  * que nadie lo decidiera.
  */
-const CON_INVENTARIO = ['store', 'supermarket', 'pharmacy', 'other']
-
-function manejaInventario(categoria?: string): boolean {
-  return categoria != null && CON_INVENTARIO.includes(categoria)
-}
+// La lista de categorías con inventario y el helper que la leía se
+// retiraron: ahora lo decide `perfilDe()` en `app/negocio/perfil-catalogo.ts`,
+// que además dice qué OTRAS herramientas tienen sentido. Con dos fuentes
+// decidiendo lo mismo, la carta por foto acabaría otra vez en el cajón del
+// inventario — que es el defecto que esto corrige.
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -731,11 +732,14 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   // Inventario (solo visible en supermercado/farmacia/otro)
   const [barcode, setBarcode] = useState('')
   const [brand, setBrand] = useState('')
+  const [model, setModel] = useState('')
+  const [warranty, setWarranty] = useState('')
   const [unit, setUnit] = useState<string>(UNIDADES[0])
   const [stock, setStock] = useState('')
   // Categoría del negocio: decide qué campos se muestran.
   const [bizCategory, setBizCategory] = useState<string | undefined>(undefined)
-  const conInventario = manejaInventario(bizCategory)
+  // Todo lo que este local necesita ver, decidido en un solo sitio.
+  const perfil = perfilDe(bizCategory)
   const [escaneando, setEscaneando] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [seccionFiltro, setSeccionFiltro] = useState('todas')
@@ -831,9 +835,15 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           price: priceNum,
           category,
           description: description.trim() || undefined,
-          ...(conInventario && {
+          // La ficha se manda según el perfil, no según el inventario: son
+          // dos cosas distintas y antes iban juntas.
+          ...(perfil.marca !== 'ninguno' && { brand: brand.trim() || undefined }),
+          ...(perfil.marca === 'marca-modelo-garantia' && {
+            model: model.trim() || undefined,
+            warrantyMonths: warranty.trim() === '' ? null : Number(warranty),
+          }),
+          ...(perfil.existencias && {
             barcode: barcode.trim() || undefined,
-            brand: brand.trim() || undefined,
             unit,
             // Vacío = el negocio no controla existencias de este producto.
             stock: stock.trim() === '' ? null : Number(stock.replace(/[^\d]/g, '')),
@@ -847,7 +857,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       }
       setProducts((prev) => [...prev, json.data as Product])
       setName(''); setPrice(''); setDescription(''); setCategory(CATEGORIES[0])
-      setBarcode(''); setBrand(''); setStock('')
+      setBarcode(''); setBrand(''); setStock(''); setModel(''); setWarranty('')
     } catch {
       setFormError('No se pudo conectar con el servidor.')
     } finally {
@@ -961,7 +971,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             <input
               className={INPUT}
               list="cat-list"
-              placeholder="Sección (ej: Bebidas, Combos…)"
+              placeholder={`${perfil.seccion.una} (ej: ${perfil.ejemploSeccion})`}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               maxLength={40}
@@ -969,9 +979,44 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             <input className={INPUT} placeholder="Descripción (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={140} />
           </div>
 
-          {/* Inventario: solo para negocios que lo manejan. Un restaurante no
-              lleva código de barras ni existencias, y verlos aquí solo estorba. */}
-          {conInventario ? (
+          {/* La ficha del producto. Va APARTE del inventario a propósito: un
+              local de electrodomésticos que no cuente unidades sigue
+              necesitando decir el modelo y la garantía, y antes esos campos
+              colgaban del bloque de existencias. */}
+          {perfil.marca !== 'ninguno' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input
+                className={INPUT}
+                placeholder={perfil.marca === 'marca' ? 'Marca (ej: Diana)' : 'Marca (ej: LG)'}
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+                maxLength={40}
+              />
+              {perfil.marca === 'marca-modelo-garantia' && (
+                <>
+                  <input
+                    className={INPUT}
+                    placeholder="Modelo (ej: WM-1200)"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    maxLength={60}
+                  />
+                  <input
+                    className={INPUT}
+                    placeholder="Garantía en meses"
+                    value={warranty}
+                    onChange={(e) => setWarranty(e.target.value.replace(/[^\d]/g, ''))}
+                    inputMode="numeric"
+                    maxLength={3}
+                  />
+                </>
+              )}
+            </div>
+          ) : null}
+
+          {/* Inventario: solo donde se cuentan unidades. Un restaurante marca
+              el plato como agotado, no lleva «quedan 7 bandejas». */}
+          {perfil.existencias ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
                 Inventario
@@ -984,13 +1029,6 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
                   onChange={(e) => setBarcode(e.target.value)}
                   inputMode="numeric"
                   maxLength={20}
-                />
-                <input
-                  className={INPUT}
-                  placeholder="Marca (ej: Diana)"
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                  maxLength={40}
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1016,8 +1054,8 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             </div>
           ) : null}
 
-          {/* Escáner: solo donde hay código de barras (supermercado/farmacia). */}
-          {conInventario ? (
+          {/* Escáner: solo donde los productos vienen con código impreso. */}
+          {perfil.codigoDeBarras ? (
             <button
               type="button"
               onClick={() => { setAvisoEscaner(null); setEscaneando(true) }}
@@ -1046,14 +1084,20 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           <p className="text-xs text-slate-400 text-center">La foto se agrega después, tocando la imagen del producto.</p>
         </form>
 
-        {/* Carga masiva: un supermercado no teclea 3.000 referencias una por una.
-            Va junto al inventario porque es el mismo tipo de negocio. */}
-        {conInventario ? (
-          <div className="mt-4">
-            <CartaFoto token={token} onImported={() => void load()} />
-            <CsvImport token={token} onImported={() => void load()} />
+        {/* Las dos formas de no teclear el catálogo, y NO son del mismo
+            público — estaban juntas y por eso la carta por foto quedó oculta
+            justo para los restaurantes, que son quienes tienen una carta
+            impresa. Un supermercado recibe un CSV de su proveedor. */}
+        {(perfil.cartaPorFoto || perfil.csvMasivo) && (
+          <div className="mt-4 space-y-4">
+            {perfil.cartaPorFoto && (
+              <CartaFoto token={token} onImported={() => void load()} />
+            )}
+            {perfil.csvMasivo && (
+              <CsvImport token={token} onImported={() => void load()} />
+            )}
           </div>
-        ) : null}
+        )}
 
         {/* Lista */}
         {loading ? (

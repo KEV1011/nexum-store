@@ -97,12 +97,21 @@ describe('la categoría del comercio, en las cuatro superficies', () => {
     expect(faltan).toEqual([]);
   });
 
-  it('el catálogo del portal decide el inventario con una lista de los que SÍ', () => {
-    // Si fuera una excepción para el restaurante, cada categoría nueva
-    // heredaría el formulario con código de barras sin que nadie lo decidiera.
+  it('el catálogo del portal decide por PERFIL, no con una lista suelta', () => {
+    // Esto pedía antes el texto literal `const CON_INVENTARIO = [`, la lista
+    // de categorías con inventario. Falló —correctamente— al sustituirla por
+    // `perfilDe()`: una guarda atada a una EXPRESIÓN concreta estorba al
+    // primer refactor y no dice nada sobre lo que importa.
+    //
+    // Lo que importa es que la decisión esté en UN sitio y probada. La lista
+    // vieja solo sabía de inventario, y por eso la carta por foto —que es del
+    // restaurante, el único que NO estaba en ella— acabó escondida dentro de
+    // su bloque. El perfil decide todas las herramientas a la vez y tiene sus
+    // propias pruebas en `perfil-catalogo.test.ts`.
     const catalogo = leer('app/negocio/[token]/catalogo/page.tsx');
-    expect(catalogo).toContain("const CON_INVENTARIO = [");
-    expect(catalogo).toMatch(/CON_INVENTARIO\s*=\s*\[[^\]]*'store'/);
+    expect(catalogo).toContain("from '../../perfil-catalogo'");
+    expect(catalogo).toContain('perfilDe(bizCategory)');
+    expect(catalogo, 'la lista suelta no puede volver').not.toContain('CON_INVENTARIO = [');
   });
 
   it('el panel admin traduce todas las categorías', () => {

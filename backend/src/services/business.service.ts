@@ -312,6 +312,8 @@ function _productToDTO(p: {
   stock?: number | null;
   unit?: string | null;
   brand?: string | null;
+  model?: string | null;
+  warrantyMonths?: number | null;
   photos?: { id: string; url: string }[];
   optionGroups?: {
     id: string;
@@ -342,6 +344,8 @@ function _productToDTO(p: {
     stock: p.stock ?? undefined,
     unit: p.unit ?? undefined,
     brand: p.brand ?? undefined,
+    model: p.model ?? undefined,
+    warrantyMonths: p.warrantyMonths ?? undefined,
     images: (p.photos ?? []).map((ph) => ({ id: ph.id, url: ph.url })),
     optionGroups: (p.optionGroups ?? []).map((g) => ({
       id: g.id,
@@ -623,6 +627,7 @@ export async function setProductOptions(
  */
 function _inventarioData(dto: {
   barcode?: string; sku?: string; stock?: number | null; unit?: string; brand?: string;
+  model?: string; warrantyMonths?: number | null;
 }) {
   const limpio = (v?: string) => (v?.trim() ? v.trim() : null);
   return {
@@ -634,6 +639,14 @@ function _inventarioData(dto: {
     }),
     ...(dto.unit !== undefined && { unit: limpio(dto.unit) }),
     ...(dto.brand !== undefined && { brand: limpio(dto.brand) }),
+    ...(dto.model !== undefined && { model: limpio(dto.model) }),
+    // La garantía se guarda en MESES enteros y no negativos. Un «24» mal
+    // escrito como «-24» dejaría una ficha que promete una garantía imposible.
+    ...(dto.warrantyMonths !== undefined && {
+      warrantyMonths: dto.warrantyMonths === null
+        ? null
+        : Math.max(0, Math.trunc(Number(dto.warrantyMonths) || 0)) || null,
+    }),
   };
 }
 

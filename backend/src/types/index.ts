@@ -566,6 +566,8 @@ export interface ProductDTO {
   stock?: number;
   unit?: string;
   brand?: string;
+  model?: string;
+  warrantyMonths?: number | null;
 }
 
 // Payload para reemplazar TODAS las opciones de un producto de una vez (el
@@ -596,6 +598,8 @@ export interface CreateProductDTO {
   stock?: number | null;
   unit?: string;
   brand?: string;
+  model?: string;
+  warrantyMonths?: number | null;
 }
 
 export interface UpdateProductDTO {
@@ -616,6 +620,8 @@ export interface UpdateProductDTO {
   stock?: number | null;
   unit?: string;
   brand?: string;
+  model?: string;
+  warrantyMonths?: number | null;
 }
 
 export interface BusinessPublicDTO {

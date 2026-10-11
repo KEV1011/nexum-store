@@ -557,6 +557,14 @@ model Product {
   stock          Int?
   unit           String? // 'unidad' | 'kg' | 'g' | 'litro' | 'libra'
   brand          String?
+  /// Modelo y meses de garantía: lo que distingue el catálogo de un local de
+  /// electrodomésticos del de un supermercado. Nullables, y solo se MUESTRAN
+  /// en las categorías cuyo perfil los pide
+  /// (`app/negocio/perfil-catalogo.ts`); el backend los acepta siempre,
+  /// porque un comercio que cambie de categoría no puede perder lo que ya
+  /// había escrito.
+  model          String?
+  warrantyMonths Int?
   createdAt      DateTime @default(now())
 
   business     Business       @relation(fields: [businessId], references: [id])
