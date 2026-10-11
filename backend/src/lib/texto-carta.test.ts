@@ -76,3 +76,26 @@ describe('un producto sin nombre legible no se guarda', () => {
     expect(() => nombreDeProducto('   ')).toThrow(/obligatorio/i);
   });
 });
+
+describe('las viñetas de una carta impresa', () => {
+  // El OCR copia la viñeta del papel y acababa en el nombre del producto. Se
+  // añadió el bloque de formas geométricas porque faltaba JUSTO el que usan
+  // las cartas: `⬤` (U+2B24) ya se quitaba y `●` (U+25CF) no.
+  it('se quitan', () => {
+    expect(limpiarTextoDeCarta('● Carne asada')).toBe('Carne asada');
+    expect(limpiarTextoDeCarta('▪ Pollo')).toBe('Pollo');
+    expect(limpiarTextoDeCarta('◆ Res a la plancha')).toBe('Res a la plancha');
+    expect(limpiarTextoDeCarta('⬤ Cerdo')).toBe('Cerdo');
+  });
+
+  it('y NO se lleva por delante lo que sí dice algo del plato', () => {
+    // La mitad que importa: el bloque nuevo no toca fracciones, grados,
+    // comillas ni el «&», que son los que de verdad aparecen en una carta.
+    for (const bueno of [
+      'Café ½ libra', 'Pollo 1/4', 'Pollo & papas', 'Jugo 250 ml · grande',
+      'Lomo 180°', 'Arroz "especial"', 'Empanadas (3)',
+    ]) {
+      expect(limpiarTextoDeCarta(bueno)).toBe(bueno);
+    }
+  });
+});
