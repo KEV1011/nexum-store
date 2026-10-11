@@ -27,6 +27,7 @@ import {
 } from '../lib/marca-local';
 import { precioVigente, saneaFinDePromo } from '../lib/promo-producto';
 import { sugerenciaDeCodigo, type SugerenciaDeCodigo } from '../lib/sugerencia-codigo';
+import { reporteDeVentas, ventanaColombiana, type ReporteVentas } from '../lib/reporte-ventas';
 import { promedioReputacion } from '../lib/reputacion';
 import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
 import {
@@ -1411,4 +1412,64 @@ export async function updateMarcaDelLocal(
     select: { brandColor: true, tagline: true },
   });
   return b;
+}
+
+/**
+ * Lo que el negocio vendió en un período, con su detalle.
+ *
+ * Es lo que pedían los dueños —«toda la facturación de lo que se pide»— y lo
+ * que el portal no tenía: solo había el panel de HOY, así que no se podía
+ * cerrar una semana ni un mes. NO es una factura electrónica (ver
+ * `reporte-ventas.ts`): es el reporte con el que se cuadra la caja.
+ *
+ * Se consulta por `createdAt` y no por `deliveredAt` porque es la fecha que el
+ * dueño reconoce —cuándo le pidieron— y es la que ya usa su panel del día; un
+ * pedido tomado a las 11 de la noche y entregado a medianoche cambiaría de día
+ * entre las dos pantallas.
+ */
+export async function getSalesReportForBusiness(
+  businessId: string,
+  from?: string,
+  to?: string,
+): Promise<ReporteVentas> {
+  // La ventana se calcula en hora de COLOMBIA, no con `rangoFechas`: aquél
+  // toma «2026-06-10» como medianoche UTC —las 7 de la tarde del 9 aquí—, y
+  // entonces la consulta cortaba el día a las 6:59 p. m. y la venta de la noche
+  // caía en el día siguiente. La consulta y el agrupamiento parten el día en el
+  // mismo instante o el total no cuadra con la suma de los días.
+  const rango = ventanaColombiana(from, to);
+  const pedidos = await prisma.order.findMany({
+    where: {
+      businessId,
+      status: 'DELIVERED',
+      ...(rango.gte || rango.lte ? { createdAt: rango } : {}),
+    },
+    select: {
+      orderRef: true, createdAt: true, mode: true, status: true,
+      subtotal: true, promoDiscount: true, deliveryFee: true, intercityFee: true,
+      tipAmount: true, paymentMethod: true,
+      lines: { select: { productName: true, quantity: true, unitPrice: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  return reporteDeVentas(
+    pedidos.map((p) => ({
+      ref: p.orderRef,
+      fecha: p.createdAt,
+      mode: p.mode,
+      status: p.status,
+      subtotal: p.subtotal,
+      promoDiscount: p.promoDiscount,
+      deliveryFee: p.deliveryFee,
+      intercityFee: p.intercityFee,
+      tipAmount: p.tipAmount,
+      paymentMethod: p.paymentMethod,
+      lines: p.lines.map((l) => ({
+        nombre: l.productName, quantity: l.quantity, unitPrice: l.unitPrice,
+      })),
+    })),
+    rango.gte,
+    rango.lte,
+  );
 }

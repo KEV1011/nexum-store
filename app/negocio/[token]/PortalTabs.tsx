@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingBag, UtensilsCrossed, Settings } from 'lucide-react'
+import { ShoppingBag, UtensilsCrossed, BarChart3, Settings } from 'lucide-react'
 
 /**
  * Navegación del portal del negocio en teléfono.
@@ -18,6 +18,7 @@ import { ShoppingBag, UtensilsCrossed, Settings } from 'lucide-react'
 const TABS = [
   { key: 'pedidos', label: 'Pedidos', icon: ShoppingBag, path: '' },
   { key: 'catalogo', label: 'Catálogo', icon: UtensilsCrossed, path: '/catalogo' },
+  { key: 'ventas', label: 'Ventas', icon: BarChart3, path: '/ventas' },
   { key: 'ajustes', label: 'Ajustes', icon: Settings, path: '/ajustes' },
 ] as const
 

@@ -7,6 +7,7 @@ import {
   createBusinessProduct,
   findProductByBarcode,
   suggestProductByBarcode,
+  getSalesReportForBusiness,
   getBarcodeIndexForBusiness,
   applyProductImport,
   updateBusinessProduct,
@@ -49,6 +50,7 @@ import {
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
 import { parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
+import { reporteACsv } from '../lib/reporte-ventas';
 import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { PORTAL_BASE_URL } from '../config/constants';
@@ -310,6 +312,41 @@ router.get('/:token/orders', async (req: Request, res: Response): Promise<void> 
       success: false,
       error: message,
     });
+  }
+});
+
+// GET /business/:token/ventas?from&to — el reporte de un período.
+//
+// NO es una factura electrónica: esa la emite un facturador autorizado por la
+// DIAN y el que responde ante ella es el dueño. Esto es con lo que cuadra la
+// caja y lo que le pide el contador. `.csv` devuelve lo mismo para Excel.
+router.get('/:token/ventas', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { from, to } = req.query as { from?: string; to?: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const reporte = await getSalesReportForBusiness(business.id, from, to);
+    res.status(200).json({ success: true, data: reporte });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo armar el reporte';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.get('/:token/ventas.csv', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { from, to } = req.query as { from?: string; to?: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const reporte = await getSalesReportForBusiness(business.id, from, to);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="ventas-zipa.csv"');
+    // El BOM hace que Excel abra el archivo en UTF-8: sin él, «Bandeja paisa»
+    // sale con la tilde partida y el dueño cree que el reporte está corrupto.
+    res.status(200).send('\uFEFF' + reporteACsv(reporte));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo armar el reporte';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });
 
