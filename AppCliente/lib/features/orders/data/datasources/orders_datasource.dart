@@ -15,15 +15,34 @@ class OrdersDataSource {
     if (raw != null) {
       try {
         final list = jsonDecode(raw) as List;
-        return list
-            .map(
-              (j) => CustomerOrderEntity.fromJson(j as Map<String, dynamic>),
-            )
+        // PEDIDO A PEDIDO, no la lista entera.
+        //
+        // Antes el `map` iba dentro de este `try`: un solo pedido que no se
+        // pudiera leer descartaba el historial COMPLETO del usuario. Y es un
+        // caso real, no teórico: esta caché la escribió una versión ANTERIOR
+        // de la app con su `toJson`, así que en cuanto el parser pase a
+        // exigir un campo que entonces no se guardaba, todo el mundo pierde
+        // su historial al actualizar. `fromJson` ya se protegía de eso para
+        // el ESTADO —con su `orElse`— pero cualquier otro campo seguía
+        // teniendo el mismo poder.
+        //
+        // Ahora el peor caso es perder UN pedido, que es información que de
+        // todas formas no se podía leer.
+        final salida = <CustomerOrderEntity>[];
+        for (final j in list) {
+          try {
+            if (j is! Map<String, dynamic>) continue;
+            final o = CustomerOrderEntity.fromJson(j);
             // Purga los pedidos semilla que versiones anteriores persistían.
-            .where((o) => o.id != 'ord-9001' && o.id != 'ord-9000')
-            .toList();
+            if (o.id == 'ord-9001' || o.id == 'ord-9000') continue;
+            salida.add(o);
+          } catch (_) {
+            // Ese pedido no se puede leer; los demás sí.
+          }
+        }
+        return salida;
       } catch (_) {
-        // JSON corrupto: ignorar el cache.
+        // El JSON entero está corrupto: ahí sí no hay nada que rescatar.
       }
     }
     return const [];
