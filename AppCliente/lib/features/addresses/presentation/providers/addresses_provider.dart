@@ -15,23 +15,35 @@ class AddressesNotifier extends StateNotifier<List<AddressEntity>> {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(AppConstants.addressesStorageKey);
     if (!mounted) return;
-    if (raw == null) {
-      const seed = [
-        AddressEntity(
-          id: 'addr-default',
-          alias: 'Casa',
-          fullAddress: 'Calle 6 #2-30, Barrio Belén',
-          isDefault: true,
-        ),
-      ];
-      state = seed;
-      unawaited(_persist(seed));
+    // SIN DIRECCIONES SE EMPIEZA VACÍO. Aquí se sembraba una «Casa» en
+    // «Calle 6 #2-30, Barrio Belén» —una calle inventada— marcada como
+    // predeterminada, así que todo el que instalaba la app estrenaba una
+    // dirección de entrega que nunca escribió: el chip del inicio la
+    // enseñaba y el checkout la usaba, con el repartidor yendo a un sitio que
+    // no es el de nadie. La pantalla ya dice «Elige tu dirección» cuando no
+    // hay ninguna, y el checkout ofrece «Agregar dirección».
+    if (raw == null || raw.isEmpty) return;
+
+    // DIRECCIÓN A DIRECCIÓN, y con el JSON entero protegido: esto corre en el
+    // constructor sin `await`, así que lanzar aquí era un error asíncrono sin
+    // dueño que dejaba a la persona sin NINGUNA de sus direcciones guardadas.
+    final guardadas = <AddressEntity>[];
+    try {
+      for (final e in jsonDecode(raw) as List<dynamic>) {
+        if (e is! Map<String, dynamic>) continue;
+        try {
+          guardadas.add(AddressEntity.fromJson(e));
+        } catch (_) {
+          // Esa dirección no se puede leer; las demás sí.
+        }
+      }
+    } catch (_) {
+      // El archivo entero está corrupto. No se sobreescribe: así, una
+      // versión futura que sepa leerlo todavía puede recuperarlo.
       return;
     }
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    state = decoded
-        .map((e) => AddressEntity.fromJson(e as Map<String, dynamic>))
-        .toList();
+    if (!mounted) return;
+    state = guardadas;
   }
 
   Future<void> _persist(List<AddressEntity> list) async {
