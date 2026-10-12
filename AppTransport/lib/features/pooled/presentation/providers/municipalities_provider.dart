@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/core/utils/lista_json.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
 
 /// Municipios a los que se puede viajar, traídos del backend.
@@ -25,17 +26,20 @@ class MunicipalitiesNotifier extends StateNotifier<List<PooledCity>> {
     try {
       final res =
           await DioClient().dio.get<Map<String, dynamic>>('/geo/municipios');
-      final lista = res.data?['data'] as List<dynamic>?;
-      if (lista == null || lista.isEmpty) return;
-      final municipios = lista.map((e) {
-        final m = e as Map<String, dynamic>;
-        return PooledCity(
+      // MUNICIPIO A MUNICIPIO: con un `map` sobre la lista entera, una sola
+      // fila ilegible saltaba al `catch` de abajo y la app se quedaba con el
+      // respaldo de siete ciudades, sin ninguna pista de por qué.
+      final municipios = listaDeJson(
+        res.data?['data'],
+        (m) => PooledCity(
           m['slug'] as String,
           m['name'] as String,
           (m['lat'] as num?)?.toDouble(),
           (m['lng'] as num?)?.toDouble(),
-        );
-      }).toList();
+        ),
+      );
+      // Vacío = no se publica: el respaldo de siete es mejor que ninguna.
+      if (municipios.isEmpty) return;
       // Se publica en la clase para que todo lo que lee `PooledCity.values` o
       // `fromApi` —desplegables, ofertas intermunicipales, salidas publicadas—
       // vea la lista completa sin pasarla por parámetro.

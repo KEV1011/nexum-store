@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/core/utils/lista_json.dart';
 
 enum NotificationType { trip, payment, document, promo, system, rating }
 
@@ -51,9 +52,9 @@ class NotificationNotifier extends StateNotifier<List<AppNotification>> {
           await _client.get<Map<String, dynamic>>('/driver/notifications');
       final list = res.data?['data'] as List<dynamic>?;
       if (list == null || !mounted) return;
-      state = list
-          .map((e) => _fromDto(e as Map<String, dynamic>))
-          .toList(growable: false);
+      // Aviso a aviso: uno ilegible dejaba el feed entero vacío, que se lee
+      // como «no tienes avisos».
+      state = listaDeJson(list, _fromDto);
     } catch (_) {
       // Sin conexión: el feed queda vacío (la pantalla muestra su estado vacío).
     }

@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/utils/lista_json.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
@@ -562,10 +563,9 @@ final tripHistoryProvider =
   final dio = ref.read(apiClientProvider);
   try {
     final res = await dio.get<Map<String, dynamic>>('/client/trips/history');
-    final data = res.data?['data'] as List<dynamic>? ?? const [];
-    return data
-        .map((e) => TransportRequestEntity.fromJson(e as Map<String, dynamic>))
-        .toList();
+    // Viaje a viaje: uno ilegible caía al `catch` y se enseñaba el historial
+    // local, más viejo, sin decir que lo era.
+    return listaDeJson(res.data?['data'], TransportRequestEntity.fromJson);
   } catch (_) {
     return ref.read(transportProvider).past;
   }

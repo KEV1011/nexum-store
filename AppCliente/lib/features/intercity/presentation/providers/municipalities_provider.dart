@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/utils/lista_json.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 
 /// Municipios a los que se puede viajar, traídos del backend.
@@ -30,21 +31,24 @@ class MunicipalitiesNotifier extends StateNotifier<List<IntercityCity>> {
       final res = await _ref
           .read(apiClientProvider)
           .get<Map<String, dynamic>>('/geo/municipios');
-      final lista = res.data?['data'] as List<dynamic>?;
-      if (lista == null || lista.isEmpty) return;
-      final municipios = lista
-          .map((e) {
-            final m = e as Map<String, dynamic>;
-            return IntercityCity(
-              m['slug'] as String,
-              m['name'] as String,
-              m['department'] as String? ?? '',
-              // Centroide del backend: es lo que dibuja la ruta en el mapa.
-              (m['lat'] as num?)?.toDouble(),
-              (m['lng'] as num?)?.toDouble(),
-            );
-          })
-          .toList();
+      // MUNICIPIO A MUNICIPIO: con un `map` sobre la lista entera, una sola
+      // fila ilegible saltaba al `catch` de abajo y la app se quedaba con el
+      // respaldo de siete ciudades — justo el síntoma que ya se reportó
+      // («sigue saliendo la lista de siete»), sin ninguna pista de por qué.
+      final municipios = listaDeJson(
+        res.data?['data'],
+        (m) => IntercityCity(
+          m['slug'] as String,
+          m['name'] as String,
+          m['department'] as String? ?? '',
+          // Centroide del backend: es lo que dibuja la ruta en el mapa.
+          (m['lat'] as num?)?.toDouble(),
+          (m['lng'] as num?)?.toDouble(),
+        ),
+      );
+      // Vacío = no se publica: dejaría el buscador sin una sola ciudad, y el
+      // respaldo de siete es mejor que ninguna.
+      if (municipios.isEmpty) return;
       // Se publica en la clase para que todo lo que lee `IntercityCity.values`
       // —desplegables, parseo de reservas, buscador de cupos— vea la lista
       // completa sin tener que pasarla por parámetro.

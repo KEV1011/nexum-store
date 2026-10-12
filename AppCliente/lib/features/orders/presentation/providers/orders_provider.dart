@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/utils/lista_json.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
 import 'package:nexum_client/features/orders/data/datasources/'
@@ -85,9 +86,9 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       final res = await _dio.get<Map<String, dynamic>>('/client/orders');
       final list = res.data?['data'] as List<dynamic>?;
       if (list == null) throw Exception('sin datos');
-      final remote = list
-          .map((e) => CustomerOrderEntity.fromApi(e as Map<String, dynamic>))
-          .toList();
+      // Pedido a pedido: uno ilegible saltaba al `catch` y la pantalla
+      // enseñaba el historial VIEJO del teléfono como si fuera el de ahora.
+      final remote = listaDeJson(list, CustomerOrderEntity.fromApi);
       // La calificación es local del cliente (el backend no la guarda en el
       // resumen): se conserva superponiéndola por id sobre el historial remoto.
       final local = await _dataSource.fetchOrderHistory();

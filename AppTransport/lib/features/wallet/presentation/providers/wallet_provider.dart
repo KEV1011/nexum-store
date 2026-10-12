@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/core/utils/lista_json.dart';
 import 'package:nexum_driver/features/wallet/domain/entities/payout_entity.dart';
 
 class WalletState {
@@ -50,9 +51,10 @@ class WalletNotifier extends StateNotifier<WalletState> {
       state = WalletState(
         balance:
             balanceData != null ? DriverBalance.fromJson(balanceData) : null,
-        payouts: (payoutsData ?? [])
-            .map((e) => PayoutItem.fromJson(e as Map<String, dynamic>))
-            .toList(),
+        // Retiro a retiro: uno ilegible saltaba al `catch` y el conductor
+        // veía «No se pudo cargar tu billetera» con el SALDO ya leído y
+        // tirado a la basura — justo lo que entra a mirar.
+        payouts: listaDeJson(payoutsData, PayoutItem.fromJson),
         isLoading: false,
       );
     } catch (_) {
