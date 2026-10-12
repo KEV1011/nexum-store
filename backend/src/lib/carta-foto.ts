@@ -40,6 +40,15 @@ export interface LineaCarta {
   seccion: string;
   /** Por qué hay que mirar esta fila. Ausente = salió limpia. */
   aviso?: string;
+  /**
+   * Los precios que traía la línea cuando eran VARIOS («Jugo 5.000 / 7.000»).
+   *
+   * Se conservan en vez de perderse dentro del texto del aviso: es el mismo
+   * plato en dos tamaños bastante a menudo, y `carta-variantes` los necesita
+   * para poder proponer que se agrupen. Que el precio siga en `null` es
+   * deliberado — esta fila no se puede importar hasta que alguien decida.
+   */
+  precios?: number[];
 }
 
 export interface CartaLeida {
@@ -195,8 +204,12 @@ function pareceSeccion(nombre: string, grande?: boolean): boolean {
  * Los títulos de una carta van gritados y en la app se leerían gritando.
  * «PLATOS FUERTES» → «Platos fuertes». Si el dueño ya escribió con
  * mayúsculas y minúsculas, se respeta tal cual.
+ *
+ * Se exporta para que `carta-variantes` destape igual los nombres de los
+ * tamaños («PEQUEÑA» → «Pequeña») y el del plato base: con una copia, la
+ * sección y el producto de la MISMA carta acabarían escritos distinto.
  */
-function tituloDeSeccion(texto: string): string {
+export function tituloDeSeccion(texto: string): string {
   const limpio = texto.replace(/\s{2,}/g, ' ').trim();
   if (limpio !== limpio.toUpperCase()) return limpio;
   const bajo = limpio.toLowerCase();
@@ -382,9 +395,9 @@ function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): Ca
       // 7.000» quedarse con el primero vende barato el familiar y con el
       // último cobra de más el personal. Se deja vacío y se dice lo que hay.
       salida.lineas.push({
-        linea, nombre, precio: null, seccion,
+        linea, nombre, precio: null, seccion, precios,
         aviso: `Tiene ${precios.length} precios (${precios.map(comoPesos).join(' y ')}). `
-          + 'Deja uno, o créalo como dos productos.',
+          + 'Deja uno, o agrúpalos como tamaños del mismo plato.',
       });
       continue;
     }

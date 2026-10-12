@@ -8,7 +8,11 @@
  * carta se vea mal en el teléfono de un comensal.
  */
 import { describe, it, expect } from 'vitest';
-import { agruparVale, idDeSeccion, seccionConFotos } from '../../../app/carta/reglas';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import {
+  agruparVale, idDeSeccion, precioDesde, seccionConFotos,
+} from '../../../app/carta/reglas';
 
 describe('el ancla de una sección', () => {
   it('sobrevive a tildes, espacios y mayúsculas', () => {
@@ -67,5 +71,75 @@ describe('agrupar en secciones solo cuando agrupa algo', () => {
   it('con una sola sección no hay nada que agrupar', () => {
     expect(agruparVale([sec(20)])).toBe(false);
     expect(agruparVale([])).toBe(false);
+  });
+});
+
+describe('«Desde» cuando el precio de la lista no es el que se paga', () => {
+  const tamano = {
+    required: true,
+    options: [{ priceDelta: 0 }, { priceDelta: 41000 }],
+  };
+  const adiciones = { required: false, options: [{ priceDelta: 3000 }] };
+
+  it('una variante OBLIGATORIA que cuesta más: sí', () => {
+    // El caso del dueño: la misma picada a 39.000 / 46.000 / 80.000.
+    expect(precioDesde({ optionGroups: [tamano] })).toBe(true);
+  });
+
+  it('un grupo OPCIONAL no lo cambia', () => {
+    // Quien no añade nada paga el precio de la lista: poner «Desde» ahí haría
+    // dudar de un precio que es exacto.
+    expect(precioDesde({ optionGroups: [adiciones] })).toBe(false);
+  });
+
+  it('un grupo obligatorio SIN recargo tampoco', () => {
+    // «Elige la salsa» es obligatorio y todas cuestan igual.
+    expect(precioDesde({
+      optionGroups: [{ required: true, options: [{ priceDelta: 0 }, { priceDelta: 0 }] }],
+    })).toBe(false);
+  });
+
+  it('un plato sin opciones, nunca', () => {
+    expect(precioDesde({ optionGroups: [] })).toBe(false);
+  });
+
+  it('basta UN grupo obligatorio con recargo entre varios', () => {
+    expect(precioDesde({ optionGroups: [adiciones, tamano] })).toBe(true);
+  });
+});
+
+/**
+ * La MISMA regla en la app del cliente.
+ *
+ * No se puede compartir código entre Dart y TypeScript, y esto no es una
+ * duplicación cualquiera: el comensal sentado con el QR y el que pide desde el
+ * teléfono están mirando el mismo plato del mismo local. Que uno vea «Desde
+ * $39.000» y el otro «$39.000» es la clase de contradicción que se descubre
+ * discutiendo el precio en la mesa.
+ *
+ * LO QUE ESTO NO PUEDE CAZAR, y queda escrito para que nadie se confíe: es una
+ * comprobación sobre el TEXTO del getter de Dart, no sobre lo que hace. Pilla
+ * las dos derivas realistas —que alguien quite el `required` (y entonces unas
+ * adiciones opcionales pondrían «Desde») o cambie el `> 0` por `>= 0` (y lo
+ * pondría en todo plato con variantes)—, no una reescritura entera.
+ */
+describe('la app del cliente decide igual', () => {
+  const DART = join(
+    __dirname, '..', '..', '..', 'AppCliente', 'lib', 'features', 'businesses',
+    'domain', 'entities', 'business_entity.dart',
+  );
+
+  it('el getter `precioDesde` existe en la entidad del producto', () => {
+    expect(readFileSync(DART, 'utf8')).toContain('bool get precioDesde');
+  });
+
+  it('y exige lo mismo: grupo obligatorio y alguna opción que cuesta más', () => {
+    const fuente = readFileSync(DART, 'utf8');
+    const desde = fuente.indexOf('bool get precioDesde');
+    // El cuerpo acaba en el primer `;` de nivel: es una expresión `=>`.
+    const cuerpo = fuente.slice(desde, fuente.indexOf(';', desde));
+    expect(cuerpo).toMatch(/\.required\b/);
+    expect(cuerpo).toMatch(/priceDelta\s*>\s*0/);
+    expect(cuerpo).not.toMatch(/priceDelta\s*>=\s*0/);
   });
 });

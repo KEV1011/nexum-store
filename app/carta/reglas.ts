@@ -63,3 +63,30 @@ export function agruparVale(secciones: { items: unknown[] }[]): boolean {
   const platos = secciones.reduce((n, s) => n + s.items.length, 0)
   return platos / secciones.length >= 2
 }
+
+/**
+ * ¿El precio de la lista NO es lo que se va a pagar?
+ *
+ * Pasa cuando una variante OBLIGATORIA cuesta más que la básica: la misma
+ * picada vale 39.000 pequeña y 80.000 grande, y nadie puede pedirla sin elegir
+ * tamaño. Enseñar «$39.000» a secas es prometer un precio que la caja no va a
+ * respetar — por eso la carta escribe «Desde».
+ *
+ * Un grupo OPCIONAL (adiciones, salsas) no cuenta: ahí el precio de la lista sí
+ * se paga tal cual, sin añadir nada, y poner «Desde» haría dudar de un precio
+ * que es exacto.
+ *
+ * ES LA MISMA REGLA QUE `ProductEntity.precioDesde` DE LA APP, y tiene que
+ * seguir siéndolo: el comensal sentado con el QR y el que pide desde el
+ * teléfono están mirando el mismo plato del mismo local, y que uno vea «Desde
+ * $39.000» y el otro «$39.000» es la clase de contradicción que se descubre
+ * discutiendo el precio en la mesa. No se puede compartir código entre Dart y
+ * TypeScript, así que lo vigila `backend/src/lib/carta-reglas.test.ts`.
+ */
+export function precioDesde(producto: {
+  optionGroups: { required: boolean; options: { priceDelta: number }[] }[]
+}): boolean {
+  return producto.optionGroups.some(
+    (g) => g.required && g.options.some((o) => o.priceDelta > 0),
+  )
+}

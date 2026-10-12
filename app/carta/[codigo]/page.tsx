@@ -19,7 +19,7 @@ import {
   type Producto,
 } from '../api'
 import { LineaTiempo } from '../LineaTiempo'
-import { agruparVale, idDeSeccion, seccionConFotos } from '../reglas'
+import { agruparVale, idDeSeccion, precioDesde, seccionConFotos } from '../reglas'
 
 /**
  * La carta del restaurante, abierta desde el QR de la mesa.
@@ -774,6 +774,13 @@ function Plato({ producto: p, conFoto, deshabilitado, onElegir }: {
           <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{p.description}</p>
         )}
         <p className="mt-1 flex items-baseline gap-1.5">
+          {/* «Desde» cuando hay que elegir una variante que cuesta más. La
+              misma picada vale 39.000 pequeña y 80.000 grande: el precio
+              suelto es una promesa que la caja no cumple, y aquí el comensal
+              lo descubriría discutiéndolo en la mesa. */}
+          {precioDesde(p) && (
+            <span className="text-xs font-semibold text-slate-500">Desde</span>
+          )}
           <span className="text-[15px] font-bold text-slate-900">{formatCOP(p.price)}</span>
           {p.compareAtPrice ? (
             <span className="text-xs font-normal text-slate-400 line-through">

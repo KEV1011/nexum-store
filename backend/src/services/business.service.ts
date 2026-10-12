@@ -779,9 +779,14 @@ export async function applyProductImport(
     barcode?: string; brand?: string; unit?: string; stock?: number | null }>,
   actualizaciones: Array<{ productId: string; nombre: string; precio: number; seccion: string;
     descripcion?: string; barcode?: string; brand?: string; unit?: string; stock?: number | null }>,
-): Promise<{ creados: number; actualizados: number }> {
+): Promise<{ creados: number; actualizados: number; idsNuevos: string[] }> {
   let creados = 0;
   let actualizados = 0;
+  // Alineado con `nuevos`, posición a posición: la carta por foto necesita el
+  // id del producto que acaba de crear para colgarle sus tamaños, y buscarlo
+  // después por nombre fallaría justo donde más duele —dos platos que se
+  // llaman igual—.
+  const idsNuevos: string[] = [];
 
   // El nombre y la sección pasan por el limpiador IGUAL que en el alta normal.
   // Antes se escribían crudos: `createBusinessProduct` sí aplica
@@ -789,7 +794,7 @@ export async function applyProductImport(
   // carta leída de una foto, o sea justo de donde vienen las viñetas del
   // papel— escribía directo y se las saltaba.
   for (const n of nuevos) {
-    await prisma.product.create({
+    const creado = await prisma.product.create({
       data: {
         businessId,
         name: nombreDeProducto(n.nombre),
@@ -802,6 +807,7 @@ export async function applyProductImport(
         stock: n.stock ?? null,
       },
     });
+    idsNuevos.push(creado.id);
     creados++;
   }
 
@@ -825,7 +831,7 @@ export async function applyProductImport(
     if (res.count > 0) actualizados++;
   }
 
-  return { creados, actualizados };
+  return { creados, actualizados, idsNuevos };
 }
 
 export async function createBusinessProduct(

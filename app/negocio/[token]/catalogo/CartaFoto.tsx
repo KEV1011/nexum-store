@@ -1,7 +1,15 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Camera, AlertTriangle, Trash2, Loader2 } from 'lucide-react'
+import { Camera, AlertTriangle, Trash2, Loader2, Layers, Split } from 'lucide-react'
+
+import { BOTON, TARJETA } from '../../../ui'
+import {
+  motivoParaNoAgrupar,
+  pesosDeTexto,
+  varianteParaEnviar,
+  type VarianteEditable,
+} from '../../../variantes-carta'
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://nexum-api-trxr.onrender.com'
@@ -14,13 +22,35 @@ interface LineaCarta {
   aviso?: string
 }
 
+interface VarianteSugerida {
+  nombre: string
+  seccion: string
+  precioBase: number
+  grupo: string
+  opciones: Array<{ nombre: string; precio: number; precioDelta: number }>
+  lineas: number[]
+  faltanNombres: boolean
+}
+
 /** Lo que el dueño está editando. `precio` es texto porque se está tecleando. */
 interface FilaEditable {
   id: number
+  /** Línea de la carta: es lo que enlaza una fila con su grupo de tamaños. */
+  linea: number
   nombre: string
   precio: string
   seccion: string
   aviso?: string
+}
+
+/** Un grupo de tamaños en edición. Cada tamaño con SU precio, como la carta. */
+interface VarEditable extends VarianteEditable {
+  id: number
+  lineas: number[]
+  /** Nació de una línea con varios precios: hay que bautizar los tamaños. */
+  faltanNombres: boolean
+  /** El dueño quiere agruparlos. Si no, sus filas vuelven a la tabla. */
+  aceptada: boolean
 }
 
 /**
@@ -39,6 +69,12 @@ interface FilaEditable {
  * inventa precios, y crear un plato con el precio equivocado es plata y una
  * queja, mientras que un plato que falta es una fila que se añade en diez
  * segundos.
+ *
+ * LOS TAMAÑOS. Una carta escribe la picada tres veces —pequeña, mediana,
+ * grande— y eso son tres productos sueltos que en la app se leen como tres
+ * platos distintos. Arriba de la tabla se proponen agrupados: un plato con su
+ * grupo de tamaños, que es como se modela de verdad. El dueño puede dejarlos
+ * separados, y entonces sus filas vuelven a la tabla.
  */
 export function CartaFoto({ token, onImported }: { token: string; onImported: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -47,6 +83,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   const [error, setError] = useState<string | null>(null)
   const [resultado, setResultado] = useState<string | null>(null)
   const [filas, setFilas] = useState<FilaEditable[] | null>(null)
+  const [variantes, setVariantes] = useState<VarEditable[]>([])
   // Las secciones que el lector reconoció en la foto. El backend ya las
   // devolvía y este componente las IGNORABA, así que el dueño tenía que
   // escribir «Hamburguesas» plato por plato — y cada variante tecleada
@@ -66,7 +103,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
       })
       const json = (await res.json()) as {
         success: boolean
-        data?: { lineas: LineaCarta[]; secciones?: string[] }
+        data?: { lineas: LineaCarta[]; secciones?: string[]; variantes?: VarianteSugerida[] }
         error?: string
       }
       if (!json.success || !json.data) {
@@ -81,9 +118,26 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
         return
       }
       setSecciones(json.data.secciones ?? [])
+      setVariantes(
+        (json.data.variantes ?? []).map((v, i) => ({
+          id: i,
+          nombre: v.nombre,
+          seccion: v.seccion,
+          grupo: v.grupo,
+          opciones: v.opciones.map((o) => ({ nombre: o.nombre, precio: String(o.precio) })),
+          lineas: v.lineas,
+          faltanNombres: v.faltanNombres,
+          // Las que vienen de varias líneas nacen aceptadas: los nombres de
+          // los tamaños los escribió la carta. Las que salen de UNA línea con
+          // varios precios no, porque todavía no tienen nombre y aceptarlas
+          // solas dejaría al dueño con un formulario a medias sin pedirlo.
+          aceptada: !v.faltanNombres,
+        })),
+      )
       setFilas(
         json.data.lineas.map((l, i) => ({
           id: i,
+          linea: l.linea,
           nombre: l.nombre,
           precio: l.precio == null ? '' : String(l.precio),
           seccion: l.seccion,
@@ -104,14 +158,34 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
     )
   }
 
-  /** Lo que el dueño escribió, en pesos. Vacío o basura = sin precio. */
-  function pesos(texto: string): number | null {
-    const n = Number(texto.replace(/[^\d]/g, ''))
-    return Number.isFinite(n) && n > 0 ? n : null
+  function editarVariante(id: number, cambio: Partial<VarEditable>) {
+    setVariantes((prev) => prev.map((v) => (v.id === id ? { ...v, ...cambio } : v)))
   }
 
-  const listas = (filas ?? []).filter((f) => f.nombre.trim() && pesos(f.precio) != null)
-  const fuera = (filas ?? []).length - listas.length
+  function editarOpcion(id: number, i: number, campo: 'nombre' | 'precio', valor: string) {
+    setVariantes((prev) =>
+      prev.map((v) =>
+        v.id === id
+          ? { ...v, opciones: v.opciones.map((o, j) => (j === i ? { ...o, [campo]: valor } : o)) }
+          : v,
+      ),
+    )
+  }
+
+  // Las filas que un grupo se llevó no se pintan dos veces: estarían a la vez
+  // dentro del plato con tamaños y sueltas en la tabla, y se crearían dos
+  // veces. Si el dueño deshace el grupo, vuelven solas.
+  const agrupadas = new Set(variantes.filter((v) => v.aceptada).flatMap((v) => v.lineas))
+  const visibles = (filas ?? []).filter((f) => !agrupadas.has(f.linea))
+
+  const listas = visibles.filter((f) => f.nombre.trim() && pesosDeTexto(f.precio) != null)
+  const fuera = visibles.length - listas.length
+
+  const aceptadas = variantes.filter((v) => v.aceptada)
+  const problemas = aceptadas
+    .map((v) => ({ v, motivo: motivoParaNoAgrupar(varianteParaEnviar(v)) }))
+    .filter((x): x is { v: VarEditable; motivo: string } => x.motivo !== null)
+  const total = listas.length + (aceptadas.length - problemas.length)
 
   async function crear() {
     setCreando(true)
@@ -123,23 +197,28 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
         body: JSON.stringify({
           filas: listas.map((f) => ({
             nombre: f.nombre.trim(),
-            precio: pesos(f.precio),
+            precio: pesosDeTexto(f.precio),
             seccion: f.seccion.trim(),
           })),
+          variantes: aceptadas.map(varianteParaEnviar),
         }),
       })
       const json = (await res.json()) as {
         success: boolean
-        data?: { creados: number; actualizados: number }
+        data?: { creados: number; actualizados: number; conTamanos?: number }
         error?: string
       }
       if (json.success && json.data) {
-        const { creados, actualizados } = json.data
+        const { creados, actualizados, conTamanos = 0 } = json.data
         setResultado(
           `Listo: ${creados} producto${creados === 1 ? '' : 's'} creado${creados === 1 ? '' : 's'}`
+          + (conTamanos > 0
+            ? `, ${conTamanos} con tamaños`
+            : '')
           + (actualizados > 0 ? `, ${actualizados} actualizado${actualizados === 1 ? '' : 's'}.` : '.'),
         )
         setFilas(null)
+        setVariantes([])
         onImported()
       } else {
         setError(json.error ?? 'No se pudo crear el catálogo.')
@@ -152,7 +231,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   }
 
   return (
-    <section className="bg-white border border-slate-200 rounded-2xl p-4 mb-4">
+    <section className={`${TARJETA} p-4 mb-4`}>
       <h2 className="font-bold text-slate-900 text-sm">Tu carta, desde una foto</h2>
       <p className="text-xs text-slate-500 mt-0.5">
         Tómale una foto a tu carta impresa y te dejamos los platos escritos.
@@ -179,7 +258,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={leyendo}
-          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+          className={`${BOTON.principal} mt-3`}
         >
           {leyendo
             ? <><Loader2 className="w-4 h-4 animate-spin" /> Leyendo la carta…</>
@@ -202,9 +281,137 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
 
       {filas !== null && (
         <>
-          <p className="mt-3 text-xs text-slate-600">
-            Encontramos <strong>{filas.length}</strong> línea{filas.length === 1 ? '' : 's'}.
-            Corrige lo que haga falta y borra lo que no sea un plato.
+          {variantes.length > 0 && (
+            <div className="mt-4">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                El mismo plato en varios tamaños
+              </h3>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Así el cliente ve un solo plato y elige el tamaño al pedir, en vez
+                de {variantes[0]?.opciones.length ?? 2} platos parecidos en la lista.
+              </p>
+
+              <div className="mt-2 space-y-2">
+                {variantes.map((v) => {
+                  const motivo = v.aceptada
+                    ? motivoParaNoAgrupar(varianteParaEnviar(v))
+                    : null
+                  return (
+                    <div
+                      key={v.id}
+                      className={`rounded-xl border p-3 ${
+                        v.aceptada
+                          ? motivo
+                            ? 'border-amber-300 bg-amber-50'
+                            : 'border-emerald-200 bg-emerald-50/50'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      {!v.aceptada ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-slate-600">
+                            <strong className="text-slate-900">{v.nombre}</strong>{' '}
+                            tiene {v.opciones.length} precios.
+                            {v.faltanNombres && ' ¿Son tamaños del mismo plato?'}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => editarVariante(v.id, { aceptada: true })}
+                            className={`${BOTON.secundario} !min-h-[36px] !px-3 !text-xs`}
+                          >
+                            <Layers className="w-3.5 h-3.5" /> Agruparlos
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap items-end gap-2">
+                            <label className="flex-1 min-w-[140px] text-[11px] font-semibold text-slate-600">
+                              Plato
+                              <input
+                                value={v.nombre}
+                                onChange={(e) => editarVariante(v.id, { nombre: e.target.value })}
+                                className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-xs font-normal text-slate-900"
+                              />
+                            </label>
+                            <label className="w-28 text-[11px] font-semibold text-slate-600">
+                              Grupo
+                              <input
+                                value={v.grupo}
+                                onChange={(e) => editarVariante(v.id, { grupo: e.target.value })}
+                                className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-xs font-normal text-slate-900"
+                              />
+                            </label>
+                            <label className="w-32 text-[11px] font-semibold text-slate-600">
+                              Sección
+                              <input
+                                value={v.seccion}
+                                list="carta-secciones"
+                                onChange={(e) => editarVariante(v.id, { seccion: e.target.value })}
+                                className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-xs font-normal text-slate-900"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="mt-2 space-y-1">
+                            {v.opciones.map((o, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <input
+                                  value={o.nombre}
+                                  placeholder="Pequeña, mediana, grande…"
+                                  onChange={(e) => editarOpcion(v.id, i, 'nombre', e.target.value)}
+                                  className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs"
+                                />
+                                <input
+                                  value={o.precio}
+                                  inputMode="numeric"
+                                  placeholder="—"
+                                  onChange={(e) => editarOpcion(v.id, i, 'precio', e.target.value)}
+                                  className="w-24 rounded border border-slate-300 px-2 py-1 text-xs"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={`Quitar el tamaño ${o.nombre || i + 1}`}
+                                  onClick={() =>
+                                    editarVariante(v.id, {
+                                      opciones: v.opciones.filter((_, j) => j !== i),
+                                    })}
+                                  className="rounded p-1 text-slate-400 hover:bg-white hover:text-red-600"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          {motivo && (
+                            <p className="mt-2 flex items-start gap-1.5 text-[11px] font-semibold text-amber-800">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                              {motivo}
+                            </p>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => editarVariante(v.id, { aceptada: false })}
+                            className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+                          >
+                            <Split className="w-3.5 h-3.5" /> Dejarlos separados
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          <p className="mt-4 text-xs text-slate-600">
+            {visibles.length === 0
+              ? 'Todas las líneas quedaron agrupadas arriba.'
+              : <>Encontramos <strong>{visibles.length}</strong> línea{visibles.length === 1 ? '' : 's'} más.
+                Corrige lo que haga falta y borra lo que no sea un plato.</>}
           </p>
 
           <div className="mt-2 overflow-x-auto">
@@ -218,8 +425,8 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                 </tr>
               </thead>
               <tbody>
-                {filas.map((f) => {
-                  const sinPrecio = pesos(f.precio) == null
+                {visibles.map((f) => {
+                  const sinPrecio = pesosDeTexto(f.precio) == null
                   return (
                     <tr
                       key={f.id}
@@ -285,21 +492,28 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             </p>
           )}
 
+          {problemas.length > 0 && (
+            <p className="mt-2 text-[11px] font-semibold text-amber-800">
+              Termina de armar {problemas.length === 1 ? 'el grupo' : `los ${problemas.length} grupos`}{' '}
+              de tamaños de arriba, o déjalos separados.
+            </p>
+          )}
+
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => void crear()}
-              disabled={creando || listas.length === 0}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              disabled={creando || total === 0 || problemas.length > 0}
+              className={BOTON.principal}
             >
               {creando
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando…</>
-                : `Crear ${listas.length} producto${listas.length === 1 ? '' : 's'}`}
+                : `Crear ${total} producto${total === 1 ? '' : 's'}`}
             </button>
             <button
               type="button"
-              onClick={() => { setFilas(null); setError(null) }}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              onClick={() => { setFilas(null); setVariantes([]); setError(null) }}
+              className={BOTON.secundario}
             >
               Descartar
             </button>

@@ -160,6 +160,11 @@ const CARTA_DE_PRUEBA = [
   'PLATOS FUERTES',
   'Bandeja paisa ....... $25.000',
   'Mojarra frita 22.500',
+  // El mismo plato escrito dos veces por tamaño: es como está impresa
+  // cualquier carta de aquí, y es lo que `carta-variantes` tiene que proponer
+  // agrupar en vez de dejar dos productos que se leen como dos platos.
+  'Picada pequeña 39.000',
+  'Picada grande 80.000',
   'BEBIDAS',
   'Jugo natural 5.000 / 7.000',
   'Gaseosa 3.500',
