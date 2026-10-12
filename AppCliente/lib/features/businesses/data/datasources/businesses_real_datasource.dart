@@ -9,8 +9,21 @@ class BusinessesRealDataSource {
 
   Future<List<BusinessEntity>> fetchBusinesses() async {
     final res = await _dio.get<Map<String, dynamic>>('/client/businesses');
-    final data = (res.data!['data'] as List).cast<Map<String, dynamic>>();
-    return data.map(_mapToEntity).toList();
+    final data = (res.data!['data'] as List).whereType<Map<String, dynamic>>();
+    // COMERCIO A COMERCIO. Con un `map` sobre la lista entera, un solo
+    // negocio que no se pudiera leer —un campo que esta versión de la app
+    // todavía no espera— dejaba la pantalla principal en un error y a la
+    // persona sin poder pedir a NINGÚN local. Perder uno es malo; perder el
+    // catálogo completo es que la app no sirve.
+    final negocios = <BusinessEntity>[];
+    for (final j in data) {
+      try {
+        negocios.add(_mapToEntity(j));
+      } catch (_) {
+        // Ese comercio no se puede leer; los demás sí.
+      }
+    }
+    return negocios;
   }
 
   Future<BusinessEntity> fetchBusinessById(String id) async {
@@ -41,11 +54,25 @@ class BusinessesRealDataSource {
           .whereType<Map<String, dynamic>>()
           .map(DestinoEnvio.fromJson)
           .toList(),
-      products: ((j['products'] as List?) ?? [])
-          .cast<Map<String, dynamic>>()
-          .map(_mapProduct)
-          .toList(),
+      products: _productos(j['products']),
     );
+  }
+
+  /// La carta, plato a plato por la misma razón que la lista de comercios: un
+  /// restaurante con cuarenta productos no puede quedarse sin menú porque uno
+  /// venga mal. Y un negocio sin carta legible sigue sirviendo para un
+  /// mandado, así que tampoco se descarta el negocio.
+  static List<ProductEntity> _productos(Object? raw) {
+    final productos = <ProductEntity>[];
+    for (final p in (raw as List?) ?? const []) {
+      if (p is! Map<String, dynamic>) continue;
+      try {
+        productos.add(_mapProduct(p));
+      } catch (_) {
+        // Ese producto no se puede leer; el resto de la carta sí.
+      }
+    }
+    return productos;
   }
 
   static BusinessCategory _mapCategory(String s) => switch (s) {
@@ -70,8 +97,12 @@ class BusinessesRealDataSource {
       masPedidoPuesto: (j['masPedidoPuesto'] as num?)?.toInt(),
       category: j['category'] as String? ?? 'General',
       imageUrl: j['imageUrl'] as String?,
+      // Una fila de la galería sin `url` se deja fuera en vez de tumbar el
+      // producto: el plato con una foto menos se sigue pudiendo pedir.
       images: ((j['images'] as List?) ?? const [])
-          .map((e) => (e as Map<String, dynamic>)['url'] as String)
+          .whereType<Map<String, dynamic>>()
+          .map((e) => e['url'])
+          .whereType<String>()
           .toList(),
       optionGroups: ((j['optionGroups'] as List?) ?? const [])
           .map((g) => _mapOptionGroup(g as Map<String, dynamic>))
