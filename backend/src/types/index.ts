@@ -806,6 +806,15 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
   /** Descuento de la promoción de la tienda que se aplicó a ESTE pedido. */
   promoDiscount?: number;
   deliveryFee: number;
+  /**
+   * Flete de la encomienda a otra ciudad, aparte del domicilio.
+   *
+   * Van separados porque son de dos bolsillos: el domicilio lo cobra el
+   * repartidor urbano y el flete la transportadora. Sin este campo el recibo
+   * del cliente no cuadra —subtotal + domicilio no da el total— y la app
+   * tendría que adivinar la diferencia.
+   */
+  intercityFee?: number;
   total: number;
   etaMinutes: number;
   /**

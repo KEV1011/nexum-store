@@ -163,6 +163,9 @@ class CustomerOrderEntity {
     required this.subtotal,
     required this.deliveryFee,
     required this.createdAt,
+    this.promoDiscount = 0,
+    this.intercityFee = 0,
+    this.totalCobrado,
     this.driverName,
     this.driverPhone,
     this.driverCard,
@@ -215,6 +218,9 @@ class CustomerOrderEntity {
             .toList(),
         subtotal: (j['subtotal'] as num).toDouble(),
         deliveryFee: (j['deliveryFee'] as num).toDouble(),
+        promoDiscount: (j['promoDiscount'] as num?)?.toDouble() ?? 0,
+        intercityFee: (j['intercityFee'] as num?)?.toDouble() ?? 0,
+        totalCobrado: (j['total'] as num?)?.toDouble(),
         createdAt: DateTime.parse(j['createdAt'] as String),
         driverName: j['driverName'] as String?,
         driverPhone: j['driverPhone'] as String?,
@@ -285,6 +291,10 @@ class CustomerOrderEntity {
             .toList(),
         subtotal: (j['subtotal'] as num?)?.toDouble() ?? 0,
         deliveryFee: (j['deliveryFee'] as num?)?.toDouble() ?? 0,
+        promoDiscount: (j['promoDiscount'] as num?)?.toDouble() ?? 0,
+        intercityFee: (j['intercityFee'] as num?)?.toDouble() ?? 0,
+        // El total que cobró el servidor, no uno recalculado aquí.
+        totalCobrado: (j['total'] as num?)?.toDouble(),
         createdAt:
             DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
         driverName: j['driverName'] as String?,
@@ -434,9 +444,28 @@ class CustomerOrderEntity {
   /// todavía puede aparecer alguien y renunciaría a un reparto que sí llegaba.
   final bool sinRepartidor;
 
+  /// Descuento de la promoción de la tienda que se aplicó a ESTE pedido.
+  /// Sellado al crearlo: cambiar la promoción mañana no reescribe lo de hoy.
+  final double promoDiscount;
+
+  /// Flete de la encomienda a otra ciudad. Aparte del domicilio porque son
+  /// de dos bolsillos: el domicilio lo cobra el repartidor urbano y el flete
+  /// la transportadora.
+  final double intercityFee;
+
+  /// El total que SELLÓ el servidor al crear el pedido.
+  ///
+  /// Null solo en pedidos guardados por una versión de la app anterior a este
+  /// campo; ahí se deriva. Mientras el total se derivaba siempre, el recibo
+  /// se contradecía a sí mismo: con una promoción enseñaba MÁS de lo que se
+  /// cobró y en una encomienda a otra ciudad MENOS, porque se dejaba el flete
+  /// fuera. La cuenta que vale es la del servidor, que es la que se cobró.
+  final double? totalCobrado;
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  double get total => subtotal + deliveryFee;
+  double get total =>
+      totalCobrado ?? (subtotal - promoDiscount + deliveryFee + intercityFee);
 
   bool get isRated => rating != null;
   bool get hasPickupProof => pickupPhotoPath != null;
@@ -511,6 +540,9 @@ class CustomerOrderEntity {
       lines: lines,
       subtotal: subtotal,
       deliveryFee: deliveryFee,
+      promoDiscount: promoDiscount,
+      intercityFee: intercityFee,
+      totalCobrado: totalCobrado,
       createdAt: createdAt,
       driverName: driverName ?? this.driverName,
       // Igual que el PIN: la ficha se conserva si la actualización no la trae.
@@ -565,6 +597,12 @@ class CustomerOrderEntity {
         'lines': lines.map((l) => l.toJson()).toList(),
         'subtotal': subtotal,
         'deliveryFee': deliveryFee,
+        'promoDiscount': promoDiscount,
+        'intercityFee': intercityFee,
+        // Con la MISMA clave del backend: `fromJson` reconstruye igual venga
+        // de la API o del disco. Sin guardarlo, un pedido con promoción o con
+        // flete enseñaría un total distinto después de cerrar la app.
+        'total': totalCobrado,
         'createdAt': createdAt.toIso8601String(),
         'driverName': driverName,
         'driverPhone': driverPhone,

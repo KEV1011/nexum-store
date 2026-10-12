@@ -684,9 +684,24 @@ class _OrderSummary extends StatelessWidget {
             ),
           ),
           const Divider(height: AppConstants.spacingL),
+          // Los renglones que SUMAN el total. Antes solo estaban subtotal y
+          // domicilio, así que con una promoción o con un flete a otra ciudad
+          // la cuenta del recibo no daba el total y nadie podía comprobarla.
           _SummaryRow(label: 'Subtotal', value: order.subtotal),
+          if (order.promoDiscount > 0) ...[
+            const SizedBox(height: 4),
+            _SummaryRow(
+              label: 'Descuento',
+              value: order.promoDiscount,
+              negativo: true,
+            ),
+          ],
           const SizedBox(height: 4),
           _SummaryRow(label: 'Domicilio', value: order.deliveryFee),
+          if (order.intercityFee > 0) ...[
+            const SizedBox(height: 4),
+            _SummaryRow(label: 'Envío a otra ciudad', value: order.intercityFee),
+          ],
           const SizedBox(height: 4),
           _SummaryRow(label: 'Total', value: order.total, emphasize: true),
         ],
@@ -700,11 +715,16 @@ class _SummaryRow extends StatelessWidget {
     required this.label,
     required this.value,
     this.emphasize = false,
+    this.negativo = false,
   });
 
   final String label;
   final double value;
   final bool emphasize;
+
+  /// Resta del total. El signo va DELANTE del peso («−$6.000»): formatear un
+  /// número negativo daría «$-6.000», que se lee como un fallo de la app.
+  final bool negativo;
 
   @override
   Widget build(BuildContext context) {
@@ -718,7 +738,10 @@ class _SummaryRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: style),
-        Text(CurrencyFormatter.format(value), style: style),
+        Text(
+          '${negativo ? '−' : ''}${CurrencyFormatter.format(value)}',
+          style: style,
+        ),
       ],
     );
   }
