@@ -278,8 +278,8 @@ class _TicketsTabState extends State<_TicketsTab> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _newTicket,
         backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add_comment_rounded, color: Colors.white),
-        label: const Text('Nuevo ticket', style: TextStyle(color: Colors.white)),
+        icon: const Icon(Icons.add_comment_rounded, color: textoSobreMarca),
+        label: const Text('Nuevo ticket', style: TextStyle(color: textoSobreMarca)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))

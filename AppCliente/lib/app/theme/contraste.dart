@@ -56,3 +56,13 @@ Color colorDeTextoSobre(Color fondo) =>
 /// señalar un fondo que no se puede arreglar con la letra y hay que cambiar.
 bool fondoImposible(Color fondo) =>
     contrasteWcag(fondo, colorDeTextoSobre(fondo)) < 4.5;
+
+/// La letra que se lee sobre el verde de la marca, como CONSTANTE.
+///
+/// `colorDeTextoSobre` es una llamada y no se puede usar dentro de un widget
+/// `const` —`const Icon(color: ...)` no compila—, y quitar el `const` de medio
+/// árbol para calcular un color que nunca cambia sería peor. Así que el valor
+/// se escribe, y `contraste_botones_test` comprueba que sea EXACTAMENTE lo que
+/// devuelve el cálculo: si mañana se retoca el verde, la prueba cae en vez de
+/// dejar un blanco heredado que ya no se lee.
+const Color textoSobreMarca = AppColors.textPrimary;

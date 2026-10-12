@@ -88,6 +88,14 @@ void main() {
       );
     });
 
+    test('la CONSTANTE de la marca coincide con el cálculo', () {
+      // `textoSobreMarca` existe porque un widget `const` no admite una
+      // llamada. Al estar escrita a mano, tiene que comprobarse: si alguien
+      // retoca el verde, esto cae en vez de dejar una letra que ya no se lee.
+      expect(textoSobreMarca, colorDeTextoSobre(AppColors.primary));
+      expect(textoSobreMarca, colorDeTextoSobre(AppColors.success));
+    });
+
     test('sobre el rojo de error, BLANCA', () {
       expect(colorDeTextoSobre(AppColors.error), Colors.white);
     });

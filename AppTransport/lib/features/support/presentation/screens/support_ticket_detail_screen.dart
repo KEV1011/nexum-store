@@ -5,6 +5,7 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/support/data/support_api.dart';
 import 'package:nexum_driver/features/support/presentation/widgets/support_common.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Hilo de un ticket del conductor: mensajes propios y del soporte + responder.
 class SupportTicketDetailScreen extends StatefulWidget {
@@ -161,8 +162,8 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
                   icon: _sending
                       ? const SizedBox(
                           width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: textoSobreMarca))
+                      : const Icon(Icons.send_rounded, color: textoSobreMarca, size: 20),
                   onPressed: _sending ? null : _send,
                 ),
               ),

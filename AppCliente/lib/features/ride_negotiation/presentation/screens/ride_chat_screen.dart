@@ -8,6 +8,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/features/ride_negotiation/domain/entities/ride_entities.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 class RideChatScreen extends ConsumerStatefulWidget {
   const RideChatScreen({
@@ -160,7 +161,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
                 child: IconButton(
                   tooltip: 'Enviar',
                   icon: const Icon(Icons.send_rounded,
-                      color: Colors.white, size: 20),
+                      color: textoSobreMarca, size: 20),
                   onPressed: _send,
                 ),
               ),
