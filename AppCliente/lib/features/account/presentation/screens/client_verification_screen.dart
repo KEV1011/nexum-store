@@ -6,6 +6,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/account/presentation/providers/client_kyc_provider.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Verificación de identidad del pasajero (anti-robo): selfie + envío.
 class ClientVerificationScreen extends ConsumerStatefulWidget {
@@ -168,6 +169,7 @@ class _ClientVerificationScreenState extends ConsumerState<ClientVerificationScr
                     child: FilledButton(
                       onPressed: (kyc.canSubmit && !inReview) ? _submit : null,
                       style: FilledButton.styleFrom(
+                        foregroundColor: colorDeTextoSobre(AppColors.primary),
                         backgroundColor: AppColors.primary,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),

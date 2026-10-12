@@ -9,6 +9,7 @@ import 'package:nexum_client/features/pooled/presentation/providers/pooled_provi
 import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.dart';
 import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 import 'package:nexum_client/shared/widgets/estados_zipa.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -562,7 +563,8 @@ class _HojaCalificarState extends State<_HojaCalificar> {
                 onPressed: _estrellas == 0
                     ? null
                     : () => Navigator.pop(context, (_estrellas, _comentario.text)),
-                style: FilledButton.styleFrom(backgroundColor: _kPooledColor),
+                style: FilledButton.styleFrom(foregroundColor: colorDeTextoSobre(_kPooledColor),
+backgroundColor: _kPooledColor),
                 child: const Text('Enviar'),
               ),
             ),

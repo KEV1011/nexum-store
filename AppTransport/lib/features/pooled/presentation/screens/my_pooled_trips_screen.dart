@@ -11,6 +11,7 @@ import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 import 'package:nexum_driver/shared/services/abordaje_tiquete.dart';
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -568,7 +569,7 @@ class _PooledTripCard extends StatelessWidget {
                 icon: const Icon(Icons.play_arrow_rounded, size: 18),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kPooledColor,
-                  foregroundColor: Colors.white,
+                  foregroundColor: colorDeTextoSobre(_kPooledColor),
                 ),
                 label: const Text('Iniciar'),
               ),
@@ -597,7 +598,7 @@ class _PooledTripCard extends StatelessWidget {
                 icon: const Icon(Icons.flag_rounded, size: 18),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.success,
-                  foregroundColor: Colors.white,
+                  foregroundColor: colorDeTextoSobre(AppColors.success),
                 ),
                 label: const Text('Finalizar viaje'),
               ),
@@ -727,7 +728,7 @@ class _TarjetaLibre extends StatelessWidget {
             child: FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.serviceTaxi,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(AppColors.serviceTaxi),
               ),
               onPressed: onTomar,
               child: const Text('Tomar este viaje'),
@@ -856,7 +857,7 @@ class _HojaAbordajeState extends State<_HojaAbordaje> {
                   onPressed: _validando ? null : _validar,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _kPooledColor,
-                    foregroundColor: Colors.white,
+                    foregroundColor: colorDeTextoSobre(_kPooledColor),
                   ),
                   child: _validando
                       ? const SizedBox(

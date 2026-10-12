@@ -25,6 +25,7 @@ import 'package:nexum_client/features/intercity/presentation/widgets/city_search
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 const _kUrbano = AppColors.serviceTaxi;
 
@@ -629,7 +630,8 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
               width: double.infinity,
               height: 50,
               child: FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: _kUrbano),
+                style: FilledButton.styleFrom(foregroundColor: colorDeTextoSobre(_kUrbano),
+backgroundColor: _kUrbano),
                 onPressed: _enviando ? null : _confirmar,
                 child: Text(_enviando ? 'Reservando…' : 'Reservar mi puesto'),
               ),
@@ -1017,7 +1019,7 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
                 child: FilledButton(
                   style: FilledButton.styleFrom(
                     backgroundColor: _kUrbano,
-                    foregroundColor: Colors.white,
+                    foregroundColor: colorDeTextoSobre(_kUrbano),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   onPressed: _enviando ? null : _publicar,

@@ -10,6 +10,7 @@ import 'package:nexum_driver/features/freight/presentation/widgets/freight_route
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
 import 'package:nexum_driver/features/intercity/presentation/providers/intercity_driver_provider.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/municipalities_provider.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 const _kIntercityColor = AppColors.intercityBrand;
 
@@ -423,6 +424,7 @@ class _ActiveTripCard extends StatelessWidget {
                       child: FilledButton.icon(
                         onPressed: onStart,
                         style: FilledButton.styleFrom(
+                          foregroundColor: colorDeTextoSobre(_kIntercityColor),
                           backgroundColor: _kIntercityColor,
                         ),
                         icon: const Icon(Icons.play_arrow_rounded),
@@ -447,6 +449,7 @@ class _ActiveTripCard extends StatelessWidget {
                       child: FilledButton.icon(
                         onPressed: onStart,
                         style: FilledButton.styleFrom(
+                          foregroundColor: colorDeTextoSobre(_kIntercityColor),
                           backgroundColor: _kIntercityColor,
                         ),
                         icon: const Icon(Icons.play_arrow_rounded),
@@ -460,6 +463,7 @@ class _ActiveTripCard extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: onStart,
                     style: FilledButton.styleFrom(
+                      foregroundColor: colorDeTextoSobre(_kIntercityColor),
                       backgroundColor: _kIntercityColor,
                     ),
                     icon: const Icon(Icons.play_arrow_rounded),
@@ -471,6 +475,7 @@ class _ActiveTripCard extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: onComplete,
                     style: FilledButton.styleFrom(
+                      foregroundColor: colorDeTextoSobre(AppColors.success),
                       backgroundColor: AppColors.success,
                     ),
                     icon: const Icon(Icons.flag_rounded),
@@ -587,6 +592,7 @@ class _RequestCard extends StatelessWidget {
                   child: FilledButton(
                     onPressed: onAccept,
                     style: FilledButton.styleFrom(
+                      foregroundColor: colorDeTextoSobre(_kIntercityColor),
                       backgroundColor: _kIntercityColor,
                     ),
                     child: const Text('Aceptar'),

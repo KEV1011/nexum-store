@@ -10,6 +10,7 @@ import 'package:nexum_client/features/businesses/domain/entities/'
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'precio_producto.dart';
 import 'package:nexum_client/features/moderacion/presentation/reportar_sheet.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Lo que el cliente armó en la hoja: qué eligió, cuántos quiere y qué le
 /// quiere decir a la cocina.
@@ -327,7 +328,7 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
                             : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
+                          foregroundColor: colorDeTextoSobre(AppColors.primary),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),

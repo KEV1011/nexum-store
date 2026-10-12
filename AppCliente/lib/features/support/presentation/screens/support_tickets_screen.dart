@@ -9,6 +9,7 @@ import 'package:nexum_client/features/support/data/support_api.dart';
 import 'package:nexum_client/features/support/presentation/screens/support_ticket_detail_screen.dart';
 import 'package:nexum_client/features/support/presentation/widgets/support_common.dart';
 import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Centro de ayuda: lista de tickets del usuario + abrir uno nuevo.
 /// Reutilizable por ambas apps vía [basePath] ('/client' o '/driver').
@@ -270,6 +271,7 @@ class _NewTicketSheetState extends State<_NewTicketSheet> {
               width: double.infinity,
               child: FilledButton(
                 style: FilledButton.styleFrom(
+                  foregroundColor: colorDeTextoSobre(AppColors.primary),
                   backgroundColor: AppColors.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),

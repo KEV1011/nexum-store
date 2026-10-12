@@ -15,6 +15,7 @@ import 'package:nexum_driver/features/settings/presentation/screens/privacy_scre
 import 'package:nexum_driver/shared/services/navegacion_externa.dart';
 import 'package:nexum_driver/features/moderacion/presentation/bloqueados_screen.dart';
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -477,7 +478,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error,
-                foregroundColor: Colors.white),
+                foregroundColor: colorDeTextoSobre(AppColors.error)),
             child: const Text('Cerrar sesión'),
           ),
         ],

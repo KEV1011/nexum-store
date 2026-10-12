@@ -7,6 +7,7 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/features/profile_verification/domain/entities/driver_profile_entity.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_kyc_provider.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 class VerificationScreen extends ConsumerStatefulWidget {
   const VerificationScreen({super.key});
@@ -365,7 +366,8 @@ class _KycCard extends ConsumerWidget {
                   Expanded(
                     child: FilledButton(
                       onPressed: (kyc.canSubmit && !inReview) ? onSubmit : null,
-                      style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                      style: FilledButton.styleFrom(foregroundColor: colorDeTextoSobre(AppColors.primary),
+backgroundColor: AppColors.primary),
                       child: Text(kyc.status == 'REJECTED' ? 'Reenviar' : 'Enviar'),
                     ),
                   ),

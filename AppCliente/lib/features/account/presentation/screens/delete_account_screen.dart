@@ -8,6 +8,7 @@ import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Eliminar la cuenta desde la app.
 ///
@@ -195,6 +196,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                       child: FilledButton(
                         onPressed: _borrando ? null : _confirmar,
                         style: FilledButton.styleFrom(
+                          foregroundColor: colorDeTextoSobre(AppColors.error),
                           backgroundColor: AppColors.error,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                         ),

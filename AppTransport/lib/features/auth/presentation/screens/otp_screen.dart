@@ -12,6 +12,7 @@ import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/auth/presentation/widgets/otp_input_field.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Pantalla de verificación de código OTP.
 ///
@@ -362,7 +363,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
                     onPressed: (_isComplete && !isLoading) ? _onVerify : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
+                      foregroundColor: colorDeTextoSobre(AppColors.primary),
                       disabledBackgroundColor:
                           AppColors.primary.withOpacity(0.4),
                       shape: RoundedRectangleBorder(

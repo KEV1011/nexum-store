@@ -31,6 +31,7 @@ import 'package:nexum_client/features/orders/presentation/widgets/'
     'order_status_timeline.dart';
 import 'package:nexum_client/features/orders/presentation/widgets/'
     'rating_bottom_sheet.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Seguimiento en vivo del pedido con su cadena de custodia.
 class OrderTrackingScreen extends ConsumerStatefulWidget {
@@ -1137,6 +1138,7 @@ class _RecogerEnTaquillaCardState
             child: FilledButton(
               onPressed: _enviando ? null : _confirmar,
               style: FilledButton.styleFrom(
+                foregroundColor: colorDeTextoSobre(AppColors.warning),
                 backgroundColor: AppColors.warning,
               ),
               child: _enviando

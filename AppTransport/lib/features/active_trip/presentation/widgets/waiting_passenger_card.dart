@@ -3,6 +3,7 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Tarjeta inferior para el estado (b): conductor esperando / en el local.
 ///
@@ -116,7 +117,7 @@ class WaitingPassengerCard extends StatelessWidget {
               onPressed: onStartTrip,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(AppColors.primary),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(
                     AppConstants.radiusMedium,
@@ -240,7 +241,7 @@ class WaitingPassengerCard extends StatelessWidget {
               icon: const Icon(Icons.camera_alt_rounded, size: 22),
               style: ElevatedButton.styleFrom(
                 backgroundColor: accent,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(accent),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
                 ),

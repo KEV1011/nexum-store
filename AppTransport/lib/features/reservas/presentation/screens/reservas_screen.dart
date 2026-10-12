@@ -9,6 +9,7 @@ import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/shared/models/oferta_mapper.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// El tablero de reservas: viajes que alguien programó para más tarde y que el
 /// conductor puede APARTAR desde ahora.
@@ -445,6 +446,7 @@ class _TarjetaReserva extends StatelessWidget {
                       onPressed: onIniciar,
                       icon: const Icon(Icons.navigation_rounded, size: 18),
                       style: FilledButton.styleFrom(
+                          foregroundColor: colorDeTextoSobre(const Color(0xFF059669)),
                           backgroundColor: const Color(0xFF059669)),
                       label: const Text('Iniciar viaje'),
                     )
@@ -467,6 +469,7 @@ class _TarjetaReserva extends StatelessWidget {
                       : FilledButton(
                           onPressed: onAccion,
                           style: FilledButton.styleFrom(
+                              foregroundColor: colorDeTextoSobre(const Color(0xFF059669)),
                               backgroundColor: const Color(0xFF059669)),
                           child: const Text('Apartar'),
                         ),

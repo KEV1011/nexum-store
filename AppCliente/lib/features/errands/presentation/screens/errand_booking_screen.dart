@@ -9,6 +9,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Tarifa base del servicio de encargo (lo que cobra el mensajero).
 const double _kBaseServiceFee = 6000;
@@ -373,7 +374,7 @@ class _ErrandBookingScreenState extends ConsumerState<ErrandBookingScreen> {
               onPressed: _isSubmitting ? null : _submit,
               style: ElevatedButton.styleFrom(
                 backgroundColor: accent,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(accent),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),

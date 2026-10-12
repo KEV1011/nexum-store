@@ -10,6 +10,7 @@ import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Línea única de emergencias en Colombia (no es 911).
 const String kEmergencyNumber = '123';
@@ -166,7 +167,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
             onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error,
-                foregroundColor: Colors.white),
+                foregroundColor: colorDeTextoSobre(AppColors.error)),
             child: const Text('Activar SOS'),
           ),
         ],
@@ -225,7 +226,7 @@ class _SafetyScreenState extends State<SafetyScreen> {
               label: const Text('Llamar al 123'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(AppColors.error),
                 minimumSize: const Size.fromHeight(50),
               ),
             ),

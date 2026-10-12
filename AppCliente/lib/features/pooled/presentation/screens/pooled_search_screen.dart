@@ -18,6 +18,7 @@ import 'package:nexum_client/features/intercity/presentation/providers/municipal
 import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
 import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
 import 'package:nexum_client/shared/widgets/estados_zipa.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -1021,7 +1022,7 @@ class _BookSeatsSheetState extends ConsumerState<_BookSeatsSheet> {
                     : _confirm,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kPooledColor,
-                  foregroundColor: Colors.white,
+                  foregroundColor: colorDeTextoSobre(_kPooledColor),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),

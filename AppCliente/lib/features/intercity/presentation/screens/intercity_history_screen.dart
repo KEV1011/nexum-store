@@ -10,6 +10,7 @@ import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
 import 'package:nexum_client/features/intercity/presentation/providers/intercity_provider.dart';
 import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 const _kInterColor = AppColors.intercityBrand;
 
@@ -424,7 +425,7 @@ class _RatingSheetState extends ConsumerState<_RatingSheet> {
                   onPressed: _stars == 0 || _submitting ? null : _submit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _kInterColor,
-                    foregroundColor: Colors.white,
+                    foregroundColor: colorDeTextoSobre(_kInterColor),
                     disabledBackgroundColor: AppColors.intercityOutline,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),

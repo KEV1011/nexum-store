@@ -11,6 +11,7 @@ import 'package:nexum_client/features/intercity/presentation/providers/intercity
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 // Color de identidad del módulo intermunicipal
 const _kInterColor = AppColors.intercityBrand;
@@ -611,7 +612,7 @@ class _IntercityBookingScreenState
               onPressed: _isSubmitting ? null : _submit,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _kInterColor,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(_kInterColor),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),

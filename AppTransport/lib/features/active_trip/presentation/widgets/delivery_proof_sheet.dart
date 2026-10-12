@@ -11,6 +11,7 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/core/widgets/picked_image.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Proof-of-delivery data collected at the end of an Envíos trip.
 class DeliveryProof {
@@ -363,7 +364,7 @@ class _DeliveryProofSheetState extends State<DeliveryProofSheet> {
                       onPressed: _canConfirm ? _confirm : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: accent,
-                        foregroundColor: Colors.white,
+                        foregroundColor: colorDeTextoSobre(accent),
                         minimumSize: const Size.fromHeight(52),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(

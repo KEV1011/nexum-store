@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request_entity.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 class SiguienteViajeCard extends StatelessWidget {
   const SiguienteViajeCard({
@@ -134,7 +135,7 @@ class SiguienteViajeCard extends StatelessWidget {
                         style: ElevatedButton.styleFrom(
                           minimumSize: const Size.fromHeight(44),
                           backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
+                          foregroundColor: colorDeTextoSobre(AppColors.primary),
                         ),
                         child: const Text('Aceptar para después'),
                       ),

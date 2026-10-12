@@ -30,6 +30,7 @@ import 'package:nexum_client/shared/providers/origen_sugerido_provider.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/vehicle_side_view.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Pantalla de reserva de servicio de transporte o envío.
 class TransportBookingScreen extends ConsumerStatefulWidget {
@@ -656,6 +657,7 @@ class _TransportBookingScreenState
     final color = _colorOf(widget.serviceType);
     return FilledButton(
       style: FilledButton.styleFrom(
+        foregroundColor: colorDeTextoSobre(color),
         backgroundColor: color,
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

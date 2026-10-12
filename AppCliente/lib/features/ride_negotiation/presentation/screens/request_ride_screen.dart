@@ -7,6 +7,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/screens/ride_bids_screen.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// inDriver-style request: the passenger names a fare and drivers bid on it.
 class RequestRideScreen extends ConsumerStatefulWidget {
@@ -190,7 +191,7 @@ class _RequestRideScreenState extends ConsumerState<RequestRideScreen> {
               onPressed: state.isCreating ? null : _submit,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(AppColors.primary),
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
               child: state.isCreating
