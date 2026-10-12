@@ -8,6 +8,7 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/features/ride_pool/domain/entities/ride_entities.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Real-time chat between the matched driver and passenger, bound to a ride.
 class RideChatScreen extends ConsumerStatefulWidget {
@@ -161,7 +162,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
               backgroundColor: AppColors.primary,
               child: IconButton(
                 tooltip: 'Enviar',
-                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                icon: const Icon(Icons.send_rounded, color: textoSobreMarca, size: 20),
                 onPressed: _send,
               ),
             ),

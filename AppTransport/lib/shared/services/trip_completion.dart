@@ -37,14 +37,27 @@ class LiquidacionViaje {
   final double netEarning;
   final double commission;
 
+  /// Un número del JSON, o `null` si ahí no venía un número.
+  ///
+  /// `as num?` NO devuelve null cuando llega un texto: LANZA. Esto entra por
+  /// un mensaje del socket, y una excepción aquí no cuesta una cifra — cuesta
+  /// el cierre del viaje. El contenedor ya se comprobaba (`is! Map`); esto
+  /// termina la misma idea con los campos.
+  static double? _numero(Object? v) => v is num ? v.toDouble() : null;
+
   static LiquidacionViaje? desdeJson(Object? raw) {
     if (raw is! Map<String, dynamic>) return null;
-    final tarifa = (raw['finalFare'] as num?)?.toDouble();
+    final tarifa = _numero(raw['finalFare']);
+    // Sin tarifa final no hay liquidación. Un «$0 ganado» se lee como que el
+    // viaje no pagó, y eso es peor que no enseñar nada: la pantalla cae a su
+    // estimación y lo dice.
     if (tarifa == null) return null;
     return LiquidacionViaje(
       finalFare: tarifa,
-      netEarning: (raw['netEarning'] as num?)?.toDouble() ?? 0,
-      commission: (raw['commission'] as num?)?.toDouble() ?? 0,
+      // Aquí el cero SÍ es correcto: la tarifa está, así que el viaje se
+      // liquidó; lo que falta es el desglose.
+      netEarning: _numero(raw['netEarning']) ?? 0,
+      commission: _numero(raw['commission']) ?? 0,
     );
   }
 }

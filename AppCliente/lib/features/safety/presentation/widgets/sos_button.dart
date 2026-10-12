@@ -6,6 +6,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/providers/safety_provider.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Emergency number for Colombia (NOT 911).
@@ -81,7 +82,8 @@ class SosButton extends ConsumerWidget {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            style: FilledButton.styleFrom(foregroundColor: colorDeTextoSobre(AppColors.error),
+backgroundColor: AppColors.error),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Activar SOS'),
           ),
@@ -139,6 +141,7 @@ class SosButton extends ConsumerWidget {
             const SizedBox(height: 20),
             FilledButton.icon(
               style: FilledButton.styleFrom(
+                foregroundColor: colorDeTextoSobre(AppColors.error),
                 backgroundColor: AppColors.error,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),

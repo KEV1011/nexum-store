@@ -11,6 +11,7 @@ import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/core/widgets/loading_overlay.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/shared/widgets/zipa_logo.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Pantalla de ingreso del número de celular del conductor.
 ///
@@ -400,7 +401,7 @@ class _ContinueButton extends StatelessWidget {
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: colorDeTextoSobre(AppColors.primary),
           disabledBackgroundColor: AppColors.primary.withOpacity(0.6),
           shape: RoundedRectangleBorder(
             borderRadius:

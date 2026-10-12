@@ -7,6 +7,8 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/core/utils/safe_back.dart';
+import 'package:nexum_client/shared/widgets/estados_zipa.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/providers/'
@@ -43,8 +45,23 @@ class BusinessDetailScreen extends ConsumerWidget {
 
     final async = ref.watch(businessByIdProvider(businessId));
     return async.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      // La silueta de la carta, no una ruedita sobre una pantalla en blanco:
+      // esta es la pantalla donde se decide la compra, y se llega a ella
+      // tocando un local — ver el hueco con su forma es ver que SÍ se abrió.
+      // Con su botón de atrás, porque sin él una carga lenta deja encerrado a
+      // quien solo quería volver a la lista.
+      loading: () => Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Volver',
+            onPressed: () => safeBack(context),
+          ),
+        ),
+        extendBodyBehindAppBar: true,
+        body: const EsqueletoCarta(),
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
@@ -310,13 +327,17 @@ class _BusinessAppBar extends StatelessWidget {
             fontFamily: 'Inter',
             fontSize: 16,
             fontWeight: FontWeight.w700,
-            // El color va EXPLÍCITO. Antes se heredaba del AppBar y sobre el
-            // respaldo —un tinte claro FIJO de la categoría— salía casi
-            // blanco: el nombre del local, ilegible. Es la co-ocurrencia que
-            // la regla de contraste prohíbe (fondo fijo + color adaptativo),
-            // así que sobre el tinte va el token oscuro fijo y sobre la foto
-            // —que lleva scrim— va blanco.
-            color: conFoto ? Colors.white : AppColors.textPrimary,
+            // Sobre la foto va blanco (lleva scrim). Sin foto, el fondo pasó
+            // a ser la superficie del TEMA, así que el texto también: en
+            // oscuro, claro sobre oscuro; en claro, oscuro sobre claro.
+            //
+            // Antes el respaldo era el tinte claro FIJO de la categoría con
+            // el texto del tema encima, y en modo oscuro el nombre del local
+            // salía casi del color del fondo: «BETOS» ilegible, con la flecha
+            // de atrás y la fila de info igual de tenues. Es la co-ocurrencia
+            // que la regla de contraste prohíbe, y fijar SOLO el color del
+            // título no bastaba — la flecha la pinta el `AppBarTheme`.
+            color: conFoto ? Colors.white : context.textPrimaryColor,
           ),
         ),
         titlePadding: const EdgeInsets.symmetric(
@@ -366,8 +387,12 @@ class _BusinessAppBar extends StatelessWidget {
                   ),
                 ],
               )
+            // Sin foto, la cabecera es del TEMA y no un tinte claro fijo: en
+            // modo oscuro aquella era una isla crema encima de una app negra,
+            // y todo lo que iba encima —nombre, flecha, info— se perdía.
+            // El color de la categoría se queda donde sí se lee: el icono.
             : ColoredBox(
-                color: business.category.containerColor,
+                color: context.surfaceColor,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

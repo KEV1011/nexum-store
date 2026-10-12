@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
+import 'package:nexum_client/core/utils/lista_json.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/domain/entities/trip_option_entity.dart';
 import 'package:nexum_client/shared/services/transport_ws_service.dart';
@@ -79,13 +80,27 @@ class TransportNotifier extends StateNotifier<TransportState> {
       _avisarCargado();
       return;
     }
-    final requests = raw
-        .map(
-          (s) => TransportRequestEntity.fromJson(
-            jsonDecode(s) as Map<String, dynamic>,
-          ),
-        )
-        .toList();
+    // VIAJE A VIAJE, y pase lo que pase se avisa.
+    //
+    // Antes este `map` iba suelto: un solo viaje guardado que no se pudiera
+    // leer hacía lanzar a `_load()`, y entonces no se actualizaba el estado
+    // NI se llamaba a `_avisarCargado()` — o sea, el Completer que espera el
+    // arranque no se completaba nunca y la app se quedaba en el splash. El
+    // comentario de `_avisarCargado` ya advertía justo de ese daño, pero solo
+    // estaba cubierto el caso de que el provider muriera.
+    //
+    // Esta caché la escribió una versión ANTERIOR de la app, así que basta
+    // con que el parser pase a exigir un campo que entonces no se guardaba.
+    final requests = <TransportRequestEntity>[];
+    for (final s in raw) {
+      try {
+        requests.add(
+          TransportRequestEntity.fromJson(jsonDecode(s) as Map<String, dynamic>),
+        );
+      } catch (_) {
+        // Ese viaje no se puede leer; los demás sí, y la app arranca.
+      }
+    }
     state = state.copyWith(requests: requests, isLoading: false);
     // Después de dejar el estado puesto: quien despierte con este futuro va a
     // leer `state` acto seguido.
@@ -548,10 +563,9 @@ final tripHistoryProvider =
   final dio = ref.read(apiClientProvider);
   try {
     final res = await dio.get<Map<String, dynamic>>('/client/trips/history');
-    final data = res.data?['data'] as List<dynamic>? ?? const [];
-    return data
-        .map((e) => TransportRequestEntity.fromJson(e as Map<String, dynamic>))
-        .toList();
+    // Viaje a viaje: uno ilegible caía al `catch` y se enseñaba el historial
+    // local, más viejo, sin decir que lo era.
+    return listaDeJson(res.data?['data'], TransportRequestEntity.fromJson);
   } catch (_) {
     return ref.read(transportProvider).past;
   }

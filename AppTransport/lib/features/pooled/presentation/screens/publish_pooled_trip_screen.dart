@@ -10,6 +10,7 @@ import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/municipalities_provider.dart';
 import 'package:nexum_driver/features/pooled/presentation/widgets/city_search_sheet.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -277,7 +278,7 @@ class _PublishPooledTripScreenState
               onPressed: _submitting ? null : _publish,
               style: ElevatedButton.styleFrom(
                 backgroundColor: _kPooledColor,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(_kPooledColor),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),

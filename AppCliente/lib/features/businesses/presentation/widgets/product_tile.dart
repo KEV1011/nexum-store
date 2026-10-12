@@ -26,81 +26,91 @@ class ProductTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      padding: const EdgeInsets.all(AppConstants.spacingM),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : context.cardColor2,
+    // TODA la fila abre el producto, no solo el botón.
+    //
+    // Antes el único control era «Agregar», que suena a «va al carrito sin
+    // preguntar»: quien quería VER el plato —su foto, qué trae, los tamaños—
+    // no tenía dónde tocar, y la hoja de detalle quedaba escondida detrás de
+    // una acción de compra. La miniatura abría la galería solo si había más
+    // de una foto, así que con una sola tampoco se podía ampliar.
+    return Material(
+      color: isDark ? AppColors.cardDark : context.cardColor2,
+      borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+      child: InkWell(
+        onTap: onAdd,
         borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-        border: Border.all(
-          color: isDark ? AppColors.outlineDark : context.outlineColor,
+        child: Ink(
+          padding: const EdgeInsets.all(AppConstants.spacingM),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+            border: Border.all(
+              color: isDark ? AppColors.outlineDark : context.outlineColor,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ProductThumb(
+                imageUrl: product.imageUrl,
+                isDark: isDark,
+                extraCount: product.images.length,
+              ),
+              const SizedBox(width: AppConstants.spacingM),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // DOS LÍNEAS COMO MUCHO. Las cartas cargadas desde una
+                    // foto traen el nombre con todos los ingredientes entre
+                    // paréntesis («Choricarne (papa, carne, chorizo…)»): sin
+                    // tope ocupaba cinco renglones, empujaba el precio fuera
+                    // de la vista y todas las filas se veían iguales. Lo que
+                    // se corta está entero a un toque, en el detalle.
+                    Text(
+                      product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (product.masPedidoPuesto != null) ...[
+                      const SizedBox(height: 4),
+                      InsigniaMasPedido(puesto: product.masPedidoPuesto!),
+                    ],
+                    if (product.description.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        product.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          color: context.textSecondaryColor,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: AppConstants.spacingS),
+                    PrecioProducto(product: product),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppConstants.spacingM),
+              _QuantityControl(
+                quantity: quantity,
+                onAdd: onAdd,
+                onRemove: onRemove,
+              ),
+            ],
+          ),
         ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            onTap: product.allPhotos.length > 1
-                ? () => _showGallery(context, product)
-                : null,
-            child: _ProductThumb(
-              imageUrl: product.imageUrl,
-              isDark: isDark,
-              extraCount: product.images.length,
-            ),
-          ),
-          const SizedBox(width: AppConstants.spacingM),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  product.name,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (product.masPedidoPuesto != null) ...[
-                  const SizedBox(height: 4),
-                  InsigniaMasPedido(puesto: product.masPedidoPuesto!),
-                ],
-                const SizedBox(height: 2),
-                Text(
-                  product.description,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                    color: context.textSecondaryColor,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: AppConstants.spacingS),
-                PrecioProducto(product: product),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppConstants.spacingM),
-          _QuantityControl(
-            quantity: quantity,
-            onAdd: onAdd,
-            onRemove: onRemove,
-          ),
-        ],
       ),
     );
   }
-}
-
-/// Abre un visor a pantalla completa con todas las fotos del producto.
-void _showGallery(BuildContext context, ProductEntity product) {
-  final photos = product.allPhotos;
-  if (photos.isEmpty) return;
-  showDialog<void>(
-    context: context,
-    barrierColor: Colors.black87,
-    builder: (ctx) => _ProductGalleryViewer(product: product, photos: photos),
-  );
 }
 
 /// Miniatura del producto (foto del negocio o un marcador si no hay foto).
@@ -199,100 +209,6 @@ class _ProductThumb extends StatelessWidget {
   }
 }
 
-/// Visor de galería a pantalla completa (deslizable) con las fotos del producto.
-class _ProductGalleryViewer extends StatefulWidget {
-  const _ProductGalleryViewer({required this.product, required this.photos});
-
-  final ProductEntity product;
-  final List<String> photos;
-
-  @override
-  State<_ProductGalleryViewer> createState() => _ProductGalleryViewerState();
-}
-
-class _ProductGalleryViewerState extends State<_ProductGalleryViewer> {
-  final _controller = PageController();
-  int _index = 0;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              tooltip: 'Cerrar',
-              icon: const Icon(Icons.close_rounded, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
-          AspectRatio(
-            aspectRatio: 1,
-            child: PageView.builder(
-              controller: _controller,
-              itemCount: widget.photos.length,
-              onPageChanged: (i) => setState(() => _index = i),
-              itemBuilder: (_, i) => ClipRRect(
-                borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-                child: InteractiveViewer(
-                  child: Image.network(
-                    ApiConfig.resolveUrl(widget.photos[i]),
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const ColoredBox(
-                      color: Colors.black26,
-                      child: Center(
-                        child: Icon(Icons.broken_image_rounded,
-                            color: Colors.white54, size: 40),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: AppConstants.spacingM),
-          Text(
-            widget.product.name,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: AppConstants.spacingS),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (var i = 0; i < widget.photos.length; i++)
-                Container(
-                  width: 7,
-                  height: 7,
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: i == _index
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.4),
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _QuantityControl extends StatelessWidget {
   const _QuantityControl({

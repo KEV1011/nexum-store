@@ -12,6 +12,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/errands/domain/entities/errand_entity.dart';
 import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 class ErrandStatusScreen extends ConsumerWidget {
   const ErrandStatusScreen({super.key});
@@ -109,7 +110,7 @@ class ErrandStatusScreen extends ConsumerWidget {
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
+                    foregroundColor: colorDeTextoSobre(AppColors.primary),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),

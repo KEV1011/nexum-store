@@ -26,6 +26,7 @@ import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/municipalities_provider.dart';
 import 'package:nexum_driver/features/pooled/presentation/widgets/city_search_sheet.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 const _kUrbano = AppColors.serviceTaxi;
 
@@ -284,7 +285,8 @@ class _PublishUrbanSeatScreenState
           SizedBox(
             height: 52,
             child: FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: _kUrbano),
+              style: FilledButton.styleFrom(foregroundColor: colorDeTextoSobre(_kUrbano),
+backgroundColor: _kUrbano),
               onPressed: _enviando ? null : _publicar,
               icon: _enviando
                   ? const SizedBox(

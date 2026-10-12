@@ -25,6 +25,7 @@ import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
 import 'package:nexum_client/shared/widgets/driver_info_card.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
@@ -1386,7 +1387,8 @@ class _CancelButton extends StatelessWidget {
               ),
               FilledButton(
                 style:
-                    FilledButton.styleFrom(backgroundColor: AppColors.error),
+                    FilledButton.styleFrom(foregroundColor: colorDeTextoSobre(AppColors.error),
+backgroundColor: AppColors.error),
                 onPressed: () {
                   Navigator.of(context).pop();
                   onCancel();

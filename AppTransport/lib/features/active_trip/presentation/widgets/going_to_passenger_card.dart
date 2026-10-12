@@ -7,6 +7,7 @@ import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
 import 'package:nexum_driver/features/active_trip/presentation/screens/trip_chat_screen.dart';
 import 'package:nexum_driver/features/trip_requests/domain/entities/passenger_entity.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Tarjeta inferior para el estado (a): conductor yendo al punto de recogida.
 ///
@@ -222,7 +223,9 @@ class GoingToPassengerCard extends ConsumerWidget {
                 backgroundColor: isEnvios
                     ? AppColors.serviceEnvios
                     : AppColors.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(isEnvios
+                    ? AppColors.serviceEnvios
+                    : AppColors.primary),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(
                     AppConstants.radiusMedium,

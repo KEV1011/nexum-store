@@ -207,6 +207,13 @@ class TripModel {
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        // Se GUARDA aunque el resto de claves sean snake_case: `fromJson` lo
+        // lee con este nombre, que es el del backend. Sin esta línea, la caché
+        // perdía el tipo de servicio y el historial sin conexión decía
+        // «Servicio» en cada línea —y los chips de filtro (taxi, moto,
+        // particular, envíos) no casaban con nada—, aunque el dato sí hubiera
+        // llegado del servidor.
+        'serviceType': serviceType,
         'passenger_id': passengerId,
         'passenger_name': passengerName,
         'origin': origin.toJson(),

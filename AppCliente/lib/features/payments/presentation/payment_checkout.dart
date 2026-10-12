@@ -8,6 +8,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/payments/data/payment_api.dart';
 import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Desenlace del checkout de pago en línea.
 enum PaymentOutcome { approved, rejected, pending, cancelled, failed }
@@ -307,6 +308,7 @@ class _PaymentCheckoutSheetState extends ConsumerState<_PaymentCheckoutSheet> {
         width: double.infinity,
         child: FilledButton(
           style: FilledButton.styleFrom(
+            foregroundColor: colorDeTextoSobre(color),
             backgroundColor: color,
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),

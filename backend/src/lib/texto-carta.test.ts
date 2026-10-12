@@ -99,3 +99,35 @@ describe('las viñetas de una carta impresa', () => {
     }
   });
 });
+
+describe('el espacio antes de la coma', () => {
+  it('se quita: es lo que llega del lector y de las cartas a mano', () => {
+    // Visto en producción, en la carta de un local real: cinco renglones de
+    // «Papa , carne a la plancha , chorizo» en la lista de platos.
+    expect(limpiarTextoDeCarta('Choricarne (Papa , carne , chorizo)')).toBe(
+      'Choricarne (Papa, carne, chorizo)',
+    );
+  });
+
+  it('el de DESPUÉS se conserva: separa las palabras', () => {
+    expect(limpiarTextoDeCarta('Papa, carne, chorizo')).toBe(
+      'Papa, carne, chorizo',
+    );
+  });
+
+  it('también antes del punto y del punto y coma', () => {
+    expect(limpiarTextoDeCarta('Pollo . Arroz ; Papa')).toBe(
+      'Pollo. Arroz; Papa',
+    );
+  });
+
+  it('no inventa espacios donde no los había', () => {
+    expect(limpiarTextoDeCarta('Papa,carne')).toBe('Papa,carne');
+  });
+
+  it('el precio con separador de miles no se toca', () => {
+    // «39.000» son treinta y nueve mil: si el punto se moviera, el plato
+    // cambiaría de precio.
+    expect(limpiarTextoDeCarta('Picada 39.000')).toBe('Picada 39.000');
+  });
+});

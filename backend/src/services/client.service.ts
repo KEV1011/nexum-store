@@ -2003,7 +2003,8 @@ export async function notifyClientTripUpdateById(tripId: string): Promise<void> 
 type PrismaOrder = {
   id: string; orderRef: string; businessId: string; status: string; subtotal: number;
   promoDiscount?: number | null;
-  deliveryFee: number; total: number; etaMinutes: number | null; deliveryAddress: string;
+  deliveryFee: number; intercityFee?: number | null;
+  total: number; etaMinutes: number | null; deliveryAddress: string;
   pickupPhotoUrl: string | null; deliveryPhotoUrl: string | null;
   signatureUrl?: string | null; signedByName?: string | null; signedAt?: Date | null;
   createdAt: Date; pickedUpAt: Date | null; deliveredAt: Date | null;
@@ -2048,6 +2049,9 @@ function _toSummary(
     // total menor que la suma de sus productos y no sabe por qué.
     promoDiscount: o.promoDiscount ?? undefined,
     deliveryFee: o.deliveryFee,
+    // El flete de la encomienda, aparte del domicilio: es lo que le faltaba
+    // al recibo del cliente para cuadrar con el total que se cobró.
+    intercityFee: o.intercityFee ?? undefined,
     total: o.total,
     etaMinutes: o.etaMinutes ?? 30,
     promisedAt: o.promisedAt?.toISOString(),

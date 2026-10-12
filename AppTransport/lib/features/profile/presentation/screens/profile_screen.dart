@@ -19,6 +19,7 @@ import 'package:nexum_driver/features/driver_status/presentation/providers/drive
 import 'package:nexum_driver/features/profile/presentation/providers/editable_profile_provider.dart';
 import 'package:nexum_driver/features/profile_verification/domain/entities/driver_profile_entity.dart';
 import 'package:nexum_driver/features/profile_verification/presentation/providers/driver_profile_provider.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 // ── Documentos (reales, de /driver/profile vía driverProfileProvider) ─────────
 
@@ -822,7 +823,8 @@ class ProfileScreen extends ConsumerWidget {
           ),
           ElevatedButton(
             style:
-                ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+                ElevatedButton.styleFrom(foregroundColor: colorDeTextoSobre(AppColors.error),
+backgroundColor: AppColors.error),
             onPressed: () async {
               Navigator.of(ctx).pop();
               await _storage.deleteAll();

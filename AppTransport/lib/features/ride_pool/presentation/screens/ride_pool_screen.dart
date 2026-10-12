@@ -8,6 +8,7 @@ import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/ride_pool/domain/entities/ride_entities.dart';
 import 'package:nexum_driver/features/ride_pool/presentation/providers/ride_pool_provider.dart';
 import 'package:nexum_driver/features/ride_pool/presentation/screens/ride_chat_screen.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 class RidePoolScreen extends ConsumerStatefulWidget {
   const RidePoolScreen({super.key});
@@ -217,7 +218,7 @@ class _RequestCard extends StatelessWidget {
                     onPressed: () => onBid(ride.offeredFare, ride.etaMinutes),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
+                      foregroundColor: colorDeTextoSobre(AppColors.primary),
                     ),
                     child: Text('Aceptar ${CurrencyFormatter.format(ride.offeredFare)}'),
                   ),
@@ -292,7 +293,7 @@ class _RequestCard extends StatelessWidget {
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
+                  foregroundColor: colorDeTextoSobre(AppColors.primary),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 onPressed: () {
@@ -433,7 +434,7 @@ class _ActiveRideView extends StatelessWidget {
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: colorDeTextoSobre(AppColors.primary),
           padding: const EdgeInsets.symmetric(vertical: 15),
         ),
         onPressed: () => onAdvance(next!),

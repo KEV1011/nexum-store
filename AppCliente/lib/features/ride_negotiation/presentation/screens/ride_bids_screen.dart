@@ -8,6 +8,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/ride_negotiation/domain/entities/ride_entities.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/screens/ride_chat_screen.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 class RideBidsScreen extends ConsumerWidget {
   const RideBidsScreen({super.key});
@@ -223,7 +224,7 @@ class _BidCard extends StatelessWidget {
               onPressed: onAccept,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(AppColors.primary),
               ),
               child: Text('Aceptar por ${CurrencyFormatter.format(bid.fare)}'),
             ),
@@ -342,7 +343,7 @@ class _MatchedView extends StatelessWidget {
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
+                          foregroundColor: colorDeTextoSobre(AppColors.primary),
                         ),
                         icon: const Icon(Icons.chat_bubble_rounded, size: 18),
                         label: const Text('Chat'),

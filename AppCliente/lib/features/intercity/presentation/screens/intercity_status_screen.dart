@@ -16,6 +16,7 @@ import 'package:nexum_client/features/intercity/presentation/providers/intercity
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/map_pin.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 const _kInterColor = AppColors.intercityBrand;
 
@@ -674,7 +675,7 @@ class _DriverOfferCard extends StatelessWidget {
                   onPressed: onAccept,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _kInterColor,
-                    foregroundColor: Colors.white,
+                    foregroundColor: colorDeTextoSobre(_kInterColor),
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),

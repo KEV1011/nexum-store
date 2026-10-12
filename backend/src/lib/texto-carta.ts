@@ -66,6 +66,11 @@ export function limpiarTextoDeCarta(valor: string): string {
     // son: un nombre con uno dentro no casa en una búsqueda.
     .replace(/[  -​  　]/g, ' ')
     .replace(/\s+/g, ' ')
+    // El espacio ANTES de la coma o el punto. En las cartas escritas a mano
+    // y en lo que devuelve el lector sale a cada rato («Papa , carne ,
+    // chorizo») y en una lista de platos se lee como un error de la app, no
+    // del local. Solo se quita el de delante: el de detrás separa palabras.
+    .replace(/\s+([,;.])/g, '$1')
     .trim();
 }
 

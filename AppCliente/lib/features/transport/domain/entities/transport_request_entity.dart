@@ -277,9 +277,17 @@ class TransportRequestEntity {
   /// otra fórmula y por tanto casi nunca coincide con lo que paga.
   final double? finalFare;
 
-  /// El importe que hay que enseñar: el cobrado si ya está, la estimación
-  /// mientras tanto.
-  double get displayFare => finalFare ?? estimatedFare;
+  /// El importe que hay que enseñar: lo que paga el pasajero si el servidor
+  /// ya lo dijo, el cobrado si no, y la estimación mientras tanto.
+  ///
+  /// `totalPasajero` va PRIMERO porque es el único que trae restado el cupón.
+  /// Sin él, el seguimiento enseñaba la tarifa completa bajo la etiqueta
+  /// «Total cobrado» a quien había pagado menos: la pantalla de pedir ya usaba
+  /// la cifra correcta —con su comentario explicando que prometer un precio y
+  /// cobrar otro no se puede—, así que las dos pantallas del mismo viaje se
+  /// contradecían. Y pagando en efectivo, el pasajero le habría dado al
+  /// conductor lo que leyó aquí.
+  double get displayFare => totalPasajero ?? finalFare ?? estimatedFare;
   final double distanceKm;
   final int etaMinutes;
   final TransportStatus status;

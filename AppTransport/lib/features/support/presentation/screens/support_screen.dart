@@ -7,6 +7,7 @@ import 'package:nexum_driver/features/support/data/support_api.dart';
 import 'package:nexum_driver/features/support/presentation/screens/support_ticket_detail_screen.dart';
 import 'package:nexum_driver/features/support/presentation/widgets/support_common.dart';
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 class SupportScreen extends StatefulWidget {
   const SupportScreen({super.key});
@@ -277,8 +278,8 @@ class _TicketsTabState extends State<_TicketsTab> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _newTicket,
         backgroundColor: AppColors.primary,
-        icon: const Icon(Icons.add_comment_rounded, color: Colors.white),
-        label: const Text('Nuevo ticket', style: TextStyle(color: Colors.white)),
+        icon: const Icon(Icons.add_comment_rounded, color: textoSobreMarca),
+        label: const Text('Nuevo ticket', style: TextStyle(color: textoSobreMarca)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
@@ -467,6 +468,7 @@ class _NewTicketSheetState extends State<_NewTicketSheet> {
               width: double.infinity,
               child: FilledButton(
                 style: FilledButton.styleFrom(
+                  foregroundColor: colorDeTextoSobre(AppColors.primary),
                   backgroundColor: AppColors.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),

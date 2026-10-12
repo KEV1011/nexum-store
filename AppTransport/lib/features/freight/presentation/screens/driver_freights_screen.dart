@@ -9,6 +9,7 @@ import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/shared/widgets/custody_pin_dialog.dart';
 import 'package:nexum_driver/features/freight/presentation/widgets/freight_route_map.dart';
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Tipos de la bitácora del flete. Los cuatro primeros son GASTO (suman al
 /// costo del viaje y exigen monto); parada y nota solo dejan constancia.
@@ -336,6 +337,7 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
                   : const Icon(Icons.check_rounded, size: 18),
               label: Text(busy ? 'Tomando…' : 'Tomar flete'),
               style: FilledButton.styleFrom(
+                  foregroundColor: colorDeTextoSobre(const Color(0xFFF59E0B)),
                   backgroundColor: const Color(0xFFF59E0B)),
             ),
           ),
@@ -456,6 +458,9 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
                         ? 'Iniciar viaje'
                         : 'Completar entrega'),
                 style: FilledButton.styleFrom(
+                  foregroundColor: colorDeTextoSobre(status == 'ACCEPTED'
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF059669)),
                   backgroundColor: status == 'ACCEPTED'
                       ? const Color(0xFFF59E0B)
                       : const Color(0xFF059669),

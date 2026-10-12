@@ -7,6 +7,7 @@ import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/support/data/support_api.dart';
 import 'package:nexum_client/features/support/presentation/widgets/support_common.dart';
+import 'package:nexum_client/app/theme/contraste.dart';
 
 /// Hilo de un ticket: mensajes del usuario y del soporte + responder.
 class SupportTicketDetailScreen extends ConsumerStatefulWidget {
@@ -165,8 +166,8 @@ class _SupportTicketDetailScreenState extends ConsumerState<SupportTicketDetailS
                   icon: _sending
                       ? const SizedBox(
                           width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: textoSobreMarca))
+                      : const Icon(Icons.send_rounded, color: textoSobreMarca, size: 20),
                   onPressed: _sending ? null : _send,
                 ),
               ),

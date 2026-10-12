@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:nexum_client/core/utils/lista_json.dart';
 import 'package:nexum_client/core/utils/polyline_decoder.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 
@@ -97,10 +98,10 @@ class GeoService {
           if (lng != null) 'lng': lng,
         },
       );
-      final data = res.data?['data'] as List<dynamic>? ?? const [];
-      return data
-          .map((e) => PlaceSuggestion.fromJson(e as Map<String, dynamic>))
-          .toList();
+      // Sugerencia a sugerencia: una fila que no se pueda leer dejaba el
+      // buscador SIN NINGUNA, y un autocompletado vacío se lee como que la
+      // dirección no existe o que la app está rota.
+      return listaDeJson(res.data?['data'], PlaceSuggestion.fromJson);
     } catch (_) {
       return const [];
     }

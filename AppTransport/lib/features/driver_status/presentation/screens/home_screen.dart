@@ -47,6 +47,7 @@ import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -1658,6 +1659,9 @@ class _PuestosPanelCard extends ConsumerWidget {
                 style: const TextStyle(fontSize: 12.5),
               ),
               style: FilledButton.styleFrom(
+                foregroundColor: colorDeTextoSobre(libres > 0
+                    ? AppColors.success
+                    : AppColors.intercityBrand.withValues(alpha: 0.45)),
                 backgroundColor: libres > 0
                     ? AppColors.success
                     : AppColors.intercityBrand.withValues(alpha: 0.45),
@@ -1700,6 +1704,9 @@ class _PuestosPanelCard extends ConsumerWidget {
                   style: const TextStyle(fontSize: 12.5),
                 ),
                 style: FilledButton.styleFrom(
+                  foregroundColor: colorDeTextoSobre(pasajeros > 0
+                      ? AppColors.success
+                      : AppColors.intercityBrand.withValues(alpha: 0.35)),
                   backgroundColor: pasajeros > 0
                       ? AppColors.success
                       : AppColors.intercityBrand.withValues(alpha: 0.35),

@@ -4,6 +4,7 @@ import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/features/active_trip/domain/entities/active_trip_entity.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Tarjeta inferior para el estado (c): viaje en curso hacia el destino.
 ///
@@ -299,7 +300,7 @@ class TripInProgressCard extends StatelessWidget {
               onPressed: () => _confirmFinish(context),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                foregroundColor: colorDeTextoSobre(AppColors.primary),
                 shape: RoundedRectangleBorder(
                   borderRadius:
                       BorderRadius.circular(AppConstants.radiusMedium),
@@ -345,7 +346,7 @@ class TripInProgressCard extends StatelessWidget {
             onPressed: () => Navigator.of(ctx).pop(true),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
+              foregroundColor: colorDeTextoSobre(AppColors.primary),
             ),
             child: const Text('Confirmar'),
           ),

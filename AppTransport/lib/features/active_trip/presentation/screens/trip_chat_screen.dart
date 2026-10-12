@@ -11,6 +11,7 @@ import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/features/moderacion/presentation/reportar_sheet.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Chat en vivo del viaje normal (conductor ↔ pasajero) sobre el WS singleton
 /// del conductor y el canal persistente `subscribe_trip_chat`.
@@ -318,7 +319,7 @@ class _TripChatScreenState extends State<TripChatScreen> {
                 backgroundColor: AppColors.primary,
                 child: IconButton(
                   tooltip: 'Enviar',
-                  icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                  icon: const Icon(Icons.send_rounded, color: textoSobreMarca, size: 20),
                   onPressed: _send,
                 ),
               ),
