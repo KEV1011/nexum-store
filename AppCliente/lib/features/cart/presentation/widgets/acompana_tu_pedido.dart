@@ -18,7 +18,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
-import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
@@ -47,9 +46,11 @@ class AcompanaTuPedido extends ConsumerWidget {
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
       data: (b) {
+        // Sin `isAvailable`: `ProductEntity` no lo tiene porque el servidor
+        // ya filtra los agotados en la carta pública. Comprobarlo aquí no
+        // solo sobraba, es que no compila — y eso solo lo dice el CI.
         final sugeridos = b.products
-            .where((p) =>
-                p.suggestAsAddon && p.isAvailable && !enCarrito.contains(p.id))
+            .where((p) => p.suggestAsAddon && !enCarrito.contains(p.id))
             .toList();
         // Si no queda ninguno, la sección entera desaparece. Un título con la
         // fila vacía debajo se lee como algo que no cargó.
