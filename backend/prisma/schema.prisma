@@ -469,7 +469,7 @@ model Business {
   brandColor String?
   /// Una línea bajo el nombre: «Comida casera desde 1998».
   tagline    String?
-  token    String  @unique @default(cuid())
+  token      String  @unique @default(cuid())
 
   /// Si el local es nuestro cliente o si la ficha la publicamos nosotros.
   ///
@@ -501,6 +501,7 @@ model Business {
   updatedAt DateTime @updatedAt
 
   products       Product[]
+  optionGroups   OptionGroup[]
   orders         Order[]
   payouts        Payout[]
   partnerCredits PartnerCredit[]
@@ -529,7 +530,7 @@ enum BusinessCategory {
 }
 
 model Product {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   businessId     String
   name           String
   description    String?
@@ -546,15 +547,15 @@ model Product {
   /// reescriba precios: se DERIVA, porque un precio guardado y unas fechas
   /// guardadas acaban discrepando y nadie sabe cuál miente.
   promoUntil     DateTime?
-  category       String   @default("General")
+  category       String    @default("General")
   /// Orden dentro de la carta. Una carta se lee en un orden concreto —
   /// entradas antes que postres— y por fecha de creación salen mezclados.
   /// Las secciones se ordenan por el menor sortOrder de sus productos, así
   /// que ordenar productos ordena también la carta.
-  sortOrder      Int      @default(0)
+  sortOrder      Int       @default(0)
   // Foto de portada (primera/principal). La galería adicional vive en `photos`.
   imageUrl       String?
-  isAvailable    Boolean  @default(true)
+  isAvailable    Boolean   @default(true)
   // ── Inventario (supermercados y farmacias) ────────────────────────────────
   // Todo opcional: un restaurante no lleva código de barras ni stock, y con
   // estos campos en null se comporta exactamente como antes.
@@ -573,12 +574,20 @@ model Product {
   /// había escrito.
   model          String?
   warrantyMonths Int?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
-  business     Business       @relation(fields: [businessId], references: [id])
-  orderLines   OrderLine[]
-  photos       ProductPhoto[]
-  optionGroups OptionGroup[]
+  /// Se ofrece en «Acompaña tu pedido» al pagar.
+  ///
+  /// Es un PRODUCTO del catálogo, no una opción de otro plato: entra como una
+  /// línea más del pedido, así que descuenta existencias, cuenta en el reporte
+  /// de ventas y su precio vive en un solo sitio. Modelarlo como
+  /// `ProductOption` haría las tres cosas mal a la vez.
+  suggestAsAddon Boolean @default(false)
+
+  business       Business             @relation(fields: [businessId], references: [id])
+  orderLines     OrderLine[]
+  photos         ProductPhoto[]
+  gruposOpciones ProductOptionGroup[]
 
   @@index([businessId])
   // El escáner busca por código dentro de UN negocio: el mismo EAN puede
@@ -591,24 +600,49 @@ model Product {
 // "Quitar"). `minSelect`/`maxSelect` controlan cuántas opciones puede elegir el
 // cliente (maxSelect=1 → selección única tipo radio; >1 → múltiple tipo check).
 model OptionGroup {
-  id        String   @id @default(cuid())
-  productId String
-  name      String
-  required  Boolean  @default(false)
-  minSelect Int      @default(0)
-  maxSelect Int      @default(1)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  /// El grupo vive en el NEGOCIO, no en un plato.
+  ///
+  /// Antes colgaba de `productId` y eso obligaba a recrearlo plato por plato:
+  /// una carta de doce arepas con once adicionales eran 132 filas a mano, y
+  /// subir el aguacate de 4.000 a 5.000 pedía tocar doce sitios —uno se queda
+  /// viejo y nadie se entera hasta que un cliente pague de menos—. Ahora el
+  /// precio está en un solo sitio y los platos lo ADJUNTAN.
+  businessId String
+  name       String
+  required   Boolean  @default(false)
+  minSelect  Int      @default(0)
+  maxSelect  Int      @default(1)
+  /// Orden dentro de la BIBLIOTECA del negocio. El orden dentro de un plato
+  /// concreto lo manda `ProductOptionGroup.sortOrder`, que puede ser distinto.
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
 
-  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  options ProductOption[]
+  business Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  options  ProductOption[]
+  usos     ProductOptionGroup[]
 
-  @@index([productId])
+  @@index([businessId])
   @@map("option_groups")
 }
 
-// Una opción dentro de un grupo (ej: "Grande" +3000, "+Queso" +2000,
-// "Sin cebolla" +0). `priceDelta` se suma al precio base del producto.
+/// Qué grupos usa cada plato. Es el ÚNICO camino de lectura: un grupo exclusivo
+/// de un plato es simplemente uno con un solo uso, así que no hay dos fuentes
+/// que puedan discrepar.
+model ProductOptionGroup {
+  productId String
+  groupId   String
+  sortOrder Int    @default(0)
+
+  product Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  group   OptionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([productId, groupId])
+  @@index([productId])
+  @@index([groupId])
+  @@map("product_option_groups")
+}
+
 model ProductOption {
   id          String  @id @default(cuid())
   groupId     String

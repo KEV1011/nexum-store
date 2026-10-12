@@ -195,6 +195,7 @@ class OptionGroupEntity {
     this.required = false,
     this.minSelect = 0,
     this.maxSelect = 1,
+    this.label = '',
     this.options = const [],
   });
 
@@ -203,6 +204,14 @@ class OptionGroupEntity {
   final bool required;
   final int minSelect;
   final int maxSelect;
+
+  /// «Obligatorio · elige 1», «Opcional · hasta 10».
+  ///
+  /// La REDACTA el servidor y la enseñan igual el portal, esta app y la carta
+  /// del QR. Si la compusiera cada superficie, el dueño creería publicar una
+  /// regla y aquí saldría otra. Vacío = backend viejo; entonces se cae a las
+  /// insignias de siempre en vez de dejar el hueco.
+  final String label;
   final List<ProductOptionEntity> options;
 
   /// Selección única (radio) cuando solo se puede elegir una opción.
@@ -222,6 +231,7 @@ class ProductEntity {
     this.imageUrl,
     this.images = const [],
     this.optionGroups = const [],
+    this.suggestAsAddon = false,
   });
 
   final String id;
@@ -277,6 +287,13 @@ class ProductEntity {
   ///
   /// Un grupo OPCIONAL (adiciones, salsas) no cuenta: ahí el precio de la
   /// lista sí se puede pagar tal cual, sin añadir nada.
+  /// El comercio lo ofrece en «Acompaña tu pedido» al pagar.
+  ///
+  /// Es un producto NORMAL: entra como una línea más del carrito, así que
+  /// descuenta existencias y cuenta en el reporte de ventas del local. Lo
+  /// único distinto es que se le propone al cliente antes de cerrar.
+  final bool suggestAsAddon;
+
   bool get precioDesde => optionGroups.any(
         (g) => g.required && g.options.any((o) => o.priceDelta > 0),
       );

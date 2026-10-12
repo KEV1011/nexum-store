@@ -107,6 +107,7 @@ class BusinessesRealDataSource {
       optionGroups: ((j['optionGroups'] as List?) ?? const [])
           .map((g) => _mapOptionGroup(g as Map<String, dynamic>))
           .toList(),
+      suggestAsAddon: j['suggestAsAddon'] as bool? ?? false,
     );
   }
 
@@ -117,6 +118,7 @@ class BusinessesRealDataSource {
       required: j['required'] as bool? ?? false,
       minSelect: (j['minSelect'] as num?)?.toInt() ?? 0,
       maxSelect: (j['maxSelect'] as num?)?.toInt() ?? 1,
+      label: j['label'] as String? ?? '',
       options: ((j['options'] as List?) ?? const [])
           .map((o) => _mapOption(o as Map<String, dynamic>))
           .toList(),

@@ -66,9 +66,14 @@ export async function resolverLineasDePedido(
     const producto = await prisma.product.findUnique({
       where: { id: line.productId },
       include: {
-        optionGroups: {
+        // Por el puente: los grupos cuelgan del negocio y el plato los
+        // adjunta. Es el MISMO camino que usa la carta, así que lo que se
+        // cobra no puede salir de una lista distinta de la que se enseñó.
+        gruposOpciones: {
           orderBy: { sortOrder: 'asc' },
-          include: { options: { orderBy: { sortOrder: 'asc' } } },
+          include: {
+            group: { include: { options: { orderBy: { sortOrder: 'asc' } } } },
+          },
         },
       },
     });
@@ -117,7 +122,11 @@ export async function resolverLineasDePedido(
     const base = precioVigente(producto).precio;
 
     if (Array.isArray(line.optionIds)) {
-      const resueltas = resolverOpciones(producto.optionGroups, line.optionIds, producto.name);
+      const resueltas = resolverOpciones(
+        producto.gruposOpciones.map((a) => a.group),
+        line.optionIds,
+        producto.name,
+      );
       // El recargo puede ser negativo si el negocio descuenta por quitar algo;
       // el precio de una línea nunca baja de cero.
       precioUnitario = Math.max(0, base + resueltas.recargo);

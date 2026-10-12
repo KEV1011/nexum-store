@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
@@ -385,7 +386,39 @@ class _GroupSection extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            if (group.required)
+            // UNA sola frase, la que redacta el servidor: «Obligatorio · elige
+            // 1», «Opcional · hasta 10». Antes eran dos insignias sueltas
+            // —«Obligatorio» y «Hasta 3»— que no decían el mínimo, así que un
+            // grupo de «elige entre 2 y 4» se leía como «hasta 4» y el pedido
+            // se rechazaba en la caja sin que nada lo hubiera anunciado.
+            if (group.label.isNotEmpty)
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: group.required
+                        ? AppColors.primaryContainer
+                        : context.zHundida,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    group.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: group.required
+                          ? AppColors.primaryDim
+                          : context.textSecondaryColor,
+                    ),
+                  ),
+                ),
+              )
+            // Backend viejo: no manda `label`. Se cae a lo de siempre en vez
+            // de dejar el hueco.
+            else if (group.required)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
@@ -403,7 +436,7 @@ class _GroupSection extends StatelessWidget {
                 ),
               ),
             const Spacer(),
-            if (!group.isSingle)
+            if (group.label.isEmpty && !group.isSingle)
               Text(
                 'Hasta ${group.maxSelect}',
                 style: TextStyle(

@@ -64,6 +64,8 @@ export interface GrupoOpciones {
   required: boolean
   minSelect: number
   maxSelect: number
+  /** «Obligatorio · elige 1». La redacta el servidor; la misma que ve la app. */
+  label?: string
   options: Opcion[]
 }
 
@@ -79,6 +81,8 @@ export interface Producto {
   imageUrl?: string
   isAvailable: boolean
   stock?: number
+  /** El local lo ofrece en «¿Algo para acompañar?» antes de enviar. */
+  suggestAsAddon?: boolean
   optionGroups: GrupoOpciones[]
 }
 

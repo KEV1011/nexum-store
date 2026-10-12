@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { csvTemplate, parseProductCsv } from '../lib/product-csv';
 import {
+  listOptionGroups,
+  upsertOptionGroup,
+  deleteOptionGroup,
+  applyOptionGroupToCategory,
   getBusinessService,
   getManagedProductsForBusiness,
   reorderBusinessProducts,
@@ -901,6 +905,71 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo crear el catálogo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// ─── Biblioteca de adiciones del negocio ─────────────────────────────────────
+//
+// Los grupos («Adicionales», «Tamaño») viven en el NEGOCIO y los platos los
+// adjuntan, así que el precio del aguacate está en un solo sitio. Antes cada
+// grupo colgaba de un plato: once adiciones en doce arepas eran 132 filas a
+// mano y doce sitios que tocar al subir un precio.
+
+router.get('/:token/option-groups', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.status(200).json({ success: true, data: await listOptionGroups(business.id) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron cargar las adiciones';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// POST crea; POST /:groupId actualiza. Devuelven la biblioteca entera, para
+// que el portal no tenga que recargarla aparte.
+router.post('/:token/option-groups/:groupId?', async (req: Request, res: Response): Promise<void> => {
+  const { token, groupId } = req.params as { token: string; groupId?: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await upsertOptionGroup(
+      business.id,
+      groupId,
+      req.body as SetProductOptionsDTO['groups'][number],
+    );
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo guardar el grupo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+router.delete('/:token/option-groups/:groupId', async (req: Request, res: Response): Promise<void> => {
+  const { token, groupId } = req.params as { token: string; groupId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.status(200).json({ success: true, data: await deleteOptionGroup(business.id, groupId) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo eliminar el grupo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// La acción que ahorra la tarde: el grupo a TODOS los platos de una sección.
+router.post('/:token/option-groups/:groupId/aplicar', async (req: Request, res: Response): Promise<void> => {
+  const { token, groupId } = req.params as { token: string; groupId: string };
+  const { categoria } = req.body as { categoria?: unknown };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const data = await applyOptionGroupToCategory(
+      business.id,
+      groupId,
+      typeof categoria === 'string' ? categoria : '',
+    );
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo aplicar el grupo';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });
