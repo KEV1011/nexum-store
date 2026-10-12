@@ -50,6 +50,7 @@ import {
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
 import { parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
+import { GRUPO_TAMANO, motivoParaNoAgrupar, sugerirVariantes } from '../lib/carta-variantes';
 import { reporteACsv } from '../lib/reporte-ventas';
 import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
@@ -769,6 +770,11 @@ router.post(
         data: {
           lineas: carta.lineas,
           secciones: carta.secciones,
+          // Platos que parecen el mismo en varios tamaños. Es una SUGERENCIA
+          // para la vista previa: el dueño la acepta, la corrige o la deja
+          // separada. Sin esto, «Picada pequeña/mediana/grande» nace como tres
+          // productos sueltos y arreglarlo pide otra pantalla.
+          variantes: sugerirVariantes(carta.lineas),
           // Se devuelve el texto leído para que el dueño pueda comprobar si el
           // problema fue la foto (borrosa, torcida) o nuestra lectura.
           textoCrudo: lectura.texto,
@@ -782,7 +788,8 @@ router.post(
   },
 );
 
-// POST /business/:token/products/carta-importar { filas: [{nombre,precio,seccion}] }
+// POST /business/:token/products/carta-importar
+//   { filas: [{nombre,precio,seccion}], variantes?: [...] }
 //
 // Lo que el dueño aprobó en la tabla de la carta. Convierte sus filas a CSV y
 // las mete por el MISMO importador: la validación, el precio de la BD y la
@@ -791,31 +798,106 @@ router.post(
 // El armado del CSV se hace AQUÍ y no en el navegador a propósito: el escape
 // de comillas y comas tiene que vivir junto a quien lo lee (`splitCsvLine`),
 // o un plato llamado «Arroz, pollo y "especial"» volvería partido en dos.
+//
+// LAS VARIANTES NO ABREN UN CAMINO NUEVO. Un plato con tamaños es UN producto
+// al precio del más barato —o sea una fila más del mismo CSV— y después sus
+// opciones por `setProductOptions`, que es la ruta que ya usa el portal. Lo
+// único propio es enlazar las dos cosas, y para eso `applyProductImport`
+// devuelve los ids de lo que creó.
 router.post('/:token/products/carta-importar', async (req: Request, res: Response): Promise<void> => {
   const { token } = req.params as { token: string };
-  const { filas } = req.body as {
+  const { filas, variantes } = req.body as {
     filas?: Array<{ nombre?: unknown; precio?: unknown; seccion?: unknown; descripcion?: unknown }>;
+    variantes?: Array<{
+      nombre?: unknown; seccion?: unknown; precioBase?: unknown; grupo?: unknown;
+      opciones?: Array<{ nombre?: unknown; precioDelta?: unknown }>;
+    }>;
   };
-  if (!Array.isArray(filas) || filas.length === 0) {
+  const sueltas = Array.isArray(filas) ? filas : [];
+  const grupos = Array.isArray(variantes) ? variantes : [];
+  if (sueltas.length === 0 && grupos.length === 0) {
     res.status(400).json({ success: false, error: 'No hay filas para crear.' });
     return;
   }
+
+  // Se sanea ANTES de tocar nada: una variante a medias crearía el producto y
+  // se quedaría sin sus tamaños, que es peor que no crearlo (el cliente vería
+  // la picada a 39.000 sin poder elegir, y el dueño no sabría por qué).
+  const limpias = grupos.map((v) => ({
+    nombre: typeof v.nombre === 'string' ? v.nombre.trim() : '',
+    seccion: typeof v.seccion === 'string' ? v.seccion.trim() : '',
+    precioBase: typeof v.precioBase === 'number' ? Math.round(v.precioBase) : 0,
+    grupo: typeof v.grupo === 'string' && v.grupo.trim() ? v.grupo.trim() : GRUPO_TAMANO,
+    opciones: (Array.isArray(v.opciones) ? v.opciones : []).map((o) => ({
+      nombre: typeof o.nombre === 'string' ? o.nombre.trim() : '',
+      precioDelta: typeof o.precioDelta === 'number' ? Math.round(o.precioDelta) : -1,
+    })),
+  }));
+  for (const v of limpias) {
+    const motivo = motivoParaNoAgrupar(v);
+    if (motivo) {
+      res.status(400).json({ success: false, error: `«${v.nombre || 'Sin nombre'}»: ${motivo}` });
+      return;
+    }
+  }
+
   try {
     const business = await getBusinessService().getBusinessByToken(token);
-    const csv = filasACsv(
-      filas.map((f) => ({
-        nombre: typeof f.nombre === 'string' ? f.nombre : '',
-        precio: typeof f.precio === 'number' ? f.precio : null,
-        seccion: typeof f.seccion === 'string' ? f.seccion : '',
-        descripcion: typeof f.descripcion === 'string' ? f.descripcion : '',
+
+    // Las variantes van al FINAL del CSV y en orden, así que su número de
+    // línea es conocido y con él se recupera el id del producto creado.
+    const base = sueltas.map((f) => ({
+      nombre: typeof f.nombre === 'string' ? f.nombre : '',
+      precio: typeof f.precio === 'number' ? f.precio : null,
+      seccion: typeof f.seccion === 'string' ? f.seccion : '',
+      descripcion: typeof f.descripcion === 'string' ? f.descripcion : '',
+    }));
+    const csv = filasACsv([
+      ...base,
+      ...limpias.map((v) => ({
+        nombre: v.nombre,
+        precio: v.precioBase,
+        seccion: v.seccion,
+        descripcion: '',
       })),
-    );
+    ]);
+
     const indice = await getBarcodeIndexForBusiness(business.id);
     const preview = parseProductCsv(csv, indice);
     const resultado = await applyProductImport(business.id, preview.nuevos, preview.actualizaciones);
+
+    // `filasACsv` se salta las filas sin precio, así que la numeración del CSV
+    // no es la del array: se cuenta cuántas de `base` sobrevivieron.
+    const baseEscritas = base.filter((f) => f.precio != null && f.precio > 0).length;
+    let conTamanos = 0;
+    for (const [i, v] of limpias.entries()) {
+      const lineaCsv = baseEscritas + i + 1;
+      const pos = preview.nuevos.findIndex((n) => n.linea === lineaCsv);
+      const productId = pos === -1 ? undefined : resultado.idsNuevos[pos];
+      // Sin id es que la fila base no se creó (la rechazó el importador). No
+      // se inventa un producto para colgarle las opciones: se cuenta como
+      // omitida y el dueño ve que faltó.
+      if (!productId) continue;
+      await setProductOptions(business.id, productId, {
+        groups: [{
+          name: v.grupo,
+          required: true,
+          minSelect: 1,
+          maxSelect: 1,
+          options: v.opciones.map((o) => ({ name: o.nombre, priceDelta: o.precioDelta })),
+        }],
+      });
+      conTamanos++;
+    }
+
     res.status(200).json({
       success: true,
-      data: { ...resultado, omitidos: preview.errores.length },
+      data: {
+        creados: resultado.creados,
+        actualizados: resultado.actualizados,
+        conTamanos,
+        omitidos: preview.errores.length,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo crear el catálogo';
