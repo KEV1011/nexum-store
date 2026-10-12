@@ -36,11 +36,31 @@ class TripHistoryNotifier extends StateNotifier<List<TripModel>> {
     if (!mounted) return;
     final raw = prefs.getStringList(AppConstants.tripHistoryKey);
     // Sin backend y sin cache → historial vacío: nada de viajes de demo.
-    state = (raw ?? const [])
-        .map((s) => TripModel.fromJson(json.decode(s) as Map<String, dynamic>))
+    //
+    // VIAJE A VIAJE. Antes era un `map` sobre la lista entera, y FUERA del
+    // `try` de arriba —que solo cubre la llamada al backend—: un solo viaje
+    // guardado que no se pudiera leer hacía lanzar aquí y el conductor se
+    // quedaba sin NINGÚN historial de ganancias. La caché la escribió una
+    // versión anterior de la app con su `toJson`, así que basta con que el
+    // parser pase a exigir un campo que entonces no se guardaba.
+    //
+    // La rama del servidor (`_tripFromApi`) ya era tolerante campo a campo;
+    // esta era la que no lo era.
+    final guardados = <TripModel>[];
+    for (final s in raw ?? const <String>[]) {
+      try {
+        final t = TripModel.fromJson(json.decode(s) as Map<String, dynamic>);
         // Purga los viajes semilla que versiones anteriores dejaron en cache.
-        .where((t) => !t.id.startsWith('seed-'))
-        .toList();
+        if (t.id.startsWith('seed-')) continue;
+        guardados.add(t);
+      } catch (_) {
+        // Ese viaje no se puede leer; los demás sí.
+      }
+    }
+    // Entre la lectura del disco y aquí el conductor pudo salir de la
+    // pantalla: asignar el estado de un notifier ya desechado lanza.
+    if (!mounted) return;
+    state = guardados;
   }
 
   /// Mapea el DTO de `/earnings/history` (camelCase) a [TripModel].
