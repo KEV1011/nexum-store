@@ -32,15 +32,34 @@ class PrecioProducto extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final precio = Text(
-      CurrencyFormatter.format(product.price),
-      style: TextStyle(
-        fontFamily: 'Inter',
-        fontSize: grande ? 24 : 15,
-        fontWeight: FontWeight.w800,
-        color: grande ? context.textPrimaryColor : AppColors.primary,
-      ),
+    final estilo = TextStyle(
+      fontFamily: 'Inter',
+      fontSize: grande ? 24 : 15,
+      fontWeight: FontWeight.w800,
+      color: grande ? context.textPrimaryColor : AppColors.primary,
     );
+    final importe = Text(CurrencyFormatter.format(product.price), style: estilo);
+
+    // «Desde» cuando hay que elegir una variante que cuesta más: el precio
+    // suelto sería una promesa que la caja no cumple.
+    final precio = product.precioDesde
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'Desde ',
+                style: estilo.copyWith(
+                  fontSize: (grande ? 24 : 15) - 3,
+                  fontWeight: FontWeight.w600,
+                  color: context.textSecondaryColor,
+                ),
+              ),
+              importe,
+            ],
+          )
+        : importe;
 
     if (!product.enOferta) return precio;
 

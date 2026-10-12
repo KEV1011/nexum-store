@@ -267,4 +267,17 @@ class ProductEntity {
 
   /// El producto requiere que el cliente elija opciones antes de agregarlo.
   bool get hasOptions => optionGroups.isNotEmpty;
+
+  /// El precio de la lista NO es lo que se va a pagar.
+  ///
+  /// Pasa cuando una variante OBLIGATORIA cuesta más que la básica: la misma
+  /// picada vale 39.000 pequeña y 80.000 grande, y nadie puede comprarla sin
+  /// elegir tamaño. Enseñar «$39.000» a secas en la lista es prometer un
+  /// precio que la caja no va a respetar — por eso la carta escribe «Desde».
+  ///
+  /// Un grupo OPCIONAL (adiciones, salsas) no cuenta: ahí el precio de la
+  /// lista sí se puede pagar tal cual, sin añadir nada.
+  bool get precioDesde => optionGroups.any(
+        (g) => g.required && g.options.any((o) => o.priceDelta > 0),
+      );
 }
