@@ -7,6 +7,8 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/core/utils/safe_back.dart';
+import 'package:nexum_client/shared/widgets/estados_zipa.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/providers/'
@@ -43,8 +45,23 @@ class BusinessDetailScreen extends ConsumerWidget {
 
     final async = ref.watch(businessByIdProvider(businessId));
     return async.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      // La silueta de la carta, no una ruedita sobre una pantalla en blanco:
+      // esta es la pantalla donde se decide la compra, y se llega a ella
+      // tocando un local — ver el hueco con su forma es ver que SÍ se abrió.
+      // Con su botón de atrás, porque sin él una carga lenta deja encerrado a
+      // quien solo quería volver a la lista.
+      loading: () => Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Volver',
+            onPressed: () => safeBack(context),
+          ),
+        ),
+        extendBodyBehindAppBar: true,
+        body: const EsqueletoCarta(),
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(),

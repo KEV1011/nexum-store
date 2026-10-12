@@ -8,6 +8,7 @@ import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
 import 'package:nexum_client/features/pooled/presentation/widgets/datos_empresa.dart';
 import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_client/shared/widgets/estados_zipa.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -156,7 +157,10 @@ class _PooledBookingsScreenState extends ConsumerState<PooledBookingsScreen> {
         title: const Text('Mis reservas'),
       ),
       body: state.isLoadingBookings
-          ? const Center(child: CircularProgressIndicator(color: _kPooledColor))
+          ? const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: EsqueletoFilas(cuantas: 3),
+            )
           : state.myBookings.isEmpty
               ? _empty(state.bookingsError)
               : RefreshIndicator(

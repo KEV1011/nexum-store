@@ -7,6 +7,7 @@ import 'package:nexum_client/core/utils/date_formatter.dart';
 import 'package:nexum_client/core/widgets/empty_state.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
+import 'package:nexum_client/shared/widgets/estados_zipa.dart';
 
 /// Historial completo de viajes y envíos del cliente.
 class TripHistoryScreen extends ConsumerWidget {
@@ -22,7 +23,10 @@ class TripHistoryScreen extends ConsumerWidget {
         leading: const BackButton(),
       ),
       body: historyAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: EsqueletoFilas(cuantas: 4),
+        ),
         error: (_, __) => const EmptyState(
           icon: Icons.cloud_off_rounded,
           title: 'No se pudo cargar',

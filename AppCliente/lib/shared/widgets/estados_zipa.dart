@@ -19,16 +19,48 @@ import 'package:nexum_client/app/theme/zipa_tokens.dart';
 /// al llegar los datos la pantalla da un salto. Un esqueleto con la silueta de
 /// las filas reserva el sitio, así que el contenido «se rellena» en vez de
 /// empujar, y de paso comunica qué se está cargando.
-class EsqueletoFilas extends StatefulWidget {
+class EsqueletoFilas extends StatelessWidget {
   const EsqueletoFilas({this.cuantas = 5, super.key});
 
   final int cuantas;
 
   @override
-  State<EsqueletoFilas> createState() => _EsqueletoFilasState();
+  Widget build(BuildContext context) {
+    return LatidoEsqueleto(
+      builder: (context, color) => Column(
+        children: [
+          for (var i = 0; i < cuantas; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _FilaFantasma(color: color),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
-class _EsqueletoFilasState extends State<EsqueletoFilas>
+/// El ritmo del esqueleto, en UN solo sitio.
+///
+/// Latido suave entre la superficie hundida y el borde. **Sin brillo que
+/// recorra la pantalla**: a pantalla completa marea y compite con el contenido
+/// que está a punto de aparecer — por eso no se copió el shimmer de barrido
+/// que hace la otra familia de esqueletos de esta app.
+///
+/// Vive aparte para que cada forma nueva no estrene su propio controlador: dos
+/// esqueletos latiendo a ritmos distintos en la misma pantalla se leen como un
+/// fallo de render, y es exactamente así como se separan las copias.
+class LatidoEsqueleto extends StatefulWidget {
+  const LatidoEsqueleto({required this.builder, super.key});
+
+  /// Recibe el color del latido en este fotograma.
+  final Widget Function(BuildContext context, Color color) builder;
+
+  @override
+  State<LatidoEsqueleto> createState() => _LatidoEsqueletoState();
+}
+
+class _LatidoEsqueletoState extends State<LatidoEsqueleto>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
@@ -42,21 +74,90 @@ class _EsqueletoFilasState extends State<EsqueletoFilas>
   }
 
   @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) => widget.builder(
+          context,
+          Color.lerp(context.zHundida, context.zBorde, _c.value)!,
+        ),
+      );
+}
+
+/// Esqueleto de la CARTA de un comercio: portada, cabecera y platos.
+///
+/// Es la pantalla donde se decide la compra y la que peor abría: un
+/// `Scaffold` en blanco con una ruedita en medio, justo después de tocar un
+/// local. Con la silueta puesta, la carta se rellena en el sitio donde ya
+/// estaba mirando en vez de aparecer de golpe y empujarlo todo.
+class EsqueletoCarta extends StatelessWidget {
+  const EsqueletoCarta({this.platos = 4, super.key});
+
+  /// Cuántos platos fantasma. Cuatro llenan una pantalla de teléfono sin
+  /// prometer una carta más larga de la que puede llegar.
+  final int platos;
+
+  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, _) {
-        // Latido suave entre la superficie hundida y el borde. Sin brillo que
-        // recorra la pantalla: a pantalla completa marea y compite con el
-        // contenido que está a punto de aparecer.
-        final color = Color.lerp(context.zHundida, context.zBorde, _c.value)!;
-        return Column(
-          children: [
-            for (var i = 0; i < widget.cuantas; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _FilaFantasma(color: color),
+    return LatidoEsqueleto(
+      builder: (context, color) {
+        Widget barra(double ancho, double alto) => Container(
+              width: ancho,
+              height: alto,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(6),
               ),
+            );
+
+        return ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            // La portada, con el MISMO alto que `_CoverHeader` del detalle.
+            Container(height: 180, color: color),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  barra(190, 20),
+                  const SizedBox(height: 10),
+                  barra(240, 12),
+                  const SizedBox(height: 20),
+                  // El rótulo de la primera sección de la carta.
+                  barra(110, 14),
+                  const SizedBox(height: 14),
+                  for (var i = 0; i < platos; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                barra(150, 13),
+                                const SizedBox(height: 8),
+                                barra(210, 10),
+                                const SizedBox(height: 9),
+                                barra(70, 14),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ],
         );
       },

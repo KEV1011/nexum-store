@@ -17,6 +17,7 @@ import 'package:nexum_client/features/pooled/presentation/providers/pooled_provi
 import 'package:nexum_client/features/intercity/presentation/providers/municipalities_provider.dart';
 import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
 import 'package:nexum_client/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_client/shared/widgets/estados_zipa.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
 
@@ -258,7 +259,12 @@ class _PooledSearchScreenState extends ConsumerState<PooledSearchScreen> {
 
   Widget _buildResults(PooledState state) {
     if (state.isSearching) {
-      return const Center(child: CircularProgressIndicator(color: _kPooledColor));
+      // Con la silueta de las tarjetas puesta, los resultados se rellenan en
+      // su sitio en vez de empujar la pantalla al llegar.
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: EsqueletoFilas(cuantas: 4),
+      );
     }
     if (state.searchResults.isEmpty) {
       return _emptyState(state.error);
