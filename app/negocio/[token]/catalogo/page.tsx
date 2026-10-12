@@ -21,9 +21,13 @@ import {
   ChevronDown,
   Check,
   X,
+  AlertTriangle,
+  Layers,
 } from 'lucide-react'
 
 import { formatCOP } from '../../../moneda'
+import { etiquetaDeGrupo } from '../../../opciones-texto'
+import { AdicionesManager } from './AdicionesManager'
 import { CONTENEDOR, TARJETA } from '../../../ui'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -83,6 +87,10 @@ interface OptionGroup {
   required: boolean
   minSelect: number
   maxSelect: number
+  /** La frase que redacta el SERVIDOR. Solo llega al cargar. */
+  label?: string
+  /** En cuántos platos se usa. Solo lo trae la biblioteca. */
+  usedBy?: number
   options: ProductOption[]
 }
 
@@ -104,6 +112,7 @@ interface Product {
   category: string
   imageUrl?: string
   isAvailable: boolean
+  suggestAsAddon?: boolean
   /** Posición en la carta. El cliente la ve en este orden. */
   sortOrder: number
   images: ProductPhoto[]
@@ -191,6 +200,26 @@ function OptionsEditor({
     () => JSON.parse(JSON.stringify(product.optionGroups ?? [])) as OptionGroup[],
   )
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // La biblioteca del negocio, para ADJUNTAR en vez de volver a escribir.
+  const [biblioteca, setBiblioteca] = useState<OptionGroup[]>([])
+
+  useEffect(() => {
+    let vivo = true
+    void (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/business/${token}/option-groups`)
+        const json = (await res.json()) as { success: boolean; data?: OptionGroup[] }
+        if (vivo && json.success && json.data) setBiblioteca(json.data)
+      } catch { /* sin biblioteca el editor sigue sirviendo para crear */ }
+    })()
+    return () => { vivo = false }
+  }, [token])
+
+  // Solo se ofrecen los que este plato NO tiene ya: volver a adjuntar el mismo
+  // grupo lo duplicaría en la carta.
+  const puestos = new Set(groups.map((g) => g.id).filter(Boolean))
+  const disponibles = biblioteca.filter((g) => !puestos.has(g.id))
 
   const addGroup = () =>
     setGroups((g) => [...g, { name: '', required: false, minSelect: 0, maxSelect: 1, options: [{ name: '', priceDelta: 0 }] }])
@@ -206,17 +235,25 @@ function OptionsEditor({
 
   const save = async () => {
     setSaving(true)
+    setError(null)
     try {
       const res = await fetch(`${BACKEND_URL}/business/${token}/products/${product.id}/options`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ groups }),
       })
-      const json = (await res.json()) as { success: boolean; data?: Product }
+      const json = (await res.json()) as { success: boolean; data?: Product; error?: string }
       if (json.success && json.data) {
         onChanged(json.data)
         onClose()
+      } else {
+        // Antes el fallo se tragaba entero: el dueño pulsaba «Guardar
+        // opciones», no pasaba nada y no sabía por qué. El motivo lo redacta
+        // el backend en español.
+        setError(json.error ?? 'No se pudieron guardar las opciones.')
       }
+    } catch {
+      setError('No se pudo conectar con el servidor.')
     } finally {
       setSaving(false)
     }
@@ -246,20 +283,54 @@ function OptionsEditor({
             <label className="inline-flex items-center gap-1.5">
               <input
                 type="checkbox"
-                checked={g.maxSelect > 1}
-                onChange={(e) => patchGroup(gi, { maxSelect: e.target.checked ? Math.max(2, g.options.length) : 1 })}
-              />
-              Selección múltiple
-            </label>
-            <label className="inline-flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={g.required}
-                onChange={(e) => patchGroup(gi, { required: e.target.checked, minSelect: e.target.checked ? 1 : 0 })}
+                checked={g.required || g.minSelect > 0}
+                onChange={(e) => patchGroup(gi, {
+                  required: e.target.checked,
+                  minSelect: e.target.checked ? Math.max(1, g.minSelect) : 0,
+                })}
               />
               Obligatorio
             </label>
+            {/* Números y no una casilla «selección múltiple». Esa casilla
+                ponía el máximo igual al número de opciones, así que «puedes
+                elegir hasta 10» no se podía expresar y «al menos 2 salsas»
+                tampoco. */}
+            <label className="inline-flex items-center gap-1.5">
+              Mínimo
+              <input
+                className={`${INPUT} w-14`}
+                inputMode="numeric"
+                value={String(g.minSelect)}
+                onChange={(e) => patchGroup(gi, {
+                  minSelect: Number(e.target.value.replace(/[^\d]/g, '') || 0),
+                })}
+                maxLength={2}
+              />
+            </label>
+            <label className="inline-flex items-center gap-1.5">
+              Máximo
+              <input
+                className={`${INPUT} w-14`}
+                inputMode="numeric"
+                value={String(g.maxSelect)}
+                onChange={(e) => patchGroup(gi, {
+                  maxSelect: Number(e.target.value.replace(/[^\d]/g, '') || 1),
+                })}
+                maxLength={2}
+              />
+            </label>
+            {/* Lo que va a leer el cliente, con la MISMA función que usa el
+                servidor para redactarlo. */}
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">
+              {etiquetaDeGrupo(g)}
+            </span>
           </div>
+          {(g.usedBy ?? 0) > 1 && (
+            <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-800">
+              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+              Este grupo lo usan {g.usedBy} platos. Si lo cambias aquí, cambia en todos.
+            </p>
+          )}
           {g.options.map((o, oi) => (
             <div key={oi} className="flex items-center gap-2">
               <input
@@ -291,8 +362,38 @@ function OptionsEditor({
         </div>
       ))}
 
+      {disponibles.length > 0 && (
+        <label className="block text-xs font-semibold text-slate-600">
+          <span className="inline-flex items-center gap-1">
+            <Layers className="h-3.5 w-3.5 text-emerald-600" /> Usar una adición que ya creaste
+          </span>
+          <select
+            className={`${INPUT} mt-1`}
+            value=""
+            onChange={(e) => {
+              const g = disponibles.find((x) => x.id === e.target.value)
+              if (g) setGroups((prev) => [...prev, JSON.parse(JSON.stringify(g)) as OptionGroup])
+            }}
+          >
+            <option value="">Elegir de la biblioteca…</option>
+            {disponibles.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name} · {g.options.length} opciones
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {error && (
+        <p className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] font-semibold text-red-700">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+          {error}
+        </p>
+      )}
+
       <button onClick={addGroup} className="w-full rounded-lg border-2 border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-500 hover:border-emerald-500 hover:text-emerald-600 inline-flex items-center justify-center gap-1">
-        <Plus className="w-4 h-4" /> Agregar grupo de opciones
+        <Plus className="w-4 h-4" /> Crear un grupo nuevo
       </button>
 
       <div className="flex gap-2 pt-1">
@@ -421,6 +522,10 @@ function ProductCard({
   }
 
   const toggleAvailable = () => void patch({ isAvailable: !product.isAvailable })
+  // «Acompaña tu pedido»: sigue siendo un producto normal —descuenta
+  // existencias y cuenta en el reporte—, solo que además se le propone al
+  // cliente antes de cerrar el carrito.
+  const toggleAddon = () => void patch({ suggestAsAddon: !product.suggestAsAddon })
 
   const remove = async () => {
     if (!confirm(`¿Eliminar "${product.name}" del catálogo?`)) return
@@ -570,6 +675,18 @@ function ProductCard({
                   }`}
                 >
                   {product.isAvailable ? 'Disponible' : 'Agotado'}
+                </button>
+                <button
+                  onClick={toggleAddon}
+                  disabled={busy}
+                  title="Se ofrece al cliente antes de pagar, como una línea más del pedido"
+                  className={`min-h-[36px] rounded-full px-3 text-xs font-semibold ${
+                    product.suggestAsAddon
+                      ? 'bg-amber-50 text-amber-800'
+                      : 'text-slate-400 hover:text-amber-700'
+                  }`}
+                >
+                  Acompañamiento
                 </button>
                 <div className="flex items-center gap-0.5">
                   <button
@@ -1030,6 +1147,16 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
         {/* Portada del local */}
         <CoverSection token={token} />
         <MarcaDelLocal token={token} />
+
+        {/* La biblioteca de adiciones. Solo en los rubros cuyo perfil usa
+            opciones: un supermercado no vende «porción de aguacate». */}
+        {perfil.opciones && (
+          <AdicionesManager
+            token={token}
+            secciones={sectionNames}
+            onAplicado={() => void load()}
+          />
+        )}
 
         {/* Alta */}
         <form onSubmit={createProduct} className={`${TARJETA} p-5 space-y-3`}>

@@ -20,6 +20,7 @@ import {
 } from '../api'
 import { LineaTiempo } from '../LineaTiempo'
 import { agruparVale, idDeSeccion, precioDesde, seccionConFotos } from '../reglas'
+import { etiquetaDeGrupo } from '../../opciones-texto'
 
 /**
  * La carta del restaurante, abierta desde el QR de la mesa.
@@ -651,6 +652,44 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
                 </li>
               ))}
             </ul>
+            {/* La sugerencia va DENTRO del pedido y antes del pie: después
+                del «se paga en el local» se lee como algo ya sumado. Son
+                PRODUCTOS del catálogo, no opciones de un plato: entran como
+                una línea más, descuentan existencias y cuentan en el reporte
+                de ventas del local. */}
+            {(() => {
+              const yaPedidos = new Set(carrito.map((l) => l.productId))
+              const sugeridos = productos.filter(
+                (p) =>
+                  p.suggestAsAddon &&
+                  p.isAvailable &&
+                  !yaPedidos.has(p.id) &&
+                  // Con una variante obligatoria no se puede añadir de un
+                  // toque: se enviaría a la cocina una elección que nadie
+                  // hizo. Esos se piden desde su ficha.
+                  !p.optionGroups.some((g) => g.required || g.minSelect > 0),
+              )
+              if (sugeridos.length === 0) return null
+              return (
+                <div className="mt-3 border-t border-slate-100 pt-3">
+                  <p className="text-xs font-bold text-slate-700">¿Algo para acompañar?</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {sugeridos.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => agregar(p, [], '', '')}
+                        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:border-emerald-400 hover:text-emerald-700"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {p.name}
+                        <span className="text-slate-400">{formatCOP(p.price)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
             <p className="mt-2 text-[11px] text-slate-400">
               Se paga en el local. Por la app no se cobra nada.
             </p>
@@ -989,14 +1028,20 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
 
         {producto.optionGroups.map((g) => (
           <section key={g.id} className="mt-4">
+            {/* UNA frase, la que redacta el servidor y lee también la app:
+                «Obligatorio · elige 1», «Opcional · hasta 10». Antes eran dos
+                trozos sueltos que no decían el mínimo, así que un «elige entre
+                2 y 4» se leía como «hasta 4» y el pedido se rechazaba en la
+                caja sin que nada lo hubiera anunciado. */}
             <h3 className="text-sm font-semibold text-slate-800">
               {g.name}
-              {g.required && <span className="ml-1 text-xs font-normal text-red-600">obligatorio</span>}
-              {g.maxSelect > 1 && (
-                <span className="ml-1 text-xs font-normal text-slate-400">
-                  elige hasta {g.maxSelect}
-                </span>
-              )}
+              <span
+                className={`ml-1.5 text-xs font-normal ${
+                  g.required || g.minSelect > 0 ? 'text-red-600' : 'text-slate-400'
+                }`}
+              >
+                {g.label ?? etiquetaDeGrupo(g)}
+              </span>
             </h3>
             <ul className="mt-1 divide-y divide-slate-100">
               {g.options.map((o) => (

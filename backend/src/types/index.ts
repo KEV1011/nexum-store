@@ -533,6 +533,20 @@ export interface OptionGroupDTO {
   required: boolean;
   minSelect: number;
   maxSelect: number;
+  /**
+   * «Obligatorio · elige 1», «Opcional · hasta 10».
+   *
+   * La REDACTA el servidor (`etiquetaDeGrupo`) y la enseñan igual el portal,
+   * la app y la carta del QR: si cada superficie compusiera su frase, el dueño
+   * creería publicar una regla y en el teléfono saldría otra.
+   */
+  label: string;
+  /**
+   * En cuántos platos se usa este grupo. Solo se rellena en la biblioteca del
+   * portal: es lo que avisa de que tocar el precio del aguacate cambia las
+   * doce arepas a la vez.
+   */
+  usedBy?: number;
   options: ProductOptionDTO[];
 }
 
@@ -560,6 +574,8 @@ export interface ProductDTO {
   images: ProductPhotoDTO[];
   // Variantes/opciones del producto (tamaños, adiciones, quitar). Vacío si no.
   optionGroups: OptionGroupDTO[];
+  /** Se ofrece en «Acompaña tu pedido» al pagar. */
+  suggestAsAddon: boolean;
   // ── Inventario (supermercados y farmacias) ──────────────────────────────
   // Ausentes en un restaurante, que no lleva control de existencias.
   barcode?: string;
@@ -576,6 +592,12 @@ export interface ProductDTO {
 // portal edita la estructura completa y la guarda con un PUT).
 export interface SetProductOptionsDTO {
   groups: Array<{
+    /**
+     * Grupo que YA existe en la biblioteca del negocio. Sin id se crea uno
+     * nuevo. Es lo que permite que dos platos compartan el mismo grupo y que
+     * su precio viva en un solo sitio.
+     */
+    id?: string;
     name: string;
     required?: boolean;
     minSelect?: number;
@@ -604,6 +626,14 @@ export interface CreateProductDTO {
   brand?: string;
   model?: string;
   warrantyMonths?: number | null;
+  /**
+   * Ofrecerlo en «Acompaña tu pedido» al pagar.
+   *
+   * Sigue siendo un producto normal: entra como una línea más, descuenta
+   * existencias y cuenta en el reporte de ventas. Lo único que cambia es que
+   * se le propone al cliente antes de cerrar el carrito.
+   */
+  suggestAsAddon?: boolean;
 }
 
 export interface UpdateProductDTO {
@@ -628,6 +658,14 @@ export interface UpdateProductDTO {
   brand?: string;
   model?: string;
   warrantyMonths?: number | null;
+  /**
+   * Ofrecerlo en «Acompaña tu pedido» al pagar.
+   *
+   * Sigue siendo un producto normal: entra como una línea más, descuenta
+   * existencias y cuenta en el reporte de ventas. Lo único que cambia es que
+   * se le propone al cliente antes de cerrar el carrito.
+   */
+  suggestAsAddon?: boolean;
 }
 
 export interface BusinessPublicDTO {

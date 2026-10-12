@@ -9,6 +9,8 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
 import 'package:nexum_client/features/cart/presentation/widgets/'
+    'acompana_tu_pedido.dart';
+import 'package:nexum_client/features/cart/presentation/widgets/'
     'cart_summary.dart';
 
 /// Pantalla del carrito: revisión de ítems antes del checkout.
@@ -78,6 +80,10 @@ class _CartContent extends ConsumerWidget {
             ),
           ),
         ),
+        // Lo que el local ofrece antes de cerrar. Va DESPUÉS de las líneas y
+        // ANTES del resumen: después del total se lee como un error de orden
+        // —«¿esto ya está sumado?»— y arriba estorba a quien solo revisa.
+        if (cart.business != null) AcompanaTuPedido(business: cart.business!),
         const SizedBox(height: AppConstants.spacingM),
         CartSummary(
           subtotal: cart.subtotal,

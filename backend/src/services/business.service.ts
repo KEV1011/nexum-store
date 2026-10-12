@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Prisma, $Enums } from '@prisma/client';
 import {
+  OptionGroupDTO,
   Business,
   RegisterBusinessDTO,
   DeliveryOrderSummaryDTO,
@@ -26,6 +27,7 @@ import {
   LARGO_FRASE, MAX_FOTOS_LOCAL, paletaDeLocal, saneaColorMarca,
 } from '../lib/marca-local';
 import { precioVigente, saneaFinDePromo } from '../lib/promo-producto';
+import { etiquetaDeGrupo, saneaGrupo } from '../lib/texto-opciones';
 import { sugerenciaDeCodigo, type SugerenciaDeCodigo } from '../lib/sugerencia-codigo';
 import { reporteDeVentas, ventanaColombiana, type ReporteVentas } from '../lib/reporte-ventas';
 import { promedioReputacion } from '../lib/reputacion';
@@ -362,13 +364,16 @@ function _productToDTO(p: {
   model?: string | null;
   warrantyMonths?: number | null;
   photos?: { id: string; url: string }[];
-  optionGroups?: {
-    id: string;
-    name: string;
-    required: boolean;
-    minSelect: number;
-    maxSelect: number;
-    options: { id: string; name: string; priceDelta: number; isAvailable: boolean }[];
+  suggestAsAddon?: boolean;
+  gruposOpciones?: {
+    group: {
+      id: string;
+      name: string;
+      required: boolean;
+      minSelect: number;
+      maxSelect: number;
+      options: { id: string; name: string; priceDelta: number; isAvailable: boolean }[];
+    };
   }[];
 }): ProductDTO {
   // El precio que SE COBRA ahora. Es la misma función que usa la caja
@@ -402,12 +407,14 @@ function _productToDTO(p: {
     model: p.model ?? undefined,
     warrantyMonths: p.warrantyMonths ?? undefined,
     images: (p.photos ?? []).map((ph) => ({ id: ph.id, url: ph.url })),
-    optionGroups: (p.optionGroups ?? []).map((g) => ({
+    suggestAsAddon: p.suggestAsAddon ?? false,
+    optionGroups: (p.gruposOpciones ?? []).map(({ group: g }) => ({
       id: g.id,
       name: g.name,
       required: g.required,
       minSelect: g.minSelect,
       maxSelect: g.maxSelect,
+      label: etiquetaDeGrupo(g),
       options: g.options.map((o) => ({
         id: o.id,
         name: o.name,
@@ -527,9 +534,15 @@ async function _conMasPedido(businessId: string, productos: ProductDTO[]): Promi
 // Incluir galería y grupos de opciones ordenados en cada consulta de producto.
 const _photoInclude = {
   photos: { orderBy: { sortOrder: 'asc' as const } },
-  optionGroups: {
+  // Los grupos cuelgan del NEGOCIO y el plato los adjunta, así que se leen por
+  // el puente. El orden es el del plato (`ProductOptionGroup.sortOrder`), que
+  // puede no ser el de la biblioteca: en una hamburguesa el tamaño va primero
+  // y en un jugo no hay tamaño.
+  gruposOpciones: {
     orderBy: { sortOrder: 'asc' as const },
-    include: { options: { orderBy: { sortOrder: 'asc' as const } } },
+    include: {
+      group: { include: { options: { orderBy: { sortOrder: 'asc' as const } } } },
+    },
   },
 };
 
@@ -639,38 +652,202 @@ export async function setProductOptions(
 ): Promise<ProductDTO> {
   await _assertProductOwnership(businessId, productId);
 
+  const saneados: Array<{ id?: string; grupo: ReturnType<typeof _grupoSanoOFalla> }> = [];
+  for (const g of dto.groups ?? []) {
+    saneados.push({ ...(g.id ? { id: g.id } : {}), grupo: _grupoSanoOFalla(g) });
+  }
+
+  // Un id que no sea de este negocio no se toca: con el id de otro local se
+  // podrían reescribir sus precios desde aquí.
+  const ajenos = saneados.filter((x) => x.id).map((x) => x.id!);
+  if (ajenos.length > 0) {
+    const mios = await prisma.optionGroup.count({
+      where: { id: { in: ajenos }, businessId },
+    });
+    if (mios !== new Set(ajenos).size) {
+      throw new Error('Uno de los grupos no es de este negocio.');
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
-    await tx.optionGroup.deleteMany({ where: { productId } });
-    for (const [gi, g] of (dto.groups ?? []).entries()) {
-      const name = g.name?.trim();
-      if (!name) continue;
-      const opts = (g.options ?? []).filter((o) => o.name?.trim());
-      if (opts.length === 0) continue;
-      const maxSelect = Math.max(1, Math.round(g.maxSelect ?? 1));
-      const minSelect = Math.max(0, Math.min(maxSelect, Math.round(g.minSelect ?? 0)));
-      await tx.optionGroup.create({
-        data: {
-          productId,
-          name,
-          required: g.required ?? minSelect > 0,
-          minSelect,
-          maxSelect,
-          sortOrder: gi,
-          options: {
-            create: opts.map((o, oi) => ({
-              name: o.name.trim(),
-              priceDelta: Number.isFinite(o.priceDelta) ? Number(o.priceDelta) : 0,
-              isAvailable: o.isAvailable ?? true,
-              sortOrder: oi,
-            })),
+    const adjuntar: string[] = [];
+    for (const { id, grupo } of saneados) {
+      if (id) {
+        // Editar un grupo COMPARTIDO lo cambia en todos los platos que lo
+        // usan. Es justo lo que se quiere —el precio del aguacate vive en un
+        // sitio— y por eso el portal avisa antes de guardar.
+        await tx.optionGroup.update({
+          where: { id },
+          data: {
+            name: grupo.name,
+            required: grupo.required,
+            minSelect: grupo.minSelect,
+            maxSelect: grupo.maxSelect,
+            options: {
+              deleteMany: {},
+              create: grupo.options.map((o, oi) => ({ ...o, sortOrder: oi })),
+            },
           },
-        },
-      });
+        });
+        adjuntar.push(id);
+      } else {
+        const creado = await tx.optionGroup.create({
+          data: {
+            businessId,
+            name: grupo.name,
+            required: grupo.required,
+            minSelect: grupo.minSelect,
+            maxSelect: grupo.maxSelect,
+            options: { create: grupo.options.map((o, oi) => ({ ...o, sortOrder: oi })) },
+          },
+        });
+        adjuntar.push(creado.id);
+      }
+    }
+
+    // Los que el plato deja de usar se DESADJUNTAN, no se borran: puede
+    // usarlos otro plato, y aunque no, siguen en la biblioteca para volver a
+    // ponerlos. Borrarlos aquí haría perder un grupo de treinta adiciones por
+    // haberlo quitado de un solo producto.
+    await tx.productOptionGroup.deleteMany({ where: { productId } });
+    for (const [i, groupId] of adjuntar.entries()) {
+      await tx.productOptionGroup.create({ data: { productId, groupId, sortOrder: i } });
     }
   });
 
   const p = await prisma.product.findUnique({ where: { id: productId }, include: _photoInclude });
   return _productToDTO(p!);
+}
+
+/** Sanea y lanza con el motivo en español, que es lo que lee el dueño. */
+function _grupoSanoOFalla(g: SetProductOptionsDTO['groups'][number]) {
+  const r = saneaGrupo(g);
+  if ('error' in r) throw new Error(r.error);
+  return r.grupo;
+}
+
+// ─── La biblioteca de adiciones del negocio ──────────────────────────────────
+//
+// POR QUÉ EXISTE. Antes un grupo colgaba de un plato, así que las once
+// «ADICIONALES» de una carta de doce arepas eran 132 filas escritas a mano, y
+// subir el aguacate pedía tocar doce sitios. Aquí el grupo se crea UNA vez y
+// los platos lo adjuntan.
+
+/** Los grupos del negocio con en cuántos platos se usa cada uno. */
+export async function listOptionGroups(businessId: string): Promise<OptionGroupDTO[]> {
+  const grupos = await prisma.optionGroup.findMany({
+    where: { businessId },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    include: {
+      options: { orderBy: { sortOrder: 'asc' } },
+      _count: { select: { usos: true } },
+    },
+  });
+  return grupos.map((g) => ({
+    id: g.id,
+    name: g.name,
+    required: g.required,
+    minSelect: g.minSelect,
+    maxSelect: g.maxSelect,
+    label: etiquetaDeGrupo(g),
+    usedBy: g._count.usos,
+    options: g.options.map((o) => ({
+      id: o.id,
+      name: o.name,
+      priceDelta: o.priceDelta,
+      isAvailable: o.isAvailable,
+    })),
+  }));
+}
+
+/** Crea o actualiza un grupo de la biblioteca, sin tocar a qué platos va. */
+export async function upsertOptionGroup(
+  businessId: string,
+  groupId: string | undefined,
+  dto: SetProductOptionsDTO['groups'][number],
+): Promise<OptionGroupDTO[]> {
+  const grupo = _grupoSanoOFalla(dto);
+  const datos = {
+    name: grupo.name,
+    required: grupo.required,
+    minSelect: grupo.minSelect,
+    maxSelect: grupo.maxSelect,
+  };
+  if (groupId) {
+    // `updateMany` con businessId en el where: el id de otro local no entra.
+    const tocadas = await prisma.optionGroup.updateMany({
+      where: { id: groupId, businessId },
+      data: datos,
+    });
+    if (tocadas.count === 0) throw new Error('Ese grupo no existe en este negocio.');
+    await prisma.productOption.deleteMany({ where: { groupId } });
+    await prisma.productOption.createMany({
+      data: grupo.options.map((o, i) => ({ ...o, groupId, sortOrder: i })),
+    });
+  } else {
+    await prisma.optionGroup.create({
+      data: {
+        businessId,
+        ...datos,
+        options: { create: grupo.options.map((o, i) => ({ ...o, sortOrder: i })) },
+      },
+    });
+  }
+  return listOptionGroups(businessId);
+}
+
+/** Borra un grupo de la biblioteca; se cae solo de los platos que lo usaban. */
+export async function deleteOptionGroup(
+  businessId: string,
+  groupId: string,
+): Promise<OptionGroupDTO[]> {
+  const borradas = await prisma.optionGroup.deleteMany({ where: { id: groupId, businessId } });
+  if (borradas.count === 0) throw new Error('Ese grupo no existe en este negocio.');
+  return listOptionGroups(businessId);
+}
+
+/**
+ * Adjunta un grupo a TODOS los platos de una sección.
+ *
+ * Es la acción que de verdad ahorra la tarde: las once adiciones a las doce
+ * arepas en un toque. Se escriben las filas de una vez, EXPLÍCITAMENTE, en vez
+ * de guardar «este grupo aplica a la categoría X» — porque entonces un plato
+ * que cambia de sección perdería sus adiciones sin que nadie lo tocara, y eso
+ * no se nota hasta que un cliente no puede pedir el aguacate.
+ *
+ * Devuelve a cuántos platos se añadió (los que ya lo tenían no cuentan).
+ */
+export async function applyOptionGroupToCategory(
+  businessId: string,
+  groupId: string,
+  categoria: string,
+): Promise<{ anadidos: number; total: number }> {
+  const grupo = await prisma.optionGroup.findFirst({ where: { id: groupId, businessId } });
+  if (!grupo) throw new Error('Ese grupo no existe en este negocio.');
+
+  const where = categoria.trim()
+    ? { businessId, category: categoria.trim() }
+    : { businessId };
+  const productos = await prisma.product.findMany({ where, select: { id: true } });
+  if (productos.length === 0) throw new Error('Esa sección no tiene productos.');
+
+  const yaLoTienen = new Set(
+    (await prisma.productOptionGroup.findMany({
+      where: { groupId, productId: { in: productos.map((p) => p.id) } },
+      select: { productId: true },
+    })).map((r) => r.productId),
+  );
+  const faltan = productos.filter((p) => !yaLoTienen.has(p.id));
+
+  if (faltan.length > 0) {
+    // `sortOrder` al final: el grupo nuevo se añade DEBAJO de los que el plato
+    // ya tenía, que es donde el dueño espera encontrarlo.
+    await prisma.productOptionGroup.createMany({
+      data: faltan.map((p) => ({ productId: p.id, groupId, sortOrder: 99 })),
+      skipDuplicates: true,
+    });
+  }
+  return { anadidos: faltan.length, total: productos.length };
 }
 
 // ─── Gestión del catálogo (dueño desde el portal, autenticado por token) ──────
@@ -855,6 +1032,7 @@ export async function createBusinessProduct(
       description: limpiarTextoDeCarta(dto.description ?? '') || null,
       category: limpiarTextoDeCarta(dto.category ?? '') || 'General',
       imageUrl: dto.imageUrl ?? null,
+      ...(dto.suggestAsAddon !== undefined && { suggestAsAddon: dto.suggestAsAddon }),
       ..._inventarioData(dto),
     },
   });
@@ -888,6 +1066,7 @@ export async function updateBusinessProduct(
       ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
       ...(dto.isAvailable !== undefined && { isAvailable: dto.isAvailable }),
       ...(dto.sortOrder !== undefined && { sortOrder: dto.sortOrder }),
+      ...(dto.suggestAsAddon !== undefined && { suggestAsAddon: dto.suggestAsAddon }),
       ..._inventarioData(dto),
     },
     include: _photoInclude,
