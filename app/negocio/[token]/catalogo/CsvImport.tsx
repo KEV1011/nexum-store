@@ -4,8 +4,7 @@ import { useRef, useState } from 'react'
 import { Upload, Download, AlertTriangle, Check, X } from 'lucide-react'
 
 import { formatCOP } from '../../../moneda'
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://nexum-api-trxr.onrender.com'
+import { BACKEND_URL } from '../../../backend'
 
 interface FilaPreview {
   linea: number

@@ -6,6 +6,7 @@ import { ArrowLeft, Download, Loader2, AlertCircle } from 'lucide-react'
 import { PortalTabs } from '../PortalTabs'
 import { BOTON, CONTENEDOR, TARJETA } from '../../../ui'
 import { formatCOP, formatNumero } from '../../../moneda'
+import { BACKEND_URL } from '../../../backend'
 
 /**
  * El reporte de ventas del negocio.
@@ -20,11 +21,6 @@ import { formatCOP, formatNumero } from '../../../moneda'
  * que cuadra la caja y lo que le pide el contador.
  */
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 interface Reporte {
   pedidos: number

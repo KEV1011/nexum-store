@@ -1,3 +1,5 @@
+import { BACKEND_URL } from '../backend'
+
 // Cliente HTTP y sesión de la página ligera de pedido (`/pedir`).
 //
 // POR QUÉ ESTA PÁGINA EXISTE Y NO ES LA APP
@@ -16,11 +18,6 @@
 // Mismo fallback que el portal de empresa: sin NEXT_PUBLIC_BACKEND_URL, un
 // build de producción hornearía `localhost` en el bundle del navegador y la
 // página no alcanzaría el backend.
-export const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 /** El WebSocket cuelga del mismo servidor HTTP, en la raíz y sin path. */
 export function urlWebSocket(): string {

@@ -6,14 +6,10 @@ import {
   Store, Loader2, ArrowRight, ExternalLink, Copy, Check, AlertTriangle, ShieldCheck,
 } from 'lucide-react'
 import { ZipaLogo } from '../ZipaLogo'
+import { BACKEND_URL } from '../backend'
 
 // Producción (Render) sin NEXT_PUBLIC_BACKEND_URL → backend real, no localhost
 // (Next.js hornea este valor en el bundle del navegador en tiempo de build).
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 const INPUT =
   'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 ' +

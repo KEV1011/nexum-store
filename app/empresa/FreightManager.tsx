@@ -6,6 +6,8 @@ import type { OperatorApi } from './api'
 import TrackMap, { type TrackPoint } from './TrackMap'
 import { momento } from './fechas'
 import { formatCOP as cop } from '../moneda'
+import { BACKEND_URL as HTTP_BASE, BACKEND_WS as WS_URL } from '../backend'
+import { BACKEND_URL as base } from '../backend'
 
 // Recorrido real del flete (rastro GPS): resumen + traza.
 interface TrackSummary {
@@ -114,27 +116,8 @@ function when(f: Freight) {
 }
 
 // Base HTTP del backend para resolver URLs relativas (/uploads/...) de recibos.
-const HTTP_BASE =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 // WS del backend para avisos en vivo (mismo fallback de producción que api.ts).
-const WS_URL = (() => {
-  const base =
-    process.env.NEXT_PUBLIC_BACKEND_URL ??
-    (process.env.NODE_ENV === 'development'
-      ? 'http://localhost:3000'
-      : 'https://nexum-api-trxr.onrender.com')
-  try {
-    const u = new URL(base)
-    u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
-    return u.toString()
-  } catch {
-    return 'wss://nexum-api-trxr.onrender.com'
-  }
-})()
 
 interface FreightEventRow {
   id: string

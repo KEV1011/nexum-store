@@ -7,6 +7,7 @@ import type { CargoTrip } from './CargoTripsManager'
 import { formatCOP as cop } from '../moneda'
 
 import { formatNumero as num } from '../moneda'
+import { BACKEND_URL as HTTP_BASE } from '../backend'
 // Cuenta de cobro: el documento con el que la empresa le factura a su cliente
 // un período. Agrupa viajes y, viaje por viaje, lista cada línea con su
 // referencia, rollos, metros, destinatario y fecha de entrega.
@@ -84,11 +85,6 @@ function fecha(iso: string): string {
   return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium' }).format(new Date(iso))
 }
 
-const HTTP_BASE =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 export default function CobrosManager({ api, token }: { api: OperatorApi; token: string }) {
   const [cobros, setCobros] = useState<Cobro[]>([])

@@ -3,12 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Camera, Check, ImagePlus, Loader2, Trash2 } from 'lucide-react'
 import { BOTON, TARJETA } from '../../../ui'
+import { BACKEND_URL } from '../../../backend'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 const MAX_FOTOS = 6
 const LARGO_FRASE = 80

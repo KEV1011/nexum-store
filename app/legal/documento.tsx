@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { BACKEND_URL as BACKEND } from '../backend'
 
 /**
  * Documento legal renderizado para la web.
@@ -14,8 +15,6 @@ import Link from 'next/link'
  * no se quede servida en frío.
  */
 
-const BACKEND =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://nexum-api-trxr.onrender.com'
 
 interface LegalDoc {
   kind: string

@@ -32,11 +32,6 @@ import { AdicionesManager } from './AdicionesManager'
 import { CONTENEDOR, TARJETA } from '../../../ui'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 // Convierte una URL relativa (/uploads/...) del backend en absoluta.
 function resolveImg(url?: string): string | undefined {
@@ -48,6 +43,7 @@ function resolveImg(url?: string): string | undefined {
 // Sugerencias por defecto; el dueño puede escribir SUS propias secciones.
 import { MarcaDelLocal } from './MarcaDelLocal'
 import { perfilDe } from '../../perfil-catalogo'
+import { BACKEND_URL } from '../../../backend'
 const CATEGORIES = ['General', 'Entradas', 'Platos fuertes', 'Bebidas', 'Postres', 'Combos', 'Promociones']
 
 /** Unidades de venta para negocios que manejan inventario. */

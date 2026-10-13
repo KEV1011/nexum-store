@@ -6,6 +6,7 @@ import type { Manifest } from '../../ManifestsManager'
 import { leerToken } from '../../session'
 
 import { formatNumero as fmt } from '../../../moneda'
+import { BACKEND_URL } from '../../../backend'
 /**
  * Remito imprimible — misma estructura que el formato en papel del cliente.
  *
@@ -14,11 +15,6 @@ import { formatNumero as fmt } from '../../../moneda'
  * Ctrl+P (o "Guardar como PDF"), sin depender de ninguna librería.
  */
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 /** El papel tiene 100 casillas numeradas; se conserva la retícula. */
 const CASILLAS = 100

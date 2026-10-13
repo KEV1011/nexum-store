@@ -14,9 +14,8 @@
 import { useState } from 'react'
 import { Scissors, Check, X, Loader2 } from 'lucide-react'
 import { BOTON, TARJETA } from '../../../ui'
+import { BACKEND_URL } from '../../../backend'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://nexum-api-trxr.onrender.com'
 
 interface Propuesta {
   productId: string

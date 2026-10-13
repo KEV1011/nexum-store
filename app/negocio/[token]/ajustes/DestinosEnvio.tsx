@@ -4,12 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Truck, Loader2, Check, Trash2, Plus, AlertTriangle } from 'lucide-react'
 import { useMunicipios } from '@/app/empresa/useMunicipios'
 import { formatCOP } from '@/app/moneda'
+import { BACKEND_URL } from '../../../backend'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 export interface Destino {
   city: string
