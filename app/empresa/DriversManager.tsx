@@ -6,13 +6,8 @@ import {
 } from 'lucide-react'
 import type { OperatorApi } from './api'
 import TrackMap, { type TrackPoint } from './TrackMap'
-
 // Base HTTP del backend: TrackMap la usa para pedir los tiles de Google por proxy.
-const HTTP_BASE =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
+import { BACKEND_URL as HTTP_BASE } from '../backend'
 
 const SERVICIO: Record<string, string> = {
   trip: 'Viaje urbano',

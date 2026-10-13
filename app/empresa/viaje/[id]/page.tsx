@@ -8,6 +8,7 @@ import { leerToken } from '../../session'
 import { formatCOP as cop } from '../../../moneda'
 
 import { formatNumero as num } from '../../../moneda'
+import { BACKEND_URL } from '../../../backend'
 /**
  * Informe final del viaje — lo que se revisa al cerrar cada viaje y entrega.
  *
@@ -17,11 +18,6 @@ import { formatNumero as num } from '../../../moneda'
  * que todo sale de una sola consulta y se puede imprimir de una vez.
  */
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 interface Report {
   trip: CargoTrip

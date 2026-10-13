@@ -5,12 +5,8 @@ import {
   FileText, Upload, Loader2, ShieldCheck, ShieldAlert, Clock, ExternalLink, AlertTriangle,
 } from 'lucide-react'
 import type { OperatorApi } from './api'
+import { BACKEND_URL } from '../backend'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 /**
  * Documentos legales de la empresa.

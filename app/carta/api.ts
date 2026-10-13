@@ -1,13 +1,10 @@
+import { BACKEND_URL } from '../backend'
+
 // ── Cliente de la carta pública ──────────────────────────────────────────────
 //
 // Sin sesión y sin token: el comensal está sentado en el local y lo único que
 // tiene es el código de su mesa. Mismo patrón que `/pedir` (el taxi por QR).
 
-export const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 export class ApiError extends Error {
   readonly status: number

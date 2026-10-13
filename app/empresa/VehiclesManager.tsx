@@ -3,10 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Car, Plus, Loader2, Pencil, Trash2, Power, Camera, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react'
 import type { OperatorApi } from './api'
+import { BACKEND_URL } from '../backend'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://nexum-api-trxr.onrender.com')
 
 function resolveImg(url?: string | null): string | undefined {
   if (!url) return undefined

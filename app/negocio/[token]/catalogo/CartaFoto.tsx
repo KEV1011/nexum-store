@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { Camera, AlertTriangle, Trash2, Loader2, Layers, Split } from 'lucide-react'
 
 import { BOTON, TARJETA } from '../../../ui'
+import { BACKEND_URL } from '../../../backend'
 import {
   motivoParaNoAgrupar,
   pesosDeTexto,
@@ -11,8 +12,6 @@ import {
   type VarianteEditable,
 } from '../../../variantes-carta'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://nexum-api-trxr.onrender.com'
 
 interface LineaCarta {
   /** Los ingredientes, cuando venían pegados al nombre en la carta. */

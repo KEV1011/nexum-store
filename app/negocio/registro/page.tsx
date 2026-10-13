@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { BACKEND_URL } from '../../backend'
 import {
   Package,
   Store,
@@ -18,11 +19,6 @@ import {
 
 // Producción (Render) sin NEXT_PUBLIC_BACKEND_URL → backend real, no localhost
 // (Next.js hornea este valor en el bundle del navegador en tiempo de build).
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 // El orden es el de lo concreto a lo genérico, y «Otro» va al final porque es
 // el cajón: quien encuentra su rubro antes no llega a él.

@@ -21,6 +21,7 @@ import {
 
 import { formatCOP } from '../../../../moneda'
 import { CONTENEDOR, ESTADO, TARJETA } from '../../../../ui'
+import { BACKEND_URL } from '../../../../backend'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type OrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
@@ -61,11 +62,6 @@ interface ApiDetailResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 // Las fotos de prueba llegan como ruta relativa (/uploads/…) en modo disco;
 // con R2 llegan absolutas y pasan intactas.

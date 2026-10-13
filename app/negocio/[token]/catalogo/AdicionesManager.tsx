@@ -6,9 +6,8 @@ import { Plus, Trash2, Loader2, Check, X, Layers, AlertTriangle } from 'lucide-r
 import { BOTON, TARJETA } from '../../../ui'
 import { formatCOP } from '../../../moneda'
 import { etiquetaDeGrupo } from '../../../opciones-texto'
+import { BACKEND_URL } from '../../../backend'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://nexum-api-trxr.onrender.com'
 
 const INPUT =
   'w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm text-slate-900 ' +

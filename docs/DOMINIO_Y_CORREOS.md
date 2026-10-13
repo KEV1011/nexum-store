@@ -23,6 +23,60 @@ privacidad de Play, canal de atención al titular, y poder mudarse de hosting.
 
 ---
 
+## 0. Mientras tanto: que el portal diga «zipa» sin comprar nada
+
+Esto NO sustituye al dominio propio —los cuatro bloqueos de arriba siguen
+igual, y la verificación de Meta seguirá rechazando un `vercel.app` se llame
+como se llame—. Es solo para que el cliente deje de ver «nexum-store» al
+escanear el QR.
+
+### El riesgo que hay que cubrir ANTES de tocar nada
+
+Renombrar un proyecto en Vercel cambia su dirección `…vercel.app`. De esa
+dirección cuelgan dos cosas que ya están en manos de terceros y que **nadie
+puede reemitir**:
+
+- Los **códigos QR impresos y pegados en las mesas**, que apuntan a
+  `/carta/<código>`. Si la dirección vieja deja de responder, esas mesas no
+  pueden pedir y el dueño no tiene forma de saber por qué.
+- El **enlace mágico del portal** que se le entregó a cada negocio al
+  registrarse, y que muchos tienen guardado en WhatsApp.
+
+Un proyecto de Vercel admite **varios dominios a la vez**. La dirección vieja
+se deja puesta como alias y entonces no se rompe nada: lo viejo sigue
+resolviendo y lo nuevo sale con ZIPA.
+
+### Los pasos, en este orden
+
+1. **En Vercel**, renombra el proyecto (`zipa`, `zipa-app`, `zipa-co`… la
+   disponibilidad la dice el panel en el momento).
+2. **Comprueba que la dirección anterior sigue resolviendo.** Abre un QR ya
+   impreso, o pega la URL vieja de un negocio en el navegador. Si da 404,
+   añade el dominio anterior al proyecto antes de seguir. **No pases de aquí
+   hasta que cargue.**
+3. **En Render**, pon `PORTAL_BASE_URL` con la dirección nueva, sin barra
+   final. Es lo que decide la dirección de los QR y los enlaces que se
+   generen **a partir de ahora**; los ya repartidos no cambian, por eso hace
+   falta el paso 2.
+4. **Verifica en `/health`**: el campo `portal` tiene que decir la dirección
+   nueva. Es la única forma de ver de un vistazo qué enlace se está
+   entregando.
+
+### Lo que NO se toca
+
+El backend (`nexum-api-trxr.onrender.com`) **se queda como está**. Esa
+dirección va compilada dentro de cada APK con `--dart-define`, y Render no
+conserva la anterior al renombrar un servicio: cambiarlo dejaría sin conexión
+a todas las apps ya instaladas, conductores incluidos. El cliente nunca ve esa
+dirección —es una llamada interna—, así que no hay nada que ganar y sí mucho
+que perder. Con dominio propio se resuelve bien, porque un dominio se **añade**
+sin quitar el anterior y los APK viejos siguen funcionando.
+
+En el código ya no hace falta buscarla: vive solo en `app/backend.ts`, y
+`backend-url.test.ts` falla si alguien la vuelve a escribir en otro sitio.
+
+---
+
 ## 1. El dominio
 
 **Qué comprar.** Un `.com` si está libre; si no, `.com.co` o `.co`, que además

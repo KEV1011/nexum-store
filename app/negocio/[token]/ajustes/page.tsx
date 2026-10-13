@@ -22,13 +22,9 @@ import {
 } from 'lucide-react'
 
 import { formatCOP } from '../../../moneda'
+import { BACKEND_URL } from '../../../backend'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 interface Settings {
   name: string

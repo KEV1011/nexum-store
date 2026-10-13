@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { BACKEND_URL } from '../backend'
 
 /**
  * Municipios a los que se puede viajar, traídos del backend.
@@ -29,11 +30,6 @@ const RESPALDO: Municipio[] = [
   { slug: 'bogota', name: 'Bogotá', department: 'Cundinamarca' },
 ]
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 let _cache: Municipio[] | null = null
 

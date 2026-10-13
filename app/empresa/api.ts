@@ -1,3 +1,5 @@
+import { BACKEND_URL } from '../backend'
+
 // Cliente HTTP compartido del Portal de Empresa. Centraliza la base URL, el
 // Bearer token, el manejo de 401 (sesión expirada) y el sobre { success, data }.
 
@@ -6,11 +8,6 @@
 // no alcanzaría el backend ("No pasa del login"). Por eso el default de producción
 // apunta al backend real; solo `next dev` cae a localhost. Se puede sobreescribir
 // siempre con NEXT_PUBLIC_BACKEND_URL (se hornea en tiempo de build).
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 interface ApiEnvelope<T> {
   success?: boolean

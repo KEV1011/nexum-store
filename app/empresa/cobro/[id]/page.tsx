@@ -7,6 +7,7 @@ import { leerToken } from '../../session'
 import { formatCOP as cop } from '../../../moneda'
 
 import { formatNumero as num } from '../../../moneda'
+import { BACKEND_URL } from '../../../backend'
 /**
  * Cuenta de cobro imprimible — reproduce el formato en papel del cliente:
  * «DETALLE DE ENTREGA CUENTA DE COBRO NNN · DETALLE VIAJES NACIONALES».
@@ -16,11 +17,6 @@ import { formatNumero as num } from '../../../moneda'
  * de siempre mientras el control ya es digital.
  */
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 function fecha(iso?: string): string {
   if (!iso) return ''

@@ -4,12 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Check, Copy, Loader2, Plus, Printer, QrCode, Trash2 } from 'lucide-react'
 import { BOTON, ESTADO, TARJETA } from '../../../ui'
 import { dibujarQr, useLibreriaQr } from '../../../carta/qr'
+import { BACKEND_URL } from '../../../backend'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 /**
  * Las mesas del local y los QR que se ponen encima de ellas.

@@ -3,12 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MapPin, Loader2, Check, Crosshair, Search } from 'lucide-react'
 import { tilePase } from '@/app/empresa/leaflet'
+import { BACKEND_URL } from '../../../backend'
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
 // Centro de Pamplona: solo el encuadre inicial cuando el negocio aún no tiene
 // punto. No se guarda nada hasta que el dueño confirme.

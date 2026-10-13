@@ -129,6 +129,18 @@ export const CORS_ORIGIN = process.env['CORS_ORIGIN'] ?? '*';
  * de entorno SIN tocar código — y `/health` publica el valor en vigor como
  * `portal`, que es la única forma de ver de un vistazo qué enlace se está
  * entregando.
+ *
+ * ⚠ AL RENOMBRAR EL PROYECTO EN VERCEL (para que diga «zipa» en vez de
+ * «nexum-store»), lo primero no es esta variable: es comprobar que el dominio
+ * ANTERIOR sigue resolviendo. De aquí salen dos cosas que ya están en manos de
+ * terceros y que nadie puede reemitir — el **enlace mágico del portal** que se
+ * le entregó a cada negocio al registrarse, y sobre todo los **códigos QR ya
+ * impresos y pegados en las mesas**, que apuntan a `/carta/<código>` del
+ * dominio viejo. Si ese dominio deja de responder, esas mesas dejan de poder
+ * pedir y el dueño no tiene forma de saber por qué. En Vercel un proyecto
+ * admite varios dominios a la vez: hay que dejar el viejo puesto como alias y
+ * solo entonces mover esta variable, para que los QR nuevos salgan con la
+ * dirección de ZIPA y los viejos sigan funcionando.
  */
 export const PORTAL_BASE_URL =
   process.env['PORTAL_BASE_URL']?.trim().replace(/\/+$/, '') ??

@@ -26,6 +26,7 @@ import {
 
 import { formatCOP } from '../../moneda'
 import { BOTON, CONTENEDOR, ESTADO, TARJETA, TARJETA_NUEVA, TINTE_ESTADO, type Estado } from '../../ui'
+import { BACKEND_URL, BACKEND_WS as WS_URL } from '../../backend'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type DeliveryOrderStatus = 'pending' | 'at_pickup' | 'in_transit' | 'delivered'
@@ -115,21 +116,7 @@ interface ApiResponse {
 
 // Producción (Render) sin NEXT_PUBLIC_BACKEND_URL → backend real, no localhost
 // (Next.js hornea este valor en el bundle del navegador en tiempo de build).
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ??
-  (process.env.NODE_ENV === 'development'
-    ? 'http://localhost:3000'
-    : 'https://nexum-api-trxr.onrender.com')
 
-const WS_URL = (() => {
-  try {
-    const u = new URL(BACKEND_URL)
-    u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
-    return u.toString()
-  } catch {
-    return 'wss://nexum-api-trxr.onrender.com'
-  }
-})()
 
 // Las fotos de prueba llegan como ruta relativa (/uploads/…) en modo disco;
 // con R2 llegan absolutas y pasan intactas.
