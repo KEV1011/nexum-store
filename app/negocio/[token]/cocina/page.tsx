@@ -17,7 +17,7 @@
  * avisan de la demora.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { use, useCallback, useEffect, useState } from 'react'
 import { ChefHat, Clock, Check, RotateCcw, Loader2, AlertTriangle } from 'lucide-react'
 
 import { BACKEND_URL } from '../../../backend'
@@ -68,8 +68,13 @@ function destino(p: PedidoCocina): string {
   return 'Domicilio'
 }
 
-export default function CocinaPage({ params }: { params: { token: string } }) {
-  const { token } = params
+export default function CocinaPage({ params }: { params: Promise<{ token: string }> }) {
+  // En Next 16 `params` es una Promise y hay que desenvolverla con `use()`.
+  // Escrito como objeto plano, `token` sale `undefined` y la página pide
+  // `/business/undefined/cocina` — que es exactamente el «Business not found
+  // for token: undefined» con el que salió a producción. Las otras páginas
+  // del portal ya lo hacían así.
+  const { token } = use(params)
   const [pedidos, setPedidos] = useState<PedidoCocina[] | null>(null)
   const [platos, setPlatos] = useState(0)
   const [error, setError] = useState<string | null>(null)
