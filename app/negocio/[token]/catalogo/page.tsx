@@ -3,6 +3,7 @@
 import { use, useState, useEffect, useCallback, useRef } from 'react'
 import { BarcodeScanner } from './BarcodeScanner'
 import { CartaFoto } from './CartaFoto'
+import SepararNombres from './SepararNombres'
 import { CsvImport } from './CsvImport'
 import { PortalTabs } from '../PortalTabs'
 import Link from 'next/link'
@@ -183,6 +184,15 @@ const INPUT =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ' +
   'placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20'
 
+// El ancho de un campo lo fija su CONTENEDOR, nunca una clase encima de
+// `INPUT`. El motivo largo está en `AdicionesManager.tsx`; en corto: `INPUT`
+// ya trae `w-full`, y apilar `w-24` encima deja al navegador eligiendo entre
+// dos anchos según el orden de la hoja de Tailwind — aquí ganaba `w-full` y
+// el campo del precio aplastaba al del nombre hasta hacerlo inservible.
+const ANCHO_NUMERO = 'inline-block w-16 shrink-0'
+const ANCHO_PRECIO = 'inline-block w-24 shrink-0'
+const ANCHO_FLEXIBLE = 'min-w-0 flex-1'
+
 // ─── Editor de variantes / opciones ──────────────────────────────────────────
 
 function OptionsEditor({
@@ -297,8 +307,10 @@ function OptionsEditor({
                 tampoco. */}
             <label className="inline-flex items-center gap-1.5">
               Mínimo
+              {/* El ancho lo pone el contenedor: ver `ANCHO_NUMERO`. */}
+              <span className={ANCHO_NUMERO}>
               <input
-                className={`${INPUT} w-14`}
+                className={INPUT}
                 inputMode="numeric"
                 value={String(g.minSelect)}
                 onChange={(e) => patchGroup(gi, {
@@ -306,11 +318,13 @@ function OptionsEditor({
                 })}
                 maxLength={2}
               />
+              </span>
             </label>
             <label className="inline-flex items-center gap-1.5">
               Máximo
+              <span className={ANCHO_NUMERO}>
               <input
-                className={`${INPUT} w-14`}
+                className={INPUT}
                 inputMode="numeric"
                 value={String(g.maxSelect)}
                 onChange={(e) => patchGroup(gi, {
@@ -318,6 +332,7 @@ function OptionsEditor({
                 })}
                 maxLength={2}
               />
+              </span>
             </label>
             {/* Lo que va a leer el cliente, con la MISMA función que usa el
                 servidor para redactarlo. */}
@@ -333,23 +348,27 @@ function OptionsEditor({
           )}
           {g.options.map((o, oi) => (
             <div key={oi} className="flex items-center gap-2">
-              <input
-                className={INPUT}
-                placeholder="Opción (ej: Grande)"
-                value={o.name}
-                onChange={(e) => patchOption(gi, oi, { name: e.target.value })}
-                maxLength={40}
-              />
+              <span className={ANCHO_FLEXIBLE}>
+                <input
+                  className={INPUT}
+                  placeholder="Opción (ej: Grande)"
+                  value={o.name}
+                  onChange={(e) => patchOption(gi, oi, { name: e.target.value })}
+                  maxLength={40}
+                />
+              </span>
               <div className="flex items-center gap-1 shrink-0">
                 <span className="text-xs text-slate-400">+$</span>
-                <input
-                  className={`${INPUT} w-24`}
-                  inputMode="numeric"
-                  placeholder="0"
-                  value={o.priceDelta ? String(o.priceDelta) : ''}
-                  onChange={(e) => patchOption(gi, oi, { priceDelta: Number(e.target.value.replace(/[^\d]/g, '')) })}
-                  maxLength={9}
-                />
+                <span className={ANCHO_PRECIO}>
+                  <input
+                    className={INPUT}
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={o.priceDelta ? String(o.priceDelta) : ''}
+                    onChange={(e) => patchOption(gi, oi, { priceDelta: Number(e.target.value.replace(/[^\d]/g, '')) })}
+                    maxLength={9}
+                  />
+                </span>
               </div>
               <button onClick={() => removeOption(gi, oi)} className="text-slate-300 hover:text-red-500 p-1" aria-label="Quitar opción">
                 <X className="w-4 h-4" />
@@ -827,8 +846,25 @@ function CoverSection({ token }: { token: string }) {
         className="relative w-full h-36 bg-slate-100 group block"
       >
         {img ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={img} alt="Portada del local" className="w-full h-full object-cover" />
+          // La portada se ve ENTERA: `object-cover` a secas le cortaba el
+          // letrero por arriba y por abajo a quien sube un logo cuadrado, que
+          // es la mitad de los locales. El fondo lo rellena la propia foto,
+          // ampliada y desenfocada — misma regla que `FotoEncuadrada` en la
+          // app, para que el dueño vea aquí lo que verá su cliente allí.
+          <>
+            <div
+              aria-hidden
+              className="absolute inset-0 scale-110 bg-cover bg-center blur-xl"
+              style={{ backgroundImage: `url(${JSON.stringify(img)})` }}
+            />
+            <div aria-hidden className="absolute inset-0 bg-black/25" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={img}
+              alt="Portada del local"
+              className="relative h-full w-full object-contain"
+            />
+          </>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-1">
             <ImagePlus className="w-7 h-7" />
@@ -1293,6 +1329,12 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           <div className="mt-4 space-y-4">
             {perfil.cartaPorFoto && (
               <CartaFoto token={token} onImported={() => void load()} />
+            )}
+            {/* Para el catálogo que YA está cargado con los ingredientes
+                dentro del nombre. Solo tiene sentido donde hay platos con
+                receta, que es el mismo público de la carta por foto. */}
+            {perfil.cartaPorFoto && products.length > 0 && (
+              <SepararNombres token={token} onAplicado={() => void load()} />
             )}
             {perfil.csvMasivo && (
               <CsvImport token={token} onImported={() => void load()} />

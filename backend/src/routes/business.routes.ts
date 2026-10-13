@@ -20,6 +20,8 @@ import {
   addProductPhoto,
   deleteProductPhoto,
   setProductOptions,
+  proponerSeparacionDeNombres,
+  aplicarSeparacionDeNombres,
   getBusinessSettings,
   updateBusinessSettings,
   getBusinessStats,
@@ -1202,3 +1204,53 @@ router.get('/:token/giros', async (req: Request, res: Response): Promise<void> =
     });
   }
 });
+
+// GET  /business/:token/products/separar-nombres   → qué se partiría
+// POST /business/:token/products/separar-nombres   { productIds: [...] }
+//
+// Los catálogos que se subieron antes de que el lector supiera separar tienen
+// el plato y sus ingredientes en el mismo campo («Hamburguesa Camarón
+// (Croqueta de carne, cebolla…)»). Esto lo arregla, pero PROPONIENDO: son
+// nombres de platos de un negocio real y la regla puede equivocarse en un
+// renglón raro, así que el dueño ve antes y después y marca cuáles aplica.
+router.get(
+  '/:token/products/separar-nombres',
+  async (req: Request, res: Response): Promise<void> => {
+    const { token } = req.params as { token: string };
+    try {
+      const business = await getBusinessService().getBusinessByToken(token);
+      const propuestas = await proponerSeparacionDeNombres(business.id);
+      res.json({ success: true, data: { propuestas } });
+    } catch (err) {
+      res.status(404).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Negocio no encontrado',
+      });
+    }
+  },
+);
+
+router.post(
+  '/:token/products/separar-nombres',
+  async (req: Request, res: Response): Promise<void> => {
+    const { token } = req.params as { token: string };
+    const { productIds } = req.body as { productIds?: unknown };
+    const ids = Array.isArray(productIds)
+      ? productIds.filter((x): x is string => typeof x === 'string')
+      : [];
+    if (ids.length === 0) {
+      res.status(400).json({ success: false, error: 'No marcaste ningún plato.' });
+      return;
+    }
+    try {
+      const business = await getBusinessService().getBusinessByToken(token);
+      const r = await aplicarSeparacionDeNombres(business.id, ids);
+      res.json({ success: true, data: r });
+    } catch (err) {
+      res.status(400).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'No pudimos separar los nombres',
+      });
+    }
+  },
+);

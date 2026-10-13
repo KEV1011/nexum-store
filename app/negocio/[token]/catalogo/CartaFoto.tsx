@@ -15,6 +15,8 @@ const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ?? 'https://nexum-api-trxr.onrender.com'
 
 interface LineaCarta {
+  /** Los ingredientes, cuando venían pegados al nombre en la carta. */
+  descripcion?: string
   linea: number
   nombre: string
   precio: number | null
@@ -39,6 +41,7 @@ interface FilaEditable {
   linea: number
   nombre: string
   precio: string
+  descripcion: string
   seccion: string
   aviso?: string
 }
@@ -140,6 +143,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           linea: l.linea,
           nombre: l.nombre,
           precio: l.precio == null ? '' : String(l.precio),
+          descripcion: l.descripcion ?? '',
           seccion: l.seccion,
           ...(l.aviso ? { aviso: l.aviso } : {}),
         })),
@@ -152,7 +156,11 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
     }
   }
 
-  function editar(id: number, campo: 'nombre' | 'precio' | 'seccion', valor: string) {
+  function editar(
+    id: number,
+    campo: 'nombre' | 'precio' | 'seccion' | 'descripcion',
+    valor: string,
+  ) {
     setFilas((prev) =>
       (prev ?? []).map((f) => (f.id === id ? { ...f, [campo]: valor } : f)),
     )
@@ -199,6 +207,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             nombre: f.nombre.trim(),
             precio: pesosDeTexto(f.precio),
             seccion: f.seccion.trim(),
+            descripcion: f.descripcion.trim(),
           })),
           variantes: aceptadas.map(varianteParaEnviar),
         }),
@@ -437,6 +446,17 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                           value={f.nombre}
                           onChange={(e) => editar(f.id, 'nombre', e.target.value)}
                           className="w-full rounded border border-slate-300 px-2 py-1"
+                        />
+                        {/* Los ingredientes, debajo del nombre y con la letra
+                            más pequeña: es la jerarquía que tendrán en la
+                            app, así que el dueño revisa lo que va a ver su
+                            cliente y no dos campos sueltos. */}
+                        <input
+                          value={f.descripcion}
+                          placeholder="Ingredientes (opcional)"
+                          aria-label="Ingredientes del plato"
+                          onChange={(e) => editar(f.id, 'descripcion', e.target.value)}
+                          className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-[11px] text-slate-600"
                         />
                         {f.aviso && (
                           <span className="mt-0.5 block text-[11px] text-amber-700">

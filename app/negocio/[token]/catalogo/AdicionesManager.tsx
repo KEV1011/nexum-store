@@ -14,6 +14,25 @@ const INPUT =
   'w-full min-h-[44px] rounded-lg border border-slate-300 px-3 text-sm text-slate-900 ' +
   'focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500'
 
+// ── El ancho de un campo lo fija su CONTENEDOR, nunca una clase encima ──────
+//
+// `INPUT` ya trae `w-full`, así que escribir `${INPUT} w-24` pone DOS
+// utilidades de `width` en el mismo elemento. Entre dos clases con la misma
+// especificidad gana la que esté más abajo en la hoja de estilos, no la que
+// se escriba después en el `className` — y Tailwind ordena la hoja a su
+// manera. En el editor de adiciones ganaba `w-full`: el campo del PRECIO se
+// estiraba a todo el ancho y aplastaba el del NOMBRE hasta dejarlo en unos
+// treinta píxeles, o sea un cuadradito donde no se podía escribir nada.
+//
+// Esto no lo caza nadie: compila, pasa el build y el tipado, y solo se ve
+// con el portal abierto delante. Por eso el ancho vive en un `<span>` que
+// envuelve al campo — ahí `w-full` siempre significa «todo mi contenedor»,
+// que es lo que se quiso decir— y `catalogo-anchos.test.ts` falla si alguien
+// vuelve a apilar una clase de ancho sobre `INPUT`.
+const ANCHO_NUMERO = 'inline-block w-16 shrink-0'
+const ANCHO_PRECIO = 'inline-block w-24 shrink-0'
+const ANCHO_FLEXIBLE = 'min-w-0 flex-1'
+
 interface Opcion {
   id?: string
   name: string
@@ -325,23 +344,29 @@ function EditorGrupo({
         </label>
         <label className="inline-flex items-center gap-1.5">
           Mínimo
-          <input
-            className={`${INPUT} w-14`}
-            inputMode="numeric"
-            value={String(grupo.minSelect)}
-            onChange={(e) => patch({ minSelect: Number(e.target.value.replace(/[^\d]/g, '') || 0) })}
-            maxLength={2}
-          />
+          {/* El ancho lo fija el CONTENEDOR, nunca una clase encima de
+              `INPUT`: ver la nota de `ANCHO_*` más abajo. */}
+          <span className={ANCHO_NUMERO}>
+            <input
+              className={INPUT}
+              inputMode="numeric"
+              value={String(grupo.minSelect)}
+              onChange={(e) => patch({ minSelect: Number(e.target.value.replace(/[^\d]/g, '') || 0) })}
+              maxLength={2}
+            />
+          </span>
         </label>
         <label className="inline-flex items-center gap-1.5">
           Máximo
-          <input
-            className={`${INPUT} w-14`}
-            inputMode="numeric"
-            value={String(grupo.maxSelect)}
-            onChange={(e) => patch({ maxSelect: Number(e.target.value.replace(/[^\d]/g, '') || 1) })}
-            maxLength={2}
-          />
+          <span className={ANCHO_NUMERO}>
+            <input
+              className={INPUT}
+              inputMode="numeric"
+              value={String(grupo.maxSelect)}
+              onChange={(e) => patch({ maxSelect: Number(e.target.value.replace(/[^\d]/g, '') || 1) })}
+              maxLength={2}
+            />
+          </span>
         </label>
         {/* Lo que va a leer el cliente, con la MISMA función del servidor. */}
         <span className="rounded-full bg-white px-2 py-0.5 font-semibold text-slate-700 ring-1 ring-slate-200">
@@ -352,23 +377,27 @@ function EditorGrupo({
       <div className="mt-2 space-y-1.5">
         {grupo.options.map((o, i) => (
           <div key={i} className="flex items-center gap-2">
-            <input
-              className={INPUT}
-              placeholder="Opción (ej: Porción de aguacate)"
-              value={o.name}
-              onChange={(e) => patchOpcion(i, { name: e.target.value })}
-              maxLength={40}
-            />
+            <span className={ANCHO_FLEXIBLE}>
+              <input
+                className={INPUT}
+                placeholder="Opción (ej: Porción de aguacate)"
+                value={o.name}
+                onChange={(e) => patchOpcion(i, { name: e.target.value })}
+                maxLength={40}
+              />
+            </span>
             <span className="shrink-0 text-xs text-slate-400">+$</span>
-            <input
-              className={`${INPUT} w-24 shrink-0`}
-              inputMode="numeric"
-              placeholder="0"
-              value={o.priceDelta ? String(o.priceDelta) : ''}
-              onChange={(e) =>
-                patchOpcion(i, { priceDelta: Number(e.target.value.replace(/[^\d]/g, '') || 0) })}
-              maxLength={9}
-            />
+            <span className={ANCHO_PRECIO}>
+              <input
+                className={INPUT}
+                inputMode="numeric"
+                placeholder="0"
+                value={o.priceDelta ? String(o.priceDelta) : ''}
+                onChange={(e) =>
+                  patchOpcion(i, { priceDelta: Number(e.target.value.replace(/[^\d]/g, '') || 0) })}
+                maxLength={9}
+              />
+            </span>
             <button
               type="button"
               aria-label="Quitar opción"
