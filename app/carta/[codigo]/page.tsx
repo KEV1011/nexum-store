@@ -389,12 +389,25 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
       {/* Cabecera con la portada del local */}
       <header className="relative">
         {negocio.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imagen(negocio.imageUrl)}
-            alt={negocio.name}
-            className="h-36 w-full object-cover"
-          />
+          // ENTERA, no recortada: medio local sube su logo cuadrado y
+          // `object-cover` le cortaba el letrero. El fondo lo rellena la
+          // propia foto desenfocada, la misma regla que el portal y la app.
+          // Las MINIATURAS de más abajo sí se quedan en `cover` a propósito:
+          // ahí lo que hace falta es una rejilla pareja para comparar.
+          <div className="relative h-36 w-full overflow-hidden bg-slate-100">
+            <div
+              aria-hidden
+              className="absolute inset-0 scale-110 bg-cover bg-center blur-xl"
+              style={{ backgroundImage: `url(${JSON.stringify(imagen(negocio.imageUrl))})` }}
+            />
+            <div aria-hidden className="absolute inset-0 bg-black/25" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imagen(negocio.imageUrl)}
+              alt={negocio.name}
+              className="relative h-full w-full object-contain"
+            />
+          </div>
         ) : (
           // Sin portada no se deja un degradado vacío: la inicial del local
           // ocupa el sitio y la cabecera se lee como suya y no como un hueco.

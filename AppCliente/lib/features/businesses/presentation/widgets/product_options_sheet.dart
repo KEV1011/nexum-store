@@ -12,6 +12,7 @@ import 'package:nexum_client/features/businesses/presentation/widgets/'
     'precio_producto.dart';
 import 'package:nexum_client/features/moderacion/presentation/reportar_sheet.dart';
 import 'package:nexum_client/app/theme/contraste.dart';
+import 'package:nexum_client/shared/widgets/foto_encuadrada.dart';
 
 /// Lo que el cliente armó en la hoja: qué eligió, cuántos quiere y qué le
 /// quiere decir a la cocina.
@@ -172,6 +173,15 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
                 Expanded(
                   child: Text(
                     widget.product.name,
+                    // Tope de tres renglones. Lo normal es que el nombre
+                    // quepa en uno —los ingredientes van en `description`,
+                    // que se pinta debajo—, pero un dueño puede teclear a
+                    // mano un nombre larguísimo y sin tope la cabecera se
+                    // come media hoja antes de que se vea el precio. Con
+                    // elipsis, porque el nombre completo está en la lista de
+                    // la que se viene.
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 18,
@@ -629,13 +639,16 @@ class _FotosDelPlatoState extends State<_FotosDelPlato> {
             child: PageView.builder(
               itemCount: widget.fotos.length,
               onPageChanged: (i) => setState(() => _actual = i),
-              itemBuilder: (_, i) => Image.network(
-                ApiConfig.resolveUrl(widget.fotos[i]),
-                fit: BoxFit.cover,
+              // La foto del plato, ENTERA. En el detalle es donde se mira
+              // qué trae el plato, así que recortarla es justo lo que no se
+              // puede hacer — es el mismo arreglo que ya se hizo en la carta
+              // del QR, donde el listado se queda en `cover` y el detalle no.
+              itemBuilder: (_, i) => FotoEncuadrada(
+                url: ApiConfig.resolveUrl(widget.fotos[i]),
                 // Una foto caída no deja un hueco roto: se retira el bloque y
                 // la hoja sigue siendo legible. Pasa de verdad mientras las
                 // fotos vivan en el disco efímero del servidor.
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                fallback: const SizedBox.shrink(),
               ),
             ),
           ),

@@ -19,6 +19,8 @@
 // producto al precio equivocado, que es plata y una queja.
 
 /** Lo mínimo que puede costar algo en una carta. Por debajo es otra cosa. */
+import { separarDescripcion } from './nombre-y-descripcion';
+
 export const PRECIO_MIN = 500;
 
 /**
@@ -34,6 +36,15 @@ export interface LineaCarta {
   /** Línea del texto leído, 1 = la primera. Para poder señalarla en pantalla. */
   linea: number;
   nombre: string;
+  /**
+   * Los ingredientes, cuando la carta los traía pegados al nombre.
+   *
+   * Una carta impresa escribe «Hamburguesa Camarón (Croqueta de carne,
+   * cebolla, queso)» en un solo renglón. Eso NO es el nombre del plato: en
+   * la lista sale con elipsis y el precio se va fuera de la vista. Ausente =
+   * la línea no traía nada que separar.
+   */
+  descripcion?: string;
   /** Null = no se pudo determinar. NUNCA se inventa. */
   precio: number | null;
   /** La sección en la que cayó («Entradas»), o vacío si iba antes de la primera. */
@@ -370,13 +381,17 @@ function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): Ca
     const linea = i + 1;
 
     if (precios.length === 0) {
+      // La decisión de si es un encabezado se toma con el nombre COMPLETO:
+      // «Al gusto: 3 huevos pochados» separado dejaría «Al gusto», que es
+      // corto y sin puntuación, o sea que pasaría por título de sección y se
+      // llevaría por delante todos los platos que vienen debajo.
       if (pareceSeccion(nombre, grande)) {
         seccion = tituloDeSeccion(nombre.replace(/\s*:\s*$/, ''));
         if (!salida.secciones.includes(seccion)) salida.secciones.push(seccion);
         continue;
       }
       salida.lineas.push({
-        linea, nombre, precio: null, seccion,
+        linea, ...separarDescripcion(nombre), precio: null, seccion,
         aviso: 'No le encontramos precio. Escríbelo o borra la fila.',
       });
       continue;
@@ -395,14 +410,14 @@ function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): Ca
       // 7.000» quedarse con el primero vende barato el familiar y con el
       // último cobra de más el personal. Se deja vacío y se dice lo que hay.
       salida.lineas.push({
-        linea, nombre, precio: null, seccion, precios,
+        linea, ...separarDescripcion(nombre), precio: null, seccion, precios,
         aviso: `Tiene ${precios.length} precios (${precios.map(comoPesos).join(' y ')}). `
           + 'Deja uno, o agrúpalos como tamaños del mismo plato.',
       });
       continue;
     }
 
-    salida.lineas.push({ linea, nombre, precio: precios[0]!, seccion });
+    salida.lineas.push({ linea, ...separarDescripcion(nombre), precio: precios[0]!, seccion });
   }
 
   return salida;
