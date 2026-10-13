@@ -520,8 +520,18 @@ async function handleBusinessAuth(ws: WebSocket, token: string): Promise<void> {
     marcarIdentificado(ws);
     sendTo(ws, { type: 'business_auth_ok', businessId: business.id, businessName: business.name });
 
+    // Este bus trae AHORA dos cosas: el pedido recién entrado y cada cambio
+    // de estado del que antes el negocio no se enteraba (por eso la cocina
+    // marcaba listo y el portal no se movía). Se distinguen por el estado:
+    // `pending` solo lo tiene un pedido que acaba de entrar y que nadie ha
+    // tocado, y es el único que debe hacer sonar la campana — en un cambio
+    // de estado sonaría cada pocos minutos y a los dos días estaría quitada.
+    //
+    // Los pedidos de MESA entran ya aceptados y por eso no llevan `pending`:
+    // su aviso sale por `new_order` desde la ruta de la mesa, no de aquí.
     const unsubscribe = onNewClientOrderForBusiness(business.id, (order) => {
-      sendTo(ws, { type: 'new_order', order });
+      const esNuevo = order.status === 'pending';
+      sendTo(ws, { type: esNuevo ? 'new_order' : 'order_update', order });
     });
     const existing = businessSubscriptions.get(ws) ?? [];
     businessSubscriptions.set(ws, [...existing, unsubscribe]);
