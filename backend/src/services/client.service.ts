@@ -75,6 +75,29 @@ const orderListeners = new Map<string, Set<OrderCallback>>();
 type BusinessNewOrderCallback = (order: ClientOrderSummaryDTO) => void;
 const businessOrderListeners = new Map<string, Set<BusinessNewOrderCallback>>();
 
+/**
+ * Avisa de un cambio de pedido a quien lo esté mirando: el cliente y EL
+ * NEGOCIO.
+ *
+ * POR QUÉ EXISTE. Este aviso estaba escrito a mano en seis sitios y los seis
+ * avisaban solo a `orderListeners` —la pantalla del comensal—, así que el
+ * negocio se enteraba de los pedidos NUEVOS y nunca de los cambios. En la
+ * práctica eso significaba que la cocina marcaba un plato listo y el portal
+ * no se movía, y al revés; cada pantalla se enteraba cuando le tocaba su
+ * siguiente consulta, que es lo que se ve como «no se actualiza solo».
+ *
+ * Con una sola función el próximo estado nuevo no puede olvidarse de un bus:
+ * o avisa a los dos, o no avisa a ninguno.
+ */
+function emitirCambioDePedido(
+  orderId: string,
+  businessId: string,
+  summary: ClientOrderSummaryDTO,
+): void {
+  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  for (const cb of businessOrderListeners.get(businessId) ?? []) cb(summary);
+}
+
 // Estimación de trayecto (min) que se suma al tiempo de preparación para el ETA
 // total que ve el cliente. Configurable por negocio en una fase posterior.
 const DELIVERY_TRAVEL_MIN = 15;
@@ -547,7 +570,7 @@ async function autoCancelUnacceptedOrder(orderId: string): Promise<void> {
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  emitirCambioDePedido(orderId, updated.businessId, summary);
 }
 
 /**
@@ -594,7 +617,7 @@ export async function acceptOrderByBusiness(
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  emitirCambioDePedido(orderId, updated.businessId, summary);
 
   // Un pedido a OTRA ciudad no se le ofrece a un repartidor urbano: mandaría
   // una moto de Cúcuta a llevar la caja a Bucaramanga. Su transporte lo resuelve
@@ -641,7 +664,7 @@ export async function rejectOrderByBusiness(
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  emitirCambioDePedido(orderId, updated.businessId, summary);
   return summary;
 }
 
@@ -678,7 +701,7 @@ export async function markOrderReadyByBusiness(
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  emitirCambioDePedido(orderId, updated.businessId, summary);
   return summary;
 }
 
@@ -781,9 +804,9 @@ export async function avisarNegocioDePedidoNuevo(
   });
   if (!o) return null;
   const summary = _toSummary(o, o.business?.name ?? 'Negocio', o.lines);
-  for (const cb of businessOrderListeners.get(o.businessId) ?? []) cb(summary);
-  // También a quien esté mirando ese pedido concreto (la pantalla del comensal).
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  // Por la misma puerta que los cambios de estado: dos formas de avisar
+  // acaban divergiendo en cuanto alguien toca una.
+  emitirCambioDePedido(orderId, o.businessId, summary);
   return summary;
 }
 
@@ -881,7 +904,7 @@ export async function acceptClientOrder(
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  emitirCambioDePedido(orderId, updated.businessId, summary);
   return summary;
 }
 
@@ -913,7 +936,7 @@ export async function cancelClientOrder(clientId: string, orderId: string): Prom
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  emitirCambioDePedido(orderId, updated.businessId, summary);
   return true;
 }
 
@@ -1109,7 +1132,7 @@ export async function cancelOrderByAdmin(orderId: string): Promise<boolean> {
   if (previo.driverId) _sendToDriver?.(previo.driverId, { type: 'order_cancelled', orderId });
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  emitirCambioDePedido(orderId, updated.businessId, summary);
   return true;
 }
 
@@ -1231,7 +1254,7 @@ export async function updateOrderStatusByDriver(
   }
 
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
-  for (const cb of orderListeners.get(orderId) ?? []) cb(orderId, summary);
+  emitirCambioDePedido(orderId, updated.businessId, summary);
   return summary;
 }
 

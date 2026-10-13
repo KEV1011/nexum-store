@@ -34,6 +34,7 @@
  *   DATABASE_URL=postgresql://... npx tsx e2e/cocina.ts
  */
 import { spawn, type ChildProcess } from 'child_process';
+import WebSocket from 'ws';
 import { prisma } from '../src/lib/prisma';
 
 const PUERTO = Number(process.env['E2E_PORT'] ?? 3127);
@@ -105,6 +106,37 @@ function matar(s: ChildProcess): void {
     if (s.pid) process.kill(-s.pid, 'SIGKILL');
   } catch { s.kill('SIGKILL'); }
 }
+
+/**
+ * Se conecta al socket del NEGOCIO y recoge lo que llegue.
+ *
+ * Es el canal que mueve el portal y la pantalla de cocina. Hasta esta tanda
+ * solo traía `new_order`: los cambios de estado no llegaban, y por eso la
+ * cocina marcaba un plato listo y el portal no se movía.
+ */
+function escucharNegocio(token: string): {
+  recibidos: Array<Record<string, unknown>>;
+  listo: Promise<void>;
+  cerrar: () => void;
+} {
+  const ws = new WebSocket(`ws://localhost:${PUERTO}`);
+  const recibidos: Array<Record<string, unknown>> = [];
+  const listo = new Promise<void>((resolve, reject) => {
+    const limite = setTimeout(() => reject(new Error('el socket no autenticó')), 10000);
+    ws.on('open', () => ws.send(JSON.stringify({ type: 'business_auth', token })));
+    ws.on('message', (raw) => {
+      try {
+        const m = JSON.parse(String(raw)) as Record<string, unknown>;
+        recibidos.push(m);
+        if (m['type'] === 'business_auth_ok') { clearTimeout(limite); resolve(); }
+      } catch { /* mensaje ilegible */ }
+    });
+    ws.on('error', reject);
+  });
+  return { recibidos, listo, cerrar: () => ws.close() };
+}
+
+const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface PedidoCocinaDTO {
   id: string;
@@ -338,6 +370,35 @@ async function main(): Promise<void> {
       // quedaría sin poder marcar nada.
       check(o?.status === 'PREPARING', 'y su estado tampoco cambia', o?.status);
     }
+    console.log('\n[10] El cambio de estado LLEGA al negocio por WebSocket');
+    {
+      const sock = escucharNegocio(negocio.token);
+      await sock.listo;
+      sock.recibidos.length = 0;
+
+      // Marcar listo desde la cocina tiene que mover el portal del dueño, y
+      // al revés. Hasta esta tanda no llegaba nada: cada pantalla esperaba a
+      // su siguiente consulta, que es lo que se ve como «no se actualiza».
+      const r = await pedir('POST', `/business/${negocio.token}/client-orders/${aDomicilio.id}/ready`);
+      check(r.status === 200, 'se marca el plato', { s: r.status, e: r.json.error });
+
+      await esperar(1200);
+      const avisos = sock.recibidos.filter(
+        (m) => m['type'] === 'order_update' || m['type'] === 'new_order',
+      );
+      check(avisos.length > 0, 'llega un aviso al negocio', sock.recibidos.map((m) => m['type']));
+
+      // Y llega como CAMBIO, no como pedido nuevo: si viniera como
+      // `new_order`, el portal haría sonar la campana y saltaría de pestaña
+      // cada vez que la cocina toca un botón.
+      check(
+        avisos.every((m) => m['type'] === 'order_update'),
+        'y como cambio, no como pedido nuevo',
+        avisos.map((m) => m['type']),
+      );
+      sock.cerrar();
+    }
+
   } finally {
     matar(servidor);
     // Limpieza: primero lo que cuelga del pedido.

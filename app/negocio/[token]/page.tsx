@@ -622,6 +622,17 @@ export default function PortalDashboard({
               '¡Pedido nuevo!',
               `${order.items?.length ?? 0} producto(s) · ${formatCOP(order.total)}`,
             )
+          } else if (msg['type'] === 'order_update') {
+            // Un cambio de estado, no un pedido nuevo: se refresca la fila
+            // sin campana ni salto de pestaña. Es lo que hace que un plato
+            // marcado en la cocina aparezca aquí al instante — antes el
+            // negocio solo recibía `new_order` y los cambios no llegaban.
+            const order = msg['order'] as ClientOrder
+            setClientOrders((prev) =>
+              prev.some((o) => o.id === order.id)
+                ? prev.map((o) => (o.id === order.id ? order : o))
+                : [order, ...prev],
+            )
           } else if (msg['type'] === 'order_no_driver') {
             // El backend insistió 10 minutos y no apareció repartidor. El
             // negocio tiene la comida hecha: es quien debe decidir.

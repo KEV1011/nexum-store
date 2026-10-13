@@ -17,10 +17,14 @@
  * avisan de la demora.
  */
 
-import { use, useCallback, useEffect, useState } from 'react'
-import { ChefHat, Clock, Check, RotateCcw, Loader2, AlertTriangle } from 'lucide-react'
+import { use, useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import {
+  ChefHat, Clock, Check, RotateCcw, Loader2, AlertTriangle, Wifi, WifiOff, Volume2, BellRing,
+} from 'lucide-react'
 
-import { BACKEND_URL } from '../../../backend'
+import { BACKEND_URL, BACKEND_WS } from '../../../backend'
+import { useOrderAlert } from '../useOrderAlert'
 
 interface LineaCocina {
   productName: string
@@ -41,8 +45,16 @@ interface PedidoCocina {
   lineas: LineaCocina[]
 }
 
-/** Cada cuánto se vuelve a preguntar. En una cocina, diez segundos es tarde. */
-const REFRESCO_MS = 8000
+/**
+ * El respaldo por si el WebSocket se cae, no el canal principal.
+ *
+ * Lo que mueve esta pantalla es el socket del negocio (`business_auth`), que
+ * es el mismo que ya usa el portal: así un plato marcado en el portal aparece
+ * aquí al instante y al revés. La consulta periódica solo cubre el rato en
+ * que el socket está reconectando — con el wifi de un local eso pasa — y por
+ * eso puede ser lenta sin que se note.
+ */
+const RESPALDO_MS = 20000
 
 /**
  * Los minutos que lleva, con las MISMAS reglas que el servidor: desde que
@@ -79,9 +91,36 @@ export default function CocinaPage({ params }: { params: Promise<{ token: string
   const [platos, setPlatos] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [marcando, setMarcando] = useState<string | null>(null)
+  const [conectado, setConectado] = useState(false)
   // El reloj avanza aunque no llegue nada del servidor: si solo se moviera
   // con cada carga, los minutos irían a saltos de ocho segundos.
   const [ahora, setAhora] = useState(() => Date.now())
+
+  // ── Modo pase, para el mesero ────────────────────────────────────────────
+  //
+  // La misma pantalla sirve a dos personas con avisos OPUESTOS: al cocinero
+  // le interesa que suene cuando ENTRA un plato, y al mesero cuando algo pasa
+  // a LISTO. La misma campana para los dos suena el doble de veces y a los
+  // dos días está quitada, así que el mesero abre esta URL con `?pase=1` en
+  // su teléfono.
+  //
+  // NO hay cuentas de mesero ni modelo de personal, a propósito: en un local
+  // de tres mesas eso es burocracia, y el enlace ya está protegido por el
+  // token del negocio igual que el resto del portal.
+  const buscar = useSearchParams()
+  const esPase = buscar.get('pase') === '1'
+
+  // Lo que había la vez anterior, para saber qué CAMBIÓ. `null` mientras no
+  // se ha cargado nada: en la primera carga no suena, o abrir la pantalla con
+  // ocho pedidos dentro sonaría ocho veces seguidas.
+  const anterior = useRef<Map<string, boolean> | null>(null)
+  const { avisarPedido, sonidoBloqueado, activarSonido } = useOrderAlert(
+    // El contador del título: en el pase, lo que falta por recoger; en la
+    // cocina, lo que falta por hacer.
+    esPase
+      ? (pedidos ?? []).filter((p) => p.readyAt).length
+      : (pedidos ?? []).filter((p) => !p.readyAt).length,
+  )
 
   const cargar = useCallback(async () => {
     try {
@@ -105,14 +144,90 @@ export default function CocinaPage({ params }: { params: Promise<{ token: string
 
   useEffect(() => {
     void cargar()
-    const t = setInterval(() => void cargar(), REFRESCO_MS)
+    const t = setInterval(() => void cargar(), RESPALDO_MS)
     return () => clearInterval(t)
   }, [cargar])
+
+  // ── El socket del negocio, que es el MISMO del portal ─────────────────────
+  //
+  // Con esto un plato marcado en el portal aparece aquí al instante y al
+  // revés. No se intenta aplicar el pedido que llega: se vuelve a pedir la
+  // lista entera, que es barata y no puede desincronizarse —componer el
+  // estado a partir de mensajes sueltos obliga a acertar con el orden de
+  // llegada, y una cocina que se queda con un plato fantasma es peor que una
+  // que tarda medio segundo.
+  useEffect(() => {
+    let vivo = true
+    let ws: WebSocket | null = null
+    let reconexion: ReturnType<typeof setTimeout> | null = null
+
+    function conectar() {
+      if (!vivo) return
+      try {
+        ws = new WebSocket(BACKEND_WS)
+        ws.onopen = () => ws?.send(JSON.stringify({ type: 'business_auth', token }))
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data as string) as Record<string, unknown>
+            const t = msg['type']
+            if (t === 'new_order' || t === 'order_update') void cargar()
+            else if (t === 'business_auth_ok') setConectado(true)
+            else if (t === 'business_auth_error') ws?.close()
+          } catch {
+            // Un mensaje mal formado no puede tumbar la cocina.
+          }
+        }
+        ws.onclose = () => {
+          setConectado(false)
+          ws = null
+          if (vivo) reconexion = setTimeout(conectar, 5000)
+        }
+        ws.onerror = () => ws?.close()
+      } catch {
+        if (vivo) reconexion = setTimeout(conectar, 5000)
+      }
+    }
+    conectar()
+
+    return () => {
+      vivo = false
+      if (reconexion) clearTimeout(reconexion)
+      ws?.close()
+    }
+  }, [token, cargar])
 
   useEffect(() => {
     const t = setInterval(() => setAhora(Date.now()), 1000)
     return () => clearInterval(t)
   }, [])
+
+  // Suena cuando algo CAMBIA, no en cada carga.
+  useEffect(() => {
+    if (pedidos === null) return
+    const ahoraMapa = new Map(pedidos.map((p) => [p.id, !!p.readyAt]))
+    const antes = anterior.current
+    anterior.current = ahoraMapa
+    // Primera carga: se guarda el estado y no se avisa de nada.
+    if (antes === null) return
+
+    if (esPase) {
+      // Al mesero: lo que acaba de quedar listo. Solo la transición, no los
+      // que ya estaban listos cuando abrió la pantalla.
+      const reciencito = pedidos.filter((p) => p.readyAt && antes.get(p.id) === false)
+      if (reciencito.length > 0) {
+        const p = reciencito[0]!
+        avisarPedido('Plato listo', `${destino(p)} · ${p.orderRef}`)
+      }
+    } else {
+      // Al cocinero: lo que acaba de entrar a la plancha.
+      const nuevos = pedidos.filter((p) => !p.readyAt && !antes.has(p.id))
+      if (nuevos.length > 0) {
+        const p = nuevos[0]!
+        const platos = p.lineas.reduce((s, l) => s + l.quantity, 0)
+        avisarPedido('Pedido nuevo', `${destino(p)} · ${platos} plato(s)`)
+      }
+    }
+  }, [pedidos, esPase, avisarPedido])
 
   async function marcar(p: PedidoCocina) {
     setMarcando(p.id)
@@ -148,15 +263,47 @@ export default function CocinaPage({ params }: { params: Promise<{ token: string
     <main className="min-h-screen bg-slate-950 text-white">
       <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-white/10 bg-slate-950/95 px-4 py-3 backdrop-blur">
         <ChefHat className="h-6 w-6 text-amber-400" />
-        <h1 className="text-lg font-bold">Cocina</h1>
+        <h1 className="text-lg font-bold">{esPase ? 'Pase' : 'Cocina'}</h1>
+        {/* Si el socket se cayó, la pantalla deja de ser «en vivo» y pasa a
+            depender de la consulta de respaldo. Decirlo: una cocina que cree
+            estar al día y lleva veinte segundos de retraso es peor que una
+            que sabe que está reconectando. */}
+        <span
+          title={conectado ? 'En vivo' : 'Reconectando…'}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-bold ${
+            conectado ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/20 text-slate-400'
+          }`}
+        >
+          {conectado ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+          {conectado ? 'En vivo' : 'Reconectando'}
+        </span>
         {/* La carga real son PLATOS, no pedidos: «3 pedidos» y «11 platos»
             son cosas muy distintas para quien cocina. */}
         <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm font-bold text-amber-300">
           {platos} {platos === 1 ? 'plato' : 'platos'} por hacer
         </span>
+        {/* El navegador no deja sonar hasta que alguien toca la página. Sin
+            este botón, el aviso fallaría EN SILENCIO y nadie sabría por qué
+            no suena — que es justo lo que no puede pasar en una cocina. */}
+        {sonidoBloqueado && (
+          <button
+            type="button"
+            onClick={activarSonido}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-sm font-bold text-slate-950"
+          >
+            <Volume2 className="h-4 w-4" /> Activar el sonido
+          </button>
+        )}
+        <a
+          href={`/negocio/${token}/cocina${esPase ? '' : '?pase=1'}`}
+          className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-white/5"
+        >
+          <BellRing className="h-4 w-4" />
+          {esPase ? 'Ver como cocina' : 'Abrir el pase'}
+        </a>
         <a
           href={`/negocio/${token}`}
-          className="ml-auto rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-white/5"
+          className="rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-white/5"
         >
           Volver al portal
         </a>
@@ -187,7 +334,10 @@ export default function CocinaPage({ params }: { params: Promise<{ token: string
       )}
 
       {pedidos !== null && pedidos.length > 0 && (
-        <div className="grid gap-4 p-4 lg:grid-cols-2">
+        // En el pase la columna que importa es la de LISTOS: el mesero viene
+        // a recoger, no a vigilar la plancha. Por eso van primero, que en un
+        // teléfono es lo único que se ve sin desplazar.
+        <div className={`grid gap-4 p-4 lg:grid-cols-2 ${esPase ? '[&>*:first-child]:order-2' : ''}`}>
           <Columna titulo="En la plancha" pedidos={enCocina} vacio="Todo hecho.">
             {enCocina.map((p) => (
               <Tarjeta
