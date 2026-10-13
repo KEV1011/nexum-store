@@ -22,6 +22,7 @@ import {
   Utensils,
   Settings,
   BarChart3,
+  ChefHat,
 } from 'lucide-react'
 
 import { formatCOP } from '../../moneda'
@@ -752,6 +753,16 @@ export default function PortalDashboard({
                 </span>
               </div>
             )}
+            {/* La pantalla de la cocina. Va PRIMERO y también en el teléfono
+                —al revés que las otras, que son `sm:` — porque es la que se
+                abre para dejarla puesta en la tablet de la plancha, y lo
+                normal es mandársela desde el móvil. */}
+            <Link href={`/negocio/${token}/cocina`}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800
+                         bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 hover:bg-amber-100 transition-colors">
+              <ChefHat className="w-3.5 h-3.5" />
+              Cocina
+            </Link>
             <Link href={`/negocio/${token}/catalogo`}
               className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700
                          bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 hover:bg-emerald-100 transition-colors">

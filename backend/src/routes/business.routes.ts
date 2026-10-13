@@ -61,6 +61,7 @@ import { reporteACsv } from '../lib/reporte-ventas';
 import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { PORTAL_BASE_URL } from '../config/constants';
+import { pedidosEnCocina, deshacerPlatoListo } from '../services/cocina.service';
 import {
   saldoDelAliado, creditosPendientes, girosDelAliado, GiroError,
 } from '../services/giro-aliado.service';
@@ -1254,3 +1255,44 @@ router.post(
     }
   },
 );
+
+// GET  /business/:token/cocina            → qué hay que cocinar ahora
+// POST /business/:token/cocina/:orderId   { listo: boolean }
+//
+// El tablero de la tablet de la cocina. Mesa y domicilio van JUNTOS: para
+// cocinar da igual el destino, y dos listas obligarían al cocinero a decidir
+// él el orden. El portal del dueño los sigue llevando aparte, que para él sí
+// son dos negocios distintos.
+router.get('/:token/cocina', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const { pedidos, platos } = await pedidosEnCocina(business.id);
+    res.json({
+      success: true,
+      data: { business: { name: business.name, token }, pedidos, platos },
+    });
+  } catch (err) {
+    res.status(404).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Negocio no encontrado',
+    });
+  }
+});
+
+// Deshacer el «listo». Marcar lo hace `/client-orders/:id/ready`, que ya
+// existe y además avisa al repartidor y al cliente; aquí solo está la vuelta
+// atrás, que esa ruta no permite — y en una cocina el botón se toca con prisa.
+router.delete('/:token/cocina/:orderId/listo', async (req: Request, res: Response): Promise<void> => {
+  const { token, orderId } = req.params as { token: string; orderId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    await deshacerPlatoListo(business.id, orderId);
+    res.json({ success: true, data: { readyAt: null } });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos deshacerlo',
+    });
+  }
+});
