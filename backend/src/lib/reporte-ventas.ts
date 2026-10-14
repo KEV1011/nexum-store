@@ -45,7 +45,7 @@ export interface LineaDeReporte {
 export interface PedidoDeReporte {
   ref: string;
   fecha: Date;
-  mode: 'DELIVERY' | 'DINE_IN' | string;
+  mode: string;
   status: $Enums.OrderStatus | string;
   subtotal: number;
   promoDiscount?: number | null;
@@ -92,6 +92,8 @@ export interface ReporteVentas {
   propinas: number;
   /** En salón. */
   enMesa: number;
+  /** Para llevar: se cobró en el mostrador y el cliente se lo llevó. */
+  paraLlevar: number;
   /** A domicilio. */
   aDomicilio: number;
   /** `null` sin pedidos: un promedio sin denominador no es cero, es nada. */
@@ -176,6 +178,7 @@ export function reporteDeVentas(
   let fletes = 0;
   let propinas = 0;
   let enMesa = 0;
+  let paraLlevar = 0;
   let aDomicilio = 0;
 
   const dias = new Map<string, DiaDeVentas>();
@@ -189,7 +192,12 @@ export function reporteDeVentas(
     domicilios += p.deliveryFee ?? 0;
     fletes += p.intercityFee ?? 0;
     propinas += p.tipAmount ?? 0;
-    if (p.mode === 'DINE_IN') enMesa += 1; else aDomicilio += 1;
+    // Tres cajones, no dos. Con `=== 'DINE_IN'` un pedido PARA LLEVAR caía
+    // en «a domicilio», y el dueño vería domicilios que nunca salieron del
+    // local — justo el número que mira para decidir si contrata repartidor.
+    if (p.mode === 'DINE_IN') enMesa += 1;
+    else if (p.mode === 'TAKEAWAY') paraLlevar += 1;
+    else aDomicilio += 1;
 
     const dia = diaColombiano(p.fecha);
     const ya = dias.get(dia);
@@ -236,6 +244,7 @@ export function reporteDeVentas(
     fletes: Math.round(fletes),
     propinas: Math.round(propinas),
     enMesa,
+    paraLlevar,
     aDomicilio,
     ticketPromedio: vendidos.length === 0 ? null : Math.round(tuyo / vendidos.length),
     porDia: [...dias.values()].sort((a, b) => a.fecha.localeCompare(b.fecha)),

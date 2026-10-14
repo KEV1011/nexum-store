@@ -62,6 +62,7 @@ import { saneaElogios } from '../lib/elogios';
 import { planificar } from '../lib/viaje-programado';
 import { descuentoSellable, totalPasajero } from '../lib/descuento-viaje';
 import { redeemPromo, PromoError } from './promo.service';
+import { seDespacha } from '../lib/modo-pedido';
 import {
   avisoDeEstado, avisoCancelacionAlConductor,
   type EstadoViaje, type DatosDelViaje,
@@ -596,10 +597,12 @@ export async function acceptOrderByBusiness(
       status: 'PREPARING',
       prepMinutes: prep,
       acceptedAt: new Date(),
-      // En la mesa no hay trayecto que sumar: el plato sale de la cocina al
-      // salón. Sumarle los minutos del repartidor le prometería al comensal
-      // una espera que no existe.
-      etaMinutes: existing.mode === 'DINE_IN' ? prep : prep + DELIVERY_TRAVEL_MIN,
+      // Lo que no se reparte no tiene trayecto: en la mesa el plato sale de
+      // la cocina al salón, y para llevar el cliente ya está en el
+      // mostrador. Sumarle los minutos del repartidor prometería una espera
+      // que no existe — y en un «para llevar» es al revés de lo que importa:
+      // el cliente está esperando de pie.
+      etaMinutes: seDespacha(existing.mode) ? prep + DELIVERY_TRAVEL_MIN : prep,
     },
     include: { lines: true, business: { select: { name: true } } },
   });
@@ -624,10 +627,17 @@ export async function acceptOrderByBusiness(
   // una empresa intermunicipal desde el tablero de encomiendas, y el pedido
   // espera en PREPARING hasta que alguien lo suba a un despacho.
   //
-  // Un pedido EN MESA tampoco: el comensal está sentado en el local y el plato
-  // lo lleva el mesero. Sin esta guarda se le ofrecería la carrera a una moto
-  // para recoger algo que ya está en la mano de quien lo pidió.
-  if (!updated.isIntercity && updated.mode !== 'DINE_IN') {
+  // Un pedido EN MESA o PARA LLEVAR tampoco: el comensal está en el local y
+  // o se lo lleva el mesero a su mesa, o se lo lleva él mismo. Sin esta
+  // guarda se le ofrecería la carrera a una moto para recoger algo que ya
+  // está —o va a estar— en la mano de quien lo pidió, y el local pagaría un
+  // domicilio que nadie prestó.
+  //
+  // La condición sale de `MODOS`, que es un `Record<OrderMode, …>`: añadir un
+  // modo nuevo sin decidir si se reparte NO COMPILA. Antes era
+  // `mode !== 'DINE_IN'` —o sea, una lista de lo que NO se despacha— y eso se
+  // queda viejo en silencio con cada modo que se añade.
+  if (!updated.isIntercity && seDespacha(updated.mode)) {
     // Ahora sí buscamos repartidor (antes esperaba en la puerta del negocio).
     void startOrderMatchingCycle(orderId);
   }
@@ -2038,7 +2048,7 @@ type PrismaOrder = {
   // no vengan, el DTO simplemente no los lleva.
   promisedAt?: Date | null; lastMile?: boolean | null;
   noDriverNotifiedAt?: Date | null;
-  mode?: 'DELIVERY' | 'DINE_IN'; tableLabel?: string | null;
+  mode?: 'DELIVERY' | 'DINE_IN' | 'TAKEAWAY'; tableLabel?: string | null;
   paymentMethod?: string | null;
   isIntercity?: boolean | null; destCitySlug?: string | null;
   /** La bitácora, cuando la consulta la trae. Sin ella no se pinta línea. */
@@ -2107,7 +2117,12 @@ function _toSummary(
           timeline: lineaDeTiempoPedido(
             {
               status: o.status as EstadoPedidoBD,
-              dineIn: o.mode === 'DINE_IN',
+              // `dineIn` significa, para la línea de tiempo, «no hay
+              // repartidor»: ni en la mesa ni para llevar. Con
+              // `=== 'DINE_IN'` el pedido para llevar habría mostrado los
+              // pasos del domicilio y prometido un repartidor inexistente,
+              // que es el defecto que ya se corrigió con la encomienda.
+              dineIn: !seDespacha(o.mode),
               intercity: o.isIntercity === true,
               lastMile: o.lastMile === true,
               ciudadDestino: nombreMunicipioSync(o.destCitySlug),

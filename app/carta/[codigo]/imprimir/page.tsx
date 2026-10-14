@@ -30,22 +30,12 @@ export default function ImprimirPage({ params }: { params: Promise<{ codigo: str
   const base = typeof window === 'undefined' ? '' : window.location.origin
   const enlaceDe = (mesa: string) =>
     `${base}/carta/${encodeURIComponent(codigo)}?mesa=${encodeURIComponent(mesa)}`
+  // El del MOSTRADOR: quien lo escanea pide para llevar. Es un código
+  // distinto del de las mesas, así que el local decide dónde lo pega.
+  const enlaceParaLlevar = `${base}/carta/${encodeURIComponent(codigo)}?llevar=1`
 
   if (error) return <main className="p-8 text-sm text-red-700">{error}</main>
   if (!carta) return <main className="p-8 text-sm text-slate-500">Cargando…</main>
-
-  if (carta.tables.length === 0) {
-    return (
-      <main className="p-8">
-        <p className="text-sm font-semibold text-slate-800">
-          Todavía no tienes mesas creadas.
-        </p>
-        <p className="mt-1 text-sm text-slate-500">
-          Agrégalas desde Ajustes → Pedido en la mesa y vuelve aquí a imprimirlas.
-        </p>
-      </main>
-    )
-  }
 
   return (
     <main className="mx-auto max-w-4xl bg-white p-6 print:p-0">
@@ -67,7 +57,24 @@ export default function ImprimirPage({ params }: { params: Promise<{ codigo: str
         </button>
       </div>
 
+      {carta.tables.length === 0 && (
+        <p className="mb-4 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 print:hidden">
+          Todavía no tienes mesas creadas — agrégalas desde Ajustes → Pedido en
+          la mesa. Mientras tanto puedes usar el código de «Para llevar» de
+          abajo, que no necesita mesas.
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        {/* El del mostrador va PRIMERO: es uno solo y el que más se pierde
+            entre veinte tarjetas de mesa si va al final. */}
+        <TarjetaMesa
+          mesa="Para llevar"
+          negocio={carta.business.name}
+          enlace={enlaceParaLlevar}
+          codigo={codigo}
+          qrListo={qrListo}
+        />
         {carta.tables.map((mesa) => (
           <TarjetaMesa
             key={mesa}

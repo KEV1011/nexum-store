@@ -504,6 +504,7 @@ model Business {
   optionGroups   OptionGroup[]
   orders         Order[]
   tableTabs      TableTab[]
+  cashSessions   CashSession[]
   payouts        Payout[]
   partnerCredits PartnerCredit[]
 
@@ -895,6 +896,49 @@ enum OrderMode {
   DELIVERY
   /// En el local, desde el QR de la mesa.
   DINE_IN
+  /// Pide y se lo lleva. Va a la cocina como los demás, pero NO se despacha
+  /// a ningún repartidor ni cobra domicilio: nadie lo lleva a ninguna parte.
+  TAKEAWAY
+}
+
+/// La caja de un turno: se abre con una base y se cierra contando el efectivo.
+///
+/// LO QUE DE VERDAD RESPONDE: al final del turno, ¿lo que hay en el cajón es
+/// lo que debería? La diferencia entre lo contado y lo esperado es el dato —
+/// un faltante de veinte mil pesos repetido tres días no es mala suerte.
+///
+/// SOLO CUENTA EL EFECTIVO, que es la regla que lo hace útil. Lo pagado con
+/// tarjeta o Nequi no está en el cajón; meterlo daría un faltante enorme cada
+/// día y a la semana nadie miraría el arqueo.
+model CashSession {
+  id         String   @id @default(cuid())
+  businessId String
+  /// Consecutivo del día, para poder nombrar el turno («Caja 2 de hoy»).
+  numero     Int
+  openedAt   DateTime @default(now())
+  openedBy   String?
+  /// La base con la que arranca el turno (el sencillo para dar cambio).
+  openingFloat Float   @default(0)
+
+  closedAt   DateTime?
+  closedBy   String?
+  /// Lo que el cajero CONTÓ físicamente al cerrar.
+  countedCash Float?
+  /// Lo que debería haber: base + ventas en efectivo del turno. Se SELLA al
+  /// cerrar; mientras está abierta se deriva, porque un esperado guardado y
+  /// unas ventas guardadas acaban discrepando.
+  expectedCash Float?
+  /// Contado menos esperado. Negativo = falta plata. Se guarda ya calculado
+  /// porque es el documento del arqueo: si se derivara, cambiaría el día que
+  /// alguien toque una venta vieja.
+  difference  Float?
+  /// Lo que el cajero explica de la diferencia («se pagó el gas, $30.000»).
+  notes       String?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, openedAt])
+  @@map("cash_sessions")
 }
 
 /// La cuenta de una mesa: las rondas que esa mesa lleva consumidas.

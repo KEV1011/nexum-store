@@ -29,6 +29,7 @@ import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { nombreEstadoPedido } from '../lib/estado-pedido';
 import { registrarEventoPedido, historialDePedido } from './pedido-eventos.service';
 import { cuentaAbiertaDeMesa } from './cuenta-mesa.service';
+import { seDespacha } from '../lib/modo-pedido';
 import {
   lineaDeTiempoPedido, type EstadoPedidoBD, type PasoPedido,
 } from '../lib/linea-tiempo-pedido';
@@ -165,7 +166,13 @@ export async function getCartaPublica(codigo: string): Promise<CartaPublicaDTO> 
 }
 
 export interface PedirEnMesaDTO {
+  /** La mesa, o `null` cuando es para llevar. */
   mesa: unknown;
+  /**
+   * `true` = el cliente se lo lleva. No hay mesa, no hay cuenta que acumule
+   * rondas y NO se le busca repartidor: se paga en el mostrador y se va.
+   */
+  paraLlevar?: unknown;
   items: Array<{
     productId: string;
     quantity: number;
@@ -217,11 +224,15 @@ export async function crearPedidoEnMesa(
       `${biz.name} todavía no tiene el pedido en mesa activado. Pide con el mesero.`,
     );
   }
+  // Para llevar no tiene mesa, y es legítimo: el cliente pide en el
+  // mostrador y se lo lleva.
+  const paraLlevar = dto.paraLlevar === true;
+
   // Una mesa que el dueño no declaró no puede pedir: sin esta guarda basta
   // cambiar `?mesa=5` por `?mesa=99` para meterle a la cocina un plato que
   // nadie sabe a dónde llevar.
-  const mesa = mesaDelCatalogo(carta.tables, dto.mesa);
-  if (!mesa) {
+  const mesa = paraLlevar ? null : mesaDelCatalogo(carta.tables, dto.mesa);
+  if (!paraLlevar && !mesa) {
     throw new Error('No reconocimos la mesa. Vuelve a escanear el código de tu mesa.');
   }
 
@@ -236,14 +247,20 @@ export async function crearPedidoEnMesa(
   // siguientes. Sin esto, «Mesa 1» salía tres veces en el portal con tres
   // totales distintos y era facilísimo cobrar una ronda y olvidar las otras.
   //
+  // PARA LLEVAR NO ABRE CUENTA: se paga y se va, no hay rondas que acumular.
+  // Abrirle una dejaría cuentas de un solo pedido colgando toda la tarde en
+  // la pantalla de mesas, donde el mesero busca lo que sí tiene que cobrar.
+  //
   // Es best-effort: si fallara, el pedido se crea igual y queda suelto como
   // hasta ahora. Dejar a un comensal sin poder almorzar porque no se pudo
   // agrupar su cuenta sería un remedio peor que la enfermedad.
   let tabId: string | null = null;
-  try {
-    tabId = (await cuentaAbiertaDeMesa(biz.id, mesa)).id;
-  } catch {
-    tabId = null;
+  if (mesa) {
+    try {
+      tabId = (await cuentaAbiertaDeMesa(biz.id, mesa)).id;
+    } catch {
+      tabId = null;
+    }
   }
 
   const order = await prisma.order.create({
@@ -254,11 +271,11 @@ export async function crearPedidoEnMesa(
       // instalar nada para almorzar. Es el punto de toda la función.
       userId: null,
       businessId: biz.id,
-      mode: 'DINE_IN',
+      mode: paraLlevar ? 'TAKEAWAY' : 'DINE_IN',
       tableLabel: mesa,
       // La columna es obligatoria y todas las pantallas viejas la imprimen, así
       // que se escribe algo CIERTO y útil en vez de dejarla vacía.
-      deliveryAddress: `En el local · Mesa ${mesa}`,
+      deliveryAddress: paraLlevar ? 'Para llevar · recoge en el local' : `En el local · Mesa ${mesa}`,
       // La plaza del comercio, SELLADA. El dato existe —lo tiene el negocio— y
       // sin copiarlo aquí el pedido quedaba fuera del panel por ciudad: un
       // `null` honesto es cuando no se sabe, no cuando no se miró.
@@ -322,7 +339,11 @@ export async function getPedidoEnMesa(
   });
   // Tiene que ser de ESTE local y de mesa: si no, el código de una carta
   // serviría para leer los pedidos a domicilio del negocio, con su dirección.
-  if (!order || order.businessId !== carta.business.id || order.mode !== 'DINE_IN') return null;
+  // `!seDespacha` cubre la mesa Y el para llevar: los dos se piden desde la
+  // carta del QR y los dos se consumen o recogen en el local. Con
+  // `=== 'DINE_IN'` el cliente que pidió para llevar no habría podido seguir
+  // su pedido ni calificarlo.
+  if (!order || order.businessId !== carta.business.id || seDespacha(order.mode)) return null;
   return _aDTO(
     order, carta.business.name, order.lines, await historialDePedido(order.id),
   );
@@ -356,7 +377,7 @@ export async function calificarPedidoEnMesa(
     where: { id: orderId },
     select: { businessId: true, mode: true },
   });
-  if (!order || order.businessId !== carta.business.id || order.mode !== 'DINE_IN') {
+  if (!order || order.businessId !== carta.business.id || seDespacha(order.mode)) {
     throw new Error('No encontramos ese pedido.');
   }
   // El resto —que esté servido, guardar y recalcular el promedio del negocio—
@@ -384,7 +405,12 @@ export async function marcarServido(
   // MISMA escritura, así que dos toques seguidos al botón no sirven un pedido
   // dos veces ni sirven el de otro local.
   const res = await prisma.order.updateMany({
-    where: { id: orderId, businessId, mode: 'DINE_IN', status: { in: ['PENDING', 'PREPARING'] } },
+    // Vale para la mesa y para el mostrador: en los dos casos el plato sale
+    // de la cocina a la mano de quien lo pidió, sin repartidor en medio.
+    where: {
+      id: orderId, businessId, mode: { in: ['DINE_IN', 'TAKEAWAY'] },
+      status: { in: ['PENDING', 'PREPARING'] },
+    },
     data: { status: 'DELIVERED', deliveredAt: new Date() },
   });
   if (res.count === 0) return null;

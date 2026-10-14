@@ -66,6 +66,7 @@ import {
   cuentasAbiertas, getCuenta, cerrarCuenta, reabrirCuenta,
   cancelarRondaDeMesa, cuentasReabiertasHoy,
 } from '../services/cuenta-mesa.service';
+import { cajaAbierta, abrirCaja, cerrarCaja, cajasDelDia } from '../services/caja.service';
 import {
   saldoDelAliado, creditosPendientes, girosDelAliado, GiroError,
 } from '../services/giro-aliado.service';
@@ -1421,6 +1422,73 @@ router.get('/:token/cuentas-reabiertas', async (req: Request, res: Response): Pr
     res.status(404).json({
       success: false,
       error: err instanceof Error ? err.message : 'Negocio no encontrado',
+    });
+  }
+});
+
+// ── La caja del turno ──────────────────────────────────────────────────────
+//
+// GET  /business/:token/caja          → la caja abierta (o null) y las del día
+// POST /business/:token/caja/abrir    { openingFloat?, openedBy? }
+// POST /business/:token/caja/cerrar   { countedCash, closedBy?, notes? }
+router.get('/:token/caja', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const [abierta, delDia] = await Promise.all([
+      cajaAbierta(business.id),
+      cajasDelDia(business.id),
+    ]);
+    res.json({ success: true, data: { abierta, delDia } });
+  } catch (err) {
+    res.status(404).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Negocio no encontrado',
+    });
+  }
+});
+
+router.post('/:token/caja/abrir', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { openingFloat, openedBy } = req.body as { openingFloat?: unknown; openedBy?: unknown };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const caja = await abrirCaja(business.id, {
+      ...(typeof openingFloat === 'number' ? { openingFloat } : {}),
+      ...(typeof openedBy === 'string' ? { openedBy } : {}),
+    });
+    res.json({ success: true, data: { caja } });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos abrir la caja',
+    });
+  }
+});
+
+router.post('/:token/caja/cerrar', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  const { countedCash, closedBy, notes } = req.body as {
+    countedCash?: unknown; closedBy?: unknown; notes?: unknown;
+  };
+  if (typeof countedCash !== 'number') {
+    // Sin contar no hay arqueo: cerrar «a ojo» daría una diferencia
+    // inventada, que es peor que no tener la función.
+    res.status(400).json({ success: false, error: 'Cuenta el efectivo del cajón antes de cerrar.' });
+    return;
+  }
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const caja = await cerrarCaja(business.id, {
+      countedCash,
+      ...(typeof closedBy === 'string' ? { closedBy } : {}),
+      ...(typeof notes === 'string' ? { notes } : {}),
+    });
+    res.json({ success: true, data: { caja } });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos cerrar la caja',
     });
   }
 });

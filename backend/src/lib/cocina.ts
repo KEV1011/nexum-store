@@ -27,6 +27,7 @@
 // mesa y domicilio) y las reglas del tablero.
 
 import type { OrderStatus } from '@prisma/client';
+import { etiquetaDeModo } from './modo-pedido';
 
 /**
  * Los estados en los que la cocina tiene algo que hacer o que entregar.
@@ -151,14 +152,16 @@ export function platosPendientes(pedidos: PedidoCocina[]): number {
     .reduce((s, p) => s + p.lineas.reduce((t, l) => t + l.quantity, 0), 0);
 }
 
-/** Cómo se nombra el destino en el tablero. */
+/**
+ * Cómo se nombra el destino en el tablero.
+ *
+ * Sale de `MODOS`, que es la tabla exhaustiva: con el `if (DINE_IN) … else
+ * 'Domicilio'` de antes, un pedido PARA LLEVAR habría salido en la cocina
+ * marcado como domicilio, y el cocinero lo habría dejado para el repartidor
+ * mientras el cliente esperaba de pie en el mostrador.
+ */
 export function destinoDeCocina(
   p: Pick<PedidoCocina, 'mode' | 'tableLabel'>,
 ): string {
-  if (p.mode === 'DINE_IN') {
-    // Sin mesa sellada no se inventa un número: llevar un plato a la mesa
-    // equivocada es peor que preguntar.
-    return p.tableLabel ? `Mesa ${p.tableLabel}` : 'En el local';
-  }
-  return 'Domicilio';
+  return etiquetaDeModo(p.mode, p.tableLabel);
 }

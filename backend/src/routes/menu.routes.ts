@@ -51,10 +51,10 @@ router.get('/:codigo', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-// POST /carta/:codigo/pedido { mesa, items, nombre? }
+// POST /carta/:codigo/pedido { mesa | paraLlevar, items, nombre? }
 router.post('/:codigo/pedido', cartaLimiter, async (req: Request, res: Response): Promise<void> => {
   const { codigo } = req.params as { codigo: string };
-  const body = req.body as { mesa?: unknown; items?: unknown };
+  const body = req.body as { mesa?: unknown; paraLlevar?: unknown; items?: unknown };
   if (!Array.isArray(body.items) || body.items.length === 0) {
     res.status(400).json({ success: false, error: 'Agrega algo a tu pedido.' });
     return;
@@ -62,6 +62,10 @@ router.post('/:codigo/pedido', cartaLimiter, async (req: Request, res: Response)
   try {
     const pedido = await crearPedidoEnMesa(codigo, {
       mesa: body.mesa,
+      // Sin reenviarlo, el pedido para llevar se rechazaba con «no
+      // reconocimos la mesa»: el campo moría en la ruta. Es el mismo
+      // descuido que perdió el PIN de custodia.
+      paraLlevar: body.paraLlevar,
       items: body.items as Parameters<typeof crearPedidoEnMesa>[1]['items'],
     });
     res.status(201).json({ success: true, data: pedido });
