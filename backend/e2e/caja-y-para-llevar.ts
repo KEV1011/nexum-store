@@ -27,6 +27,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { prisma } from '../src/lib/prisma';
 import * as matching from '../src/services/matching.service';
+import { rescatarDespacho } from '../src/services/dispatch-recovery.service';
 import { acceptOrderByBusiness } from '../src/services/client.service';
 import { crearPedidoEnMesa } from '../src/services/mesa.service';
 
@@ -227,6 +228,53 @@ async function main(): Promise<void> {
       await prisma.orderLine.deleteMany({ where: { orderId: dom.id } });
       await prisma.orderEvent.deleteMany({ where: { orderId: dom.id } });
       await prisma.order.delete({ where: { id: dom.id } });
+    }
+
+    console.log('\n[2] El BARRIDO DE RESCATE no manda las mesas al despacho');
+    {
+      // EL BUG QUE SE VIO EN PRODUCCIÓN: un pedido de mesa queda en
+      // PREPARING sin conductor PARA SIEMPRE —nunca va a tener uno—, que es
+      // exactamente la forma de un pedido atascado. El barrido lo rescataba
+      // y se lo ofrecía a un repartidor en cada pasada; uno llegó a aceptar
+      // y a subir foto de entrega y firma de un plato que ya estaba servido.
+      const enMesa = await crearPedidoEnMesa(codigo, {
+        mesa: '1', items: [{ productId: plato.id, quantity: 1 }],
+      });
+      await acceptOrderByBusiness(negocio.id, enMesa.id, 10);
+
+      // Se envejece para que el barrido lo considere, igual que en el local.
+      await prisma.order.update({
+        where: { id: enMesa.id },
+        data: { createdAt: new Date(Date.now() - 10 * 60000) },
+      });
+
+      const ofertas: Array<Record<string, unknown>> = [];
+      matching.registerSendToDriver((_id, msg) => {
+        ofertas.push(msg as Record<string, unknown>);
+        return true;
+      });
+
+      await rescatarDespacho();
+      await new Promise((r2) => setTimeout(r2, 1500));
+
+      check(
+        !ofertas.some((o) => o['type'] === 'order_request'),
+        'el rescate NO ofrece el pedido de mesa a ningún repartidor',
+        ofertas.map((o) => o['type']),
+      );
+      const tras = await prisma.order.findUnique({
+        where: { id: enMesa.id }, select: { driverId: true, status: true },
+      });
+      check(tras?.driverId === null, 'y sigue sin conductor asignado', tras?.driverId);
+      check(tras?.status === 'PREPARING', 'esperando en la cocina, que es lo correcto', tras?.status);
+
+      // Se cancela para que no contamine el arqueo de abajo: este bloque
+      // mide el DESPACHO, no la caja, y un pedido suyo colándose en el
+      // esperado haría fallar las comprobaciones de dinero por un motivo
+      // que no tiene nada que ver con lo que miden.
+      await prisma.order.update({
+        where: { id: enMesa.id }, data: { status: 'CANCELLED' },
+      });
     }
 
     console.log('\n[3] Abrir la caja');

@@ -42,6 +42,8 @@ export interface OrderRequestDTO {
 
 export async function getOrderOfferInfo(orderId: string): Promise<{
   status: string;
+  /** El modo: lo que decide si este pedido se reparte o no. */
+  mode: string;
   hasDriver: boolean;
   dto: OrderRequestDTO;
   lat: number;
@@ -67,6 +69,7 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
   const businessLng = enDestino ? o.hubLng! : (o.business.lng ?? PAMPLONA.lng);
   return {
     status: o.status,
+    mode: o.mode,
     hasDriver: o.driverId != null,
     dto: {
       id: o.id,
