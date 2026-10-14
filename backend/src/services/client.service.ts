@@ -701,6 +701,24 @@ export async function markOrderReadyByBusiness(
 
   if (updated.driverId) {
     _sendToDriver?.(updated.driverId, { type: 'order_ready', orderId });
+  } else if (seDespacha(updated.mode)) {
+    // ── SIN REPARTIDOR Y EL PLATO YA ESTÁ HECHO: SE VUELVE A BUSCAR ──────
+    //
+    // La búsqueda arranca al ACEPTAR, insiste diez minutos y se rinde. Pero
+    // el negocio acepta cuando RECIBE el pedido, no cuando lo termina: si a
+    // esa hora no había nadie conectado a cinco kilómetros, la búsqueda se
+    // agotó, y veinte minutos después —con el plato ya listo y repartidores
+    // de sobra conectados— no volvía a buscar nadie. El pedido se quedaba en
+    // el mostrador enfriándose sin que nada fallara a la vista.
+    //
+    // «Listo para recoger» es justo el momento correcto para insistir: es
+    // cuando de verdad hace falta alguien que lo lleve. Arranca un ciclo
+    // nuevo, con sus reintentos, en vez de un único intento — que fallaría
+    // por lo mismo que falló el primero.
+    //
+    // No hace falta comprobar el estado: el ciclo lo valida por su cuenta,
+    // igual que el modo (un pedido en mesa o para llevar sale solo).
+    void startOrderMatchingCycle(orderId);
   }
   if (updated.userId) {
     void sendPushToClient(updated.userId, {

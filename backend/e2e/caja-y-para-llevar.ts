@@ -28,7 +28,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import { prisma } from '../src/lib/prisma';
 import * as matching from '../src/services/matching.service';
 import { rescatarDespacho } from '../src/services/dispatch-recovery.service';
-import { acceptOrderByBusiness } from '../src/services/client.service';
+import { acceptOrderByBusiness, markOrderReadyByBusiness } from '../src/services/client.service';
 import { crearPedidoEnMesa } from '../src/services/mesa.service';
 
 const PUERTO = Number(process.env['E2E_PORT'] ?? 3137);
@@ -275,6 +275,49 @@ async function main(): Promise<void> {
       await prisma.order.update({
         where: { id: enMesa.id }, data: { status: 'CANCELLED' },
       });
+    }
+
+    console.log('\n[2b] «Listo para recoger» vuelve a buscar si no hay repartidor');
+    {
+      // EL CASO REAL: el negocio acepta cuando RECIBE el pedido, no cuando lo
+      // termina. Si a esa hora no había nadie conectado a 5 km, la búsqueda
+      // se agota en diez minutos; veinte minutos después, con el plato hecho
+      // y repartidores de sobra, antes NO volvía a buscar nadie y el pedido
+      // se quedaba en el mostrador enfriándose.
+      const dom = await prisma.order.create({
+        data: {
+          businessId: negocio.id, orderRef: `LR-${Date.now() % 100000}`,
+          customerName: 'Cliente', deliveryAddress: 'Calle 9 # 2-20',
+          deliveryLat: 7.3754, deliveryLng: -72.6486,
+          mode: 'DELIVERY', status: 'PREPARING',
+          subtotal: 30000, deliveryFee: 3500, total: 33500,
+        },
+      });
+      await prisma.orderLine.create({
+        data: {
+          orderId: dom.id, productId: plato.id, productName: plato.name,
+          quantity: 1, unitPrice: 30000, subtotal: 30000,
+        },
+      });
+
+      const ofertas: Array<Record<string, unknown>> = [];
+      matching.registerSendToDriver((_id, msg) => {
+        ofertas.push(msg as Record<string, unknown>);
+        return true;
+      });
+
+      await markOrderReadyByBusiness(negocio.id, dom.id);
+      await new Promise((r2) => setTimeout(r2, 1500));
+
+      check(
+        ofertas.some((o) => o['type'] === 'order_request'),
+        'marcar listo vuelve a ofrecerlo a un repartidor',
+        ofertas.map((o) => o['type']),
+      );
+
+      await prisma.orderLine.deleteMany({ where: { orderId: dom.id } });
+      await prisma.orderEvent.deleteMany({ where: { orderId: dom.id } });
+      await prisma.order.delete({ where: { id: dom.id } });
     }
 
     console.log('\n[3] Abrir la caja');
