@@ -160,3 +160,33 @@ export function lineasImpresas(
 
   return [...mapa.values()];
 }
+
+// ── Cancelar una ronda ─────────────────────────────────────────────────────
+//
+// Pasa todos los días: el plato se cae, el cliente se arrepiente, el mesero
+// marcó la mesa equivocada. Hasta ahora NO HABÍA FORMA de deshacerlo —ni ruta
+// ni función—, así que el único camino era cobrarle al cliente algo que nadie
+// consumió, o apuntarlo en un papel y descuadrar la caja.
+
+/**
+ * ¿Se puede cancelar esta ronda?
+ *
+ * Lo que SÍ se permite, y a propósito: cancelar algo ya servido. Un plato que
+ * se devuelve a la cocina porque venía frío ya pasó por «servido», y negar la
+ * cancelación ahí obligaría a cobrarlo. Quien decide es el negocio.
+ *
+ * Lo que NO: cancelar en una cuenta YA COBRADA. Ahí el dinero entró en la
+ * caja y el total está sellado; «cancelar» no devolvería nada y solo dejaría
+ * la cuenta diciendo una cifra distinta de la que se cobró. Una devolución
+ * después de pagar es otra cosa y se hace con el dinero en la mano.
+ */
+export function motivoParaNoCancelarRonda(r: {
+  status: string;
+  cuentaCerrada: boolean;
+}): string | null {
+  if (r.status === 'CANCELLED') return 'Esa ronda ya estaba cancelada.';
+  if (r.cuentaCerrada) {
+    return 'Esta cuenta ya se cobró. Para devolver algo, hazlo con el dinero en la mano.';
+  }
+  return null;
+}

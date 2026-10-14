@@ -7,6 +7,7 @@ import {
   siguienteNumero,
   etiquetaDeCuenta,
   lineasImpresas,
+  motivoParaNoCancelarRonda,
 } from './cuenta-mesa';
 
 const ronda = (total: number, status = 'DELIVERED') => ({ id: `o${total}`, status, total });
@@ -161,5 +162,29 @@ describe('la cuenta de una mesa', () => {
     it('una cuenta sin nada no da líneas', () => {
       expect(lineasImpresas([])).toEqual([]);
     });
+  });
+});
+
+describe('cancelar una ronda', () => {
+  it('se puede mientras la cuenta esté abierta', () => {
+    expect(motivoParaNoCancelarRonda({ status: 'PREPARING', cuentaCerrada: false })).toBeNull();
+  });
+
+  it('se permite incluso si ya se sirvió', () => {
+    // Un plato que vuelve a la cocina porque venía frío ya pasó por
+    // «servido»; negarlo obligaría a cobrarlo.
+    expect(motivoParaNoCancelarRonda({ status: 'DELIVERED', cuentaCerrada: false })).toBeNull();
+  });
+
+  it('NO se puede si la cuenta ya se cobró', () => {
+    // El dinero entró y el total está sellado: «cancelar» no devolvería nada
+    // y dejaría la cuenta diciendo una cifra distinta de la cobrada.
+    const m = motivoParaNoCancelarRonda({ status: 'DELIVERED', cuentaCerrada: true });
+    expect(m).toMatch(/ya se cobró/i);
+  });
+
+  it('dos veces no', () => {
+    expect(motivoParaNoCancelarRonda({ status: 'CANCELLED', cuentaCerrada: false }))
+      .toMatch(/ya estaba cancelada/i);
   });
 });

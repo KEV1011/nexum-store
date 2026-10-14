@@ -930,6 +930,22 @@ model TableTab {
   /// Quién cerró, si el dueño quiere anotarlo.
   closedBy   String?
 
+  // ── Constancia de reapertura ───────────────────────────────────────────
+  //
+  // Reabrir existe porque el mesero cobra la 4 queriendo cobrar la 5, y sin
+  // vuelta atrás la mesa correcta acaba pagando dos papeles. Pero una cuenta
+  // cobrada que se puede volver a abrir en silencio es la puerta para quitar
+  // pedidos y volver a cerrar con menos, y el dueño no se enteraría nunca.
+  // Por eso cada reapertura deja rastro y sale marcada en el reporte del día.
+  /// Cuántas veces se reabrió. 0 = nunca; a partir de 1 el dueño lo ve.
+  reopenCount    Int       @default(0)
+  reopenedAt     DateTime?
+  reopenedBy     String?
+  /// El total que tenía cuando se cobró la última vez. Es la cifra contra la
+  /// que el dueño compara: si la cuenta se volvió a cerrar por menos, esto
+  /// lo delata.
+  reopenedFrom   Float?
+
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   orders   Order[]
 

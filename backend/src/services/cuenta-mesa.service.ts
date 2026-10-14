@@ -10,11 +10,14 @@ import {
   totalDeCuenta,
   rondasDeCuenta,
   motivoParaNoCerrar,
+  motivoParaNoCancelarRonda,
   siguienteNumero,
   lineasImpresas,
   type LineaImpresa,
 } from '../lib/cuenta-mesa';
 import { saneaMetodoPago } from '../lib/metodos-pago';
+import { restoreOrderStock, avisarNegocioDePedidoNuevo } from './client.service';
+import { registrarEventoPedido } from './pedido-eventos.service';
 
 export interface CuentaMesaDTO {
   id: string;
@@ -26,6 +29,12 @@ export interface CuentaMesaDTO {
   total: number;
   rondas: number;
   paymentMethod: string | null;
+  /** Cuántas veces se reabrió esta cuenta. 0 = nunca. */
+  reopenCount: number;
+  /** Por cuánto estaba cobrada la última vez que se reabrió. */
+  reopenedFrom: number | null;
+  reopenedAt: string | null;
+  reopenedBy: string | null;
   lineas: LineaImpresa[];
   /** Las rondas, para poder ver qué llegó cuándo. */
   pedidos: Array<{
@@ -48,6 +57,10 @@ type CuentaConRondas = {
   id: string; numero: number; tableLabel: string;
   openedAt: Date; closedAt: Date | null; closedTotal: number | null;
   paymentMethod: string | null;
+  reopenCount: number;
+  reopenedFrom: number | null;
+  reopenedAt: Date | null;
+  reopenedBy: string | null;
   orders: Array<{
     id: string; orderRef: string; status: string; total: number; createdAt: Date;
     lines: Array<{
@@ -70,6 +83,10 @@ function _aDTO(c: CuentaConRondas): CuentaMesaDTO {
     total: c.closedAt ? (c.closedTotal ?? 0) : totalDeCuenta(c.orders),
     rondas: rondasDeCuenta(c.orders),
     paymentMethod: c.paymentMethod,
+    reopenCount: c.reopenCount,
+    reopenedFrom: c.reopenedFrom,
+    reopenedAt: c.reopenedAt?.toISOString() ?? null,
+    reopenedBy: c.reopenedBy,
     lineas: lineasImpresas(c.orders),
     pedidos: c.orders.map((o) => ({
       id: o.id,
@@ -219,6 +236,7 @@ export async function cerrarCuenta(
 export async function reabrirCuenta(
   businessId: string,
   tabId: string,
+  quien?: string,
 ): Promise<CuentaMesaDTO> {
   const c = await prisma.tableTab.findFirst({ where: { id: tabId, businessId } });
   if (!c) throw new Error('No encontramos esa cuenta.');
@@ -235,13 +253,100 @@ export async function reabrirCuenta(
     );
   }
 
+  // LA CONSTANCIA. Una cuenta cobrada que se puede volver a abrir en
+  // silencio es la puerta para quitar pedidos y volver a cerrar por menos:
+  // la caja cuadraría con ella misma y el dueño no se enteraría nunca. Aquí
+  // queda cuántas veces, cuándo, quién, y SOBRE TODO por cuánto estaba
+  // cobrada — que es la cifra contra la que se compara si vuelve a cerrarse.
   await prisma.tableTab.update({
     where: { id: tabId },
-    data: { closedAt: null, closedTotal: null },
+    data: {
+      closedAt: null,
+      // El total vuelve a derivarse: dejarlo congelaría un número que ya no
+      // es el que debe la mesa.
+      closedTotal: null,
+      reopenCount: { increment: 1 },
+      reopenedAt: new Date(),
+      reopenedFrom: c.closedTotal,
+      ...(quien?.trim() ? { reopenedBy: quien.trim().slice(0, 80) } : {}),
+    },
   });
   const abierta = await prisma.tableTab.findFirst({
     where: { id: tabId },
     include: _incluirRondas,
   });
   return _aDTO(abierta!);
+}
+
+/**
+ * Cancela una ronda de la cuenta, con efecto inmediato.
+ *
+ * Pasa todos los días —el plato se cae, el cliente se arrepiente— y hasta
+ * ahora no había forma de deshacerlo: el único camino era cobrar algo que
+ * nadie consumió. El total de la cuenta se deriva de las rondas, así que al
+ * cancelar BAJA solo; no hay nada que recalcular a mano.
+ *
+ * Devuelve el inventario con la MISMA función que usan las cancelaciones de
+ * domicilio: duplicarla dejaría dos formas de contar existencias, y la que no
+ * se usa a diario es la que se queda mal.
+ *
+ * El aviso sale por `emitirCambioDePedido` (dentro de `avisarNegocioDePedidoNuevo`),
+ * así que el portal, la cocina y la pantalla de mesas se enteran al instante
+ * — que es justo lo que se pidió: que la cancelación llegue de inmediato.
+ */
+export async function cancelarRondaDeMesa(
+  businessId: string,
+  orderId: string,
+  motivoTexto?: string,
+): Promise<CuentaMesaDTO | null> {
+  const pedido = await prisma.order.findFirst({
+    where: { id: orderId, businessId, mode: 'DINE_IN' },
+    select: { id: true, status: true, tabId: true, tab: { select: { closedAt: true } } },
+  });
+  if (!pedido) throw new Error('No encontramos ese pedido.');
+
+  const motivo = motivoParaNoCancelarRonda({
+    status: pedido.status,
+    cuentaCerrada: !!pedido.tab?.closedAt,
+  });
+  if (motivo) throw new Error(motivo);
+
+  // `updateMany` con el estado en el `where`: dos toques al botón no
+  // devuelven el inventario dos veces.
+  const r = await prisma.order.updateMany({
+    where: { id: orderId, businessId, status: { not: 'CANCELLED' } },
+    data: { status: 'CANCELLED' },
+  });
+  if (r.count === 0) throw new Error('Esa ronda ya estaba cancelada.');
+
+  await restoreOrderStock(orderId);
+  await registrarEventoPedido(orderId, 'CANCELLED', {
+    actor: 'negocio',
+    ...(motivoTexto?.trim() ? { note: motivoTexto.trim().slice(0, 200) } : {}),
+  });
+  // Esto es lo que hace que la cancelación llegue «de inmediato» a las tres
+  // pantallas: el portal, la cocina y las mesas escuchan el mismo socket.
+  await avisarNegocioDePedidoNuevo(orderId);
+
+  return pedido.tabId ? getCuenta(businessId, pedido.tabId) : null;
+}
+
+/**
+ * Las cuentas de hoy que alguien reabrió después de cobrarlas.
+ *
+ * Es la contrapartida de que reabrir exista. Sin una pantalla donde el dueño
+ * las vea sin buscarlas, la red de seguridad se convierte en un agujero:
+ * quien reabre, quita pedidos y vuelve a cerrar por menos deja una caja que
+ * cuadra consigo misma. Con `reopenedFrom` al lado del total actual, la
+ * diferencia salta a la vista.
+ */
+export async function cuentasReabiertasHoy(businessId: string): Promise<CuentaMesaDTO[]> {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const cuentas = await prisma.tableTab.findMany({
+    where: { businessId, openedAt: { gte: hoy }, reopenCount: { gt: 0 } },
+    orderBy: { reopenedAt: 'desc' },
+    include: _incluirRondas,
+  });
+  return cuentas.map(_aDTO);
 }

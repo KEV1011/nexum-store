@@ -100,7 +100,9 @@ function matar(s: ChildProcess): void {
 interface CuentaDTO {
   id: string; numero: number; tableLabel: string; total: number; rondas: number;
   closedAt: string | null;
+  reopenCount: number; reopenedFrom: number | null;
   lineas: Array<{ nombre: string; cantidad: number; subtotal: number }>;
+  pedidos: Array<{ id: string; status: string; total: number }>;
 }
 
 async function main(): Promise<void> {
@@ -241,12 +243,62 @@ async function main(): Promise<void> {
       check(otra.status === 400, 'cobrarla dos veces se rechaza', otra.status);
     }
 
+    console.log('\n[6b] Cancelar una ronda con la cuenta ABIERTA baja el total');
+    {
+      // El hueco que se reportó: no había NINGUNA forma de cancelar, así que
+      // un plato que se cae había que cobrarlo igual.
+      const m2 = await pedir('GET', `/business/${negocio.token}/cuentas`);
+      const abierta = ((m2.json.data as { cuentas?: CuentaDTO[] }).cuentas ?? [])
+        .find((c) => c.tableLabel === '2');
+      const antes = abierta!.total;
+      const ronda = abierta!.pedidos[0]!;
+
+      const stockAntes = await prisma.product.findUnique({
+        where: { id: bebida.id }, select: { stock: true },
+      });
+
+      const r = await pedir(
+        'POST', `/business/${negocio.token}/cuentas/ronda/${ronda.id}/cancelar`, {},
+      );
+      check(r.status === 200, 'se cancela la ronda', { s: r.status, e: r.json.error });
+
+      const despues = (r.json.data as { cuenta?: CuentaDTO }).cuenta;
+      check(despues!.total === antes - ronda.total, 'y el total baja al instante',
+        { antes, despues: despues?.total });
+      check(despues!.rondas === abierta!.rondas - 1, 'con una ronda menos', despues?.rondas);
+
+      // El inventario vuelve: si no, el local «vendió» algo que sigue en la
+      // nevera y la existencia queda corta para siempre.
+      const stockDespues = await prisma.product.findUnique({
+        where: { id: bebida.id }, select: { stock: true },
+      });
+      check(
+        stockAntes?.stock === null || stockDespues!.stock! > stockAntes!.stock!,
+        'y el inventario vuelve (o el producto no lleva control)',
+        { antes: stockAntes?.stock, despues: stockDespues?.stock },
+      );
+
+      const otra = await pedir(
+        'POST', `/business/${negocio.token}/cuentas/ronda/${ronda.id}/cancelar`, {},
+      );
+      check(otra.status === 400, 'cancelarla dos veces se rechaza', otra.status);
+    }
+
     console.log('\n[7] Cancelar un pedido después NO cambia lo que se cobró');
     {
       // El total sellado es el documento de lo que entró en la caja.
       const unaRonda = await prisma.order.findFirst({
-        where: { tabId: cuenta!.id }, select: { id: true },
+        where: { tabId: cuenta!.id, status: { not: 'CANCELLED' } }, select: { id: true },
       });
+      // Por la ruta se RECHAZA: el dinero ya entró en la caja y «cancelar»
+      // no devolvería nada, solo dejaría la cuenta diciendo otra cifra.
+      const rc = await pedir(
+        'POST', `/business/${negocio.token}/cuentas/ronda/${unaRonda!.id}/cancelar`, {},
+      );
+      check(rc.status === 400, 'cancelar en una cuenta cobrada se rechaza', rc.status);
+      check(/ya se cobró/i.test(rc.json.error ?? ''), 'diciendo por qué', rc.json.error);
+
+      // Y si alguien lo fuerza por detrás, el total sellado no se mueve.
       await prisma.order.update({
         where: { id: unaRonda!.id }, data: { status: 'CANCELLED' },
       });
@@ -293,6 +345,23 @@ async function main(): Promise<void> {
       // El total vuelve a derivarse: dejar el sellado congelaría un número
       // que ya no es el que debe la mesa (una ronda se canceló en [7]).
       check(vuelta?.closedTotal === null, 'y su total vuelve a derivarse', vuelta?.closedTotal);
+
+      // LA CONSTANCIA: sin ella, reabrir sería la puerta para quitar pedidos
+      // y volver a cerrar por menos con una caja que cuadra consigo misma.
+      const rastro = await prisma.tableTab.findUnique({
+        where: { id: cuenta!.id },
+        select: { reopenCount: true, reopenedAt: true, reopenedFrom: true },
+      });
+      check(rastro?.reopenCount === 1, 'queda contada la reapertura', rastro?.reopenCount);
+      check(rastro?.reopenedAt != null, 'con su hora');
+      check(rastro?.reopenedFrom === 86000, 'y por cuánto estaba cobrada', rastro?.reopenedFrom);
+
+      const lista = await pedir('GET', `/business/${negocio.token}/cuentas-reabiertas`);
+      const reabiertas = (lista.json.data as { cuentas?: CuentaDTO[] }).cuentas ?? [];
+      // El dueño tiene que verlas sin buscarlas, o la red de seguridad se
+      // convierte en un agujero.
+      check(reabiertas.some((c) => c.id === cuenta!.id), 'y el dueño la ve en su lista',
+        reabiertas.map((c) => c.numero));
     }
   } finally {
     matar(servidor);

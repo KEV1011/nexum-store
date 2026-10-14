@@ -26,6 +26,8 @@ interface Cuenta {
   openedAt: string
   total: number
   rondas: number
+  reopenCount: number
+  reopenedFrom: number | null
   lineas: Array<{ nombre: string; detalle: string; cantidad: number; subtotal: number }>
   pedidos: Array<{ id: string; orderRef: string; status: string; total: number; createdAt: string }>
 }
@@ -104,12 +106,45 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
     }
   }, [token, cargar])
 
+  async function cancelarRonda(c: Cuenta, orderId: string, total: number) {
+    // Cancelar quita plata de la cuenta: se confirma con la cifra dentro,
+    // porque en un salón lleno el dedo va más rápido que la cabeza.
+    if (!window.confirm(
+      `¿Cancelar este pedido de ${formatCOP(total)} de la mesa ${c.tableLabel}?`
+      + '\nSe descuenta de la cuenta y vuelve al inventario.',
+    )) return
+
+    setCerrando(orderId)
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/business/${token}/cuentas/ronda/${orderId}/cancelar`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+      )
+      const json = (await res.json()) as { success: boolean; error?: string }
+      if (!res.ok || !json.success) {
+        setError(json.error ?? 'No pudimos cancelar el pedido.')
+        return
+      }
+      await cargar()
+    } catch {
+      setError('Sin conexión con el servidor.')
+    } finally {
+      setCerrando(null)
+    }
+  }
+
   async function cerrar(c: Cuenta) {
     // Confirmar con el TOTAL dentro: cerrar es cobrar, y un «¿seguro?» sin
     // la cifra no deja comprobar que es la mesa correcta — que es justo el
     // error que se comete con prisa en un salón lleno.
+    // La mesa va PRIMERO, sola y en mayúsculas, antes que el importe:
+    // cobrar la mesa equivocada es el error caro, y se comete cuando el
+    // aviso es una línea corrida que nadie lee entera en un salón lleno.
     if (!window.confirm(
-      `¿Cobrar la cuenta ${c.numero} de la mesa ${c.tableLabel} por ${formatCOP(c.total)}?`,
+      `MESA ${c.tableLabel.toUpperCase()}\n\n`
+      + `Cuenta ${c.numero} · ${c.rondas} ${c.rondas === 1 ? 'pedido' : 'pedidos'}\n`
+      + `Total a cobrar: ${formatCOP(c.total)}\n\n`
+      + '¿Es esta la mesa que estás cobrando?',
     )) return
 
     setCerrando(c.id)
@@ -187,6 +222,17 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
               {c.rondas} {c.rondas === 1 ? 'pedido' : 'pedidos'}
             </p>
 
+            {/* Si esta cuenta ya se cobró y alguien la volvió a abrir, se
+                dice AQUÍ con la cifra anterior al lado: es la comparación
+                que delata que se volvió a cerrar por menos. */}
+            {c.reopenCount > 0 && (
+              <p className="mt-1 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
+                <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+                Se reabrió {c.reopenCount === 1 ? 'una vez' : `${c.reopenCount} veces`}
+                {c.reopenedFrom != null && ` · estaba cobrada por ${formatCOP(c.reopenedFrom)}`}
+              </p>
+            )}
+
             <ul className="mt-2 space-y-0.5 text-sm text-slate-700">
               {c.lineas.map((l, i) => (
                 <li key={i} className="flex gap-2">
@@ -199,6 +245,30 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
                 </li>
               ))}
             </ul>
+
+            {/* Las rondas, para poder quitar una. Antes NO había forma de
+                cancelar nada: el plato se caía y había que cobrarlo igual. */}
+            <details className="mt-2 text-xs">
+              <summary className="cursor-pointer font-semibold text-slate-500">
+                Ver los {c.rondas} pedidos
+              </summary>
+              <ul className="mt-1 space-y-1">
+                {c.pedidos.filter((p) => p.status !== 'CANCELLED').map((p) => (
+                  <li key={p.id} className="flex items-center gap-2">
+                    <span className="text-slate-400">{hora(p.createdAt)}</span>
+                    <span className="flex-1 tabular-nums">{formatCOP(p.total)}</span>
+                    <button
+                      type="button"
+                      onClick={() => void cancelarRonda(c, p.id, p.total)}
+                      disabled={cerrando === p.id}
+                      className="rounded-lg border border-red-200 px-2 py-1 font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {cerrando === p.id ? '…' : 'Cancelar'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
 
             <div className="mt-2 flex items-baseline justify-between border-t border-slate-200 pt-2">
               <span className="text-sm font-bold text-slate-900">Total</span>
