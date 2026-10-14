@@ -23,6 +23,7 @@ import {
   Settings,
   BarChart3,
   ChefHat,
+  Receipt,
 } from 'lucide-react'
 
 import { formatCOP } from '../../moneda'
@@ -768,6 +769,14 @@ export default function PortalDashboard({
                 —al revés que las otras, que son `sm:` — porque es la que se
                 abre para dejarla puesta en la tablet de la plancha, y lo
                 normal es mandársela desde el móvil. */}
+            {/* Las mesas abiertas. Junto a Cocina y también en el móvil:
+                las dos son pantallas de SALA, no de escritorio. */}
+            <Link href={`/negocio/${token}/cuentas`}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700
+                         bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-200 transition-colors">
+              <Receipt className="w-3.5 h-3.5" />
+              Mesas
+            </Link>
             <Link href={`/negocio/${token}/cocina`}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800
                          bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 hover:bg-amber-100 transition-colors">

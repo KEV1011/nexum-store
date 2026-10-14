@@ -28,6 +28,7 @@ import { avisarNegocioDePedidoNuevo, _guardarCalificacionDePedido } from './clie
 import { saneaEstrellas, saneaComentario } from '../lib/reputacion';
 import { nombreEstadoPedido } from '../lib/estado-pedido';
 import { registrarEventoPedido, historialDePedido } from './pedido-eventos.service';
+import { cuentaAbiertaDeMesa } from './cuenta-mesa.service';
 import {
   lineaDeTiempoPedido, type EstadoPedidoBD, type PasoPedido,
 } from '../lib/linea-tiempo-pedido';
@@ -231,9 +232,24 @@ export async function crearPedidoEnMesa(
   const { subtotal, lines, aDescontar } = await resolverLineasDePedido(biz.id, dto.items);
   await descontarInventario(aDescontar);
 
+  // La cuenta de la mesa, que se abre sola con la primera ronda y recoge las
+  // siguientes. Sin esto, «Mesa 1» salía tres veces en el portal con tres
+  // totales distintos y era facilísimo cobrar una ronda y olvidar las otras.
+  //
+  // Es best-effort: si fallara, el pedido se crea igual y queda suelto como
+  // hasta ahora. Dejar a un comensal sin poder almorzar porque no se pudo
+  // agrupar su cuenta sería un remedio peor que la enfermedad.
+  let tabId: string | null = null;
+  try {
+    tabId = (await cuentaAbiertaDeMesa(biz.id, mesa)).id;
+  } catch {
+    tabId = null;
+  }
+
   const order = await prisma.order.create({
     data: {
       orderRef: `MS-${Math.floor(1000 + Math.random() * 8000)}`,
+      ...(tabId ? { tabId } : {}),
       // Sin cuenta: el comensal está sentado en el local y no tiene por qué
       // instalar nada para almorzar. Es el punto de toda la función.
       userId: null,

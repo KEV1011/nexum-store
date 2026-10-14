@@ -63,6 +63,10 @@ import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { PORTAL_BASE_URL } from '../config/constants';
 import { pedidosEnCocina, deshacerPlatoListo } from '../services/cocina.service';
 import {
+  cuentasAbiertas, getCuenta, cerrarCuenta, reabrirCuenta,
+  cancelarRondaDeMesa, cuentasReabiertasHoy,
+} from '../services/cuenta-mesa.service';
+import {
   saldoDelAliado, creditosPendientes, girosDelAliado, GiroError,
 } from '../services/giro-aliado.service';
 
@@ -1293,6 +1297,130 @@ router.delete('/:token/cocina/:orderId/listo', async (req: Request, res: Respons
     res.status(400).json({
       success: false,
       error: err instanceof Error ? err.message : 'No pudimos deshacerlo',
+    });
+  }
+});
+
+// ── Las cuentas de las mesas ───────────────────────────────────────────────
+//
+// GET    /business/:token/cuentas            → las mesas con cuenta abierta
+// GET    /business/:token/cuentas/:tabId     → una cuenta, para imprimirla
+// POST   /business/:token/cuentas/:tabId/cerrar   { paymentMethod?, closedBy? }
+// POST   /business/:token/cuentas/:tabId/reabrir
+//
+// La cuenta se ABRE sola con la primera ronda que pide la mesa; no hay ruta
+// para abrirla porque no hay nada que decidir.
+router.get('/:token/cuentas', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const cuentas = await cuentasAbiertas(business.id);
+    res.json({ success: true, data: { cuentas } });
+  } catch (err) {
+    res.status(404).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Negocio no encontrado',
+    });
+  }
+});
+
+router.get('/:token/cuentas/:tabId', async (req: Request, res: Response): Promise<void> => {
+  const { token, tabId } = req.params as { token: string; tabId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const cuenta = await getCuenta(business.id, tabId);
+    if (!cuenta) {
+      res.status(404).json({ success: false, error: 'No encontramos esa cuenta.' });
+      return;
+    }
+    res.json({ success: true, data: { cuenta, business: { name: business.name, token } } });
+  } catch (err) {
+    res.status(404).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Negocio no encontrado',
+    });
+  }
+});
+
+router.post('/:token/cuentas/:tabId/cerrar', async (req: Request, res: Response): Promise<void> => {
+  const { token, tabId } = req.params as { token: string; tabId: string };
+  const { paymentMethod, closedBy } = req.body as {
+    paymentMethod?: unknown; closedBy?: unknown;
+  };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const cuenta = await cerrarCuenta(business.id, tabId, {
+      ...(typeof paymentMethod === 'string' ? { paymentMethod } : {}),
+      ...(typeof closedBy === 'string' ? { closedBy } : {}),
+    });
+    res.json({ success: true, data: { cuenta } });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos cerrar la cuenta',
+    });
+  }
+});
+
+router.post('/:token/cuentas/:tabId/reabrir', async (req: Request, res: Response): Promise<void> => {
+  const { token, tabId } = req.params as { token: string; tabId: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const { quien } = req.body as { quien?: unknown };
+    const cuenta = await reabrirCuenta(
+      business.id, tabId, typeof quien === 'string' ? quien : undefined,
+    );
+    res.json({ success: true, data: { cuenta } });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos reabrir la cuenta',
+    });
+  }
+});
+
+// POST /business/:token/cuentas/ronda/:orderId/cancelar  { motivo? }
+//
+// El plato se cayó, el cliente se arrepintió, el mesero marcó la mesa
+// equivocada. Hasta ahora NO había forma de deshacerlo y el único camino era
+// cobrar algo que nadie consumió. El total de la cuenta baja solo —se deriva
+// de las rondas— y el aviso sale por el socket, así que la cancelación llega
+// al instante al portal, a la cocina y a la pantalla de mesas.
+router.post(
+  '/:token/cuentas/ronda/:orderId/cancelar',
+  async (req: Request, res: Response): Promise<void> => {
+    const { token, orderId } = req.params as { token: string; orderId: string };
+    const { motivo } = req.body as { motivo?: unknown };
+    try {
+      const business = await getBusinessService().getBusinessByToken(token);
+      const cuenta = await cancelarRondaDeMesa(
+        business.id, orderId, typeof motivo === 'string' ? motivo : undefined,
+      );
+      res.json({ success: true, data: { cuenta } });
+    } catch (err) {
+      res.status(400).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'No pudimos cancelar la ronda',
+      });
+    }
+  },
+);
+
+// GET /business/:token/cuentas/reabiertas
+//
+// Las cuentas del día que alguien volvió a abrir después de cobrarlas. Es la
+// contrapartida de que reabrir exista: el dueño tiene que poder verlas sin
+// buscarlas, o la red de seguridad se convierte en un agujero.
+router.get('/:token/cuentas-reabiertas', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    const cuentas = await cuentasReabiertasHoy(business.id);
+    res.json({ success: true, data: { cuentas } });
+  } catch (err) {
+    res.status(404).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Negocio no encontrado',
     });
   }
 });

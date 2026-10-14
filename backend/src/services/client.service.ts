@@ -529,7 +529,7 @@ export async function placeClientOrder(
  * quedan intactos. Idempotencia: se llama una vez por cancelación, siempre
  * junto al cambio de estado a CANCELLED.
  */
-async function restoreOrderStock(orderId: string): Promise<void> {
+export async function restoreOrderStock(orderId: string): Promise<void> {
   const lines = await prisma.orderLine.findMany({
     where: { orderId },
     select: { productId: true, quantity: true },
