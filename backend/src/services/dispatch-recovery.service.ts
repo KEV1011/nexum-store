@@ -142,7 +142,16 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
   // se quedaría en la taquilla para siempre y nadie se enteraría.
   try {
     const pedidos = await prisma.order.findMany({
-      where: { status: { in: ESTADOS_DESPACHABLES }, driverId: null },
+      where: {
+        status: { in: ESTADOS_DESPACHABLES },
+        driverId: null,
+        // SOLO lo que se reparte. Un pedido en mesa o para llevar no tiene
+        // repartidor nunca, así que su `PREPARING` sin conductor es el
+        // estado normal y no uno atascado. Sin este filtro el barrido se los
+        // ofrecía a un repartidor cada pasada — y como nunca conseguían
+        // conductor, los volvía a ofrecer para siempre.
+        mode: 'DELIVERY',
+      },
       select: { id: true, createdAt: true },
       take: 200,
     });

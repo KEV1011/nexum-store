@@ -177,3 +177,12 @@ describe('la pantalla de la cocina', () => {
     });
   });
 });
+
+describe('el destino en la cocina, con «para llevar»', () => {
+  it('lo nombra por lo que es', () => {
+    // Con el `else 'Domicilio'` de antes, un pedido PARA LLEVAR salía
+    // marcado como domicilio y el cocinero lo dejaba para el repartidor
+    // mientras el cliente esperaba de pie en el mostrador.
+    expect(destinoDeCocina({ mode: 'TAKEAWAY', tableLabel: null })).toBe('Para llevar');
+  });
+});

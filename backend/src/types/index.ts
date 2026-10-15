@@ -837,7 +837,7 @@ export interface ClientOrderSummaryDTO extends DriverCardFields {
    *
    * Opcional para que las apps ya instaladas sigan leyendo este DTO.
    */
-  mode?: 'DELIVERY' | 'DINE_IN';
+  mode?: 'DELIVERY' | 'DINE_IN' | 'TAKEAWAY';
   /** La mesa, solo en los pedidos en mesa. Es lo que la cocina tiene que ver. */
   tableLabel?: string;
   subtotal: number;

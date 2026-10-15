@@ -169,20 +169,39 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6">
-      <header className="mb-4 flex flex-wrap items-center gap-3">
-        <Receipt className="h-6 w-6 text-emerald-600" />
-        <h1 className="text-lg font-bold text-slate-900">Mesas abiertas</h1>
-        {cuentas && cuentas.length > 0 && (
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">
-            {formatCOP(cuentas.reduce((s, c) => s + c.total, 0))} en el salón
+      {/* La cifra del salón es el dato que el dueño viene a mirar, así que
+          va GRANDE y sola, no como una píldora más de la fila. Antes era un
+          chip del mismo tamaño que el título y se perdía entre los botones. */}
+      <header className="mb-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white">
+            <Receipt className="h-5 w-5" />
           </span>
+          <div>
+            <h1 className="text-lg font-bold leading-tight text-slate-900">Mesas abiertas</h1>
+            <p className="text-xs text-slate-500">
+              {cuentas === null
+                ? 'Cargando…'
+                : cuentas.length === 0
+                  ? 'Ninguna mesa está consumiendo'
+                  : `${cuentas.length} ${cuentas.length === 1 ? 'mesa' : 'mesas'} con cuenta abierta`}
+            </p>
+          </div>
+          <a href={`/negocio/${token}`} className={`${BOTON.secundario} ml-auto`}>
+            Volver al portal
+          </a>
+        </div>
+
+        {cuentas && cuentas.length > 0 && (
+          <div className="mt-3 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-700 px-4 py-3 text-white">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-100">
+              Sin cobrar en el salón
+            </p>
+            <p className="text-3xl font-black tabular-nums leading-tight">
+              {formatCOP(cuentas.reduce((s, c) => s + c.total, 0))}
+            </p>
+          </div>
         )}
-        <a
-          href={`/negocio/${token}`}
-          className={`${BOTON.secundario} ml-auto`}
-        >
-          Volver al portal
-        </a>
       </header>
 
       {error && (
@@ -210,17 +229,25 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
       <div className="grid gap-3 sm:grid-cols-2">
         {(cuentas ?? []).map((c) => (
           <article key={c.id} className={TARJETA}>
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h2 className="text-base font-bold text-slate-900">Mesa {c.tableLabel}</h2>
-              <span className="text-xs font-semibold text-slate-500">Cuenta {c.numero}</span>
-              <span className="ml-auto inline-flex items-center gap-1 text-xs text-slate-500">
-                <Clock className="h-3.5 w-3.5" /> desde {hora(c.openedAt)}
+            {/* El número de MESA en grande: es lo que el mesero busca de un
+                vistazo en un salón lleno, y con todo al mismo tamaño había
+                que leer la tarjeta entera para saber de cuál era. */}
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-11 min-w-[2.75rem] shrink-0 items-center justify-center rounded-xl bg-slate-900 px-2 text-lg font-black text-white">
+                {c.tableLabel}
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-bold leading-tight text-slate-900">
+                  Mesa {c.tableLabel}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Cuenta {c.numero} · {c.rondas} {c.rondas === 1 ? 'pedido' : 'pedidos'}
+                </p>
+              </div>
+              <span className="inline-flex shrink-0 items-center gap-1 text-xs text-slate-500">
+                <Clock className="h-3.5 w-3.5" /> {hora(c.openedAt)}
               </span>
             </div>
-
-            <p className="mt-0.5 text-xs text-slate-500">
-              {c.rondas} {c.rondas === 1 ? 'pedido' : 'pedidos'}
-            </p>
 
             {/* Si esta cuenta ya se cobró y alguien la volvió a abrir, se
                 dice AQUÍ con la cifra anterior al lado: es la comparación
@@ -233,15 +260,19 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
               </p>
             )}
 
-            <ul className="mt-2 space-y-0.5 text-sm text-slate-700">
+            <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
               {c.lineas.map((l, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="w-5 shrink-0 text-right font-semibold">{l.cantidad}</span>
+                <li key={i} className="flex items-baseline gap-2">
+                  <span className="inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded bg-slate-100 px-1 text-xs font-bold text-slate-600">
+                    {l.cantidad}
+                  </span>
                   <span className="min-w-0 flex-1 truncate">
                     {l.nombre}
                     {l.detalle && <span className="text-slate-400"> · {l.detalle}</span>}
                   </span>
-                  <span className="shrink-0 tabular-nums">{formatCOP(l.subtotal)}</span>
+                  <span className="shrink-0 tabular-nums text-slate-500">
+                    {formatCOP(l.subtotal)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -270,9 +301,9 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
               </ul>
             </details>
 
-            <div className="mt-2 flex items-baseline justify-between border-t border-slate-200 pt-2">
-              <span className="text-sm font-bold text-slate-900">Total</span>
-              <span className="text-lg font-black tabular-nums text-slate-900">
+            <div className="mt-2 flex items-baseline justify-between rounded-xl bg-slate-50 px-3 py-2">
+              <span className="text-sm font-bold text-slate-700">Total</span>
+              <span className="text-2xl font-black tabular-nums text-slate-900">
                 {formatCOP(c.total)}
               </span>
             </div>

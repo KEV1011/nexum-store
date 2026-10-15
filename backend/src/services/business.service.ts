@@ -34,6 +34,7 @@ import { promedioReputacion } from '../lib/reputacion';
 import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
 import { separarDescripcion } from '../lib/nombre-y-descripcion';
 import { esElMismoNegocio } from '../lib/negocio-duplicado';
+import { seDespacha } from '../lib/modo-pedido';
 import {
   saneaHorario, estaDentroDelHorario, proximaApertura, horarioEnTexto,
   saneaPausa, enPausa, promoVigente, saneaVigencia, type Franja,
@@ -1281,7 +1282,11 @@ export async function getBusinessReviews(businessId: string): Promise<BusinessRe
         estrellas: f.rating as number,
         comentario: f.ratingComment as string,
         fecha: f.updatedAt.toISOString(),
-        origen: (f.mode === 'DINE_IN' ? 'salon' : 'domicilio') as 'salon' | 'domicilio',
+        // Lo que no se reparte se consumió o se recogió EN el local, así
+        // que cuenta como salón. Con `=== 'DINE_IN'`, un «para llevar»
+        // aparecería como domicilio y falsearía de qué lado viene la
+        // calificación.
+        origen: (seDespacha(f.mode) ? 'domicilio' : 'salon') as 'salon' | 'domicilio',
       })),
   };
 }

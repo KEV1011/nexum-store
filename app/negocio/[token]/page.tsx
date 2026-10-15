@@ -24,6 +24,8 @@ import {
   BarChart3,
   ChefHat,
   Receipt,
+  Wallet,
+  MapPin,
 } from 'lucide-react'
 
 import { formatCOP } from '../../moneda'
@@ -57,7 +59,7 @@ interface ClientOrder {
   businessName: string
   status: ClientOrderStatus
   /** Cómo se sirve. Ausente = domicilio (pedidos anteriores a esta función). */
-  mode?: 'DELIVERY' | 'DINE_IN'
+  mode?: 'DELIVERY' | 'DINE_IN' | 'TAKEAWAY'
   /** La mesa, en los pedidos del salón. Es lo que la cocina tiene que ver. */
   tableLabel?: string
   subtotal: number
@@ -180,6 +182,7 @@ function ClientOrderCard({ order, token, onChanged }: {
   const [busy, setBusy] = useState<null | 'accept' | 'reject' | 'ready' | 'servido'>(null)
   // Un pedido del salón: no hay repartidor, ni domicilio, ni dirección.
   const enMesa = order.mode === 'DINE_IN'
+  const paraLlevar = order.mode === 'TAKEAWAY'
   const [actionError, setActionError] = useState<string | null>(null)
 
   async function act(kind: 'accept' | 'reject' | 'ready' | 'servido') {
@@ -215,20 +218,49 @@ function ClientOrderCard({ order, token, onChanged }: {
         <ClientStatusBadge status={order.status} />
       </div>
 
-      {enMesa ? (
-        /* Lo único que la cocina necesita para servir el plato. Grande, porque
-           es el dato que se busca de un vistazo con el salón lleno. */
+      {/* A DÓNDE VA EL PEDIDO. Los tres destinos se atienden distinto —la
+          mesa la sirve el mesero, el de llevar espera de pie en el mostrador,
+          el domicilio lo recoge una moto— y antes todo lo que no fuera mesa
+          se pintaba como domicilio: un «para llevar» se veía igual que algo
+          que espera repartidor.
+          
+          EN GRIS, y no con un color por destino. Es la decisión que ya tomó
+          `ui.ts`: «Mesa 4», «Salón» y «Domicilio» son ETIQUETAS —dicen de qué
+          clase es algo, no cómo va ni si hay que hacer nada— y si tuvieran
+          color competirían con los estados, que son los que sí piden acción.
+          Lo que distingue aquí es la palabra, el icono y el TAMAÑO del número
+          de mesa, que es lo que se busca de un vistazo en un salón lleno. */}
+      {enMesa && (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-          <Utensils className="h-4 w-4 shrink-0 text-slate-500" />
+          <span className="inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md bg-slate-900 px-1.5 text-sm font-black text-white">
+            {order.tableLabel}
+          </span>
           <span className="text-sm font-bold text-slate-900">Mesa {order.tableLabel}</span>
           <span className="ml-auto text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             En el local
           </span>
         </div>
-      ) : (
-        <div className="text-xs text-slate-500 mb-3 flex items-start gap-1.5">
-          <span className="shrink-0 mt-0.5">📍</span>
-          <span className="truncate">{order.deliveryAddress}</span>
+      )}
+
+      {paraLlevar && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <ShoppingBag className="h-4 w-4 shrink-0 text-slate-500" />
+          <span className="text-sm font-bold text-slate-900">Para llevar</span>
+          <span className="ml-auto text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Recoge en el local
+          </span>
+        </div>
+      )}
+
+      {!enMesa && !paraLlevar && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <span className="min-w-0 flex-1 truncate text-xs text-slate-600">
+            {order.deliveryAddress}
+          </span>
+          <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Domicilio
+          </span>
         </div>
       )}
 
@@ -771,6 +803,14 @@ export default function PortalDashboard({
                 normal es mandársela desde el móvil. */}
             {/* Las mesas abiertas. Junto a Cocina y también en el móvil:
                 las dos son pantallas de SALA, no de escritorio. */}
+            {/* La caja del turno. Va con Mesas y Cocina: las tres son
+                pantallas de SALA que se abren a diario. */}
+            <Link href={`/negocio/${token}/caja`}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700
+                         bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-200 transition-colors">
+              <Wallet className="w-3.5 h-3.5" />
+              Caja
+            </Link>
             <Link href={`/negocio/${token}/cuentas`}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700
                          bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-200 transition-colors">

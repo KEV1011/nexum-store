@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { DriverStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { esDespachable } from '../lib/estado-pedido';
+import { seDespacha } from '../lib/modo-pedido';
 import { stopsFromDb } from '../lib/trip-stops';
 import { TripRequestDTO } from '../types';
 import { sendPushToDriver, sendPushToClient } from '../services/push.service';
@@ -1031,6 +1032,22 @@ export async function startOrderMatchingCycle(orderId: string, attempt = 0): Pro
   // última milla entra en juego desde AT_DESTINATION_HUB, y con la comparación
   // escrita aquí a mano la oferta no salía nunca.
   if (!esDespachable(info.status) || info.hasDriver) {
+    cancelSearchRetry(`order:${orderId}`);
+    return;
+  }
+
+  // ── Y QUE EL PEDIDO SE REPARTA ────────────────────────────────────────
+  //
+  // Un pedido EN MESA o PARA LLEVAR no tiene repartidor NUNCA, así que se
+  // queda en PREPARING sin conductor para siempre — que es exactamente la
+  // forma de un pedido «atascado». El barrido de rescate los veía así y los
+  // mandaba al despacho en cada pasada: el comensal pedía desde su mesa y la
+  // oferta le llegaba a un repartidor, que iba al local a recoger un plato
+  // ya servido. Pasó en producción, con foto de entrega y firma.
+  //
+  // La guarda va AQUÍ y no solo en quien llama, porque hay cuatro sitios que
+  // arrancan este ciclo y cualquiera nuevo volvería a caer.
+  if (!seDespacha(info.mode)) {
     cancelSearchRetry(`order:${orderId}`);
     return;
   }

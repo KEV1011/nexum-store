@@ -49,9 +49,14 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   // La mesa viaja en el QR (`?mesa=5`). Se lee de `window` y no con
   // `useSearchParams` a propósito: ese hook obliga a envolver la página en un
   // Suspense para poder compilarla, y aquí no aporta nada.
+  // `?llevar=1` en el QR del MOSTRADOR: el cliente pide y se lo lleva. Es un
+  // código distinto del de las mesas, así que el local decide dónde lo pega.
+  const [paraLlevar, setParaLlevar] = useState(false)
+
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     setMesa(p.get('mesa'))
+    setParaLlevar(p.get('llevar') === '1')
   }, [])
 
   const cargar = useCallback(async () => {
@@ -220,6 +225,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
         method: 'POST',
         body: {
           mesa,
+          ...(paraLlevar ? { paraLlevar: true } : {}),
           items: carrito.map((l) => ({
             productId: l.productId,
             quantity: l.cantidad,
@@ -376,8 +382,10 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
     )
   }
 
-  const sinMesa = !mesa
-  const sinServicioEnMesa = carta!.tables.length === 0
+  // Para llevar no necesita mesa ni que el local tenga mesas declaradas: se
+  // pide en el mostrador. Un local sin servicio en mesa puede usar solo esto.
+  const sinMesa = !paraLlevar && !mesa
+  const sinServicioEnMesa = !paraLlevar && carta!.tables.length === 0
   const puedePedir = !sinMesa && !sinServicioEnMesa && negocio.isOpen && carrito.length > 0
 
   return (
