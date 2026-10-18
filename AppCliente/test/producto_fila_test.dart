@@ -117,6 +117,58 @@ void main() {
     });
   });
 
+  group('un plato SIN foto no lleva el recuadro genérico', () {
+    Future<void> pintar(WidgetTester tester, ProductEntity p) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ProductTile(
+                product: p,
+                quantity: 0,
+                onAdd: () {},
+                onRemove: () {},
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('sin foto: ni imagen ni cubierto de relleno', (tester) async {
+      // Cuarenta recuadros grises iguales en una carta recién cargada se leen
+      // como «no cargó». Sin foto, la fila es solo texto.
+      await pintar(tester, plato(nombre: 'Picada BETO'));
+      expect(find.byType(Image), findsNothing);
+      expect(find.byIcon(Icons.restaurant_menu_rounded), findsNothing);
+    });
+
+    test('la regla: solo hay miniatura si hay una URL de verdad', () {
+      expect(filaConFoto(plato()), isFalse);
+      expect(
+        filaConFoto(
+          const ProductEntity(
+            id: 'p2',
+            name: 'Con foto',
+            description: '',
+            price: 1000,
+            imageUrl: '/uploads/a.jpg',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        filaConFoto(
+          const ProductEntity(
+            id: 'p3',
+            name: 'Espacios',
+            description: '',
+            price: 1000,
+            imageUrl: '   ',
+          ),
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('un nombre larguísimo no rompe la fila', () {
     testWidgets('se corta a dos líneas', (tester) async {
       // Las cartas leídas de una foto traen los ingredientes dentro del

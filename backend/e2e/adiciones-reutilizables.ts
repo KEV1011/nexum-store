@@ -404,6 +404,38 @@ async function main() {
         sigue?.name);
     }
 
+    console.log('\n[9] El plato NACE con sus adiciones, sin reescribir la biblioteca');
+    {
+      const antes = await prisma.productOption.findMany({
+        where: { groupId: adicionales!.id }, select: { id: true }, orderBy: { id: 'asc' },
+      });
+      const r = await pedir('POST', `/business/${negocio.token}/products`, {
+        name: `Arepa nueva ${sello}`, price: 15000, category: 'Arepas',
+        optionGroupIds: [adicionales!.id], suggestAsAddon: false,
+      });
+      check(r.status === 201, 'se crea con las adiciones marcadas', { s: r.status, e: r.json.error });
+      const creado = r.json.data as { id: string; optionGroups: GrupoDTO[] } | undefined;
+      check(creado?.optionGroups?.[0]?.id === adicionales!.id,
+        'y la respuesta ya las trae: el portal no tiene que pedirlas otra vez',
+        creado?.optionGroups?.map((g) => g.id));
+      const despues = await prisma.productOption.findMany({
+        where: { groupId: adicionales!.id }, select: { id: true }, orderBy: { id: 'asc' },
+      });
+      check(JSON.stringify(antes) === JSON.stringify(despues),
+        'las opciones del grupo conservan sus ids: adjuntar NO reescribe (eso '
+        + 'cambiaría el aguacate en los otros platos y rompería carritos abiertos)');
+
+      const vecinoGrupo = await prisma.optionGroup.findFirst({ where: { businessId: vecinoId! } });
+      const ajeno = await pedir('POST', `/business/${negocio.token}/products`, {
+        name: `Arepa robada ${sello}`, price: 15000, optionGroupIds: [vecinoGrupo!.id],
+      });
+      check(ajeno.status === 400, 'un grupo de OTRO negocio se rechaza', ajeno.json.error);
+      const huerfano = await prisma.product.count({
+        where: { businessId: negocio.id, name: `Arepa robada ${sello}` },
+      });
+      check(huerfano === 0, 'y no deja un plato creado a medias', huerfano);
+    }
+
     console.log(`\n${ok} comprobaciones bien, ${fallos} mal`);
     if (fallos > 0) console.log('\n--- cola de registros ---\n' + registros.slice(-6).join(''));
     process.exitCode = fallos > 0 ? 1 : 0;

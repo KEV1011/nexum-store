@@ -37,12 +37,24 @@ class _AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    if (err.response?.statusCode == 401) {
-      // Delete stale token so the router redirects to login.
+    if (tokenRechazado(err.requestOptions, err.response?.statusCode)) {
       _storage.delete(key: AppConstants.authTokenKey);
     }
     handler.next(err);
   }
+}
+
+/// ¿Este 401 dice que el token GUARDADO ya no vale?
+///
+/// Solo si la petición LLEVABA el token. Una petición que salió sin él —porque
+/// el almacén seguro tardó al volver del segundo plano y la lectura agotó su
+/// tiempo— también recibe 401, y antes eso borraba un token perfectamente
+/// válido: la persona volvía de otra app y tenía que entrar de nuevo con su
+/// teléfono y su código.
+bool tokenRechazado(RequestOptions peticion, int? status) {
+  if (status != 401) return false;
+  final auth = peticion.headers['Authorization'];
+  return auth is String && auth.startsWith('Bearer ') && auth.length > 7;
 }
 
 // ── Dio provider ──────────────────────────────────────────────────────────────

@@ -81,6 +81,21 @@ class _Categoria extends StatefulWidget {
   State<_Categoria> createState() => _CategoriaState();
 }
 
+/// Ilustraciones 3D de cada categoría (Fluent Emoji de Microsoft, MIT; el
+/// aviso de licencia va en `assets/licencias/` y se registra en main.dart).
+///
+/// Eran glifos planos de Material —los mismos de cualquier app— en lo primero
+/// que se ve al bajar por el inicio. Las genera
+/// `tools/procesar-ilustraciones-3d.py`; ahí está de qué emoji sale cada una.
+const Map<ErrandCategory, String> _ilustraciones = {
+  ErrandCategory.pharmacy: 'assets/mandados/drogueria.png',
+  ErrandCategory.groceries: 'assets/mandados/mercado.png',
+  ErrandCategory.food: 'assets/mandados/comida.png',
+  ErrandCategory.payments: 'assets/mandados/pagos.png',
+  ErrandCategory.documents: 'assets/mandados/documentos.png',
+  ErrandCategory.shopping: 'assets/mandados/compras.png',
+};
+
 class _CategoriaState extends State<_Categoria> {
   bool _pulsada = false;
 
@@ -120,7 +135,17 @@ class _CategoriaState extends State<_Categoria> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 alignment: Alignment.center,
-                child: Icon(widget.categoria.icon, color: glifo, size: 30),
+                child: _ilustraciones[widget.categoria] == null
+                    ? Icon(widget.categoria.icon, color: glifo, size: 30)
+                    : Image.asset(
+                        _ilustraciones[widget.categoria]!,
+                        width: 44,
+                        height: 44,
+                        // Si el archivo faltara, el glifo de siempre: un
+                        // cuadro vacío se lee como app rota.
+                        errorBuilder: (_, __, ___) =>
+                            Icon(widget.categoria.icon, color: glifo, size: 30),
+                      ),
               ),
               const SizedBox(height: 8),
               Text(

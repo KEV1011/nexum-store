@@ -96,7 +96,7 @@ export default function SepararNombres({
 
   if (propuestas === null) {
     return (
-      <div className={TARJETA}>
+      <div className={`${TARJETA} p-5 space-y-3`}>
         <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
           <Scissors className="h-4 w-4 text-emerald-600" />
           ¿Tus platos tienen los ingredientes dentro del nombre?
@@ -128,7 +128,7 @@ export default function SepararNombres({
 
   if (propuestas.length === 0) {
     return (
-      <div className={TARJETA}>
+      <div className={`${TARJETA} p-5 space-y-3`}>
         <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
           <Check className="h-4 w-4" /> Tus platos ya están bien: ninguno trae
           los ingredientes dentro del nombre.
@@ -138,7 +138,7 @@ export default function SepararNombres({
   }
 
   return (
-    <div className={TARJETA}>
+    <div className={`${TARJETA} p-5 space-y-3`}>
       <h3 className="text-sm font-bold text-slate-900">
         {propuestas.length} {propuestas.length === 1 ? 'plato' : 'platos'} se
         pueden separar

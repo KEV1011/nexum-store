@@ -14,7 +14,6 @@ import {
   Camera,
   Trash2,
   Package,
-  ImageOff,
   AlertCircle,
   ImagePlus,
   Pencil,
@@ -28,7 +27,8 @@ import {
 
 import { formatCOP } from '../../../moneda'
 import { etiquetaDeGrupo } from '../../../opciones-texto'
-import { AdicionesManager } from './AdicionesManager'
+import { AdicionesManager, type Grupo } from './AdicionesManager'
+import { AcompanamientosPanel } from './AcompanamientosPanel'
 import { CONTENEDOR, TARJETA } from '../../../ui'
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -565,6 +565,7 @@ function ProductCard({
         <button
           onClick={() => fileRef.current?.click()}
           disabled={busy}
+          aria-label={img ? `Cambiar la foto de ${product.name}` : `Agregar foto a ${product.name}`}
           className="relative w-24 h-24 shrink-0 bg-slate-100 flex items-center justify-center group"
         >
           {img ? (
@@ -581,7 +582,12 @@ function ProductCard({
               onError={() => setFotoCaida(true)}
             />
           ) : (
-            <ImageOff className="w-6 h-6 text-slate-300" />
+            // Sin foto, el recuadro INVITA a ponerla en vez de enseñar una
+            // imagen rota: así el dueño sabe qué hacer, no que algo falló.
+            <span className="flex flex-col items-center gap-1 text-slate-400 group-hover:text-emerald-600">
+              <ImagePlus className="w-5 h-5" />
+              <span className="text-[11px] font-semibold">Agregar foto</span>
+            </span>
           )}
           <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
             <Camera className="w-5 h-5 text-white" />
@@ -681,7 +687,7 @@ function ProductCard({
                   salía por el borde derecho, que es lo que el dueño veía
                   cortado en su celular. Envolver es la salida honesta:
                   encogerlos más es como se llegó aquí. */}
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-y-2">
+              <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-2">
                 <button
                   onClick={toggleAvailable}
                   disabled={busy}
@@ -703,11 +709,11 @@ function ProductCard({
                 >
                   Acompañamiento
                 </button>
-                <div className="flex items-center gap-0.5">
+                <div className="ml-auto flex items-center gap-0.5">
                   <button
                     onClick={() => setShowOptions((v) => !v)}
                     disabled={busy}
-                    className={`min-h-[36px] text-xs font-semibold px-3 rounded-full ${
+                    className={`min-h-[36px] whitespace-nowrap text-xs font-semibold px-3 rounded-full ${
                       optionCount > 0 ? 'bg-emerald-50 text-emerald-700' : 'text-slate-400 hover:text-emerald-600'
                     }`}
                   >
@@ -745,7 +751,10 @@ function ProductCard({
         </div>
       </div>
 
-      {/* Galería de fotos adicionales */}
+      {/* Galería de fotos adicionales. Solo cuando ya hay foto principal:
+          sin ella, este recuadro duplicaba el de arriba y dejaba un bloque
+          vacío debajo de cada producto. */}
+      {img && (
       <div className="flex items-center gap-2 px-3 pb-3 pt-1 overflow-x-auto">
         {product.images.map((ph) => (
           <div key={ph.id} className="relative w-14 h-14 shrink-0 group">
@@ -782,6 +791,7 @@ function ProductCard({
           }}
         />
       </div>
+      )}
 
       {/* Editor de variantes/opciones (expandible) */}
       {showOptions && (
@@ -792,6 +802,62 @@ function ProductCard({
           onClose={() => setShowOptions(false)}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Las tres vistas del catálogo ────────────────────────────────────────────
+
+/**
+ * Productos · Adiciones y bebidas · Mi marca.
+ *
+ * Antes era una sola columna: portada, marca, adiciones, acompañamientos, el
+ * alta, la carga masiva y por último la lista — los productos, que es a lo
+ * que se entra el 90 % de las veces, quedaban a unos 3.000 px del borde de
+ * arriba. Se parte por lo que se viene a HACER, no por cómo está guardado.
+ */
+function VistasCatalogo({
+  vista,
+  onVista,
+  conAdiciones,
+  cuantos,
+}: {
+  vista: 'productos' | 'adiciones' | 'marca'
+  onVista: (v: 'productos' | 'adiciones' | 'marca') => void
+  conAdiciones: boolean
+  cuantos: number
+}) {
+  const opciones: Array<{ id: 'productos' | 'adiciones' | 'marca'; texto: string }> = [
+    { id: 'productos', texto: cuantos > 0 ? `Productos · ${cuantos}` : 'Productos' },
+    { id: 'adiciones', texto: conAdiciones ? 'Adiciones' : 'Acompañamientos' },
+    { id: 'marca', texto: 'Mi marca' },
+  ]
+  return (
+    <div role="tablist" aria-label="Partes del catálogo" className="flex gap-1 rounded-2xl bg-white p-1 ring-1 ring-slate-200 overflow-x-auto">
+      {opciones.map((o) => {
+        const activa = vista === o.id
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="tab"
+            aria-selected={activa}
+            onClick={() => onVista(o.id)}
+            className={`min-h-[44px] flex-1 whitespace-nowrap rounded-xl px-4 text-sm font-semibold transition-colors ${
+              activa
+                ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {o.texto}
+            {/* «y bebidas» solo donde cabe: en un teléfono la tercera pestaña
+                quedaba cortada por el borde. */}
+            {o.id === 'adiciones' && conAdiciones && (
+              <span className="hidden sm:inline"> y bebidas</span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -974,6 +1040,22 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   }, [token])
   const [creating, setCreating] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  // La biblioteca de adiciones, tal como la deja `AdicionesManager`. Con ella
+  // el plato nuevo nace con sus adiciones marcadas: antes había que crearlo,
+  // buscarlo en la lista, abrir «Opciones» y adjuntarlas una por una.
+  const [biblioteca, setBiblioteca] = useState<Grupo[]>([])
+  const [adicionesNuevo, setAdicionesNuevo] = useState<string[]>([])
+  // La página se parte en tres vistas: era UNA columna de 4.000 px en la que
+  // los productos —lo que más se usa— quedaban al fondo, debajo de la
+  // portada, la marca y las adiciones.
+  const [vista, setVista] = useState<'productos' | 'adiciones' | 'marca'>('productos')
+  const [esAcompanamiento, setEsAcompanamiento] = useState(false)
+  const alCambiarBiblioteca = useCallback((g: Grupo[]) => {
+    setBiblioteca(g)
+    // Un grupo eliminado no puede seguir marcado en el formulario: se mandaría
+    // un id que ya no existe y el alta fallaría sin que se entienda por qué.
+    setAdicionesNuevo((sel) => sel.filter((id) => g.some((x) => x.id === id)))
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -997,6 +1079,20 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   useEffect(() => {
     void load()
   }, [load])
+
+  // La biblioteca se pide aquí también: el formulario de alta la necesita
+  // aunque la vista de adiciones (que la mantiene al día) no esté abierta.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/business/${token}/option-groups`, { cache: 'no-store' })
+        const json = (await res.json()) as { success: boolean; data?: Grupo[] }
+        if (json.success && json.data) setBiblioteca(json.data)
+      } catch {
+        // Sin biblioteca el formulario solo no ofrece las adiciones.
+      }
+    })()
+  }, [token])
 
   // El tipo de negocio decide el formulario: un restaurante no ve código de
   // barras ni existencias, un supermercado sí.
@@ -1048,6 +1144,11 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             // Vacío = el negocio no controla existencias de este producto.
             stock: stock.trim() === '' ? null : Number(stock.replace(/[^\d]/g, '')),
           }),
+          // Las adiciones se ADJUNTAN en el mismo alta: si fueran en una
+          // segunda petición y esa fallara, el plato quedaría a la venta sin
+          // las adiciones que el dueño creyó ponerle.
+          ...(perfil.opciones && adicionesNuevo.length > 0 && { optionGroupIds: adicionesNuevo }),
+          ...(esAcompanamiento && { suggestAsAddon: true }),
         }),
       })
       const json = (await res.json()) as { success: boolean; data?: Product; error?: string }
@@ -1057,6 +1158,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       setProducts((prev) => [...prev, json.data as Product])
       setName(''); setPrice(''); setDescription(''); setCategory(CATEGORIES[0])
       setBarcode(''); setBrand(''); setStock(''); setModel(''); setWarranty('')
+      setAdicionesNuevo([]); setEsAcompanamiento(false)
       return null
     } catch {
       return 'No se pudo conectar con el servidor.'
@@ -1176,20 +1278,52 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       <PortalTabs token={token} activa="catalogo" />
 
       <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
-        {/* Portada del local */}
-        <CoverSection token={token} />
-        <MarcaDelLocal token={token} />
+        <VistasCatalogo
+          vista={vista}
+          onVista={setVista}
+          conAdiciones={perfil.opciones}
+          cuantos={products.length}
+        />
+
+        {vista === 'marca' && (
+          <>
+            {/* Portada del local */}
+            <CoverSection token={token} />
+            <MarcaDelLocal token={token} />
+          </>
+        )}
 
         {/* La biblioteca de adiciones. Solo en los rubros cuyo perfil usa
             opciones: un supermercado no vende «porción de aguacate». */}
-        {perfil.opciones && (
+        {vista === 'adiciones' && perfil.opciones && (
           <AdicionesManager
             token={token}
             secciones={sectionNames}
             onAplicado={() => void load()}
+            onCambio={alCambiarBiblioteca}
           />
         )}
 
+        {/* Las bebidas y acompañamientos que el local ofrece al pagar. Cada
+            uno es un PRODUCTO (descuenta existencias y entra al reporte de
+            ventas), no una adición: aquí se ven todos juntos y se marcan sin
+            tener que buscarlos uno por uno en la lista. */}
+        {vista === 'adiciones' && products.length === 0 && (
+          <p className={`${TARJETA} p-5 text-sm text-slate-500`}>
+            Primero agrega tus productos en «Productos». Las bebidas y
+            acompañamientos se eligen de ahí.
+          </p>
+        )}
+        {vista === 'adiciones' && products.length > 0 && (
+          <AcompanamientosPanel
+            token={token}
+            productos={products}
+            onCambio={(p) => setProducts((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...p } : x)))}
+          />
+        )}
+
+        {vista === 'productos' && (
+        <>
         {/* Alta */}
         <form onSubmit={createProduct} className={`${TARJETA} p-5 space-y-3`}>
           <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
@@ -1211,6 +1345,65 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             />
             <input className={INPUT} placeholder="Descripción (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={140} />
           </div>
+
+          {/* Las adiciones del plato, marcadas desde que nace. Solo donde el
+              rubro usa opciones (un supermercado no vende «porción de
+              aguacate»). */}
+          {perfil.opciones ? (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-600">Adiciones de este plato</p>
+              {biblioteca.length === 0 ? (
+                <p className="text-xs text-slate-500">
+                  Crea tus grupos de adiciones (ej: Adicionales, Salsas, Bebida
+                  del combo) en la pestaña «Adiciones» y aquí los marcas con un
+                  toque.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {biblioteca.map((g) => {
+                    if (!g.id) return null
+                    const marcado = adicionesNuevo.includes(g.id)
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        aria-pressed={marcado}
+                        onClick={() =>
+                          setAdicionesNuevo((sel) =>
+                            marcado ? sel.filter((x) => x !== g.id) : [...sel, g.id!],
+                          )
+                        }
+                        className={`min-h-[40px] inline-flex items-center gap-1.5 rounded-full px-3.5 text-sm font-medium ring-1 transition-colors ${
+                          marcado
+                            ? 'bg-emerald-50 text-emerald-800 ring-emerald-300'
+                            : 'bg-white text-slate-600 ring-slate-200 hover:ring-emerald-300'
+                        }`}
+                      >
+                        {marcado ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                        {g.name}
+                        <span className="text-xs text-slate-400">· {g.options.length}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <label className="flex items-start gap-2.5 rounded-xl bg-amber-50/60 ring-1 ring-amber-200 px-3 py-2.5 text-sm text-amber-900 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={esAcompanamiento}
+              onChange={(e) => setEsAcompanamiento(e.target.checked)}
+            />
+            <span>
+              <span className="font-semibold">Es una bebida o acompañamiento</span>
+              <span className="block text-xs text-amber-800/80">
+                Se le ofrece al cliente antes de pagar («Acompaña tu pedido»).
+              </span>
+            </span>
+          </label>
 
           {/* La ficha del producto. Va APARTE del inventario a propósito: un
               local de electrodomésticos que no cuente unidades sigue
@@ -1440,6 +1633,8 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
               </section>
             ))}
           </div>
+        )}
+        </>
         )}
       </div>
 

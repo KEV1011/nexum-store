@@ -627,6 +627,11 @@ export interface CreateProductDTO {
   model?: string;
   warrantyMonths?: number | null;
   /**
+   * Grupos de la biblioteca de adiciones que el plato usa desde que nace.
+   * Se adjuntan sin reescribirlos: son compartidos con otros platos.
+   */
+  optionGroupIds?: string[];
+  /**
    * Ofrecerlo en «Acompaña tu pedido» al pagar.
    *
    * Sigue siendo un producto normal: entra como una línea más, descuenta

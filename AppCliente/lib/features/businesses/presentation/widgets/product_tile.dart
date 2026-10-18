@@ -50,12 +50,20 @@ class ProductTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _ProductThumb(
-                imageUrl: product.imageUrl,
-                isDark: isDark,
-                extraCount: product.images.length,
-              ),
-              const SizedBox(width: AppConstants.spacingM),
+              // SIN FOTO NO HAY MARCO. Antes cada plato sin foto llevaba el
+              // mismo recuadro gris con un cubierto: en una carta recién
+              // cargada eran cuarenta recuadros iguales, que se leen como
+              // «no cargó» y hacen ver pobre al local. Sin foto, la fila es
+              // solo texto y el nombre gana el ancho — como en Rappi o Uber
+              // Eats, donde un plato sin foto no se disfraza de tener una.
+              if (filaConFoto(product)) ...[
+                _ProductThumb(
+                  imageUrl: product.imageUrl,
+                  isDark: isDark,
+                  extraCount: product.images.length,
+                ),
+                const SizedBox(width: AppConstants.spacingM),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,7 +121,10 @@ class ProductTile extends StatelessWidget {
   }
 }
 
-/// Miniatura del producto (foto del negocio o un marcador si no hay foto).
+/// ¿La fila lleva miniatura? Solo si el negocio subió una foto.
+bool filaConFoto(ProductEntity p) => (p.imageUrl ?? '').trim().isNotEmpty;
+
+/// Miniatura del producto. Solo se pinta cuando HAY foto ([filaConFoto]).
 /// [extraCount] = fotos adicionales en la galería; muestra un badge "+N".
 class _ProductThumb extends StatelessWidget {
   const _ProductThumb({
@@ -131,15 +142,12 @@ class _ProductThumb extends StatelessWidget {
     const double size = 64;
     final placeholderBg = isDark ? AppColors.outlineDark : context.outlineColor;
 
+    // Solo para una foto que existe pero no carga (red, archivo borrado): un
+    // tono liso, sin el cubierto genérico que antes era la cara de la carta.
     Widget placeholder() => Container(
           width: size,
           height: size,
           color: placeholderBg,
-          child: Icon(
-            Icons.restaurant_menu_rounded,
-            size: 24,
-            color: context.textSecondaryColor,
-          ),
         );
 
     final url = imageUrl;

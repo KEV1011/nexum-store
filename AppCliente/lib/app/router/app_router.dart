@@ -388,6 +388,10 @@ class _SplashGateState extends ConsumerState<_SplashGate> {
   @override
   void initState() {
     super.initState();
+    // La sesión guardada empieza a leerse YA, en paralelo con el splash: el
+    // provider se crea perezosamente y, si nadie lo tocaba antes, la lectura
+    // arrancaba recién al terminar la animación.
+    ref.read(authProvider.notifier);
     Future<void>.delayed(const Duration(milliseconds: 1600), _navigate);
   }
 
@@ -402,7 +406,11 @@ class _SplashGateState extends ConsumerState<_SplashGate> {
       router.go(AppRoutes.onboarding);
       return;
     }
-    final auth = ref.read(authProvider);
+    // Se ESPERA a que la sesión termine de leerse. Leer el estado sin esperar
+    // daba «cargando» y mandaba al login a quien ya tenía sesión — justo lo
+    // que pasaba al volver de otra app con el proceso cerrado por el sistema.
+    final auth = await ref.read(authProvider.notifier).listo();
+    if (!mounted) return;
     if (auth is! AuthAuthenticated) {
       router.go(AppRoutes.login);
       return;

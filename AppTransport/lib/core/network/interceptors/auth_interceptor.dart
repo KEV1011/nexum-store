@@ -64,7 +64,7 @@ class AuthInterceptor extends Interceptor {
     DioException err,
     ErrorInterceptorHandler handler,
   ) async {
-    if (err.response?.statusCode == 401) {
+    if (tokenRechazado(err.requestOptions, err.response?.statusCode)) {
       // Token expirado o inválido: limpiar credenciales y volver al login.
       await _secureStorage.delete(key: AppConstants.authTokenKey);
       onSessionExpired?.call();
@@ -72,4 +72,16 @@ class AuthInterceptor extends Interceptor {
 
     handler.next(err);
   }
+}
+
+/// ¿Este 401 dice que el token GUARDADO ya no vale?
+///
+/// Solo si la petición LLEVABA el token. Una petición que salió sin él —porque
+/// el almacén seguro tardó al volver del segundo plano y la lectura agotó su
+/// tiempo— también recibe 401, y antes eso borraba un token válido y sacaba al
+/// conductor al login a mitad de turno.
+bool tokenRechazado(RequestOptions peticion, int? status) {
+  if (status != 401) return false;
+  final auth = peticion.headers['Authorization'];
+  return auth is String && auth.startsWith('Bearer ') && auth.length > 7;
 }
