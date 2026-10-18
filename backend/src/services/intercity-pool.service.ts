@@ -833,7 +833,7 @@ export async function publicarPuestoDePasajero(
         tripId: trip.id,
         userId,
         passengerName: usuario.name ?? 'Pasajero',
-        passengerPhone: usuario.phone,
+        passengerPhone: usuario.phone ?? '',
         seatsBooked: dto.seatsForMe,
         // Sellado igual que cualquier reserva: si el autor sube la tarifa
         // mañana, lo que él aceptó fue esto.

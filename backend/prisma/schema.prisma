@@ -19,8 +19,16 @@ datasource db {
 
 model User {
   id        String    @id @default(cuid())
-  phone     String    @unique
+  /// Null en las cuentas abiertas con Google o Apple: ahí la identidad la
+  /// verificó el proveedor, y pedir un teléfono que no podemos comprobar (sin
+  /// SMS) solo crearía choques con el dueño real del número.
+  phone     String?   @unique
   name      String?
+  /// Identificador estable de la cuenta en Google / Apple (el `sub` del token
+  /// firmado). Es LO ÚNICO por lo que se entra con esos botones: nunca por el
+  /// correo, que cualquiera puede escribir en su perfil (ver acceso-social).
+  googleSub String?   @unique
+  appleSub  String?   @unique
   email     String?   @unique
   avatarUrl String?
   createdAt DateTime  @default(now())

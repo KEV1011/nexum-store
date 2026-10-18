@@ -238,7 +238,10 @@ class _ProfileHeader extends ConsumerWidget {
     // ponerlo. Su conductor lee ese nombre al ir a recogerlo.
     final faltaNombre = profile?.needsName ?? client?.needsName ?? false;
     final name = profile?.name ?? client?.name ?? 'Cliente ZIPA';
-    final phone = profile?.phone ?? client?.phone ?? '';
+    // Las cuentas abiertas con Google o Apple no tienen teléfono: se muestra
+    // el correo, y si tampoco hay, nada (una línea vacía, no un «null»).
+    final telefono = profile?.phone ?? client?.phone ?? '';
+    final phone = telefono.isNotEmpty ? telefono : (profile?.email ?? '');
     final avatarUrl = profile?.avatarUrl;
 
     return Row(

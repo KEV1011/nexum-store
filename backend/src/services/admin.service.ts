@@ -520,7 +520,8 @@ export async function listDriversForAdmin(ciudad?: string | null): Promise<Admin
 export interface AdminClientKycRow {
   id: string;
   name: string | null;
-  phone: string;
+  /** Null en cuentas abiertas con Google o Apple. */
+  phone: string | null;
   kycStatus: string;
   hasSelfie: boolean;
   selfieUrl: string | null;

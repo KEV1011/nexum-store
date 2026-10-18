@@ -90,3 +90,42 @@ export function precioDesde(producto: {
     (g) => g.required && g.options.some((o) => o.priceDelta > 0),
   )
 }
+
+/**
+ * El nombre de un plato, separado de lo que trae.
+ *
+ * Las cartas leídas de una foto meten los ingredientes DENTRO del nombre
+ * («Pannecook de pochados y tocineta: (2) pochados + tocineta, queso…»), y la
+ * lista lo cortaba a un renglón: lo que el plato trae no se podía leer. Solo
+ * se parte cuando el dueño NO escribió descripción.
+ *
+ * Es la misma regla que `nombre_plato.dart` de la app; las dos se prueban con
+ * la MISMA tabla (`nombre-plato-casos.json`), porque el comensal del QR y el
+ * cliente de la app ven el mismo plato del mismo local.
+ */
+export function partirNombrePlato(nombre: string, descripcion: string | null | undefined): {
+  titulo: string
+  detalle: string
+} {
+  const n = nombre.trim()
+  const d = (descripcion ?? '').trim()
+  if (d) return { titulo: n, detalle: d }
+
+  const dosPuntos = n.indexOf(':')
+  if (dosPuntos >= 3 && dosPuntos < n.length - 1) {
+    const t = n.slice(0, dosPuntos).trim()
+    const r = n.slice(dosPuntos + 1).trim()
+    if (t.length >= 3 && r) return { titulo: t, detalle: r }
+  }
+
+  // Solo si el paréntesis es una LISTA: «Empanadas (3)» dice cuántas trae.
+  const abre = n.indexOf('(')
+  if (abre >= 4) {
+    const dentro = n.slice(abre + 1)
+    const cierra = dentro.lastIndexOf(')')
+    const contenido = (cierra === -1 ? dentro : dentro.slice(0, cierra)).trim()
+    if (contenido.includes(',')) return { titulo: n.slice(0, abre).trim(), detalle: contenido }
+  }
+
+  return { titulo: n, detalle: '' }
+}

@@ -163,7 +163,13 @@ export function otpMode(): { users: string; admin: string } {
   if (NODE_ENV !== 'production') return { users: 'dev-123456', admin: 'dev-123456' };
   // En producción sin SMS el modo se nombra por lo que ES —una llave maestra—
   // y no por su comodidad, para que una captura de /health delate el riesgo.
-  if (OTP_FALLBACK_CODE) return { users: 'llave-maestra-piloto', admin: 'llave-maestra-piloto' };
+  if (OTP_FALLBACK_CODE) {
+    return {
+      users: 'llave-maestra-piloto',
+      admin: adminConLlaveCompartida() ? 'llave-maestra-COMPARTIDA-con-la-app' : 'codigo-propio-admin',
+    };
+  }
+  if (ADMIN_OTP_CODE) return { users: 'cerrado', admin: 'codigo-propio-admin' };
   return { users: 'cerrado', admin: 'cerrado' };
 }
 
@@ -186,10 +192,36 @@ export class OtpConfigError extends Error {
   }
 }
 
+/**
+ * Código PROPIO del panel admin, distinto del de la app.
+ *
+ * Sin SMS, `OTP_FALLBACK_CODE` lo conoce todo el que prueba la app (es la
+ * llave con la que entran). Si el panel aceptara ese mismo código, cualquiera
+ * de ellos que supiera el número de un administrador entraría al panel:
+ * documentos, conductores, comisiones, retiros. `ADMIN_OTP_CODE` corta eso.
+ * Sin él se sigue aceptando el compartido (para no dejar fuera al operador al
+ * desplegar), pero `/health` y el pie del panel lo marcan como riesgo.
+ */
+const ADMIN_OTP_CODE = (process.env['ADMIN_OTP_CODE'] ?? '')
+  .trim()
+  .replace(/^["']|["']$/g, '');
+
 function _adminCode(): string | null {
   if (NODE_ENV !== 'production') return OTP_DEV_CODE;
+  // Igual al de la app no protege nada: se trata como si no existiera.
+  if (ADMIN_OTP_CODE && ADMIN_OTP_CODE !== OTP_FALLBACK_CODE) return ADMIN_OTP_CODE;
   if (OTP_FALLBACK_CODE) return OTP_FALLBACK_CODE;
   return null; // cerrado por diseño
+}
+
+/** El panel admin acepta la MISMA llave que la app (riesgo, ver arriba). */
+export function adminConLlaveCompartida(): boolean {
+  return (
+    NODE_ENV === 'production' &&
+    !isSmsConfigured() &&
+    !!OTP_FALLBACK_CODE &&
+    (!ADMIN_OTP_CODE || ADMIN_OTP_CODE === OTP_FALLBACK_CODE)
+  );
 }
 
 function _safeEqual(a: string, b: string): boolean {
@@ -207,7 +239,7 @@ export async function requestAdminOtp(phone: string): Promise<void> {
   }
   if (_adminCode() === null) {
     throw new OtpConfigError(
-      'El acceso admin en producción está cerrado: define OTP_FALLBACK_CODE ' +
+      'El acceso admin en producción está cerrado: define ADMIN_OTP_CODE ' +
       '(o configura Twilio Verify) en Render y redespliega.',
     );
   }
@@ -228,7 +260,7 @@ export async function validateAdminOtp(phone: string, otp: string): Promise<void
   const expected = _adminCode();
   if (expected === null) {
     throw new OtpConfigError(
-      'El acceso admin en producción está cerrado: define OTP_FALLBACK_CODE ' +
+      'El acceso admin en producción está cerrado: define ADMIN_OTP_CODE ' +
       '(o configura Twilio Verify) en Render y redespliega.',
     );
   }

@@ -93,6 +93,27 @@ void main() {
       expect(texto.style?.color, isNot(Colors.white));
     });
 
+    testWidgets('la barra SIGUE a la carta: el chip activo queda a la vista',
+        (tester) async {
+      // Al desplazar la carta la activa cambiaba y la barra se quedaba
+      // quieta: el chip resaltado se iba fuera de la pantalla.
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final secciones = [for (var i = 0; i < 20; i++) 'Sección número $i'];
+
+      await tester.pumpWidget(_envuelta(secciones: secciones));
+      expect(tester.getRect(find.text('Sección número 15')).left,
+          greaterThan(360), reason: 'arranca fuera de la vista');
+
+      await tester.pumpWidget(_envuelta(secciones: secciones, activa: 'Sección número 15'));
+      await tester.pumpAndSettle();
+
+      final r = tester.getRect(find.text('Sección número 15'));
+      expect(r.left, greaterThanOrEqualTo(0));
+      expect(r.right, lessThanOrEqualTo(360));
+    });
+
     testWidgets('aguanta una lista vacía sin reventar', (tester) async {
       await tester.pumpWidget(_envuelta(secciones: const []));
       expect(find.byType(BarraSecciones), findsOneWidget);

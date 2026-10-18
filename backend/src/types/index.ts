@@ -478,7 +478,8 @@ export interface BusinessWsMessage {
 
 export interface ClientDTO {
   id: string;
-  phone: string;
+  /** Null en cuentas abiertas con Google o Apple. */
+  phone: string | null;
   /** Para pintar. Cae a un genérico cuando el pasajero aún no lo ha dicho. */
   name: string;
   /**
@@ -492,13 +493,15 @@ export interface ClientDTO {
 
 export interface ClientJwtPayload {
   clientId: string;
-  phone: string;
+  /** Null en cuentas abiertas con Google o Apple (ver acceso-social). */
+  phone: string | null;
   role: 'client';
 }
 
 export interface ClientProfileDTO {
   id: string;
-  phone: string;
+  /** Null en cuentas abiertas con Google o Apple. */
+  phone: string | null;
   /** Para pintar. Cae a un genérico cuando el pasajero aún no lo ha dicho. */
   name: string;
   /**

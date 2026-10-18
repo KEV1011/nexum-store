@@ -35,7 +35,7 @@ import {
   VIGENCIA_MIN,
 } from '../lib/enlace-magico';
 
-function firmar(user: { id: string; phone: string; name: string | null }): {
+function firmar(user: { id: string; phone: string | null; name: string | null }): {
   token: string;
   client: ClientDTO;
 } {
@@ -59,7 +59,7 @@ function firmar(user: { id: string; phone: string; name: string | null }): {
 export async function usuarioParaTelefonoVerificado(
   telefono: string,
   nombreSugerido?: string | null,
-): Promise<{ id: string; phone: string; name: string | null }> {
+): Promise<{ id: string; phone: string | null; name: string | null }> {
   const normalizado = normalizeColombianPhone(telefono);
 
   const existente = await prisma.user.findUnique({ where: { phone: normalizado } });

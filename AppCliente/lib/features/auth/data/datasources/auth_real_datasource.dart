@@ -88,4 +88,37 @@ class AuthRealDataSource implements AuthDataSource {
       throw NetworkException(message: _describe(e));
     }
   }
+
+  @override
+  Future<Map<String, dynamic>> proveedoresAcceso() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>('/client/auth/providers');
+      return (res.data?['data'] as Map<String, dynamic>?) ?? const {};
+    } on DioException catch (e) {
+      throw NetworkException(message: _describe(e));
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> entrarConProveedor(
+    String proveedor,
+    Map<String, dynamic> cuerpo,
+  ) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/client/auth/$proveedor',
+        // Igual que en verifyOtp: el único camino a esta llamada pasa por el
+        // checkbox de términos de la pantalla de ingreso.
+        data: {...cuerpo, 'acceptedTerms': true},
+      );
+      if (res.data?['success'] != true) {
+        throw NetworkException(
+          message: res.data?['error'] as String? ?? 'No pudimos iniciar sesión.',
+        );
+      }
+      return res.data!['data'] as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw NetworkException(message: _describe(e));
+    }
+  }
 }

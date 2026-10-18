@@ -16,4 +16,14 @@ abstract class AuthDataSource {
   /// El teléfono ya lo verificó Meta, así que no hay OTP que pedir. Devuelve
   /// `{token, client}` igual que [verifyOtp].
   Future<Map<String, dynamic>> redeemMagicLink(String code);
+
+  /// Qué botones de acceso ofrece el servidor (`GET /client/auth/providers`).
+  Future<Map<String, dynamic>> proveedoresAcceso();
+
+  /// Entra con el token firmado por Google o Apple. Devuelve `{token, client}`
+  /// igual que [verifyOtp].
+  Future<Map<String, dynamic>> entrarConProveedor(
+    String proveedor,
+    Map<String, dynamic> cuerpo,
+  );
 }

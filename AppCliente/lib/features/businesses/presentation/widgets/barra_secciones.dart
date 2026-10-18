@@ -30,7 +30,7 @@ import 'package:nexum_client/app/theme/contraste.dart';
 /// Alto de la barra. Fijo, porque es un encabezado fijado (`pinned`).
 const double kAltoBarraSecciones = 52;
 
-class BarraSecciones extends StatelessWidget {
+class BarraSecciones extends StatefulWidget {
   const BarraSecciones({
     required this.secciones,
     required this.activa,
@@ -47,6 +47,53 @@ class BarraSecciones extends StatelessWidget {
   final void Function(String seccion) onSeleccion;
 
   @override
+  State<BarraSecciones> createState() => _BarraSeccionesState();
+}
+
+/// LA BARRA SIGUE A LA CARTA. Al desplazar la carta la sección activa
+/// cambiaba, pero la barra se quedaba quieta: el chip resaltado se iba por
+/// un lado de la pantalla y la barra dejaba de decir dónde estabas.
+///
+/// Por eso los chips van en una fila construida ENTERA (no en una lista
+/// perezosa: un chip sin construir no tiene posición que centrar; una carta
+/// tiene decenas de secciones, no miles) y, cuando cambia la activa, se
+/// centra con `ScrollPosition.ensureVisible` de ESTA barra. No con
+/// `Scrollable.ensureVisible`: ese recorre todos los desplazables de arriba y
+/// también movería la carta, peleándose con el dedo de quien la desplaza.
+class _BarraSeccionesState extends State<BarraSecciones> {
+  final ScrollController _fila = ScrollController();
+  final Map<String, GlobalKey> _claves = {};
+
+  GlobalKey _claveDe(String s) => _claves.putIfAbsent(s, GlobalKey.new);
+
+  @override
+  void didUpdateWidget(covariant BarraSecciones old) {
+    super.didUpdateWidget(old);
+    if (old.activa != widget.activa && widget.activa != null) {
+      final s = widget.activa!;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _centrar(s));
+    }
+  }
+
+  void _centrar(String seccion) {
+    if (!mounted || !_fila.hasClients) return;
+    final caja = _claves[seccion]?.currentContext?.findRenderObject();
+    if (caja == null || !caja.attached) return;
+    _fila.position.ensureVisible(
+      caja,
+      alignment: 0.5,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void dispose() {
+    _fila.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -57,23 +104,26 @@ class BarraSecciones extends StatelessWidget {
       ),
       child: SizedBox(
         height: kAltoBarraSecciones,
-        child: ListView.separated(
+        child: SingleChildScrollView(
+          controller: _fila,
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: secciones.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (_, i) {
-            final s = secciones[i];
-            final esActiva = s == activa;
-            return _Chip(
-              texto: s,
-              activa: esActiva,
-              onTap: () {
-                HapticFeedback.selectionClick();
-                onSeleccion(s);
-              },
-            );
-          },
+          child: Row(
+            children: [
+              for (var i = 0; i < widget.secciones.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                _Chip(
+                  key: _claveDe(widget.secciones[i]),
+                  texto: widget.secciones[i],
+                  activa: widget.secciones[i] == widget.activa,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    widget.onSeleccion(widget.secciones[i]);
+                  },
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -81,7 +131,12 @@ class BarraSecciones extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.texto, required this.activa, required this.onTap});
+  const _Chip({
+    required this.texto,
+    required this.activa,
+    required this.onTap,
+    super.key,
+  });
 
   final String texto;
   final bool activa;

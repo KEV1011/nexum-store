@@ -4,6 +4,11 @@ abstract final class AppColors {
   // ── Primary (Verde operativo) ─────────────────────────────────────────────
   static const Color primary = Color(0xFF00C853);
   static const Color primaryDim = Color(0xFF00963D);
+  /// El verde de marca cuando es LETRA sobre fondo claro (precios, «Agregar»).
+  /// #00C853 sobre blanco da 2,24:1 y la norma pide 4,5; este da 5,48. Sobre
+  /// fondo oscuro el de marca sí se lee (8,37), así que se usa
+  /// `context.primaryTextColor`, que elige uno u otro.
+  static const Color primaryTexto = Color(0xFF007A33);
   static const Color primaryLight = Color(0xFF5EFF82);
   static const Color primaryContainer = Color(0xFFE8F5E9);
 

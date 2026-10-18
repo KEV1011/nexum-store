@@ -19,7 +19,7 @@ import {
   type Producto,
 } from '../api'
 import { LineaTiempo } from '../LineaTiempo'
-import { agruparVale, idDeSeccion, precioDesde, seccionConFotos } from '../reglas'
+import { agruparVale, idDeSeccion, partirNombrePlato, precioDesde, seccionConFotos } from '../reglas'
 import { etiquetaDeGrupo } from '../../opciones-texto'
 
 /**
@@ -785,6 +785,7 @@ function Plato({ producto: p, conFoto, deshabilitado, onElegir }: {
   deshabilitado: boolean
   onElegir: () => void
 }) {
+  const partido = partirNombrePlato(p.name, p.description)
   return (
     <button
       type="button"
@@ -829,9 +830,12 @@ function Plato({ producto: p, conFoto, deshabilitado, onElegir }: {
             #{p.masPedidoPuesto} más pedido
           </p>
         ) : null}
-        <p className="truncate text-[15px] font-semibold leading-snug text-slate-900">{p.name}</p>
-        {p.description && (
-          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{p.description}</p>
+        {/* El título sin lo que trae, a dos renglones: las cartas leídas de
+            una foto meten los ingredientes en el nombre y a un renglón no se
+            leía ni el plato. Entero está en la hoja de detalle. */}
+        <p className="line-clamp-2 text-[15px] font-semibold leading-snug text-slate-900">{partido.titulo}</p>
+        {partido.detalle && (
+          <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">{partido.detalle}</p>
         )}
         <p className="mt-1 flex items-baseline gap-1.5">
           {/* «Desde» cuando hay que elegir una variante que cuesta más. La
@@ -971,6 +975,7 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
 }) {
   const [elegidas, setElegidas] = useState<string[]>([])
   const [nota, setNota] = useState('')
+  const partido = partirNombrePlato(producto.name, producto.description)
 
   function alternar(grupo: GrupoOpciones, id: string) {
     setElegidas((prev) => {
@@ -1042,9 +1047,9 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
           </button>
         </div>
         <div className="px-4">
-        <h2 className="text-lg font-bold tracking-tight text-slate-900">{producto.name}</h2>
-        {producto.description && (
-          <p className="mt-1 text-sm leading-relaxed text-slate-500">{producto.description}</p>
+        <h2 className="text-lg font-bold tracking-tight text-slate-900">{partido.titulo}</h2>
+        {partido.detalle && (
+          <p className="mt-1 text-sm leading-relaxed text-slate-500">{partido.detalle}</p>
         )}
 
         {producto.optionGroups.map((g) => (

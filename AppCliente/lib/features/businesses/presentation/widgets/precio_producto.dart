@@ -36,7 +36,7 @@ class PrecioProducto extends StatelessWidget {
       fontFamily: 'Inter',
       fontSize: grande ? 24 : 15,
       fontWeight: FontWeight.w800,
-      color: grande ? context.textPrimaryColor : AppColors.primary,
+      color: grande ? context.textPrimaryColor : context.primaryTextColor,
     );
     final importe = Text(CurrencyFormatter.format(product.price), style: estilo);
 
