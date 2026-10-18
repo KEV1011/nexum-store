@@ -483,6 +483,9 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
   @override
   void dispose() {
+    // Si muere antes de cargar (p. ej. al cambiar de cuenta), el arranque que
+    // espera `cargado` no puede quedarse colgado.
+    if (!_cargado.isCompleted) _cargado.complete();
     for (final timers in _timers.values) {
       for (final t in timers) {
         t.cancel();
