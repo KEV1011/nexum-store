@@ -35,11 +35,16 @@ Uso:
     python3 tools/procesar-ilustraciones-3d.py --puerta  ORIGEN/hamburger.png  AppCliente/assets/servicios restaurantes
     python3 tools/procesar-ilustraciones-3d.py           ORIGEN/pill.png       AppCliente/assets/mandados   drogueria
 
+Composiciones (`--combo`, ORIGEN = la carpeta `assets/` de fluentui-emoji;
+las piezas y su colocación están en COMBOS, abajo):
+    python3 tools/procesar-ilustraciones-3d.py --combo --puerta ORIGEN AppCliente/assets/servicios restaurantes
+    python3 tools/procesar-ilustraciones-3d.py --combo          ORIGEN AppCliente/assets/mandados   comida
+
 Los usados hoy:
-    restaurantes  ← Hamburger              (puerta)
+    restaurantes  ← Hamburger + French fries + Cup with straw   (combo, puerta)
+    comida        ← Takeout box + Pizza                          (combo)
     drogueria     ← Pill
     mercado       ← Shopping cart
-    comida        ← Pot of food
     pagos         ← Receipt
     documentos    ← Card index dividers
     compras       ← Shopping bags
@@ -69,8 +74,9 @@ def _centrar(im: Image.Image, margen: float, subir: float = 0.0) -> tuple[Image.
     return im, ox, oy
 
 
-def puerta(src: str) -> Image.Image:
-    im = _recortar(Image.open(src).convert('RGBA'))
+def puerta(src: str | Image.Image) -> Image.Image:
+    base = src if isinstance(src, Image.Image) else Image.open(src)
+    im = _recortar(base.convert('RGBA'))
     rgb, a = im.convert('RGB'), im.getchannel('A')
     rgb = ImageEnhance.Color(rgb).enhance(1.25)
     rgb = ImageEnhance.Contrast(rgb).enhance(1.12)
@@ -104,22 +110,76 @@ def puerta(src: str) -> Image.Image:
 
 
 def categoria(src: str) -> Image.Image:
-    im = _recortar(Image.open(src).convert('RGBA'))
+    return categoria_de(Image.open(src))
+
+
+def categoria_de(base: Image.Image) -> Image.Image:
+    im = _recortar(base.convert('RGBA'))
     im, ox, oy = _centrar(im, margen=0.06)
     out = Image.new('RGBA', (TRABAJO, TRABAJO), (0, 0, 0, 0))
     out.alpha_composite(im, (ox, oy))
     return out
 
 
+# COMPOSICIONES. Una pieza suelta (la hamburguesa, la olla) se veía «muy
+# simple» al lado del taxi, la moto y la buseta, que son escenas con varios
+# elementos. Se arman de varias piezas de Fluent, de atrás hacia adelante:
+# (carpeta de Fluent, alto, centro x, base y), en fracción del lienzo.
+COMBOS = {
+    # El combo de comida rápida: se lee «restaurante» de un vistazo.
+    'restaurantes': [
+        ('French fries', 0.58, 0.28, 0.70),
+        ('Cup with straw', 0.66, 0.73, 0.70),
+        ('Hamburger', 0.62, 0.50, 0.95),
+    ],
+    # «Te traemos comida»: pizza y caja para llevar. No pollo con papas, que
+    # se leía muy bien pero repetía las papas del combo en la misma pantalla.
+    'comida': [
+        ('Takeout box', 0.62, 0.66, 0.72),
+        ('Pizza', 0.56, 0.38, 0.95),
+    ],
+}
+
+
+def combo(nombre: str, origen: str) -> Image.Image:
+    import glob
+    out = Image.new('RGBA', (TRABAJO, TRABAJO), (0, 0, 0, 0))
+    for carpeta, alto, cx, base in COMBOS[nombre]:
+        rutas = glob.glob(os.path.join(origen, carpeta, '3D', '*.png'))
+        if not rutas:
+            sys.exit(f'Falta {carpeta}/3D en {origen}')
+        im = _recortar(Image.open(rutas[0]).convert('RGBA'))
+        h = int(TRABAJO * alto)
+        w = int(im.size[0] * h / im.size[1])
+        im = im.resize((w, h), Image.LANCZOS)
+        x, y = int(TRABAJO * cx - w / 2), int(TRABAJO * base - h)
+        # Sombra suave de cada pieza sobre la de atrás: separa los planos y
+        # evita que la composición se lea como un recorte pegado.
+        sombra = Image.new('L', (TRABAJO, TRABAJO), 0)
+        sombra.paste(im.getchannel('A'), (x + int(TRABAJO * 0.012), y + int(TRABAJO * 0.018)))
+        sombra = sombra.filter(ImageFilter.GaussianBlur(TRABAJO * 0.012)).point(lambda a: int(a * 0.35))
+        capa = Image.new('RGBA', (TRABAJO, TRABAJO), (40, 20, 10, 255))
+        capa.putalpha(sombra)
+        out.alpha_composite(capa)
+        out.alpha_composite(im, (x, y))
+    return out
+
+
 def main() -> None:
     args = sys.argv[1:]
     es_puerta = '--puerta' in args
-    args = [a for a in args if a != '--puerta']
+    es_combo = '--combo' in args
+    args = [a for a in args if a not in ('--puerta', '--combo')]
     if len(args) != 3:
         print(__doc__)
         sys.exit(2)
     src, carpeta, nombre = args
-    out = puerta(src) if es_puerta else categoria(src)
+    if es_combo:
+        # `src` es la carpeta `assets/` del repositorio de Fluent.
+        compuesta = combo(nombre, src)
+        out = puerta(compuesta) if es_puerta else categoria_de(compuesta)
+    else:
+        out = puerta(src) if es_puerta else categoria(src)
     # La puerta se pinta a 64 lógicos; la categoría, a 44.
     base = 64 if es_puerta else 48
     for sub, f in (('', 1), ('2.0x', 2), ('3.0x', 3)):
