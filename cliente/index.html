@@ -32,6 +32,11 @@
 
   <title>Nexum — Movilidad y domicilios</title>
   <link rel="manifest" href="manifest.json">
+  <!-- «Entrar con Apple» en la versión web. El paquete sign_in_with_apple
+       lo necesita cargado desde el arranque (se inicializa solo al cargar la
+       página). Sin APPLE_* configurado en el backend el botón no aparece y
+       este script no hace nada. -->
+  <script type="text/javascript" src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/es_ES/appleid.auth.js"></script>
 </head>
 <body>
   <!--
