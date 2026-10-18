@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Completer, TimeoutException, unawaited;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -87,6 +87,27 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _repository;
   final Dio _dio;
 
+  final Completer<AuthState> _restaurada = Completer<AuthState>();
+
+  /// Se completa cuando la sesión guardada terminó de leerse.
+  ///
+  /// Quien decide a dónde ir al arrancar (el splash) TIENE que esperar esto.
+  /// Leer `state` sin esperar daba `AuthLoading` —el constructor lo pone antes
+  /// del primer `await`— y el splash mandaba al login a alguien con la sesión
+  /// intacta: cada vez que el sistema mataba la app en segundo plano y la
+  /// persona volvía, le tocaba entrar otra vez con su teléfono y su código.
+  ///
+  /// Con tiempo de espera porque el almacén seguro de Android se cuelga en
+  /// algunos teléfonos; pasado ese tiempo se devuelve el estado que haya, sin
+  /// borrar nada: la sesión sigue guardada para el siguiente arranque.
+  Future<AuthState> listo({Duration espera = const Duration(seconds: 8)}) {
+    return _restaurada.future.timeout(espera, onTimeout: () => state);
+  }
+
+  void _marcarRestaurada() {
+    if (!_restaurada.isCompleted) _restaurada.complete(state);
+  }
+
   Future<void> sendOtp(String phone) async {
     state = const AuthLoading();
     final result = await _repository.sendOtp(phone);
@@ -150,18 +171,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> checkAuth() async {
     state = const AuthLoading();
-    final ok = await _repository.isAuthenticated();
-    if (!ok) {
+    try {
+      final ok = await _repository.isAuthenticated();
+      if (!ok) {
+        state = const AuthUnauthenticated();
+        return;
+      }
+      final client = await _repository.getStoredClient();
+      if (client == null) {
+        state = const AuthUnauthenticated();
+        return;
+      }
+      state = AuthAuthenticated(client: client);
+      _registerPushToken();
+    } on TimeoutException {
       state = const AuthUnauthenticated();
-      return;
+    } finally {
+      _marcarRestaurada();
     }
-    final client = await _repository.getStoredClient();
-    if (client == null) {
-      state = const AuthUnauthenticated();
-      return;
-    }
-    state = AuthAuthenticated(client: client);
-    _registerPushToken();
   }
 
   /// Registra el token FCM del dispositivo en el backend para recibir push

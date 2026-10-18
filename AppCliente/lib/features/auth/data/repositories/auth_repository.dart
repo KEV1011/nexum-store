@@ -129,9 +129,16 @@ class AuthRepository {
     await _storage.delete(key: _clientJsonKey);
   }
 
+  /// Cuánto se espera al almacén seguro antes de rendirse.
+  ///
+  /// En algunos Android el Keystore tarda o se cuelga justo al volver del
+  /// segundo plano; sin límite el arranque se quedaría en el splash.
+  static const _esperaAlmacen = Duration(seconds: 6);
+
   Future<ClientEntity?> getStoredClient() async {
     try {
-      final json = await _storage.read(key: _clientJsonKey);
+      final json =
+          await _storage.read(key: _clientJsonKey).timeout(_esperaAlmacen);
       if (json == null) return null;
       final map = jsonDecode(json) as Map<String, dynamic>;
       return ClientEntity(
@@ -170,7 +177,9 @@ class AuthRepository {
 
   Future<bool> isAuthenticated() async {
     try {
-      final token = await _storage.read(key: AppConstants.authTokenKey);
+      final token = await _storage
+          .read(key: AppConstants.authTokenKey)
+          .timeout(_esperaAlmacen);
       return token != null && token.isNotEmpty;
     } catch (_) {
       return false;

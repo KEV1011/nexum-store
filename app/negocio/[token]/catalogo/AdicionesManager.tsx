@@ -77,12 +77,20 @@ export function AdicionesManager({
   token,
   secciones,
   onAplicado,
+  onCambio,
 }: {
   token: string
   secciones: string[]
   onAplicado: () => void
+  /** La biblioteca tal como queda tras cada carga o cambio. El formulario de
+   *  «Agregar producto» la usa para ofrecer las adiciones con un toque, sin
+   *  pedirla otra vez al servidor y sin quedarse con una copia vieja. */
+  onCambio?: (grupos: Grupo[]) => void
 }) {
   const [grupos, setGrupos] = useState<Grupo[] | null>(null)
+  useEffect(() => {
+    if (grupos) onCambio?.(grupos)
+  }, [grupos, onCambio])
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [editando, setEditando] = useState<Grupo | null>(null)

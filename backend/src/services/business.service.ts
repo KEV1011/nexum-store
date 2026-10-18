@@ -1021,8 +1021,25 @@ export async function createBusinessProduct(
   // sitio no los dibuja y el plato aparecía sin nombre en la carta.
   const name = nombreDeProducto(dto.name);
   if (!(dto.price >= 0)) throw new Error('El precio debe ser un número válido.');
+
+  // Las adiciones que el dueño marcó al crear el plato. Se ADJUNTAN tal cual
+  // están en la biblioteca: no se reescriben (reescribirlas cambiaría el precio
+  // del aguacate en los otros once platos que lo usan) y van en la MISMA
+  // transacción que el producto — si el enlace fallara después, quedaría un
+  // plato a la venta sin las adiciones que el dueño creyó haberle puesto.
+  const grupos = [...new Set((dto.optionGroupIds ?? []).filter((x) => typeof x === 'string' && x))];
+  if (grupos.length > 0) {
+    const mios = await prisma.optionGroup.count({ where: { id: { in: grupos }, businessId } });
+    // Un id de otro negocio no se enlaza: sería venderle a este cliente las
+    // adiciones —y los precios— de otro local.
+    if (mios !== grupos.length) throw new Error('Una de las adiciones no es de este negocio.');
+  }
+
   const p = await prisma.product.create({
     data: {
+      ...(grupos.length > 0 && {
+        gruposOpciones: { create: grupos.map((groupId, sortOrder) => ({ groupId, sortOrder })) },
+      }),
       businessId,
       name,
       price: dto.price,
@@ -1037,6 +1054,7 @@ export async function createBusinessProduct(
       ...(dto.suggestAsAddon !== undefined && { suggestAsAddon: dto.suggestAsAddon }),
       ..._inventarioData(dto),
     },
+    include: _photoInclude,
   });
   return _productToDTO(p);
 }

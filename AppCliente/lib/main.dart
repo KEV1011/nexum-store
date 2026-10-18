@@ -2,7 +2,8 @@ import 'dart:async' show unawaited;
 
 import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show LicenseEntryWithLineBreaks, LicenseRegistry, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,6 +39,13 @@ Future<void> _arrancar() async {
   await initializeDateFormatting('es_CO');
 
   unawaited(_warmUpBackend());
+
+  // Las ilustraciones 3D (Fluent Emoji de Microsoft) son MIT: la licencia
+  // pide llevar su aviso, y aquí queda en la pantalla de licencias del sistema.
+  LicenseRegistry.addLicense(() async* {
+    final texto = await rootBundle.loadString('assets/licencias/fluent-emoji.txt');
+    yield LicenseEntryWithLineBreaks(const ['Fluent Emoji (Microsoft)'], texto);
+  });
 
   if (!kIsWeb) {
     try {

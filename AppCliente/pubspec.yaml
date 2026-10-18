@@ -90,6 +90,12 @@ flutter:
     - assets/servicios/
     - assets/servicios/2.0x/
     - assets/servicios/3.0x/
+    # Ilustraciones 3D de «¿Qué te traemos?» (Fluent Emoji, MIT).
+    - assets/mandados/
+    - assets/mandados/2.0x/
+    - assets/mandados/3.0x/
+    # Avisos de licencia de terceros que se registran en `LicenseRegistry`.
+    - assets/licencias/
 
   fonts:
     - family: Inter

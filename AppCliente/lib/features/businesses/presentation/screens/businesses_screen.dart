@@ -112,9 +112,6 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                     onFiltrarRestaurantes: () => setState(
                       () => _filtro = BusinessCategory.restaurant,
                     ),
-                    onFiltrarTiendas: () => setState(
-                      () => _filtro = BusinessCategory.store,
-                    ),
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 22)),
@@ -375,19 +372,15 @@ class _Buscador extends StatelessWidget {
 // ── 3. Qué quieres hacer ─────────────────────────────────────────────────────
 
 class _RejillaServicios extends ConsumerWidget {
-  const _RejillaServicios({
-    required this.onFiltrarRestaurantes,
-    required this.onFiltrarTiendas,
-  });
+  const _RejillaServicios({required this.onFiltrarRestaurantes});
 
   final VoidCallback onFiltrarRestaurantes;
-  final VoidCallback onFiltrarTiendas;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Rejilla de dos columnas con las CINCO puertas. Antes había dos, y
-    // Envíos e Intermunicipal vivían bajo el pliegue o en ninguna parte —
-    // que es la razón por la que «no daba opción de reservar intermunicipal».
+    // Rejilla de dos por dos. Antes había dos puertas, y Envíos e
+    // Intermunicipal vivían bajo el pliegue o en ninguna parte — que es la
+    // razón por la que «no daba opción de reservar intermunicipal».
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -435,43 +428,37 @@ class _RejillaServicios extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 12),
+              // TIENDAS RETIRADA mientras se rehace la parte de ropa, tecnología
+              // y hogar (decisión del dueño). Los comercios de esa categoría
+              // siguen en la lista y en su píldora: lo que se quita es la
+              // puerta, no los negocios. Para volver a ponerla, su ilustración
+              // y su tinte siguen en `assets/servicios/tiendas.png` y
+              // `ZipaTokens.tiendas`.
               Expanded(
                 child: TarjetaServicio(
-                  icono: ZipaIconName.tiendas,
-                  ilustracion: 'assets/servicios/tiendas.png',
-                  tinte: ZipaTokens.tiendas,
-                  titulo: 'Tiendas',
-                  subtitulo: 'Ropa, tecnología, hogar',
-                  onTap: onFiltrarTiendas,
+                  proximamente: true,
+                  icono: ZipaIconName.intermunicipal,
+                  ilustracion: 'assets/categorias/bus.png',
+                  tinte: ZipaTokens.intermunicipal,
+                  titulo: 'Intermunicipal',
+                  subtitulo: 'Pronto: entre ciudades',
+                  // APLAZADO. La puerta se queda y EXPLICA por qué no se puede
+                  // todavía, en vez de llevar a un formulario que nadie
+                  // atiende: el intermunicipal exige empresas de transporte
+                  // habilitadas y verificadas. Para rehabilitarlo basta quitar
+                  // `proximamente` y devolver el `push` a
+                  // `AppRoutes.intercityBooking`.
+                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'El servicio intermunicipal abre pronto: estamos '
+                        'habilitando las empresas de transporte de la región.',
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          // Ancha porque son CINCO puertas: la quinta al lado de un hueco se
-          // lee como que falta una. Y le toca a Intermunicipal porque es la
-          // que nadie espera encontrar en una app de domicilios.
-          TarjetaServicio(
-            ancha: true,
-            proximamente: true,
-            icono: ZipaIconName.intermunicipal,
-            ilustracion: 'assets/categorias/bus.png',
-            tinte: ZipaTokens.intermunicipal,
-            titulo: 'Intermunicipal',
-            subtitulo: 'Pronto: viaja o envía entre ciudades',
-            // APLAZADO. La puerta se queda y EXPLICA por qué no se puede
-            // todavía, en vez de llevar a un formulario que nadie atiende: el
-            // intermunicipal exige empresas de transporte habilitadas y
-            // verificadas. Para rehabilitarlo basta quitar `proximamente` y
-            // devolver el `push` a `AppRoutes.intercityBooking`.
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'El servicio intermunicipal abre pronto: estamos habilitando '
-                  'las empresas de transporte de la región.',
-                ),
-              ),
-            ),
           ),
         ],
       ),
