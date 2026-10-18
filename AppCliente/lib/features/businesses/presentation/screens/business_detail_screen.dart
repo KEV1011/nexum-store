@@ -241,6 +241,11 @@ class _DetailViewState extends ConsumerState<_DetailView> {
         controller: _scroll,
         slivers: [
           _BusinessAppBar(business: business),
+          // Nota, tiempo y envío DEBAJO de la cabecera, no encima de ella.
+          // Iban en una píldora pegada al borde inferior de la foto, justo
+          // donde se pinta el nombre del local: la píldora tapaba el nombre
+          // («BETO» asomaba por debajo) y ocupaba todo el ancho.
+          SliverToBoxAdapter(child: _InfoRow(business: business)),
           if (!business.isOpen || business.openingHours != null)
             SliverToBoxAdapter(
               child: _StatusBanner(business: business),
@@ -524,26 +529,6 @@ class _BusinessAppBar extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Info (rating/eta/envío) en píldora clara para que se lea.
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: AppConstants.spacingXL,
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: context.surfaceColor,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: _InfoRow(business: business),
-                      ),
-                    ),
-                  ),
                 ],
               )
             // Sin foto, la cabecera es del TEMA y no un tinte claro fijo: en
@@ -561,8 +546,6 @@ class _BusinessAppBar extends StatelessWidget {
                       size: 64,
                       color: business.category.color,
                     ),
-                    const SizedBox(height: AppConstants.spacingS),
-                    _InfoRow(business: business),
                     const SizedBox(height: AppConstants.spacingXL),
                   ],
                 ),
@@ -636,61 +619,80 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Sin votos no hay estrella ni número: «Nuevo». La nota de fábrica que
-        // enseñaba un 5,0 a todo el mundo se retiró a propósito.
-        if (business.rating == null)
+    // Sin votos no hay estrella ni número: «Nuevo». La nota de fábrica que
+    // enseñaba un 5,0 a todo el mundo se retiró a propósito.
+    final nota = business.rating == null
+        ? 'Nuevo'
+        : business.ratingCount > 0
+            ? '${business.rating!.toStringAsFixed(1)} (${business.ratingCount})'
+            : business.rating!.toStringAsFixed(1);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.spacingM, AppConstants.spacingM, AppConstants.spacingM, 0,
+      ),
+      // `Wrap` y no `Row`: con una nota larga o letra grande del sistema las
+      // pastillas bajan de renglón en vez de montarse unas sobre otras.
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _Pastilla(
+            icono: Icons.star_rounded,
+            colorIcono: business.rating == null
+                ? context.textSecondaryColor
+                : AppColors.star,
+            texto: nota,
+          ),
+          _Pastilla(
+            icono: Icons.schedule_rounded,
+            texto: '${business.etaMinutes} min',
+          ),
+          _Pastilla(
+            icono: Icons.delivery_dining_rounded,
+            texto: business.deliveryFee == 0
+                ? 'Envío gratis'
+                : 'Envío ${CurrencyFormatter.format(business.deliveryFee)}',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Pastilla extends StatelessWidget {
+  const _Pastilla({required this.icono, required this.texto, this.colorIcono});
+
+  final IconData icono;
+  final String texto;
+  final Color? colorIcono;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: context.cardColor2,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: context.outlineColor),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 16, color: colorIcono ?? context.textSecondaryColor),
+          const SizedBox(width: 6),
           Text(
-            'Nuevo',
+            texto,
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: context.textSecondaryColor,
-            ),
-          )
-        else ...[
-          const Icon(Icons.star_rounded, color: AppColors.star, size: 16),
-          const SizedBox(width: 2),
-          Text(
-            business.ratingCount > 0
-                ? '${business.rating!.toStringAsFixed(1)} (${business.ratingCount})'
-                : business.rating!.toStringAsFixed(1),
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
               color: context.textPrimaryColor,
             ),
           ),
         ],
-        _dot(context),
-        Text(
-          '${business.etaMinutes} min',
-          style: _metaStyle(context),
-        ),
-        _dot(context),
-        Text(
-          'Envío ${CurrencyFormatter.format(business.deliveryFee)}',
-          style: _metaStyle(context),
-        ),
-      ],
+      ),
     );
   }
-
-  TextStyle _metaStyle(BuildContext context) => TextStyle(
-        fontFamily: 'Inter',
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: context.textPrimaryColor,
-      );
-
-  Widget _dot(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: Text('•', style: TextStyle(color: context.textSecondaryColor)),
-      );
 }
 
 class _SectionHeader extends StatelessWidget {
