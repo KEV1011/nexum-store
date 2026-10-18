@@ -10,6 +10,7 @@ import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/core/widgets/loading_overlay.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
+import 'package:nexum_client/features/auth/presentation/widgets/acceso_social.dart';
 
 /// Pantalla de ingreso del número de celular del cliente.
 ///
@@ -64,6 +65,14 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
     if (!mounted) return;
     if (current is AuthOtpSent) {
       context.push(AppRoutes.otp, extra: current.phone);
+    } else if (current is AuthAuthenticated &&
+        (ModalRoute.of(context)?.isCurrent ?? true)) {
+      // Entró con Google o Apple. Solo si esta pantalla está ARRIBA: tras el
+      // código quien navega es /otp, y navegar desde las dos sería un doble
+      // salto. Mismo destino: si falta el nombre, el último paso del registro.
+      context.go(
+        current.client.needsName ? AppRoutes.nombre : AppRoutes.home,
+      );
     } else if (current is AuthError) {
       AppSnackbar.showError(context, current.failure.message);
     }
@@ -278,6 +287,15 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
                               color: context.textTertiaryColor,
                               height: 1.35,
                             ),
+                          ),
+                        ),
+
+                        // Google / Apple: solo si el servidor los anuncia.
+                        BotonesAccesoSocial(
+                          terminosAceptados: _acceptedTerms,
+                          onFaltanTerminos: () => AppSnackbar.showInfo(
+                            context,
+                            'Marca la casilla de Términos y Privacidad para continuar.',
                           ),
                         ),
 

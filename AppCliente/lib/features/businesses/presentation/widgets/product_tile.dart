@@ -3,6 +3,7 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/nombre_plato.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/precio_producto.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
@@ -25,6 +26,7 @@ class ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final nombre = partirNombrePlato(product.name, product.description);
 
     // TODA la fila abre el producto, no solo el botón.
     //
@@ -68,14 +70,12 @@ class ProductTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // DOS LÍNEAS COMO MUCHO. Las cartas cargadas desde una
-                    // foto traen el nombre con todos los ingredientes entre
-                    // paréntesis («Choricarne (papa, carne, chorizo…)»): sin
-                    // tope ocupaba cinco renglones, empujaba el precio fuera
-                    // de la vista y todas las filas se veían iguales. Lo que
-                    // se corta está entero a un toque, en el detalle.
+                    // El TÍTULO del plato, sin lo que trae: las cartas
+                    // leídas de una foto meten los ingredientes en el nombre
+                    // y a dos renglones no se leía ni lo uno ni lo otro. Lo
+                    // que trae va debajo y, entero, en la hoja del producto.
                     Text(
-                      product.name,
+                      nombre.titulo,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -88,10 +88,10 @@ class ProductTile extends StatelessWidget {
                       const SizedBox(height: 4),
                       InsigniaMasPedido(puesto: product.masPedidoPuesto!),
                     ],
-                    if (product.description.trim().isNotEmpty) ...[
+                    if (nombre.detalle.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text(
-                        product.description,
+                        nombre.detalle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -236,9 +236,13 @@ class _QuantityControl extends StatelessWidget {
         height: 36,
         child: OutlinedButton(
           onPressed: onAdd,
+          // La letra en el verde LEGIBLE del tema: el de marca sobre blanco
+          // da 2,24:1, la mitad de lo que pide la norma.
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(64, 36),
             padding: const EdgeInsets.symmetric(horizontal: 12),
+            foregroundColor: context.primaryTextColor,
+            side: BorderSide(color: context.primaryTextColor),
           ),
           child: const Text('Agregar'),
         ),

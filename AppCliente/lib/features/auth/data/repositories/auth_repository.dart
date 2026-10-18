@@ -82,7 +82,8 @@ class AuthRepository {
     final c = data['client'] as Map<String, dynamic>;
     final client = ClientEntity(
       id: c['id'] as String,
-      phone: c['phone'] as String,
+      // Vacío en cuentas abiertas con Google o Apple: nacen sin teléfono.
+      phone: c['phone'] as String? ?? '',
       name: c['name'] as String? ?? 'Pasajero',
       needsName: c['needsName'] == true,
     );
@@ -124,6 +125,36 @@ class AuthRepository {
     }
   }
 
+  /// Entra con el token de Google o Apple. La sesión es la MISMA que la del
+  /// código: se guarda con [_persistirSesion].
+  Future<({ClientEntity? client, Failure? failure})> entrarConProveedor(
+    String proveedor,
+    Map<String, dynamic> cuerpo,
+  ) async {
+    try {
+      final data = await _dataSource.entrarConProveedor(proveedor, cuerpo);
+      return (client: await _persistirSesion(data), failure: null);
+    } on NetworkException catch (e) {
+      return (client: null, failure: NetworkFailure(message: e.message));
+    } on StorageException catch (e) {
+      return (client: null, failure: StorageFailure(message: e.message));
+    } on AppException catch (e) {
+      return (client: null, failure: UnexpectedFailure(message: e.message));
+    } catch (e) {
+      return (client: null, failure: UnexpectedFailure(message: e.toString()));
+    }
+  }
+
+  /// Qué botones de acceso existen. Sin red, ninguno: la pantalla sigue con
+  /// el teléfono, que es lo que había.
+  Future<Map<String, dynamic>> proveedoresAcceso() async {
+    try {
+      return await _dataSource.proveedoresAcceso();
+    } catch (_) {
+      return const {};
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: AppConstants.authTokenKey);
     await _storage.delete(key: _clientJsonKey);
@@ -143,7 +174,7 @@ class AuthRepository {
       final map = jsonDecode(json) as Map<String, dynamic>;
       return ClientEntity(
         id: map['id'] as String,
-        phone: map['phone'] as String,
+        phone: map['phone'] as String? ?? '',
         name: map['name'] as String? ?? 'Pasajero',
         needsName: map['needsName'] == true,
       );

@@ -1,9 +1,17 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { clientAuthMiddleware } from '../middleware/client-auth.middleware';
 import { clientRequestRateLimit } from '../middleware/client-rate-limit.middleware';
 import { legalConsentEnforced, recordConsent, hasCurrentConsent } from '../services/legal.service';
 import { OtpRateLimitError } from '../services/otp.service';
 import { canjearEnlaceMagico, EnlaceMagicoError } from '../services/enlace-magico.service';
+import {
+  AccesoError,
+  configAcceso,
+  entrarConProveedor,
+  proveedoresDe,
+  vincularProveedor,
+  type Proveedor,
+} from '../services/acceso-social.service';
 import {
   sendClientOtp,
   verifyClientOtp,
@@ -191,6 +199,115 @@ router.post('/auth/verify-otp', async (req, res) => {
  * Va bajo `/client/auth`, así que hereda el `authLimiter` que index.ts monta
  * sobre ese prefijo: probar códigos a lo bruto se corta ahí.
  */
+// ── Entrar con Google o Apple ────────────────────────────────────────────────
+// Ver acceso-social.service: se entra por el `sub` firmado por el proveedor,
+// nunca por el correo. Todo bajo `/client/auth`, así que hereda el
+// `authLimiter` de index.ts.
+
+/** Qué botones mostrar. Sin configuración, ninguno: la app no los pinta. */
+router.get('/auth/providers', (_req, res) => {
+  const c = configAcceso();
+  res.json({
+    success: true,
+    data: {
+      google: c.google ? { clientId: c.google.clientId } : null,
+      apple: c.apple ? { web: c.apple.web } : null,
+    },
+  });
+});
+
+async function _responderAcceso(
+  req: express.Request,
+  res: express.Response,
+  proveedor: Proveedor,
+  token: unknown,
+  nombre: string | null,
+): Promise<void> {
+  try {
+    const result = await entrarConProveedor(proveedor, String(token ?? ''), nombre);
+    const acepto = (req.body as { acceptedTerms?: unknown }).acceptedTerms === true;
+    // Mismo clickwrap que el login por código: entrar también CREA la cuenta.
+    if (legalConsentEnforced() && !acepto && !(await hasCurrentConsent('user', result.client.id))) {
+      res.status(403).json({
+        success: false,
+        error: 'Debes aceptar los Términos y Condiciones y la Política de Privacidad para continuar.',
+        code: 'legal_consent_required',
+      });
+      return;
+    }
+    if (acepto) void recordConsent('user', result.client.id, req.ip).catch(() => undefined);
+    res.json({ success: true, data: { token: result.token, client: result.client } });
+  } catch (err) {
+    const status = err instanceof AccesoError ? err.status : 500;
+    if (status === 500) console.error('[AccesoSocial]', err);
+    res.status(status).json({
+      success: false,
+      error: err instanceof AccesoError ? err.message : 'No pudimos iniciar sesión. Intenta de nuevo.',
+    });
+  }
+}
+
+router.post('/auth/google', async (req, res) => {
+  const { idToken } = req.body as { idToken?: unknown };
+  await _responderAcceso(req, res, 'google', idToken, null);
+});
+
+router.post('/auth/apple', async (req, res) => {
+  const { identityToken, givenName, familyName } = req.body as {
+    identityToken?: unknown; givenName?: unknown; familyName?: unknown;
+  };
+  // Apple da el nombre SOLO la primera vez y fuera del token; se usa
+  // únicamente al crear la cuenta.
+  const nombre = [givenName, familyName]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .join(' ');
+  await _responderAcceso(req, res, 'apple', identityToken, nombre || null);
+});
+
+/**
+ * La vuelta de Apple en ANDROID. Allí no hay Apple nativo: la app abre la
+ * página de Apple en una pestaña, Apple publica (form_post) el resultado AQUÍ,
+ * y esto lo devuelve a la app con el esquema `signinwithapple://`, que el
+ * paquete `sign_in_with_apple` escucha. No abre sesión ni toca la base: solo
+ * reenvía. Quien verifica el token es `POST /auth/apple`.
+ */
+router.post('/auth/apple/callback', express.urlencoded({ extended: false, limit: '20kb' }), (req, res) => {
+  const cuerpo = req.body as Record<string, unknown>;
+  const params = new URLSearchParams();
+  for (const k of ['code', 'id_token', 'state', 'user', 'error']) {
+    const v = cuerpo[k];
+    if (typeof v === 'string') params.set(k, v);
+  }
+  const paquete = (process.env['APP_ANDROID_PACKAGE'] ?? 'com.zipa.cliente').trim();
+  res.redirect(303, `intent://callback?${params.toString()}#Intent;package=${paquete};scheme=signinwithapple;end`);
+});
+
+/** Con qué se puede entrar a ESTA cuenta (para la pantalla de Cuenta). */
+router.get('/auth/linked', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await proveedoresDe(req.clientId!) });
+});
+
+/** Vincular Google/Apple a la cuenta en la que ya se está. */
+router.post('/auth/link/:proveedor', clientAuthMiddleware, async (req, res) => {
+  const p = req.params['proveedor'];
+  if (p !== 'google' && p !== 'apple') {
+    res.status(404).json({ success: false, error: 'Proveedor desconocido' });
+    return;
+  }
+  const b = req.body as { idToken?: unknown; identityToken?: unknown };
+  try {
+    await vincularProveedor(req.clientId!, p, String((p === 'google' ? b.idToken : b.identityToken) ?? ''));
+    res.json({ success: true, data: await proveedoresDe(req.clientId!) });
+  } catch (err) {
+    const status = err instanceof AccesoError ? err.status : 500;
+    if (status === 500) console.error('[AccesoSocial] vincular', err);
+    res.status(status).json({
+      success: false,
+      error: err instanceof AccesoError ? err.message : 'No se pudo vincular. Intenta de nuevo.',
+    });
+  }
+});
+
 router.post('/auth/magic-link', async (req, res) => {
   const { code } = req.body as { code?: string };
   if (!code) {
@@ -482,7 +599,8 @@ router.get('/businesses/:id/envio', async (req, res) => {
 
 router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req, res) => {
   const clientId = req.clientId!;
-  const clientPhone = req.clientPhone!;
+  // Puede faltar: las cuentas de Google/Apple nacen sin teléfono.
+  const clientPhone = req.clientPhone ?? '';
   const dto = req.body as {
     businessId?: string;
     deliveryAddress?: string;
@@ -1142,9 +1260,9 @@ router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) =
   }
   const dto = req.body as Partial<BookSeatsDTO>;
   if (dto.seatsBooked === undefined) { res.status(400).json({ success: false, error: 'seatsBooked is required' }); return; }
-  const passengerName = (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero ZIPA';
+  const passengerName = (await getClientById(req.clientId!))?.name ?? 'Pasajero ZIPA';
   try {
-    const result = await bookSeats(req.clientId!, passengerName, req.clientPhone!, req.params['id']!, {
+    const result = await bookSeats(req.clientId!, passengerName, req.clientPhone ?? '', req.params['id']!, {
       seatsBooked: dto.seatsBooked, pickupAddress: dto.pickupAddress, notes: dto.notes,
       ...(dto.seats ? { seats: dto.seats } : {}),
       ...(dto.boardingPointId ? { boardingPointId: dto.boardingPointId } : {}),
@@ -1228,9 +1346,9 @@ router.post('/rides/request', clientAuthMiddleware, async (req, res) => {
     if (dto[f] === undefined) { res.status(400).json({ success: false, error: `${f} is required` }); return; }
   }
   const client = await getClientById(req.clientId!);
-  const clientName = client?.name ?? (await getClientNameByPhone(req.clientPhone!)) ?? 'Pasajero';
+  const clientName = client?.name ?? (req.clientPhone ? await getClientNameByPhone(req.clientPhone) : null) ?? 'Pasajero';
   try {
-    const ride = await createRideRequest(req.clientId!, clientName, req.clientPhone!, {
+    const ride = await createRideRequest(req.clientId!, clientName, req.clientPhone ?? '', {
       serviceType: dto['serviceType'] as never,
       originAddress: String(dto['originAddress']),
       destinationAddress: String(dto['destinationAddress']),

@@ -151,6 +151,24 @@ class AuthNotifier extends StateNotifier<AuthState> {
     return (motivo: null, origen: result.origen);
   }
 
+  /// Entra con Google o Apple. Devuelve el motivo si falla (null si entró):
+  /// la pantalla lo muestra tal cual, porque «esa cuenta fue eliminada» y
+  /// «no está disponible todavía» se arreglan distinto.
+  Future<String?> entrarConProveedor(
+    String proveedor,
+    Map<String, dynamic> cuerpo,
+  ) async {
+    state = const AuthLoading();
+    final result = await _repository.entrarConProveedor(proveedor, cuerpo);
+    if (result.failure != null) {
+      state = const AuthUnauthenticated();
+      return result.failure!.message;
+    }
+    state = AuthAuthenticated(client: result.client!);
+    _registerPushToken();
+    return null;
+  }
+
   /// Refleja en la sesión el nombre que el pasajero acaba de poner.
   ///
   /// Lo guarda el perfil (`PUT /client/profile`); esto solo actualiza la copia

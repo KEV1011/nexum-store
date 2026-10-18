@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  agruparVale, idDeSeccion, precioDesde, seccionConFotos,
+  agruparVale, idDeSeccion, partirNombrePlato, precioDesde, seccionConFotos,
 } from '../../../app/carta/reglas';
 
 describe('el ancla de una sección', () => {
@@ -141,5 +141,18 @@ describe('la app del cliente decide igual', () => {
     expect(cuerpo).toMatch(/\.required\b/);
     expect(cuerpo).toMatch(/priceDelta\s*>\s*0/);
     expect(cuerpo).not.toMatch(/priceDelta\s*>=\s*0/);
+  });
+});
+
+describe('el nombre del plato, separado de lo que trae', () => {
+  // La MISMA tabla la prueba la app (`nombre_plato_test.dart`): si una de
+  // las dos reglas cambia sola, el QR y la app partirían distinto el mismo
+  // plato.
+  const casos = JSON.parse(
+    readFileSync(join(__dirname, '../../../app/carta/nombre-plato-casos.json'), 'utf8'),
+  ) as { nombre: string; descripcion: string; titulo: string; detalle: string }[];
+
+  it.each(casos)('$nombre', (c) => {
+    expect(partirNombrePlato(c.nombre, c.descripcion)).toEqual({ titulo: c.titulo, detalle: c.detalle });
   });
 });

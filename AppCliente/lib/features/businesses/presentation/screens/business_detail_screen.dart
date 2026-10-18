@@ -459,13 +459,27 @@ class _BusinessAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final conFoto = business.imageUrl != null && business.imageUrl!.isNotEmpty;
+    // Sin portada la cabecera se ENCOGE: 180 px de tinte liso con un cubierto
+    // genérico no informan de nada y empujan la carta fuera de la pantalla.
+    // Con foto sí valen, porque la foto es la que vende.
+    final alto = conFoto ? 180.0 : 128.0;
     return SliverAppBar(
       pinned: true,
-      // Sin portada la cabecera se ENCOGE: 180 px de tinte liso con un
-      // cubierto genérico no informan de nada y empujan la carta fuera de la
-      // pantalla. Con foto sí valen, porque la foto es la que vende.
-      expandedHeight: conFoto ? 180 : 128,
-      flexibleSpace: FlexibleSpaceBar(
+      expandedHeight: alto,
+      flexibleSpace: LayoutBuilder(builder: (ctx, c) {
+        // EL TÍTULO CAMBIA DE COLOR AL PLEGARSE. Sobre la foto va blanco
+        // (lleva scrim), pero al plegar la cabecera la foto se desvanece y
+        // queda la barra clara del tema: el nombre del local salía blanco
+        // sobre gris claro, invisible («Mon Delice», «Mi cafetal»). Se pasa
+        // del blanco al color del texto del tema según cuánto queda abierta.
+        final arriba = MediaQuery.paddingOf(ctx).top;
+        final minimo = kToolbarHeight + arriba;
+        final abierta = ((c.maxHeight - minimo) / (alto + arriba - minimo))
+            .clamp(0.0, 1.0);
+        final colorTitulo = conFoto
+            ? Color.lerp(context.textPrimaryColor, Colors.white, abierta)!
+            : context.textPrimaryColor;
+        return FlexibleSpaceBar(
         title: Text(
           business.name,
           style: TextStyle(
@@ -482,7 +496,7 @@ class _BusinessAppBar extends StatelessWidget {
             // de atrás y la fila de info igual de tenues. Es la co-ocurrencia
             // que la regla de contraste prohíbe, y fijar SOLO el color del
             // título no bastaba — la flecha la pinta el `AppBarTheme`.
-            color: conFoto ? Colors.white : context.textPrimaryColor,
+            color: colorTitulo,
           ),
         ),
         titlePadding: const EdgeInsets.symmetric(
@@ -553,7 +567,8 @@ class _BusinessAppBar extends StatelessWidget {
                   ],
                 ),
               ),
-      ),
+        );
+      }),
     );
   }
 }

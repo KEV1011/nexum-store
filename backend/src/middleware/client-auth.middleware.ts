@@ -23,7 +23,7 @@ export async function clientAuthMiddleware(
   }
 
   let clientId: string;
-  let phone: string;
+  let phone: string | null;
   try {
     const payload = verifyClientToken(authHeader.slice(7));
     clientId = payload.clientId;
@@ -42,6 +42,7 @@ export async function clientAuthMiddleware(
   }
 
   req.clientId = clientId;
-  req.clientPhone = phone;
+  // Las cuentas de Google/Apple no tienen teléfono: queda sin definir.
+  req.clientPhone = phone ?? undefined;
   next();
 }

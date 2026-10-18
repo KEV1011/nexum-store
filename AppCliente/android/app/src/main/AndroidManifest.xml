@@ -67,6 +67,23 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Vuelta de «Entrar con Apple» en Android. Aquí no hay Apple nativo:
+             la app abre la página de Apple en una pestaña, Apple publica el
+             resultado en el backend (POST /client/auth/apple/callback) y el
+             backend redirige a signinwithapple://callback, que esta actividad
+             (del paquete sign_in_with_apple) recibe y devuelve a la app.
+             La clase vive en el plugin, por eso va con el nombre completo. -->
+        <activity
+            android:name="com.aboutyou.dart_packages.sign_in_with_apple.SignInWithAppleCallback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="signinwithapple" />
+                <data android:path="callback" />
+            </intent-filter>
+        </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

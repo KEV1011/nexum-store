@@ -36,6 +36,10 @@ extension AdaptiveColors on BuildContext {
 
   Color get appDividerColor =>
       isDarkTheme ? AppColors.dividerDark : AppColors.divider;
+
+  /// El verde de marca como LETRA: legible sobre el fondo del tema.
+  Color get primaryTextColor =>
+      isDarkTheme ? AppColors.primary : AppColors.primaryTexto;
 }
 
 /// Misma resolución adaptativa pero desde un [ThemeData] — para helpers que

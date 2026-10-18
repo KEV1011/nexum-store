@@ -188,7 +188,13 @@ void main() {
           ),
         ),
       );
-      expect(tester.widget<Text>(find.text(largo)).maxLines, 2);
+      // Los ingredientes salen del título y van debajo: el título cabe, y
+      // lo que trae el plato se lee (entero en la hoja del producto).
+      expect(tester.widget<Text>(find.text('Choricarne')).maxLines, 2);
+      expect(
+        find.text('Papa, carne a la plancha, chorizo, queso, lechuga, maíz y salsas'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull, reason: 'sin desbordes');
     });
 

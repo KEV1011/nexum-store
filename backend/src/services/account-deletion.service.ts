@@ -124,6 +124,12 @@ export async function borrarCuentaCliente(userId: string): Promise<ResumenBorrad
         trustedContactName: null,
         trustedContactPhone: null,
         referralCode: null,
+        // Se sueltan las identidades de Google y Apple: son datos personales
+        // (identifican a la persona en otro servicio) y, si se quedaran, quien
+        // borró su cuenta no podría volver a abrir una con el mismo botón —
+        // chocaría con esta fila lápida para siempre.
+        googleSub: null,
+        appleSub: null,
         isActive: false,
         deletedAt: ahora,
       },

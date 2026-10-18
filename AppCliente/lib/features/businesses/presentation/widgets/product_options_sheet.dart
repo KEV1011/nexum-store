@@ -10,6 +10,7 @@ import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'precio_producto.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/nombre_plato.dart';
 import 'package:nexum_client/features/moderacion/presentation/reportar_sheet.dart';
 import 'package:nexum_client/app/theme/contraste.dart';
 import 'package:nexum_client/shared/widgets/foto_encuadrada.dart';
@@ -70,6 +71,9 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
   final Map<String, Set<String>> _selected = {};
   final _nota = TextEditingController();
   int _cantidad = 1;
+
+  NombrePlato get _nombre =>
+      partirNombrePlato(widget.product.name, widget.product.description);
 
   @override
   void dispose() {
@@ -172,16 +176,12 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
               children: [
                 Expanded(
                   child: Text(
-                    widget.product.name,
-                    // Tope de tres renglones. Lo normal es que el nombre
-                    // quepa en uno —los ingredientes van en `description`,
-                    // que se pinta debajo—, pero un dueño puede teclear a
-                    // mano un nombre larguísimo y sin tope la cabecera se
-                    // come media hoja antes de que se vea el precio. Con
-                    // elipsis, porque el nombre completo está en la lista de
-                    // la que se viene.
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                    // SIN TOPE de renglones. Antes se cortaba a tres con el
+                    // argumento de que «el nombre completo está en la lista»,
+                    // y la lista lo cortaba a dos: el nombre entero no se
+                    // veía en NINGUNA parte. Ahora el título va sin lo que
+                    // trae (eso se pinta debajo, con «Ver más»), así que cabe.
+                    _nombre.titulo,
                     style: const TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 18,
@@ -264,9 +264,9 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
                   alignment: Alignment.centerLeft,
                   child: PrecioProducto(product: widget.product, grande: true),
                 ),
-                if (widget.product.description.trim().isNotEmpty) ...[
+                if (_nombre.detalle.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  _Descripcion(texto: widget.product.description.trim()),
+                  _Descripcion(texto: _nombre.detalle),
                 ],
                 const SizedBox(height: 4),
                 for (final g in widget.product.optionGroups)

@@ -63,6 +63,7 @@ import tripsRouter from './routes/trips.routes';
 import earningsRouter from './routes/earnings.routes';
 import businessRouter from './routes/business.routes';
 import clientRouter from './routes/client.routes';
+import { modoAccesoSocial } from './services/acceso-social.service';
 import webhooksRouter from './routes/webhooks.routes';
 import paymentRouter from './routes/payment.routes';
 import safetyRouter from './routes/safety.routes';
@@ -217,6 +218,8 @@ app.get('/health', async (_req, res) => {
     // contrata aparte del OCR de documentos: se publica por separado para que
     // no se crea que activar una activa la otra.
     cartaFoto: modoCartaOcr(),
+    // Qué botones de acceso existen: «google+apple», «google» o «apagado».
+    accesoSocial: modoAccesoSocial(),
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),
     // Clickwrap legal: 'activo' = el registro exige aceptar términos.
     legalConsent: legalConsentEnforced() ? 'activo' : 'apagado',
