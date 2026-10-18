@@ -528,6 +528,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
 
   @override
   void dispose() {
+    // Si muere antes de cargar (p. ej. al cambiar de cuenta), quien espera
+    // `cargado` —el arranque— no puede quedarse colgado.
+    _avisarCargado();
     for (final timers in _timers.values) {
       for (final t in timers) t.cancel();
     }

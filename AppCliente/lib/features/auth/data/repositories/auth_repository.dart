@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/errors/exceptions.dart';
 import 'package:nexum_client/core/errors/failures.dart';
 import 'package:nexum_client/features/auth/data/datasources/auth_datasource.dart';
+import 'package:nexum_client/features/auth/data/datos_de_cuenta.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
 import 'package:nexum_client/shared/providers/origen_sugerido_provider.dart';
 
@@ -13,10 +15,34 @@ class AuthRepository {
   AuthRepository({
     required this._dataSource,
     required FlutterSecureStorage secureStorage,
-  })  : _storage = secureStorage;
+    void Function()? alCambiarDeCuenta,
+  })  : _storage = secureStorage,
+        _alCambiarDeCuenta = alCambiarDeCuenta;
 
   final AuthDataSource _dataSource;
   final FlutterSecureStorage _storage;
+
+  /// Se llama cuando lo guardado era de OTRA cuenta (o al cerrar sesión):
+  /// borrar el disco no basta, lo que ya está cargado en memoria también es
+  /// de la otra persona y hay que soltarlo. Ver `datos_de_cuenta.dart`.
+  final void Function()? _alCambiarDeCuenta;
+
+  /// Deja los datos guardados en el teléfono listos para [cuentaId]. Nunca
+  /// lanza: si SharedPreferences falla, entrar es más importante.
+  Future<void> _asegurarDuenoDeDatos(
+    String cuentaId, {
+    required bool esRestauracion,
+  }) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final borro = await prepararDatosDeCuenta(
+        p,
+        cuentaId,
+        esRestauracion: esRestauracion,
+      );
+      if (borro) _alCambiarDeCuenta?.call();
+    } catch (_) {}
+  }
 
   static const _clientJsonKey = 'client_profile_json';
 
@@ -100,6 +126,9 @@ class AuthRepository {
         'needsName': client.needsName,
       }),
     );
+    // ANTES de que la app enseñe nada: si lo guardado es de otra cuenta, se
+    // borra aquí.
+    await _asegurarDuenoDeDatos(client.id, esRestauracion: false);
     return client;
   }
 
@@ -158,6 +187,12 @@ class AuthRepository {
   Future<void> logout() async {
     await _storage.delete(key: AppConstants.authTokenKey);
     await _storage.delete(key: _clientJsonKey);
+    // Cerrar sesión borraba solo el token: el siguiente que entrara en este
+    // teléfono o navegador veía los envíos, pedidos y direcciones del anterior.
+    try {
+      await borrarDatosDeCuenta(await SharedPreferences.getInstance());
+    } catch (_) {}
+    _alCambiarDeCuenta?.call();
   }
 
   /// Cuánto se espera al almacén seguro antes de rendirse.
@@ -172,12 +207,14 @@ class AuthRepository {
           await _storage.read(key: _clientJsonKey).timeout(_esperaAlmacen);
       if (json == null) return null;
       final map = jsonDecode(json) as Map<String, dynamic>;
-      return ClientEntity(
+      final client = ClientEntity(
         id: map['id'] as String,
         phone: map['phone'] as String? ?? '',
         name: map['name'] as String? ?? 'Pasajero',
         needsName: map['needsName'] == true,
       );
+      await _asegurarDuenoDeDatos(client.id, esRestauracion: true);
+      return client;
     } catch (_) {
       return null;
     }

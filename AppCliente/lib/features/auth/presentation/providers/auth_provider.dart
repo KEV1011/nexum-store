@@ -13,6 +13,7 @@ import 'package:nexum_client/features/auth/data/datasources/'
     'auth_real_datasource.dart';
 import 'package:nexum_client/features/auth/data/repositories/auth_repository.dart';
 import 'package:nexum_client/features/auth/domain/entities/client_entity.dart';
+import 'package:nexum_client/features/auth/presentation/providers/soltar_datos_de_cuenta.dart';
 import 'package:nexum_client/shared/providers/origen_sugerido_provider.dart';
 
 // ── Estado sellado ───────────────────────────────────────────────────────────
@@ -70,6 +71,8 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepository(
     dataSource: dataSource,
     secureStorage: ref.watch(_secureStorageProvider),
+    // Lo cargado en memoria también era de la cuenta anterior.
+    alCambiarDeCuenta: () => soltarDatosDeCuenta(ref),
   );
 });
 
