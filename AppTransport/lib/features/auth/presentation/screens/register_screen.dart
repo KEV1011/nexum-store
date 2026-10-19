@@ -137,7 +137,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   void _handleAuthState(AuthState? prev, AuthState curr) {
     if (!mounted) return;
     if (curr is AuthAuthenticated) {
-      context.go(AppRoutes.home);
+      // Cuenta recién creada: lo primero es su clave personal (ver
+      // `ClavePersonalScreen`). Si no hace falta, al inicio.
+      ref.read(authRepositoryProvider).necesitaClave().then((necesita) {
+        if (!mounted) return;
+        context.go(necesita ? '${AppRoutes.clavePersonal}?primera=1' : AppRoutes.home);
+      });
     } else if (curr is AuthError) {
       AppSnackbar.showError(context, curr.failure.message);
     }

@@ -11,8 +11,11 @@ import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/config/app_config_provider.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
+import 'package:nexum_client/core/utils/hora_llegada.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/safety/presentation/widgets/sos_button.dart';
+import 'package:nexum_client/features/safety/presentation/widgets/compartir_viaje.dart';
+import 'package:nexum_client/features/safety/presentation/widgets/todo_bien_sheet.dart';
 import 'package:nexum_client/features/transport/domain/entities/transport_request_entity.dart';
 import 'package:nexum_client/features/transport/domain/camara_seguimiento.dart';
 import 'package:nexum_client/features/transport/presentation/providers/transport_provider.dart';
@@ -36,8 +39,79 @@ Color _colorOf(TransportServiceType t) => switch (t) {
     };
 
 /// Seguimiento en vivo de un viaje o envío.
-class TransportTrackingScreen extends ConsumerWidget {
-  const TransportTrackingScreen({required this.requestId, super.key});
+///
+/// Envuelve la vista para escuchar el «¿Todo bien?» que manda el servidor
+/// cuando ve el carro detenido o fuera de la ruta con el pasajero a bordo, y
+/// para abrirlo solo cuando se llega tocando esa notificación.
+class TransportTrackingScreen extends ConsumerStatefulWidget {
+  const TransportTrackingScreen({
+    required this.requestId,
+    this.preguntarSiTodoBien = false,
+    super.key,
+  });
+
+  final String requestId;
+
+  /// Se llegó tocando la notificación «¿Todo bien en tu viaje?».
+  final bool preguntarSiTodoBien;
+
+  @override
+  ConsumerState<TransportTrackingScreen> createState() =>
+      _TransportTrackingScreenState();
+}
+
+class _TransportTrackingScreenState
+    extends ConsumerState<TransportTrackingScreen> {
+  StreamSubscription<SafetyCheckEvent>? _preguntas;
+
+  @override
+  void initState() {
+    super.initState();
+    _preguntas = TransportWsService().safetyChecks.listen((e) {
+      if (e.tripId == widget.requestId) _preguntar(e.kind);
+    });
+    if (widget.preguntarSiTodoBien) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Con la app abierta en frío desde la notificación, el viaje puede
+        // no haber cargado todavía: se reintenta una vez.
+        if (!_preguntar('stall')) {
+          Future<void>.delayed(const Duration(seconds: 2), () => _preguntar('stall'));
+        }
+      });
+    }
+  }
+
+  /// Abre la pregunta. Devuelve si se pudo (el viaje está cargado y en curso).
+  bool _preguntar(String kind) {
+    if (!mounted) return false;
+    final r = ref.read(transportByIdProvider(widget.requestId));
+    // Solo con el pasajero a bordo: un aviso que llega tarde, con el viaje ya
+    // cerrado, no tiene nada que preguntar.
+    if (r == null || r.status != TransportStatus.inProgress) return false;
+    preguntarSiTodoBien(
+      context,
+      ref,
+      tripId: widget.requestId,
+      kind: kind,
+      lat: r.driverLat,
+      lng: r.driverLng,
+    );
+    return true;
+  }
+
+  @override
+  void dispose() {
+    _preguntas?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _TrackingView(requestId: widget.requestId);
+}
+
+class _TrackingView extends ConsumerWidget {
+  const _TrackingView({required this.requestId});
 
   final String requestId;
 
@@ -73,6 +147,18 @@ class TransportTrackingScreen extends ConsumerWidget {
                   onPressed: () => context.go(AppRoutes.home),
                 ),
                 const Spacer(),
+                // Compartir el viaje con alguien de confianza, a la vista y
+                // no escondido dentro del botón de pánico: mandarle el viaje a
+                // la mamá no debería exigir pulsar «SOS».
+                if (request.status.isActive &&
+                    request.serviceType != TransportServiceType.envios) ...[
+                  _MapCircleButton(
+                    icon: Icons.share_location_rounded,
+                    tooltip: 'Compartir viaje',
+                    onPressed: () => compartirViaje(context, ref, request.id),
+                  ),
+                  const SizedBox(width: 10),
+                ],
                 if (request.status.isActive)
                   SosButton(
                     tripId: request.id,
@@ -128,6 +214,31 @@ class TransportTrackingScreen extends ConsumerWidget {
                       request.status != TransportStatus.completed &&
                       request.status != TransportStatus.cancelled) ...[
                     CustodyPinCard(pin: request.deliveryPin!),
+                    const SizedBox(height: 16),
+                  ],
+                  // Código de ABORDAJE: el conductor no puede iniciar el viaje
+                  // sin él. Se ve desde que hay conductor hasta que te subes;
+                  // después ya no sirve y solo estorba.
+                  if (request.boardingPin != null &&
+                      request.serviceType != TransportServiceType.envios &&
+                      (request.status == TransportStatus.accepted ||
+                          request.status == TransportStatus.arriving ||
+                          request.status == TransportStatus.arrived ||
+                          (request.status == TransportStatus.scheduled &&
+                              request.driverName != null))) ...[
+                    CustodyPinCard(
+                      pin: request.boardingPin!,
+                      label: 'Código para subirte',
+                      hint: 'Dáselo solo al conductor que te recoja. Si no te '
+                          'lo pide, no es tu conductor: no te subas.',
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? AppColors.info
+                          : AppColors.infoTexto,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (request.passengerNote != null) ...[
+                    _NotaAlConductor(nota: request.passengerNote!),
                     const SizedBox(height: 16),
                   ],
                   _StatusCard(request: request),
@@ -347,7 +458,10 @@ class _StatusCard extends StatelessWidget {
 
   String _detalle(TransportRequestEntity r) {
     if (r.status != TransportStatus.scheduled || r.scheduledFor == null) {
-      return r.serviceType.label;
+      // La HORA del reloj, no solo los minutos: es lo que se le reenvía a
+      // quien espera. Los minutos siguen en la insignia de al lado.
+      return textoLlegada(r.status, r.etaVivoMin, DateTime.now()) ??
+          r.serviceType.label;
     }
     final f = r.scheduledFor!.toLocal();
     final hora =
@@ -376,6 +490,53 @@ class _StatusCard extends StatelessWidget {
         TransportStatus.completed => Icons.check_circle_rounded,
         TransportStatus.cancelled => Icons.cancel_rounded,
       };
+}
+
+/// Lo que el pasajero le escribió al conductor, para que sepa que le llegó.
+class _NotaAlConductor extends StatelessWidget {
+  const _NotaAlConductor({required this.nota});
+
+  final String nota;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.surfaceVariantColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.sticky_note_2_outlined,
+              size: 18, color: context.textSecondaryColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tu nota para el conductor',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: context.textSecondaryColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  nota,
+                  style: TextStyle(fontSize: 14, color: context.textPrimaryColor),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _EtaBadge extends StatelessWidget {
@@ -965,7 +1126,12 @@ class _MapLiveOverlay extends StatelessWidget {
                     color: Colors.white, size: 14),
                 const SizedBox(width: 4),
                 Text(
-                  '${request.etaVivoMin} min',
+                  // Con el pasajero a bordo, la hora a la que llega; mientras
+                  // el carro viene, los minutos que faltan para que llegue.
+                  request.status == TransportStatus.inProgress &&
+                          request.etaVivoMin > 0
+                      ? 'Llegas ${horaAproximada(DateTime.now(), request.etaVivoMin)}'
+                      : '${request.etaVivoMin} min',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,

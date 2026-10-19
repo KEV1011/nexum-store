@@ -172,6 +172,14 @@ model OtpSession {
 model Driver {
   id                  String           @id @default(cuid())
   phone               String           @unique
+  /// ── Clave personal ─────────────────────────────────────────────────────
+  /// Mientras no haya SMS, el código del login es el MISMO para todos (la
+  /// llave maestra del piloto): con saber un número se entra a esa cuenta.
+  /// La clave cierra eso: solo la conoce el dueño. Hash scrypt, nunca el
+  /// número; intentos fallidos con bloqueo (ver `lib/clave-personal`).
+  loginPinHash        String?
+  loginPinFails       Int       @default(0)
+  loginPinLockedUntil DateTime?
   name                String
   email               String?          @unique
   avatarUrl           String?
@@ -408,6 +416,14 @@ model Business {
   lng             Float?
   phone           String?
   whatsapp        String?
+  /// ── Clave personal ─────────────────────────────────────────────────────
+  /// Mientras no haya SMS, el código del login es el MISMO para todos (la
+  /// llave maestra del piloto): con saber un número se entra a esa cuenta.
+  /// La clave cierra eso: solo la conoce el dueño. Hash scrypt, nunca el
+  /// número; intentos fallidos con bloqueo (ver `lib/clave-personal`).
+  loginPinHash        String?
+  loginPinFails       Int       @default(0)
+  loginPinLockedUntil DateTime?
   rating          Float?
   /// Promoción de la tienda: «$descuento comprando $mínimo». Las dos o
   /// ninguna. El MISMO cálculo (`promoDeTienda`) alimenta el banner y el
@@ -1220,6 +1236,15 @@ model Trip {
   // ENVIOS: un pasajero no necesita PIN para bajarse del carro.
   deliveryPin   String?
   deliveryPinAt DateTime?
+  /// Código de abordaje: cuatro dígitos que solo tiene el PASAJERO y que el
+  /// conductor teclea para iniciar el viaje. Es lo que impide subirse al carro
+  /// equivocado: quien no te lo pide no es tu conductor. Nunca viaja en los DTO
+  /// del conductor (ver `lib/codigo-abordaje`). Null en envíos y en viajes
+  /// anteriores a este campo.
+  boardingPin   String?
+  /// Indicación del pasajero para el conductor («Estoy en la portería del
+  /// edificio azul»). Máximo 140 caracteres: se lee conduciendo.
+  passengerNote String?
 
   /// Los papeles del ENVÍO: remesa, factura, guía, acta firmada. Solo se
   /// usan en viajes de tipo ENVIOS; una carrera de pasajeros no lleva
@@ -1910,6 +1935,14 @@ model OperatorMember {
   id         String       @id @default(cuid())
   operatorId String
   phone      String // login OTP al portal de empresa
+  /// ── Clave personal ─────────────────────────────────────────────────────
+  /// Mientras no haya SMS, el código del login es el MISMO para todos (la
+  /// llave maestra del piloto): con saber un número se entra a esa cuenta.
+  /// La clave cierra eso: solo la conoce el dueño. Hash scrypt, nunca el
+  /// número; intentos fallidos con bloqueo (ver `lib/clave-personal`).
+  loginPinHash        String?
+  loginPinFails       Int       @default(0)
+  loginPinLockedUntil DateTime?
   name       String?
   role       OperatorRole @default(VIEWER)
   active     Boolean      @default(true)
@@ -2640,10 +2673,17 @@ model SafetyAlertLog {
   serviceKind String // trip | intercity | freight | cargo
   serviceId   String
   detail      String
+  /// Lo que contestó el PASAJERO cuando se le preguntó «¿Todo bien?» tras una
+  /// detención o un desvío: `ok` | `ayuda`. Null = no contestó (o la alerta no
+  /// se le preguntó, como la geocerca). Un «no contestó» es en sí un dato: es
+  /// la alerta que hay que mirar primero.
+  passengerResponse String?
+  respondedAt       DateTime?
   createdAt   DateTime @default(now())
 
   @@index([operatorId, createdAt])
   @@index([driverId, createdAt])
+  @@index([serviceId])
   @@map("safety_alerts")
 }
 

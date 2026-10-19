@@ -32,6 +32,13 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
           ? AppRoutes.transportTrackingPath(tripId)
           : AppRoutes.home;
 
+    // «¿Todo bien en tu viaje?» tras una detención o un desvío: al seguimiento
+    // con la pregunta abierta, que es lo que la notificación pide contestar.
+    case 'safety_check':
+      return tripId is String && tripId.isNotEmpty
+          ? '${AppRoutes.transportTrackingPath(tripId)}?revisar=1'
+          : AppRoutes.home;
+
     // Ya terminó: el seguimiento de un viaje cerrado no tiene nada que enseñar.
     case 'trip_completed':
     case 'trip_cancelled':

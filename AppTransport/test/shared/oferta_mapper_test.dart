@@ -79,6 +79,26 @@ void main() {
       expect(ofertaDeViaje(crudo())!.stops, isEmpty);
     });
 
+    // El código de abordaje: llega el AVISO de que hace falta, nunca el
+    // código. Un backend anterior no lo manda y entonces no se pide.
+    test('el aviso del código de abordaje, y por defecto no se pide', () {
+      expect(ofertaDeViaje(crudo())!.requiresBoardingPin, isFalse);
+      final conCodigo = crudo()..['requiresBoardingPin'] = true;
+      expect(ofertaDeViaje(conCodigo)!.requiresBoardingPin, isTrue);
+      // Un valor raro no tumba la oferta: simplemente no se pide.
+      final raro = crudo()..['requiresBoardingPin'] = 'si';
+      expect(ofertaDeViaje(raro)!.requiresBoardingPin, isFalse);
+    });
+
+    test('la nota del pasajero llega limpia, y vacía es null', () {
+      final conNota = crudo()..['passengerNote'] = '  Portería edificio azul ';
+      expect(ofertaDeViaje(conNota)!.passengerNote, 'Portería edificio azul');
+      final vacia = crudo()..['passengerNote'] = '   ';
+      expect(ofertaDeViaje(vacia)!.passengerNote, isNull);
+      final numero = crudo()..['passengerNote'] = 42;
+      expect(ofertaDeViaje(numero)!.passengerNote, isNull);
+    });
+
     // El home del conductor escucha este stream mientras conduce. Una oferta
     // a la que le falte un campo no puede tumbar la pantalla: se descarta.
     test('una oferta malformada devuelve null en vez de reventar', () {

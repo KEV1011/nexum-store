@@ -138,6 +138,14 @@ export interface TripRequestDTO {
   cobraAlPasajero?: number;
   /** Paradas intermedias, en orden. Van en la oferta: cambian el viaje. */
   stops?: TripStopDTO[];
+  /**
+   * Para iniciar el viaje hay que teclear el código de abordaje del pasajero.
+   * Va el AVISO, nunca el código: si el conductor pudiera leerlo, no probaría
+   * nada (ver `lib/codigo-abordaje`).
+   */
+  requiresBoardingPin?: boolean;
+  /** Lo que el pasajero le escribió («Estoy en la portería»). */
+  passengerNote?: string;
 }
 
 export interface TripSummaryDTO {
@@ -981,6 +989,8 @@ export type TransportServiceType = 'taxi' | 'moto' | 'particular' | 'envios';
 export interface ClientTripDTO {
   id: string;
   requestRef: string;
+  /** La indicación que el pasajero le dejó al conductor. */
+  passengerNote?: string;
   serviceType: TransportServiceType;
   originAddress: string;
   destinationAddress: string;
@@ -1132,6 +1142,8 @@ export interface RequestClientTripDTO {
    * cerró con la tarifa. El descuento lo calcula el servidor al canjear.
    */
   promoCode?: string;
+  /** Indicación para el conductor. Se sanea en `lib/codigo-abordaje`. */
+  passengerNote?: string;
   /**
    * Paradas intermedias (máx. 6). El precio se mide PASANDO por ellas, así que
    * añadirlas encarece el viaje: si no, el pasajero mete tres desvíos y el

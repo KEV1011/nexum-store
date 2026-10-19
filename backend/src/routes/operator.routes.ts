@@ -2,7 +2,15 @@ import { Router, Request, Response } from 'express';
 import { listSafetyAlerts } from '../services/safety-alerts.service';
 import { legalConsentEnforced, recordConsent } from '../services/legal.service';
 import { OperatorType, OperatorDocType, VehicleType } from '@prisma/client';
-import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
+import { codigoEsLlaveMaestra, requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
+import {
+  ClaveError,
+  comprobarClave,
+  emitirPaseClave,
+  fijarClave,
+  leerPaseClave,
+  tieneClave,
+} from '../services/clave-personal.service';
 import { isSmsConfigured } from '../services/sms.service';
 import { prisma } from '../lib/prisma';
 import {
@@ -228,30 +236,124 @@ router.post('/auth/verify-otp', async (req: Request, res: Response): Promise<voi
     });
     return;
   }
+  // 3) Sin SMS el código es una llave maestra: la cuenta pide además su clave
+  // personal (ver `lib/clave-personal`). Puede venir aquí mismo o después
+  // con el pase de cinco minutos.
+  const llaveMaestra = codigoEsLlaveMaestra(member.phone);
+  if (llaveMaestra && member.loginPinHash) {
+    const pin = (req.body as { pin?: unknown }).pin;
+    if (typeof pin !== 'string' || !pin.trim()) {
+      res.json({
+        success: true,
+        data: { needsPin: true, pinTicket: emitirPaseClave('operator_member', member.id) },
+      });
+      return;
+    }
+    try {
+      await comprobarClave({ tipo: 'operator_member', id: member.id }, pin);
+    } catch (err) {
+      responderErrorClave(res, err);
+      return;
+    }
+  }
+  res.json({ success: true, data: sesionDeEmpresa(member, llaveMaestra) });
+});
+
+// POST /operator/auth/verify-pin { pinTicket, pin } — termina el ingreso que
+// pidió la clave personal.
+router.post('/auth/verify-pin', async (req: Request, res: Response): Promise<void> => {
+  const { pinTicket, pin } = req.body as { pinTicket?: unknown; pin?: unknown };
+  try {
+    const memberId = leerPaseClave(pinTicket, 'operator_member');
+    await comprobarClave(
+      { tipo: 'operator_member', id: memberId },
+      typeof pin === 'string' ? pin : undefined,
+    );
+    const member = await prisma.operatorMember.findUnique({
+      where: { id: memberId },
+      include: { operator: true },
+    });
+    if (!member || !member.active) {
+      res.status(403).json({ success: false, error: 'Este acceso ya no está activo.' });
+      return;
+    }
+    res.json({ success: true, data: sesionDeEmpresa(member, codigoEsLlaveMaestra(member.phone)) });
+  } catch (err) {
+    responderErrorClave(res, err);
+  }
+});
+
+function responderErrorClave(res: Response, err: unknown): void {
+  if (err instanceof ClaveError) {
+    res.status(err.status).json({ success: false, error: err.message, code: err.code });
+    return;
+  }
+  res.status(500).json({ success: false, error: 'No se pudo comprobar la clave.' });
+}
+
+function sesionDeEmpresa(
+  member: {
+    id: string; operatorId: string; role: string; loginPinHash: string | null;
+    operator: { id: string; legalName: string; type: string; status: string; isVerified: boolean };
+  },
+  llaveMaestra: boolean,
+) {
   const token = signOperatorToken({
     operatorId: member.operatorId,
     memberId: member.id,
     role: member.role as OperatorRole,
   });
-  res.json({
-    success: true,
-    data: {
-      token,
-      operator: {
-        id: member.operator.id,
-        legalName: member.operator.legalName,
-        type: member.operator.type,
-        status: member.operator.status,
-        isVerified: member.operator.isVerified,
-      },
-      role: member.role,
+  return {
+    token,
+    operator: {
+      id: member.operator.id,
+      legalName: member.operator.legalName,
+      type: member.operator.type,
+      status: member.operator.status,
+      isVerified: member.operator.isVerified,
     },
-  });
-});
+    role: member.role,
+    // Sin clave y con el código convertido en llave maestra: el portal se la
+    // pide antes de dejarlo seguir.
+    ...(llaveMaestra && !member.loginPinHash ? { pinSetupRequired: true } : {}),
+  };
+}
 
 // ─── API del portal (requiere JWT de empresa) ────────────────────────────────
 
 router.use(requireOperator);
+
+// GET /operator/clave → { tiene, exigible } (la clave del MIEMBRO que entró)
+router.get('/clave', async (req: Request, res: Response): Promise<void> => {
+  const memberId = req.operatorMemberId;
+  if (!memberId) { res.status(401).json({ success: false, error: 'No autorizado.' }); return; }
+  const m = await prisma.operatorMember.findUnique({ where: { id: memberId }, select: { phone: true } });
+  res.json({
+    success: true,
+    data: {
+      tiene: await tieneClave({ tipo: 'operator_member', id: memberId }),
+      exigible: m ? codigoEsLlaveMaestra(m.phone) : false,
+    },
+  });
+});
+
+// PUT /operator/clave { nueva, actual? } — crearla o cambiarla. Cada miembro
+// la suya: es la de su teléfono, no la de la empresa.
+router.put('/clave', async (req: Request, res: Response): Promise<void> => {
+  const memberId = req.operatorMemberId;
+  if (!memberId) { res.status(401).json({ success: false, error: 'No autorizado.' }); return; }
+  const { nueva, actual } = (req.body ?? {}) as { nueva?: unknown; actual?: unknown };
+  try {
+    await fijarClave(
+      { tipo: 'operator_member', id: memberId },
+      nueva,
+      typeof actual === 'string' ? actual : undefined,
+    );
+    res.json({ success: true, data: { tiene: true } });
+  } catch (err) {
+    responderErrorClave(res, err);
+  }
+});
 
 // GET /operator/profile
 router.get('/profile', async (req: Request, res: Response): Promise<void> => {

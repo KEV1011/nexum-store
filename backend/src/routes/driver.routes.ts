@@ -108,6 +108,8 @@ import {
 } from '../services/documentos-envio.service';
 import { leerRemesa } from '../lib/remesa-foto';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
+import { ClaveError, fijarClave, tieneClave } from '../services/clave-personal.service';
+import { codigoEsLlaveMaestra } from '../services/otp.service';
 
 const router = Router();
 
@@ -142,6 +144,41 @@ router.use((req: Request, res: Response, next) => {
     return;
   }
   next();
+});
+
+// ─── Clave personal ───────────────────────────────────────────────────────────
+//
+// Sin SMS, el código del login es el mismo para todos: la clave es lo que
+// impide que con saber tu número entren a tu cuenta (ver `lib/clave-personal`).
+
+// GET /driver/clave → { tiene, exigible }
+router.get('/clave', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId!;
+  const tiene = await tieneClave({ tipo: 'driver', id: driverId });
+  res.json({
+    success: true,
+    data: { tiene, exigible: codigoEsLlaveMaestra(req.driverPhone ?? '') },
+  });
+});
+
+// PUT /driver/clave { nueva, actual? } — crearla o cambiarla.
+router.put('/clave', async (req: Request, res: Response): Promise<void> => {
+  const driverId = req.driverId!;
+  const { nueva, actual } = (req.body ?? {}) as { nueva?: unknown; actual?: unknown };
+  try {
+    await fijarClave(
+      { tipo: 'driver', id: driverId },
+      nueva,
+      typeof actual === 'string' ? actual : undefined,
+    );
+    res.json({ success: true, data: { tiene: true } });
+  } catch (err) {
+    if (err instanceof ClaveError) {
+      res.status(err.status).json({ success: false, error: err.message, code: err.code });
+      return;
+    }
+    res.status(500).json({ success: false, error: 'No se pudo guardar la clave.' });
+  }
 });
 
 // GET /driver/profile — real profile with documents + verification status

@@ -77,6 +77,7 @@ import { listPayoutsForAdmin, adminUpdatePayout } from '../services/payout.servi
 import { listMunicipalities, setMunicipalityCommission } from '../services/municipality.service';
 import { metricasACsv } from '../lib/piloto-csv';
 
+import { restablecerClavesPorTelefono } from '../services/clave-personal.service';
 const router = Router();
 
 // ─── Auth del panel (OTP → JWT de admin) ─────────────────────────────────────
@@ -386,6 +387,19 @@ router.post('/drivers/:id/habilitar', async (req: Request, res: Response): Promi
     const msg = err instanceof Error ? err.message : 'No se pudo habilitar';
     res.status(err instanceof KycError ? 404 : 400).json({ success: false, error: msg });
   }
+});
+
+// POST /admin/clave-personal/reset { phone } — borra la clave personal de toda
+// cuenta con ese teléfono. Ver `lib/clave-personal`.
+router.post('/clave-personal/reset', async (req: Request, res: Response): Promise<void> => {
+  const phone = (req.body as { phone?: unknown })?.phone;
+  if (typeof phone !== 'string' || phone.replace(/\D/g, '').length < 10) {
+    res.status(400).json({ success: false, error: 'Escribe un teléfono válido.' });
+    return;
+  }
+  const r = await restablecerClavesPorTelefono(phone);
+  console.log(`[ADMIN] ${req.adminPhone} restableció la clave personal de ${phone}:`, r);
+  res.json({ success: true, data: r });
 });
 
 router.post('/drivers/:id/kyc', async (req: Request, res: Response): Promise<void> => {
@@ -1051,6 +1065,11 @@ const PANEL_HTML = `<!DOCTYPE html>
         <table><thead><tr><th>Conductor</th><th>Estado</th><th>Verif.</th><th>GPS hace</th><th>Distancia</th><th>Radio 5 km</th><th>GPS fresco</th><th>¿Recibiría oferta?</th></tr></thead>
         <tbody id="diag-body"></tbody></table>
       </div>
+      <form class="inline" onsubmit="resetClave(event)" style="margin-bottom:16px">
+        <div><label>Teléfono de la cuenta</label><input id="clave-phone" placeholder="+573001112233" /></div>
+        <div><button type="submit" style="width:auto">Restablecer clave personal</button></div>
+      </form>
+      <p style="font-size:.72rem;color:#64748b;margin:-8px 0 14px">Borra la clave de toda cuenta con ese teléfono (conductor, empresa, negocio). Úsalo cuando alguien la olvidó o denuncia que otra persona entró primero y se la puso. Al volver a entrar, la app le pide crear una nueva.</p>
       <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>¿Puede trabajar?</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Docs</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th title="Reservas que apartó y no cumplió">Incumple</th><th>Última conexión</th><th>Acciones</th></tr></thead>
       <tbody id="drivers-body"><tr><td colspan="14" class="empty">Cargando…</td></tr></tbody></table>
     </section>
@@ -1160,8 +1179,8 @@ const PANEL_HTML = `<!DOCTYPE html>
       <tbody id="takedowns-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
       <h3 style="margin-top:22px;color:#0f172a">Alertas de ruta (en vivo)</h3>
       <p style="font-size:.8rem;color:#64748b;margin:4px 0 10px">Geocerca de destino, detenciones prolongadas y desvíos del corredor de la ruta en servicios EN CURSO. Se reinician con el redeploy.</p>
-      <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Conductor</th><th>Servicio</th><th>Detalle</th></tr></thead>
-      <tbody id="alerts-body"><tr><td colspan="5" class="empty">Cargando…</td></tr></tbody></table>
+      <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Conductor</th><th>Servicio</th><th>Detalle</th><th title="Lo que contestó al «¿Todo bien?»">Pasajero</th></tr></thead>
+      <tbody id="alerts-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
     </section>
 
     <section id="tab-reports" style="display:none">
@@ -1868,6 +1887,22 @@ function runDiag(ev) {
   }).catch((e) => showMsg(e.message, true));
 }
 
+// Clave personal: la que cierra la llave maestra del piloto.
+function resetClave(ev) {
+  ev.preventDefault();
+  const phone = document.getElementById('clave-phone').value.trim();
+  if (!phone) { showMsg('Escribe el teléfono.', true); return; }
+  if (!confirm('¿Borrar la clave personal de ' + phone + '? Al entrar le pedirán crear una nueva.')) return;
+  api('/admin/clave-personal/reset', { method: 'POST', body: JSON.stringify({ phone: phone }) })
+    .then((d) => {
+      const total = d.conductores + d.empresas + d.negocios;
+      showMsg(total === 0
+        ? 'Ninguna cuenta con ese teléfono tenía clave.'
+        : 'Clave borrada: ' + d.conductores + ' conductor(es), ' + d.empresas + ' acceso(s) de empresa, ' + d.negocios + ' negocio(s).', total === 0);
+    })
+    .catch((e) => showMsg(e.message, true));
+}
+
 function setDriverVerified(id, action) {
   api('/admin/drivers/' + id + '/' + action, { method: 'POST' })
     .then(() => { showMsg(action === 'verify' ? 'Conductor verificado.' : 'Verificación retirada.', false); loadDrivers(); })
@@ -2137,13 +2172,21 @@ function setOperator(id, action, habilitacionOk) {
 }
 
 var ALERT_LABEL = { geofence: '📍 Llegando', stall: '⏸ Detención', deviation: '↪ Desvío', offline: '🚨 SIN SEÑAL' };
+// Lo que contestó el pasajero al «¿Todo bien?». Solo se le pregunta en
+// detenciones y desvíos de viajes urbanos; en lo demás no aplica.
+function respuestaPasajero(a) {
+  if (a.serviceKind !== 'trip' || (a.kind !== 'stall' && a.kind !== 'deviation')) return '—';
+  if (a.passengerResponse === 'ok') return '<span class="badge badge-ok">Está bien</span>';
+  if (a.passengerResponse === 'ayuda') return '<strong style="color:#c62828">PIDIÓ AYUDA</strong>';
+  return '<span style="color:#b45309">Sin respuesta</span>';
+}
 function loadAlerts() {
   api('/admin/alerts').then((rows) => {
     const tb = document.getElementById('alerts-body');
-    if (!rows.length) { tb.innerHTML = '<tr><td colspan="5" class="empty">Sin alertas de ruta. 🎉</td></tr>'; return; }
-    tb.innerHTML = rows.map((a) => '<tr><td>' + when(a.at) + '</td><td>' + (ALERT_LABEL[a.kind] || a.kind) +
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin alertas de ruta. 🎉</td></tr>'; return; }
+    tb.innerHTML = rows.map((a) => '<tr' + (a.passengerResponse === 'ayuda' ? ' style="background:#fef2f2"' : '') + '><td>' + when(a.at) + '</td><td>' + (ALERT_LABEL[a.kind] || a.kind) +
       '</td><td>' + esc(a.driverName) + '</td><td>' + esc(a.serviceKind) + ' · ' + esc(a.serviceId.slice(0, 8)) +
-      '</td><td>' + esc(a.detail) + '</td></tr>').join('');
+      '</td><td>' + esc(a.detail) + '</td><td>' + respuestaPasajero(a) + '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
 function loadReports() {

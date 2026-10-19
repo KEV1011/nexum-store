@@ -24,6 +24,18 @@ class InvalidOtpFailure extends AuthFailure {
         );
 }
 
+/// La cuenta tiene clave personal y hay que escribirla para terminar de entrar.
+///
+/// No es un error: es el segundo paso del ingreso mientras el código del SMS
+/// sea el mismo para todos (la llave maestra del piloto). El pase dura cinco
+/// minutos y evita pedir el código otra vez.
+class ClavePersonalRequeridaFailure extends AuthFailure {
+  const ClavePersonalRequeridaFailure({required this.pinTicket})
+      : super(message: 'Escribe tu clave personal.', code: 'clave_requerida');
+
+  final String pinTicket;
+}
+
 /// Fallo de red
 class NetworkFailure extends Failure {
   const NetworkFailure({

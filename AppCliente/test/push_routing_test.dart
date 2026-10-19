@@ -27,6 +27,17 @@ void main() {
       );
     });
 
+    // «¿Todo bien en tu viaje?»: al seguimiento CON la pregunta abierta. Si
+    // solo llevara al seguimiento, el pasajero tendría que buscar dónde
+    // contestar justo cuando algo puede estar mal.
+    test('el «¿Todo bien?» abre el seguimiento con la pregunta', () {
+      expect(
+        rutaDeNotificacion({'type': 'safety_check', 'tripId': 't1'}),
+        '${AppRoutes.transportTrackingPath('t1')}?revisar=1',
+      );
+      expect(rutaDeNotificacion({'type': 'safety_check'}), AppRoutes.home);
+    });
+
     test('un viaje terminado NO lleva al seguimiento', () {
       // No tiene nada que enseñar y el mapa saldría congelado.
       for (final t in ['trip_completed', 'trip_cancelled', 'trip_no_driver']) {

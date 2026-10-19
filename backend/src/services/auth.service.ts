@@ -1,8 +1,10 @@
 import jwt from 'jsonwebtoken';
+import { esPayloadDeConductor } from '../lib/token-conductor';
+import { ClaveError, comprobarClave, emitirPaseClave, leerPaseClave } from './clave-personal.service';
 import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/constants';
 import { DriverDTO, JwtPayload, RegisterDriverDTO } from '../types';
 import { prisma } from '../lib/prisma';
-import { requestOtp, validateOtp } from './otp.service';
+import { codigoEsLlaveMaestra, requestOtp, validateOtp } from './otp.service';
 
 export function isValidColombianPhone(phone: string): boolean {
   const cleaned = phone.replace(/\s+/g, '');
@@ -30,10 +32,29 @@ export async function sendOtp(phone: string): Promise<void> {
   await requestOtp(normalized, driver?.id);
 }
 
+/** Lo que contesta el login del conductor. */
+export type ResultadoLoginConductor =
+  | {
+      token: string;
+      driver: DriverDTO;
+      isRegistered: boolean;
+      /**
+       * El código es llave maestra y la cuenta aún no tiene clave personal:
+       * la app se la pide AHORA, antes de dejarlo seguir.
+       */
+      pinSetupRequired?: boolean;
+    }
+  | {
+      /** La cuenta tiene clave y no vino: se pide, con un pase de 5 min. */
+      needsPin: true;
+      pinTicket: string;
+    };
+
 export async function verifyOtp(
   phone: string,
   otp: string,
-): Promise<{ token: string; driver: DriverDTO; isRegistered: boolean }> {
+  clave?: string,
+): Promise<ResultadoLoginConductor> {
   const normalized = normalizeColombianPhone(phone);
   await validateOtp(normalized, otp);
 
@@ -42,6 +63,47 @@ export async function verifyOtp(
     include: { vehicles: { where: { isActive: true }, take: 1 } },
   });
 
+  // Con el código convertido en llave maestra (sin SMS), el código no prueba
+  // que este teléfono sea suyo: la cuenta pide además la clave que solo sabe
+  // su dueño (ver `lib/clave-personal`). Un número sin cuenta todavía no tiene
+  // nada que proteger: va a registrarse.
+  if (existingDriver && codigoEsLlaveMaestra(normalized)) {
+    const cuenta = { tipo: 'driver' as const, id: existingDriver.id };
+    if (existingDriver.loginPinHash) {
+      if (!clave) {
+        return { needsPin: true, pinTicket: emitirPaseClave('driver', existingDriver.id) };
+      }
+      await comprobarClave(cuenta, clave);
+    }
+  }
+
+  return _sesionDeConductor(existingDriver, normalized);
+}
+
+/**
+ * Termina un ingreso que se quedó esperando la clave: el pase dice de quién
+ * es, la clave lo confirma.
+ */
+export async function verifyOtpConClave(
+  pinTicket: unknown,
+  clave: string | undefined,
+): Promise<ResultadoLoginConductor> {
+  const driverId = leerPaseClave(pinTicket, 'driver');
+  await comprobarClave({ tipo: 'driver', id: driverId }, clave);
+  const existingDriver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    include: { vehicles: { where: { isActive: true }, take: 1 } },
+  });
+  if (!existingDriver) throw new ClaveError('Cuenta no encontrada.', 'pase_vencido', 401);
+  return _sesionDeConductor(existingDriver, existingDriver.phone);
+}
+
+function _sesionDeConductor(
+  existingDriver: (Awaited<ReturnType<typeof prisma.driver.findUnique>> & {
+    vehicles: Array<{ brand: string; model: string; year: number; plate: string; color: string }>;
+  }) | null,
+  normalized: string,
+): ResultadoLoginConductor {
   const isRegistered = existingDriver !== null;
 
   const driver: DriverDTO = existingDriver
@@ -61,10 +123,19 @@ export async function verifyOtp(
     phone: normalized,
   };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-  return { token, driver, isRegistered };
+  return {
+    token,
+    driver,
+    isRegistered,
+    ...(existingDriver && !existingDriver.loginPinHash && codigoEsLlaveMaestra(normalized)
+      ? { pinSetupRequired: true }
+      : {}),
+  };
 }
 
-export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: string; driver: DriverDTO }> {
+export async function registerDriver(
+  dto: RegisterDriverDTO,
+): Promise<{ token: string; driver: DriverDTO; pinSetupRequired?: boolean }> {
   // Normaliza la placa (mayúsculas, sin espacios ni guiones) y acepta los
   // formatos colombianos REALES: carro ABC123 y moto ABC12D. El formato anterior
   // exigía un guión (ABC-123) que no existe en las placas → registro rechazado.
@@ -156,7 +227,13 @@ export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: s
     const driverDTO = _driverToDTO(result.driver, result.vehicle);
     const payload: JwtPayload = { driverId: result.driver.id, phone };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-    return { token, driver: driverDTO };
+    // Cuenta recién creada = sin clave personal. Con el código convertido en
+    // llave maestra, la app se la pide antes de dejarlo seguir.
+    return {
+      token,
+      driver: driverDTO,
+      ...(codigoEsLlaveMaestra(phone) ? { pinSetupRequired: true } : {}),
+    };
   } catch (err) {
     // Los dos choques posibles son `Driver.documentNumber` y `Vehicle.plate`,
     // los dos @unique. Antes se respondía «A driver with that document number
@@ -185,7 +262,11 @@ export async function registerDriver(dto: RegisterDriverDTO): Promise<{ token: s
 }
 
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, JWT_SECRET) as JwtPayload;
+  const decoded = jwt.verify(token, JWT_SECRET);
+  // Firmado por nosotros no basta: tiene que ser de un CONDUCTOR (ver
+  // `lib/token-conductor`). El WebSocket del conductor entra por aquí.
+  if (!esPayloadDeConductor(decoded)) throw new Error('No es una sesión de conductor');
+  return decoded;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

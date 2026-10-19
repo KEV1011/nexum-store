@@ -4,7 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 
 /// Fase de la cadena de custodia: al recoger la mercancía o al entregarla.
-enum CustodyPinPhase { pickup, delivery }
+///
+/// `boarding` es el código de ABORDAJE de un viaje de pasajero: lo tiene quien
+/// pidió el viaje, y sin él no se inicia. No es custodia de mercancía, pero es
+/// el mismo gesto —pedirle cuatro dígitos a la otra persona— y el mismo
+/// diálogo.
+enum CustodyPinPhase { pickup, delivery, boarding }
 
 /// Pide el PIN de custodia de 4 dígitos que debe dictar la otra persona.
 ///
@@ -54,18 +59,34 @@ class _CustodyPinDialogState extends State<_CustodyPinDialog> {
     super.dispose();
   }
 
-  bool get _isPickup => widget.phase == CustodyPinPhase.pickup;
+  String get _titulo => switch (widget.phase) {
+        CustodyPinPhase.pickup => 'PIN de recogida',
+        CustodyPinPhase.delivery => 'PIN de entrega',
+        CustodyPinPhase.boarding => 'Código del pasajero',
+      };
 
-  String get _titulo => _isPickup ? 'PIN de recogida' : 'PIN de entrega';
+  String get _instruccion => switch (widget.phase) {
+        CustodyPinPhase.pickup =>
+          'Pide el PIN de 4 dígitos a quien te entrega el paquete y escríbelo aquí.',
+        CustodyPinPhase.delivery =>
+          'Pide el PIN de 4 dígitos a quien recibe el paquete y escríbelo aquí.',
+        CustodyPinPhase.boarding =>
+          'Pídele al pasajero el código de 4 dígitos que ve en su app. Si no lo '
+              'tiene, no inicies: puede que no sea tu pasajero.',
+      };
 
-  String get _instruccion => _isPickup
-      ? 'Pide el PIN de 4 dígitos a quien te entrega el paquete y escríbelo aquí.'
-      : 'Pide el PIN de 4 dígitos a quien recibe el paquete y escríbelo aquí.';
+  IconData get _icono => switch (widget.phase) {
+        CustodyPinPhase.pickup => Icons.inventory_2_outlined,
+        CustodyPinPhase.delivery => Icons.verified_user_outlined,
+        CustodyPinPhase.boarding => Icons.how_to_reg_outlined,
+      };
 
   void _confirm() {
     final pin = _controller.text.trim();
     if (pin.length != 4) {
-      setState(() => _error = 'El PIN son 4 dígitos.');
+      setState(() => _error = widget.phase == CustodyPinPhase.boarding
+          ? 'El código son 4 dígitos.'
+          : 'El PIN son 4 dígitos.');
       return;
     }
     Navigator.of(context).pop(pin);
@@ -78,11 +99,11 @@ class _CustodyPinDialogState extends State<_CustodyPinDialog> {
       title: Row(
         children: [
           Icon(
-            _isPickup ? Icons.inventory_2_outlined : Icons.verified_user_outlined,
+            _icono,
             color: AppColors.primary,
           ),
           const SizedBox(width: 10),
-          Text(_titulo),
+          Flexible(child: Text(_titulo)),
         ],
       ),
       content: Column(

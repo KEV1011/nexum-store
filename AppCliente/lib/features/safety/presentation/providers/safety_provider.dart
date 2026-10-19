@@ -1,3 +1,4 @@
+import 'package:nexum_client/core/config/api_config.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
@@ -60,14 +61,35 @@ class SafetyService {
     );
   }
 
-  /// Returns the opaque share token for the trip, or null on failure.
-  Future<String?> shareTrip(String tripId) async {
+  /// El enlace que se le manda a un familiar para que siga el viaje, o null
+  /// si no se pudo generar.
+  ///
+  /// Es la PÁGINA del portal (`shareUrl`): mapa, carro y hora de llegada.
+  /// Antes se armaba aquí con la ruta de la API, y quien lo abría desde
+  /// WhatsApp veía una pantalla de código. Contra un servidor anterior que no
+  /// manda `shareUrl` se cae a esa ruta: peor, pero no roto.
+  Future<String?> shareTripUrl(String tripId) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/safety/share-trip',
       data: {'tripId': tripId},
     );
     final d = res.data?['data'] as Map<String, dynamic>?;
-    return d?['shareToken'] as String?;
+    final url = d?['shareUrl'];
+    if (url is String && url.isNotEmpty) return url;
+    final token = d?['shareToken'];
+    if (token is String && token.isNotEmpty) {
+      return '${ApiConfig.baseUrl}/safety/track/$token';
+    }
+    return null;
+  }
+
+  /// La respuesta al «¿Todo bien?». Best-effort: si no llega, pedir ayuda
+  /// sigue funcionando por el SOS, que tiene su propio camino.
+  Future<void> responderTodoBien(String tripId, {required bool ok}) async {
+    await _dio.post<Map<String, dynamic>>(
+      '/client/trips/$tripId/safety-check',
+      data: {'ok': ok},
+    );
   }
 
   Future<TrustedContact> getTrustedContact() async {

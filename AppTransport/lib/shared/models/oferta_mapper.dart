@@ -65,10 +65,21 @@ TripRequestEntity? ofertaDeViaje(Map<String, dynamic> t) {
           .map(TripStopEntity.fromJson)
           .where((s) => s.nombre.isNotEmpty)
           .toList(),
+      // `is` y no `as`: un valor raro no puede tumbar la oferta entera por un
+      // aviso que, si falta, simplemente no se pide.
+      requiresBoardingPin: t['requiresBoardingPin'] == true,
+      passengerNote: _notaLimpia(t['passengerNote']),
     );
   } catch (_) {
     return null;
   }
+}
+
+/// La nota del pasajero, o null si no hay nada que leer.
+String? _notaLimpia(Object? v) {
+  if (v is! String) return null;
+  final limpia = v.trim();
+  return limpia.isEmpty ? null : limpia;
 }
 
 /// Build a [TripRequestEntity] from a raw `order_request` (entrega de pedido

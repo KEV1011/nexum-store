@@ -187,6 +187,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
     String? promoCode,
     /// Para cuándo lo quiere, en ISO UTC. Null = ahora mismo.
     String? scheduledFor,
+    /// Indicación para el conductor («Estoy en la portería»). Máx. 140.
+    String? passengerNote,
     String? recipientName,
     String? recipientPhone,
     String? packageDescription,
@@ -216,6 +218,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
     String id;
     String ref;
     String? deliveryPin;
+    String? boardingPin;
+    String? notaGuardada;
     // Lo que selló el SERVIDOR con el cupón. La app no vuelve a restar nada:
     // su validación previa era solo para enseñar el precio.
     var promoDiscount = 0;
@@ -245,6 +249,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
           if (paymentMethod != null) 'paymentMethod': paymentMethod,
           if (promoCode != null && promoCode.isNotEmpty) 'promoCode': promoCode,
           if (scheduledFor != null) 'scheduledFor': scheduledFor,
+          if (passengerNote != null && passengerNote.trim().isNotEmpty)
+            'passengerNote': passengerNote.trim(),
         },
       );
       final data = res.data!['data'] as Map<String, dynamic>;
@@ -255,6 +261,10 @@ class TransportNotifier extends StateNotifier<TransportState> {
       // que las ve también el repartidor). Si se descarta aquí, el cliente no
       // tiene qué dictar y la entrega no se puede cerrar nunca.
       deliveryPin = data['deliveryPin'] as String?;
+      // Mismo trato para el código de abordaje: solo llega en las vistas
+      // propias del pasajero, y esta es la primera.
+      boardingPin = data['boardingPin'] as String?;
+      notaGuardada = data['passengerNote'] as String?;
       avisoCupon = data['promoError'] as String?;
       promoDiscount = (data['promoDiscount'] as num?)?.round() ?? 0;
       totalPasajero = (data['totalPasajero'] as num?)?.toDouble();
@@ -287,6 +297,8 @@ class TransportNotifier extends StateNotifier<TransportState> {
       id: id,
       requestRef: ref,
       deliveryPin: deliveryPin,
+      boardingPin: boardingPin,
+      passengerNote: notaGuardada,
       promoDiscount: promoDiscount,
       totalPasajero: totalPasajero,
       serviceType: serviceType,
@@ -357,6 +369,7 @@ class TransportNotifier extends StateNotifier<TransportState> {
         // El PIN solo llega por las vistas propias del cliente (creación y
         // `GET /client/trips/:id`); si el mensaje no lo trae, se conserva.
         deliveryPin: payload['deliveryPin'] as String? ?? r.deliveryPin,
+        boardingPin: payload['boardingPin'] as String? ?? r.boardingPin,
         driverName: payload['driverName'] as String? ?? r.driverName,
         driverPhone: payload['driverPhone'] as String? ?? r.driverPhone,
         maskedPhone: payload['maskedPhone'] as String? ?? r.maskedPhone,

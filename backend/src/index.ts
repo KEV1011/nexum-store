@@ -49,6 +49,7 @@ import { ocrProviderName } from './services/ocr.service';
 import { modoCartaOcr } from './services/carta-ocr.service';
 import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
+import { exigirCodigoAbordaje } from './lib/codigo-abordaje';
 import { contactoLegalConfigurado } from './lib/contacto';
 import { exigirDocumentoDePasajero } from './lib/pasajeros-tiquete';
 import { exigirRemitente, VERSION_LISTA_NO_ADMITIDA } from './lib/remitente';
@@ -223,6 +224,10 @@ app.get('/health', async (_req, res) => {
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),
     // Clickwrap legal: 'activo' = el registro exige aceptar términos.
     legalConsent: legalConsentEnforced() ? 'activo' : 'apagado',
+    // `exigido` = sin el código del pasajero no arranca ningún viaje.
+    // `si-se-envia` = el código se comprueba cuando la app lo manda; las apps
+    // viejas del conductor siguen pudiendo iniciar sin él.
+    codigoAbordaje: exigirCodigoAbordaje() ? 'exigido' : 'si-se-envia',
     // Planilla del pasaje: 'activo' = no se reserva sin el documento de cada
     // pasajero. Se enciende cuando los APK nuevos estén repartidos; antes
     // dejaría sin reservar a quien no haya actualizado.

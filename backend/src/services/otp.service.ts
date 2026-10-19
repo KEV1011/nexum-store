@@ -173,6 +173,19 @@ export function otpMode(): { users: string; admin: string } {
   return { users: 'cerrado', admin: 'cerrado' };
 }
 
+/**
+ * ¿El código que valida este teléfono es una LLAVE MAESTRA?
+ *
+ * Lo es siempre que no haya SMS: el código fijo del piloto en producción y el
+ * de desarrollo en local. Entonces el código no prueba que se tenga el
+ * teléfono, y la cuenta tiene que pedir además su clave personal (ver
+ * `lib/clave-personal`). La cuenta de revisión de las tiendas queda fuera: su
+ * código ya es solo suyo.
+ */
+export function codigoEsLlaveMaestra(phone: string): boolean {
+  return !isSmsConfigured() && !esTelefonoDemo(phone);
+}
+
 /** True si el login de producción depende de un único código fijo. */
 export function otpEnRiesgo(): boolean {
   return OTP_RIESGO_LLAVE_MAESTRA;

@@ -266,6 +266,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           pageKey: state.pageKey,
           child: TransportTrackingScreen(
             requestId: state.pathParameters['id'] ?? '',
+            // Llegó tocando el «¿Todo bien?»: la pregunta se abre sola.
+            preguntarSiTodoBien: state.uri.queryParameters['revisar'] == '1',
           ),
         ),
       ),

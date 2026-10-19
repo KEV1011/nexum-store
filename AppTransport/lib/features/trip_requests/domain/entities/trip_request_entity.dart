@@ -55,6 +55,8 @@ class TripRequestEntity {
     this.paymentMethod,
     this.paymentNote,
     this.stops = const [],
+    this.requiresBoardingPin = false,
+    this.passengerNote,
   });
 
   /// Identificador único de la solicitud.
@@ -118,6 +120,17 @@ class TripRequestEntity {
   /// conductor leía «Pasa por: Éxito» y tenía que adivinar cuál, sin verlo
   /// dibujado en el trayecto que ya tiene delante.
   final List<TripStopEntity> stops;
+
+  /// Para iniciar el viaje hay que teclear el código que tiene el PASAJERO.
+  ///
+  /// Llega el AVISO, nunca el código: si esta app pudiera leerlo, no probaría
+  /// nada. Es lo que impide que alguien se suba al carro equivocado —y que un
+  /// conductor se lleve a quien no es—. Falso en viajes anteriores a esto.
+  final bool requiresBoardingPin;
+
+  /// Lo que el pasajero le escribió («Estoy en la portería del edificio
+  /// azul»). Null si no escribió nada.
+  final String? passengerNote;
 
   bool get isPending => status == TripRequestStatus.pending;
   bool get isAccepted => status == TripRequestStatus.accepted;
@@ -198,6 +211,8 @@ class TripRequestEntity {
     String? paymentMethod,
     String? paymentNote,
     List<TripStopEntity>? stops,
+    bool? requiresBoardingPin,
+    String? passengerNote,
   }) {
     return TripRequestEntity(
       id: id ?? this.id,
@@ -218,6 +233,8 @@ class TripRequestEntity {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       paymentNote: paymentNote ?? this.paymentNote,
       stops: stops ?? this.stops,
+      requiresBoardingPin: requiresBoardingPin ?? this.requiresBoardingPin,
+      passengerNote: passengerNote ?? this.passengerNote,
     );
   }
 

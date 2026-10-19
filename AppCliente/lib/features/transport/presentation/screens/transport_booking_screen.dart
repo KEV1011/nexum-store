@@ -56,6 +56,8 @@ class _TransportBookingScreenState
   final _recipientNameCtrl = TextEditingController();
   final _recipientPhoneCtrl = TextEditingController();
   final _packageCtrl = TextEditingController();
+  /// Indicación para el conductor («Estoy en la portería del edificio azul»).
+  final _notaCtrl = TextEditingController();
   bool _loading = false;
 
   /// Manda la hoja arriba cuando sale el teclado. Sin esto, el campo de
@@ -343,6 +345,7 @@ class _TransportBookingScreenState
     _recipientNameCtrl.dispose();
     _recipientPhoneCtrl.dispose();
     _packageCtrl.dispose();
+    _notaCtrl.dispose();
     _hojaCtrl.dispose();
     for (final p in _paradas) {
       p.ctrl.dispose();
@@ -539,6 +542,30 @@ class _TransportBookingScreenState
                         para: _programadoPara,
                         onElegir: _elegirCuando,
                         onQuitar: () => setState(() => _programadoPara = null),
+                      ),
+                      const SizedBox(height: 10),
+                      // La indicación que ahorra la llamada de «¿dónde está
+                      // usted?». Opcional y corta: se lee conduciendo.
+                      TextField(
+                        controller: _notaCtrl,
+                        maxLength: 140,
+                        maxLines: 1,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText: 'Nota para el conductor (opcional)',
+                          counterText: '',
+                          prefixIcon: Icon(
+                            Icons.sticky_note_2_outlined,
+                            color: context.textSecondaryColor,
+                          ),
+                          filled: true,
+                          fillColor: context.surfaceVariantColor,
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
                       ),
                     ],
                     // El cupón solo se ofrece cuando ya hay un precio contra
@@ -955,6 +982,7 @@ class _TransportBookingScreenState
             paymentMethod: ref.read(metodoPagoEfectivoProvider).valorApi,
             promoCode: _cupon,
             scheduledFor: _programadoPara?.toUtc().toIso8601String(),
+            passengerNote: _isEnvios ? null : _notaCtrl.text.trim(),
             origin: _originCtrl.text.trim(),
             destination: _destCtrl.text.trim(),
             originLat: _originLat,
