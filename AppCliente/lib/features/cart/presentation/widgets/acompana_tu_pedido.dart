@@ -24,6 +24,7 @@ import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/providers/'
     'businesses_provider.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/nombre_plato.dart';
 import 'package:nexum_client/features/cart/presentation/providers/cart_provider.dart';
 
 class AcompanaTuPedido extends ConsumerWidget {
@@ -128,7 +129,9 @@ class _TarjetaSugerida extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  producto.name,
+                  // Solo el título: «Hamburguesa costeña (croqueta, queso…)»
+                  // cortado a dos renglones dejaba fuera justo lo que importa.
+                  partirNombrePlato(producto.name, producto.description).titulo,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

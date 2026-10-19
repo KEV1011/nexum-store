@@ -20,6 +20,7 @@ import {
   addProductPhoto,
   deleteProductPhoto,
   setProductOptions,
+  aplicarRolesDeCarta,
   proponerSeparacionDeNombres,
   aplicarSeparacionDeNombres,
   getBusinessSettings,
@@ -57,6 +58,8 @@ import { authLimiter } from '../middleware/rate-limit.middleware';
 import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
 import { parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
 import { GRUPO_TAMANO, motivoParaNoAgrupar, sugerirVariantes } from '../lib/carta-variantes';
+import { agruparAdicionales, sanearRol } from '../lib/carta-rol';
+import { saneaGrupo } from '../lib/texto-opciones';
 import { reporteACsv } from '../lib/reporte-ventas';
 import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
@@ -818,12 +821,14 @@ router.post(
 // devuelve los ids de lo que creó.
 router.post('/:token/products/carta-importar', async (req: Request, res: Response): Promise<void> => {
   const { token } = req.params as { token: string };
-  const { filas, variantes } = req.body as {
-    filas?: Array<{ nombre?: unknown; precio?: unknown; seccion?: unknown; descripcion?: unknown }>;
+  const { filas, variantes, adicionales } = req.body as {
+    filas?: Array<{ nombre?: unknown; precio?: unknown; seccion?: unknown; descripcion?: unknown; rol?: unknown }>;
     variantes?: Array<{
-      nombre?: unknown; seccion?: unknown; precioBase?: unknown; grupo?: unknown;
+      nombre?: unknown; seccion?: unknown; precioBase?: unknown; grupo?: unknown; rol?: unknown;
       opciones?: Array<{ nombre?: unknown; precioDelta?: unknown }>;
     }>;
+    /** A qué secciones de platos va cada grupo de adicionales. */
+    adicionales?: Array<{ grupo?: unknown; aplicarA?: unknown }>;
   };
   const sueltas = Array.isArray(filas) ? filas : [];
   const grupos = Array.isArray(variantes) ? variantes : [];
@@ -840,6 +845,8 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     seccion: typeof v.seccion === 'string' ? v.seccion.trim() : '',
     precioBase: typeof v.precioBase === 'number' ? Math.round(v.precioBase) : 0,
     grupo: typeof v.grupo === 'string' && v.grupo.trim() ? v.grupo.trim() : GRUPO_TAMANO,
+    // Un adicional no forma tamaños: lo que llegue así se trata como plato.
+    rol: sanearRol(v.rol) === 'acompanamiento' ? 'acompanamiento' as const : 'plato' as const,
     opciones: (Array.isArray(v.opciones) ? v.opciones : []).map((o) => ({
       nombre: typeof o.nombre === 'string' ? o.nombre.trim() : '',
       precioDelta: typeof o.precioDelta === 'number' ? Math.round(o.precioDelta) : -1,
@@ -853,19 +860,63 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     }
   }
 
+  const base = sueltas.map((f) => ({
+    nombre: typeof f.nombre === 'string' ? f.nombre : '',
+    precio: typeof f.precio === 'number' ? f.precio : null,
+    seccion: typeof f.seccion === 'string' ? f.seccion : '',
+    descripcion: typeof f.descripcion === 'string' ? f.descripcion : '',
+    rol: sanearRol(f.rol),
+  }));
+  // Los adicionales NO van al CSV de productos: se montan como grupo de la
+  // biblioteca y se adjuntan a los platos. Ver `carta-rol.ts`.
+  const productos = base.filter((f) => f.rol !== 'adicional');
+  const { grupos: gruposAdicionales } = agruparAdicionales(base);
+
+  // Cada grupo de adicionales se valida con la MISMA regla que la biblioteca,
+  // y también antes de escribir: un grupo inválido descubierto después dejaría
+  // los platos creados sin sus adicionales.
+  const destinos = new Map<string, string[]>();
+  for (const a of Array.isArray(adicionales) ? adicionales : []) {
+    if (typeof a.grupo !== 'string') continue;
+    const secciones = Array.isArray(a.aplicarA)
+      ? a.aplicarA.filter((x): x is string => typeof x === 'string')
+      : [];
+    destinos.set(a.grupo.trim().toLowerCase(), secciones);
+  }
+  // Sin decir a dónde, un grupo va a TODOS los platos de esta carta: es lo que
+  // significa una sección «ADICIONALES» al pie de la carta.
+  const seccionesDePlatos = [
+    ...new Set([
+      ...productos.filter((f) => f.rol === 'plato').map((f) => f.seccion),
+      ...limpias.filter((v) => v.rol === 'plato').map((v) => v.seccion),
+    ]),
+  ];
+  const gruposListos = [];
+  for (const g of gruposAdicionales) {
+    const r = saneaGrupo({
+      name: g.nombre,
+      required: false,
+      minSelect: 0,
+      maxSelect: g.opciones.length,
+      options: g.opciones.map((o) => ({ name: o.nombre, priceDelta: o.precio })),
+    });
+    if ('error' in r) {
+      res.status(400).json({ success: false, error: r.error });
+      return;
+    }
+    gruposListos.push({
+      ...g,
+      aplicarA: destinos.get(g.nombre.trim().toLowerCase()) ?? seccionesDePlatos,
+    });
+  }
+
   try {
     const business = await getBusinessService().getBusinessByToken(token);
 
     // Las variantes van al FINAL del CSV y en orden, así que su número de
     // línea es conocido y con él se recupera el id del producto creado.
-    const base = sueltas.map((f) => ({
-      nombre: typeof f.nombre === 'string' ? f.nombre : '',
-      precio: typeof f.precio === 'number' ? f.precio : null,
-      seccion: typeof f.seccion === 'string' ? f.seccion : '',
-      descripcion: typeof f.descripcion === 'string' ? f.descripcion : '',
-    }));
     const csv = filasACsv([
-      ...base,
+      ...productos,
       ...limpias.map((v) => ({
         nombre: v.nombre,
         precio: v.precioBase,
@@ -877,15 +928,29 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     const indice = await getBarcodeIndexForBusiness(business.id);
     const preview = parseProductCsv(csv, indice);
     const resultado = await applyProductImport(business.id, preview.nuevos, preview.actualizaciones);
+    const idDeLinea = (lineaCsv: number): string | undefined => {
+      const pos = preview.nuevos.findIndex((n) => n.linea === lineaCsv);
+      return pos === -1 ? undefined : resultado.idsNuevos[pos];
+    };
 
     // `filasACsv` se salta las filas sin precio, así que la numeración del CSV
-    // no es la del array: se cuenta cuántas de `base` sobrevivieron.
-    const baseEscritas = base.filter((f) => f.precio != null && f.precio > 0).length;
+    // no es la del array: se cuenta en el mismo orden en que se escribieron.
+    const acompanamientoIds: string[] = [];
+    const platos: Array<{ id: string; seccion: string }> = [];
+    let lineaCsv = 0;
+    for (const f of productos) {
+      if (f.precio == null || !(f.precio > 0)) continue;
+      lineaCsv++;
+      const id = idDeLinea(lineaCsv);
+      if (!id) continue;
+      if (f.rol === 'acompanamiento') acompanamientoIds.push(id);
+      else platos.push({ id, seccion: f.seccion });
+    }
+
     let conTamanos = 0;
-    for (const [i, v] of limpias.entries()) {
-      const lineaCsv = baseEscritas + i + 1;
-      const pos = preview.nuevos.findIndex((n) => n.linea === lineaCsv);
-      const productId = pos === -1 ? undefined : resultado.idsNuevos[pos];
+    for (const v of limpias) {
+      lineaCsv++;
+      const productId = idDeLinea(lineaCsv);
       // Sin id es que la fila base no se creó (la rechazó el importador). No
       // se inventa un producto para colgarle las opciones: se cuenta como
       // omitida y el dueño ve que faltó.
@@ -900,7 +965,15 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
         }],
       });
       conTamanos++;
+      if (v.rol === 'acompanamiento') acompanamientoIds.push(productId);
+      else platos.push({ id: productId, seccion: v.seccion });
     }
+
+    const roles = await aplicarRolesDeCarta(business.id, {
+      acompanamientoIds,
+      platos,
+      grupos: gruposListos,
+    });
 
     res.status(200).json({
       success: true,
@@ -909,6 +982,10 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
         actualizados: resultado.actualizados,
         conTamanos,
         omitidos: preview.errores.length,
+        acompanamientos: roles.acompanamientos,
+        gruposAdicionales: roles.grupos,
+        adicionalesNuevos: roles.opcionesNuevas,
+        platosConAdicionales: roles.platosConAdicionales,
       },
     });
   } catch (err) {

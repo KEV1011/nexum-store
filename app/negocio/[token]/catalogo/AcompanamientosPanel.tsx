@@ -18,6 +18,8 @@ interface ProductoMin {
   category: string
   isAvailable: boolean
   suggestAsAddon?: boolean
+  /** Lo calcula el servidor (`carta-rol`): suena a bebida o acompañamiento. */
+  pareceAcompanamiento?: boolean
 }
 
 /**
@@ -44,17 +46,25 @@ export function AcompanamientosPanel({
 
   const marcados = useMemo(() => productos.filter((p) => p.suggestAsAddon), [productos])
 
-  // Para añadir se ofrecen primero las secciones que suenan a bebida: es lo
-  // que el dueño viene a buscar aquí, y en una carta de cuarenta platos la
-  // gaseosa queda al fondo.
+  // Sin búsqueda se proponen SOLO los que suenan a bebida o acompañamiento.
+  //
+  // EL DEFECTO QUE ESTO CORRIGE: antes se proponían los ocho primeros del
+  // catálogo, sonaran a lo que sonaran, y en un local sin bebidas cargadas eso
+  // eran ocho HAMBURGUESAS con un «+» delante. El dueño las tocaba y acababan
+  // ofrecidas en «Acompaña tu pedido» a quien pedía una arepa. Buscando por
+  // nombre sí sale todo: ofrecer una empanada al pagar es decisión suya.
   const candidatos = useMemo(() => {
     const q = sinTildes(busqueda)
     return productos
       .filter((p) => !p.suggestAsAddon)
-      .filter((p) => !q || sinTildes(`${p.name} ${p.category}`).includes(q))
-      .sort((a, b) => Number(pareceBebida(b)) - Number(pareceBebida(a)) || a.name.localeCompare(b.name, 'es'))
+      .filter((p) => (q ? sinTildes(`${p.name} ${p.category}`).includes(q) : pareceAcomp(p)))
+      .sort((a, b) => Number(pareceAcomp(b)) - Number(pareceAcomp(a)) || a.name.localeCompare(b.name, 'es'))
       .slice(0, 8)
   }, [productos, busqueda])
+
+  // Lo ya marcado que NO suena a acompañamiento: se avisa, no se quita. Es la
+  // forma de que el dueño encuentre las hamburguesas que marcó sin querer.
+  const dudosos = useMemo(() => marcados.filter((p) => !pareceAcomp(p)), [marcados])
 
   async function marcar(p: ProductoMin, valor: boolean) {
     setOcupado(p.id)
@@ -100,6 +110,14 @@ export function AcompanamientosPanel({
           (gaseosas, jugos, papas…) y añádelos.
         </p>
       ) : (
+        <>
+        {dudosos.length > 0 && (
+          <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-900 ring-1 ring-amber-200">
+            {dudosos.length === 1 ? 'Este parece un plato' : `Estos ${dudosos.length} parecen platos`}, no
+            un acompañamiento: {dudosos.map((p) => p.name).join(', ')}. Se le ofrece{dudosos.length === 1 ? '' : 'n'} a
+            todo el que va a pagar. Si no es lo que quieres, quíta{dudosos.length === 1 ? 'lo' : 'los'} con la X.
+          </p>
+        )}
         <ul className="flex flex-wrap gap-2">
           {marcados.map((p) => (
             <li
@@ -123,6 +141,7 @@ export function AcompanamientosPanel({
             </li>
           ))}
         </ul>
+        </>
       )}
 
       <div className="space-y-2">
@@ -149,6 +168,11 @@ export function AcompanamientosPanel({
               </button>
             ))}
           </div>
+        ) : !busqueda ? (
+          <p className="text-xs text-slate-500">
+            No quedan bebidas ni acompañamientos por añadir. Si tienes otro, búscalo
+            por nombre, o créalo abajo y marca «Es una bebida o acompañamiento».
+          </p>
         ) : busqueda ? (
           <p className="text-xs text-slate-500">
             Ningún producto de tu catálogo coincide con «{busqueda}». Créalo abajo
@@ -168,8 +192,17 @@ function sinTildes(s: string): string {
 
 const PALABRAS_BEBIDA = ['bebida', 'gaseosa', 'jugo', 'limonada', 'agua', 'cerveza', 'malteada', 'cafe', 'te ', 'soda', 'refresco', 'acompan', 'papas', 'adicional']
 
-/** ¿Suena a bebida o acompañamiento? Solo ordena la lista; nunca decide nada. */
+/** ¿Suena a bebida o acompañamiento? Solo ordena y avisa; nunca decide nada. */
 export function pareceBebida(p: { name: string; category: string }): boolean {
   const t = ` ${sinTildes(`${p.category} ${p.name}`)} `
   return PALABRAS_BEBIDA.some((w) => t.includes(w))
+}
+
+/**
+ * Manda el criterio del SERVIDOR (`pareceAcompanamiento`, de `carta-rol`), que
+ * es el mismo con el que la carta por foto propone los tipos. Las palabras de
+ * aquí quedan solo para un servidor anterior que no lo mande.
+ */
+function pareceAcomp(p: ProductoMin): boolean {
+  return p.pareceAcompanamiento ?? pareceBebida(p)
 }

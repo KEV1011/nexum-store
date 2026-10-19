@@ -28,6 +28,7 @@ import {
 } from '../lib/marca-local';
 import { precioVigente, saneaFinDePromo } from '../lib/promo-producto';
 import { etiquetaDeGrupo, saneaGrupo } from '../lib/texto-opciones';
+import { mismoNombreDeGrupo, suenaAAcompanamiento } from '../lib/carta-rol';
 import { sugerenciaDeCodigo, type SugerenciaDeCodigo } from '../lib/sugerencia-codigo';
 import { reporteDeVentas, ventanaColombiana, type ReporteVentas } from '../lib/reporte-ventas';
 import { promedioReputacion } from '../lib/reputacion';
@@ -410,6 +411,7 @@ function _productToDTO(p: {
     warrantyMonths: p.warrantyMonths ?? undefined,
     images: (p.photos ?? []).map((ph) => ({ id: ph.id, url: ph.url })),
     suggestAsAddon: p.suggestAsAddon ?? false,
+    pareceAcompanamiento: suenaAAcompanamiento(p.name, p.category ?? ''),
     optionGroups: (p.gruposOpciones ?? []).map(({ group: g }) => ({
       id: g.id,
       name: g.name,
@@ -850,6 +852,114 @@ export async function applyOptionGroupToCategory(
     });
   }
   return { anadidos: faltan.length, total: productos.length };
+}
+
+/**
+ * Lo que la carta por foto deja hecho DESPUÉS de crear los productos: marca
+ * los acompañamientos y monta los adicionales en la biblioteca, adjuntos a sus
+ * platos.
+ *
+ * LOS ADICIONALES NO SON PRODUCTOS. «Queso 3.000» como producto suelto se
+ * podría pedir solo, a domicilio, y la cocina recibiría «un queso» sin saber
+ * de qué plato. Por eso cada sección de adicionales es UN grupo de la
+ * biblioteca (opcional, «hasta N») que los platos adjuntan.
+ *
+ * SI EL GRUPO YA EXISTE con ese nombre —el dueño volvió a subir la carta, o ya
+ * lo había armado a mano— se le AÑADEN las opciones que le falten y nada más:
+ * no se le cambia ningún precio. Reescribirlo pisaría lo que el dueño corrigió
+ * a mano; duplicarlo dejaría dos «Adicionales» en cada plato.
+ *
+ * Los grupos llegan YA saneados por la ruta, antes de crear nada.
+ */
+export async function aplicarRolesDeCarta(
+  businessId: string,
+  datos: {
+    acompanamientoIds: string[];
+    platos: Array<{ id: string; seccion: string }>;
+    grupos: Array<{ nombre: string; opciones: Array<{ nombre: string; precio: number }>; aplicarA: string[] }>;
+  },
+): Promise<{ acompanamientos: number; grupos: number; opcionesNuevas: number; platosConAdicionales: number }> {
+  let acompanamientos = 0;
+  if (datos.acompanamientoIds.length > 0) {
+    // `businessId` en el where: un id que no sea de este local no se toca.
+    const r = await prisma.product.updateMany({
+      where: { id: { in: datos.acompanamientoIds }, businessId },
+      data: { suggestAsAddon: true },
+    });
+    acompanamientos = r.count;
+  }
+
+  let opcionesNuevas = 0;
+  const platosTocados = new Set<string>();
+  const existentes = await prisma.optionGroup.findMany({
+    where: { businessId },
+    select: { id: true, name: true, maxSelect: true, options: { select: { name: true } } },
+  });
+
+  for (const g of datos.grupos) {
+    const ya = existentes.find((e) => mismoNombreDeGrupo(e.name, g.nombre));
+    let groupId: string;
+    if (ya) {
+      const tiene = new Set(ya.options.map((o) => o.name.trim().toLowerCase()));
+      const faltan = g.opciones.filter((o) => !tiene.has(o.nombre.trim().toLowerCase()));
+      if (faltan.length > 0) {
+        await prisma.productOption.createMany({
+          data: faltan.map((o, i) => ({
+            groupId: ya.id,
+            name: o.nombre,
+            priceDelta: o.precio,
+            sortOrder: ya.options.length + i,
+          })),
+        });
+        opcionesNuevas += faltan.length;
+        // Si el grupo era «hasta todas» (el máximo cubría todas sus opciones),
+        // lo sigue siendo: quedarse en «hasta 1» tras añadir el huevo haría
+        // que el cliente no pudiera pedir queso Y huevo, que antes sí podía.
+        if (ya.maxSelect >= ya.options.length) {
+          await prisma.optionGroup.update({
+            where: { id: ya.id },
+            data: { maxSelect: ya.options.length + faltan.length },
+          });
+        }
+      }
+      groupId = ya.id;
+    } else {
+      const creado = await prisma.optionGroup.create({
+        data: {
+          businessId,
+          name: g.nombre,
+          required: false,
+          minSelect: 0,
+          // «Hasta N»: un adicional se puede pedir junto con los demás.
+          maxSelect: g.opciones.length,
+          options: {
+            create: g.opciones.map((o, i) => ({ name: o.nombre, priceDelta: o.precio, sortOrder: i })),
+          },
+        },
+      });
+      opcionesNuevas += g.opciones.length;
+      groupId = creado.id;
+      // Que el siguiente grupo de esta misma carta lo vea como existente.
+      existentes.push({ id: creado.id, name: creado.name, maxSelect: creado.maxSelect, options: g.opciones.map((o) => ({ name: o.nombre })) });
+    }
+
+    const destino = new Set(g.aplicarA.map((x) => x.trim().toLowerCase()));
+    const platos = datos.platos.filter((p) => destino.has(p.seccion.trim().toLowerCase()));
+    if (platos.length > 0) {
+      await prisma.productOptionGroup.createMany({
+        data: platos.map((p) => ({ productId: p.id, groupId, sortOrder: 99 })),
+        skipDuplicates: true,
+      });
+      for (const p of platos) platosTocados.add(p.id);
+    }
+  }
+
+  return {
+    acompanamientos,
+    grupos: datos.grupos.length,
+    opcionesNuevas,
+    platosConAdicionales: platosTocados.size,
+  };
 }
 
 // ─── Gestión del catálogo (dueño desde el portal, autenticado por token) ──────

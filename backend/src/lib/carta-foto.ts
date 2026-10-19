@@ -20,6 +20,7 @@
 
 /** Lo mínimo que puede costar algo en una carta. Por debajo es otra cosa. */
 import { separarDescripcion } from './nombre-y-descripcion';
+import { rolDeLinea, type RolCarta } from './carta-rol';
 
 export const PRECIO_MIN = 500;
 
@@ -60,6 +61,13 @@ export interface LineaCarta {
    * deliberado — esta fila no se puede importar hasta que alguien decida.
    */
   precios?: number[];
+  /**
+   * Plato, adicional o acompañamiento: la PROPUESTA de `carta-rol`. El dueño
+   * la cambia en la vista previa; aquí solo se dice qué parece y por qué.
+   */
+  rol: RolCarta;
+  /** Por qué se propuso ese rol. Ausente = plato por defecto. */
+  motivoRol?: string;
 }
 
 export interface CartaLeida {
@@ -368,7 +376,13 @@ export function parsearCartaMedida(
 }
 
 function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): CartaLeida {
-  const salida: CartaLeida = { lineas: [], secciones: [] };
+  return conRol(parsearSinRol(filas));
+}
+
+function parsearSinRol(
+  filas: Array<{ texto: string; grande?: boolean }>,
+): { lineas: Array<Omit<LineaCarta, 'rol' | 'motivoRol'>>; secciones: string[] } {
+  const salida: { lineas: Array<Omit<LineaCarta, 'rol' | 'motivoRol'>>; secciones: string[] } = { lineas: [], secciones: [] };
   let seccion = '';
 
   for (let i = 0; i < filas.length; i++) {
@@ -421,6 +435,17 @@ function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): Ca
   }
 
   return salida;
+}
+
+/** Cada fila con el rol que se le propone. Va aparte para no tocar los cinco `push`. */
+function conRol(carta: { lineas: Array<Omit<LineaCarta, 'rol' | 'motivoRol'>>; secciones: string[] }): CartaLeida {
+  return {
+    secciones: carta.secciones,
+    lineas: carta.lineas.map((l) => {
+      const { rol, motivo } = rolDeLinea({ nombre: l.nombre, seccion: l.seccion });
+      return { ...l, rol, ...(motivo ? { motivoRol: motivo } : {}) };
+    }),
+  };
 }
 
 /**
