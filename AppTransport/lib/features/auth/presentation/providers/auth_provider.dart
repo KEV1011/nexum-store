@@ -6,6 +6,7 @@ import 'package:nexum_driver/features/auth/data/repositories/auth_repository_imp
 import 'package:nexum_driver/features/auth/domain/entities/driver_entity.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/register_driver_usecase.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/send_otp_usecase.dart';
+import 'package:nexum_driver/features/auth/presentation/providers/soltar_datos_de_cuenta.dart';
 import 'package:nexum_driver/features/auth/domain/usecases/verify_otp_usecase.dart';
 
 // ── Auth State ───────────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ final authRepositoryProvider = Provider<AuthRepositoryImpl>((ref) {
   return AuthRepositoryImpl(
     dataSource: AuthRemoteDataSource(),
     secureStorage: ref.watch(_secureStorageProvider),
+    alCambiarDeCuenta: () => soltarDatosDeCuenta(ref),
   );
 });
 

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -14,6 +13,7 @@ import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
+import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/driver_status/domain/entities/driver_status_entity.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/profile/presentation/providers/editable_profile_provider.dart';
@@ -53,10 +53,6 @@ String? _expiryLabel(DriverDocument doc) {
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -87,7 +83,7 @@ class ProfileScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Cerrar sesión',
-            onPressed: () => _confirmLogout(context),
+            onPressed: () => _confirmLogout(context, ref),
           ),
         ],
       ),
@@ -799,7 +795,7 @@ class ProfileScreen extends ConsumerWidget {
                 'Cerrar sesión',
                 style: TextStyle(color: AppColors.error),
               ),
-              onTap: () => _confirmLogout(context),
+              onTap: () => _confirmLogout(context, ref),
             ),
           ],
         ),
@@ -809,7 +805,7 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Logout dialog ────────────────────────────────────────────────────────────
 
-  void _confirmLogout(BuildContext context) {
+  void _confirmLogout(BuildContext context, WidgetRef ref) {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -827,7 +823,10 @@ class ProfileScreen extends ConsumerWidget {
 backgroundColor: AppColors.error),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              await _storage.deleteAll();
+              // Por la MISMA puerta que el resto de la app: además del token
+              // borra los viajes guardados y suelta lo cargado en memoria.
+              // Un `deleteAll` del almacén seguro dejaba todo eso al siguiente.
+              await ref.read(authProvider.notifier).logout();
               if (context.mounted) context.go('/login');
             },
             child: const Text('Cerrar sesión'),
