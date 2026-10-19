@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:nexum_driver/shared/widgets/nota_del_pasajero.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -2802,6 +2803,12 @@ class _TripRequestModal extends StatelessWidget {
                               ),
                             ],
                           ),
+                        ],
+                        // La indicación del pasajero, ANTES de aceptar: «estoy
+                        // en el tercer piso con dos maletas» cambia el viaje.
+                        if (trip.passengerNote != null) ...[
+                          const SizedBox(height: AppConstants.spacingS),
+                          NotaDelPasajero(nota: trip.passengerNote!),
                         ],
                         const SizedBox(height: AppConstants.spacingM),
                         // POR DÓNDE VA EL VIAJE, antes de aceptar.

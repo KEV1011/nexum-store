@@ -13,6 +13,10 @@ abstract final class AppConstants {
   static const String authTokenKey = 'auth_token';
   static const String driverIdKey = 'driver_id';
   static const String needsRegistrationKey = 'needs_registration';
+
+  /// La cuenta entró sin clave personal mientras el código es llave maestra:
+  /// la app se la pide antes de dejarla seguir.
+  static const String necesitaClaveKey = 'nexum_necesita_clave';
   static const String onboardingCompleteKey = 'onboarding_complete';
   static const String tripHistoryKey = 'nexum_trip_history_v1';
 

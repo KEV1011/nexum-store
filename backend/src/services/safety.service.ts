@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '../config/constants';
+import { stopsFromDb } from '../lib/trip-stops';
+import { JWT_SECRET, PORTAL_BASE_URL } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { sendSms, isSmsSenderConfigured } from './sms.service';
@@ -200,7 +201,7 @@ export async function createTripShareToken(
   role: SafetyRole,
   actorId: string,
   tripId: string,
-): Promise<{ shareToken: string; trackPath: string; expiresInHours: number } | null> {
+): Promise<{ shareToken: string; trackPath: string; shareUrl: string; expiresInHours: number } | null> {
   const trip = await prisma.trip.findUnique({
     where: { id: tripId },
     select: { passengerId: true, driverId: true },
@@ -211,24 +212,71 @@ export async function createTripShareToken(
 
   const claims: ShareTokenClaims = { tripId, purpose: 'trip_share' };
   const shareToken = jwt.sign(claims, JWT_SECRET, { expiresIn: SHARE_TOKEN_TTL });
-  return { shareToken, trackPath: `/safety/track/${shareToken}`, expiresInHours: 6 };
+  return {
+    shareToken,
+    trackPath: `/safety/track/${shareToken}`,
+    // La PÁGINA que abre quien lo recibe: mapa, carro y hora de llegada.
+    // `trackPath` es el JSON de la API y se queda para las apps que ya lo
+    // usan, pero mandarlo por WhatsApp era mandarle código a un familiar.
+    shareUrl: `${PORTAL_BASE_URL}/viaje/${shareToken}`,
+    expiresInHours: 6,
+  };
 }
 
 export interface SharedTripStatus {
   status: string;
+  /** El estado en palabras, para la página pública («Va en camino»). */
+  statusLabel: string;
   originAddress: string;
   destinationAddress: string;
+  origin: { lat: number; lng: number };
+  destination: { lat: number; lng: number };
+  /** Paradas con punto, en orden, para dibujar el trayecto. */
+  stops: Array<{ name: string; lat?: number; lng?: number }>;
   driverFirstName?: string;
+  /** Texto de siempre, para las apps que ya lo leen. */
   driverVehicle?: string;
+  /** El carro por partes: quien espera busca el COLOR y la PLACA. */
+  vehicle?: { brand: string; model: string; color: string; plate: string };
+  /**
+   * Dónde va el carro. Solo mientras el viaje está vivo y con señal reciente:
+   * terminado el viaje, el enlace sigue abriendo pero ya no enseña dónde está
+   * el conductor — eso ya no es asunto de nadie.
+   */
+  driverPosition?: { lat: number; lng: number; at: string };
   etaMinutes?: number;
+  /** Hora estimada de llegada al destino, en ISO, con el viaje en curso. */
+  arrivalEstimate?: string;
+  startedAt?: string;
+  completedAt?: string;
   updatedAt: string;
 }
+
+/** Estados en los que el viaje está «vivo» y tiene sentido mostrar el carro. */
+const ESTADOS_EN_CURSO = new Set(['ACCEPTED', 'ARRIVING', 'ARRIVED', 'IN_PROGRESS']);
+
+/** Una posición más vieja que esto no se enseña: sería mentir sobre dónde va. */
+const POSICION_MAX_MS = 5 * 60_000;
+
+const ETIQUETA_ESTADO: Record<string, string> = {
+  SCHEDULED: 'Reservado',
+  SEARCHING: 'Buscando conductor',
+  ACCEPTED: 'Conductor en camino a recogerle',
+  ARRIVING: 'Conductor en camino a recogerle',
+  ARRIVED: 'El conductor llegó al punto de recogida',
+  IN_PROGRESS: 'En camino al destino',
+  COMPLETED: 'Llegó a su destino',
+  CANCELLED: 'Viaje cancelado',
+};
 
 /**
  * Resolve a share token to a minimal, sanitised trip status for the trusted
  * contact. Deliberately omits phones, full names, and fares.
  */
-export async function getSharedTripStatus(token: string): Promise<SharedTripStatus | null> {
+export async function getSharedTripStatus(
+  token: string,
+  ahora: Date = new Date(),
+): Promise<SharedTripStatus | null> {
   let claims: ShareTokenClaims;
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as ShareTokenClaims;
@@ -245,13 +293,40 @@ export async function getSharedTripStatus(token: string): Promise<SharedTripStat
   if (!trip) return null;
 
   const v = trip.driver?.vehicles[0];
+  const enCurso = ESTADOS_EN_CURSO.has(trip.status);
+  const d = trip.driver;
+  const posicionFresca =
+    enCurso && d?.lastLat != null && d.lastLng != null && d.lastSeenAt != null &&
+    ahora.getTime() - d.lastSeenAt.getTime() <= POSICION_MAX_MS;
+
+  // La hora de llegada solo con el viaje EN CURSO y con hora de salida: antes
+  // de recoger no se sabe cuánto va a tardar en subir la persona.
+  const llegada =
+    trip.status === 'IN_PROGRESS' && trip.startedAt && trip.etaMinutes
+      ? new Date(trip.startedAt.getTime() + trip.etaMinutes * 60_000)
+      : null;
+
   return {
     status: trip.status,
+    statusLabel: ETIQUETA_ESTADO[trip.status] ?? 'En curso',
     originAddress: trip.originAddress,
     destinationAddress: trip.destAddress,
+    origin: { lat: trip.originLat, lng: trip.originLng },
+    destination: { lat: trip.destLat, lng: trip.destLng },
+    stops: (stopsFromDb(trip.stops) ?? []).map((p) => ({
+      name: p.name,
+      ...(p.lat != null && p.lng != null ? { lat: p.lat, lng: p.lng } : {}),
+    })),
     driverFirstName: trip.driver?.name?.split(' ')[0],
     driverVehicle: v ? `${v.brand} ${v.model} • ${v.plate}` : undefined,
+    vehicle: v ? { brand: v.brand, model: v.model, color: v.color, plate: v.plate } : undefined,
+    driverPosition: posicionFresca
+      ? { lat: d!.lastLat!, lng: d!.lastLng!, at: d!.lastSeenAt!.toISOString() }
+      : undefined,
     etaMinutes: trip.etaMinutes ?? undefined,
+    arrivalEstimate: llegada?.toISOString(),
+    startedAt: trip.startedAt?.toISOString(),
+    completedAt: trip.completedAt?.toISOString(),
     updatedAt: trip.updatedAt.toISOString(),
   };
 }

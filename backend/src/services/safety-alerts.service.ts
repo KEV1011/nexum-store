@@ -52,6 +52,8 @@ export interface SafetyAlert {
   serviceKind: string;
   serviceId: string;
   detail: string;
+  /** Lo que contestó el pasajero al «¿Todo bien?»: `ok` | `ayuda` | null. */
+  passengerResponse?: string | null;
 }
 
 interface ActiveService {
@@ -80,6 +82,62 @@ const _serviceCache = new Map<string, { at: number; svc: ActiveService | null }>
 const _notified = new Map<string, Set<SafetyAlertKind>>();
 // driverId → última posición con movimiento real (para detectar detenciones)
 const _lastMove = new Map<string, { lat: number; lng: number; at: number }>();
+// driverId → servicio que estaba atendiendo en el último latido. Al cambiar,
+// el reloj de la detención vuelve a cero: si no, un conductor que esperó doce
+// minutos en la puerta disparaba «detenido» en el primer latido del viaje —y
+// ahora esa alerta le pregunta al pasajero si está bien, recién subido—.
+const _servicioActual = new Map<string, string>();
+
+// ── «¿Todo bien?» al pasajero ─────────────────────────────────────────────────
+//
+// Detectar una detención o un desvío y avisarle solo a la Torre de Control
+// deja fuera a la única persona que sabe si pasa algo: la que va sentada
+// atrás. Así lo hace Uber (RideCheck): se le pregunta a ella, con un botón
+// directo al SOS. Solo en viajes urbanos (`trip`), que es donde la app tiene
+// la pantalla para contestar.
+
+let _preguntarPorSocket: ((clientId: string, tripId: string, kind: SafetyAlertKind) => void) | null = null;
+
+/** Lo registra `ws.handler` al arrancar (los servicios no importan sockets). */
+export function registerSafetyCheckToClient(
+  fn: (clientId: string, tripId: string, kind: SafetyAlertKind) => void,
+): void {
+  _preguntarPorSocket = fn;
+}
+
+function _preguntarAlPasajero(svc: ActiveService, kind: 'stall' | 'deviation'): void {
+  if (svc.kind !== 'trip' || !svc.clientId) return;
+  const cuerpo = kind === 'stall'
+    ? 'El carro lleva un rato detenido. Toca para decirnos si estás bien.'
+    : 'El carro se salió de la ruta esperada. Toca para decirnos si estás bien.';
+  void sendPushToClient(svc.clientId, {
+    title: '¿Todo bien en tu viaje?',
+    body: cuerpo,
+    data: { type: 'safety_check', tripId: svc.id, kind },
+  });
+  _preguntarPorSocket?.(svc.clientId, svc.id, kind);
+}
+
+/**
+ * Guarda lo que contestó el pasajero en las alertas abiertas de ese viaje.
+ * Devuelve cuántas tocó: cero = no había nada que contestar (la app vieja, o
+ * un toque tardío sobre una pregunta ya respondida).
+ */
+export async function registrarRespuestaPasajero(tripId: string, ok: boolean): Promise<number> {
+  const r = await prisma.safetyAlertLog.updateMany({
+    where: {
+      serviceKind: 'trip',
+      serviceId: tripId,
+      kind: { in: ['stall', 'deviation'] },
+      passengerResponse: null,
+    },
+    data: { passengerResponse: ok ? 'ok' : 'ayuda', respondedAt: new Date() },
+  });
+  if (!ok) {
+    console.warn(`[Seguridad] el pasajero del viaje ${tripId} PIDIÓ AYUDA desde el «¿Todo bien?»`);
+  }
+  return r.count;
+}
 
 /**
  * Registra una alerta: anillo en memoria (caché rápida) + tabla (fuente de
@@ -158,6 +216,7 @@ export async function listSafetyAlerts(operatorId?: string): Promise<SafetyAlert
       serviceKind: f.serviceKind,
       serviceId: f.serviceId,
       detail: f.detail,
+      passengerResponse: f.passengerResponse,
     }));
   } catch (e) {
     console.error('[Seguridad] fallo al leer alertas, se usa la memoria:', e);
@@ -348,6 +407,11 @@ export async function onDriverHeartbeat(driverId: string, lat: number, lng: numb
     const svc = await _activeServiceFor(driverId);
     if (!svc) return;
 
+    if (_servicioActual.get(driverId) !== svc.id) {
+      _servicioActual.set(driverId, svc.id);
+      _lastMove.set(driverId, { lat, lng, at: Date.now() });
+    }
+
     // 0) Rastro histórico. Se engancha aquí porque el servicio activo ya está
     // resuelto y cacheado: grabar el recorrido no cuesta una consulta extra.
     // El propio track.service decide si este fix merece una fila.
@@ -382,6 +446,7 @@ export async function onDriverHeartbeat(driverId: string, lat: number, lng: numb
         operatorId: svc.operatorId, serviceKind: svc.kind, serviceId: svc.id,
         detail: `Sin movimiento por más de ${STALL_MIN} min con servicio en curso`,
       });
+      _preguntarAlPasajero(svc, 'stall');
     }
 
     // 3) Desvío del corredor origen→destino.
@@ -398,6 +463,7 @@ export async function onDriverHeartbeat(driverId: string, lat: number, lng: numb
           operatorId: svc.operatorId, serviceKind: svc.kind, serviceId: svc.id,
           detail: `A ${(off / 1000).toFixed(1)} km del corredor de la ruta (límite ${(limit / 1000).toFixed(1)} km)`,
         });
+        _preguntarAlPasajero(svc, 'deviation');
       }
     }
   } catch {
@@ -416,7 +482,10 @@ export function pruneSafetyState(): void {
     if (now - v.at > 10 * 60_000) _serviceCache.delete(k);
   }
   for (const [k, v] of _lastMove) {
-    if (now - v.at > 60 * 60_000) _lastMove.delete(k);
+    if (now - v.at > 60 * 60_000) {
+      _lastMove.delete(k);
+      _servicioActual.delete(k);
+    }
   }
 
   // La tabla de alertas crece sin techo si nadie la barre. Se purga una vez al

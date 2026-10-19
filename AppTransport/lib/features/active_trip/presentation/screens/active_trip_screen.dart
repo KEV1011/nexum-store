@@ -1357,18 +1357,67 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     }
   }
 
-  Future<void> _handleStartTrip() async {
+  /// Iniciar el viaje con el pasajero a bordo.
+  ///
+  /// Si el viaje lleva código de abordaje, se le pide al pasajero y el
+  /// SERVIDOR lo comprueba ANTES de que cambie nada en pantalla: con el
+  /// WebSocket de antes, un código equivocado habría dejado la app «en
+  /// trayecto» y el viaje sin empezar al otro lado. Un código rechazado vuelve
+  /// a abrir el diálogo con el motivo, para que se lo pida otra vez.
+  Future<void> _handleStartTrip({String? errorPrevio}) async {
+    final trip = ref.read(activeTripProvider);
+    if (trip == null) return;
+    final conCodigo = trip.request.requiresBoardingPin;
+
+    String? pin;
+    if (conCodigo) {
+      pin = await showCustodyPinDialog(
+        context,
+        phase: CustodyPinPhase.boarding,
+        errorText: errorPrevio,
+      );
+      if (!mounted || pin == null) return;
+    }
+
     setState(() => _isLoading = true);
+    String? rechazo;
     try {
-      final trip = ref.read(activeTripProvider);
+      if (conCodigo) {
+        await cambiarEstadoViaje(
+          tripId: trip.request.id,
+          estado: 'in_progress',
+          pin: pin,
+        );
+      }
       await ref.read(activeTripProvider.notifier).startTrip();
-      if (trip != null) DriverWsService().sendTripStatus(trip.request.id, 'in_progress');
+      // Sin código, como siempre: el aviso por el socket.
+      if (!conCodigo) {
+        DriverWsService().sendTripStatus(trip.request.id, 'in_progress');
+      }
+    } on CierreViajeError catch (e) {
+      if (e.reintentable) {
+        if (mounted) {
+          AppSnackbar.showError(
+            context,
+            'No se pudo confirmar el inicio con el servidor. Revisa tu '
+            'conexión e inténtalo otra vez.',
+          );
+        }
+      } else {
+        rechazo = e.mensaje;
+      }
     } catch (_) {
       if (mounted) {
         AppSnackbar.showError(context, 'Error al iniciar el viaje');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+    // El servidor dijo que no (código equivocado, demasiados intentos): se
+    // vuelve a pedir, con su motivo. Cancelar el diálogo deja el viaje como
+    // estaba.
+    if (rechazo != null && mounted) {
+      await _handleStartTrip(errorPrevio: rechazo);
     }
   }
 

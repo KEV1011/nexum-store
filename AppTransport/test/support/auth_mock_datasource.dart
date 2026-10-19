@@ -4,6 +4,13 @@ import 'package:nexum_driver/features/auth/data/datasources/auth_datasource.dart
 
 class AuthMockDataSource implements AuthDataSource {
   @override
+  Future<Map<String, dynamic>> verifyPin({
+    required String pinTicket,
+    required String pin,
+  }) async =>
+      throw const AuthException(message: 'Clave equivocada.');
+
+  @override
   Future<bool> sendOtp(String phoneNumber) async {
     await Future<void>.delayed(const Duration(milliseconds: 800));
     return true;

@@ -142,7 +142,7 @@ import {
   IntercityCity,
   PublishPassengerSeatDTO,
 } from '../types';
-
+import { registrarRespuestaPasajero } from '../services/safety-alerts.service';
 const router = Router();
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -824,6 +824,7 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
     promoCode?: string;
     scheduledFor?: string;
     stops?: import('../types').TripStopDTO[];
+    passengerNote?: string;
   };
 
   if (!dto.serviceType || !dto.originAddress || !dto.destinationAddress) {
@@ -840,6 +841,7 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
       promoCode: dto.promoCode,
       scheduledFor: dto.scheduledFor,
       stops: dto.stops,
+      passengerNote: dto.passengerNote,
       distanceKm: dto.distanceKm ?? 0,
       etaMinutes: dto.etaMinutes ?? 0,
       originLat: dto.originLat,
@@ -857,6 +859,26 @@ router.post('/trips/request', clientAuthMiddleware, clientRequestRateLimit, asyn
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to request trip' });
   }
+});
+
+// POST /client/trips/:id/safety-check { ok } — la respuesta al «¿Todo bien?»
+// que se le pregunta al pasajero tras una detención o un desvío. Queda en la
+// alerta, a la vista de la Torre de Control. Pedir ayuda NO depende de esto:
+// la app abre además el SOS, que avisa por su propio camino.
+router.post('/trips/:id/safety-check', clientAuthMiddleware, async (req, res) => {
+  const tripId = req.params['id']!;
+  const raw = await getClientTripRaw(tripId);
+  if (!raw || raw.clientId !== req.clientId) {
+    res.status(404).json({ success: false, error: 'Viaje no encontrado' });
+    return;
+  }
+  const ok = (req.body as { ok?: unknown })?.ok;
+  if (typeof ok !== 'boolean') {
+    res.status(400).json({ success: false, error: 'Falta la respuesta (ok: true o false).' });
+    return;
+  }
+  const actualizadas = await registrarRespuestaPasajero(tripId, ok);
+  res.json({ success: true, data: { registrada: actualizadas > 0 } });
 });
 
 router.get('/trips/active', clientAuthMiddleware, async (req, res) => {

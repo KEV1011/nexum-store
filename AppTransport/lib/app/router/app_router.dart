@@ -31,6 +31,7 @@ import 'package:nexum_driver/features/notifications/presentation/screens/notific
 import 'package:nexum_driver/features/safety/presentation/screens/safety_screen.dart';
 import 'package:nexum_driver/features/safety/presentation/screens/trusted_contact_screen.dart';
 import 'package:nexum_driver/features/settings/presentation/screens/settings_screen.dart';
+import 'package:nexum_driver/features/auth/presentation/screens/clave_personal_screen.dart';
 import 'package:nexum_driver/features/support/presentation/screens/support_screen.dart';
 import 'package:nexum_driver/features/trip_history/presentation/screens/trip_history_screen.dart';
 import 'package:nexum_driver/features/wallet/presentation/screens/wallet_screen.dart';
@@ -68,6 +69,8 @@ abstract final class AppRoutes {
   /// Publicar un viaje por puestos dentro de la ciudad (el puesto de taxi).
   static const String puestoUrbanoPublicar = '/puesto-urbano/publicar';
   static const String verification = '/verification';
+  /// Crear o cambiar la clave personal (`?primera=1` justo tras entrar).
+  static const String clavePersonal = '/clave-personal';
   static const String ridePool = '/ride-pool';
 }
 
@@ -110,6 +113,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => AppTransitions.fade(
           pageKey: state.pageKey,
           child: const ManifestsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.clavePersonal,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: ClavePersonalScreen(
+            primera: state.uri.queryParameters['primera'] == '1',
+          ),
         ),
       ),
       GoRoute(

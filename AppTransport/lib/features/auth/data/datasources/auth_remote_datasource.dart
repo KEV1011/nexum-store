@@ -40,6 +40,37 @@ class AuthRemoteDataSource implements AuthDataSource {
     }
   }
 
+  /// POST /auth/verify-pin — el segundo paso cuando la cuenta tiene clave.
+  ///
+  /// Un 401 aquí es «clave equivocada», no «sesión vencida»: se devuelve el
+  /// motivo que dio el servidor para que la pantalla lo diga tal cual.
+  @override
+  Future<Map<String, dynamic>> verifyPin({
+    required String pinTicket,
+    required String pin,
+  }) async {
+    try {
+      final response = await _client.post<Map<String, dynamic>>(
+        '/auth/verify-pin',
+        data: {'pinTicket': pinTicket, 'pin': pin},
+      );
+      final data = response.data?['data'] as Map<String, dynamic>?;
+      if (data == null) {
+        throw const ServerException(message: 'Respuesta vacía del servidor');
+      }
+      return data;
+    } on AuthException catch (e) {
+      final cuerpo = e.details;
+      final motivo = cuerpo is Map && cuerpo['error'] is String
+          ? cuerpo['error'] as String
+          : 'Clave equivocada.';
+      final codigo = cuerpo is Map && cuerpo['code'] is String
+          ? cuerpo['code'] as String
+          : 'clave_incorrecta';
+      throw AuthException(message: motivo, code: codigo);
+    }
+  }
+
   /// Registers a new driver via POST /auth/register.
   ///
   /// Returns a map with `{ token: String, driver: Map, isRegistered: bool }` on success.

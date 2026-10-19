@@ -559,6 +559,9 @@ export async function buildTripRequestDTO(tripId: string): Promise<TripRequestDT
     // tres desvíos cambian el viaje que se está aceptando, y una vez aceptado
     // ya no se puede rechazar.
     stops: stopsFromDb(trip.stops),
+    // El AVISO de que hace falta el código, nunca el código.
+    requiresBoardingPin: !!trip.boardingPin,
+    ...(trip.passengerNote ? { passengerNote: trip.passengerNote } : {}),
   };
 }
 

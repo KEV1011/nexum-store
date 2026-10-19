@@ -44,6 +44,13 @@ class FakeAuthDataSource implements AuthDataSource {
   Future<Map<String, dynamic>> registerDriver(Map<String, dynamic> data) async =>
       _responder();
 
+  @override
+  Future<Map<String, dynamic>> verifyPin({
+    required String pinTicket,
+    required String pin,
+  }) async =>
+      _responder();
+
   Map<String, dynamic> _responder() {
     if (error != null) throw error!;
     return respuesta!;

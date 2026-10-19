@@ -29,6 +29,11 @@ import {
   saneaRemitente, saneaDeclaracion, exigirRemitente, etiquetaDeCategoria,
 } from '../lib/remitente';
 import { generateCustodyPins, assertCustodyPin, generatePin } from '../lib/custody-pin';
+import {
+  comprobarCodigoAbordaje,
+  llevaCodigoAbordaje,
+  sanearNotaConductor,
+} from '../lib/codigo-abordaje';
 import { resolverLineasDePedido, descontarInventario } from './order-lines.service';
 import { exigirPuntoRecogida, exigirPuntoDestino } from '../lib/trip-coords';
 import { guardaNoTerminal } from '../lib/estado-terminal';
@@ -1435,6 +1440,10 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
       // poder probar que llegó a quien debía. Un pasajero no necesita PIN para
       // bajarse del carro.
       deliveryPin: serviceType === 'ENVIOS' ? generatePin() : null,
+      // Y el pasajero lleva el suyo para subirse al carro correcto. Nunca le
+      // llega al conductor: él solo sabe que hace falta.
+      boardingPin: llevaCodigoAbordaje(serviceType) ? generatePin() : null,
+      passengerNote: sanearNotaConductor(dto.passengerNote),
       originAddress: dto.originAddress,
       originLat,
       originLng,
@@ -1487,7 +1496,7 @@ export async function requestClientTrip(clientId: string, dto: RequestClientTrip
 
   // El PIN va SOLO en esta respuesta (y en las vistas propias del cliente):
   // es quien recibe el paquete el que debe conocerlo.
-  const dtoFinal = _conPin(_toTripDTO(trip, clientId), trip.deliveryPin);
+  const dtoFinal = _conPin(_toTripDTO(trip, clientId), trip);
   return promoError ? { ...dtoFinal, promoError } : dtoFinal;
 }
 
@@ -1611,6 +1620,21 @@ export async function updateClientTripStatus(
     return dto;
   }
 
+  // Iniciar el viaje exige el código de abordaje del pasajero (ver
+  // `lib/codigo-abordaje`). Se comprueba ANTES de escribir nada: un código
+  // equivocado no puede dejar el viaje a medio cambiar.
+  if (status === 'in_progress') {
+    const actual = await prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { serviceType: true, boardingPin: true, status: true },
+    });
+    // Repetir «en curso» sobre un viaje que ya lo está (reintento, doble
+    // toque) no vuelve a pedir el código: el pasajero ya subió.
+    if (actual && actual.status !== 'IN_PROGRESS' && llevaCodigoAbordaje(actual.serviceType)) {
+      comprobarCodigoAbordaje(tripId, actual.boardingPin, pin);
+    }
+  }
+
   // Mismo motivo que arriba, sin dinero de por medio pero igual de confuso: un
   // `arriving` que llega tarde no debe resucitar un viaje ya cancelado y
   // ponerle al pasajero "tu conductor está llegando" a un viaje que él anuló.
@@ -1618,6 +1642,16 @@ export async function updateClientTripStatus(
     where: { id: tripId, status: guardaNoTerminal('trip') as { notIn: TripStatus[] } },
     data: { status: prismaStatus },
   });
+  // La HORA de cada hito, solo la primera vez (`null` en el where): un
+  // reintento no puede correr la salida diez minutos. Sin `startedAt` no hay
+  // forma de decir a qué hora llega el viaje, que es lo que ve quien lo sigue.
+  if (avance.count > 0 && (status === 'in_progress' || status === 'arrived')) {
+    const campo = status === 'in_progress' ? 'startedAt' : 'arrivedAt';
+    await prisma.trip.updateMany({
+      where: { id: tripId, [campo]: null },
+      data: { [campo]: new Date() },
+    });
+  }
   const updated = await prisma.trip.findUnique({ where: { id: tripId } });
   if (!updated) return null;
   const dto = _toTripDTO(updated, updated.passengerId ?? '');
@@ -1629,6 +1663,7 @@ export async function updateClientTripStatus(
     _avisarPasajero(updated.passengerId, status, {
       esEnvio: updated.serviceType === 'ENVIOS',
       destino: updated.destAddress,
+      codigoAbordaje: updated.boardingPin,
     }, tripId);
   }
   return dto;
@@ -1752,7 +1787,7 @@ export async function getActiveClientTrip(clientId: string): Promise<ClientTripW
       driver: trip.driver,
       vehicle: trip.driver?.vehicles[0],
     }),
-    trip.deliveryPin,
+    trip,
   );
 }
 
@@ -2019,7 +2054,7 @@ export async function getClientTripSnapshot(
     driver: trip.driver,
     vehicle: trip.driver?.vehicles[0],
   });
-  return incluirPin ? _conPin(dto, trip.deliveryPin) : dto;
+  return incluirPin ? _conPin(dto, trip) : dto;
 }
 
 function _notifyTripListeners(tripId: string, _passengerId: string, dto: ClientTripDTO): void {
@@ -2234,6 +2269,7 @@ type PrismaTrip = {
   declaredAt?: Date | null;
   signatureUrl?: string | null; signedByName?: string | null; signedAt?: Date | null;
   deliveryPin?: string | null;
+  passengerNote?: string | null;
   paymentMethod?: string | null;
   promoCode?: string | null;
   promoDiscount?: number | null;
@@ -2250,10 +2286,24 @@ type PrismaTrip = {
  * vistas del cliente, con propiedad ya verificada, lo exponen. Mismo patrón que
  * `ClientOrderWithPinDTO` y `ClientErrandWithPinsDTO`.
  */
-export type ClientTripWithPinDTO = ClientTripDTO & { deliveryPin?: string };
+export type ClientTripWithPinDTO = ClientTripDTO & {
+  deliveryPin?: string;
+  /**
+   * El código que el pasajero le dice al conductor para iniciar el viaje.
+   * Mismo trato que el PIN del envío: solo en las vistas propias del cliente.
+   */
+  boardingPin?: string;
+};
 
-function _conPin(dto: ClientTripDTO, pin: string | null | undefined): ClientTripWithPinDTO {
-  return pin ? { ...dto, deliveryPin: pin } : dto;
+function _conPin(
+  dto: ClientTripDTO,
+  pines: { deliveryPin: string | null; boardingPin: string | null },
+): ClientTripWithPinDTO {
+  return {
+    ...dto,
+    ...(pines.deliveryPin ? { deliveryPin: pines.deliveryPin } : {}),
+    ...(pines.boardingPin ? { boardingPin: pines.boardingPin } : {}),
+  };
 }
 
 /**
@@ -2321,6 +2371,9 @@ function _toTripDTO(trip: PrismaTrip, _passengerId: string, ficha?: FichaConduct
     // Las paradas viajan también al conductor (este DTO es el de
     // `trip_accepted`): tiene que saber por dónde pasa ANTES de aceptar.
     ...(stopsFromDb(trip.stops) ? { stops: stopsFromDb(trip.stops) } : {}),
+    // La indicación del pasajero. También al conductor (este DTO es el de
+    // `trip_accepted`): es para él.
+    ...(trip.passengerNote ? { passengerNote: trip.passengerNote } : {}),
     ...(ficha ? _fichaToDTO(ficha) : {}),
     createdAt: trip.createdAt.toISOString(),
     acceptedAt: trip.acceptedAt?.toISOString(),

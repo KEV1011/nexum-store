@@ -18,6 +18,16 @@ interface SafetyAlert {
   serviceKind: string
   serviceId: string
   detail: string
+  /** Lo que contestó el pasajero al «¿Todo bien?» (solo detención/desvío de viaje). */
+  passengerResponse?: 'ok' | 'ayuda' | null
+}
+
+/** La respuesta del pasajero, cuando la pregunta aplica. */
+function respuestaPasajero(a: SafetyAlert): { texto: string; cls: string } | null {
+  if (a.serviceKind !== 'trip' || (a.kind !== 'stall' && a.kind !== 'deviation')) return null
+  if (a.passengerResponse === 'ok') return { texto: 'Pasajero: está bien', cls: 'text-emerald-700' }
+  if (a.passengerResponse === 'ayuda') return { texto: 'Pasajero: PIDIÓ AYUDA', cls: 'text-red-700 font-bold' }
+  return { texto: 'Pasajero: sin respuesta', cls: 'text-amber-700' }
 }
 
 const KIND_META: Record<SafetyAlert['kind'], { label: string; cls: string }> = {
@@ -96,13 +106,18 @@ export default function AlertsPanel({ api }: { api: OperatorApi }) {
         <div className="space-y-2">
           {alerts.slice(0, visibles).map((a) => {
             const meta = KIND_META[a.kind] ?? KIND_META.deviation
+            const resp = respuestaPasajero(a)
             return (
-              <div key={a.id} className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <div
+                key={a.id}
+                className={`border rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 ${a.passengerResponse === 'ayuda' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}
+              >
                 <span className={`text-[11px] font-bold border px-2 py-0.5 rounded-full ${meta.cls}`}>{meta.label}</span>
                 <span className="text-sm font-semibold text-slate-800">{a.driverName}</span>
                 <span className="text-xs text-slate-500">
                   {SERVICE_LABEL[a.serviceKind] ?? a.serviceKind} · {a.detail}
                 </span>
+                {resp && <span className={`text-xs ${resp.cls}`}>{resp.texto}</span>}
                 <span className="text-[11px] text-slate-400 ml-auto whitespace-nowrap">
                   {momento(a.at)}
                 </span>

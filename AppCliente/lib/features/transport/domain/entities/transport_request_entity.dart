@@ -139,6 +139,8 @@ class TransportRequestEntity {
     required this.requestRef,
     required this.serviceType,
     this.deliveryPin,
+    this.boardingPin,
+    this.passengerNote,
     this.driverId,
     this.promoDiscount = 0,
     this.totalPasajero,
@@ -181,6 +183,8 @@ class TransportRequestEntity {
         // Parsing defensivo: el backend usa 'taxi'/'particular' para el
         // servicio que la app llama 'transporte', y 'mandado' viaja como envío.
         deliveryPin: json['deliveryPin'] as String?,
+        boardingPin: json['boardingPin'] as String?,
+        passengerNote: json['passengerNote'] as String?,
         driverId: json['driverId'] as String?,
         promoDiscount: (json['promoDiscount'] as num?)?.round() ?? 0,
         totalPasajero: (json['totalPasajero'] as num?)?.toDouble(),
@@ -250,6 +254,14 @@ class TransportRequestEntity {
   /// ENVIOS: sin él el repartidor no puede cerrar la entrega, y es lo que
   /// prueba que el paquete llegó a su destinatario.
   final String? deliveryPin;
+
+  /// Código de abordaje: cuatro dígitos que el pasajero le dice al conductor
+  /// para que pueda iniciar el viaje. Si quien te recoge no te lo pide, no es
+  /// tu conductor. Solo llega en las vistas propias del pasajero.
+  final String? boardingPin;
+
+  /// La indicación que el pasajero le dejó al conductor al pedir.
+  final String? passengerNote;
 
   /// Id del conductor asignado. Sirve para abrir su perfil público.
   final String? driverId;
@@ -343,6 +355,8 @@ class TransportRequestEntity {
     String? requestRef,
     TransportServiceType? serviceType,
     String? deliveryPin,
+    String? boardingPin,
+    String? passengerNote,
     String? driverId,
     int? promoDiscount,
     double? totalPasajero,
@@ -382,6 +396,8 @@ class TransportRequestEntity {
       requestRef: requestRef ?? this.requestRef,
       serviceType: serviceType ?? this.serviceType,
       deliveryPin: deliveryPin ?? this.deliveryPin,
+      boardingPin: boardingPin ?? this.boardingPin,
+      passengerNote: passengerNote ?? this.passengerNote,
       driverId: driverId ?? this.driverId,
       promoDiscount: promoDiscount ?? this.promoDiscount,
       totalPasajero: totalPasajero ?? this.totalPasajero,
@@ -433,6 +449,10 @@ class TransportRequestEntity {
         // Sin esto el PIN del envío se perdía al cerrar la app: se guardaba el
         // viaje pero no el dato que permite cerrar la entrega.
         if (deliveryPin != null) 'deliveryPin': deliveryPin,
+        // Igual que el PIN del envío: si se pierde al cerrar la app, el
+        // pasajero se queda sin el código justo cuando llega el carro.
+        if (boardingPin != null) 'boardingPin': boardingPin,
+        if (passengerNote != null) 'passengerNote': passengerNote,
         if (driverId != null) 'driverId': driverId,
         if (promoDiscount > 0) 'promoDiscount': promoDiscount,
         if (totalPasajero != null) 'totalPasajero': totalPasajero,

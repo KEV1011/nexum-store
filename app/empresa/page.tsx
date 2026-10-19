@@ -30,6 +30,7 @@ import ProfileForm from './ProfileForm'
 import PoliticasForm from './PoliticasForm'
 import CobroForm from './CobroForm'
 import { EncomiendasPanel } from './EncomiendasPanel'
+import ClaveObligatoria from './ClaveObligatoria'
 import { leerToken, leerInfo, guardarSesion, borrarSesion } from './session'
 import { BACKEND_URL } from '../backend'
 
@@ -177,9 +178,13 @@ export default function OperatorPortal() {
 // ─── Login (OTP) ────────────────────────────────────────────────────────────────
 
 function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
-  const [step, setStep] = useState<'phone' | 'otp'>('phone')
+  const [step, setStep] = useState<'phone' | 'otp' | 'pin'>('phone')
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
+  // Sin SMS, el código es el mismo para todos: la cuenta con clave personal
+  // la pide aquí, con un pase de cinco minutos para no pedir otro código.
+  const [pin, setPin] = useState('')
+  const [pinTicket, setPinTicket] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -212,8 +217,46 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: fullPhone, otp: otp.trim() }),
       })
-      const json = await res.json().catch(() => ({})) as { success?: boolean; error?: string; data?: { token: string; operator: OperatorInfo } }
-      if (!res.ok || !json.data?.token) { setError(json.error || 'Código inválido.'); return }
+      const json = await res.json().catch(() => ({})) as {
+        success?: boolean; error?: string
+        data?: { token?: string; operator?: OperatorInfo; needsPin?: boolean; pinTicket?: string }
+      }
+      if (res.ok && json.data?.needsPin && json.data.pinTicket) {
+        setPinTicket(json.data.pinTicket)
+        setPin('')
+        setStep('pin')
+        return
+      }
+      if (!res.ok || !json.data?.token || !json.data.operator) { setError(json.error || 'Código inválido.'); return }
+      onLogin(json.data.token, json.data.operator)
+    } catch {
+      setError('No se pudo conectar con el servidor.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function verifyPin() {
+    if (!pinTicket) return
+    setError(null)
+    setLoading(true)
+    try {
+      const res = await fetch(`${BACKEND_URL}/operator/auth/verify-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinTicket, pin: pin.trim() }),
+      })
+      const json = await res.json().catch(() => ({})) as {
+        error?: string; code?: string; data?: { token?: string; operator?: OperatorInfo }
+      }
+      if (json.code === 'pase_vencido') {
+        // Pasaron más de cinco minutos: hay que pedir otro código.
+        setPinTicket(null)
+        setStep('phone')
+        setError(json.error || 'Vuelve a pedir el código.')
+        return
+      }
+      if (!res.ok || !json.data?.token || !json.data.operator) { setError(json.error || 'Clave equivocada.'); return }
       onLogin(json.data.token, json.data.operator)
     } catch {
       setError('No se pudo conectar con el servidor.')
@@ -255,6 +298,36 @@ function Login({ onLogin }: { onLogin: (t: string, o: OperatorInfo) => void }) {
                 className="mt-4 w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />} Enviarme el código
+              </button>
+            </>
+          ) : step === 'pin' ? (
+            <>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Tu clave personal</label>
+              <input
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyDown={(e) => { if (e.key === 'Enter' && pin.length >= 4 && !loading) verifyPin() }}
+                placeholder="••••"
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                autoComplete="current-password"
+                name="nx-clave"
+                autoFocus
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-200 bg-white text-center text-lg text-slate-900 tracking-[0.4em] placeholder:text-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                La que creaste para esta cuenta. Si la olvidaste, pide a soporte que la restablezca.
+              </p>
+              <button
+                onClick={verifyPin}
+                disabled={loading || pin.length < 4}
+                className="mt-4 w-full py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {loading && <Loader2 className="w-4 h-4 animate-spin" />} Entrar
+              </button>
+              <button onClick={() => { setPinTicket(null); setStep('phone') }} className="mt-2 w-full text-xs text-slate-400 hover:text-slate-600">
+                Cambiar número
               </button>
             </>
           ) : (
@@ -421,6 +494,7 @@ function Dashboard({ token, operator, onLogout }: {
 
   return (
     <div className="min-h-screen bg-slate-100 md:flex">
+      <ClaveObligatoria api={api} />
       {/* ── Sidebar (escritorio) — torre de control estilo centro de operaciones ── */}
       <aside className="hidden md:flex md:flex-col w-60 shrink-0 bg-slate-950 text-slate-300 sticky top-0 h-screen">
         <div className="px-4 py-5 flex items-center gap-3 border-b border-slate-800">

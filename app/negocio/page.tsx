@@ -23,6 +23,18 @@ const CATEGORIA: Record<string, string> = {
   OTHER: 'Negocio',
 }
 
+interface RespuestaRecuperacion {
+  success?: boolean
+  error?: string
+  code?: string
+  data?: {
+    businesses?: NegocioLink[]
+    needsPin?: boolean
+    pinTicket?: string
+    pinSetupRequired?: boolean
+  }
+}
+
 interface NegocioLink {
   id: string
   name: string
@@ -40,7 +52,12 @@ interface NegocioLink {
  * código por SMS prueba que el número es suyo y devuelve sus enlaces.
  */
 export default function EntradaNegocio() {
-  const [paso, setPaso] = useState<'telefono' | 'codigo' | 'listo'>('telefono')
+  const [paso, setPaso] = useState<'telefono' | 'codigo' | 'clave' | 'listo'>('telefono')
+  // Sin SMS, el código es el mismo para todos: el negocio con clave personal
+  // solo se entrega con su clave (ver `recuperarNegocios` en el backend).
+  const [clave, setClave] = useState('')
+  const [pase, setPase] = useState<string | null>(null)
+  const [sinClave, setSinClave] = useState(false)
   const [telefono, setTelefono] = useState('')
   const [codigo, setCodigo] = useState('')
   const [cargando, setCargando] = useState(false)
@@ -80,14 +97,47 @@ export default function EntradaNegocio() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: telefonoCompleto, otp: codigo.trim() }),
       })
-      const json = (await res.json().catch(() => ({}))) as {
-        success?: boolean
-        error?: string
-        data?: { businesses: NegocioLink[] }
-      }
+      const json = (await res.json().catch(() => ({}))) as RespuestaRecuperacion
       if (!res.ok) { setError(json.error ?? 'Código inválido.'); return }
-      setNegocios(json.data?.businesses ?? [])
-      setPaso('listo')
+      if (json.data?.needsPin && json.data.pinTicket) {
+        setPase(json.data.pinTicket)
+        setClave('')
+        setPaso('clave')
+        return
+      }
+      mostrarNegocios(json)
+    } catch {
+      setError('No se pudo conectar con el servidor.')
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  function mostrarNegocios(json: RespuestaRecuperacion) {
+    setNegocios(json.data?.businesses ?? [])
+    setSinClave(json.data?.pinSetupRequired === true)
+    setPaso('listo')
+  }
+
+  async function verificarClave() {
+    if (!pase) return
+    setError(null)
+    setCargando(true)
+    try {
+      const res = await fetch(`${BACKEND_URL}/business/recover/verify-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinTicket: pase, pin: clave.trim() }),
+      })
+      const json = (await res.json().catch(() => ({}))) as RespuestaRecuperacion
+      if (json.code === 'pase_vencido') {
+        setPase(null)
+        setPaso('telefono')
+        setError(json.error ?? 'Vuelve a pedir el código.')
+        return
+      }
+      if (!res.ok) { setError(json.error ?? 'Clave equivocada.'); return }
+      mostrarNegocios(json)
     } catch {
       setError('No se pudo conectar con el servidor.')
     } finally {
@@ -181,6 +231,35 @@ export default function EntradaNegocio() {
             </>
           )}
 
+          {paso === 'clave' && (
+            <>
+              <h2 className="font-semibold text-slate-900 text-sm mb-1">Tu clave personal</h2>
+              <p className="text-xs text-slate-500 mb-4">
+                La que creaste en los ajustes de tu portal. Si la olvidaste, escríbenos y la restablecemos.
+              </p>
+              <input
+                value={clave}
+                onChange={(e) => setClave(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onKeyDown={(e) => { if (e.key === 'Enter' && clave.length >= 4 && !cargando) void verificarClave() }}
+                placeholder="••••"
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                autoComplete="current-password"
+                autoFocus
+                className={`${INPUT} text-center text-lg tracking-[0.4em]`}
+              />
+              <button
+                onClick={() => void verificarClave()}
+                disabled={cargando || clave.length < 4}
+                className="mt-4 w-full py-2.5 bg-emerald-700 text-white rounded-xl text-sm font-bold hover:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {cargando ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Ver mis negocios
+              </button>
+            </>
+          )}
+
           {paso === 'listo' && (
             <>
               {negocios.length === 0 ? (
@@ -215,6 +294,12 @@ export default function EntradaNegocio() {
                   <p className="text-xs text-slate-500 mb-4">
                     Guarda el enlace en los favoritos de tu celular: es tu acceso directo.
                   </p>
+                  {sinClave && (
+                    <p className="mb-4 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                      Crea una clave personal en <strong>Ajustes</strong> de tu portal: mientras el código que llega por
+                      mensaje sea el mismo para todos, es lo que impide que alguien que sepa tu teléfono recupere tu enlace.
+                    </p>
+                  )}
                   <ul className="space-y-2.5">
                     {negocios.map((n) => (
                       <li key={n.id} className="rounded-xl border border-slate-200 p-3">
