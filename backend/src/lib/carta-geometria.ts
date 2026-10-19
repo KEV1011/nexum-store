@@ -188,7 +188,7 @@ export function palabrasDeRespuestaVision(cuerpo: unknown): PalabraOcr[] {
     }>;
   };
 
-  const salida: PalabraOcr[] = [];
+  const crudas: Array<{ texto: string; v: Punto[] }> = [];
   for (const pagina of raiz.responses?.[0]?.fullTextAnnotation?.pages ?? []) {
     for (const bloque of pagina.blocks ?? []) {
       for (const parrafo of bloque.paragraphs ?? []) {
@@ -196,16 +196,77 @@ export function palabrasDeRespuestaVision(cuerpo: unknown): PalabraOcr[] {
           const texto = (palabra.symbols ?? []).map((s) => s.text ?? '').join('');
           const v = palabra.boundingBox?.vertices ?? [];
           if (!texto.trim() || v.length === 0) continue;
-          const xs = v.map((p) => p.x ?? 0);
-          const ys = v.map((p) => p.y ?? 0);
-          salida.push({
-            texto,
-            x0: Math.min(...xs), x1: Math.max(...xs),
-            y0: Math.min(...ys), y1: Math.max(...ys),
-          });
+          crudas.push({ texto, v: v.map((p) => ({ x: p.x ?? 0, y: p.y ?? 0 })) });
         }
       }
     }
   }
-  return salida;
+  return enderezar(crudas);
+}
+
+interface Punto { x: number; y: number }
+
+/**
+ * La dirección en la que se LEE la carta en la foto, en radianes.
+ *
+ * Vision entrega los cuatro vértices de cada palabra en el orden en que se lee
+ * (arriba-izquierda, arriba-derecha, abajo-derecha, abajo-izquierda «según el
+ * texto», no según la imagen). Así que del vértice 0 al 1 va la dirección de
+ * lectura de ESA palabra. Se promedian todas, pesadas por lo larga que es cada
+ * una: las palabras de una letra dan una dirección poco fiable.
+ *
+ * Devuelve 0 cuando no hay con qué decidirlo.
+ */
+export function anguloDeLectura(palabras: Array<{ texto: string; v: Punto[] }>): number {
+  let sx = 0;
+  let sy = 0;
+  for (const p of palabras) {
+    if (p.v.length < 2) continue;
+    const dx = p.v[1]!.x - p.v[0]!.x;
+    const dy = p.v[1]!.y - p.v[0]!.y;
+    const largo = Math.hypot(dx, dy);
+    if (largo === 0) continue;
+    const peso = Math.max(1, p.texto.trim().length);
+    sx += (dx / largo) * peso;
+    sy += (dy / largo) * peso;
+  }
+  if (sx === 0 && sy === 0) return 0;
+  return Math.atan2(sy, sx);
+}
+
+/**
+ * Las palabras con su rectángulo en el marco DEL TEXTO, no de la imagen.
+ *
+ * EL REPORTE: «se sube una carta y no lee nada de manera eficaz» — y salían
+ * renglones como «$ $ $ 23.000 23.000 21.000 de SANDWICH toque vegetales…».
+ * Todo lo de abajo agrupa renglones por la ALTURA de las palabras y columnas
+ * por su posición horizontal, o sea que daba por hecho que la carta está
+ * derecha en la foto. Con la foto de lado —el teléfono girado, o una carta
+ * apaisada fotografiada en vertical— los renglones de verdad quedan
+ * VERTICALES: todos ocupan la misma franja de altura, así que se fundían en
+ * uno, y ordenarlos de izquierda a derecha ponía primero la columna de los
+ * signos de pesos. Una foto apenas torcida hacía lo mismo a menor escala:
+ * el final de un renglón se metía en el siguiente.
+ *
+ * Se gira todo para que la lectura quede horizontal antes de agrupar. Con la
+ * carta derecha (lo normal) no se toca nada: el giro se omite por debajo de
+ * medio grado, y así el rectángulo es exactamente el que mandó Vision.
+ */
+export function enderezar(palabras: Array<{ texto: string; v: Punto[] }>): PalabraOcr[] {
+  const angulo = anguloDeLectura(palabras);
+  const recto = Math.abs(angulo) < (0.5 * Math.PI) / 180;
+  const cos = Math.cos(angulo);
+  const sin = Math.sin(angulo);
+  return palabras.map(({ texto, v }) => {
+    const pts = recto
+      ? v
+      : v.map((p) => ({ x: p.x * cos + p.y * sin, y: -p.x * sin + p.y * cos }));
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    return {
+      texto,
+      x0: Math.min(...xs), x1: Math.max(...xs),
+      y0: Math.min(...ys), y1: Math.max(...ys),
+    };
+  });
 }

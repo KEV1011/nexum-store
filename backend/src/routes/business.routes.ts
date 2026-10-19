@@ -56,7 +56,7 @@ import {
 } from '../types';
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
-import { parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
+import { mejorLectura, parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
 import { GRUPO_TAMANO, motivoParaNoAgrupar, sugerirVariantes } from '../lib/carta-variantes';
 import { agruparAdicionales, sanearRol } from '../lib/carta-rol';
 import { saneaGrupo } from '../lib/texto-opciones';
@@ -776,10 +776,16 @@ router.post(
       // Con la geometría de la foto se lee columna por columna y el título se
       // reconoce por el TAMAÑO de su letra. Sin ella —proveedor que no la
       // manda, o `fake`— se cae al texto plano, que es como funcionaba antes.
+      //
+      // Y se hacen LAS DOS lecturas y se queda la que más platos encontró con
+      // precio (`mejorLectura`): una foto que engaña a la geometría —de lado,
+      // torcida, con un plegado— ya no puede dejar la carta peor que el texto
+      // corrido de Vision, que es como se leía antes.
       const medidas = lectura.palabras ? lineasDeLaFoto(lectura.palabras) : [];
+      const porTexto = parsearCarta(lectura.texto);
       const carta = medidas.length > 0
-        ? parsearCartaMedida(medidas, altoDelCuerpo(medidas), esTituloPorTamano)
-        : parsearCarta(lectura.texto);
+        ? mejorLectura(parsearCartaMedida(medidas, altoDelCuerpo(medidas), esTituloPorTamano), porTexto)
+        : porTexto;
       res.status(200).json({
         success: true,
         data: {
