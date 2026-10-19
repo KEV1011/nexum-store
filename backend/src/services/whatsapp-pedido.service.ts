@@ -145,8 +145,16 @@ function textoCotizacion(destino: string, fare: number, minutos: number, etiquet
   );
 }
 
-function textoBuscando(fare: number, cotizado: number | null): string {
-  const base = `Pedido por *${money(fare)}*. Estoy buscándote un conductor, te aviso en cuanto uno acepte.`;
+function textoBuscando(fare: number, cotizado: number | null, codigo?: string): string {
+  let base = `Pedido por *${money(fare)}*. Estoy buscándote un conductor, te aviso en cuanto uno acepte.`;
+  // Quien pide por WhatsApp no tiene la app donde se ve el código: va aquí,
+  // en el mensaje que ya salía. Sin él, el conductor no podría iniciar el
+  // viaje (y es justo lo que le dice a la persona si se subió al carro bueno).
+  if (codigo) {
+    base +=
+      `\n\nTu código para subirte: *${codigo}*. Dáselo SOLO al conductor ` +
+      'que te recoja; si no te lo pide, no es tu conductor.';
+  }
   // Solo se menciona el cambio si lo hubo. Decir «el precio sigue siendo el
   // mismo» en cada pedido sembraría una duda que no existía.
   if (cotizado != null && Math.abs(cotizado - fare) >= 50) {
@@ -382,7 +390,7 @@ async function _crearViaje(
     ...conv, state: 'viaje_en_curso', tripId: viaje.id, fare: cobrado,
   });
   return {
-    cuerpo: textoBuscando(cobrado, conv.fare),
+    cuerpo: textoBuscando(cobrado, conv.fare, viaje.boardingPin),
     outcome: 'respondido:viaje-pedido',
   };
 }

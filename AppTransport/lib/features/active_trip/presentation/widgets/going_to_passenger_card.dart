@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_driver/shared/widgets/nota_del_pasajero.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
@@ -135,6 +136,14 @@ class GoingToPassengerCard extends ConsumerWidget {
           const SizedBox(height: AppConstants.spacingM),
           const Divider(color: AppColors.divider, height: 1),
           const SizedBox(height: AppConstants.spacingM),
+
+          // Lo que el pasajero escribió para encontrarlo. Va encima de la
+          // dirección porque suele corregirla («la entrada es por la otra
+          // calle»).
+          if (!isEnvios && trip.request.passengerNote != null) ...[
+            NotaDelPasajero(nota: trip.request.passengerNote!),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
 
           // ── Pickup address ───────────────────────────────────────────────
           Row(

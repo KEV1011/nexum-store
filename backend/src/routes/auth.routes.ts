@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { isValidColombianPhone, sendOtp, verifyOtp, registerDriver, verifyToken } from '../services/auth.service';
+import { isValidColombianPhone, sendOtp, verifyOtp, verifyOtpConClave, registerDriver, verifyToken } from '../services/auth.service';
+import { ClaveError } from '../services/clave-personal.service';
 import { OtpRateLimitError } from '../services/otp.service';
 import { RegisterDriverDTO } from '../types';
 import { legalConsentEnforced, recordConsent } from '../services/legal.service';
@@ -46,12 +47,38 @@ router.post('/verify-otp', async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
+  // La clave personal puede venir ya en esta misma petición (un paso) o
+  // después con el pase (dos pasos); la app nueva usa los dos.
+  const pin = typeof (req.body as { pin?: unknown }).pin === 'string'
+    ? (req.body as { pin: string }).pin
+    : undefined;
+
   try {
-    const result = await verifyOtp(phone, otp);
+    const result = await verifyOtp(phone, otp, pin);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
+    if (err instanceof ClaveError) {
+      res.status(err.status).json({ success: false, error: err.message, code: err.code });
+      return;
+    }
     const message = err instanceof Error ? err.message : 'OTP verification failed';
     res.status(401).json({ success: false, error: message });
+  }
+});
+
+// POST /auth/verify-pin { pinTicket, pin } — termina el ingreso de una cuenta
+// que pidió su clave personal. El pase dura cinco minutos.
+router.post('/verify-pin', async (req: Request, res: Response): Promise<void> => {
+  const { pinTicket, pin } = req.body as { pinTicket?: unknown; pin?: unknown };
+  try {
+    const result = await verifyOtpConClave(pinTicket, typeof pin === 'string' ? pin : undefined);
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    if (err instanceof ClaveError) {
+      res.status(err.status).json({ success: false, error: err.message, code: err.code });
+      return;
+    }
+    res.status(500).json({ success: false, error: 'No se pudo comprobar la clave.' });
   }
 });
 

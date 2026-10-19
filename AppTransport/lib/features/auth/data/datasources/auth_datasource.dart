@@ -9,6 +9,13 @@ abstract class AuthDataSource {
     required String otpCode,
   });
 
+  /// Termina un ingreso que pidió la clave personal (`needsPin`).
+  /// Devuelve lo mismo que [verifyOtp].
+  Future<Map<String, dynamic>> verifyPin({
+    required String pinTicket,
+    required String pin,
+  });
+
   /// Registers a new driver.
   /// Returns `{ token: String, driver: Map<String, dynamic>, isRegistered: bool }` on success.
   /// Throws [ServerException] on failure.

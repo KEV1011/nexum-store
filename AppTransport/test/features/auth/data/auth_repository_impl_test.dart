@@ -44,6 +44,13 @@ class FakeAuthDataSource implements AuthDataSource {
   Future<Map<String, dynamic>> registerDriver(Map<String, dynamic> data) async =>
       _responder();
 
+  @override
+  Future<Map<String, dynamic>> verifyPin({
+    required String pinTicket,
+    required String pin,
+  }) async =>
+      _responder();
+
   Map<String, dynamic> _responder() {
     if (error != null) throw error!;
     return respuesta!;
@@ -435,6 +442,71 @@ void main() {
       });
       await repo().logout();
       expect(await guardado(AppConstants.authTokenKey), isNull);
+    });
+  });
+
+  // Sin SMS el código es el mismo para todos: la cuenta con clave personal
+  // la pide además, y la que no tiene se manda a crearla.
+  group('clave personal', () {
+    test('la cuenta pide clave: NO hay sesión y llega el pase', () async {
+      final r = await repo(respuesta: <String, dynamic>{
+        'needsPin': true,
+        'pinTicket': 'pase-1',
+      }).verifyOtp(phoneNumber: '+573002223344', otpCode: '123456');
+
+      expect(r.failure, isA<ClavePersonalRequeridaFailure>());
+      expect((r.failure! as ClavePersonalRequeridaFailure).pinTicket, 'pase-1');
+      expect(r.driver, isNull);
+      expect(await guardado(AppConstants.authTokenKey), isNull,
+          reason: 'sin clave no puede quedar sesión');
+    });
+
+    test('con la clave, entra igual que con el código', () async {
+      final r = await repo(respuesta: <String, dynamic>{
+        'token': 'jwt-1',
+        'isRegistered': true,
+        'driver': ficha(),
+      }).verifyPin(pinTicket: 'pase-1', pin: '4827');
+
+      expect(r.failure, isNull, reason: '${r.failure?.message}');
+      expect(await guardado(AppConstants.authTokenKey), 'jwt-1');
+    });
+
+    test('clave equivocada: el motivo del servidor, sin sesión', () async {
+      final r = await repo(
+        error: const AuthException(message: 'Clave equivocada.', code: 'clave_incorrecta'),
+      ).verifyPin(pinTicket: 'pase-1', pin: '1111');
+
+      expect(r.failure?.message, 'Clave equivocada.');
+      expect(r.failure?.code, 'clave_incorrecta');
+      expect(await guardado(AppConstants.authTokenKey), isNull);
+    });
+
+    test('sin clave todavía: queda marcado para crearla, y salir lo borra', () async {
+      final repositorio = repo(respuesta: <String, dynamic>{
+        'token': 'jwt-1',
+        'isRegistered': true,
+        'driver': ficha(),
+        'pinSetupRequired': true,
+      });
+      await repositorio.verifyOtp(phoneNumber: '+573002223344', otpCode: '123456');
+      expect(await repositorio.necesitaClave(), isTrue);
+
+      await repositorio.logout();
+      expect(await repositorio.necesitaClave(), isFalse,
+          reason: 'el siguiente que entre no hereda el aviso');
+    });
+
+    test('creada la clave, deja de pedirse', () async {
+      final repositorio = repo(respuesta: <String, dynamic>{
+        'token': 'jwt-1',
+        'isRegistered': true,
+        'driver': ficha(),
+        'pinSetupRequired': true,
+      });
+      await repositorio.verifyOtp(phoneNumber: '+573002223344', otpCode: '123456');
+      await repositorio.claveCreada();
+      expect(await repositorio.necesitaClave(), isFalse);
     });
   });
 }

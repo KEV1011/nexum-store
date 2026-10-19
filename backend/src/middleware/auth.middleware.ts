@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../config/constants';
 import { JwtPayload } from '../types';
 import { conductorBorrado } from './deleted-account';
+import { esPayloadDeConductor } from '../lib/token-conductor';
 
 // Extend the Express Request type to carry the decoded driver identity
 declare global {
@@ -36,6 +37,15 @@ export async function authMiddleware(
       res.status(401).json({ success: false, error: 'Token expired' });
       return;
     }
+    res.status(401).json({ success: false, error: 'Invalid token' });
+    return;
+  }
+
+  // Firmado con nuestro secreto no basta: el del PASAJERO, el de la empresa y
+  // el enlace de «compartir viaje» también lo están, y pasaban esta puerta
+  // con `driverId` vacío — que en Prisma es «sin filtro» (ver
+  // `lib/token-conductor`).
+  if (!esPayloadDeConductor(decoded)) {
     res.status(401).json({ success: false, error: 'Invalid token' });
     return;
   }

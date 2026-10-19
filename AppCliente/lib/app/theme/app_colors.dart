@@ -65,6 +65,10 @@ abstract final class AppColors {
   static const Color warningContainer = Color(0xFFFEF3C7);
   static const Color info = Color(0xFF3B82F6);
   static const Color infoContainer = Color(0xFFDBEAFE);
+  /// El azul de `info` como LETRA sobre fondo claro. `info` da 3,7:1 contra
+  /// blanco —vale para un número grande, no para una etiqueta de 11 px—; este
+  /// da 6,7:1. Mismo motivo que `primaryTexto`.
+  static const Color infoTexto = Color(0xFF1D4ED8);
 
   // ── Intermunicipal (tema nocturno premium de las pantallas intercity) ─────
   static const Color intercityBg = Color(0xFF0F172A); // fondo profundo

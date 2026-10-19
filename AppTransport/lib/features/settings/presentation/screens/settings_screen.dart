@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
@@ -14,7 +13,6 @@ import 'package:nexum_driver/features/settings/presentation/screens/legal_doc_sc
 import 'package:nexum_driver/features/settings/presentation/screens/privacy_screen.dart';
 import 'package:nexum_driver/shared/services/navegacion_externa.dart';
 import 'package:nexum_driver/features/moderacion/presentation/bloqueados_screen.dart';
-import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 import 'package:nexum_driver/app/theme/contraste.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -128,14 +126,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const Divider(),
           _SectionHeader(title: 'Seguridad'),
+          // La clave personal de verdad. Aquí había una hoja «Cambiar PIN de
+          // seguridad» que no guardaba nada en ninguna parte y decía «PIN
+          // actualizado correctamente»: una pantalla de seguridad que miente
+          // es peor que no tenerla.
           _SettingsTile(
             icon: Icons.lock_outline_rounded,
             iconColor: AppColors.error,
-            title: 'Cambiar PIN de seguridad',
-            subtitle: 'Actualiza tu PIN de acceso',
+            title: 'Clave personal',
+            subtitle: 'La que te pedimos al entrar',
             trailing: Icon(Icons.chevron_right_rounded,
                 color: context.textSecondaryColor),
-            onTap: _showChangePinSheet,
+            onTap: () => context.push(AppRoutes.clavePersonal),
           ),
           _SettingsTile(
             icon: Icons.privacy_tip_outlined,
@@ -416,25 +418,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _showChangePinSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-            top: Radius.circular(AppConstants.radiusXLarge)),
-      ),
-      builder: (ctx) => _ChangePinSheet(
-        onChanged: () => ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('PIN actualizado correctamente'),
-            backgroundColor: AppColors.success,
-          ),
-        ),
-      ),
-    );
-  }
-
   void _clearCache() {
     if (_cacheMb == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -496,176 +479,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 }
 
 // ── Change PIN sheet ───────────────────────────────────────────────────────────
-
-class _ChangePinSheet extends StatefulWidget {
-  const _ChangePinSheet({required this.onChanged});
-  final VoidCallback onChanged;
-
-  @override
-  State<_ChangePinSheet> createState() => _ChangePinSheetState();
-}
-
-class _ChangePinSheetState extends State<_ChangePinSheet> {
-  final _formKey = GlobalKey<FormState>();
-  final _currentCtrl = TextEditingController();
-  final _newCtrl = TextEditingController();
-  final _confirmCtrl = TextEditingController();
-  bool _obscureCurrent = true;
-  bool _obscureNew = true;
-  bool _obscureConfirm = true;
-
-  @override
-  void dispose() {
-    _currentCtrl.dispose();
-    _newCtrl.dispose();
-    _confirmCtrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-    Navigator.of(context).pop();
-    widget.onChanged();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return envolverHoja(
-      context,
-      Padding(
-        padding: EdgeInsets.fromLTRB(
-          AppConstants.spacingL,
-          AppConstants.spacingL,
-          AppConstants.spacingL,
-          MediaQuery.of(context).viewInsets.bottom + AppConstants.spacingL,
-        ),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    'Cambiar PIN',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Cerrar',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppConstants.spacingM),
-              TextFormField(
-                controller: _currentCtrl,
-                decoration: InputDecoration(
-                  labelText: 'PIN actual',
-                  prefixIcon: const Icon(Icons.lock_outline_rounded),
-                  suffixIcon: IconButton(
-                    tooltip: _obscureCurrent ? 'Mostrar el PIN' : 'Ocultar el PIN',
-                    icon: Icon(_obscureCurrent
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined),
-                    onPressed: () =>
-                        setState(() => _obscureCurrent = !_obscureCurrent),
-                  ),
-                ),
-                obscureText: _obscureCurrent,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(4),
-                ],
-                validator: (v) {
-                  if (v == null || v.length < 4) return 'El PIN debe tener 4 dígitos';
-                  if (v != '1234') return 'PIN incorrecto';
-                  return null;
-                },
-              ),
-              const SizedBox(height: AppConstants.spacingM),
-              TextFormField(
-                controller: _newCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Nuevo PIN',
-                  prefixIcon: const Icon(Icons.lock_rounded),
-                  suffixIcon: IconButton(
-                    tooltip: _obscureNew ? 'Mostrar el PIN' : 'Ocultar el PIN',
-                    icon: Icon(_obscureNew
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined),
-                    onPressed: () =>
-                        setState(() => _obscureNew = !_obscureNew),
-                  ),
-                ),
-                obscureText: _obscureNew,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(4),
-                ],
-                validator: (v) {
-                  if (v == null || v.length < 4) return 'El PIN debe tener 4 dígitos';
-                  if (v == _currentCtrl.text) {
-                    return 'El nuevo PIN no puede ser igual al actual';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: AppConstants.spacingM),
-              TextFormField(
-                controller: _confirmCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Confirmar nuevo PIN',
-                  prefixIcon: const Icon(Icons.lock_rounded),
-                  suffixIcon: IconButton(
-                    tooltip: _obscureConfirm ? 'Mostrar el PIN' : 'Ocultar el PIN',
-                    icon: Icon(_obscureConfirm
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined),
-                    onPressed: () =>
-                        setState(() => _obscureConfirm = !_obscureConfirm),
-                  ),
-                ),
-                obscureText: _obscureConfirm,
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(4),
-                ],
-                validator: (v) {
-                  if (v != _newCtrl.text) return 'Los PINs no coinciden';
-                  return null;
-                },
-              ),
-              const SizedBox(height: AppConstants.spacingXS),
-              Text(
-                'PIN actual de prueba: 1234',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: context.textTertiaryColor),
-              ),
-              const SizedBox(height: AppConstants.spacingL),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _submit,
-                  child: const Text('Actualizar PIN'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Shared widgets ─────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title});

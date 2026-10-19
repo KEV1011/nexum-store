@@ -28,10 +28,16 @@ import {
   getBusinessStats,
   getBusinessReviews,
   findBusinessesByPhone,
+  recuperarNegocios,
+  recuperarNegociosConPase,
+  type RecuperacionNegocios,
   updateBusinessLocation,
   updateBusinessShipping,
 } from '../services/business.service';
-import { requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
+import { codigoEsLlaveMaestra, requestOtp, validateOtp, OtpRateLimitError } from '../services/otp.service';
+import { ClaveError, fijarClave } from '../services/clave-personal.service';
+import { normalizeColombianPhone } from '../services/auth.service';
+import { prisma } from '../lib/prisma';
 import { isSmsConfigured } from '../services/sms.service';
 import {
   getClientOrdersForBusiness,
@@ -165,20 +171,82 @@ router.post('/recover/verify-otp', authLimiter, async (req: Request, res: Respon
     return;
   }
   // 2) ...y solo entonces revelar los negocios. No hay enumeración posible:
-  // esta información llega únicamente a quien recibió el SMS.
-  const negocios = await findBusinessesByPhone(phone);
+  // esta información llega únicamente a quien recibió el SMS. Sin SMS, el que
+  // tiene clave personal además la pide (ver `recuperarNegocios`).
+  const pin = (req.body as { pin?: unknown }).pin;
+  try {
+    const r = await recuperarNegocios(phone, typeof pin === 'string' ? pin : undefined);
+    res.json({ success: true, data: _enlacesDeRecuperacion(r) });
+  } catch (err) {
+    _errorDeClave(res, err);
+  }
+});
+
+// POST /business/recover/verify-pin { pinTicket, pin } — termina una
+// recuperación que pidió la clave personal.
+router.post('/recover/verify-pin', authLimiter, async (req: Request, res: Response): Promise<void> => {
+  const { pinTicket, pin } = req.body as { pinTicket?: unknown; pin?: unknown };
+  try {
+    const r = await recuperarNegociosConPase(pinTicket, typeof pin === 'string' ? pin : undefined);
+    res.json({ success: true, data: _enlacesDeRecuperacion(r) });
+  } catch (err) {
+    _errorDeClave(res, err);
+  }
+});
+
+function _enlacesDeRecuperacion(r: RecuperacionNegocios) {
+  if ('needsPin' in r) return r;
+  return {
+    businesses: r.businesses.map((b) => ({
+      id: b.id,
+      name: b.name,
+      category: b.category,
+      isOpen: b.isOpen,
+      portalUrl: `${PORTAL_BASE_URL}/negocio/${b.token}`,
+    })),
+    ...(r.pinSetupRequired ? { pinSetupRequired: true } : {}),
+  };
+}
+
+function _errorDeClave(res: Response, err: unknown): void {
+  if (err instanceof ClaveError) {
+    res.status(err.status).json({ success: false, error: err.message, code: err.code });
+    return;
+  }
+  res.status(500).json({ success: false, error: 'No se pudo recuperar el acceso.' });
+}
+
+// GET /business/:token/clave → { tiene, exigible }
+router.get('/:token/clave', async (req: Request, res: Response): Promise<void> => {
+  const biz = await prisma.business.findUnique({
+    where: { token: req.params['token']! },
+    select: { id: true, loginPinHash: true, phone: true },
+  });
+  if (!biz) { res.status(404).json({ success: false, error: 'Negocio no encontrado' }); return; }
   res.json({
     success: true,
     data: {
-      businesses: negocios.map((b) => ({
-        id: b.id,
-        name: b.name,
-        category: b.category,
-        isOpen: b.isOpen,
-        portalUrl: `${PORTAL_BASE_URL}/negocio/${b.token}`,
-      })),
+      tiene: !!biz.loginPinHash,
+      exigible: codigoEsLlaveMaestra(biz.phone ? normalizeColombianPhone(biz.phone) : ''),
     },
   });
+});
+
+// PUT /business/:token/clave { nueva, actual? } — la clave con la que el
+// dueño recupera este enlace si lo pierde.
+router.put('/:token/clave', async (req: Request, res: Response): Promise<void> => {
+  const biz = await prisma.business.findUnique({
+    where: { token: req.params['token']! },
+    select: { id: true },
+  });
+  if (!biz) { res.status(404).json({ success: false, error: 'Negocio no encontrado' }); return; }
+  const { nueva, actual } = (req.body ?? {}) as { nueva?: unknown; actual?: unknown };
+  try {
+    await fijarClave({ tipo: 'business', id: biz.id }, nueva, typeof actual === 'string' ? actual : undefined);
+    res.json({ success: true, data: { tiene: true } });
+  } catch (err) {
+    _errorDeClave(res, err);
+  }
 });
 
 // ─── Portal access: verify token and get business info ───────────────────────

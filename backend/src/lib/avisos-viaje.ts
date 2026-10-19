@@ -35,6 +35,12 @@ export interface DatosDelViaje {
   /** Tarifa final, para el aviso de viaje completado. */
   finalFare?: number | null;
   destino?: string | null;
+  /**
+   * El código de abordaje del pasajero. Va en el aviso de «tu conductor
+   * llegó», que es el momento exacto en que hay que dárselo: con el carro en
+   * la puerta nadie quiere ponerse a buscarlo dentro de la app.
+   */
+  codigoAbordaje?: string | null;
 }
 
 function pesos(v: number): string {
@@ -63,7 +69,9 @@ export function avisoDeEstado(
         title: envio ? 'El repartidor llegó por tu envío' : 'Tu conductor llegó',
         body: envio
           ? 'Está en el punto de recogida esperándote.'
-          : 'Ya está en el punto de recogida esperándote.',
+          : datos.codigoAbordaje
+            ? `Ya está en el punto de recogida. Tu código para subirte: ${datos.codigoAbordaje}.`
+            : 'Ya está en el punto de recogida esperándote.',
         type: 'trip_arrived',
       };
 

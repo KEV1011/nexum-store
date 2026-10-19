@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_driver/shared/widgets/nota_del_pasajero.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
@@ -109,6 +110,36 @@ class WaitingPassengerCard extends StatelessWidget {
               ),
             ],
           ),
+          if (trip.request.passengerNote != null) ...[
+            const SizedBox(height: AppConstants.spacingM),
+            NotaDelPasajero(nota: trip.request.passengerNote!),
+          ],
+          // Se avisa ANTES de tocar el botón: así el conductor se lo pide al
+          // pasajero mientras sube, y no con la mano ya en el diálogo.
+          if (trip.request.requiresBoardingPin) ...[
+            const SizedBox(height: AppConstants.spacingM),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.how_to_reg_outlined,
+                  size: 16,
+                  color: context.textSecondaryColor,
+                ),
+                const SizedBox(width: AppConstants.spacingXS),
+                Flexible(
+                  child: Text(
+                    'Para iniciar, pídele su código de 4 dígitos',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: context.textSecondaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: AppConstants.spacingL),
           SizedBox(
             width: double.infinity,

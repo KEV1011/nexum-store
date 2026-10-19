@@ -55,6 +55,13 @@ final class AuthRegistrationRequired extends AuthState {
   final String phone;
 }
 
+/// El código era bueno pero la cuenta tiene clave personal: falta escribirla.
+/// [pinTicket] dura cinco minutos y evita pedir el código otra vez.
+final class AuthPinRequired extends AuthState {
+  const AuthPinRequired({required this.pinTicket});
+  final String pinTicket;
+}
+
 /// Sesión cerrada o no existe sesión activa.
 final class AuthUnauthenticated extends AuthState {
   const AuthUnauthenticated();
@@ -155,8 +162,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
       otpCode: otp,
     );
 
-    if (result.failure != null) {
-      state = AuthError(failure: result.failure!);
+    final fallo = result.failure;
+    if (fallo is ClavePersonalRequeridaFailure) {
+      state = AuthPinRequired(pinTicket: fallo.pinTicket);
+      return;
+    }
+    if (fallo != null) {
+      state = AuthError(failure: fallo);
       return;
     }
 
@@ -165,6 +177,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return;
     }
 
+    state = AuthAuthenticated(driver: result.driver!);
+  }
+
+  // ── verifyPin ──────────────────────────────────────────────────────────────
+
+  /// Segundo paso del ingreso: la clave personal con el pase del servidor.
+  ///
+  /// Emite [AuthLoading] → [AuthAuthenticated] | [AuthError].
+  Future<void> verifyPin(String pinTicket, String pin) async {
+    state = const AuthLoading();
+    final result = await _repository.verifyPin(pinTicket: pinTicket, pin: pin);
+    if (result.failure != null) {
+      state = AuthError(failure: result.failure!);
+      return;
+    }
     state = AuthAuthenticated(driver: result.driver!);
   }
 

@@ -40,6 +40,7 @@ import {
   registerErrandSendToDriver,
 } from '../services/errand.service';
 import { registerComplianceSendToDriver } from '../services/document-expiry.service';
+import { registerSafetyCheckToClient } from '../services/safety-alerts.service';
 import { registerReservaSendToDriver } from '../services/reservas.service';
 import { registerAvisoDeGiro } from '../services/giro-aliado.service';
 import { CustodyPinError } from '../lib/custody-pin';
@@ -1520,6 +1521,12 @@ export function setupWebSocket(wss: WebSocketServer): void {
   registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   // Kill-switch documental: aviso en vivo al conductor bloqueado/reactivado.
   registerComplianceSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+  // «¿Todo bien?» al pasajero tras una detención o un desvío. Si tiene la app
+  // abierta le sale al instante; si no, le llega el push.
+  registerSafetyCheckToClient((clientId, tripId, kind) => {
+    const ws = clientSockets.get(clientId);
+    if (ws) sendTo(ws, { type: 'safety_check', tripId, kind });
+  });
   // Reservas: «tu reserva empieza ahora» y «se te liberó por no aparecer».
   registerReservaSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   // Giro a un aliado: «ya te pagamos», con la referencia de la transferencia.

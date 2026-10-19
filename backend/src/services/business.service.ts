@@ -17,6 +17,8 @@ import {
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { normalizeColombianPhone } from './auth.service';
+import { codigoEsLlaveMaestra } from './otp.service';
+import { ClaveError, comprobarClave, emitirPaseClave, leerPaseClave } from './clave-personal.service';
 import { geocodeAddress } from './geo.service';
 import { plazaDeCoordenadas } from './municipality.service';
 import {
@@ -1595,6 +1597,69 @@ export interface BusinessLinkDTO {
  * formatos— y recién ahí se comparan ya normalizados. Así también funciona con
  * los negocios que ya estaban registrados antes de esta función.
  */
+/**
+ * Los negocios que se le pueden devolver a quien recupera su enlace.
+ *
+ * Con SMS de verdad, todos los de su teléfono. Sin SMS el código es una llave
+ * maestra —lo sabe cualquiera que pruebe la app— y el enlace del portal es la
+ * llave del negocio entero: con saber el número del dueño, cualquiera se lo
+ * llevaba. Entonces el negocio que tiene clave personal solo se entrega con
+ * su clave; el que todavía no tiene, se entrega con el aviso de que la cree.
+ */
+export type RecuperacionNegocios =
+  | { businesses: BusinessLinkDTO[]; pinSetupRequired?: boolean }
+  | { needsPin: true; pinTicket: string };
+
+export async function recuperarNegocios(
+  rawPhone: string,
+  clave?: string,
+): Promise<RecuperacionNegocios> {
+  const phone = normalizeColombianPhone(rawPhone);
+  const negocios = await findBusinessesByPhone(phone);
+  if (!codigoEsLlaveMaestra(phone) || negocios.length === 0) return { businesses: negocios };
+
+  const conClave = new Set(
+    (
+      await prisma.business.findMany({
+        where: { id: { in: negocios.map((b) => b.id) }, loginPinHash: { not: null } },
+        select: { id: true },
+      })
+    ).map((b) => b.id),
+  );
+  if (conClave.size === 0) return { businesses: negocios, pinSetupRequired: true };
+  if (!clave || !clave.trim()) {
+    return { needsPin: true, pinTicket: emitirPaseClave('business', phone) };
+  }
+
+  const abiertos = new Set<string>();
+  let ultimoError: unknown = null;
+  for (const id of conClave) {
+    try {
+      await comprobarClave({ tipo: 'business', id }, clave);
+      abiertos.add(id);
+    } catch (err) {
+      ultimoError = err;
+    }
+  }
+  if (abiertos.size === 0) throw ultimoError;
+  return {
+    businesses: negocios.filter((b) => !conClave.has(b.id) || abiertos.has(b.id)),
+    ...(negocios.some((b) => !conClave.has(b.id)) ? { pinSetupRequired: true } : {}),
+  };
+}
+
+/** Termina una recuperación que se quedó esperando la clave. */
+export async function recuperarNegociosConPase(
+  pinTicket: unknown,
+  clave: string | undefined,
+): Promise<RecuperacionNegocios> {
+  const phone = leerPaseClave(pinTicket, 'business');
+  if (!clave || !clave.trim()) {
+    throw new ClaveError('Escribe tu clave personal.', 'clave_requerida', 403);
+  }
+  return recuperarNegocios(phone, clave);
+}
+
 export async function findBusinessesByPhone(rawPhone: string): Promise<BusinessLinkDTO[]> {
   const normalizado = normalizeColombianPhone(rawPhone);
   const ultimos4 = normalizado.slice(-4);

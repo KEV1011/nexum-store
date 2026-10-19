@@ -12,6 +12,7 @@ import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/auth/presentation/widgets/otp_input_field.dart';
+import 'package:nexum_driver/features/auth/presentation/widgets/clave_personal_dialog.dart';
 import 'package:nexum_driver/app/theme/contraste.dart';
 
 /// Pantalla de verificación de código OTP.
@@ -48,6 +49,10 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
   );
 
   bool _hasError = false;
+
+  /// El pase del servidor mientras se espera la clave personal. Null = el
+  /// ingreso no está en ese paso.
+  String? _pinTicket;
 
   String get _otpCode => _controllers.map((c) => c.text).join();
   bool get _isComplete => _otpCode.length == AppConstants.otpLength;
@@ -172,8 +177,15 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
   void _handleAuthState(AuthState? previous, AuthState current) {
     if (!mounted) return;
 
+    if (current is AuthPinRequired) {
+      _pinTicket = current.pinTicket;
+      _pedirClave();
+      return;
+    }
+
     if (current is AuthAuthenticated) {
-      context.go('/home');
+      _pinTicket = null;
+      _irDespuesDeEntrar();
       return;
     }
 
@@ -184,6 +196,17 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
       return;
     }
 
+    // Clave equivocada: se vuelve a pedir con el motivo, sin hacer pedir otro
+    // código. Si el pase venció, sí hay que empezar de nuevo.
+    if (current is AuthError && _pinTicket != null) {
+      if (current.failure.code == 'pase_vencido') {
+        _pinTicket = null;
+      } else {
+        _pedirClave(error: current.failure.message);
+        return;
+      }
+    }
+
     if (current is AuthError) {
       setState(() => _hasError = true);
       _shakeController.forward(from: 0);
@@ -191,6 +214,29 @@ class _OtpScreenState extends ConsumerState<OtpScreen>
       // Clear boxes and allow retry after the shake settles
       Future.delayed(AppConstants.longAnimation, _clearOtp);
     }
+  }
+
+  Future<void> _pedirClave({String? error}) async {
+    final ticket = _pinTicket;
+    if (ticket == null) return;
+    final pin = await pedirClavePersonal(context, error: error);
+    if (!mounted) return;
+    if (pin == null) {
+      // Canceló: se vuelve al código, que es lo que tiene en pantalla.
+      _pinTicket = null;
+      _clearOtp();
+      return;
+    }
+    await ref.read(authProvider.notifier).verifyPin(ticket, pin);
+  }
+
+  /// Entró. Si la cuenta todavía no tiene clave personal, se crea AHORA:
+  /// mientras el código sea llave maestra, sin clave cualquiera que sepa el
+  /// número podría entrar después.
+  Future<void> _irDespuesDeEntrar() async {
+    final necesita = await ref.read(authRepositoryProvider).necesitaClave();
+    if (!mounted) return;
+    context.go(necesita ? '/clave-personal?primera=1' : '/home');
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────

@@ -12,6 +12,16 @@ class TripUpdateEvent {
   final Map<String, dynamic> payload;
 }
 
+/// «¿Todo bien en tu viaje?»: el servidor vio el carro detenido o fuera de
+/// la ruta con el pasajero a bordo, y le pregunta a él.
+class SafetyCheckEvent {
+  const SafetyCheckEvent({required this.tripId, required this.kind});
+  final String tripId;
+
+  /// `stall` (detenido) o `deviation` (fuera de la ruta).
+  final String kind;
+}
+
 class DriverLocationEvent {
   const DriverLocationEvent({
     required this.tripId,
@@ -122,6 +132,7 @@ class TransportWsService {
   final _rideLocationCtrl = StreamController<RideLocationEvent>.broadcast();
   final _chatCtrl = StreamController<ChatMessageEvent>.broadcast();
   final _tripChatCtrl = StreamController<TripChatEvent>.broadcast();
+  final _safetyCtrl = StreamController<SafetyCheckEvent>.broadcast();
 
   Stream<TripUpdateEvent> get tripUpdates => _tripCtrl.stream;
   Stream<DriverLocationEvent> get driverLocations => _locationCtrl.stream;
@@ -132,6 +143,7 @@ class TransportWsService {
   Stream<RideLocationEvent> get rideLocations => _rideLocationCtrl.stream;
   Stream<ChatMessageEvent> get chatMessages => _chatCtrl.stream;
   Stream<TripChatEvent> get tripChatEvents => _tripChatCtrl.stream;
+  Stream<SafetyCheckEvent> get safetyChecks => _safetyCtrl.stream;
 
   bool get isConnected => _channel != null && _authenticated;
 
@@ -347,6 +359,15 @@ class TransportWsService {
         final tripId = msg['tripId'] as String?;
         if (tripId != null) {
           _tripCtrl.add(TripUpdateEvent(tripId: tripId, payload: msg));
+        }
+      } else if (type == 'safety_check') {
+        final tripId = msg['tripId'];
+        final kind = msg['kind'];
+        if (tripId is String && tripId.isNotEmpty) {
+          _safetyCtrl.add(SafetyCheckEvent(
+            tripId: tripId,
+            kind: kind is String ? kind : 'stall',
+          ));
         }
       } else if (type == 'driver_location') {
         final tripId = msg['tripId'] as String?;

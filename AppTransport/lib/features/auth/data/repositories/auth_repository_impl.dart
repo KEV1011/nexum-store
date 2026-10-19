@@ -80,42 +80,20 @@ class AuthRepositoryImpl implements AuthRepository {
         phoneNumber: phoneNumber,
         otpCode: otpCode,
       );
-
-      final token = data['token'] as String;
-      final isRegistered = (data['isRegistered'] as bool?) ?? true;
-
-      await _secureStorage.write(key: AppConstants.authTokenKey, value: token);
-
-      if (!isRegistered) {
-        // Quien todavía no es conductor no tiene datos propios en el teléfono:
-        // todo lo que haya es de otra persona.
-        await _asegurarDuenoDeDatos(null);
-        // Guardar flag para que el router redirija al registro.
-        await _secureStorage.write(
-          key: AppConstants.needsRegistrationKey,
-          value: phoneNumber,
+      // La cuenta tiene clave personal: el código no basta mientras sea el
+      // mismo para todos. Se pide la clave con el pase que mandó el servidor.
+      final ticket = data['pinTicket'];
+      if (data['needsPin'] == true && ticket is String && ticket.isNotEmpty) {
+        return (
+          driver: null,
+          failure: ClavePersonalRequeridaFailure(pinTicket: ticket),
+          isRegistered: false,
         );
-        return (driver: null, failure: null, isRegistered: false);
       }
-
-      await _secureStorage.delete(key: AppConstants.needsRegistrationKey);
-
-      final d = data['driver'] as Map<String, dynamic>;
-      final vehicle = d['vehicle'] as Map<String, dynamic>;
-
-      final driver = DriverEntity(
-        id: d['id'] as String,
-        name: d['name'] as String,
-        phone: d['phone'] as String,
-        rating: (d['rating'] as num?)?.toDouble(),
-        totalTrips: (d['totalTrips'] as num).toInt(),
-        vehiclePlate: vehicle['plate'] as String,
-        vehicleDescription:
-            '${vehicle['brand']} ${vehicle['model']} ${vehicle['year']} · ${vehicle['color']}',
-        isVerified: true,
-      );
-      await _asegurarDuenoDeDatos(driver.id);
-      return (driver: driver, failure: null, isRegistered: true);
+      // `return await`, no `return`: sin el await, lo que lance la sesión
+      // (una respuesta sin token, por ejemplo) se escapa de este try y
+      // revienta en vez de volver como fallo.
+      return await _procesarSesion(data, phoneNumber);
     } on InvalidOtpException {
       return (driver: null, failure: const InvalidOtpFailure(), isRegistered: false);
     } on NetworkException catch (e) {
@@ -127,6 +105,98 @@ class AuthRepositoryImpl implements AuthRepository {
     } catch (e) {
       return (driver: null, failure: UnexpectedFailure(message: e.toString()), isRegistered: false);
     }
+  }
+
+  // ── verifyPin ──────────────────────────────────────────────────────────────
+
+  /// Segundo paso del ingreso: la clave personal con el pase de cinco minutos.
+  Future<({DriverEntity? driver, Failure? failure, bool isRegistered})>
+      verifyPin({
+    required String pinTicket,
+    required String pin,
+  }) async {
+    try {
+      final data = await _dataSource.verifyPin(pinTicket: pinTicket, pin: pin);
+      final telefono = (data['driver'] as Map<String, dynamic>?)?['phone'];
+      return await _procesarSesion(data, telefono is String ? telefono : '');
+    } on AuthException catch (e) {
+      return (
+        driver: null,
+        failure: AuthFailure(message: e.message, code: e.code),
+        isRegistered: false,
+      );
+    } on NetworkException catch (e) {
+      return (driver: null, failure: NetworkFailure(message: e.message), isRegistered: false);
+    } on AppException catch (e) {
+      return (driver: null, failure: UnexpectedFailure(message: e.message), isRegistered: false);
+    } catch (e) {
+      return (driver: null, failure: UnexpectedFailure(message: e.toString()), isRegistered: false);
+    }
+  }
+
+  /// Guarda la sesión que devolvió el servidor y arma la ficha del conductor.
+  /// Común al ingreso en un paso y al de dos pasos (con clave).
+  Future<({DriverEntity? driver, Failure? failure, bool isRegistered})>
+      _procesarSesion(Map<String, dynamic> data, String phoneNumber) async {
+    final token = data['token'] as String;
+    final isRegistered = (data['isRegistered'] as bool?) ?? true;
+
+    await _secureStorage.write(key: AppConstants.authTokenKey, value: token);
+
+    if (!isRegistered) {
+      // Quien todavía no es conductor no tiene datos propios en el teléfono:
+      // todo lo que haya es de otra persona.
+      await _asegurarDuenoDeDatos(null);
+      // Guardar flag para que el router redirija al registro.
+      await _secureStorage.write(
+        key: AppConstants.needsRegistrationKey,
+        value: phoneNumber,
+      );
+      return (driver: null, failure: null, isRegistered: false);
+    }
+
+    await _secureStorage.delete(key: AppConstants.needsRegistrationKey);
+
+    // Sin clave personal y con el código convertido en llave maestra: la app
+    // se la pide antes de dejarlo seguir (ver `necesitaClave`).
+    if (data['pinSetupRequired'] == true) {
+      await _secureStorage.write(key: AppConstants.necesitaClaveKey, value: '1');
+    } else {
+      await _secureStorage.delete(key: AppConstants.necesitaClaveKey);
+    }
+
+    final d = data['driver'] as Map<String, dynamic>;
+    final vehicle = d['vehicle'] as Map<String, dynamic>;
+
+    final driver = DriverEntity(
+      id: d['id'] as String,
+      name: d['name'] as String,
+      phone: d['phone'] as String,
+      rating: (d['rating'] as num?)?.toDouble(),
+      totalTrips: (d['totalTrips'] as num).toInt(),
+      vehiclePlate: vehicle['plate'] as String,
+      vehicleDescription:
+          '${vehicle['brand']} ${vehicle['model']} ${vehicle['year']} · ${vehicle['color']}',
+      isVerified: true,
+    );
+    await _asegurarDuenoDeDatos(driver.id);
+    return (driver: driver, failure: null, isRegistered: true);
+  }
+
+  /// ¿Hay que pedirle al conductor que cree su clave antes de seguir?
+  Future<bool> necesitaClave() async {
+    try {
+      return await _secureStorage.read(key: AppConstants.necesitaClaveKey) == '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// La clave ya se creó: deja de pedirse.
+  Future<void> claveCreada() async {
+    try {
+      await _secureStorage.delete(key: AppConstants.necesitaClaveKey);
+    } catch (_) {/* best-effort */}
   }
 
   // ── registerDriver ─────────────────────────────────────────────────────────
@@ -141,6 +211,10 @@ class AuthRepositoryImpl implements AuthRepository {
       final token = data['token'] as String;
       await _secureStorage.write(key: AppConstants.authTokenKey, value: token);
       await _secureStorage.delete(key: AppConstants.needsRegistrationKey);
+      // Cuenta recién creada: tampoco tiene clave todavía.
+      if (data['pinSetupRequired'] == true) {
+        await _secureStorage.write(key: AppConstants.necesitaClaveKey, value: '1');
+      }
 
       final d = data['driver'] as Map<String, dynamic>;
       final vehicle = d['vehicle'] as Map<String, dynamic>;
@@ -184,6 +258,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> logout() async {
     await _secureStorage.delete(key: AppConstants.authTokenKey);
     await _secureStorage.delete(key: AppConstants.needsRegistrationKey);
+    await _secureStorage.delete(key: AppConstants.necesitaClaveKey);
     // Los viajes hechos (pasajeros, direcciones, ganancias) son del conductor
     // que se va, no del teléfono: el siguiente que entre no puede verlos.
     try {
