@@ -20,7 +20,7 @@
 
 /** Lo mínimo que puede costar algo en una carta. Por debajo es otra cosa. */
 import { separarDescripcion } from './nombre-y-descripcion';
-import { rolDeLinea, type RolCarta } from './carta-rol';
+import { rolDeLinea, seccionDeGuarnicion, type RolCarta } from './carta-rol';
 
 export const PRECIO_MIN = 500;
 
@@ -74,6 +74,22 @@ export interface CartaLeida {
   lineas: LineaCarta[];
   /** Los encabezados que se reconocieron, en orden de aparición. */
   secciones: string[];
+  /**
+   * Lo que la carta dice que TRAEN los platos, sin ser un plato: «Todos
+   * nuestros sándwiches van acompañados de vegetales frescos y papa a la
+   * francesa». Antes salía como una fila sin precio que el dueño tenía que
+   * borrar, y la papa —que es lo que el cliente quiere saber— se perdía.
+   * Ahora se propone como descripción de los platos de su sección.
+   */
+  notas: NotaCarta[];
+}
+
+export interface NotaCarta {
+  linea: number;
+  /** La sección bajo la que estaba; vacía si iba antes del primer título. */
+  seccion: string;
+  /** Ya redactada para ir en la descripción de un plato. */
+  texto: string;
 }
 
 /**
@@ -198,7 +214,7 @@ function suenaASeccion(texto: string): boolean {
  * Lo que NO se hace es descartar la línea en silencio: si no es encabezado,
  * sale como fila con aviso y el dueño decide.
  */
-function pareceSeccion(nombre: string, grande?: boolean): boolean {
+function pareceSeccion(nombre: string, grande?: boolean, debil = true): boolean {
   if (!nombre) return false;
   // Una frase con punto o punto y coma es un plato descrito, nunca un título;
   // los dos puntos, al contrario, son la forma de escribir «BEBIDAS:».
@@ -214,6 +230,12 @@ function pareceSeccion(nombre: string, grande?: boolean): boolean {
 
   if (nombre.endsWith(':')) return sinDosPuntos.split(/\s+/).length <= 5;
   if (vaEnMayusculas(sinDosPuntos) && sinDosPuntos.split(/\s+/).length <= 6) return true;
+  // El vocabulario y la longitud son las pistas débiles: dentro de una lista
+  // de guarniciones «Ensalada» es una opción, no la sección de ensaladas.
+  // Lo único que ahí sigue siendo título es un nombre de sección ENTERO y en
+  // plural («Postres», «Platos fuertes»), que es como se titula; una opción
+  // se escribe en singular («Ensalada», «Arroz»). Ver `parsearSinRol`.
+  if (!debil) return todoSuenaASeccion(sinDosPuntos) && /s$/.test(normalizado(sinDosPuntos));
   if (suenaASeccion(sinDosPuntos)) return true;
   if (sinDosPuntos.length > LARGO_MAX_SECCION) return false;
   return sinDosPuntos.split(/\s+/).length <= 4;
@@ -407,15 +429,25 @@ function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): Ca
   return conRol(parsearSinRol(filas));
 }
 
+type FilaSinRol = Omit<LineaCarta, 'rol' | 'motivoRol'> & {
+  /** El rol lo decidió el PROPIO renglón («Acompañamientos: papa o arroz»). */
+  rolForzado?: { rol: RolCarta; motivo: string };
+};
+
 function parsearSinRol(
   filas: Array<{ texto: string; grande?: boolean }>,
-): { lineas: Array<Omit<LineaCarta, 'rol' | 'motivoRol'>>; secciones: string[] } {
-  const salida: { lineas: Array<Omit<LineaCarta, 'rol' | 'motivoRol'>>; secciones: string[] } = { lineas: [], secciones: [] };
+): { lineas: FilaSinRol[]; secciones: string[]; notas: NotaCarta[] } {
+  const salida: { lineas: FilaSinRol[]; secciones: string[]; notas: NotaCarta[] } = {
+    lineas: [], secciones: [], notas: [],
+  };
   let seccion = '';
+  // Lo último que se escribió, para pegarle el renglón que lo continúa. Un
+  // renglón en blanco o un título lo cortan: separan bloques.
+  let ultimo: { tipo: 'plato' | 'nota'; i: number } | null = null;
 
   for (let i = 0; i < filas.length; i++) {
     const cruda = filas[i]!.texto.replace(/\s{2,}/g, ' ').trim();
-    if (!cruda) continue;
+    if (!cruda) { ultimo = null; continue; }
     const grande = filas[i]!.grande;
 
     const precios = preciosDeLinea(cruda);
@@ -423,19 +455,73 @@ function parsearSinRol(
     const linea = i + 1;
 
     if (precios.length === 0) {
+      // 1. EL RENGLÓN QUE CONTINÚA AL DE ARRIBA. La carta parte los
+      // ingredientes —y las notas— en dos renglones, y el segundo empieza en
+      // minúscula o con una coma: «frescos, porción de papa a la francesa».
+      // Suelto, eso era una fila sin precio con un nombre que no es de nada.
+      if (ultimo && grande !== true && (
+        continuaAlDeArriba(cruda) || ingredientesDelDeArriba(cruda, ultimo, salida.lineas)
+      )) {
+        const resto = cruda.replace(/^[,;\s]+/, '');
+        if (ultimo.tipo === 'nota') {
+          const n = salida.notas[ultimo.i]!;
+          n.texto = unirTexto(n.texto, resto);
+          continue;
+        }
+        const plato = salida.lineas[ultimo.i]!;
+        if (plato.precio != null) {
+          plato.descripcion = unirTexto(plato.descripcion ?? '', resto.replace(/^\(|\)$/g, ''));
+          continue;
+        }
+      }
+
+      // 2. UNA LISTA PARA ESCOGER escrita en un renglón: «Acompañamientos:
+      // papa a la francesa, patacón o arroz». Cada opción sale como fila de
+      // guarnición, en la sección donde estaba la lista.
+      const lista = listaParaElegir(cruda);
+      if (lista) {
+        for (const opcion of lista.opciones) {
+          salida.lineas.push({
+            linea, nombre: opcion, precio: null, seccion,
+            rolForzado: {
+              rol: 'guarnicion',
+              motivo: `La carta dice «${lista.grupo}»: el cliente escoge una con su plato.`,
+            },
+          });
+        }
+        ultimo = null;
+        continue;
+      }
+
+      // 3. LO QUE INCLUYEN LOS PLATOS: va a su descripción, no es un plato.
+      const nota = notaDeInclusion(cruda);
+      if (nota) {
+        salida.notas.push({ linea, seccion, texto: nota });
+        ultimo = { tipo: 'nota', i: salida.notas.length - 1 };
+        continue;
+      }
+
       // La decisión de si es un encabezado se toma con el nombre COMPLETO:
       // «Al gusto: 3 huevos pochados» separado dejaría «Al gusto», que es
       // corto y sin puntuación, o sea que pasaría por título de sección y se
       // llevaría por delante todos los platos que vienen debajo.
-      if (pareceSeccion(nombre, grande)) {
+      //
+      // DENTRO de una sección de guarniciones la longitud deja de ser pista:
+      // «Papa criolla» y «Yuca frita» son cortas, sin precio y sin puntuación,
+      // o sea exactamente un título — y cada opción se habría convertido en
+      // una sección vacía. Ahí solo cuentan las pistas fuertes.
+      const debil = !seccionDeGuarnicion(seccion);
+      if (pareceSeccion(nombre, grande, debil)) {
         seccion = tituloDeSeccion(nombre.replace(/\s*:\s*$/, ''));
         if (!salida.secciones.includes(seccion)) salida.secciones.push(seccion);
+        ultimo = null;
         continue;
       }
       salida.lineas.push({
         linea, ...separarDescripcion(nombre), precio: null, seccion,
         aviso: 'No le encontramos precio. Escríbelo o borra la fila.',
       });
+      ultimo = null;
       continue;
     }
 
@@ -444,6 +530,7 @@ function parsearSinRol(
         linea, nombre: cruda, precio: null, seccion,
         aviso: 'No pudimos separar el nombre del precio en esta línea.',
       });
+      ultimo = null;
       continue;
     }
 
@@ -456,22 +543,191 @@ function parsearSinRol(
         aviso: `Tiene ${precios.length} precios (${precios.map(comoPesos).join(' y ')}). `
           + 'Deja uno, o agrúpalos como tamaños del mismo plato.',
       });
+      ultimo = null;
       continue;
     }
 
     salida.lineas.push({ linea, ...separarDescripcion(nombre), precio: precios[0]!, seccion });
+    ultimo = { tipo: 'plato', i: salida.lineas.length - 1 };
   }
 
   return salida;
 }
 
+/** Largo máximo de una descripción armada con renglones de la carta. */
+const DESCRIPCION_MAX = 300;
+
+function unirTexto(base: string, mas: string): string {
+  const junto = (base ? `${base.trim()} ${mas.trim()}` : mas.trim())
+    .replace(/\s+([,;.])/g, '$1')
+    .replace(/\s{2,}/g, ' ');
+  return junto.length > DESCRIPCION_MAX ? junto.slice(0, DESCRIPCION_MAX).trim() : junto;
+}
+
+/**
+ * ¿El renglón sigue al de arriba en vez de empezar algo nuevo?
+ *
+ * Empieza en MINÚSCULA, o con una coma o un paréntesis. En una carta un plato,
+ * un título o una nota empiezan en mayúscula; lo que arranca en minúscula es
+ * la segunda mitad de algo que no cupo en un renglón.
+ */
+export function continuaAlDeArriba(texto: string): boolean {
+  const t = texto.trim();
+  if (/^[,;(]/.test(t)) return true;
+  // La PRIMERA letra del renglón, no la primera que aparezca: «3 huevos
+  // pochados» empieza por un número y es un plato, no una continuación.
+  const primera = t.charAt(0);
+  return /\p{L}/u.test(primera) && primera === primera.toLowerCase() && primera !== primera.toUpperCase();
+}
+
+/**
+ * Los ingredientes escritos en el renglón de DEBAJO del plato, con mayúscula:
+ *
+ *     Sandwich criollo        19.000
+ *     Pan argentino, jamón, queso
+ *
+ * Se exige una lista (lleva coma) y que el plato de arriba tenga precio y aún
+ * no tenga descripción: así un segundo renglón suelto no se pega en cadena.
+ * Lo que se arriesga —un plato al que el OCR le perdió el precio quedando como
+ * descripción del de arriba— se ve en la vista previa, en el campo de
+ * ingredientes del plato, que es donde el dueño mira.
+ */
+function ingredientesDelDeArriba(
+  texto: string,
+  ultimo: { tipo: 'plato' | 'nota'; i: number },
+  lineas: ReadonlyArray<{ precio: number | null; descripcion?: string }>,
+): boolean {
+  if (ultimo.tipo !== 'plato') return false;
+  const plato = lineas[ultimo.i];
+  if (!plato || plato.precio == null || plato.descripcion) return false;
+  return texto.includes(',') && !texto.includes(':') && !/[.;]\s*\S/.test(texto);
+}
+
+/** Las palabras que nombran lo que viene con el plato. */
+const NOMBRE_GUARNICION = /^(acompa[nñ]amientos?|acompa[nñ]antes?|guarnici[oó]n(es)?|contornos?|principios?)$/i;
+
+/** El verbo con el que una carta pide escoger. */
+const VERBO_ELEGIR = /^(escoge|escoja|escojan|elige|elija|elijan|selecciona|seleccione)$/i;
+
+/** Parte «papa a la francesa, patacón o arroz» en sus opciones. */
+function opcionesDeLista(texto: string): string[] | null {
+  const partes = texto
+    .replace(/[.;]+\s*$/, '')
+    .split(/\s*,\s*|\s*;\s*|\s*\/\s*|\s+o\s+|\s+u\s+/i)
+    .map((p) => p.replace(/^(y|o|u)\s+/i, '').trim())
+    .filter(Boolean);
+  // Una opción larga es prosa, no una opción: «Papa a la francesa con salsa
+  // de la casa y queso gratinado» no la escoge nadie de una lista.
+  if (partes.length < 2 || partes.some((p) => p.length > 40 || preciosDeLinea(p).length > 0)) return null;
+  return partes.map((p) => p.charAt(0).toUpperCase() + p.slice(1));
+}
+
+/**
+ * Un renglón que es una LISTA PARA ESCOGER. Las tres formas en que se escribe
+ * en una carta de aquí:
+ *
+ *   «Acompañamientos: papa a la francesa, patacón o arroz»
+ *   «Escoge tu acompañamiento: papa, yuca o arroz» (y «Elige tu proteína: …»)
+ *   «Acompañado de papa a la francesa o patacón»
+ *
+ * La última es la sutil: «acompañado de papa O patacón» es escoger, pero
+ * «acompañado de papa Y ensalada» es lo que trae — eso es una nota, no una
+ * lista. Por eso esa forma exige una «o».
+ *
+ * Con una sola opción no hay nada que escoger: es lo que trae, y lo recoge
+ * `notaDeInclusion`.
+ */
+export function listaParaElegir(texto: string): { grupo: string; opciones: string[] } | null {
+  const t = texto.trim();
+  const conDosPuntos = t.match(/^([^:]{3,40}?)\s*:\s*(.+)$/);
+  if (conDosPuntos) {
+    const cabeza = conDosPuntos[1]!.trim().split(/\s+/);
+    const verbo = VERBO_ELEGIR.test(cabeza[0] ?? '');
+    const sustantivos = cabeza
+      .slice(verbo ? 1 : 0)
+      .filter((p) => !/^(tu|su|tus|sus|el|la|los|las|un|una|entre|a|para|de)$/i.test(p))
+      .filter((p) => !/^(elegir|escoger|elecci[oó]n)$/i.test(p));
+    const nombraGuarnicion = sustantivos.some((p) => NOMBRE_GUARNICION.test(p));
+    if ((verbo && sustantivos.length > 0 && sustantivos.length <= 3) || (nombraGuarnicion && sustantivos.length <= 3)) {
+      const opciones = opcionesDeLista(conDosPuntos[2]!);
+      if (!opciones) return null;
+      const grupo = nombraGuarnicion
+        ? 'Acompañamiento'
+        : sustantivos.join(' ').charAt(0).toUpperCase() + sustantivos.join(' ').slice(1).toLowerCase();
+      return { grupo, opciones };
+    }
+    return null;
+  }
+
+  // «Escoge entre papa, yuca o arroz», sin dos puntos.
+  const verboSuelto = t.match(/^(?:escoge|escoja|elige|elija)\s+(?:entre\s+)?(.+)$/i);
+  if (verboSuelto) {
+    const opciones = opcionesDeLista(verboSuelto[1]!);
+    return opciones ? { grupo: 'Acompañamiento', opciones } : null;
+  }
+
+  // «… acompañado de papa a la francesa o patacón».
+  const acompanado = t.match(/\b(?:acompa[nñ]ad[oa]s?|servid[oa]s?)\s+(?:con|de)\s+(.+)$/i);
+  if (acompanado && /\s(o|u)\s/i.test(acompanado[1]!)) {
+    const opciones = opcionesDeLista(acompanado[1]!);
+    return opciones ? { grupo: 'Acompañamiento', opciones } : null;
+  }
+  return null;
+}
+
+/**
+ * Un renglón que dice lo que TRAEN los platos, ya redactado para su
+ * descripción. `null` si no lo es.
+ *
+ * «Todos nuestros sándwiches van acompañados de vegetales frescos, porción de
+ * papa a la francesa» → «Acompañado de vegetales frescos, porción de papa a la
+ * francesa». Se le quita el «todos nuestros sándwiches van», que en la ficha
+ * de UN sándwich sobra.
+ */
+export function notaDeInclusion(texto: string): string | null {
+  const t = texto.trim().replace(/\s{2,}/g, ' ');
+  if (t.length < 8 || t.split(' ').length < 2) return null;
+  const n = normalizado(t);
+  const empieza = /^(todos|todas|nuestros|nuestras|incluye|incluyen|viene|vienen|acompanad|servid|con )/.test(n);
+  const primeras = n.split(' ').slice(0, 8).join(' ');
+  const menciona = /\b(acompanad[oa]s?|incluyen?|vienen? con|van con|servid[oa]s? con)\b/.test(primeras);
+  if (!empieza && !menciona) return null;
+
+  // Desde el verbo que dice qué trae: lo de antes («Todos nuestros
+  // sándwiches van») es de toda la sección y en la ficha de UN plato sobra.
+  const desde = t.search(/\b(acompa[nñ]ad[oa]s?|incluyen?|vienen?\s+con|servid[oa]s?\s+con)\b/i);
+  let nota = desde > 0 ? t.slice(desde) : t;
+  nota = nota
+    .replace(/^acompa([nñ])ad([oa])s\b/i, 'acompa$1ad$2')
+    .replace(/^servid([oa])s\b/i, 'servid$1')
+    .replace(/^incluyen\b/i, 'incluye')
+    .replace(/^vienen\b/i, 'viene')
+    .replace(/[.;]+\s*$/, '')
+    .trim();
+  if (!nota) return null;
+  return nota.charAt(0).toUpperCase() + nota.slice(1);
+}
+
 /** Cada fila con el rol que se le propone. Va aparte para no tocar los cinco `push`. */
-function conRol(carta: { lineas: Array<Omit<LineaCarta, 'rol' | 'motivoRol'>>; secciones: string[] }): CartaLeida {
+function conRol(carta: { lineas: FilaSinRol[]; secciones: string[]; notas: NotaCarta[] }): CartaLeida {
   return {
     secciones: carta.secciones,
-    lineas: carta.lineas.map((l) => {
-      const { rol, motivo } = rolDeLinea({ nombre: l.nombre, seccion: l.seccion });
-      return { ...l, rol, ...(motivo ? { motivoRol: motivo } : {}) };
+    notas: carta.notas,
+    lineas: carta.lineas.map(({ rolForzado, ...l }) => {
+      const { rol, motivo } = rolForzado
+        ?? rolDeLinea({ nombre: l.nombre, seccion: l.seccion, precio: l.precio });
+      // Una guarnición SIN precio no es una fila incompleta: viene incluida.
+      // El aviso de «no le encontramos precio» la habría pintado en ámbar y
+      // dejado fuera de la creación.
+      const aviso = rol === 'guarnicion' && l.precio == null && !l.precios ? undefined : l.aviso;
+      const { aviso: _quitado, ...resto } = l;
+      void _quitado;
+      return {
+        ...resto,
+        ...(aviso ? { aviso } : {}),
+        rol,
+        ...(motivo ? { motivoRol: motivo } : {}),
+      };
     }),
   };
 }

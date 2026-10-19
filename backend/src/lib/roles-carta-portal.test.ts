@@ -10,18 +10,26 @@ import { describe, it, expect } from 'vitest';
 
 import {
   agruparAdicionales as agruparServidor,
+  agruparGuarniciones as guarnicionesServidor,
+  destinoPorDefecto as destinoServidor,
   grupoDeAdicional as delServidor,
   GRUPO_ADICIONALES as delServidorNombre,
+  GRUPO_GUARNICION as guarnicionServidorNombre,
   nombreDeAdicional as nombreServidor,
+  ROLES_CARTA as rolesServidor,
 } from './carta-rol';
 import {
   agruparAdicionales as agruparPortal,
+  agruparGuarniciones as guarnicionesPortal,
+  destinoPorDefecto as destinoPortal,
   grupoDeAdicional as delPortal,
   GRUPO_ADICIONALES as delPortalNombre,
+  GRUPO_GUARNICION as guarnicionPortalNombre,
   nombreDeAdicional as nombrePortal,
+  ROLES_CARTA as rolesPortal,
 } from '../../../app/roles-carta';
 
-type Rol = 'plato' | 'adicional' | 'acompanamiento';
+type Rol = 'plato' | 'adicional' | 'acompanamiento' | 'guarnicion';
 const fila = (seccion: string, rol: Rol) => ({ seccion, rol });
 
 const CASOS: Array<{ seccion: string; filas: Array<{ seccion: string; rol: Rol }> }> = [
@@ -67,4 +75,43 @@ describe('portal y servidor agrupan IGUAL los adicionales', () => {
       expect(nombrePortal(n)).toBe(nombreServidor(n));
     },
   );
+});
+
+describe('portal y servidor tratan IGUAL lo que viene con el plato', () => {
+  it('los dos conocen los mismos tipos de fila', () => {
+    // Un tipo que el portal ofrezca y el servidor no conozca se importaría
+    // como plato sin decir nada (`sanearRol`).
+    expect(rolesPortal.map((r) => r.valor).sort()).toEqual([...rolesServidor].sort());
+    expect(guarnicionPortalNombre).toBe(guarnicionServidorNombre);
+  });
+
+  const g = (nombre: string, precio: number | null, seccion: string, rol: Rol = 'guarnicion') =>
+    ({ nombre, precio, seccion, rol });
+  const CARTAS = [
+    // Lista en un renglón dentro de una sección de platos.
+    [g('Bandeja', 28000, 'Platos fuertes', 'plato'), g('Papa a la francesa', null, 'Platos fuertes'), g('Arroz', null, 'Platos fuertes')],
+    // Sección propia, con un recargo y un repetido.
+    [g('Papa criolla', null, 'Escoge tu acompañamiento'), g('papa criolla', null, 'Escoge tu acompañamiento'), g('Yuca', 2000, 'Escoge tu acompañamiento')],
+    // Dos secciones de platos con su lista cada una: dos grupos.
+    [
+      g('Sandwich', 19000, 'Sándwiches', 'plato'), g('Papa', null, 'Sándwiches'),
+      g('Churrasco', 32000, 'Carnes', 'plato'), g('Arroz', null, 'Carnes'),
+    ],
+    // Un precio imposible no entra.
+    [g('Papa', -1, 'Acompañamientos'), g('Arroz', null, 'Acompañamientos')],
+  ];
+
+  it.each(CARTAS.map((c, i) => [i, c] as const))('carta %i', (_i, filas) => {
+    expect(guarnicionesPortal(filas)).toEqual(guarnicionesServidor(filas));
+  });
+
+  it.each([
+    [['Platos fuertes'], ['Sándwiches', 'Platos fuertes']],
+    [['Acompañamientos'], ['Sándwiches', 'Platos fuertes']],
+    [[''], ['Arepas']],
+    [['Carnes', 'Acompañamientos'], ['Carnes', 'Sopas']],
+    [['Nada'], []],
+  ])('el destino por defecto de %j', (origen, platos) => {
+    expect(destinoPortal(origen, platos)).toEqual(destinoServidor(origen, platos));
+  });
 });

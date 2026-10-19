@@ -879,8 +879,26 @@ export async function aplicarRolesDeCarta(
     acompanamientoIds: string[];
     platos: Array<{ id: string; seccion: string }>;
     grupos: Array<{ nombre: string; opciones: Array<{ nombre: string; precio: number }>; aplicarA: string[] }>;
+    /** Todo lo creado (platos y acompañamientos): a ellos van las guarniciones. */
+    productos?: Array<{ id: string; seccion: string }>;
+    /** Lo que viene con el plato y se escoge: grupos OBLIGATORIOS. */
+    guarniciones?: Array<{
+      nombre: string;
+      opciones: Array<{ nombre: string; precio: number }>;
+      required: true;
+      minSelect: number;
+      maxSelect: number;
+      aplicarA: string[];
+    }>;
   },
-): Promise<{ acompanamientos: number; grupos: number; opcionesNuevas: number; platosConAdicionales: number }> {
+): Promise<{
+  acompanamientos: number;
+  grupos: number;
+  opcionesNuevas: number;
+  platosConAdicionales: number;
+  gruposGuarnicion: number;
+  platosConGuarnicion: number;
+}> {
   let acompanamientos = 0;
   if (datos.acompanamientoIds.length > 0) {
     // `businessId` en el where: un id que no sea de este local no se toca.
@@ -892,13 +910,24 @@ export async function aplicarRolesDeCarta(
   }
 
   let opcionesNuevas = 0;
-  const platosTocados = new Set<string>();
   const existentes = await prisma.optionGroup.findMany({
     where: { businessId },
     select: { id: true, name: true, maxSelect: true, options: { select: { name: true } } },
   });
 
-  for (const g of datos.grupos) {
+  /**
+   * Crea el grupo o le añade lo que le falte, y lo adjunta a esos productos.
+   *
+   * `abierto` = el grupo es «hasta todas» (adicionales): si ya lo era, lo
+   * sigue siendo al ganar opciones. Una guarnición NO: «elige 1» con una
+   * opción más sigue siendo «elige 1» — subirle el máximo dejaría al cliente
+   * pedir papa Y arroz Y patacón con el mismo plato.
+   */
+  const montar = async (
+    g: { nombre: string; opciones: Array<{ nombre: string; precio: number }> },
+    reglas: { required: boolean; minSelect: number; maxSelect: number; abierto: boolean },
+    destino: Array<{ id: string }>,
+  ): Promise<void> => {
     const ya = existentes.find((e) => mismoNombreDeGrupo(e.name, g.nombre));
     let groupId: string;
     if (ya) {
@@ -917,12 +946,13 @@ export async function aplicarRolesDeCarta(
         // Si el grupo era «hasta todas» (el máximo cubría todas sus opciones),
         // lo sigue siendo: quedarse en «hasta 1» tras añadir el huevo haría
         // que el cliente no pudiera pedir queso Y huevo, que antes sí podía.
-        if (ya.maxSelect >= ya.options.length) {
+        if (reglas.abierto && ya.maxSelect >= ya.options.length) {
           await prisma.optionGroup.update({
             where: { id: ya.id },
             data: { maxSelect: ya.options.length + faltan.length },
           });
         }
+        ya.options.push(...faltan.map((o) => ({ name: o.nombre })));
       }
       groupId = ya.id;
     } else {
@@ -930,10 +960,9 @@ export async function aplicarRolesDeCarta(
         data: {
           businessId,
           name: g.nombre,
-          required: false,
-          minSelect: 0,
-          // «Hasta N»: un adicional se puede pedir junto con los demás.
-          maxSelect: g.opciones.length,
+          required: reglas.required,
+          minSelect: reglas.minSelect,
+          maxSelect: reglas.maxSelect,
           options: {
             create: g.opciones.map((o, i) => ({ name: o.nombre, priceDelta: o.precio, sortOrder: i })),
           },
@@ -942,18 +971,38 @@ export async function aplicarRolesDeCarta(
       opcionesNuevas += g.opciones.length;
       groupId = creado.id;
       // Que el siguiente grupo de esta misma carta lo vea como existente.
-      existentes.push({ id: creado.id, name: creado.name, maxSelect: creado.maxSelect, options: g.opciones.map((o) => ({ name: o.nombre })) });
+      existentes.push({
+        id: creado.id, name: creado.name, maxSelect: creado.maxSelect,
+        options: g.opciones.map((o) => ({ name: o.nombre })),
+      });
     }
 
-    const destino = new Set(g.aplicarA.map((x) => x.trim().toLowerCase()));
-    const platos = datos.platos.filter((p) => destino.has(p.seccion.trim().toLowerCase()));
-    if (platos.length > 0) {
+    if (destino.length > 0) {
       await prisma.productOptionGroup.createMany({
-        data: platos.map((p) => ({ productId: p.id, groupId, sortOrder: 99 })),
+        data: destino.map((p) => ({ productId: p.id, groupId, sortOrder: 99 })),
         skipDuplicates: true,
       });
-      for (const p of platos) platosTocados.add(p.id);
     }
+  };
+
+  const enSecciones = <T extends { seccion: string }>(lista: T[], secciones: string[]): T[] => {
+    const destino = new Set(secciones.map((x) => x.trim().toLowerCase()));
+    return lista.filter((p) => destino.has(p.seccion.trim().toLowerCase()));
+  };
+
+  const platosTocados = new Set<string>();
+  for (const g of datos.grupos) {
+    const platos = enSecciones(datos.platos, g.aplicarA);
+    // «Hasta N»: un adicional se puede pedir junto con los demás.
+    await montar(g, { required: false, minSelect: 0, maxSelect: g.opciones.length, abierto: true }, platos);
+    for (const p of platos) platosTocados.add(p.id);
+  }
+
+  const conGuarnicion = new Set<string>();
+  for (const g of datos.guarniciones ?? []) {
+    const destino = enSecciones(datos.productos ?? datos.platos, g.aplicarA);
+    await montar(g, { required: true, minSelect: g.minSelect, maxSelect: g.maxSelect, abierto: false }, destino);
+    for (const p of destino) conGuarnicion.add(p.id);
   }
 
   return {
@@ -961,6 +1010,8 @@ export async function aplicarRolesDeCarta(
     grupos: datos.grupos.length,
     opcionesNuevas,
     platosConAdicionales: platosTocados.size,
+    gruposGuarnicion: (datos.guarniciones ?? []).length,
+    platosConGuarnicion: conGuarnicion.size,
   };
 }
 

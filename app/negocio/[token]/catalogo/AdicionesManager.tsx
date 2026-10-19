@@ -59,6 +59,52 @@ const GRUPO_NUEVO: Grupo = {
 }
 
 /**
+ * Los tres grupos que tiene casi cualquier restaurante, ya configurados.
+ *
+ * El editor sabe hacer los tres, pero «obligatorio, mínimo 1, máximo 1, a $0»
+ * no es como piensa el dueño en «el plato viene con papa o arroz»: piensa en
+ * el ACOMPAÑAMIENTO. Con la plantilla solo escribe sus opciones. Las opciones
+ * van vacías a propósito —salvo el ejemplo de la papa, que es el de casi todas
+ * las cartas—: rellenarlas sería escribirle la carta al dueño, y un «Guardar»
+ * distraído le ofrecería al cliente algo que el local no tiene.
+ */
+const PLANTILLAS: ReadonlyArray<{ etiqueta: string; ayuda: string; grupo: Grupo }> = [
+  {
+    etiqueta: 'Acompañamiento a escoger',
+    ayuda: 'Viene con el plato: papa, arroz, patacón… El cliente escoge uno.',
+    grupo: {
+      name: 'Acompañamiento',
+      required: true,
+      minSelect: 1,
+      maxSelect: 1,
+      options: [{ name: 'Papa a la francesa', priceDelta: 0 }, { name: '', priceDelta: 0 }],
+    },
+  },
+  {
+    etiqueta: 'Adicionales que se cobran',
+    ayuda: 'Queso, huevo, tocineta… Se suman al precio.',
+    grupo: {
+      name: 'Adicionales',
+      required: false,
+      minSelect: 0,
+      maxSelect: 10,
+      options: [{ name: '', priceDelta: 0 }],
+    },
+  },
+  {
+    etiqueta: 'Tamaño',
+    ayuda: 'Personal, mediana, familiar… Se escoge uno.',
+    grupo: {
+      name: 'Tamaño',
+      required: true,
+      minSelect: 1,
+      maxSelect: 1,
+      options: [{ name: '', priceDelta: 0 }],
+    },
+  },
+]
+
+/**
  * La biblioteca de adiciones del negocio.
  *
  * POR QUÉ EXISTE. Un grupo de opciones colgaba de UN plato, así que las once
@@ -196,7 +242,7 @@ export function AdicionesManager({
     <section className={`${TARJETA} mb-4 p-4`}>
       <h2 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
         <Layers className="h-4 w-4 text-emerald-600" />
-        Adiciones y tamaños
+        Acompañamientos, adiciones y tamaños
       </h2>
       <p className="mt-0.5 text-xs text-slate-500">
         Créalos una vez y añádelos a los platos que quieras. El precio vive aquí:
@@ -223,8 +269,9 @@ export function AdicionesManager({
 
       {grupos !== null && grupos.length === 0 && !editando && (
         <p className="mt-3 text-xs text-slate-500">
-          Todavía no tienes ninguno. El primero suele ser «Adicionales» con las
-          porciones que vendes aparte.
+          Todavía no tienes ninguno. Lo más común en un restaurante: el
+          acompañamiento que viene con el plato (papa, arroz…) y los adicionales
+          que se cobran.
         </p>
       )}
 
@@ -298,13 +345,31 @@ export function AdicionesManager({
           onCancelar={() => { setEditando(null); setError(null) }}
         />
       ) : (
-        <button
-          type="button"
-          onClick={() => setEditando({ ...GRUPO_NUEVO, options: [{ name: '', priceDelta: 0 }] })}
-          className={`${BOTON.secundario} mt-3 w-full`}
-        >
-          <Plus className="h-4 w-4" /> Crear grupo de adiciones
-        </button>
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold text-slate-600">Crear:</p>
+          <div className="mt-1 grid gap-2 sm:grid-cols-3">
+            {PLANTILLAS.map((p) => (
+              <button
+                key={p.etiqueta}
+                type="button"
+                onClick={() => setEditando(JSON.parse(JSON.stringify(p.grupo)) as Grupo)}
+                className="min-h-[44px] rounded-xl border border-slate-200 px-3 py-2 text-left hover:border-emerald-400"
+              >
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
+                  <Plus className="h-3.5 w-3.5 text-emerald-600" /> {p.etiqueta}
+                </span>
+                <span className="mt-0.5 block text-[11px] text-slate-500">{p.ayuda}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditando({ ...GRUPO_NUEVO, options: [{ name: '', priceDelta: 0 }] })}
+            className="mt-2 text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+          >
+            O uno en blanco
+          </button>
+        </div>
       )}
     </section>
   )
@@ -398,7 +463,7 @@ function EditorGrupo({
               <input
                 className={INPUT}
                 inputMode="numeric"
-                placeholder="0"
+                placeholder={grupo.required ? 'Incluido' : '0'}
                 value={o.priceDelta ? String(o.priceDelta) : ''}
                 onChange={(e) =>
                   patchOpcion(i, { priceDelta: Number(e.target.value.replace(/[^\d]/g, '') || 0) })}
