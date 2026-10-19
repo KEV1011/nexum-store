@@ -126,7 +126,7 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Account actions ────────────────────────────────────────────
-            _buildAccountCard(context, theme),
+            _buildAccountCard(context, ref, theme),
             const SizedBox(height: AppConstants.spacingXL),
           ],
         ),
@@ -744,7 +744,11 @@ class ProfileScreen extends ConsumerWidget {
 
   // ── Account card ─────────────────────────────────────────────────────────────
 
-  Widget _buildAccountCard(BuildContext context, ThemeData theme) {
+  Widget _buildAccountCard(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppConstants.spacingM),
