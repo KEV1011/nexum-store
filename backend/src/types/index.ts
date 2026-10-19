@@ -579,6 +579,12 @@ export interface ProductDTO {
   optionGroups: OptionGroupDTO[];
   /** Se ofrece en «Acompaña tu pedido» al pagar. */
   suggestAsAddon: boolean;
+  /**
+   * Suena a bebida o acompañamiento (`carta-rol`). Solo ORIENTA al portal: qué
+   * proponer en «Bebidas y acompañamientos» y cuándo avisar de que se marcó
+   * algo que parece un plato. Nunca impide nada.
+   */
+  pareceAcompanamiento: boolean;
   // ── Inventario (supermercados y farmacias) ──────────────────────────────
   // Ausentes en un restaurante, que no lleva control de existencias.
   barcode?: string;

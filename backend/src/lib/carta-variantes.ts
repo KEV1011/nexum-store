@@ -174,6 +174,12 @@ export interface VarianteSugerida {
    * los nombre, y por eso nace sin aceptar.
    */
   faltanNombres: boolean;
+  /**
+   * Plato o acompañamiento (una gaseosa en tres tamaños también se agrupa).
+   * Los adicionales NUNCA forman variantes: no son un producto, son opciones
+   * de otro, y «Queso pequeño / grande» se resuelve dentro de su grupo.
+   */
+  rol: 'plato' | 'acompanamiento';
 }
 
 /** Ordena por precio y, a igual precio, por el orden en que venían. */
@@ -207,11 +213,13 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
     etiqueta: string;
     base: string;
     seccion: string;
+    acompanamiento: boolean;
   }
   const porBase = new Map<string, Candidata[]>();
 
   lineas.forEach((l, orden) => {
     if (l.precio == null || !(l.precio > 0)) return;
+    if (l.rol === 'adicional') return;
     const troceado = trocearTamano(l.nombre);
     if (!troceado) return;
     // La sección entra en la clave: una «Grande» de Bebidas y otra de Picadas
@@ -225,6 +233,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
       etiqueta: troceado.etiqueta,
       base: troceado.base,
       seccion: l.seccion,
+      acompanamiento: l.rol === 'acompanamiento',
     });
     porBase.set(clave, grupo);
   });
@@ -259,6 +268,8 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
       })),
       lineas: ordenadas.map((c) => c.linea),
       faltanNombres: false,
+      // Acompañamiento solo si lo son TODAS: ante la duda, plato.
+      rol: candidatas.every((c) => c.acompanamiento) ? 'acompanamiento' : 'plato',
     });
   }
 
@@ -266,6 +277,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
   for (const l of lineas) {
     const precios = l.precios ?? [];
     if (l.precio != null) continue;
+    if (l.rol === 'adicional') continue;
     if (precios.length < 2 || precios.length > MAX_TAMANOS) continue;
     if (!l.nombre || l.nombre.trim().length < 2) continue;
 
@@ -286,6 +298,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
       })),
       lineas: [l.linea],
       faltanNombres: true,
+      rol: l.rol === 'acompanamiento' ? 'acompanamiento' : 'plato',
     });
   }
 

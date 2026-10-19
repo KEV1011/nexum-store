@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { Camera, AlertTriangle, Trash2, Loader2, Layers, Split } from 'lucide-react'
 
 import { BOTON, TARJETA } from '../../../ui'
+import { formatCOP } from '../../../moneda'
 import { BACKEND_URL } from '../../../backend'
 import {
   motivoParaNoAgrupar,
@@ -11,6 +12,7 @@ import {
   varianteParaEnviar,
   type VarianteEditable,
 } from '../../../variantes-carta'
+import { agruparAdicionales, ROLES_CARTA, type RolCarta } from '../../../roles-carta'
 
 
 interface LineaCarta {
@@ -21,6 +23,9 @@ interface LineaCarta {
   precio: number | null
   seccion: string
   aviso?: string
+  /** Plato, adicional o acompañamiento: lo propone el servidor. */
+  rol?: RolCarta
+  motivoRol?: string
 }
 
 interface VarianteSugerida {
@@ -31,6 +36,7 @@ interface VarianteSugerida {
   opciones: Array<{ nombre: string; precio: number; precioDelta: number }>
   lineas: number[]
   faltanNombres: boolean
+  rol?: 'plato' | 'acompanamiento'
 }
 
 /** Lo que el dueño está editando. `precio` es texto porque se está tecleando. */
@@ -43,6 +49,9 @@ interface FilaEditable {
   descripcion: string
   seccion: string
   aviso?: string
+  rol: RolCarta
+  /** Por qué el lector propuso ese tipo, para que el dueño lo juzgue. */
+  motivoRol?: string
 }
 
 /** Un grupo de tamaños en edición. Cada tamaño con SU precio, como la carta. */
@@ -53,6 +62,7 @@ interface VarEditable extends VarianteEditable {
   faltanNombres: boolean
   /** El dueño quiere agruparlos. Si no, sus filas vuelven a la tabla. */
   aceptada: boolean
+  rol: 'plato' | 'acompanamiento'
 }
 
 /**
@@ -91,6 +101,9 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   // escribir «Hamburguesas» plato por plato — y cada variante tecleada
   // («hamburguesas», «Hamburguesa») crea una sección distinta en su carta.
   const [secciones, setSecciones] = useState<string[]>([])
+  // A qué secciones de platos se añade cada grupo de adicionales. Sin entrada
+  // = a todas, que es lo que significa «ADICIONALES» al pie de una carta.
+  const [destinos, setDestinos] = useState<Record<string, string[]>>({})
 
   async function leerFoto(file: File) {
     setError(null)
@@ -134,6 +147,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           // varios precios no, porque todavía no tienen nombre y aceptarlas
           // solas dejaría al dueño con un formulario a medias sin pedirlo.
           aceptada: !v.faltanNombres,
+          rol: v.rol ?? 'plato',
         })),
       )
       setFilas(
@@ -145,8 +159,11 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           descripcion: l.descripcion ?? '',
           seccion: l.seccion,
           ...(l.aviso ? { aviso: l.aviso } : {}),
+          rol: l.rol ?? 'plato',
+          ...(l.motivoRol ? { motivoRol: l.motivoRol } : {}),
         })),
       )
+      setDestinos({})
     } catch {
       setError('No se pudo conectar con el servidor.')
     } finally {
@@ -163,6 +180,34 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
     setFilas((prev) =>
       (prev ?? []).map((f) => (f.id === id ? { ...f, [campo]: valor } : f)),
     )
+  }
+
+  // Cambiar el tipo a mano borra el motivo: ya no es lo que propuso el lector.
+  function cambiarRol(id: number, rol: RolCarta) {
+    setFilas((prev) =>
+      (prev ?? []).map((f) => (f.id === id ? { ...f, rol, motivoRol: undefined } : f)),
+    )
+  }
+
+  // Una carta agrupa por secciones, y casi siempre la sección entera es del
+  // mismo tipo: «ADICIONALES», «BEBIDAS». Cambiarlas de una en una es justo la
+  // tarde que la foto venía a ahorrar.
+  function rolDeSeccion(seccion: string, rol: RolCarta) {
+    setFilas((prev) =>
+      (prev ?? []).map((f) =>
+        f.seccion.trim() === seccion.trim() ? { ...f, rol, motivoRol: undefined } : f,
+      ),
+    )
+  }
+
+  function alternarDestino(grupo: string, seccion: string, todas: string[]) {
+    setDestinos((prev) => {
+      const actual = prev[grupo] ?? todas
+      const siguiente = actual.includes(seccion)
+        ? actual.filter((x) => x !== seccion)
+        : [...actual, seccion]
+      return { ...prev, [grupo]: siguiente }
+    })
   }
 
   function editarVariante(id: number, cambio: Partial<VarEditable>) {
@@ -192,7 +237,22 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   const problemas = aceptadas
     .map((v) => ({ v, motivo: motivoParaNoAgrupar(varianteParaEnviar(v)) }))
     .filter((x): x is { v: VarEditable; motivo: string } => x.motivo !== null)
-  const total = listas.length + (aceptadas.length - problemas.length)
+
+  // Los adicionales NO son productos: se crean como un grupo de opciones que
+  // los platos adjuntan. Se cuentan aparte para que el botón diga la verdad.
+  const productosListos = listas.filter((f) => f.rol !== 'adicional')
+  const adicionalesListos = listas.filter((f) => f.rol === 'adicional')
+  // Con la MISMA función que usa el servidor (copia vigilada por prueba) y
+  // sobre las MISMAS filas que se le envían: lo que se ve aquí es lo que se crea.
+  const gruposAdicionales = agruparAdicionales(
+    listas.map((f) => ({ nombre: f.nombre, precio: pesosDeTexto(f.precio), seccion: f.seccion, rol: f.rol })),
+  )
+  const seccionesDePlatos = Array.from(new Set([
+    ...productosListos.filter((f) => f.rol === 'plato').map((f) => f.seccion.trim()),
+    ...aceptadas.filter((v) => v.rol === 'plato').map((v) => v.seccion.trim()),
+  ]))
+  const seccionesVisibles = Array.from(new Set(visibles.map((f) => f.seccion.trim())))
+  const total = productosListos.length + (aceptadas.length - problemas.length)
 
   async function crear() {
     setCreando(true)
@@ -207,21 +267,42 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             precio: pesosDeTexto(f.precio),
             seccion: f.seccion.trim(),
             descripcion: f.descripcion.trim(),
+            rol: f.rol,
           })),
-          variantes: aceptadas.map(varianteParaEnviar),
+          variantes: aceptadas.map((v) => ({ ...varianteParaEnviar(v), rol: v.rol })),
+          adicionales: gruposAdicionales.map(({ nombre: grupo }) => ({
+            grupo,
+            aplicarA: destinos[grupo] ?? seccionesDePlatos,
+          })),
         }),
       })
       const json = (await res.json()) as {
         success: boolean
-        data?: { creados: number; actualizados: number; conTamanos?: number }
+        data?: {
+          creados: number
+          actualizados: number
+          conTamanos?: number
+          acompanamientos?: number
+          adicionalesNuevos?: number
+          platosConAdicionales?: number
+        }
         error?: string
       }
       if (json.success && json.data) {
-        const { creados, actualizados, conTamanos = 0 } = json.data
+        const {
+          creados, actualizados, conTamanos = 0, acompanamientos = 0,
+          adicionalesNuevos = 0, platosConAdicionales = 0,
+        } = json.data
         setResultado(
           `Listo: ${creados} producto${creados === 1 ? '' : 's'} creado${creados === 1 ? '' : 's'}`
           + (conTamanos > 0
             ? `, ${conTamanos} con tamaños`
+            : '')
+          + (acompanamientos > 0
+            ? `, ${acompanamientos} se ofrece${acompanamientos === 1 ? '' : 'n'} al pagar`
+            : '')
+          + (adicionalesNuevos > 0
+            ? `, ${adicionalesNuevos} adicional${adicionalesNuevos === 1 ? '' : 'es'} en ${platosConAdicionales} plato${platosConAdicionales === 1 ? '' : 's'}`
             : '')
           + (actualizados > 0 ? `, ${actualizados} actualizado${actualizados === 1 ? '' : 's'}.` : '.'),
         )
@@ -359,6 +440,19 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                                 className="mt-0.5 w-full rounded border border-slate-300 px-2 py-1 text-xs font-normal text-slate-900"
                               />
                             </label>
+                            <label className="w-40 text-[11px] font-semibold text-slate-600">
+                              Tipo
+                              <select
+                                value={v.rol}
+                                onChange={(e) => editarVariante(v.id, {
+                                  rol: e.target.value === 'acompanamiento' ? 'acompanamiento' : 'plato',
+                                })}
+                                className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-900"
+                              >
+                                <option value="plato">Plato</option>
+                                <option value="acompanamiento">Bebida o acompañamiento</option>
+                              </select>
+                            </label>
                           </div>
 
                           <div className="mt-2 space-y-1">
@@ -419,90 +513,194 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             {visibles.length === 0
               ? 'Todas las líneas quedaron agrupadas arriba.'
               : <>Encontramos <strong>{visibles.length}</strong> línea{visibles.length === 1 ? '' : 's'} más.
-                Corrige lo que haga falta y borra lo que no sea un plato.</>}
+                Corrige lo que haga falta y borra lo que sobre.</>}
           </p>
 
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-slate-500">
-                  <th className="pb-1 font-semibold">Producto</th>
-                  <th className="pb-1 font-semibold w-24">Precio</th>
-                  <th className="pb-1 font-semibold w-32">Sección</th>
-                  <th className="pb-1 w-8" />
-                </tr>
-              </thead>
-              <tbody>
-                {visibles.map((f) => {
-                  const sinPrecio = pesosDeTexto(f.precio) == null
+          {seccionesVisibles.length > 0 && (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-bold text-slate-900">¿Qué es cada sección?</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Un <strong>plato</strong> se pide solo. Un <strong>adicional</strong> se
+                le añade a un plato (queso, huevo…) y no se vende suelto. Una{' '}
+                <strong>bebida o acompañamiento</strong> se le ofrece al cliente antes
+                de pagar. Cambiarlo aquí cambia toda la sección.
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {seccionesVisibles.map((sec) => {
+                  const roles = new Set(
+                    visibles.filter((f) => f.seccion.trim() === sec).map((f) => f.rol),
+                  )
+                  const unico = roles.size === 1 ? [...roles][0] : ''
                   return (
-                    <tr
-                      key={f.id}
-                      className={sinPrecio ? 'bg-amber-50' : undefined}
-                    >
-                      <td className="py-1 pr-2">
-                        <input
-                          value={f.nombre}
-                          onChange={(e) => editar(f.id, 'nombre', e.target.value)}
-                          className="w-full rounded border border-slate-300 px-2 py-1"
-                        />
-                        {/* Los ingredientes, debajo del nombre y con la letra
-                            más pequeña: es la jerarquía que tendrán en la
-                            app, así que el dueño revisa lo que va a ver su
-                            cliente y no dos campos sueltos. */}
-                        <input
-                          value={f.descripcion}
-                          placeholder="Ingredientes (opcional)"
-                          aria-label="Ingredientes del plato"
-                          onChange={(e) => editar(f.id, 'descripcion', e.target.value)}
-                          className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-[11px] text-slate-600"
-                        />
-                        {f.aviso && (
-                          <span className="mt-0.5 block text-[11px] text-amber-700">
-                            {f.aviso}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-1 pr-2 align-top">
-                        <input
-                          value={f.precio}
-                          inputMode="numeric"
-                          placeholder="—"
-                          onChange={(e) => editar(f.id, 'precio', e.target.value)}
-                          className={`w-full rounded border px-2 py-1 ${
-                            sinPrecio ? 'border-amber-400 bg-white' : 'border-slate-300'
-                          }`}
-                        />
-                      </td>
-                      <td className="py-1 pr-2 align-top">
-                        <input
-                          value={f.seccion}
-                          list="carta-secciones"
-                          onChange={(e) => editar(f.id, 'seccion', e.target.value)}
-                          className="w-full rounded border border-slate-300 px-2 py-1"
-                        />
-                      </td>
-                      <td className="py-1 align-top">
-                        <button
-                          type="button"
-                          aria-label="Quitar esta fila"
-                          onClick={() => setFilas((p) => (p ?? []).filter((x) => x.id !== f.id))}
-                          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
+                    <label key={sec || '—'} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate font-semibold text-slate-700">{sec || 'Sin sección'}</span>
+                      <select
+                        value={unico}
+                        onChange={(e) => {
+                          const r = ROLES_CARTA.find((x) => x.valor === e.target.value)
+                          if (r) rolDeSeccion(sec, r.valor)
+                        }}
+                        className="w-48 shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
+                      >
+                        {unico === '' && <option value="">Mezclado</option>}
+                        {ROLES_CARTA.map((r) => (
+                          <option key={r.valor} value={r.valor}>{r.etiqueta}</option>
+                        ))}
+                      </select>
+                    </label>
                   )
                 })}
-              </tbody>
-            </table>
+              </div>
+            </div>
+          )}
+
+          {/* Una tarjeta por fila y no una tabla: en el teléfono, que es
+              donde el dueño toma la foto, cuatro columnas dejaban el nombre
+              del plato en «Arep». */}
+          <div className="mt-2 space-y-2">
+            {visibles.map((f) => {
+              const sinPrecio = pesosDeTexto(f.precio) == null
+              return (
+                <div
+                  key={f.id}
+                  className={`rounded-xl border p-2.5 ${
+                    sinPrecio ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <input
+                      value={f.nombre}
+                      aria-label="Nombre"
+                      onChange={(e) => editar(f.id, 'nombre', e.target.value)}
+                      className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm font-semibold text-slate-900"
+                    />
+                    <button
+                      type="button"
+                      aria-label="Quitar esta fila"
+                      onClick={() => setFilas((p) => (p ?? []).filter((x) => x.id !== f.id))}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-red-600"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {/* Los ingredientes, debajo del nombre y con la letra más
+                      pequeña: es la jerarquía que tendrán en la app. Un
+                      adicional no los tiene: es una opción dentro de otro
+                      plato, y ahí no se enseña descripción. */}
+                  {f.rol !== 'adicional' && (
+                    <input
+                      value={f.descripcion}
+                      placeholder="Ingredientes (opcional)"
+                      aria-label="Ingredientes del plato"
+                      onChange={(e) => editar(f.id, 'descripcion', e.target.value)}
+                      className="mt-1.5 w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                    />
+                  )}
+                  <div className="mt-1.5 grid grid-cols-[6.5rem_1fr] gap-1.5 sm:grid-cols-[6.5rem_1fr_13rem]">
+                    <input
+                      value={f.precio}
+                      inputMode="numeric"
+                      placeholder="Precio"
+                      aria-label="Precio"
+                      onChange={(e) => editar(f.id, 'precio', e.target.value)}
+                      className={`rounded border px-2 py-1 text-xs ${
+                        sinPrecio ? 'border-amber-400 bg-white' : 'border-slate-300'
+                      }`}
+                    />
+                    <input
+                      value={f.seccion}
+                      list="carta-secciones"
+                      placeholder="Sección"
+                      aria-label="Sección"
+                      onChange={(e) => editar(f.id, 'seccion', e.target.value)}
+                      className="min-w-0 rounded border border-slate-300 px-2 py-1 text-xs"
+                    />
+                    <select
+                      value={f.rol}
+                      aria-label={`Tipo de ${f.nombre || 'esta fila'}`}
+                      onChange={(e) => {
+                        const r = ROLES_CARTA.find((x) => x.valor === e.target.value)
+                        if (r) cambiarRol(f.id, r.valor)
+                      }}
+                      className="col-span-2 rounded border border-slate-300 bg-white px-1.5 py-1 text-xs sm:col-span-1"
+                    >
+                      {ROLES_CARTA.map((r) => (
+                        <option key={r.valor} value={r.valor}>{r.etiqueta}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {f.motivoRol && (
+                    <span className="mt-1 block text-[11px] text-slate-500">{f.motivoRol}</span>
+                  )}
+                  {f.aviso && (
+                    <span className="mt-0.5 block text-[11px] text-amber-700">{f.aviso}</span>
+                  )}
+                </div>
+              )
+            })}
             {/* Las secciones leídas, para elegirlas en vez de teclearlas: cada
                 variante escrita a mano acaba siendo otra sección en la carta. */}
             <datalist id="carta-secciones">
-              {secciones.map((s) => <option key={s} value={s} />)}
+              {secciones.map((sec) => <option key={sec} value={sec} />)}
             </datalist>
           </div>
+
+          {gruposAdicionales.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <h3 className="text-xs font-bold text-slate-900">Adicionales</h3>
+              <p className="text-[11px] text-slate-500">
+                No se crean como productos: van a tu biblioteca de adiciones y el
+                cliente los elige dentro del plato. Si ya tienes un grupo con el
+                mismo nombre, solo se le añade lo que le falte.
+              </p>
+              {gruposAdicionales.map(({ nombre: grupo, opciones }) => {
+                const elegidas = destinos[grupo] ?? seccionesDePlatos
+                return (
+                  <div key={grupo} className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                    <p className="text-xs font-semibold text-slate-900">
+                      {grupo}{' '}
+                      <span className="font-normal text-slate-500">
+                        · {opciones.length} opci{opciones.length === 1 ? 'ón' : 'ones'}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-600">
+                      {opciones.map((o) => `${o.nombre} +${formatCOP(o.precio)}`).join(' · ')}
+                    </p>
+                    {seccionesDePlatos.length === 0 ? (
+                      <p className="mt-2 text-[11px] text-amber-800">
+                        No hay platos en esta carta para añadírselo. Quedará en tu
+                        biblioteca para ponerlo a mano.
+                      </p>
+                    ) : (
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold text-slate-700">Se ofrece en:</p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {seccionesDePlatos.map((sec) => {
+                            const activa = elegidas.includes(sec)
+                            return (
+                              <button
+                                key={sec || '—'}
+                                type="button"
+                                aria-pressed={activa}
+                                onClick={() => alternarDestino(grupo, sec, seccionesDePlatos)}
+                                className={`min-h-[32px] rounded-full px-3 text-[11px] font-semibold ring-1 ${
+                                  activa
+                                    ? 'bg-emerald-600 text-white ring-emerald-600'
+                                    : 'bg-white text-slate-600 ring-slate-300'
+                                }`}
+                              >
+                                {sec || 'Sin sección'}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {fuera > 0 && (
             <p className="mt-2 text-[11px] text-amber-700">
@@ -522,16 +720,19 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             <button
               type="button"
               onClick={() => void crear()}
-              disabled={creando || total === 0 || problemas.length > 0}
+              disabled={creando || (total === 0 && adicionalesListos.length === 0) || problemas.length > 0}
               className={BOTON.principal}
             >
               {creando
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Creando…</>
-                : `Crear ${total} producto${total === 1 ? '' : 's'}`}
+                : `Crear ${total} producto${total === 1 ? '' : 's'}`
+                  + (adicionalesListos.length > 0
+                    ? ` y ${adicionalesListos.length} adicional${adicionalesListos.length === 1 ? '' : 'es'}`
+                    : '')}
             </button>
             <button
               type="button"
-              onClick={() => { setFilas(null); setVariantes([]); setError(null) }}
+              onClick={() => { setFilas(null); setVariantes([]); setDestinos({}); setError(null) }}
               className={BOTON.secundario}
             >
               Descartar
