@@ -359,6 +359,34 @@ export function parsearCarta(texto: string): CartaLeida {
  * derecha— y cada uno trae el tamaño de su letra, que es la pista con la que de
  * verdad se reconoce un título.
  */
+/**
+ * Qué tan bien quedó leída una carta: cuántos platos salieron con UN precio.
+ *
+ * Sirve para elegir entre las dos lecturas que se pueden hacer de la misma
+ * foto —por posición de las palabras, o por el texto corrido de Vision—. La de
+ * posición es mejor casi siempre (separa columnas y ve el tamaño de la letra),
+ * pero si la foto la engaña funde renglones enteros y deja platos sin precio;
+ * el texto corrido, que Vision ordena él solo, a veces aguanta mejor. Elegir
+ * por esto hace que una foto rara empeore la lectura en el peor de los casos
+ * hasta la de antes, nunca por debajo.
+ *
+ * Una fila con VARIOS precios cuenta medio: puede ser un plato en tamaños
+ * (bien leído) o dos platos pegados (mal leído), y no se sabe cuál.
+ */
+export function calidadDeLectura(c: CartaLeida): number {
+  let puntos = 0;
+  for (const l of c.lineas) {
+    if (l.precio != null) puntos += 1;
+    else if ((l.precios?.length ?? 0) > 1) puntos += 0.5;
+  }
+  return puntos;
+}
+
+/** La mejor de dos lecturas; en empate, la primera (la de posición). */
+export function mejorLectura(primera: CartaLeida, segunda: CartaLeida): CartaLeida {
+  return calidadDeLectura(segunda) > calidadDeLectura(primera) ? segunda : primera;
+}
+
 export function parsearCartaMedida(
   lineas: Array<{ texto: string; alto: number; columna?: number }>,
   altoCuerpo: number,
