@@ -64,7 +64,13 @@ import { authLimiter } from '../middleware/rate-limit.middleware';
 import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
 import { mejorLectura, parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
 import { GRUPO_TAMANO, motivoParaNoAgrupar, sugerirVariantes } from '../lib/carta-variantes';
-import { agruparAdicionales, sanearRol } from '../lib/carta-rol';
+import {
+  agruparAdicionales,
+  agruparGuarniciones,
+  destinoPorDefecto,
+  sanearRol,
+} from '../lib/carta-rol';
+import { limpiarTextoDeCarta } from '../lib/texto-carta';
 import { saneaGrupo } from '../lib/texto-opciones';
 import { reporteACsv } from '../lib/reporte-ventas';
 import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
@@ -864,6 +870,9 @@ router.post(
           // separada. Sin esto, «Picada pequeña/mediana/grande» nace como tres
           // productos sueltos y arreglarlo pide otra pantalla.
           variantes: sugerirVariantes(carta.lineas),
+          // Lo que la carta dice que TRAEN los platos («acompañados de papa a
+          // la francesa»): el portal lo propone como su descripción.
+          notas: carta.notas,
           // Se devuelve el texto leído para que el dueño pueda comprobar si el
           // problema fue la foto (borrosa, torcida) o nuestra lectura.
           textoCrudo: lectura.texto,
@@ -895,7 +904,7 @@ router.post(
 // devuelve los ids de lo que creó.
 router.post('/:token/products/carta-importar', async (req: Request, res: Response): Promise<void> => {
   const { token } = req.params as { token: string };
-  const { filas, variantes, adicionales } = req.body as {
+  const { filas, variantes, adicionales, guarniciones, notas } = req.body as {
     filas?: Array<{ nombre?: unknown; precio?: unknown; seccion?: unknown; descripcion?: unknown; rol?: unknown }>;
     variantes?: Array<{
       nombre?: unknown; seccion?: unknown; precioBase?: unknown; grupo?: unknown; rol?: unknown;
@@ -903,6 +912,10 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     }>;
     /** A qué secciones de platos va cada grupo de adicionales. */
     adicionales?: Array<{ grupo?: unknown; aplicarA?: unknown }>;
+    /** A qué secciones va cada grupo de guarniciones, y cuántas se escogen. */
+    guarniciones?: Array<{ grupo?: unknown; aplicarA?: unknown; elige?: unknown }>;
+    /** «Acompañado de papa a la francesa»: a la descripción de esos platos. */
+    notas?: Array<{ texto?: unknown; seccion?: unknown; aplicarA?: unknown }>;
   };
   const sueltas = Array.isArray(filas) ? filas : [];
   const grupos = Array.isArray(variantes) ? variantes : [];
@@ -941,10 +954,11 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     descripcion: typeof f.descripcion === 'string' ? f.descripcion : '',
     rol: sanearRol(f.rol),
   }));
-  // Los adicionales NO van al CSV de productos: se montan como grupo de la
-  // biblioteca y se adjuntan a los platos. Ver `carta-rol.ts`.
-  const productos = base.filter((f) => f.rol !== 'adicional');
+  // Los adicionales y las guarniciones NO van al CSV de productos: se montan
+  // como grupos de la biblioteca y se adjuntan a los platos. Ver `carta-rol.ts`.
+  const productos = base.filter((f) => f.rol !== 'adicional' && f.rol !== 'guarnicion');
   const { grupos: gruposAdicionales } = agruparAdicionales(base);
+  const gruposGuarnicion = agruparGuarniciones(base);
 
   // Cada grupo de adicionales se valida con la MISMA regla que la biblioteca,
   // y también antes de escribir: un grupo inválido descubierto después dejaría
@@ -965,6 +979,75 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
       ...limpias.filter((v) => v.rol === 'plato').map((v) => v.seccion),
     ]),
   ];
+  // Las secciones con algo que se vende. Una guarnición puede ir también en
+  // una bebida («Jugo natural · elige tu sabor»), así que aquí cuentan todos
+  // los productos, no solo los platos.
+  const seccionesConProductos = [
+    ...new Set([...productos.map((f) => f.seccion), ...limpias.map((v) => v.seccion)].map((x) => x.trim())),
+  ];
+  const destinosGuarnicion = new Map<string, { aplicarA?: string[]; elige: number }>();
+  for (const a of Array.isArray(guarniciones) ? guarniciones : []) {
+    if (typeof a.grupo !== 'string') continue;
+    destinosGuarnicion.set(a.grupo.trim().toLowerCase(), {
+      ...(Array.isArray(a.aplicarA)
+        ? { aplicarA: a.aplicarA.filter((x): x is string => typeof x === 'string') }
+        : {}),
+      elige: typeof a.elige === 'number' && Number.isFinite(a.elige) ? Math.trunc(a.elige) : 1,
+    });
+  }
+  const guarnicionesListas = [];
+  for (const g of gruposGuarnicion) {
+    const pedido = destinosGuarnicion.get(g.nombre.trim().toLowerCase());
+    // OBLIGATORIO y «elige 1»: es lo que dice «escoge tu acompañamiento». Con
+    // la misma regla de la biblioteca, que corrige un «elige 5» de tres
+    // opciones en vez de dejar el plato imposible de pedir.
+    const r = saneaGrupo({
+      name: g.nombre,
+      required: true,
+      minSelect: 1,
+      maxSelect: pedido?.elige ?? 1,
+      options: g.opciones.map((o) => ({ name: o.nombre, priceDelta: o.precio })),
+    });
+    if ('error' in r) {
+      res.status(400).json({ success: false, error: r.error });
+      return;
+    }
+    guarnicionesListas.push({
+      nombre: g.nombre,
+      opciones: g.opciones,
+      required: true as const,
+      minSelect: r.grupo.minSelect,
+      maxSelect: r.grupo.maxSelect,
+      aplicarA: pedido?.aplicarA ?? destinoPorDefecto(g.secciones, seccionesConProductos),
+    });
+  }
+
+  // Las notas van a la DESCRIPCIÓN de los platos, antes de escribir el CSV:
+  // así entran por el mismo importador y no hace falta otra escritura.
+  const notasListas = (Array.isArray(notas) ? notas : [])
+    .map((n) => ({
+      texto: typeof n.texto === 'string' ? limpiarTextoDeCarta(n.texto).slice(0, 300).trim() : '',
+      seccion: typeof n.seccion === 'string' ? n.seccion.trim() : '',
+      aplicarA: Array.isArray(n.aplicarA)
+        ? n.aplicarA.filter((x): x is string => typeof x === 'string').map((x) => x.trim())
+        : undefined,
+    }))
+    .filter((n) => n.texto.length >= 3);
+  const notaDe = (seccion: string): string => {
+    const s = seccion.trim();
+    return notasListas
+      .filter((n) => (n.aplicarA ?? destinoPorDefecto([n.seccion], seccionesDePlatos)).includes(s))
+      .map((n) => n.texto)
+      .join('. ');
+  };
+  const conNota = (descripcion: string, seccion: string): string => {
+    const nota = notaDe(seccion);
+    if (!nota) return descripcion;
+    // Volver a subir la misma carta no le pega la nota dos veces.
+    if (descripcion.toLowerCase().includes(nota.toLowerCase())) return descripcion;
+    return (descripcion ? `${descripcion.replace(/[.\s]+$/, '')}. ${nota}` : nota).slice(0, 500);
+  };
+
   const gruposListos = [];
   for (const g of gruposAdicionales) {
     const r = saneaGrupo({
@@ -990,12 +1073,12 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     // Las variantes van al FINAL del CSV y en orden, así que su número de
     // línea es conocido y con él se recupera el id del producto creado.
     const csv = filasACsv([
-      ...productos,
+      ...productos.map((f) => (f.rol === 'plato' ? { ...f, descripcion: conNota(f.descripcion, f.seccion) } : f)),
       ...limpias.map((v) => ({
         nombre: v.nombre,
         precio: v.precioBase,
         seccion: v.seccion,
-        descripcion: '',
+        descripcion: v.rol === 'plato' ? conNota('', v.seccion) : '',
       })),
     ]);
 
@@ -1011,12 +1094,14 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     // no es la del array: se cuenta en el mismo orden en que se escribieron.
     const acompanamientoIds: string[] = [];
     const platos: Array<{ id: string; seccion: string }> = [];
+    const todos: Array<{ id: string; seccion: string }> = [];
     let lineaCsv = 0;
     for (const f of productos) {
       if (f.precio == null || !(f.precio > 0)) continue;
       lineaCsv++;
       const id = idDeLinea(lineaCsv);
       if (!id) continue;
+      todos.push({ id, seccion: f.seccion });
       if (f.rol === 'acompanamiento') acompanamientoIds.push(id);
       else platos.push({ id, seccion: f.seccion });
     }
@@ -1039,6 +1124,7 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
         }],
       });
       conTamanos++;
+      todos.push({ id: productId, seccion: v.seccion });
       if (v.rol === 'acompanamiento') acompanamientoIds.push(productId);
       else platos.push({ id: productId, seccion: v.seccion });
     }
@@ -1047,6 +1133,8 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
       acompanamientoIds,
       platos,
       grupos: gruposListos,
+      productos: todos,
+      guarniciones: guarnicionesListas,
     });
 
     res.status(200).json({
@@ -1060,6 +1148,9 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
         gruposAdicionales: roles.grupos,
         adicionalesNuevos: roles.opcionesNuevas,
         platosConAdicionales: roles.platosConAdicionales,
+        gruposGuarnicion: roles.gruposGuarnicion,
+        platosConGuarnicion: roles.platosConGuarnicion,
+        notas: notasListas.length,
       },
     });
   } catch (err) {

@@ -13,19 +13,31 @@
  * grupo acabaría en otro.
  */
 
-export type RolCarta = 'plato' | 'adicional' | 'acompanamiento'
+export type RolCarta = 'plato' | 'adicional' | 'acompanamiento' | 'guarnicion'
 
+/**
+ * Los nombres en pantalla. «Acompañamiento» se lo queda lo que VIENE con el
+ * plato, porque así lo llama un restaurante de aquí («escoge tu
+ * acompañamiento: papa o arroz»); lo que se ofrece al pagar se llama por lo
+ * que hace. Antes era al revés y el dueño marcaba sus papas incluidas como
+ * algo que se le vende aparte a quien va a pagar.
+ */
 export const ROLES_CARTA: ReadonlyArray<{ valor: RolCarta; etiqueta: string; ayuda: string }> = [
   { valor: 'plato', etiqueta: 'Plato', ayuda: 'Se pide por sí mismo.' },
   {
+    valor: 'guarnicion',
+    etiqueta: 'Acompañamiento del plato',
+    ayuda: 'Viene con el plato y el cliente escoge uno (papa a la francesa, arroz…).',
+  },
+  {
     valor: 'adicional',
-    etiqueta: 'Adicional',
+    etiqueta: 'Adicional (se cobra)',
     ayuda: 'Se le añade a un plato (queso, huevo…). No se vende solo.',
   },
   {
     valor: 'acompanamiento',
-    etiqueta: 'Bebida o acompañamiento',
-    ayuda: 'Producto que se le ofrece al cliente antes de pagar.',
+    etiqueta: 'Se ofrece al pagar',
+    ayuda: 'Bebida o porción que se vende aparte y se le ofrece al cliente antes de pagar.',
   },
 ]
 
@@ -83,4 +95,64 @@ export function agruparAdicionales(
     porGrupo.set(clave, grupo)
   }
   return [...porGrupo.values()]
+}
+
+// ── Guarniciones: copia de las del servidor (`carta-rol.ts`) ────────────────
+
+export const GRUPO_GUARNICION = 'Acompañamiento'
+
+/** Ver la del servidor: misma regla, mismo nombre de grupo. */
+export function grupoDeGuarnicion(
+  seccion: string,
+  filas: ReadonlyArray<{ seccion: string; rol: RolCarta }>,
+): string {
+  const s = seccion.trim()
+  const deLaSeccion = filas.filter((f) => f.seccion.trim() === s)
+  if (s && deLaSeccion.length > 0 && deLaSeccion.every((f) => f.rol === 'guarnicion')) return s
+  const mezcladas = new Set(
+    filas
+      .filter((f) => f.rol === 'guarnicion')
+      .map((f) => f.seccion.trim())
+      .filter((sec) => !filas.filter((x) => x.seccion.trim() === sec).every((x) => x.rol === 'guarnicion')),
+  )
+  if (s && mezcladas.size > 1) return `${GRUPO_GUARNICION} de ${s.toLowerCase()}`
+  return GRUPO_GUARNICION
+}
+
+export interface GrupoGuarnicion {
+  nombre: string
+  opciones: Array<{ nombre: string; precio: number }>
+  secciones: string[]
+}
+
+/** Ver la del servidor. Sin precio es CERO: viene incluida con el plato. */
+export function agruparGuarniciones(
+  filas: ReadonlyArray<{ nombre: string; precio: number | null; seccion: string; rol: RolCarta }>,
+): GrupoGuarnicion[] {
+  const porGrupo = new Map<string, GrupoGuarnicion>()
+  for (const f of filas) {
+    if (f.rol !== 'guarnicion') continue
+    if (f.precio != null && (!Number.isFinite(f.precio) || f.precio < 0)) continue
+    const nombreGrupo = grupoDeGuarnicion(f.seccion, filas)
+    const clave = normalizado(nombreGrupo)
+    const grupo = porGrupo.get(clave) ?? { nombre: nombreGrupo, opciones: [], secciones: [] }
+    const nombre = nombreDeAdicional(f.nombre)
+    if (!grupo.secciones.includes(f.seccion.trim())) grupo.secciones.push(f.seccion.trim())
+    if (!grupo.opciones.some((o) => normalizado(o.nombre) === normalizado(nombre))) {
+      grupo.opciones.push({ nombre, precio: f.precio == null ? 0 : Math.round(f.precio) })
+    }
+    porGrupo.set(clave, grupo)
+  }
+  return [...porGrupo.values()]
+}
+
+/** Ver la del servidor: a qué secciones va algo si el dueño no dice otra cosa. */
+export function destinoPorDefecto(origen: string[], seccionesDePlatos: string[]): string[] {
+  const platos = seccionesDePlatos.map((s) => s.trim())
+  const elegidas = new Set<string>()
+  for (const o of origen.map((x) => x.trim())) {
+    if (platos.includes(o)) elegidas.add(o)
+    else for (const p of platos) elegidas.add(p)
+  }
+  return platos.filter((p, i) => elegidas.has(p) && platos.indexOf(p) === i)
 }

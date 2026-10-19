@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Camera, AlertTriangle, Trash2, Loader2, Layers, Split } from 'lucide-react'
+import { Camera, AlertTriangle, Trash2, Loader2, Layers, Split, Utensils, NotebookPen } from 'lucide-react'
 
 import { BOTON, TARJETA } from '../../../ui'
 import { formatCOP } from '../../../moneda'
@@ -12,7 +12,13 @@ import {
   varianteParaEnviar,
   type VarianteEditable,
 } from '../../../variantes-carta'
-import { agruparAdicionales, ROLES_CARTA, type RolCarta } from '../../../roles-carta'
+import {
+  agruparAdicionales,
+  agruparGuarniciones,
+  destinoPorDefecto,
+  ROLES_CARTA,
+  type RolCarta,
+} from '../../../roles-carta'
 
 
 interface LineaCarta {
@@ -52,6 +58,13 @@ interface FilaEditable {
   rol: RolCarta
   /** Por qué el lector propuso ese tipo, para que el dueño lo juzgue. */
   motivoRol?: string
+}
+
+/** Lo que la carta dice que traen los platos, en edición. */
+interface NotaEditable {
+  id: number
+  seccion: string
+  texto: string
 }
 
 /** Un grupo de tamaños en edición. Cada tamaño con SU precio, como la carta. */
@@ -104,6 +117,12 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   // A qué secciones de platos se añade cada grupo de adicionales. Sin entrada
   // = a todas, que es lo que significa «ADICIONALES» al pie de una carta.
   const [destinos, setDestinos] = useState<Record<string, string[]>>({})
+  // Lo que viene con el plato: a qué secciones va cada grupo y cuántas
+  // opciones se escogen. Sin entrada = lo que propone `destinoPorDefecto`.
+  const [guarnicionCfg, setGuarnicionCfg] = useState<Record<string, { aplicarA?: string[]; elige: number }>>({})
+  // «Acompañados de papa a la francesa»: va a la descripción de los platos.
+  const [notas, setNotas] = useState<NotaEditable[]>([])
+  const [destinosNota, setDestinosNota] = useState<Record<number, string[]>>({})
 
   async function leerFoto(file: File) {
     setError(null)
@@ -118,7 +137,12 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
       })
       const json = (await res.json()) as {
         success: boolean
-        data?: { lineas: LineaCarta[]; secciones?: string[]; variantes?: VarianteSugerida[] }
+        data?: {
+          lineas: LineaCarta[]
+          secciones?: string[]
+          variantes?: VarianteSugerida[]
+          notas?: Array<{ seccion: string; texto: string }>
+        }
         error?: string
       }
       if (!json.success || !json.data) {
@@ -164,6 +188,9 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
         })),
       )
       setDestinos({})
+      setGuarnicionCfg({})
+      setNotas((json.data.notas ?? []).map((n, i) => ({ id: i, seccion: n.seccion, texto: n.texto })))
+      setDestinosNota({})
     } catch {
       setError('No se pudo conectar con el servidor.')
     } finally {
@@ -230,7 +257,11 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   const agrupadas = new Set(variantes.filter((v) => v.aceptada).flatMap((v) => v.lineas))
   const visibles = (filas ?? []).filter((f) => !agrupadas.has(f.linea))
 
-  const listas = visibles.filter((f) => f.nombre.trim() && pesosDeTexto(f.precio) != null)
+  // Una guarnición SIN precio está lista: viene incluida con el plato. A
+  // cualquier otra fila le falta el precio para poder crearse.
+  const listas = visibles.filter(
+    (f) => f.nombre.trim() && (pesosDeTexto(f.precio) != null || f.rol === 'guarnicion'),
+  )
   const fuera = visibles.length - listas.length
 
   const aceptadas = variantes.filter((v) => v.aceptada)
@@ -240,8 +271,9 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
 
   // Los adicionales NO son productos: se crean como un grupo de opciones que
   // los platos adjuntan. Se cuentan aparte para que el botón diga la verdad.
-  const productosListos = listas.filter((f) => f.rol !== 'adicional')
+  const productosListos = listas.filter((f) => f.rol !== 'adicional' && f.rol !== 'guarnicion')
   const adicionalesListos = listas.filter((f) => f.rol === 'adicional')
+  const guarnicionesListas = listas.filter((f) => f.rol === 'guarnicion')
   // Con la MISMA función que usa el servidor (copia vigilada por prueba) y
   // sobre las MISMAS filas que se le envían: lo que se ve aquí es lo que se crea.
   const gruposAdicionales = agruparAdicionales(
@@ -252,6 +284,21 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
     ...aceptadas.filter((v) => v.rol === 'plato').map((v) => v.seccion.trim()),
   ]))
   const seccionesVisibles = Array.from(new Set(visibles.map((f) => f.seccion.trim())))
+  // Lo que viene con el plato también puede ir en una bebida («elige tu
+  // sabor»), así que aquí cuenta todo lo que se vende, no solo los platos.
+  const seccionesConProductos = Array.from(new Set([
+    ...productosListos.map((f) => f.seccion.trim()),
+    ...aceptadas.map((v) => v.seccion.trim()),
+  ]))
+  const gruposGuarnicion = agruparGuarniciones(
+    guarnicionesListas.length === 0
+      ? []
+      : listas.map((f) => ({ nombre: f.nombre, precio: pesosDeTexto(f.precio), seccion: f.seccion, rol: f.rol })),
+  )
+  const destinoGuarnicion = (grupo: string, secciones: string[]) =>
+    guarnicionCfg[grupo]?.aplicarA ?? destinoPorDefecto(secciones, seccionesConProductos)
+  const destinoNota = (n: NotaEditable) =>
+    destinosNota[n.id] ?? destinoPorDefecto([n.seccion], seccionesDePlatos)
   const total = productosListos.length + (aceptadas.length - problemas.length)
 
   async function crear() {
@@ -274,6 +321,14 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             grupo,
             aplicarA: destinos[grupo] ?? seccionesDePlatos,
           })),
+          guarniciones: gruposGuarnicion.map(({ nombre: grupo, secciones: origen }) => ({
+            grupo,
+            aplicarA: destinoGuarnicion(grupo, origen),
+            elige: guarnicionCfg[grupo]?.elige ?? 1,
+          })),
+          notas: notas
+            .filter((n) => n.texto.trim())
+            .map((n) => ({ texto: n.texto.trim(), seccion: n.seccion, aplicarA: destinoNota(n) })),
         }),
       })
       const json = (await res.json()) as {
@@ -285,13 +340,15 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           acompanamientos?: number
           adicionalesNuevos?: number
           platosConAdicionales?: number
+          gruposGuarnicion?: number
+          platosConGuarnicion?: number
         }
         error?: string
       }
       if (json.success && json.data) {
         const {
           creados, actualizados, conTamanos = 0, acompanamientos = 0,
-          adicionalesNuevos = 0, platosConAdicionales = 0,
+          adicionalesNuevos = 0, platosConAdicionales = 0, platosConGuarnicion = 0,
         } = json.data
         setResultado(
           `Listo: ${creados} producto${creados === 1 ? '' : 's'} creado${creados === 1 ? '' : 's'}`
@@ -304,10 +361,14 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           + (adicionalesNuevos > 0
             ? `, ${adicionalesNuevos} adicional${adicionalesNuevos === 1 ? '' : 'es'} en ${platosConAdicionales} plato${platosConAdicionales === 1 ? '' : 's'}`
             : '')
+          + (platosConGuarnicion > 0
+            ? `, ${platosConGuarnicion} plato${platosConGuarnicion === 1 ? '' : 's'} con acompañamiento a escoger`
+            : '')
           + (actualizados > 0 ? `, ${actualizados} actualizado${actualizados === 1 ? '' : 's'}.` : '.'),
         )
         setFilas(null)
         setVariantes([])
+        setNotas([])
         onImported()
       } else {
         setError(json.error ?? 'No se pudo crear el catálogo.')
@@ -450,7 +511,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                                 className="mt-0.5 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-900"
                               >
                                 <option value="plato">Plato</option>
-                                <option value="acompanamiento">Bebida o acompañamiento</option>
+                                <option value="acompanamiento">Se ofrece al pagar</option>
                               </select>
                             </label>
                           </div>
@@ -520,10 +581,11 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-bold text-slate-900">¿Qué es cada sección?</p>
               <p className="mt-0.5 text-[11px] text-slate-500">
-                Un <strong>plato</strong> se pide solo. Un <strong>adicional</strong> se
-                le añade a un plato (queso, huevo…) y no se vende suelto. Una{' '}
-                <strong>bebida o acompañamiento</strong> se le ofrece al cliente antes
-                de pagar. Cambiarlo aquí cambia toda la sección.
+                Un <strong>plato</strong> se pide solo. Un <strong>acompañamiento del
+                plato</strong> viene con él y el cliente escoge uno (papa a la francesa,
+                arroz…). Un <strong>adicional</strong> se le añade cobrando (queso,
+                huevo…). Lo que <strong>se ofrece al pagar</strong> es una bebida o
+                porción que se vende aparte. Cambiarlo aquí cambia toda la sección.
               </p>
               <div className="mt-2 space-y-1.5">
                 {seccionesVisibles.map((sec) => {
@@ -559,7 +621,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
               del plato en «Arep». */}
           <div className="mt-2 space-y-2">
             {visibles.map((f) => {
-              const sinPrecio = pesosDeTexto(f.precio) == null
+              const sinPrecio = pesosDeTexto(f.precio) == null && f.rol !== 'guarnicion'
               return (
                 <div
                   key={f.id}
@@ -587,7 +649,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                       pequeña: es la jerarquía que tendrán en la app. Un
                       adicional no los tiene: es una opción dentro de otro
                       plato, y ahí no se enseña descripción. */}
-                  {f.rol !== 'adicional' && (
+                  {f.rol !== 'adicional' && f.rol !== 'guarnicion' && (
                     <input
                       value={f.descripcion}
                       placeholder="Ingredientes (opcional)"
@@ -600,8 +662,8 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                     <input
                       value={f.precio}
                       inputMode="numeric"
-                      placeholder="Precio"
-                      aria-label="Precio"
+                      placeholder={f.rol === 'guarnicion' ? 'Incluido' : 'Precio'}
+                      aria-label={f.rol === 'guarnicion' ? 'Recargo (vacío = incluido)' : 'Precio'}
                       onChange={(e) => editar(f.id, 'precio', e.target.value)}
                       className={`rounded border px-2 py-1 text-xs ${
                         sinPrecio ? 'border-amber-400 bg-white' : 'border-slate-300'
@@ -644,6 +706,160 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
               {secciones.map((sec) => <option key={sec} value={sec} />)}
             </datalist>
           </div>
+
+          {gruposGuarnicion.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                <Utensils className="w-3.5 h-3.5 text-emerald-600" />
+                Acompañamiento del plato
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Viene con el plato y el cliente escoge al pedir. Se crea como opción
+                obligatoria del plato: sin precio va incluido, con precio se suma.
+              </p>
+              {gruposGuarnicion.map(({ nombre: grupo, opciones, secciones: origen }) => {
+                const elegidas = destinoGuarnicion(grupo, origen)
+                const elige = guarnicionCfg[grupo]?.elige ?? 1
+                const cambiar = (cambio: { aplicarA?: string[]; elige?: number }) =>
+                  setGuarnicionCfg((prev) => ({
+                    ...prev,
+                    [grupo]: {
+                      elige: prev[grupo]?.elige ?? elige,
+                      aplicarA: prev[grupo]?.aplicarA ?? elegidas,
+                      ...cambio,
+                    },
+                  }))
+                return (
+                  <div key={grupo} className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-slate-900">{grupo}</p>
+                      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                        El cliente escoge
+                        <select
+                          value={elige}
+                          onChange={(e) => cambiar({ elige: Number(e.target.value) })}
+                          className="rounded border border-slate-300 bg-white px-1.5 py-1 text-xs text-slate-900"
+                        >
+                          {Array.from({ length: Math.min(opciones.length, 4) }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-600">
+                      {opciones
+                        .map((o) => (o.precio > 0 ? `${o.nombre} +${formatCOP(o.precio)}` : `${o.nombre} (incluido)`))
+                        .join(' · ')}
+                    </p>
+                    {opciones.length < 2 && (
+                      <p className="mt-1 text-[11px] text-amber-800">
+                        Con una sola opción no hay nada que escoger: mejor escríbela en
+                        los ingredientes del plato.
+                      </p>
+                    )}
+                    {seccionesConProductos.length === 0 ? (
+                      <p className="mt-2 text-[11px] text-amber-800">
+                        No hay platos en esta carta para ponérselo. Quedará en tu
+                        biblioteca para añadirlo a mano.
+                      </p>
+                    ) : (
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold text-slate-700">Va con:</p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {seccionesConProductos.map((sec) => {
+                            const activa = elegidas.includes(sec)
+                            return (
+                              <button
+                                key={sec || '—'}
+                                type="button"
+                                aria-pressed={activa}
+                                onClick={() => cambiar({
+                                  aplicarA: activa ? elegidas.filter((x) => x !== sec) : [...elegidas, sec],
+                                })}
+                                className={`min-h-[32px] rounded-full px-3 text-[11px] font-semibold ring-1 ${
+                                  activa
+                                    ? 'bg-emerald-600 text-white ring-emerald-600'
+                                    : 'bg-white text-slate-600 ring-slate-300'
+                                }`}
+                              >
+                                {sec || 'Sin sección'}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {notas.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <h3 className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                <NotebookPen className="w-3.5 h-3.5 text-emerald-600" />
+                Lo que traen los platos
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Tu carta lo dice para varios platos a la vez. Lo añadimos a la
+                descripción de cada uno, que es donde el cliente lo lee.
+              </p>
+              {notas.map((n) => {
+                const elegidas = destinoNota(n)
+                return (
+                  <div key={n.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-start gap-2">
+                      <textarea
+                        value={n.texto}
+                        rows={2}
+                        aria-label="Lo que traen los platos"
+                        onChange={(e) =>
+                          setNotas((prev) => prev.map((x) => (x.id === n.id ? { ...x, texto: e.target.value } : x)))}
+                        className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1.5 text-xs text-slate-900"
+                      />
+                      <button
+                        type="button"
+                        aria-label="No añadir esta nota"
+                        onClick={() => setNotas((prev) => prev.filter((x) => x.id !== n.id))}
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-red-600"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {seccionesDePlatos.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold text-slate-700">Se añade a:</p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {seccionesDePlatos.map((sec) => {
+                            const activa = elegidas.includes(sec)
+                            return (
+                              <button
+                                key={sec || '—'}
+                                type="button"
+                                aria-pressed={activa}
+                                onClick={() => setDestinosNota((prev) => ({
+                                  ...prev,
+                                  [n.id]: activa ? elegidas.filter((x) => x !== sec) : [...elegidas, sec],
+                                }))}
+                                className={`min-h-[32px] rounded-full px-3 text-[11px] font-semibold ring-1 ${
+                                  activa
+                                    ? 'bg-emerald-600 text-white ring-emerald-600'
+                                    : 'bg-white text-slate-600 ring-slate-300'
+                                }`}
+                              >
+                                {sec || 'Sin sección'}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {gruposAdicionales.length > 0 && (
             <div className="mt-4 space-y-2">
@@ -720,7 +936,11 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             <button
               type="button"
               onClick={() => void crear()}
-              disabled={creando || (total === 0 && adicionalesListos.length === 0) || problemas.length > 0}
+              disabled={
+                creando
+                || (total === 0 && adicionalesListos.length === 0 && guarnicionesListas.length === 0)
+                || problemas.length > 0
+              }
               className={BOTON.principal}
             >
               {creando
@@ -728,11 +948,17 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                 : `Crear ${total} producto${total === 1 ? '' : 's'}`
                   + (adicionalesListos.length > 0
                     ? ` y ${adicionalesListos.length} adicional${adicionalesListos.length === 1 ? '' : 'es'}`
+                    : '')
+                  + (gruposGuarnicion.length > 0
+                    ? ` con ${gruposGuarnicion.length === 1 ? 'su acompañamiento' : `${gruposGuarnicion.length} acompañamientos`}`
                     : '')}
             </button>
             <button
               type="button"
-              onClick={() => { setFilas(null); setVariantes([]); setDestinos({}); setError(null) }}
+              onClick={() => {
+                setFilas(null); setVariantes([]); setDestinos({}); setGuarnicionCfg({})
+                setNotas([]); setDestinosNota({}); setError(null)
+              }}
               className={BOTON.secundario}
             >
               Descartar

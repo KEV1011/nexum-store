@@ -219,7 +219,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
 
   lineas.forEach((l, orden) => {
     if (l.precio == null || !(l.precio > 0)) return;
-    if (l.rol === 'adicional') return;
+    if (l.rol === 'adicional' || l.rol === 'guarnicion') return;
     const troceado = trocearTamano(l.nombre);
     if (!troceado) return;
     // La sección entra en la clave: una «Grande» de Bebidas y otra de Picadas
@@ -277,7 +277,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
   for (const l of lineas) {
     const precios = l.precios ?? [];
     if (l.precio != null) continue;
-    if (l.rol === 'adicional') continue;
+    if (l.rol === 'adicional' || l.rol === 'guarnicion') continue;
     if (precios.length < 2 || precios.length > MAX_TAMANOS) continue;
     if (!l.nombre || l.nombre.trim().length < 2) continue;
 

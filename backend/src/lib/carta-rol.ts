@@ -11,6 +11,13 @@
 //   * ACOMPAÑAMIENTO — es otro producto, pero de los que se ofrecen al cerrar
 //     el pedido («Gaseosa 350 ml 3.500», «Porción de papas»). Producto con
 //     `suggestAsAddon`: descuenta existencias y entra en el reporte de ventas.
+//   * GUARNICIÓN — lo que VIENE con el plato y el cliente escoge: «Escoge tu
+//     acompañamiento: papa a la francesa, patacón o arroz». En Colombia a eso
+//     también se le dice «acompañamiento», y es justo lo que el lector no
+//     sabía modelar: no es un producto (no se vende solo ni se ofrece al
+//     pagar) ni un adicional (no se cobra aparte). Es un grupo OBLIGATORIO
+//     de la biblioteca, «elige 1», con opciones a $0 —o con su recargo si la
+//     carta lo escribe—, adjunto a los platos que lo traen.
 //
 // Lo que sale de aquí es una PROPUESTA para la vista previa: cada fila trae su
 // rol y el MOTIVO, y el dueño lo cambia con un selector (por fila o por
@@ -21,7 +28,7 @@
 // adicional DESAPARECE de la carta (queda escondido dentro de otro), y uno
 // tomado por acompañamiento se le ofrece a todo el que va a pagar.
 
-export const ROLES_CARTA = ['plato', 'adicional', 'acompanamiento'] as const;
+export const ROLES_CARTA = ['plato', 'adicional', 'acompanamiento', 'guarnicion'] as const;
 export type RolCarta = (typeof ROLES_CARTA)[number];
 
 /** Para comparar: sin tildes, en minúscula, sin signos. */
@@ -76,6 +83,33 @@ const INICIO_ACOMPANAMIENTO = [
   'kola', 'te', 'cafe', 'tinto', 'aromatica', 'soda', 'refresco', 'porcion',
 ];
 
+/**
+ * Palabras de una sección de lo que VIENE con el plato y se escoge.
+ *
+ * Incluye «acompañamientos» a propósito, aunque arriba también cuente como
+ * acompañamiento que se vende aparte: lo que lo decide es el PRECIO. En
+ * «ACOMPAÑAMIENTOS · Papa a la francesa 6.000» la porción se vende sola; en
+ * «ACOMPAÑAMIENTOS · Papa a la francesa · Patacón · Arroz», sin precios, se
+ * escoge una con el plato. Ver `rolDeLinea`.
+ *
+ * Los verbos («escoge», «elige») van aquí y no como sección por sí solos:
+ * «ELIGE TU PROTEÍNA» con precios de plato completo es una lista de platos,
+ * no un grupo con recargos de 18.000. Por eso esta lista solo decide cuando la
+ * fila NO trae precio.
+ */
+const SECCION_GUARNICION = [
+  'acompanamiento', 'acompanamientos', 'acompanante', 'acompanantes',
+  'guarnicion', 'guarniciones', 'contorno', 'contornos', 'principio', 'principios',
+  'escoge', 'escoja', 'elige', 'elija', 'elegir', 'escoger',
+];
+
+/** ¿El título de la sección habla de lo que se escoge con el plato? */
+export function seccionDeGuarnicion(seccion: string): boolean {
+  const n = normalizado(seccion);
+  if (!n) return false;
+  return n.split(' ').some((p) => SECCION_GUARNICION.includes(p));
+}
+
 /** Cómo empieza un adicional escrito dentro de cualquier sección. */
 const INICIO_ADICIONAL = /^(\+|(adicion(al)?( de)?|extra( de)?|agregar|agregado( de)?)( |$))/;
 
@@ -108,7 +142,9 @@ export interface RolPropuesto {
  *      dentro de «Adicionales» manda la sección.
  *   4. Plato.
  */
-export function rolDeLinea(linea: { nombre: string; seccion: string }): RolPropuesto {
+export function rolDeLinea(
+  linea: { nombre: string; seccion: string; precio?: number | null },
+): RolPropuesto {
   const nombre = normalizado(linea.nombre);
   if (INICIO_ADICIONAL.test(nombre)) {
     return { rol: 'adicional', motivo: 'Empieza como un adicional («+», «Adición de…»).' };
@@ -116,6 +152,16 @@ export function rolDeLinea(linea: { nombre: string; seccion: string }): RolPropu
   const porSeccion = rolDeSeccion(linea.seccion);
   if (porSeccion === 'adicional') {
     return { rol: 'adicional', motivo: `Está en la sección «${linea.seccion}».` };
+  }
+  // SIN precio en una sección de lo que se escoge: viene con el plato. Se
+  // exige `null` explícito —no `undefined`— porque quien llama sin decir el
+  // precio (el portal ordenando su panel de bebidas) no sabe si lo hay, y
+  // sin saberlo no se puede afirmar que es una guarnición.
+  if (linea.precio === null && seccionDeGuarnicion(linea.seccion)) {
+    return {
+      rol: 'guarnicion',
+      motivo: `Sin precio en «${linea.seccion}»: viene con el plato y el cliente escoge.`,
+    };
   }
   if (porSeccion === 'acompanamiento') {
     return { rol: 'acompanamiento', motivo: `Está en la sección «${linea.seccion}».` };
@@ -228,6 +274,97 @@ export function agruparAdicionales(
     porGrupo.set(clave, grupo);
   }
   return { grupos: [...porGrupo.values()], repetidos, sinPrecio };
+}
+
+// ── Guarniciones: lo que viene con el plato y se escoge ──────────────────────
+
+/** El grupo por defecto cuando la carta no le puso título propio. */
+export const GRUPO_GUARNICION = 'Acompañamiento';
+
+/**
+ * Cómo se llama el grupo en el que cae una guarnición.
+ *
+ * Si la sección ENTERA son guarniciones, la sección es la lista y el grupo se
+ * llama como ella («Escoge tu acompañamiento»). Si no —una lista escrita en
+ * un renglón dentro de «Sándwiches»—, el grupo es «Acompañamiento»; y cuando
+ * eso pasa en VARIAS secciones de platos, cada una lleva el suyo («Acompañamiento
+ * de sándwiches»), porque la papa de los sándwiches y el arroz de los platos
+ * fuertes no son la misma lista y fundirlas le ofrecería arroz a un sándwich.
+ *
+ * Su copia es `app/roles-carta.ts`; `roles-carta-portal.test.ts` pasa la misma
+ * tabla por las dos.
+ */
+export function grupoDeGuarnicion(
+  seccion: string,
+  filas: ReadonlyArray<{ seccion: string; rol: RolCarta }>,
+): string {
+  const s = seccion.trim();
+  const deLaSeccion = filas.filter((f) => f.seccion.trim() === s);
+  if (s && deLaSeccion.length > 0 && deLaSeccion.every((f) => f.rol === 'guarnicion')) return s;
+  // Secciones con platos Y guarniciones: si hay más de una, cada una el suyo.
+  const mezcladas = new Set(
+    filas
+      .filter((f) => f.rol === 'guarnicion')
+      .map((f) => f.seccion.trim())
+      .filter((sec) => !filas.filter((x) => x.seccion.trim() === sec).every((x) => x.rol === 'guarnicion')),
+  );
+  if (s && mezcladas.size > 1) return `${GRUPO_GUARNICION} de ${s.toLowerCase()}`;
+  return GRUPO_GUARNICION;
+}
+
+export interface GrupoGuarnicion {
+  nombre: string;
+  /** El precio es el RECARGO: 0 cuando la carta no dice nada (viene incluido). */
+  opciones: Array<{ nombre: string; precio: number }>;
+  /** Las secciones de donde salieron sus filas: deciden a qué platos va. */
+  secciones: string[];
+}
+
+/**
+ * Las filas marcadas como guarnición, agrupadas como irán a la biblioteca.
+ *
+ * Sin precio es CERO, al revés que un adicional: una guarnición sin precio es
+ * justo lo que la carta quiso decir («viene con papa o arroz»). Un adicional
+ * sin precio se descarta porque regalarlo es plata que pierde el local; una
+ * guarnición a $0 es lo que el local ya regala.
+ */
+export function agruparGuarniciones(
+  filas: ReadonlyArray<{ nombre: string; precio: number | null; seccion: string; rol: RolCarta }>,
+): GrupoGuarnicion[] {
+  const porGrupo = new Map<string, GrupoGuarnicion>();
+  for (const f of filas) {
+    if (f.rol !== 'guarnicion') continue;
+    if (f.precio != null && (!Number.isFinite(f.precio) || f.precio < 0)) continue;
+    const nombreGrupo = grupoDeGuarnicion(f.seccion, filas);
+    const clave = normalizado(nombreGrupo);
+    const grupo = porGrupo.get(clave) ?? { nombre: nombreGrupo, opciones: [], secciones: [] };
+    const nombre = nombreDeAdicional(f.nombre);
+    if (!grupo.secciones.includes(f.seccion.trim())) grupo.secciones.push(f.seccion.trim());
+    if (!grupo.opciones.some((o) => normalizado(o.nombre) === normalizado(nombre))) {
+      grupo.opciones.push({ nombre, precio: f.precio == null ? 0 : Math.round(f.precio) });
+    }
+    porGrupo.set(clave, grupo);
+  }
+  return [...porGrupo.values()];
+}
+
+/**
+ * A qué secciones de platos va, si el dueño no dice otra cosa, algo que salió
+ * de las secciones `origen` (un grupo de guarniciones o una nota «incluye»).
+ *
+ * Si salió de una sección que TIENE platos, va a esa —la lista escrita bajo
+ * los sándwiches es de los sándwiches—. Si salió de una sección propia
+ * («ACOMPAÑAMIENTOS», o una nota antes del primer título), va a todas: es lo
+ * que significa al pie o a la cabeza de una carta.
+ */
+export function destinoPorDefecto(origen: string[], seccionesDePlatos: string[]): string[] {
+  const platos = seccionesDePlatos.map((s) => s.trim());
+  const elegidas = new Set<string>();
+  for (const o of origen.map((x) => x.trim())) {
+    if (platos.includes(o)) elegidas.add(o);
+    else for (const p of platos) elegidas.add(p);
+  }
+  return platos.filter((p, i) => elegidas.has(p) && platos.indexOf(p) === i);
 }
 
 /** Mismo nombre de grupo, escrito como sea. Para no duplicar la biblioteca. */

@@ -178,7 +178,10 @@ async function main() {
 
       const picadas = await prisma.product.findMany({
         where: { businessId: negocio.id, name: 'Picada' },
-        include: { optionGroups: { include: { options: { orderBy: { sortOrder: 'asc' } } } } },
+        // Los grupos viven en el NEGOCIO y el plato los adjunta (ver
+        // `adiciones-reutilizables`): se leen por el puente, que es el único
+        // camino de lectura.
+        include: { gruposOpciones: { include: { group: { include: { options: { orderBy: { sortOrder: 'asc' } } } } } } },
       });
       check(picadas.length === 1,
         'hay UNA picada, no tres: es lo que el dueño reportó de su catálogo',
@@ -187,8 +190,9 @@ async function main() {
       check(picada?.price === 39000, 'al precio del tamaño más barato', picada?.price);
       check(picada?.category === 'Platos fuertes', 'en su sección', picada?.category);
 
-      const grupo = picada?.optionGroups[0];
-      check(picada?.optionGroups.length === 1, 'con UN grupo de opciones', picada?.optionGroups.length);
+      const grupos = (picada?.gruposOpciones ?? []).map((u) => u.group);
+      const grupo = grupos[0];
+      check(grupos.length === 1, 'con UN grupo de opciones', grupos.length);
       check(grupo?.name === 'Tamaño', 'que se llama Tamaño', grupo?.name);
       // Lo que hace que la app diga «Desde $39.000» y obligue a elegir: sin
       // `required` el cliente podría pedir una picada sin tamaño, y el precio
@@ -285,9 +289,9 @@ async function main() {
       check((data?.conTamanos ?? 0) === 0, 'y no dice que agrupó nada', data);
       const emp = await prisma.product.findFirst({
         where: { businessId: negocio.id, name: 'Empanadas (3)' },
-        include: { optionGroups: true },
+        include: { gruposOpciones: true },
       });
-      check(emp?.optionGroups.length === 0, 'sin grupos de opciones de la nada', emp?.optionGroups);
+      check(emp?.gruposOpciones.length === 0, 'sin grupos de opciones de la nada', emp?.gruposOpciones);
     }
 
     console.log(`\n${ok} comprobaciones bien, ${fallos} mal`);
