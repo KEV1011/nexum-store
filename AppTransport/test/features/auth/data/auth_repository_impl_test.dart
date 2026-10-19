@@ -14,6 +14,7 @@ library;
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/errors/exceptions.dart';
 import 'package:nexum_driver/core/errors/failures.dart';
@@ -99,6 +100,90 @@ void main() {
   setUp(() {
     // Sin plataforma nativa en las pruebas: almacén en memoria del plugin.
     FlutterSecureStorage.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({});
+  });
+
+  group('los datos guardados son del conductor que entró', () {
+    // El historial de viajes (pasajeros, direcciones, ganancias) vive en el
+    // teléfono. Cerrar sesión solo borraba el token y el siguiente conductor
+    // lo veía todo.
+    const historial = 'nexum_trip_history_v1';
+
+    test('entra OTRO conductor: no ve el historial del anterior', () async {
+      SharedPreferences.setMockInitialValues({
+        'nexum_datos_dueno': 'drv-anterior',
+        historial: '[{"passenger":"Pasajero del anterior"}]',
+      });
+      var soltados = 0;
+      final r = await AuthRepositoryImpl(
+        dataSource: FakeAuthDataSource(respuesta: <String, dynamic>{
+          'token': 'jwt-1',
+          'isRegistered': true,
+          'driver': ficha(),
+        }),
+        secureStorage: const FlutterSecureStorage(),
+        alCambiarDeCuenta: () => soltados++,
+      ).verifyOtp(phoneNumber: '+573002223344', otpCode: '123456');
+
+      expect(r.failure, isNull, reason: '${r.failure?.message}');
+      final p = await SharedPreferences.getInstance();
+      expect(p.containsKey(historial), isFalse);
+      expect(p.getString('nexum_datos_dueno'), 'drv-1');
+      expect(soltados, 1, reason: 'lo cargado en memoria también es del otro');
+    });
+
+    test('vuelve el MISMO conductor: su historial sigue ahí', () async {
+      SharedPreferences.setMockInitialValues({
+        'nexum_datos_dueno': 'drv-1',
+        historial: '[{"passenger":"Suyo"}]',
+      });
+      await repo(respuesta: <String, dynamic>{
+        'token': 'jwt-1',
+        'isRegistered': true,
+        'driver': ficha(),
+      }).verifyOtp(phoneNumber: '+573002223344', otpCode: '123456');
+
+      final p = await SharedPreferences.getInstance();
+      expect(p.getString(historial), isNotNull);
+    });
+
+    test('un número NUEVO (va al registro) no hereda nada', () async {
+      SharedPreferences.setMockInitialValues({
+        'nexum_datos_dueno': 'drv-anterior',
+        historial: '[{"passenger":"Pasajero del anterior"}]',
+      });
+      await repo(respuesta: <String, dynamic>{
+        'token': 'jwt-1',
+        'isRegistered': false,
+      }).verifyOtp(phoneNumber: '+573009998877', otpCode: '123456');
+
+      final p = await SharedPreferences.getInstance();
+      expect(p.containsKey(historial), isFalse);
+    });
+
+    test('cerrar sesión borra el historial y la marca de registro', () async {
+      SharedPreferences.setMockInitialValues({
+        'nexum_datos_dueno': 'drv-1',
+        historial: '[{"passenger":"Suyo"}]',
+        'nexum_theme_dark': true,
+      });
+      FlutterSecureStorage.setMockInitialValues({
+        AppConstants.authTokenKey: 'jwt-1',
+        AppConstants.needsRegistrationKey: '+573002223344',
+      });
+      var soltados = 0;
+      await AuthRepositoryImpl(
+        dataSource: FakeAuthDataSource(),
+        secureStorage: const FlutterSecureStorage(),
+        alCambiarDeCuenta: () => soltados++,
+      ).logout();
+
+      final p = await SharedPreferences.getInstance();
+      expect(p.containsKey(historial), isFalse);
+      expect(p.getBool('nexum_theme_dark'), isTrue, reason: 'es del teléfono');
+      expect(await guardado(AppConstants.needsRegistrationKey), isNull);
+      expect(soltados, 1);
+    });
   });
 
   group('verificar el código', () {
