@@ -90,7 +90,10 @@ class AuthRepositoryImpl implements AuthRepository {
           isRegistered: false,
         );
       }
-      return _procesarSesion(data, phoneNumber);
+      // `return await`, no `return`: sin el await, lo que lance la sesión
+      // (una respuesta sin token, por ejemplo) se escapa de este try y
+      // revienta en vez de volver como fallo.
+      return await _procesarSesion(data, phoneNumber);
     } on InvalidOtpException {
       return (driver: null, failure: const InvalidOtpFailure(), isRegistered: false);
     } on NetworkException catch (e) {
@@ -115,7 +118,7 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final data = await _dataSource.verifyPin(pinTicket: pinTicket, pin: pin);
       final telefono = (data['driver'] as Map<String, dynamic>?)?['phone'];
-      return _procesarSesion(data, telefono is String ? telefono : '');
+      return await _procesarSesion(data, telefono is String ? telefono : '');
     } on AuthException catch (e) {
       return (
         driver: null,
