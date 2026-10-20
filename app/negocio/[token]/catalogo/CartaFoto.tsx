@@ -36,6 +36,7 @@ interface LineaCarta {
 
 interface VarianteSugerida {
   nombre: string
+  descripcion?: string
   seccion: string
   precioBase: number
   grupo: string
@@ -161,6 +162,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
         (json.data.variantes ?? []).map((v, i) => ({
           id: i,
           nombre: v.nombre,
+          descripcion: v.descripcion ?? '',
           seccion: v.seccion,
           grupo: v.grupo,
           opciones: v.opciones.map((o) => ({ nombre: o.nombre, precio: String(o.precio) })),
@@ -515,6 +517,13 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                               </select>
                             </label>
                           </div>
+                          <input
+                            value={v.descripcion ?? ''}
+                            placeholder="Ingredientes (opcional)"
+                            aria-label="Ingredientes del plato"
+                            onChange={(e) => editarVariante(v.id, { descripcion: e.target.value })}
+                            className="mt-2 w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600"
+                          />
 
                           <div className="mt-2 space-y-1">
                             {v.opciones.map((o, i) => (

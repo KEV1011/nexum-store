@@ -126,6 +126,12 @@ function posicionDelCorte(nombre: string): { corte: number; salto: number } | nu
   const dosPuntos = nombre.search(/(?<!\d):(?!\d)/);
   if (dosPuntos > 0) candidatos.push({ corte: dosPuntos, salto: 1 });
 
+  // 3. Un guion CON espacios a los lados: «Sandwich de pollo - pollo
+  //    desmechado, queso». Sin espacios es parte de la palabra («Coca-Cola»,
+  //    «Ají-limón») y no se toca.
+  const guion = nombre.search(/\s[-–—]\s/);
+  if (guion > 0) candidatos.push({ corte: guion, salto: 2 });
+
   if (candidatos.length === 0) return null;
   return candidatos.sort((a, b) => a.corte - b.corte)[0]!;
 }

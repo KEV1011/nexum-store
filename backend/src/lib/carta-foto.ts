@@ -19,7 +19,7 @@
 // producto al precio equivocado, que es plata y una queja.
 
 /** Lo mínimo que puede costar algo en una carta. Por debajo es otra cosa. */
-import { separarDescripcion } from './nombre-y-descripcion';
+import { pareceDescripcion, separarDescripcion } from './nombre-y-descripcion';
 import { rolDeLinea, seccionDeGuarnicion, type RolCarta } from './carta-rol';
 
 export const PRECIO_MIN = 500;
@@ -343,6 +343,22 @@ export function unirPreciosHuerfanos(filas: RenglonCrudo[]): RenglonCrudo[] {
       const mismaColumna = prev.columna === undefined
         || fila.columna === undefined
         || prev.columna === fila.columna;
+      // NOMBRE, INGREDIENTES Y PRECIO, cada uno en su renglón:
+      //
+      //     Bandeja paisa
+      //     Frijoles, arroz, carne molida, chicharrón, huevo y arepa
+      //     28.000
+      //
+      // Pegar el precio al renglón de arriba creaba un plato LLAMADO como sus
+      // ingredientes, y el nombre de verdad se volvía título de sección. El
+      // precio va al NOMBRE; los ingredientes se quedan donde están y el
+      // parser los toma como descripción del plato que ahora tiene precio.
+      const nombre = candidato > 0 ? salida[candidato - 1] : undefined;
+      if (mismaColumna && nombre && esNombreDeIngredientes(nombre, prev, fila)) {
+        salida[candidato - 1] = { ...nombre, texto: `${nombre.texto.trim()} ${texto}` };
+        candidato = null;
+        continue;
+      }
       if (mismaColumna) {
         salida[candidato] = { ...prev, texto: `${prev.texto.trim()} ${texto}` };
         candidato = null;
@@ -359,6 +375,34 @@ export function unirPreciosHuerfanos(filas: RenglonCrudo[]): RenglonCrudo[] {
   }
 
   return salida;
+}
+
+/**
+ * ¿`nombre` es el plato cuyos ingredientes son `ingredientes`, con el precio
+ * suelto debajo de los dos?
+ *
+ * Se exige mucho a propósito, porque si se equivoca le cambia el precio de
+ * sitio a un plato:
+ *   - los ingredientes tienen FORMA de descripción (lista con comas, o una
+ *     frase de varias palabras) y el nombre no;
+ *   - el nombre es corto, sin comas ni precio, y no es un título (ni todas
+ *     sus palabras de sección, ni más grande, ni gritado con vocabulario de
+ *     sección);
+ *   - los tres en la misma columna.
+ */
+function esNombreDeIngredientes(nombre: RenglonCrudo, ingredientes: RenglonCrudo, precio: RenglonCrudo): boolean {
+  const n = (nombre.texto ?? '').replace(/\s{2,}/g, ' ').trim();
+  const ing = (ingredientes.texto ?? '').trim();
+  if (!n || !ing) return false;
+  if (nombre.grande === true || ingredientes.grande === true) return false;
+  const columnas = [nombre.columna, ingredientes.columna, precio.columna].filter((c) => c !== undefined);
+  if (new Set(columnas).size > 1) return false;
+  if (preciosDeLinea(n).length > 0 || n.includes(',') || n.split(/\s+/).length > 6) return false;
+  if (todoSuenaASeccion(n) || (vaEnMayusculas(n) && suenaASeccion(n))) return false;
+  if (n.endsWith(':')) return false;
+  if (pareceDescripcion(n) && !vaEnMayusculas(n)) return false;
+  if (hablaDeLaSeccion(ing)) return false;
+  return ing.includes(',') || (pareceDescripcion(ing) && ing.length > n.length);
 }
 
 /**
@@ -493,7 +537,20 @@ function parsearSinRol(
         continue;
       }
 
-      // 3. LO QUE INCLUYEN LOS PLATOS: va a su descripción, no es un plato.
+      // 3. LOS INGREDIENTES DEL PLATO DE ARRIBA, en el renglón de debajo. Es
+      // la forma más común de una carta impresa y la lista con comas que ya
+      // recogía el paso 1 es solo uno de sus casos: «Carne de res 150 g con
+      // queso y vegetales», «Acompañada de papa a la francesa y ensalada» o
+      // «Incluye papa y gaseosa» también son de ESE plato. Antes de esto los
+      // dos últimos caían en la nota de la sección —se le pegaban a TODOS los
+      // platos— y el primero salía como una fila sin precio.
+      if (ultimo && grande !== true && descripcionDelDeArriba(cruda, ultimo, salida.lineas, grande)) {
+        const plato = salida.lineas[ultimo.i]!;
+        plato.descripcion = unirTexto('', cruda.replace(/^\(|\)$/g, ''));
+        continue;
+      }
+
+      // 4. LO QUE INCLUYEN LOS PLATOS: va a su descripción, no es un plato.
       const nota = notaDeInclusion(cruda);
       if (nota) {
         salida.notas.push({ linea, seccion, texto: nota });
@@ -601,6 +658,64 @@ function ingredientesDelDeArriba(
   const plato = lineas[ultimo.i];
   if (!plato || plato.precio == null || plato.descripcion) return false;
   return texto.includes(',') && !texto.includes(':') && !/[.;]\s*\S/.test(texto);
+}
+
+/**
+ * Lo que habla de TODA la sección y no de un plato: «Todos nuestros
+ * sándwiches…», «Todas las carnes…», «Cada plato…». Eso es una nota aunque
+ * caiga justo debajo de un plato.
+ */
+function hablaDeLaSeccion(texto: string): boolean {
+  return /^(todos|todas|todo|toda|nuestros|nuestras|cada|aplica|nota)\b/.test(normalizado(texto));
+}
+
+/**
+ * ¿Este renglón SIN precio es la descripción del plato de arriba?
+ *
+ * Solo se pregunta cuando el de arriba es un plato CON precio y aún sin
+ * descripción —así un renglón no se pega en cadena— y el renglón no va
+ * escrito más grande (eso lo filtra quien llama).
+ *
+ * Lo que lo impide es que parezca OTRA COSA, de la pista más fuerte a la débil:
+ *
+ *   1. Que hable de toda la sección («Todos nuestros…»): es una nota.
+ *   2. Que sea un título: GRITADO y corto, acabado en dos puntos, o que
+ *      empiece por el nombre en plural de una sección («Bebidas calientes»).
+ *      Con la geometría leída esto ya lo dijo el tamaño de la letra, así que
+ *      solo cuenta en el texto plano.
+ *   3. Que sea el SIGUIENTE plato al que el OCR le perdió el precio. Se
+ *      reconoce porque empieza igual que el de arriba («Hamburguesa sencilla»
+ *      y debajo «Hamburguesa doble»), o porque es demasiado corto para ser una
+ *      lista de ingredientes (menos de tres palabras y sin comas).
+ *
+ * Lo que se arriesga —un plato sin precio convertido en descripción— se ve en
+ * la vista previa, en el campo de ingredientes del plato de arriba.
+ */
+function descripcionDelDeArriba(
+  texto: string,
+  ultimo: { tipo: 'plato' | 'nota'; i: number },
+  lineas: ReadonlyArray<{ nombre: string; precio: number | null; descripcion?: string }>,
+  grande?: boolean,
+): boolean {
+  if (ultimo.tipo !== 'plato') return false;
+  const plato = lineas[ultimo.i];
+  if (!plato || plato.precio == null || plato.descripcion) return false;
+  const t = texto.trim();
+  if (hablaDeLaSeccion(t)) return false;
+
+  if (grande !== false) {
+    const sinDosPuntos = t.replace(/\s*:\s*$/, '');
+    if (t.endsWith(':')) return false;
+    if (vaEnMayusculas(sinDosPuntos) && sinDosPuntos.split(/\s+/).length <= 6) return false;
+    const primera = normalizado(sinDosPuntos).split(' ')[0] ?? '';
+    if (!t.includes(',') && PALABRAS_DE_SECCION.includes(primera) && /s$/.test(primera)) return false;
+  }
+
+  const palabras = normalizado(t).split(' ').filter(Boolean);
+  const delPlato = normalizado(plato.nombre).split(' ')[0] ?? '';
+  if (!t.includes(',') && palabras[0] === delPlato) return false;
+  if (!t.includes(',') && palabras.length < 3) return false;
+  return true;
 }
 
 /** Las palabras que nombran lo que viene con el plato. */
