@@ -32,6 +32,28 @@ export interface ComercioParaPedir {
   name: string;
   /** `false` = la ficha la publicamos nosotros desde una foto de su carta. */
   claimed: boolean;
+  /** Desde cuándo no está al día con su plan; null o ausente = al día. */
+  unpaidSince?: Date | null;
+}
+
+/**
+ * ¿Al comercio le llegan los pedidos a su portal?
+ *
+ * Dos cosas lo impiden y las dos terminan en el MISMO camino —el mandado de
+ * compra, con precios de referencia—:
+ *
+ *  - la ficha la abrimos nosotros desde una foto y nadie la ha reclamado;
+ *  - el comercio sí es cliente, pero no está al día con su plan. Apagarle la
+ *    ficha haría que la plataforma dejara de vender por una deuda ajena, y el
+ *    cliente con hambre no tiene la culpa. Su carta sigue a la vista y el
+ *    pedido lo compra un repartidor, como a cualquier local que no es cliente.
+ *
+ * Vive en UN sitio porque lo leen la vitrina, la caja y la compra por mandado:
+ * si cada uno lo decidiera por su cuenta, la pantalla podría prometer un
+ * pedido directo que la caja después rechaza.
+ */
+export function atiendeDirecto(c: { claimed: boolean; unpaidSince?: Date | null }): boolean {
+  return c.claimed && c.unpaidSince == null;
 }
 
 /** Una línea de la lista de compras, ya resuelta contra el catálogo. */
@@ -83,9 +105,12 @@ export function presupuestoSugerido(lineas: LineaDeCompra[]): number {
  * puede pedir como siempre.
  */
 export function motivoParaNoPedirDirecto(c: ComercioParaPedir): string | null {
-  if (c.claimed) return null;
+  if (atiendeDirecto(c)) return null;
+  // Al cliente NO se le dice que el local debe plata: es un asunto entre el
+  // comercio y nosotros, y contarlo sería ventilar su situación con cada
+  // persona que abre la carta. La frase sirve para los dos casos.
   return (
-    `${c.name} todavía no recibe pedidos por la app. `
+    `${c.name} no está recibiendo pedidos directos por la app. `
     + 'Podemos ir a comprarlo por ti: tú apruebas un presupuesto y te '
     + 'cobramos lo que diga el recibo.'
   );

@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { atiendeDirecto } from '../lib/comercio-no-reclamado';
 import { Prisma, $Enums } from '@prisma/client';
 import {
   OptionGroupDTO,
@@ -106,6 +107,7 @@ function _dbToBusinessInterface(b: {
   createdAt: Date; isOpen: boolean; imageUrl: string | null;
   lat?: number | null; lng?: number | null;
   citySlug?: string | null; shipsTo?: unknown;
+  unpaidSince?: Date | null;
 }): Business {
   return {
     id: b.id,
@@ -123,6 +125,7 @@ function _dbToBusinessInterface(b: {
     lng: b.lng ?? undefined,
     citySlug: b.citySlug ?? null,
     shipsTo: destinosDesdeBD(b.shipsTo),
+    pagoPendienteDesde: b.unpaidSince ? b.unpaidSince.toISOString() : null,
   };
 }
 
@@ -465,7 +468,7 @@ function _estadoVitrina(b: {
   pauseReason: string | null; openingHours: string | null;
   promoMinAmount: number | null; promoDiscount: number | null;
   promoFrom: Date | null; promoUntil: Date | null;
-  claimed?: boolean;
+  claimed?: boolean; unpaidSince?: Date | null;
 }) {
   const estado = tiendaRecibiendo(b);
   const franjas = _franjas(b.hours);
@@ -478,7 +481,12 @@ function _estadoVitrina(b: {
     // abierta, para que la lista y el detalle no puedan contradecirse: uno
     // diciendo «precios de referencia» y el otro cobrando como si fueran
     // firmes es exactamente la queja que esto quiere evitar.
-    claimed: b.claimed ?? true,
+    //
+    // Y no es el `claimed` de la base sino si le llegan los pedidos: un local
+    // con el plan sin pagar se enseña igual que uno sin reclamar (precios de
+    // referencia, compra por mandado). La app lleva tiempo leyendo este campo
+    // así, de modo que las apps instaladas lo respetan sin actualizar nada.
+    claimed: atiendeDirecto({ claimed: b.claimed ?? true, unpaidSince: b.unpaidSince ?? null }),
     // El horario en texto sale del estructurado si lo hay; si no, del campo
     // libre de siempre, que es lo único que tienen los negocios ya registrados.
     openingHours: horarioEnTexto(franjas) || b.openingHours || undefined,

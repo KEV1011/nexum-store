@@ -16,6 +16,7 @@
 
 import { prisma } from '../lib/prisma';
 import {
+  atiendeDirecto,
   listaDeCompra,
   motivoParaNoComprar,
   presupuestoSugerido,
@@ -83,7 +84,7 @@ export async function comprarEnComercio(
     where: { id: dto.businessId },
     select: {
       id: true, name: true, address: true, lat: true, lng: true,
-      category: true, claimed: true, isOpen: true,
+      category: true, claimed: true, isOpen: true, unpaidSince: true,
     },
   });
   if (!negocio || !negocio.isOpen) {
@@ -93,7 +94,7 @@ export async function comprarEnComercio(
   // que sí entró al portal se le manda el pedido a su pantalla: mandarle un
   // repartidor a comprar en su mostrador sería saltarse su cocina, su
   // inventario y su cobro.
-  if (negocio.claimed) {
+  if (atiendeDirecto(negocio)) {
     throw new CompraError(
       `${negocio.name} recibe pedidos directamente: pídelo desde su catálogo.`,
     );

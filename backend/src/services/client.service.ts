@@ -403,7 +403,7 @@ export async function placeClientOrder(
     const { motivoParaNoPedirDirecto } = await import('../lib/comercio-no-reclamado');
     const sinReclamar = await prisma.business.findUnique({
       where: { id: dto.businessId },
-      select: { name: true, claimed: true },
+      select: { name: true, claimed: true, unpaidSince: true },
     });
     const motivo = sinReclamar
       ? motivoParaNoPedirDirecto(sinReclamar)

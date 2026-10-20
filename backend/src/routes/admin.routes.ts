@@ -54,6 +54,7 @@ import {
   abrirFichaDeComercio,
   entregarFichaAlDueno,
   setBusinessActive,
+  setBusinessUnpaid,
   listOperatorDocumentsForAdmin,
   reviewOperatorDocument,
 } from '../services/admin.service';
@@ -657,14 +658,22 @@ router.post('/businesses/:id/entregar', async (req: Request, res: Response): Pro
   }
 });
 
-// POST /admin/businesses/:id/activate · /deactivate
+// POST /admin/businesses/:id/activate · /deactivate · /unpaid · /paid
+//
+// `unpaid` NO es desactivar: el local sigue en la vitrina con su carta y sus
+// pedidos a domicilio salen como mandados de ZIPA. Desactivar lo esconde.
 router.post('/businesses/:id/:action', async (req: Request, res: Response): Promise<void> => {
   const action = req.params['action'];
-  if (action !== 'activate' && action !== 'deactivate') {
+  if (action !== 'activate' && action !== 'deactivate' && action !== 'unpaid' && action !== 'paid') {
     res.status(400).json({ success: false, error: 'Acción inválida' });
     return;
   }
   try {
+    if (action === 'unpaid' || action === 'paid') {
+      await setBusinessUnpaid(req.params['id']!, action === 'unpaid');
+      res.json({ success: true });
+      return;
+    }
     await setBusinessActive(req.params['id']!, action === 'activate');
     res.json({ success: true });
   } catch {
@@ -1962,6 +1971,7 @@ function loadBusinesses() {
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="9" class="empty">' + (q ? 'Ningún negocio coincide.' : 'Aún no hay negocios registrados.') + '</td></tr>'; return; }
     tb.innerHTML = rows.map((b) => '<tr><td><strong>' + esc(b.name) + '</strong>' +
       (b.claimed === false ? ' <span class="badge badge-PENDING">Sin reclamar</span>' : '') +
+      (b.unpaidSince ? ' <span class="badge badge-REJECTED">Pago pendiente desde ' + when(b.unpaidSince) + '</span>' : '') +
       '<div style="font-size:.72rem;color:#777">' + esc(b.address) + '</div></td><td>' +
       esc(BIZ_CATEGORY[b.category] || b.category) + '</td><td>' + esc(b.ownerName || '—') + '</td><td>' + esc(b.phone || '—') +
       '</td><td>' + b.products + ' / ' + b.orders +
@@ -1972,6 +1982,9 @@ function loadBusinesses() {
       (b.claimed === false
         ? '<button class="btn-sm btn-approve" onclick="entregarFicha(\\'' + b.id + '\\', \\'' + esc(b.name) + '\\')">Entregar al dueño</button> '
         : '') +
+      (b.unpaidSince
+        ? '<button class="btn-sm btn-approve" onclick="setBusiness(\\'' + b.id + '\\', \\'paid\\')">Marcar al día</button> '
+        : '<button class="btn-sm" style="background:#fff3e0;color:#b45309" onclick="setBusiness(\\'' + b.id + '\\', \\'unpaid\\')">Marcar sin pago</button> ') +
       (b.isOpen
         ? '<button class="btn-sm btn-reject" onclick="setBusiness(\\'' + b.id + '\\', \\'deactivate\\')">Desactivar</button>'
         : '<button class="btn-sm btn-approve" onclick="setBusiness(\\'' + b.id + '\\', \\'activate\\')">Activar</button>') +
@@ -2015,9 +2028,19 @@ function entregarFicha(id, nombre) {
     .catch((e) => showMsg(e.message, true));
 }
 
+// «Sin pago» y «desactivar» se parecen y hacen cosas opuestas para la venta:
+// sin pago el local SIGUE vendiendo (sus pedidos salen como mandados de ZIPA);
+// desactivado desaparece de la app. Por eso desactivar pregunta.
+const BIZ_MSG = {
+  activate: 'Negocio activado.',
+  deactivate: 'Negocio desactivado.',
+  unpaid: 'Marcado sin pago: sigue en la app y sus pedidos salen como mandados de ZIPA.',
+  paid: 'Marcado al día: sus pedidos vuelven a llegar a su portal.',
+};
 function setBusiness(id, action) {
+  if (action === 'deactivate' && !confirm('Desactivar lo SACA de la app. Si el problema es que no ha pagado, usa «Marcar sin pago»: sigue vendiendo y los pedidos salen como mandados. ¿Desactivar de todos modos?')) return;
   api('/admin/businesses/' + id + '/' + action, { method: 'POST' })
-    .then(() => { showMsg(action === 'activate' ? 'Negocio activado.' : 'Negocio desactivado.', false); loadBusinesses(); })
+    .then(() => { showMsg(BIZ_MSG[action] || 'Listo.', false); loadBusinesses(); })
     .catch((e) => showMsg(e.message, true));
 }
 

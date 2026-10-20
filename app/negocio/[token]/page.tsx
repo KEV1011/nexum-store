@@ -111,7 +111,13 @@ interface BusinessStats {
 }
 
 interface ApiResponse {
-  business?: { name: string; token: string }
+  /**
+   * `pagoPendienteDesde` (ISO) viene cuando el local debe su plan. Sigue en la
+   * app con su carta, pero los pedidos a domicilio los compra un repartidor de
+   * ZIPA y NO llegan a esta pantalla. Sin el aviso, el dueño vería el portal
+   * vacío y creería que dejaron de pedirle.
+   */
+  business?: { name: string; token: string; pagoPendienteDesde?: string | null }
   orders: Order[]
   stats: BusinessStats
 }
@@ -853,6 +859,20 @@ export default function PortalDashboard({
       <PortalTabs token={token} activa="pedidos" />
 
       <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
+
+        {data.business?.pagoPendienteDesde && (
+          <div role="status" className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+            <div className="space-y-1 text-sm">
+              <p className="font-semibold">Tu plan está pendiente de pago</p>
+              <p>
+                Tu local sigue en la app con su carta, pero los pedidos a domicilio los
+                está comprando un repartidor de ZIPA en tu mostrador y por eso no
+                aparecen aquí. Cuando quede al día, vuelven a llegarte directo.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* El navegador no deja sonar hasta que el usuario toca la página. Sin
             este aviso, el dueño creería que el portal avisa cuando en realidad

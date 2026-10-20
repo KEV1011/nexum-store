@@ -275,6 +275,7 @@ router.get('/:token/info', async (req: Request, res: Response): Promise<void> =>
         lng: business.lng,
         citySlug: business.citySlug,
         shipsTo: business.shipsTo,
+        pagoPendienteDesde: business.pagoPendienteDesde ?? null,
       },
     });
   } catch (err) {
@@ -391,7 +392,14 @@ router.get('/:token/orders', async (req: Request, res: Response): Promise<void> 
     res.status(200).json({
       success: true,
       data: {
-        business: { name: business.name, token, imageUrl: business.imageUrl },
+        // `pagoPendienteDesde`: con el plan sin pagar, los pedidos nuevos ya
+        // no llegan aquí (salen como mandados de compra) y el portal tiene
+        // que decirlo — si no, el dueño vería una pantalla vacía y creería
+        // que nadie le pide.
+        business: {
+          name: business.name, token, imageUrl: business.imageUrl,
+          pagoPendienteDesde: business.pagoPendienteDesde ?? null,
+        },
         orders,
         stats,
       },

@@ -976,6 +976,12 @@ export interface AdminBusinessRow {
   portalPath: string;
   /** `false` = ficha abierta por nosotros desde una foto de su carta. */
   claimed: boolean;
+  /**
+   * Desde cuándo el local debe su plan (ISO), o null si está al día. Con fecha
+   * sigue en la vitrina con su carta, pero los pedidos a domicilio salen como
+   * mandados de ZIPA y no llegan a su portal.
+   */
+  unpaidSince: string | null;
   createdAt: string;
 }
 
@@ -1014,6 +1020,7 @@ export async function listBusinessesForAdmin(query?: string): Promise<AdminBusin
     // una foto de su carta. El admin tiene que distinguirlas: en las no
     // reclamadas los pedidos salen como mandados de compra, no al portal.
     claimed: b.claimed,
+    unpaidSince: b.unpaidSince ? b.unpaidSince.toISOString() : null,
     createdAt: b.createdAt.toISOString(),
   }));
 }
@@ -1082,6 +1089,27 @@ export async function entregarFichaAlDueno(id: string): Promise<void> {
     where: { id },
     data: { claimed: true, claimedAt: new Date() },
   });
+}
+
+/**
+ * Marca al local como «sin pago» o «al día». NO lo saca de la vitrina —eso es
+ * desactivarlo—: sigue con su carta y sus pedidos salen como mandados de ZIPA.
+ *
+ * Marcar dos veces NO reescribe la fecha: «debe desde el 3» tiene que seguir
+ * diciendo el 3 aunque alguien vuelva a pulsar el botón el 20, o el panel
+ * dejaría de servir para saber cuánto tiempo lleva sin pagar.
+ */
+export async function setBusinessUnpaid(id: string, unpaid: boolean): Promise<void> {
+  const existe = await prisma.business.findUnique({ where: { id }, select: { id: true } });
+  if (!existe) throw new Error('Negocio no encontrado');
+  if (unpaid) {
+    await prisma.business.updateMany({
+      where: { id, unpaidSince: null },
+      data: { unpaidSince: new Date() },
+    });
+  } else {
+    await prisma.business.update({ where: { id }, data: { unpaidSince: null } });
+  }
 }
 
 /** Activa o desactiva la cuenta del negocio (isOpen = gate de acceso al portal). */
