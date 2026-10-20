@@ -52,9 +52,15 @@ double _desplazamiento(WidgetTester tester) =>
     tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels;
 
 /// Un ciclo del reloj más lo que dura la animación del paso.
+///
+/// Cada `pump` con duración avanza el reloj y dibuja UN solo fotograma, así
+/// que hacen falta tres: el del tic (arranca el desplazamiento), uno que lo
+/// termina y otro para que los puntos —que empiezan a animarse cuando el
+/// desplazamiento ya acabó— lleguen a su ancho.
 Future<void> _unCiclo(WidgetTester tester) async {
   await tester.pump(CarruselDestacados.intervalo);
   await tester.pump(const Duration(milliseconds: 1000));
+  await tester.pump(const Duration(milliseconds: 400));
 }
 
 void main() {
