@@ -7,7 +7,13 @@ import { contarDespachoAtascado, contarViajesColgados } from './dispatch-recover
 import {
   MOTIVO_ATASCADO, avisoDeCancelacion, minParaAtascado, type TipoAtascado,
 } from '../lib/servicio-atascado';
-import { ESTADOS_DESPACHABLES } from '../lib/estado-pedido';
+import { ESTADOS_DESPACHABLES, esDespachable } from '../lib/estado-pedido';
+import { seDespacha } from '../lib/modo-pedido';
+import { serviciosAbiertos } from '../lib/liberar-conductor';
+import { motivoDeDiagnostico, type TipoDiagnostico } from '../lib/diagnostico-despacho';
+
+export type { TipoDiagnostico };
+import { getOrderOfferInfo } from './order-offer.service';
 import { sendPushToClient } from './push.service';
 import { cancelClientOrder, cancelClientTrip } from './client.service';
 import { cancelClientErrand } from './errand.service';
@@ -568,14 +574,32 @@ export interface MatchingDiagRow {
   inRadius: boolean;
   /** Kill-switch documental: CLEAR / EXPIRING / BLOCKED. */
   complianceStatus: string;
-  /** Pasa TODOS los filtros del matching urbano: recibiría la oferta. */
+  /** ¿Tiene encendido el tipo de servicio consultado (pasajeros / encargos)? */
+  acceptsKind: boolean;
+  /** Pasa TODOS los filtros del matching: recibiría la oferta. */
   dispatchable: boolean;
+  /**
+   * El PRIMER filtro que falla, en palabras: es lo único que hace falta leer
+   * para arreglarlo. Null cuando recibiría la oferta.
+   */
+  motivo: string | null;
 }
+
 
 const URBAN_RADIUS_M = 5000;
 const URBAN_FRESHNESS_S = 120;
 
-export async function diagnoseMatching(lat: number, lng: number): Promise<MatchingDiagRow[]> {
+/**
+ * Radiografía del despacho contra un punto: por conductor, los MISMOS filtros
+ * que aplica `findNearestAvailableDrivers` —incluido el interruptor del tipo de
+ * servicio, que antes no miraba: un conductor con «Encargos» apagado salía
+ * aquí como «recibiría la oferta» y nunca le llegaba un pedido—.
+ */
+export async function diagnoseMatching(
+  lat: number,
+  lng: number,
+  tipo: TipoDiagnostico = 'trip',
+): Promise<MatchingDiagRow[]> {
   const rows = await prisma.$queryRaw<Array<{
     id: string;
     name: string;
@@ -583,11 +607,15 @@ export async function diagnoseMatching(lat: number, lng: number): Promise<Matchi
     status: string;
     isVerified: boolean;
     intercityEnabled: boolean;
+    acceptsTrips: boolean;
+    acceptsErrands: boolean;
+    acceptsOrders: boolean;
     complianceStatus: string;
     geo_age_s: number | null;
     distance_m: number | null;
   }>>`
     SELECT d."id", d."name", d."phone", d."status", d."isVerified", d."intercityEnabled",
+           d."acceptsTrips", d."acceptsErrands", d."acceptsOrders",
            d."complianceStatus"::text AS "complianceStatus",
            CASE WHEN d."lastSeenAt" IS NULL THEN NULL
                 ELSE EXTRACT(EPOCH FROM (now() - d."lastSeenAt")) END AS geo_age_s,
@@ -600,13 +628,24 @@ export async function diagnoseMatching(lat: number, lng: number): Promise<Matchi
     ORDER BY distance_m ASC NULLS LAST
     LIMIT 100`;
 
-  return rows.map((r) => {
+  const filas: MatchingDiagRow[] = [];
+  for (const r of rows) {
     const geoAge = r.geo_age_s === null ? null : Math.round(Number(r.geo_age_s));
     const dist = r.distance_m === null ? null : Math.round(Number(r.distance_m));
     const online = r.status === 'ONLINE';
     const fresh = geoAge !== null && geoAge <= URBAN_FRESHNESS_S;
     const inRadius = dist !== null && dist <= URBAN_RADIUS_M;
-    return {
+    const acceptsKind = tipo === 'trip' ? r.acceptsTrips
+      : tipo === 'errand' ? r.acceptsErrands : r.acceptsOrders;
+    const bloqueado = docKillSwitchEnforced() && r.complianceStatus === 'BLOCKED';
+    // «En viaje» sin nada abierto es el caso que se esconde: la app lo enseña
+    // en línea y el despacho lo salta. Se distingue para que el panel lo diga.
+    const enViajeVacio = r.status === 'ON_TRIP' && (await serviciosAbiertos(r.id)) === 0;
+    const motivo = motivoDeDiagnostico({
+      status: r.status, enViajeVacio, isVerified: r.isVerified, bloqueado,
+      acceptsKind, tipo, geoAge, fresh, dist, inRadius,
+    });
+    filas.push({
       id: r.id,
       name: r.name,
       phone: r.phone,
@@ -619,12 +658,59 @@ export async function diagnoseMatching(lat: number, lng: number): Promise<Matchi
       fresh,
       inRadius,
       complianceStatus: r.complianceStatus,
-      // El filtro de cumplimiento solo aplica con DOC_KILL_SWITCH_ENFORCE=true.
-      dispatchable:
-        online && r.isVerified && fresh && inRadius &&
-        !(docKillSwitchEnforced() && r.complianceStatus === 'BLOCKED'),
-    };
+      acceptsKind,
+      dispatchable: motivo === null,
+      motivo,
+    });
+  }
+  return filas;
+}
+
+/**
+ * El diagnóstico de UN pedido: ancla en el punto real de donde lo recogería el
+ * repartidor (el comercio, o la taquilla en la última milla) y con el tipo
+ * `order`. Sirve para responder «¿por qué este pedido no le sale a nadie?»
+ * sin adivinar coordenadas.
+ */
+export async function diagnosePedido(refOId: string): Promise<{
+  pedido: {
+    id: string; ref: string; status: string; mode: string;
+    hasDriver: boolean; despachable: boolean; seReparte: boolean;
+    negocio: string; negocioSinUbicacion: boolean;
+  };
+  lat: number;
+  lng: number;
+  drivers: MatchingDiagRow[];
+} | null> {
+  const ref = refOId.trim().replace(/^#/, '');
+  const o = await prisma.order.findFirst({
+    where: { OR: [{ id: ref }, { orderRef: { equals: ref, mode: 'insensitive' } }] },
+    select: {
+      id: true, orderRef: true, status: true, mode: true, driverId: true,
+      business: { select: { name: true, lat: true, lng: true } },
+    },
   });
+  if (!o) return null;
+  const info = await getOrderOfferInfo(o.id);
+  if (!info) return null;
+  return {
+    pedido: {
+      id: o.id,
+      ref: o.orderRef,
+      status: o.status,
+      mode: o.mode,
+      hasDriver: o.driverId != null,
+      despachable: esDespachable(o.status),
+      seReparte: seDespacha(o.mode),
+      negocio: o.business.name,
+      // Sin punto en el mapa, el despacho busca alrededor del centro de
+      // Pamplona: un local en otro barrio o en otra ciudad no vería a nadie.
+      negocioSinUbicacion: o.business.lat == null || o.business.lng == null,
+    },
+    lat: info.lat,
+    lng: info.lng,
+    drivers: await diagnoseMatching(info.lat, info.lng, 'order'),
+  };
 }
 
 /**

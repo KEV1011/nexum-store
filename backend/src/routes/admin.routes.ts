@@ -47,6 +47,8 @@ import {
   listarServiciosAtascados,
   cancelarServicioAtascado,
   diagnoseMatching,
+  diagnosePedido,
+  type TipoDiagnostico,
   listClientsForKyc,
   listBusinessesForAdmin,
   abrirFichaDeComercio,
@@ -161,20 +163,37 @@ router.use((req: Request, res: Response, next: NextFunction): void => {
   requireAdmin(req, res, next);
 });
 
-// GET /admin/matching/diagnose?lat=&lng= — radiografía del despacho urbano:
-// por conductor, qué filtro del matching pasa/falla contra ese punto de recogida.
+// GET /admin/matching/diagnose?lat=&lng=&tipo=trip|errand|order — radiografía
+// del despacho: por conductor, qué filtro del matching pasa/falla contra ese
+// punto. Con ?pedido=NX-1234 ancla en el comercio de ESE pedido y mira el
+// interruptor de encargos, que es lo que de verdad decide si le llega.
 router.get('/matching/diagnose', async (req: Request, res: Response): Promise<void> => {
-  const lat = Number(req.query['lat'] ?? 7.3754);
-  const lng = Number(req.query['lng'] ?? -72.6486);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-    res.status(400).json({ success: false, error: 'lat/lng inválidos' });
-    return;
-  }
   try {
-    const drivers = await diagnoseMatching(lat, lng);
+    const pedido = String(req.query['pedido'] ?? '').trim();
+    if (pedido) {
+      const r = await diagnosePedido(pedido);
+      if (!r) {
+        res.status(404).json({ success: false, error: `No encontramos el pedido «${pedido}».` });
+        return;
+      }
+      res.json({
+        success: true,
+        data: { ...r, tipo: 'order', radiusMeters: 5000, freshnessSeconds: 120 },
+      });
+      return;
+    }
+    const lat = Number(req.query['lat'] ?? 7.3754);
+    const lng = Number(req.query['lng'] ?? -72.6486);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      res.status(400).json({ success: false, error: 'lat/lng inválidos' });
+      return;
+    }
+    const t = String(req.query['tipo'] ?? 'trip');
+    const tipo: TipoDiagnostico = t === 'order' || t === 'errand' ? t : 'trip';
+    const drivers = await diagnoseMatching(lat, lng, tipo);
     res.json({
       success: true,
-      data: { lat, lng, radiusMeters: 5000, freshnessSeconds: 120, drivers },
+      data: { lat, lng, tipo, radiusMeters: 5000, freshnessSeconds: 120, drivers },
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
@@ -1056,12 +1075,15 @@ const PANEL_HTML = `<!DOCTYPE html>
 
     <section id="tab-drivers" style="display:none">
       <form class="inline" onsubmit="runDiag(event)">
-        <div><label>Lat del punto de recogida</label><input id="diag-lat" value="7.3754" /></div>
+        <div><label>Código de pedido (opcional)</label><input id="diag-pedido" placeholder="NX-7754" /></div>
+        <div><label>o Lat del punto de recogida</label><input id="diag-lat" value="7.3754" /></div>
         <div><label>Lng</label><input id="diag-lng" value="-72.6486" /></div>
+        <div><label>Servicio</label><select id="diag-tipo"><option value="trip">Viaje</option><option value="order">Pedido</option><option value="errand">Mandado</option></select></div>
         <div><button type="submit" style="width:auto">Diagnóstico de despacho</button></div>
       </form>
       <div id="diag-wrap" style="display:none;margin-bottom:16px">
-        <p style="font-size:.78rem;color:#64748b;margin-bottom:8px">Para recibir la oferta, el conductor debe cumplir LAS CUATRO: ONLINE + verificado + GPS fresco (≤120 s) + a ≤5 km del punto.</p>
+        <p id="diag-contexto" style="font-size:.82rem;color:#0f172a;margin-bottom:6px"></p>
+        <p style="font-size:.78rem;color:#64748b;margin-bottom:8px">Para recibir la oferta, el conductor debe estar ONLINE, verificado, con el servicio encendido en sus preferencias, con GPS fresco (≤120 s) y a ≤5 km del punto. La última columna dice el primer filtro que falla.</p>
         <table><thead><tr><th>Conductor</th><th>Estado</th><th>Verif.</th><th>GPS hace</th><th>Distancia</th><th>Radio 5 km</th><th>GPS fresco</th><th>¿Recibiría oferta?</th></tr></thead>
         <tbody id="diag-body"></tbody></table>
       </div>
@@ -1870,9 +1892,28 @@ function runDiag(ev) {
   ev.preventDefault();
   const lat = document.getElementById('diag-lat').value.trim();
   const lng = document.getElementById('diag-lng').value.trim();
-  api('/admin/matching/diagnose?lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng)).then((d) => {
+  const pedido = document.getElementById('diag-pedido').value.trim();
+  const tipo = document.getElementById('diag-tipo').value;
+  const url = pedido
+    ? '/admin/matching/diagnose?pedido=' + encodeURIComponent(pedido)
+    : '/admin/matching/diagnose?lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng) + '&tipo=' + encodeURIComponent(tipo);
+  api(url).then((d) => {
     const tb = document.getElementById('diag-body');
     document.getElementById('diag-wrap').style.display = 'block';
+    const ctx = document.getElementById('diag-contexto');
+    if (d.pedido) {
+      const p = d.pedido;
+      const avisos = [];
+      if (p.hasDriver) avisos.push('ya tiene repartidor asignado');
+      if (!p.seReparte) avisos.push('es en mesa o para llevar: no se reparte');
+      if (!p.despachable) avisos.push('su estado (' + p.status + ') no se despacha');
+      if (p.negocioSinUbicacion) avisos.push('EL LOCAL NO TIENE UBICACIÓN EN EL MAPA: se busca alrededor del centro de Pamplona');
+      ctx.innerHTML = '<strong>Pedido ' + esc(p.ref) + '</strong> de ' + esc(p.negocio) + ' · ' + esc(p.status) +
+        ' · buscando alrededor de ' + Number(d.lat).toFixed(4) + ', ' + Number(d.lng).toFixed(4) +
+        (avisos.length ? '<br><span style="color:#c62828">' + esc(avisos.join(' · ')) + '</span>' : '');
+    } else {
+      ctx.textContent = '';
+    }
     if (!d.drivers.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">No hay conductores registrados.</td></tr>'; return; }
     const ok = '<span class="badge badge-ok">Sí</span>';
     const no = '<span class="badge badge-REJECTED">No</span>';
@@ -1883,7 +1924,7 @@ function runDiag(ev) {
       '<td>' + (r.distanceMeters === null ? '—' : (r.distanceMeters / 1000).toFixed(2) + ' km') + '</td>' +
       '<td>' + (r.inRadius ? ok : no) + '</td>' +
       '<td>' + (r.fresh ? ok : no) + '</td>' +
-      '<td>' + (r.dispatchable ? '<strong style="color:#059669">SÍ</strong>' : '<strong style="color:#c62828">NO</strong>') + '</td></tr>').join('');
+      '<td>' + (r.dispatchable ? '<strong style="color:#059669">SÍ</strong>' : '<strong style="color:#c62828">NO</strong>' + (r.motivo ? '<br><span style="font-size:.72rem;color:#64748b">' + esc(r.motivo) + '</span>' : '')) + '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
 
