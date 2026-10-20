@@ -507,6 +507,15 @@ model Business {
   claimed   Boolean   @default(true)
   /// Cuándo pidió el dueño quedarse con la ficha, y quién lo atendió.
   claimedAt DateTime?
+  /// Desde cuándo el comercio NO está al día con su plan (null = al día).
+  ///
+  /// No se le apaga la ficha: los clientes siguen viendo su carta y pidiendo,
+  /// pero el pedido ya no le llega a su portal — sale como mandado de compra
+  /// y va un repartidor de ZIPA, igual que en una ficha sin reclamar. Así la
+  /// plataforma no deja de vender por una deuda del local, y el local ve lo
+  /// que se pierde mientras no pague. Ver `atiendeDirecto` en
+  /// `lib/comercio-no-reclamado`.
+  unpaidSince DateTime?
 
   /// Código PÚBLICO de la carta: lo que va en el QR de la mesa.
   ///

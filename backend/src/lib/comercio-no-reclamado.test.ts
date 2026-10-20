@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   HOLGURA_MINIMA_COP,
+  atiendeDirecto,
   PRESUPUESTO_MAXIMO_COP,
   listaDeCompra,
   motivoParaNoComprar,
@@ -28,6 +29,32 @@ describe('qué se puede pedir a un comercio que no es cliente', () => {
     expect(m).toContain('Pampero');
     expect(m).toMatch(/comprarlo por ti/i);
     expect(m).toMatch(/recibo/i);
+  });
+});
+
+describe('el comercio que no ha pagado su plan', () => {
+  const debe = new Date('2026-10-03T15:00:00Z');
+
+  it('solo atiende directo el reclamado y al día', () => {
+    expect(atiendeDirecto({ claimed: true, unpaidSince: null })).toBe(true);
+    // Una app o una fila vieja sin el dato: al día, como hasta hoy.
+    expect(atiendeDirecto({ claimed: true })).toBe(true);
+    expect(atiendeDirecto({ claimed: true, unpaidSince: debe })).toBe(false);
+    expect(atiendeDirecto({ claimed: false, unpaidSince: null })).toBe(false);
+  });
+
+  it('sin pago NO se le manda el pedido directo, y el cliente tiene salida', () => {
+    const m = motivoParaNoPedirDirecto({ name: 'Pieros', claimed: true, unpaidSince: debe });
+    expect(m).not.toBeNull();
+    expect(m).toContain('Pieros');
+    expect(m).toMatch(/comprarlo por ti/i);
+  });
+
+  it('el mensaje al cliente NO cuenta que el local debe plata', () => {
+    // Es un asunto entre el local y nosotros; contárselo al cliente lo
+    // espanta del local que justamente queremos que siga vendiendo.
+    const m = motivoParaNoPedirDirecto({ name: 'Pieros', claimed: true, unpaidSince: debe }) ?? '';
+    expect(m).not.toMatch(/pag[oóa]|plan|deud|debe/i);
   });
 });
 

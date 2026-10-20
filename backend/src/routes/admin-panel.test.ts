@@ -338,7 +338,7 @@ describe('el panel pintando la comisión', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers, loadDiagnostics, loadReports, loadLegal };`,
+      `${PANEL_JS}\n; return { pct: pctComision, loadOperators, loadCityCommissions, loadDrivers, loadDiagnostics, loadReports, loadLegal, loadBusinesses };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
     const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
     return { fn, el };
@@ -555,6 +555,39 @@ describe('el panel pintando la comisión', () => {
     // Y dice «Nuevo», no un número inventado ni un hueco en blanco.
     expect(html).toContain('Nuevo');
     expect(html).not.toContain('undefined');
+  });
+
+  const negocio = {
+    id: 'b1', name: 'Pieros Pizza', ownerName: 'Piero', category: 'RESTAURANT',
+    address: 'Calle 5 # 3-40', phone: '+573001112233', isOpen: true,
+    acceptingOrders: true, products: 12, orders: 30, portalPath: '/negocio/tok',
+    claimed: true, unpaidSince: null as string | null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('un local al día ofrece «Marcar sin pago» y no pinta el aviso', async () => {
+    const { fn, el } = montar({ '/admin/businesses': [negocio] }, ['businesses-body', 'biz-q']);
+    fn['loadBusinesses']!();
+    await esperar();
+    const html = el['businesses-body']!.innerHTML;
+    expect(html).toContain("setBusiness('b1', 'unpaid')");
+    expect(html).not.toContain('Pago pendiente');
+    expect(html).not.toContain('undefined');
+  });
+
+  it('un local sin pago dice desde cuándo y ofrece «Marcar al día», sin dejar de estar activo', async () => {
+    const { fn, el } = montar(
+      { '/admin/businesses': [{ ...negocio, unpaidSince: '2026-10-03T15:00:00.000Z' }] },
+      ['businesses-body', 'biz-q'],
+    );
+    fn['loadBusinesses']!();
+    await esperar();
+    const html = el['businesses-body']!.innerHTML;
+    expect(html).toContain('Pago pendiente desde');
+    expect(html).toContain("setBusiness('b1', 'paid')");
+    // Sin pago NO es desactivado: sigue saliendo «Activo» y el botón de desactivar.
+    expect(html).toContain('Activo');
+    expect(html).toContain("setBusiness('b1', 'deactivate')");
   });
 
   it('los incumplimientos separan «no apareció» de «papeles vencidos»', () => {

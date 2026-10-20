@@ -392,6 +392,12 @@ export interface Business {
   citySlug?: string | null;
   /** A qué otras ciudades despacha. Vacía = solo la suya. */
   shipsTo?: Array<{ city: string; fee: number; etaHours: number; cutoff?: string }>;
+  /**
+   * Desde cuándo el plan del comercio está sin pagar (ISO), o null si está al
+   * día. El portal lo usa para avisarle que sus pedidos están saliendo como
+   * mandados de compra en vez de llegarle.
+   */
+  pagoPendienteDesde?: string | null;
 }
 
 export interface RegisterBusinessDTO {
