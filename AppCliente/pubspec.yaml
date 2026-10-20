@@ -99,6 +99,10 @@ flutter:
     - assets/mandados/
     - assets/mandados/2.0x/
     - assets/mandados/3.0x/
+    # «¿Qué se te antoja?» (Fluent Emoji 3D, MIT). Ver tools/procesar-ilustraciones-3d.py.
+    - assets/antojos/
+    - assets/antojos/2.0x/
+    - assets/antojos/3.0x/
     # Avisos de licencia de terceros que se registran en `LicenseRegistry`.
     - assets/licencias/
 
