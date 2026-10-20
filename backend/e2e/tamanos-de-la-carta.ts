@@ -161,6 +161,7 @@ async function main() {
         filas: [{ nombre: 'Gaseosa', precio: 3500, seccion: 'Bebidas' }],
         variantes: [{
           nombre: 'Picada',
+          descripcion: 'Res, cerdo, chorizo y papa criolla',
           seccion: 'Platos fuertes',
           grupo: 'Tamaño',
           precioBase: 39000,
@@ -189,6 +190,9 @@ async function main() {
       const picada = picadas[0];
       check(picada?.price === 39000, 'al precio del tamaño más barato', picada?.price);
       check(picada?.category === 'Platos fuertes', 'en su sección', picada?.category);
+      // Los ingredientes del plato en tamaños se perdían al fundir las filas.
+      check(picada?.description === 'Res, cerdo, chorizo y papa criolla',
+        'y con sus ingredientes', picada?.description);
 
       const grupos = (picada?.gruposOpciones ?? []).map((u) => u.group);
       const grupo = grupos[0];

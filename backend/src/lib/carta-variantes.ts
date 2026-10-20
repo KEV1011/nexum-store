@@ -169,6 +169,12 @@ export interface VarianteSugerida {
   /** Las `linea` de la carta que se funden en este producto. */
   lineas: number[];
   /**
+   * Los ingredientes del plato, si la carta los escribió. Al fundir las filas
+   * se perdían: «Picada pequeña 39.000 / Res, cerdo, chorizo» llegaba al
+   * catálogo como una picada sin decir qué trae.
+   */
+  descripcion?: string;
+  /**
    * `true` cuando la sugerencia salió de UNA línea con varios precios y no se
    * sabe cómo se llama cada tamaño. No se puede importar hasta que el dueño
    * los nombre, y por eso nace sin aceptar.
@@ -214,6 +220,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
     base: string;
     seccion: string;
     acompanamiento: boolean;
+    descripcion?: string;
   }
   const porBase = new Map<string, Candidata[]>();
 
@@ -234,6 +241,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
       base: troceado.base,
       seccion: l.seccion,
       acompanamiento: l.rol === 'acompanamiento',
+      ...(l.descripcion ? { descripcion: l.descripcion } : {}),
     });
     porBase.set(clave, grupo);
   });
@@ -254,7 +262,11 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
     // El nombre se toma de la fila que aparece PRIMERO en la carta, no de la
     // más barata: es como está impreso, y las dos son la misma palabra salvo
     // mayúsculas.
-    const primera = [...candidatas].sort((a, b) => a.orden - b.orden)[0]!;
+    const enOrden = [...candidatas].sort((a, b) => a.orden - b.orden);
+    const primera = enOrden[0]!;
+    // Los ingredientes de la primera fila que los traiga: los tamaños suelen
+    // compartirlos, y la carta los escribe una vez.
+    const descripcion = enOrden.find((c) => c.descripcion)?.descripcion;
 
     salida.push({
       nombre: tituloDeSeccion(primera.base),
@@ -267,6 +279,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
         precioDelta: c.precio - precioBase,
       })),
       lineas: ordenadas.map((c) => c.linea),
+      ...(descripcion ? { descripcion } : {}),
       faltanNombres: false,
       // Acompañamiento solo si lo son TODAS: ante la duda, plato.
       rol: candidatas.every((c) => c.acompanamiento) ? 'acompanamiento' : 'plato',
@@ -297,6 +310,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
         precioDelta: p - precioBase,
       })),
       lineas: [l.linea],
+      ...(l.descripcion ? { descripcion: l.descripcion } : {}),
       faltanNombres: true,
       rol: l.rol === 'acompanamiento' ? 'acompanamiento' : 'plato',
     });

@@ -60,6 +60,8 @@ export function motivoParaNoAgrupar(v: VarianteParaValidar): string | null {
 /** Lo que el dueño está tecleando: cada tamaño con SU precio, como la carta. */
 export interface VarianteEditable {
   nombre: string
+  /** Los ingredientes del plato. Opcional: no todas las cartas los traen. */
+  descripcion?: string
   seccion: string
   grupo: string
   opciones: Array<{ nombre: string; precio: string }>
@@ -67,6 +69,7 @@ export interface VarianteEditable {
 
 export interface VarianteParaEnviar {
   nombre: string
+  descripcion: string
   seccion: string
   grupo: string
   precioBase: number
@@ -96,6 +99,7 @@ export function varianteParaEnviar(v: VarianteEditable): VarianteParaEnviar {
   const precioBase = conPrecio[0]?.precio ?? 0
   return {
     nombre: v.nombre.trim(),
+    descripcion: (v.descripcion ?? '').trim(),
     seccion: v.seccion.trim(),
     grupo: v.grupo.trim(),
     precioBase,

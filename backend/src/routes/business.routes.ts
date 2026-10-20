@@ -908,6 +908,7 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
     filas?: Array<{ nombre?: unknown; precio?: unknown; seccion?: unknown; descripcion?: unknown; rol?: unknown }>;
     variantes?: Array<{
       nombre?: unknown; seccion?: unknown; precioBase?: unknown; grupo?: unknown; rol?: unknown;
+      descripcion?: unknown;
       opciones?: Array<{ nombre?: unknown; precioDelta?: unknown }>;
     }>;
     /** A qué secciones de platos va cada grupo de adicionales. */
@@ -929,6 +930,7 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
   // la picada a 39.000 sin poder elegir, y el dueño no sabría por qué).
   const limpias = grupos.map((v) => ({
     nombre: typeof v.nombre === 'string' ? v.nombre.trim() : '',
+    descripcion: typeof v.descripcion === 'string' ? limpiarTextoDeCarta(v.descripcion).slice(0, 500).trim() : '',
     seccion: typeof v.seccion === 'string' ? v.seccion.trim() : '',
     precioBase: typeof v.precioBase === 'number' ? Math.round(v.precioBase) : 0,
     grupo: typeof v.grupo === 'string' && v.grupo.trim() ? v.grupo.trim() : GRUPO_TAMANO,
@@ -1078,7 +1080,7 @@ router.post('/:token/products/carta-importar', async (req: Request, res: Respons
         nombre: v.nombre,
         precio: v.precioBase,
         seccion: v.seccion,
-        descripcion: v.rol === 'plato' ? conNota('', v.seccion) : '',
+        descripcion: v.rol === 'plato' ? conNota(v.descripcion, v.seccion) : v.descripcion,
       })),
     ]);
 
