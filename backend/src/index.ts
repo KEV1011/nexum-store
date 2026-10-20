@@ -47,6 +47,7 @@ import { rescatarDespacho, BARRIDO_MS } from './services/dispatch-recovery.servi
 import { warmMunicipalities } from './services/municipality.service';
 import { ocrProviderName } from './services/ocr.service';
 import { modoCartaOcr } from './services/carta-ocr.service';
+import { modoCartaIa } from './services/carta-ia.service';
 import { backgroundProviderName } from './services/background-check.service';
 import { legalConsentEnforced } from './services/legal.service';
 import { exigirCodigoAbordaje } from './lib/codigo-abordaje';
@@ -219,6 +220,8 @@ app.get('/health', async (_req, res) => {
     // contrata aparte del OCR de documentos: se publica por separado para que
     // no se crea que activar una activa la otra.
     cartaFoto: modoCartaOcr(),
+    // El agente que revisa la carta leída: apagado | anthropic | anthropic-sin-llave | anthropic-rechazada.
+    cartaIA: modoCartaIa(),
     // Qué botones de acceso existen: «google+apple», «google» o «apagado».
     accesoSocial: modoAccesoSocial(),
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),

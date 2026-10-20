@@ -117,3 +117,45 @@ esto venía a quitar.
 
 El análisis se apoya en que **cada plato va en su renglón**: el lector devuelve
 el texto con sus saltos de línea y de ahí salen las filas.
+
+---
+
+## El revisor con IA (opcional, encima del lector)
+
+Después de leer la foto, un agente mira **la foto y la lista juntas** y corrige
+lo que el lector entendió mal: ingredientes que quedaron como plato, títulos
+leídos como productos, adicionales, acompañamientos, erratas y teléfonos. Lo que
+tiene claro lo corrige solo (con «Deshacer»); lo dudoso lo propone con
+«Aplicar / Ignorar»; y el dueño puede escribir con sus palabras qué quedó mal.
+
+**No inventa nada**: un precio solo se acepta si está impreso en la carta, al
+separar ingredientes no puede añadir palabras, y una fila con precio nunca se
+quita. Las reglas viven en `backend/src/lib/carta-ia.ts`.
+
+### Activarlo en Render (servicio `nexum-api`)
+
+| Variable | Valor |
+|---|---|
+| `CARTA_IA_PROVIDER` | `anthropic` |
+| `ANTHROPIC_API_KEY` | la llave de la consola de Anthropic (console.anthropic.com → API Keys) |
+| `CARTA_IA_MODEL` | opcional; por defecto `claude-sonnet-5-5` |
+
+Necesita además el lector de fotos (`CARTA_OCR_PROVIDER`) funcionando: el texto
+del OCR es la fuente de los precios que el agente puede usar.
+
+### Comprobar
+
+`/health` → `cartaIA`:
+
+- `anthropic` → activo.
+- `anthropic-sin-llave` → falta `ANTHROPIC_API_KEY`.
+- `anthropic-rechazada` → la llave fue rechazada o la cuenta no tiene saldo; el
+  detalle está en los logs (`[CartaIA] …`).
+- `configuracion-no-reconocida` → `CARTA_IA_PROVIDER` mal escrito.
+- `apagado` → no configurado: la lectura funciona igual que antes, sin revisión.
+
+### Costo y límites
+
+Una revisión es una llamada con la foto reducida a 1600 px: del orden de unos
+cientos de pesos por carta. Hay un tope de **30 revisiones por negocio cada
+hora** para que un error del navegador no dispare la factura.

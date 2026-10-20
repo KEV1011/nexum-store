@@ -133,6 +133,8 @@ revisión humana de decisiones automatizadas a través de soporte.
    - Wompi (Bancolombia): datos del pago. ZIPA no almacena números de tarjeta.
    - Amazon Web Services o Cloudflare R2: almacenamiento de los documentos y
      fotos que subes.
+   - Anthropic (Claude): la foto y el texto de la carta de un comercio, para
+     ordenar su menú. No recibe datos de pasajeros ni de conductores.
    - Render y Vercel: alojamiento de la plataforma y de la base de datos.
    - Proveedores de verificación de identidad y antecedentes, cuando el
      servicio esté activado.

@@ -19,6 +19,7 @@ import {
   ROLES_CARTA,
   type RolCarta,
 } from '../../../roles-carta'
+import { RevisionIA } from './RevisionIA'
 
 
 interface LineaCarta {
@@ -124,6 +125,13 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   // «Acompañados de papa a la francesa»: va a la descripción de los platos.
   const [notas, setNotas] = useState<NotaEditable[]>([])
   const [destinosNota, setDestinosNota] = useState<Record<number, string[]>>({})
+  // Para el agente revisor: la foto (se le vuelve a mandar, reducida), el texto
+  // que leyó el OCR (su fuente fiable de precios) y si el servidor lo tiene
+  // activado. `lectura` cambia con cada foto: es lo que dispara la revisión.
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const [textoCrudo, setTextoCrudo] = useState('')
+  const [revisorIA, setRevisorIA] = useState(false)
+  const [lectura, setLectura] = useState(0)
 
   async function leerFoto(file: File) {
     setError(null)
@@ -143,6 +151,8 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           secciones?: string[]
           variantes?: VarianteSugerida[]
           notas?: Array<{ seccion: string; texto: string }>
+          textoCrudo?: string
+          revisorIA?: boolean
         }
         error?: string
       }
@@ -193,6 +203,10 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
       setGuarnicionCfg({})
       setNotas((json.data.notas ?? []).map((n, i) => ({ id: i, seccion: n.seccion, texto: n.texto })))
       setDestinosNota({})
+      setArchivo(file)
+      setTextoCrudo(json.data.textoCrudo ?? '')
+      setRevisorIA(json.data.revisorIA === true)
+      setLectura((n) => n + 1)
     } catch {
       setError('No se pudo conectar con el servidor.')
     } finally {
@@ -453,6 +467,19 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
 
       {filas !== null && (
         <>
+          {revisorIA && (
+            <RevisionIA
+              token={token}
+              filas={filas}
+              setFilas={(fn) => setFilas((prev) => fn(prev ?? []))}
+              excluir={agrupadas}
+              archivo={archivo}
+              secciones={secciones}
+              textoCrudo={textoCrudo}
+              lectura={lectura}
+            />
+          )}
+
           {variantes.length > 0 && (
             <div className="mt-4">
               <h3 className="flex items-center gap-1.5 text-xs font-bold text-slate-900">

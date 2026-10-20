@@ -45,6 +45,7 @@ falla si esta lista y la política dejan de coincidir.
 | Twilio | Número, para el SMS del código de verificación |
 | Wompi (Bancolombia) | Datos del pago. ZIPA no almacena números de tarjeta |
 | Amazon Web Services o Cloudflare R2 | Documentos y fotos que sube el usuario |
+| Anthropic (Claude) | Foto y texto de la carta de un COMERCIO, para revisar su menú. No recibe datos de pasajeros ni conductores |
 | Render y Vercel | Alojamiento de la plataforma y de la base de datos |
 
 **Todos tienen servidores fuera de Colombia** (principalmente EE. UU.), de ahí
