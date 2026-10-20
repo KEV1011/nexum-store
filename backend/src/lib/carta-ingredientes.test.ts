@@ -163,3 +163,41 @@ describe('los tamaños del mismo plato conservan sus ingredientes', () => {
     expect(v).toMatchObject({ nombre: 'Picada', descripcion: 'Res, cerdo, chorizo, papa criolla y arepa' });
   });
 });
+
+describe('la descripción que empieza como el plato (reporte del 20 de octubre)', () => {
+  it('«ARROZ CON CAMARONES» y debajo «Arroz de la casa preparado…» es SU descripción', () => {
+    const r = parsearCarta([
+      'ESPAGUETI CON POLLO 39.000',
+      'Pasta larga bañada en salsa con pollo. Acompañado de papas a la francesa.',
+      'PAELLA DE LA CASA 72.000',
+      'Arroz de la casa preparado con frutos del mar, langostino y mejillones, acompañado de papas a la francesa',
+      'ARROZ CON CAMARONES 59.000',
+      'Arroz de la casa preparado con vegetales y camarones',
+      'ARROZ CON POLLO 45.000',
+      'Arroz de la casa con pollo desmechado y vegetales',
+    ].join('\n'));
+    expect(r.lineas.map((l) => ({ n: l.nombre, p: l.precio, d: l.descripcion ?? null }))).toEqual([
+      { n: 'ESPAGUETI CON POLLO', p: 39000, d: 'Pasta larga bañada en salsa con pollo. Acompañado de papas a la francesa.' },
+      { n: 'PAELLA DE LA CASA', p: 72000, d: 'Arroz de la casa preparado con frutos del mar, langostino y mejillones, acompañado de papas a la francesa' },
+      { n: 'ARROZ CON CAMARONES', p: 59000, d: 'Arroz de la casa preparado con vegetales y camarones' },
+      { n: 'ARROZ CON POLLO', p: 45000, d: 'Arroz de la casa con pollo desmechado y vegetales' },
+    ]);
+    expect(r.lineas.every((l) => !l.aviso)).toBe(true);
+  });
+
+  it.each([
+    ['escrita distinto que el nombre', 'ARROZ CON CAMARONES 59.000', 'Arroz con vegetales'],
+    ['mucho más larga', 'Arroz con camarones 59.000', 'Arroz blanco con camarones y vegetales salteados'],
+    ['con un verbo de preparación', 'Arroz marinero 59.000', 'Arroz preparado al wok'],
+  ])('%s', (_caso, plato, debajo) => {
+    const r = parsearCarta(`${plato}\n${debajo}\nCazuela 40.000`);
+    expect(r.lineas[0]!.descripcion).toBe(debajo);
+    expect(r.lineas.map((l) => l.nombre)).toHaveLength(2);
+  });
+
+  it('el siguiente plato con la MISMA forma sigue sin esconderse', () => {
+    const r = parsearCarta('ARROCES\nArroz con pollo 45.000\nArroz con camarones\nArroz marinero 60.000');
+    expect(r.lineas[0]!.descripcion).toBeUndefined();
+    expect([...r.secciones, ...r.lineas.map((l) => l.nombre)]).toContain('Arroz con camarones');
+  });
+});

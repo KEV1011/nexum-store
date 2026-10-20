@@ -712,9 +712,41 @@ function descripcionDelDeArriba(
   }
 
   const palabras = normalizado(t).split(' ').filter(Boolean);
-  const delPlato = normalizado(plato.nombre).split(' ')[0] ?? '';
-  if (!t.includes(',') && palabras[0] === delPlato) return false;
+  const delPlato = normalizado(plato.nombre).split(' ').filter(Boolean);
+  if (!t.includes(',') && palabras[0] === delPlato[0] && pareceOtroPlato(t, plato.nombre, palabras, delPlato)) {
+    return false;
+  }
   if (!t.includes(',') && palabras.length < 3) return false;
+  return true;
+}
+
+/**
+ * Los verbos con que una carta describe cómo se hace o se sirve un plato.
+ * Sin tildes ni eñe: se prueban sobre el texto `normalizado`.
+ */
+const VERBO_PREPARACION = /\b(preparad[oa]s?|elaborad[oa]s?|hech[oa]s?|banad[oa]s?|servid[oa]s?|acompanad[oa]s?|gratinad[oa]s?|saltead[oa]s?|marinad[oa]s?|cocinad[oa]s?|asad[oa]s? (a|al|en|con)|hornead[oa]s?|apanad[oa]s?|rellen[oa]s? (de|con)|trae|incluye)\b/;
+
+/**
+ * Un renglón que EMPIEZA como el plato de arriba, ¿es el siguiente plato
+ * (al que el OCR le perdió el precio) o la descripción del de arriba?
+ *
+ * «ARROZ CON CAMARONES 59.000» y debajo «Arroz de la casa preparado con
+ * vegetales y camarones» es una descripción: es la forma en que la carta
+ * explica el plato, y casi siempre repite su primera palabra. Rechazarla por
+ * empezar igual la convertía en una fila sin precio y dejaba al plato sin
+ * ingredientes — el reporte del 20 de octubre.
+ *
+ * Es otro plato solo si tiene la MISMA FORMA que el de arriba. Lo que la
+ * delata como descripción, cualquiera de las tres:
+ *   - va escrita distinto: la carta escribe TODOS sus nombres igual, así que
+ *     un nombre gritado con un renglón en minúsculas debajo es su texto;
+ *   - es bastante más larga que el nombre (tres palabras o más);
+ *   - dice cómo se hace o se sirve («preparado», «bañado», «acompañado»…).
+ */
+function pareceOtroPlato(texto: string, nombrePlato: string, palabras: string[], delPlato: string[]): boolean {
+  if (vaEnMayusculas(texto) !== vaEnMayusculas(nombrePlato)) return false;
+  if (palabras.length >= delPlato.length + 3) return false;
+  if (VERBO_PREPARACION.test(normalizado(texto))) return false;
   return true;
 }
 

@@ -211,6 +211,26 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
     )
   }
 
+  // Una fila sin precio que en realidad es la DESCRIPCIÓN del plato de
+  // arriba: el lector la tomó por otro plato. Sin este botón el dueño tenía
+  // que copiar el texto a mano, pegarlo arriba y borrar la fila — tres pasos
+  // por cada renglón mal leído, en un teléfono.
+  function unirAlDeArriba(id: number, arriba: number) {
+    setFilas((prev) => {
+      const lista = prev ?? []
+      const fila = lista.find((x) => x.id === id)
+      if (!fila) return lista
+      const texto = [fila.nombre.trim(), fila.descripcion.trim()].filter(Boolean).join('. ')
+      return lista
+        .filter((x) => x.id !== id)
+        .map((x) =>
+          x.id === arriba
+            ? { ...x, descripcion: [x.descripcion.trim(), texto].filter(Boolean).join('. ') }
+            : x,
+        )
+    })
+  }
+
   // Cambiar el tipo a mano borra el motivo: ya no es lo que propuso el lector.
   function cambiarRol(id: number, rol: RolCarta) {
     setFilas((prev) =>
@@ -629,8 +649,11 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
               donde el dueño toma la foto, cuatro columnas dejaban el nombre
               del plato en «Arep». */}
           <div className="mt-2 space-y-2">
-            {visibles.map((f) => {
+            {visibles.map((f, i) => {
               const sinPrecio = pesosDeTexto(f.precio) == null && f.rol !== 'guarnicion'
+              const anterior = i > 0 ? visibles[i - 1] : undefined
+              const puedeUnirse = sinPrecio && f.rol === 'plato' && anterior != null
+                && anterior.rol !== 'adicional' && anterior.rol !== 'guarnicion'
               return (
                 <div
                   key={f.id}
@@ -705,6 +728,15 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
                   )}
                   {f.aviso && (
                     <span className="mt-0.5 block text-[11px] text-amber-700">{f.aviso}</span>
+                  )}
+                  {puedeUnirse && (
+                    <button
+                      type="button"
+                      onClick={() => unirAlDeArriba(f.id, anterior.id)}
+                      className="mt-1.5 inline-flex min-h-[40px] items-center rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      Son los ingredientes de «{anterior.nombre.trim() || 'el plato de arriba'}»
+                    </button>
                   )}
                 </div>
               )
