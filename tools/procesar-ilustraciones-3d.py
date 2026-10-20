@@ -35,6 +35,10 @@ Uso:
     python3 tools/procesar-ilustraciones-3d.py --puerta  ORIGEN/hamburger.png  AppCliente/assets/servicios restaurantes
     python3 tools/procesar-ilustraciones-3d.py           ORIGEN/pill.png       AppCliente/assets/mandados   drogueria
 
+Antojos (`--antojo`, tarjetas de «¿Qué se te antoja?», render con sombra de
+contacto y sin contorno):
+    python3 tools/procesar-ilustraciones-3d.py --antojo ORIGEN/hot_dog_3d.png AppCliente/assets/antojos perros
+
 Composiciones (`--combo`, ORIGEN = la carpeta `assets/` de fluentui-emoji;
 las piezas y su colocación están en COMBOS, abajo):
     python3 tools/procesar-ilustraciones-3d.py --combo --puerta ORIGEN AppCliente/assets/servicios restaurantes
@@ -48,6 +52,19 @@ Los usados hoy:
     pagos         ← Receipt
     documentos    ← Card index dividers
     compras       ← Shopping bags
+
+Antojos (`AppCliente/assets/antojos/`, uno por clave de `antojos.dart`):
+    hamburguesas ← Hamburger        perros     ← Hot dog
+    pizza        ← Pizza            salchipapas← French fries
+    pollo        ← Poultry leg      sushi      ← Sushi
+    mexicana     ← Taco             arepas     ← Flatbread
+    empanadas    ← Dumpling         sandwiches ← Sandwich
+    asados       ← Cut of meat      postres    ← Shortcake
+    helados      ← Soft ice cream   cafe       ← Hot beverage
+    desayunos    ← Cooking          oriental   ← Steaming bowl
+    mariscos     ← Shrimp           ensaladas  ← Green salad
+    pastas       ← Spaghetti        almuerzos  ← Fork and knife with plate
+    panaderia    ← Bread
 """
 
 from __future__ import annotations
@@ -105,6 +122,40 @@ def puerta(src: str | Image.Image) -> Image.Image:
     out = Image.new('RGBA', (TRABAJO, TRABAJO), (0, 0, 0, 0))
     out.alpha_composite(capa)
     out.alpha_composite(borde)
+    out.alpha_composite(im, (ox, oy))
+    return out
+
+
+def antojo(src: str) -> Image.Image:
+    """Las tarjetas de «¿Qué se te antoja?»: el estilo que pidió el dueño.
+
+    La referencia (su captura: la hamburguesa y la caneca de reciclaje) es el
+    render limpio SIN contorno —el contorno es cosa de las puertas, que
+    conviven con el taxi y la buseta perfilados— pero CON su sombra de
+    contacto, que es lo que hace que el objeto «se apoye» en la tarjeta gris en
+    vez de flotar. Color un punto más vivo que el original, menos que la
+    puerta: aquí van veinte seguidas y un carrusel saturado cansa.
+    """
+    im = _recortar(Image.open(src).convert('RGBA'))
+    rgb, a = im.convert('RGB'), im.getchannel('A')
+    rgb = ImageEnhance.Color(rgb).enhance(1.12)
+    rgb = ImageEnhance.Contrast(rgb).enhance(1.05)
+    im = Image.merge('RGBA', (*rgb.split(), a))
+    im, ox, oy = _centrar(im, margen=0.09, subir=0.03)
+
+    sombra = Image.new('L', (TRABAJO, TRABAJO), 0)
+    cx, base = TRABAJO // 2, oy + im.size[1]
+    ImageDraw.Draw(sombra).ellipse(
+        (cx - im.size[0] * 0.40, base - TRABAJO * 0.03,
+         cx + im.size[0] * 0.40, base + TRABAJO * 0.035),
+        fill=70,
+    )
+    sombra = sombra.filter(ImageFilter.GaussianBlur(TRABAJO * 0.022))
+    capa = Image.new('RGBA', (TRABAJO, TRABAJO), (20, 20, 30, 255))
+    capa.putalpha(sombra)
+
+    out = Image.new('RGBA', (TRABAJO, TRABAJO), (0, 0, 0, 0))
+    out.alpha_composite(capa)
     out.alpha_composite(im, (ox, oy))
     return out
 
@@ -169,7 +220,8 @@ def main() -> None:
     args = sys.argv[1:]
     es_puerta = '--puerta' in args
     es_combo = '--combo' in args
-    args = [a for a in args if a not in ('--puerta', '--combo')]
+    es_antojo = '--antojo' in args
+    args = [a for a in args if a not in ('--puerta', '--combo', '--antojo')]
     if len(args) != 3:
         print(__doc__)
         sys.exit(2)
@@ -178,10 +230,12 @@ def main() -> None:
         # `src` es la carpeta `assets/` del repositorio de Fluent.
         compuesta = combo(nombre, src)
         out = puerta(compuesta) if es_puerta else categoria_de(compuesta)
+    elif es_antojo:
+        out = antojo(src)
     else:
         out = puerta(src) if es_puerta else categoria(src)
-    # La puerta se pinta a 64 lógicos; la categoría, a 44.
-    base = 64 if es_puerta else 48
+    # La puerta se pinta a 64 lógicos; el antojo, a 52; la categoría, a 44.
+    base = 64 if es_puerta else 56 if es_antojo else 48
     for sub, f in (('', 1), ('2.0x', 2), ('3.0x', 3)):
         d = os.path.join(carpeta, sub)
         os.makedirs(d, exist_ok=True)

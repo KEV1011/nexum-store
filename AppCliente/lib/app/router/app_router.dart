@@ -123,7 +123,14 @@ abstract final class AppRoutes {
   // Seguridad
   static const String trustedContact = '/safety/trusted-contact';
 
-  static String businessPath(String id) => '/business/$id';
+  static String businessPath(String id, {String? antojo, String? busqueda}) {
+    final q = <String, String>{
+      if (antojo != null && antojo.isNotEmpty) 'antojo': antojo,
+      if (busqueda != null && busqueda.trim().isNotEmpty) 'q': busqueda.trim(),
+    };
+    return Uri(path: '/business/$id', queryParameters: q.isEmpty ? null : q)
+        .toString();
+  }
   static String orderPath(String id) => '/order/$id';
   static String transportTrackingPath(String id) => '/transport/tracking/$id';
   static String driverProfilePath(String id) => '/driver/$id';
@@ -201,6 +208,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             child: BusinessDetailScreen(
               businessId: state.pathParameters['id'] ?? '',
               initialBusiness: business,
+              // Desde «¿Qué se te antoja?» o el buscador de la home: la carta
+              // abre con eso a la vista. Van en la URL y no en `extra`, que
+              // ya lleva el negocio.
+              antojoInicial: state.uri.queryParameters['antojo'],
+              busquedaInicial: state.uri.queryParameters['q'],
             ),
           );
         },

@@ -6,12 +6,17 @@ import 'package:nexum_client/app/theme/zipa_icon.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
+import 'package:nexum_client/features/businesses/domain/antojos.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/providers/'
     'businesses_provider.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'carrusel_destacados.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'comercio_con_platos.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'fila_antojos.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
     'fila_categorias_comercio.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/'
@@ -65,13 +70,57 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
   BusinessCategory? _filtro;
   String _busqueda = '';
 
+  /// El antojo elegido en «¿Qué se te antoja?» (su clave), o null.
+  String? _antojo;
+
+  /// Cómo se ordenan los resultados de un antojo o de una búsqueda.
+  OrdenResultados _orden = OrdenResultados.recomendados;
+
+  /// El campo de búsqueda, controlado: «Ver todo» tiene que poder BORRAR lo
+  /// escrito. Antes limpiaba el filtro pero el texto seguía en el campo, así
+  /// que la pantalla decía una cosa y el buscador otra.
+  final _buscador = TextEditingController();
+
+  @override
+  void dispose() {
+    _buscador.dispose();
+    super.dispose();
+  }
+
+  void _verTodo() {
+    _buscador.clear();
+    setState(() {
+      _filtro = null;
+      _busqueda = '';
+      _antojo = null;
+      _orden = OrdenResultados.recomendados;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final comerciosAsync = ref.watch(businessesProvider);
     final direccion = ref.watch(defaultAddressProvider);
-    // Sin filtro ni búsqueda la pantalla es una vitrina; con cualquiera de los
-    // dos pasa a ser una lista de resultados.
-    final explorando = _filtro == null && _busqueda.trim().isEmpty;
+    // Sin filtro, antojo ni búsqueda la pantalla es una vitrina; con
+    // cualquiera de los tres pasa a ser una lista de resultados.
+    final explorando =
+        _filtro == null && _busqueda.trim().isEmpty && _antojo == null;
+    final comercios = comerciosAsync.valueOrNull;
+    final antojos =
+        comercios == null ? const <Antojo>[] : antojosPresentes(comercios);
+    final filaAntojos = SliverToBoxAdapter(
+      child: FilaAntojos(
+        antojos: antojos,
+        seleccionado: _antojo,
+        onSeleccionar: (clave) => setState(() {
+          _antojo = clave;
+          // Un antojo es comida: con «Supermercados» puesto la lista saldría
+          // vacía sin que se entienda por qué.
+          _filtro = null;
+          _orden = OrdenResultados.recomendados;
+        }),
+      ),
+    );
 
     return Scaffold(
       backgroundColor: context.zFondo,
@@ -96,6 +145,7 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
               ),
               SliverToBoxAdapter(
                 child: _Buscador(
+                  controller: _buscador,
                   onChanged: (v) => setState(() => _busqueda = v),
                 ),
               ),
@@ -115,6 +165,12 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                // Justo debajo de las puertas: es lo primero que se mira con
+                // hambre, y «Restaurantes» de arriba lleva a la lista entera.
+                if (antojos.isNotEmpty) ...[
+                  filaAntojos,
+                  const SliverToBoxAdapter(child: SizedBox(height: 22)),
+                ],
                 // Va ARRIBA del sello y de los comercios porque es la oferta que
                 // nadie descubría: estaba a cinco toques dentro de dos hojas.
                 const SliverToBoxAdapter(child: FilaCategoriasMandado()),
@@ -139,8 +195,15 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
                 ],
-              ] else
+              ] else ...[
                 const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                // Fuera de la vitrina se queda ARRIBA: con un antojo elegido es
+                // la forma de saltar a otro sin quitar el primero.
+                if (antojos.isNotEmpty) ...[
+                  filaAntojos,
+                  const SliverToBoxAdapter(child: SizedBox(height: 14)),
+                ],
+              ],
               // Las píldoras de categoría van FUERA del bloque de explorar, al
               // revés que las puertas: con un filtro puesto son la única forma
               // de saltar a otro rubro sin quitarlo primero. Y se arman con lo
@@ -152,16 +215,23 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                     categorias:
                         categoriasPresentes(comerciosAsync.valueOrNull!),
                     seleccionada: _filtro,
-                    onSeleccionar: (c) => setState(() => _filtro = c),
+                    onSeleccionar: (c) => setState(() {
+                      _filtro = c;
+                      _antojo = null;
+                    }),
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 6)),
               ],
               SliverToBoxAdapter(
                 child: _TituloSeccion(
-                  texto: _filtro == null ? 'Cerca de ti' : _filtro!.plural,
-                  onQuitarFiltro:
-                      _filtro == null ? null : () => setState(() => _filtro = null),
+                  texto: _tituloLista(),
+                  onQuitarFiltro: _filtro == null && _antojo == null
+                      ? null
+                      : () => setState(() {
+                            _filtro = null;
+                            _antojo = null;
+                          }),
                 ),
               ),
               comerciosAsync.when(
@@ -184,36 +254,79 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
     );
   }
 
+  String _tituloLista() {
+    if (_antojo != null) {
+      return kAntojos.where((a) => a.clave == _antojo).firstOrNull?.nombre ??
+          'Cerca de ti';
+    }
+    if (normalizarTexto(_busqueda).length >= kMinLetrasBusqueda) {
+      return 'Resultados';
+    }
+    return _filtro == null ? 'Cerca de ti' : _filtro!.plural;
+  }
+
+  /// Cada local con los platos que casaron (vacío si no se busca plato).
+  List<MapEntry<BusinessEntity, List<ProductEntity>>> _resultados(
+    List<BusinessEntity> todos,
+  ) {
+    final q = _busqueda.trim();
+    final buscaPlato = normalizarTexto(q).length >= kMinLetrasBusqueda;
+    final porNombre = <MapEntry<BusinessEntity, List<ProductEntity>>>[];
+    final porPlato = <MapEntry<BusinessEntity, List<ProductEntity>>>[];
+
+    for (final b in todos) {
+      if (_filtro != null && b.category != _filtro) continue;
+      var platos = _antojo == null
+          ? <ProductEntity>[]
+          : platosDelAntojo(b, _antojo!);
+      if (_antojo != null && platos.isEmpty) continue;
+
+      if (buscaPlato) {
+        final c = buscarEnComercio(b, q);
+        if (_antojo != null) {
+          // Antojo Y búsqueda: dentro de las hamburguesas, la que diga
+          // «doble». Si lo escrito es el nombre del local, valen todas.
+          if (!c.porNombre) {
+            final ids = {for (final p in c.platos) p.id};
+            platos = platos.where((p) => ids.contains(p.id)).toList();
+            if (platos.isEmpty) continue;
+          }
+        } else {
+          if (!c.algo) continue;
+          platos = c.platos;
+        }
+        // El local que se LLAMA como lo buscado va antes: quien escribe
+        // «betos» busca a Betos, no a la hamburguesa que lo menciona.
+        (c.porNombre ? porNombre : porPlato).add(MapEntry(b, platos));
+        continue;
+      }
+      if (q.isNotEmpty &&
+          !normalizarTexto(b.name).contains(normalizarTexto(q))) {
+        continue;
+      }
+      porNombre.add(MapEntry(b, platos));
+    }
+    return ordenarResultados([...porNombre, ...porPlato], _orden);
+  }
+
   Widget _listaComercios(List<BusinessEntity> todos) {
-    final q = _busqueda.trim().toLowerCase();
-    final filtrados = todos.where((b) {
-      final porCategoria = _filtro == null || b.category == _filtro;
-      final porTexto = q.isEmpty || b.name.toLowerCase().contains(q);
-      return porCategoria && porTexto;
-    }).toList();
+    final filas = _resultados(todos);
+    final conPlatos = _antojo != null ||
+        normalizarTexto(_busqueda).length >= kMinLetrasBusqueda;
 
-    // Los CERRADOS bajan, pero no se van: quien mira a las 2 de la mañana
-    // tiene derecho a saber qué existe en su barrio, y esconderlos hace pensar
-    // que la app está rota o que el sitio cerró para siempre.
-    filtrados.sort((a, b) {
-      if (a.isOpen == b.isOpen) return 0;
-      return a.isOpen ? -1 : 1;
-    });
-
-    if (filtrados.isEmpty) {
+    if (filas.isEmpty) {
+      final hayCriterio =
+          _busqueda.trim().isNotEmpty || _filtro != null || _antojo != null;
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: q.isNotEmpty || _filtro != null
+        child: hayCriterio
             ? EstadoZipa(
                 icono: ZipaIconName.sinResultados,
                 titulo: 'Nada coincide con tu búsqueda',
                 mensaje: 'Prueba con otra palabra, o mira todo lo que hay '
                     'cerca de ti.',
                 accion: 'Ver todo',
-                onAccion: () => setState(() {
-                  _filtro = null;
-                  _busqueda = '';
-                }),
+                onAccion: _verTodo,
               )
             : SinComerciosCerca(
                 onCambiarDireccion: () => context.push(AppRoutes.addresses),
@@ -221,18 +334,75 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
       );
     }
 
-    return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      sliver: SliverList.separated(
-        itemCount: filtrados.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
-        itemBuilder: (context, i) => FilaComercio(
-          comercio: filtrados[i],
-          onTap: () => context.push(
-            AppRoutes.businessPath(filtrados[i].id),
-            extra: filtrados[i],
+    void abrir(BusinessEntity b) => context.push(
+          AppRoutes.businessPath(
+            b.id,
+            antojo: _antojo,
+            busqueda: conPlatos && _antojo == null ? _busqueda : null,
+          ),
+          extra: b,
+        );
+
+    return SliverMainAxisGroup(
+      slivers: [
+        // Ordenar solo tiene sentido comparando platos, y con al menos dos
+        // locales: con uno, los botones no cambiarían nada.
+        if (conPlatos && filas.length >= 2)
+          SliverToBoxAdapter(
+            child: _OrdenResultados(
+              orden: _orden,
+              onCambiar: (o) => setState(() => _orden = o),
+            ),
+          ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          sliver: SliverList.separated(
+            itemCount: filas.length,
+            separatorBuilder: (_, __) => SizedBox(height: conPlatos ? 14 : 10),
+            itemBuilder: (context, i) {
+              final f = filas[i];
+              return conPlatos
+                  ? ComercioConPlatos(
+                      comercio: f.key,
+                      platos: f.value,
+                      onTap: () => abrir(f.key),
+                    )
+                  : FilaComercio(comercio: f.key, onTap: () => abrir(f.key));
+            },
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// «Recomendados · Más barato · Mejor calificado». No hay «Más cerca»: la
+/// lista no trae la distancia de cada local, y ordenar por un dato que no se
+/// tiene sería inventar el orden.
+class _OrdenResultados extends StatelessWidget {
+  const _OrdenResultados({required this.orden, required this.onCambiar});
+
+  final OrdenResultados orden;
+  final ValueChanged<OrdenResultados> onCambiar;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+        children: [
+          for (final o in OrdenResultados.values)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(o.etiqueta),
+                selected: o == orden,
+                onSelected: (_) => onCambiar(o),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -320,8 +490,9 @@ class _BarraDireccion extends StatelessWidget {
 // ── 2. Buscar ────────────────────────────────────────────────────────────────
 
 class _Buscador extends StatelessWidget {
-  const _Buscador({required this.onChanged});
+  const _Buscador({required this.controller, required this.onChanged});
 
+  final TextEditingController controller;
   final ValueChanged<String> onChanged;
 
   @override
@@ -338,21 +509,21 @@ class _Buscador extends StatelessWidget {
           border: Border.all(color: context.zBorde),
         ),
         child: TextField(
+          controller: controller,
           onChanged: onChanged,
           style: TextStyle(fontSize: 14.5, color: context.zTexto),
           decoration: InputDecoration(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(vertical: 13),
-            // Dice lo que BUSCA, ni una palabra más. Ponía «plato o destino» y
-            // no busca ninguna de las dos: el filtro es `b.name.contains(q)`,
-            // solo el nombre del comercio. Escribir un destino aquí devolvía
-            // una lista vacía, que se lee como que la app está rota.
+            // Dice lo que BUSCA, ni una palabra más. Ahora busca de verdad
+            // platos —nombre, sección e ingredientes, sin tildes— además del
+            // nombre del local (`buscarEnComercio`), así que el texto lo dice.
             //
             // Y un destino no se busca en el catálogo: se busca en Movilidad,
             // con su autocompletado de direcciones. Son dos buscadores
             // distintos y mezclarlos es lo que hacía que esto pareciera
             // improvisado.
-            hintText: 'Buscar restaurantes y tiendas',
+            hintText: 'Busca un plato o un local',
             hintStyle: TextStyle(color: context.zTexto3, fontSize: 14.5),
             prefixIcon: const Padding(
               padding: EdgeInsets.only(left: 13, right: 9),

@@ -13,6 +13,7 @@ import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/shared/widgets/estados_zipa.dart';
 import 'package:nexum_client/shared/widgets/foto_encuadrada.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/barra_secciones.dart';
+import 'package:nexum_client/features/businesses/domain/antojos.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/providers/'
@@ -35,16 +36,30 @@ class BusinessDetailScreen extends ConsumerWidget {
   const BusinessDetailScreen({
     required this.businessId,
     this.initialBusiness,
+    this.antojoInicial,
+    this.busquedaInicial,
     super.key,
   });
 
   final String businessId;
   final BusinessEntity? initialBusiness;
 
+  /// Se llega desde «¿Qué se te antoja?»: la carta abre con ESE antojo a la
+  /// vista. Sin esto, tocar «Hamburguesas» y caer en la carta entera obligaba
+  /// a buscar otra vez lo que ya se había elegido.
+  final String? antojoInicial;
+
+  /// Se llega desde el buscador de la home con un plato escrito.
+  final String? busquedaInicial;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (initialBusiness != null) {
-      return _DetailView(business: initialBusiness!);
+      return _DetailView(
+        business: initialBusiness!,
+        antojoInicial: antojoInicial,
+        busquedaInicial: busquedaInicial,
+      );
     }
 
     final async = ref.watch(businessByIdProvider(businessId));
@@ -71,15 +86,25 @@ class BusinessDetailScreen extends ConsumerWidget {
         appBar: AppBar(),
         body: const Center(child: Text('No se pudo cargar el negocio')),
       ),
-      data: (business) => _DetailView(business: business),
+      data: (business) => _DetailView(
+        business: business,
+        antojoInicial: antojoInicial,
+        busquedaInicial: busquedaInicial,
+      ),
     );
   }
 }
 
 class _DetailView extends ConsumerStatefulWidget {
-  const _DetailView({required this.business});
+  const _DetailView({
+    required this.business,
+    this.antojoInicial,
+    this.busquedaInicial,
+  });
 
   final BusinessEntity business;
+  final String? antojoInicial;
+  final String? busquedaInicial;
 
   @override
   ConsumerState<_DetailView> createState() => _DetailViewState();
@@ -90,6 +115,12 @@ class _DetailViewState extends ConsumerState<_DetailView> {
   /// recorrer la lista entera no es viable; en un restaurante con pocos
   /// platos el buscador ni se muestra.
   String _query = '';
+
+  /// El antojo con el que se llegó, mientras no se pida ver la carta entera.
+  String? _antojo;
+
+  /// El texto del buscador, para poder abrirlo ya escrito.
+  late final TextEditingController _buscador;
 
   /// A partir de aquí la lista deja de poder recorrerse a ojo.
   static const _minParaBuscador = 12;
@@ -117,10 +148,19 @@ class _DetailViewState extends ConsumerState<_DetailView> {
   void initState() {
     super.initState();
     _scroll.addListener(_alDesplazar);
+    _query = widget.busquedaInicial?.trim() ?? '';
+    _buscador = TextEditingController(text: _query);
+    // Solo si el local DE VERDAD tiene platos de ese antojo: un enlace viejo
+    // o un antojo que el dueño acaba de retirar abriría una carta vacía.
+    final a = widget.antojoInicial;
+    if (a != null && platosDelAntojo(widget.business, a).isNotEmpty) {
+      _antojo = a;
+    }
   }
 
   @override
   void dispose() {
+    _buscador.dispose();
     _scroll
       ..removeListener(_alDesplazar)
       ..dispose();
@@ -200,14 +240,23 @@ class _DetailViewState extends ConsumerState<_DetailView> {
     final cart = ref.watch(cartProvider);
     final cartNotifier = ref.read(cartProvider.notifier);
 
-    final q = _query.trim().toLowerCase();
-    final visibles = q.isEmpty
+    // Sin tildes ni mayúsculas, con el MISMO criterio que el buscador de la
+    // home: si allá «salchipapa» encontró este local, aquí tiene que encontrar
+    // el plato.
+    final q = normalizarTexto(_query);
+    final delAntojo = _antojo == null
         ? business.products
-        : business.products.where((p) {
-            return p.name.toLowerCase().contains(q) ||
-                p.category.toLowerCase().contains(q) ||
-                p.description.toLowerCase().contains(q);
+        : platosDelAntojo(business, _antojo!);
+    final visibles = q.isEmpty
+        ? delAntojo
+        : delAntojo.where((p) {
+            return normalizarTexto(p.name).contains(q) ||
+                normalizarTexto(p.category).contains(q) ||
+                normalizarTexto(p.description).contains(q);
           }).toList();
+    final antojo = _antojo == null
+        ? null
+        : kAntojos.where((a) => a.clave == _antojo).firstOrNull;
 
     final grouped = <String, List<ProductEntity>>{};
     for (final product in visibles) {
@@ -234,7 +283,8 @@ class _DetailViewState extends ConsumerState<_DetailView> {
     // Con el buscador escrito la barra se retira: lo que hay debajo son
     // resultados, no la carta, y una barra de secciones sobre una lista
     // filtrada promete saltos que no existen.
-    final conBarra = q.isEmpty && _orden.length >= _minSeccionesParaBarra;
+    final conBarra =
+        q.isEmpty && _antojo == null && _orden.length >= _minSeccionesParaBarra;
 
     return Scaffold(
       body: CustomScrollView(
@@ -292,7 +342,26 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                 ),
               ),
             ),
-          if (business.products.length >= _minParaBuscador)
+          // Llegando con un antojo, se dice cuál y se ofrece la carta entera:
+          // un filtro que no se ve y no se puede quitar deja a la persona
+          // creyendo que el local solo vende eso.
+          if (antojo != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppConstants.spacingM, AppConstants.spacingM,
+                  AppConstants.spacingM, 0,
+                ),
+                child: _FiltroAntojo(
+                  antojo: antojo,
+                  onQuitar: () => setState(() => _antojo = null),
+                ),
+              ),
+            ),
+          // También se enseña si se llegó con una búsqueda escrita, aunque la
+          // carta sea corta: sin el campo no habría cómo borrarla.
+          if (business.products.length >= _minParaBuscador ||
+              (widget.busquedaInicial?.isNotEmpty ?? false))
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -302,6 +371,7 @@ class _DetailViewState extends ConsumerState<_DetailView> {
                   0,
                 ),
                 child: TextField(
+                  controller: _buscador,
                   onChanged: (v) => setState(() => _query = v),
                   decoration: InputDecoration(
                     hintText: 'Buscar en ${business.name}',
@@ -388,6 +458,52 @@ class _DetailViewState extends ConsumerState<_DetailView> {
         ],
       ),
       bottomNavigationBar: _CartBar(cart: cart),
+    );
+  }
+}
+
+/// «Mostrando: Hamburguesas · Ver toda la carta».
+class _FiltroAntojo extends StatelessWidget {
+  const _FiltroAntojo({required this.antojo, required this.onQuitar});
+
+  final Antojo antojo;
+  final VoidCallback onQuitar;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: context.surfaceVariantColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+        child: Row(
+          children: [
+            Image.asset(
+              antojo.ilustracion,
+              width: 32,
+              height: 32,
+              errorBuilder: (_, __, ___) => const SizedBox(width: 32),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Mostrando ${antojo.nombre.toLowerCase()}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: onQuitar,
+              child: const Text('Ver toda la carta'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
