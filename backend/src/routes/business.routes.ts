@@ -75,6 +75,12 @@ import { saneaGrupo } from '../lib/texto-opciones';
 import { reporteACsv } from '../lib/reporte-ventas';
 import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
+import {
+  reservarUsoIA,
+  revisarCartaConIA,
+  revisorDisponible,
+} from '../services/carta-ia.service';
+import { revisarFilas, sanearFilas } from '../lib/carta-ia';
 import { PORTAL_BASE_URL } from '../config/constants';
 import { pedidosEnCocina, deshacerPlatoListo } from '../services/cocina.service';
 import {
@@ -884,6 +890,10 @@ router.post(
           // Se devuelve el texto leído para que el dueño pueda comprobar si el
           // problema fue la foto (borrosa, torcida) o nuestra lectura.
           textoCrudo: lectura.texto,
+          // Si hay agente revisor, el portal se lo pide justo después. Va en
+          // una petición APARTE a propósito: la lista se ve ya, y si la IA
+          // tarda o falla la lectura no se pierde.
+          revisorIA: revisorDisponible(),
         },
       });
     } catch (err) {
@@ -893,6 +903,137 @@ router.post(
     }
   },
 );
+
+// ── El agente revisor de la carta ─────────────────────────────────────────────
+//
+// Dos puertas y una sola regla: la IA PROPONE correcciones y `revisarFilas`
+// decide cuáles valen (ningún precio que no esté impreso, ninguna palabra que
+// no estuviera). Ninguna de las dos escribe en el catálogo: devuelven cambios
+// con su «antes» y su «después» para que el portal los aplique sobre la vista
+// previa, y lo aprobado sigue saliendo por `carta-importar`, como siempre.
+
+async function _revisarCarta(
+  req: Request,
+  res: Response,
+  entrada: { imagen?: { bytes: Buffer; mimetype: string }; cuerpo: Record<string, unknown> },
+): Promise<void> {
+  const { token } = req.params as { token: string };
+  const { cuerpo } = entrada;
+  const filas = sanearFilas(cuerpo['filas']);
+  if (filas.length === 0) {
+    res.status(400).json({ success: false, error: 'No hay filas para revisar.' });
+    return;
+  }
+  const instruccion = typeof cuerpo['instruccion'] === 'string'
+    ? cuerpo['instruccion'].replace(/\s+/g, ' ').trim().slice(0, 500)
+    : '';
+  const textoCrudo = typeof cuerpo['textoCrudo'] === 'string' ? cuerpo['textoCrudo'].slice(0, 20_000) : '';
+  const secciones = Array.isArray(cuerpo['secciones'])
+    ? cuerpo['secciones'].filter((x): x is string => typeof x === 'string').slice(0, 60)
+    : [];
+  try {
+    // El negocio ANTES de gastar una llamada facturada.
+    const negocio = await getBusinessService().getBusinessByToken(token);
+    if (!revisorDisponible()) {
+      res.status(503).json({ success: false, error: 'La revisión con IA no está activada en esta cuenta.' });
+      return;
+    }
+    if (!reservarUsoIA(negocio.id)) {
+      res.status(429).json({
+        success: false,
+        error: 'Ya usaste muchas revisiones en la última hora. Revisa la lista a mano o vuelve en un rato.',
+      });
+      return;
+    }
+    const r = await revisarCartaConIA({
+      ...(entrada.imagen && { imagen: entrada.imagen }),
+      filas, secciones, textoCrudo,
+      ...(instruccion && { instruccion }),
+    });
+    if (!r.disponible) {
+      res.status(503).json({ success: false, error: r.motivo });
+      return;
+    }
+    const revision = revisarFilas(filas, r.correcciones, {
+      textoCrudo, secciones, modo: instruccion ? 'instruccion' : 'revision',
+      ...(instruccion && { instruccion }),
+    });
+    if (revision.descartadas.length > 0) {
+      // Al log y no al dueño: lo que la guarda frenó es nuestro asunto, y es
+      // justo lo que hay que mirar para afinar la instrucción del agente.
+      console.log(
+        `[CartaIA] ${negocio.id}: ${revision.descartadas.length} propuesta(s) descartada(s): `
+        + revision.descartadas.slice(0, 10).map((d) => `L${d.linea} ${d.accion} (${d.razon})`).join('; '),
+      );
+    }
+    res.json({
+      success: true,
+      data: {
+        resumen: r.resumen,
+        aplicadas: revision.aplicadas,
+        sugerencias: revision.sugerencias,
+        descartadas: revision.descartadas.length,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudo revisar la carta';
+    const notFound = message.includes('not found') || message.includes('no encontrado');
+    res.status(notFound ? 404 : 400).json({ success: false, error: message });
+  }
+}
+
+// POST /business/:token/products/carta-revisar (multipart: 'file' + 'datos')
+//
+// La revisión completa, con la FOTO: el portal la vuelve a mandar (reducida)
+// junto con la lista que tiene en pantalla. Lo de confianza alta llega ya
+// aplicado —con su «deshacer»—; lo demás, como sugerencia.
+router.post(
+  '/:token/products/carta-revisar',
+  (req: Request, res: Response, next) => {
+    cartaUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    let cuerpo: Record<string, unknown> = {};
+    const datos = (req.body as { datos?: unknown })?.datos;
+    if (typeof datos === 'string') {
+      try {
+        cuerpo = JSON.parse(datos) as Record<string, unknown>;
+      } catch {
+        res.status(400).json({ success: false, error: 'Los datos de la carta llegaron dañados.' });
+        return;
+      }
+    }
+    // La instrucción del dueño va por la otra puerta: aquí la IA mira por su cuenta.
+    delete cuerpo['instruccion'];
+    await _revisarCarta(req, res, {
+      ...(req.file?.buffer?.length && {
+        imagen: { bytes: req.file.buffer, mimetype: req.file.mimetype },
+      }),
+      cuerpo,
+    });
+  },
+);
+
+// POST /business/:token/products/carta-corregir
+//   { filas, secciones, textoCrudo, instruccion }
+//
+// «Las papas no son un plato, vienen con la hamburguesa»: el dueño dice con
+// sus palabras qué quedó mal y la IA lo traduce en cambios. Como lo PIDIÓ él,
+// todo lo que pase la guarda se aplica de una (y se puede deshacer).
+router.post('/:token/products/carta-corregir', async (req: Request, res: Response): Promise<void> => {
+  const cuerpo = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof cuerpo['instruccion'] !== 'string' || cuerpo['instruccion'].trim().length < 3) {
+    res.status(400).json({ success: false, error: 'Escribe qué quedó mal.' });
+    return;
+  }
+  await _revisarCarta(req, res, { cuerpo });
+});
 
 // POST /business/:token/products/carta-importar
 //   { filas: [{nombre,precio,seccion}], variantes?: [...] }

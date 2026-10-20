@@ -80,6 +80,12 @@ const TERCEROS: ReadonlyArray<{
     archivo: 'src/lib/upload.ts',
     marca: /S3_BUCKET|multer-s3|aws-sdk|@aws-sdk/,
   },
+  {
+    nombre: 'Revisor de cartas (Anthropic)',
+    enLaPolitica: 'Anthropic (Claude)',
+    archivo: 'src/services/carta-ia.service.ts',
+    marca: /api\.anthropic\.com/,
+  },
 ];
 
 describe('la política de privacidad no puede quedarse corta', () => {
