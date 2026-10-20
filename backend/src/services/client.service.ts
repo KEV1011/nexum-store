@@ -16,7 +16,9 @@ import { prisma } from '../lib/prisma';
 import { nuevaReferencia } from '../lib/referencia';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { tasaComision } from './comision.service';
-import { startMatchingCycle, startOrderMatchingCycle, cancelSearchRetry } from './matching.service';
+import {
+  startMatchingCycle, startOrderMatchingCycle, cancelSearchRetry, hayOfertaDePedidoActiva,
+} from './matching.service';
 import { getSurgeMultiplier } from './surge.service';
 import { maskPhone } from './safe-contact.service';
 import { requestOtp, validateOtp } from './otp.service';
@@ -723,7 +725,13 @@ export async function markOrderReadyByBusiness(
     //
     // No hace falta comprobar el estado: el ciclo lo valida por su cuenta,
     // igual que el modo (un pedido en mesa o para llevar sale solo).
-    void startOrderMatchingCycle(orderId);
+    //
+    // Si un repartidor está viendo la oferta en este momento, se deja: un
+    // segundo ciclo le mandaría la misma oferta otra vez.
+    if (!hayOfertaDePedidoActiva(orderId)) {
+      cancelSearchRetry(`order:${orderId}`);
+      void startOrderMatchingCycle(orderId);
+    }
   }
   if (updated.userId) {
     void sendPushToClient(updated.userId, {

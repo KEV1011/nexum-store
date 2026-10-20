@@ -9,6 +9,7 @@ import { sendPushToDriver, sendPushToClient } from '../services/push.service';
 import { getErrandOfferInfo } from './errand.service';
 import { getOrderOfferInfo } from './order-offer.service';
 import { evaluateGeoJump } from './fraud.service';
+import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { onDriverHeartbeat } from './safety-alerts.service';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
@@ -52,9 +53,10 @@ export async function updateDriverGeo(
   // antes de sobrescribirla — marca GPS falso sin bloquear jamás el fix.
   const prev = await prisma.driver.findUnique({
     where: { id: driverId },
-    select: { lastLat: true, lastLng: true, lastSeenAt: true },
+    select: { lastLat: true, lastLng: true, lastSeenAt: true, status: true },
   });
   if (prev) evaluateGeoJump(driverId, prev, lat, lng, tomadoEn);
+  if (prev?.status === 'ON_TRIP') void _curarEnViajeSinServicio(driverId);
 
   // La plaza sale de la lista de municipios YA cacheada en memoria: no cuesta
   // una consulta y viaja en el mismo UPDATE que el fix. Sirve para que el panel
@@ -73,6 +75,40 @@ export async function updateDriverGeo(
   // Seguridad operativa (geocerca de destino, detención, desvío): pasivo y
   // best-effort — jamás afecta el fix ni el servicio.
   void onDriverHeartbeat(driverId, lat, lng);
+}
+
+/**
+ * Cada cuánto, como mucho, se comprueba si un conductor «en viaje» lleva algo.
+ * El latido llega cada pocos segundos y la comprobación son tres conteos: no
+ * hace falta repetirlos en cada uno para curar un estado que lleva horas mal.
+ */
+const CURA_CADA_MS = 60_000;
+const _ultimaCura = new Map<string, number>();
+
+/**
+ * EL CONDUCTOR «EN VIAJE» QUE NO LLEVA NADA.
+ *
+ * ON_TRIP saca al conductor del despacho (solo le llegan encadenados), y lo
+ * devuelven a ONLINE los caminos que CIERRAN un servicio. Cuando un cierre no
+ * pasa por ahí —un pedido cancelado por el admin o servido desde el portal, un
+ * mensaje de socket que se perdió—, queda ON_TRIP sin nada abierto. El barrido
+ * de colgados no lo ve, porque solo rescata a quien NO late; y este sí late,
+ * con la app abierta en el inicio, «en línea» a la vista. Resultado: el negocio
+ * marca el pedido listo y no le sale a nadie, sin un solo error.
+ *
+ * Se mira en el latido porque es la prueba de que está ahí. Si de verdad lleva
+ * un servicio, `liberarConductorSiNoTieneMas` no toca nada.
+ */
+async function _curarEnViajeSinServicio(driverId: string): Promise<void> {
+  const ahora = Date.now();
+  if (ahora - (_ultimaCura.get(driverId) ?? 0) < CURA_CADA_MS) return;
+  _ultimaCura.set(driverId, ahora);
+  if (await liberarConductorSiNoTieneMas(driverId)) {
+    console.warn(
+      `[Rescate] El conductor ${driverId} estaba marcado en viaje sin ningún servicio ` +
+      'abierto; vuelve al despacho.',
+    );
+  }
 }
 
 // ─── Phase 2: geospatial nearest-driver matching ──────────────────────────────
@@ -1020,6 +1056,18 @@ interface OrderOfferState {
 }
 
 const activeOrderOffers = new Map<string, OrderOfferState>();
+
+/**
+ * ¿Hay un repartidor mirando la oferta de este pedido AHORA MISMO?
+ *
+ * «Listo para recoger» vuelve a buscar —es cuando de verdad hace falta
+ * alguien—, pero si la búsqueda del «aceptar» todavía está ofreciéndolo, otro
+ * ciclo encima le mandaba la MISMA oferta al mismo repartidor dos veces y
+ * dejaba dos temporizadores pisándose el turno.
+ */
+export function hayOfertaDePedidoActiva(orderId: string): boolean {
+  return activeOrderOffers.has(orderId);
+}
 
 /**
  * Punto de entrada — se llama desde POST /client/orders tras crear el pedido.

@@ -12,6 +12,29 @@ import { prisma } from './prisma';
 import { guardaNoOcupa } from './estado-terminal';
 
 /**
+ * Cuántos servicios tiene ABIERTOS el conductor ahora mismo (viajes, pedidos y
+ * mandados: los tres que lo ponen ON_TRIP al aceptarlos). Una reserva apartada
+ * para otro día no cuenta: ver `guardaNoOcupa`.
+ */
+export async function serviciosAbiertos(driverId: string): Promise<number> {
+  const [viajes, pedidos, mandados] = await Promise.all([
+    prisma.trip.count({
+      // `guardaNoOcupa` y no `guardaNoTerminal`: una reserva apartada para
+      // mañana está abierta pero no lo tiene ocupado hoy, y contarla lo
+      // dejaría ON_TRIP —o sea, fuera del despacho— hasta que la cumpla.
+      where: { driverId, status: guardaNoOcupa('trip') as { notIn: TripStatus[] } },
+    }),
+    prisma.order.count({
+      where: { driverId, status: guardaNoOcupa('order') as { notIn: OrderStatus[] } },
+    }),
+    prisma.errand.count({
+      where: { driverId, status: guardaNoOcupa('errand') as { notIn: ErrandStatus[] } },
+    }),
+  ]);
+  return viajes + pedidos + mandados;
+}
+
+/**
  * Pone al conductor ONLINE **solo si no le queda ningún otro servicio abierto**.
  *
  * Hasta que existió el encadenado esto era una asignación directa, y era
@@ -28,26 +51,26 @@ import { guardaNoOcupa } from './estado-terminal';
  * prefiere dejar al conductor como está antes que tumbar la liquidación, que es
  * lo que de verdad importa en ese momento. El barrido de conductores colgados
  * recoge después lo que se quede atrás.
+ *
+ * Y es también la cura del conductor «en viaje» que no lleva nada: lo llama
+ * el latido del GPS (ver `updateDriverGeo`). Sin eso, un servicio cerrado por
+ * un camino que no lo liberaba lo dejaba ON_TRIP con la app abierta y latiendo
+ * — fuera del despacho para siempre, porque el barrido de colgados solo mira a
+ * quien NO late. Se veía como «el pedido está listo y no le sale a nadie».
+ *
+ * Devuelve `true` si lo liberó, para que quien lo llama pueda dejar constancia.
  */
-export async function liberarConductorSiNoTieneMas(driverId: string): Promise<void> {
+export async function liberarConductorSiNoTieneMas(driverId: string): Promise<boolean> {
   try {
-    const [viajes, pedidos, mandados] = await Promise.all([
-      prisma.trip.count({
-        // `guardaNoOcupa` y no `guardaNoTerminal`: una reserva apartada para
-        // mañana está abierta pero no lo tiene ocupado hoy, y contarla lo
-        // dejaría ON_TRIP —o sea, fuera del despacho— hasta que la cumpla.
-        where: { driverId, status: guardaNoOcupa('trip') as { notIn: TripStatus[] } },
-      }),
-      prisma.order.count({
-        where: { driverId, status: guardaNoOcupa('order') as { notIn: OrderStatus[] } },
-      }),
-      prisma.errand.count({
-        where: { driverId, status: guardaNoOcupa('errand') as { notIn: ErrandStatus[] } },
-      }),
-    ]);
-    if (viajes + pedidos + mandados > 0) return; // sigue ocupado: se queda ON_TRIP
-    await prisma.driver.update({ where: { id: driverId }, data: { status: 'ONLINE' } });
+    if ((await serviciosAbiertos(driverId)) > 0) return false; // sigue ocupado: se queda ON_TRIP
+    const r = await prisma.driver.updateMany({
+      // Solo se toca a quien está EN VIAJE: si ya se desconectó, ponerlo ONLINE
+      // lo metería al despacho sin estar mirando la app.
+      where: { id: driverId, status: 'ON_TRIP' },
+      data: { status: 'ONLINE' },
+    });
+    return r.count > 0;
   } catch {
-    /* noop */
+    return false;
   }
 }
