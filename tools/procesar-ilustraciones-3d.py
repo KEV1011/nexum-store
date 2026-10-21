@@ -65,6 +65,24 @@ Antojos (`AppCliente/assets/antojos/`, uno por clave de `antojos.dart`):
     mariscos     ← Shrimp           ensaladas  ← Green salad
     pastas       ← Spaghetti        almuerzos  ← Fork and knife with plate
     panaderia    ← Bread
+    almuerzos    ← Curry rice   (antes el plato vacío con cubiertos: no se leía)
+
+Platos (`AppCliente/assets/platos/`, mismo `--antojo`): el dibujo de un plato
+SIN foto en la carta, del catálogo fino de `iconos_plato.dart`. Donde un antojo
+ya tiene el dibujo justo se reutiliza su archivo; aquí solo van los que faltan:
+    burrito←Burrito  quesadilla←Stuffed flatbread  tamal←Tamale
+    bunuelo←Falafel  chuzo←Oden  arroz_chino←Takeout box  sopa←Pot of food
+    crema←Bowl with spoon  paella←Shallow pan of food  arroz←Curry rice
+    frutas←Watermelon  fresas←Strawberry  costilla←Meat on bone
+    chicharron←Bacon  pescado←Fish  langosta←Lobster  cangrejo←Crab
+    calamar←Squid  papa←Potato  mazorca←Ear of corn  aguacate←Avocado
+    queso←Cheese wedge  crispetas←Popcorn  croissant←Croissant
+    pancakes←Pancakes  waffle←Waffle  cumpleanos←Birthday cake
+    cupcake←Cupcake  pie←Pie  chocolate←Chocolate bar  galleta←Cookie
+    dona←Doughnut  flan←Custard  copa_helado←Ice cream  raspado←Shaved ice
+    te←Teacup without handle  leche←Glass of milk  gaseosa←Cup with straw
+    bubble_tea←Bubble tea  jugo←Tropical drink  coctel←Cocktail glass
+    cerveza←Beer mug  vino←Wine glass
 """
 
 from __future__ import annotations
