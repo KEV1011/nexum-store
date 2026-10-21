@@ -103,6 +103,9 @@ flutter:
     - assets/antojos/
     - assets/antojos/2.0x/
     - assets/antojos/3.0x/
+    - assets/platos/
+    - assets/platos/2.0x/
+    - assets/platos/3.0x/
     # Avisos de licencia de terceros que se registran en `LicenseRegistry`.
     - assets/licencias/
 

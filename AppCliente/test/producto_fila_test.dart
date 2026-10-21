@@ -193,7 +193,7 @@ void main() {
               (w.image as AssetImage).assetName == ruta,
         );
 
-    test('el antojo del plato decide el dibujo', () {
+    test('el plato decide el dibujo', () {
       expect(
         ilustracionDePlato(plato(nombre: 'Hamburguesa doble')),
         'assets/antojos/hamburguesas.png',
@@ -245,14 +245,14 @@ void main() {
       );
     });
 
-    test('un plato que no es de ningún antojo: nada', () {
+    test('un plato que no se reconoce: nada', () {
       expect(ilustracionDePlato(plato(nombre: 'Especial de la casa')), isNull);
     });
 
     testWidgets('se pinta el render del antojo, no una foto de red',
         (tester) async {
       await pintar(tester, plato(nombre: 'Picada BETO'));
-      expect(conAsset('assets/antojos/asados.png'), findsOneWidget);
+      expect(conAsset('assets/platos/costilla.png'), findsOneWidget);
       expect(
         find.byWidgetPredicate((w) => w is Image && w.image is NetworkImage),
         findsNothing,
@@ -260,7 +260,7 @@ void main() {
       // Decorativo: TalkBack no tiene que anunciar «imagen» en cada plato.
       expect(
         find.ancestor(
-          of: conAsset('assets/antojos/asados.png'),
+          of: conAsset('assets/platos/costilla.png'),
           matching: find.byType(ExcludeSemantics),
         ),
         findsWidgets,
@@ -279,7 +279,7 @@ void main() {
           imageUrl: '/uploads/picada.jpg',
         ),
       );
-      expect(conAsset('assets/antojos/asados.png'), findsNothing);
+      expect(conAsset('assets/platos/costilla.png'), findsNothing);
       expect(
         find.byWidgetPredicate((w) => w is Image && w.image is NetworkImage),
         findsOneWidget,

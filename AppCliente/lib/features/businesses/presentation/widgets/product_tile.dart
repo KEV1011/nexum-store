@@ -4,7 +4,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
-import 'package:nexum_client/features/businesses/domain/antojos.dart';
+import 'package:nexum_client/features/businesses/domain/iconos_plato.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/nombre_plato.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/precio_producto.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
@@ -56,14 +56,14 @@ class ProductTile extends StatelessWidget {
             children: [
               // Tres casos, en este orden:
               //  1. La foto real que subió el local.
-              //  2. Sin foto, la ilustración de lo que ES el plato (la misma
-              //     del carrusel «¿Qué se te antoja?»): una hamburguesa
+              //  2. Sin foto, la ilustración de lo que ES el plato (mismo
+              //     juego 3D del carrusel «¿Qué se te antoja?»): una hamburguesa
               //     dibujada dice algo, mientras que el viejo recuadro gris
               //     con un cubierto era igual para todo y se leía como «no
               //     cargó». Va en un cuadro hundido y más chica que el cuadro,
               //     para que se lea como dibujo y no se confunda con la foto
               //     del plato de verdad.
-              //  3. Si el plato no es de ningún antojo, solo texto: inventarle
+              //  3. Si no se reconoce el plato, solo texto: inventarle
               //     una imagen sería peor que no tenerla.
               if (filaConFoto(product)) ...[
                 _ProductThumb(
@@ -136,12 +136,12 @@ bool filaConFoto(ProductEntity p) => (p.imageUrl ?? '').trim().isNotEmpty;
 
 /// La ilustración que reemplaza a la foto, o null.
 ///
-/// Solo cuando NO hay foto (la del local siempre manda) y solo si el plato es
-/// de un antojo del catálogo — el mismo criterio con que la home lo cuenta en
-/// «¿Qué se te antoja?», así que una pizza que sale en «Pizza» lleva el dibujo
-/// de la pizza. Lo que se ofrece al pagar (bebidas sugeridas) no clasifica.
+/// Solo cuando NO hay foto (la del local siempre manda), y sale del catálogo
+/// FINO de `iconos_plato.dart` — un dibujo por plato, no el del antojo
+/// grueso, que le ponía un camarón a la mojarra. Lo que se ofrece al pagar
+/// (bebidas sugeridas) no lleva.
 String? ilustracionDePlato(ProductEntity p) =>
-    filaConFoto(p) ? null : antojoDeProducto(p)?.ilustracion;
+    filaConFoto(p) ? null : iconoDePlato(p);
 
 /// El dibujo del plato en el lugar de la foto. Mismo tamaño que la miniatura
 /// (las filas quedan alineadas con las que sí tienen foto) pero con el render
