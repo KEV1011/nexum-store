@@ -132,10 +132,12 @@ void main() {
           ),
         );
 
-    testWidgets('sin foto: ni imagen ni cubierto de relleno', (tester) async {
+    testWidgets('sin foto y sin antojo: ni imagen ni cubierto de relleno',
+        (tester) async {
       // Cuarenta recuadros grises iguales en una carta recién cargada se leen
-      // como «no cargó». Sin foto, la fila es solo texto.
-      await pintar(tester, plato(nombre: 'Picada BETO'));
+      // como «no cargó». Un plato que no es de ningún antojo («Especial de la
+      // casa») no tiene qué dibujo llevar: va solo texto.
+      await pintar(tester, plato(nombre: 'Especial de la casa'));
       expect(find.byType(Image), findsNothing);
       expect(find.byIcon(Icons.restaurant_menu_rounded), findsNothing);
     });
@@ -165,6 +167,122 @@ void main() {
           ),
         ),
         isFalse,
+      );
+    });
+  });
+
+  group('sin foto, el dibujo de lo que ES el plato', () {
+    Future<void> pintar(WidgetTester tester, ProductEntity p) =>
+        tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ProductTile(
+                product: p,
+                quantity: 0,
+                onAdd: () {},
+                onRemove: () {},
+              ),
+            ),
+          ),
+        );
+
+    Finder conAsset(String ruta) => find.byWidgetPredicate(
+          (w) =>
+              w is Image &&
+              w.image is AssetImage &&
+              (w.image as AssetImage).assetName == ruta,
+        );
+
+    test('el antojo del plato decide el dibujo', () {
+      expect(
+        ilustracionDePlato(plato(nombre: 'Hamburguesa doble')),
+        'assets/antojos/hamburguesas.png',
+      );
+      // Por la sección cuando el nombre no dice nada: «La Bestia» en
+      // HAMBURGUESAS es una hamburguesa.
+      expect(
+        ilustracionDePlato(
+          const ProductEntity(
+            id: 'p4',
+            name: 'La Bestia',
+            description: '',
+            price: 18000,
+            category: 'HAMBURGUESAS',
+          ),
+        ),
+        'assets/antojos/hamburguesas.png',
+      );
+    });
+
+    test('la foto del local SIEMPRE manda sobre el dibujo', () {
+      expect(
+        ilustracionDePlato(
+          const ProductEntity(
+            id: 'p5',
+            name: 'Hamburguesa doble',
+            description: '',
+            price: 18000,
+            imageUrl: '/uploads/h.jpg',
+          ),
+        ),
+        isNull,
+      );
+    });
+
+    test('lo que se ofrece al pagar no lleva dibujo', () {
+      // No clasifica en la home; tampoco aquí.
+      expect(
+        ilustracionDePlato(
+          const ProductEntity(
+            id: 'p6',
+            name: 'Pizza personal',
+            description: '',
+            price: 9000,
+            suggestAsAddon: true,
+          ),
+        ),
+        isNull,
+      );
+    });
+
+    test('un plato que no es de ningún antojo: nada', () {
+      expect(ilustracionDePlato(plato(nombre: 'Especial de la casa')), isNull);
+    });
+
+    testWidgets('se pinta el render del antojo, no una foto de red',
+        (tester) async {
+      await pintar(tester, plato(nombre: 'Picada BETO'));
+      expect(conAsset('assets/antojos/asados.png'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((w) => w is Image && w.image is NetworkImage),
+        findsNothing,
+      );
+      // Decorativo: TalkBack no tiene que anunciar «imagen» en cada plato.
+      expect(
+        find.ancestor(
+          of: conAsset('assets/antojos/asados.png'),
+          matching: find.byType(ExcludeSemantics),
+        ),
+        findsWidgets,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('con foto, la foto y no el dibujo', (tester) async {
+      await pintar(
+        tester,
+        const ProductEntity(
+          id: 'p7',
+          name: 'Picada BETO',
+          description: '',
+          price: 39000,
+          imageUrl: '/uploads/picada.jpg',
+        ),
+      );
+      expect(conAsset('assets/antojos/asados.png'), findsNothing);
+      expect(
+        find.byWidgetPredicate((w) => w is Image && w.image is NetworkImage),
+        findsOneWidget,
       );
     });
   });

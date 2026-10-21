@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
+import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/features/businesses/domain/antojos.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/nombre_plato.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/precio_producto.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
@@ -52,18 +54,26 @@ class ProductTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // SIN FOTO NO HAY MARCO. Antes cada plato sin foto llevaba el
-              // mismo recuadro gris con un cubierto: en una carta recién
-              // cargada eran cuarenta recuadros iguales, que se leen como
-              // «no cargó» y hacen ver pobre al local. Sin foto, la fila es
-              // solo texto y el nombre gana el ancho — como en Rappi o Uber
-              // Eats, donde un plato sin foto no se disfraza de tener una.
+              // Tres casos, en este orden:
+              //  1. La foto real que subió el local.
+              //  2. Sin foto, la ilustración de lo que ES el plato (la misma
+              //     del carrusel «¿Qué se te antoja?»): una hamburguesa
+              //     dibujada dice algo, mientras que el viejo recuadro gris
+              //     con un cubierto era igual para todo y se leía como «no
+              //     cargó». Va en un cuadro hundido y más chica que el cuadro,
+              //     para que se lea como dibujo y no se confunda con la foto
+              //     del plato de verdad.
+              //  3. Si el plato no es de ningún antojo, solo texto: inventarle
+              //     una imagen sería peor que no tenerla.
               if (filaConFoto(product)) ...[
                 _ProductThumb(
                   imageUrl: product.imageUrl,
                   isDark: isDark,
                   extraCount: product.images.length,
                 ),
+                const SizedBox(width: AppConstants.spacingM),
+              ] else if (ilustracionDePlato(product) case final ilustracion?) ...[
+                _IlustracionPlato(asset: ilustracion),
                 const SizedBox(width: AppConstants.spacingM),
               ],
               Expanded(
@@ -121,8 +131,50 @@ class ProductTile extends StatelessWidget {
   }
 }
 
-/// ¿La fila lleva miniatura? Solo si el negocio subió una foto.
+/// ¿La fila lleva la FOTO del plato? Solo si el negocio subió una.
 bool filaConFoto(ProductEntity p) => (p.imageUrl ?? '').trim().isNotEmpty;
+
+/// La ilustración que reemplaza a la foto, o null.
+///
+/// Solo cuando NO hay foto (la del local siempre manda) y solo si el plato es
+/// de un antojo del catálogo — el mismo criterio con que la home lo cuenta en
+/// «¿Qué se te antoja?», así que una pizza que sale en «Pizza» lleva el dibujo
+/// de la pizza. Lo que se ofrece al pagar (bebidas sugeridas) no clasifica.
+String? ilustracionDePlato(ProductEntity p) =>
+    filaConFoto(p) ? null : antojoDeProducto(p)?.ilustracion;
+
+/// El dibujo del plato en el lugar de la foto. Mismo tamaño que la miniatura
+/// (las filas quedan alineadas con las que sí tienen foto) pero con el render
+/// a 44 sobre fondo hundido: así se lee como ilustración, no como la foto real
+/// del plato, que es lo que haría creer un dibujo a sangre.
+class _IlustracionPlato extends StatelessWidget {
+  const _IlustracionPlato({required this.asset});
+
+  final String asset;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: context.zHundida,
+          borderRadius: BorderRadius.circular(AppConstants.radiusSmall),
+        ),
+        alignment: Alignment.center,
+        child: Image.asset(
+          asset,
+          width: 44,
+          height: 44,
+          // Si el archivo faltara, el cuadro queda liso en vez de romper la
+          // fila; la prueba del catálogo vigila que no falte.
+          errorBuilder: (_, __, ___) => const SizedBox(width: 44, height: 44),
+        ),
+      ),
+    );
+  }
+}
 
 /// Miniatura del producto. Solo se pinta cuando HAY foto ([filaConFoto]).
 /// [extraCount] = fotos adicionales en la galería; muestra un badge "+N".
