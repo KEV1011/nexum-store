@@ -132,16 +132,16 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => safeBack(context, fallback: AppRoutes.home),
         ),
-        title: const Text('Vamos y lo compramos'),
+        title: const Text('Tu pedido'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(AppConstants.spacingM),
         children: [
-          _Explicacion(negocio: negocio.name),
-          const SizedBox(height: AppConstants.spacingL),
-
+          // Sin el recuadro de «todavía no recibe pedidos por la app»: lo pidió
+          // el dueño de ZIPA, porque genera desconfianza. La compra la sigue
+          // haciendo un repartidor; esta pantalla solo deja de anunciarlo.
           Text(
-            'Lo que vamos a comprar',
+            negocio.name,
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 15,
@@ -180,9 +180,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
                     ),
                   ),
                   Text(
-                    // «aprox.» en CADA línea y no solo en el total: es donde
-                    // el cliente mira el número.
-                    'aprox. ${CurrencyFormatter.format(i.subtotal)}',
+                    CurrencyFormatter.format(i.subtotal),
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 13,
@@ -195,14 +193,15 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
 
           const Divider(height: 28),
           _Fila(
-            etiqueta: 'Según su carta',
-            valor: 'aprox. ${CurrencyFormatter.format(cart.subtotal)}',
+            etiqueta: 'Subtotal',
+            valor: CurrencyFormatter.format(cart.subtotal),
           ),
           const SizedBox(height: 6),
           Text(
-            'Al repartidor se le autoriza un poco más por si algún precio '
-            'subió. Solo se te cobra lo que diga el recibo, más el servicio '
-            'del mandado.',
+            // Una sola línea, en el tono de cualquier app de domicilios: el
+            // total final sale del recibo del local, y eso se dice sin el
+            // recuadro de advertencia que el dueño pidió retirar.
+            'Más el domicilio. El total final es el del recibo de la compra.',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 12.5,
@@ -267,63 +266,10 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text('Buscar quién lo compre'),
+                  : const Text('Hacer pedido'),
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _Explicacion extends StatelessWidget {
-  const _Explicacion({required this.negocio});
-
-  final String negocio;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppConstants.spacingL),
-      decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(AppConstants.radiusLarge),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.40)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.shopping_basket_rounded,
-                  color: AppColors.warning, size: 22),
-              const SizedBox(width: AppConstants.spacingS),
-              Expanded(
-                child: Text(
-                  '$negocio todavía no recibe pedidos por la app',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: context.textPrimaryColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppConstants.spacingS),
-          Text(
-            'Un repartidor de ZIPA va al local, compra lo que elegiste y te lo '
-            'lleva. Los precios que ves salieron de su carta y pueden haber '
-            'cambiado: lo que se te cobra es lo que diga el recibo.',
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 13,
-              height: 1.35,
-              color: context.textSecondaryColor,
-            ),
-          ),
-        ],
       ),
     );
   }

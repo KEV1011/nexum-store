@@ -199,9 +199,11 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
           alias: alias,
           fullAddress: address,
           // Solo si la dirección se eligió de la lista o del mapa: escrita a
-          // mano no hay coordenadas fiables que guardar.
-          lat: _place?.address == address ? _place?.lat : null,
-          lng: _place?.address == address ? _place?.lng : null,
+          // mano no hay coordenadas fiables que guardar. El campo ya avisa
+          // (onManualEdit) cuando el punto deja de valer; comparar el texto
+          // aquí tiraba el pin en cuanto la persona completaba su dirección.
+          lat: _place?.lat,
+          lng: _place?.lng,
         );
     Navigator.of(context).pop();
   }
