@@ -221,7 +221,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // home nuevo nacía "desconectado" aunque el conductor seguía en línea
         // (socket vivo). Si el conductor se desconectó de verdad, el toggle
         // cierra el socket, así que isConnected == sigue en línea.
-        if (DriverWsService().isConnected && mounted) {
+        //
+        // «Sigue en línea» es que el socket esté conectado O reconectándose:
+        // si justo en este instante estaba caído, el home nacía desconectado
+        // y sin escuchar, el socket volvía solo y el servidor lo daba en línea
+        // con GPS fresco — y las ofertas llegaban a una pantalla que no las
+        // oía. El panel decía «recibiría la oferta» y al conductor no le
+        // salía nada.
+        final ws = DriverWsService();
+        if ((ws.isConnected || ws.quiereConexion) && mounted) {
           setState(() => _state = _state.copyWith(isOnline: true));
           _connectWs();
         }
@@ -336,6 +344,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
+  void _cancelarEscuchas() {
+    _wsTripSub?.cancel();
+    _wsErrandSub?.cancel();
+    _wsOrderSub?.cancel();
+    _wsCancelSub?.cancel();
+    _wsBlockedSub?.cancel();
+    _wsErrandCancelSub?.cancel();
+    _wsOrderCancelSub?.cancel();
+    _wsReservaSub?.cancel();
+  }
+
   Future<void> _connectWs() async {
     final token = await _storage.read(key: AppConstants.authTokenKey);
     if (token == null || token.isEmpty) {
@@ -349,14 +368,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final workMode = ref.read(selectedWorkModeProvider);
     final connected = await DriverWsService().connect(token, workMode);
 
-    if (!connected || !mounted) {
+    if (!mounted) return;
+    if (!connected) {
       // App real: sin conexión NO inventamos pedidos. Avisamos y el socket
       // reintenta solo (auto-reconexión en DriverWsService).
-      if (mounted) {
-        AppSnackbar.showInfo(
-          context, 'No se pudo conectar con el servidor. Reintentando…');
-      }
-      return;
+      //
+      // Y NO se sale de aquí: antes la función terminaba aquí, así que si el primer
+      // intento fallaba (servidor despertando, señal floja) el GPS no
+      // arrancaba y el home no se suscribía a las ofertas. El socket se
+      // reconectaba solo segundos después, el servidor marcaba al conductor
+      // EN LÍNEA… y nadie escuchaba: las ofertas se perdían sin un error.
+      AppSnackbar.showInfo(
+        context, 'No se pudo conectar con el servidor. Reintentando…');
     }
 
     // Transmite el GPS al backend: alimenta el matching geoespacial para que
@@ -368,6 +391,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // reportaba el centro de Pamplona: eso se quitó hace tiempo, porque una
     // coordenada inventada que se ve igual que una real es peor que un error.
     LocationService().startTracking();
+
+    // Se llama más de una vez (al conectarse y al restaurar la pantalla):
+    // sin cancelar antes, cada llamada dejaba otra escucha viva y la misma
+    // oferta se procesaba dos veces.
+    _cancelarEscuchas();
 
     // Ofertas del servidor. Las ENCADENADAS se ignoran aquí a propósito: llegan
     // mientras el conductor va terminando otro servicio, o sea con la pantalla
