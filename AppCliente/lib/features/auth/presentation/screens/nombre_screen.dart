@@ -84,6 +84,17 @@ class _NombreScreenState extends ConsumerState<NombreScreen> {
     _salir();
   }
 
+  /// Quien escribió mal su número llega aquí con una cuenta recién abierta
+  /// para un teléfono que no es el suyo, y sin esto no había salida: «Ahora
+  /// no» lo dejaba dentro de esa cuenta. Cerrar la sesión lo devuelve al
+  /// ingreso para escribir el bueno (o entrar a la cuenta que ya tenía).
+  Future<void> _cambiarNumero() async {
+    _focus.unfocus();
+    await ref.read(authProvider.notifier).logout();
+    if (!mounted) return;
+    context.go(AppRoutes.login);
+  }
+
   void _ahoraNo() {
     _focus.unfocus();
     _salir();
@@ -107,6 +118,8 @@ class _NombreScreenState extends ConsumerState<NombreScreen> {
     final isDark = theme.brightness == Brightness.dark;
     final surface = isDark ? AppColors.cardDark : context.surfaceColor;
     final outline = isDark ? AppColors.outlineDark : context.outlineColor;
+    final auth = ref.watch(authProvider);
+    final telefono = auth is AuthAuthenticated ? auth.client.phone.trim() : '';
 
     return PopScope(
       // El atrás volvería al código, que ya se usó: la sesión existe desde que
@@ -241,6 +254,27 @@ class _NombreScreenState extends ConsumerState<NombreScreen> {
                         ),
                       ),
                     ),
+                    if (telefono.isNotEmpty) ...[
+                      const SizedBox(height: AppConstants.spacingL),
+                      Text(
+                        'Entraste con el $telefono',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: context.textSecondaryColor,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _guardando ? null : _cambiarNumero,
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.primaryTextColor,
+                        ),
+                        child: const Text(
+                          '¿No es tu número o ya tienes cuenta? Cambiar número',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
