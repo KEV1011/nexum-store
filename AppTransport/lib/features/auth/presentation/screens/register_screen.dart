@@ -108,6 +108,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   bool _acceptedTerms = false;
 
+  /// Salida del registro para quien NO es conductor nuevo: se equivocó al
+  /// escribir el número, o ya tiene cuenta con otro. Antes no había ninguna:
+  /// con la sesión a medias el router lo devolvía aquí en cada arranque y la
+  /// única forma de salir era borrar los datos de la app. Cerrar la sesión
+  /// borra también la marca de registro pendiente, así que vuelve al ingreso
+  /// limpio.
+  Future<void> _cambiarNumero() async {
+    await ref.read(authProvider.notifier).logout();
+    if (!mounted) return;
+    context.go(AppRoutes.login);
+  }
+
   Future<void> _submit() async {
     if (!(_step3Key.currentState?.validate() ?? false)) return;
     if (!_acceptedTerms) return; // el botón ya está deshabilitado; blindaje extra
@@ -154,22 +166,39 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     final isLoading = ref.watch(authProvider) is AuthLoading;
 
-    return Scaffold(
+    // El atrás del sistema en el primer paso cerraba la app (se llega aquí
+    // con `go`): ahora vuelve a pedir el número, igual que el botón.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || isLoading) return;
+        if (_currentStep > 0) {
+          _prevStep();
+        } else {
+          _cambiarNumero();
+        }
+      },
+      child: Scaffold(
       backgroundColor: context.surfaceColor,
       appBar: AppBar(
         title: const Text('Registro de conductor'),
         backgroundColor: context.surfaceColor,
-        leading: _currentStep > 0
-            ? IconButton(
-              tooltip: 'Volver',
-                icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                onPressed: isLoading ? null : _prevStep,
-              )
-            : null,
+        leading: IconButton(
+          tooltip: _currentStep > 0 ? 'Volver' : 'Cambiar número',
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          onPressed: isLoading
+              ? null
+              : (_currentStep > 0 ? _prevStep : _cambiarNumero),
+        ),
         automaticallyImplyLeading: false,
       ),
       body: Column(
         children: [
+          if (_currentStep == 0)
+            _NumeroDeRegistro(
+              phone: widget.phone,
+              onCambiar: isLoading ? null : _cambiarNumero,
+            ),
           _StepIndicator(currentStep: _currentStep),
           Expanded(
             child: PageView(
@@ -215,6 +244,73 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       setState(() => _acceptedTerms = v ?? false),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+/// «Vas a crear una cuenta con este número» + la salida para quien no quería
+/// eso. Es la pregunta que faltaba: quien escribe mal su número cae aquí sin
+/// saber por qué le piden la placa, y tiene que poder decir «yo ya tengo
+/// cuenta» o «ese no es mi número».
+class _NumeroDeRegistro extends StatelessWidget {
+  const _NumeroDeRegistro({required this.phone, required this.onCambiar});
+
+  final String phone;
+  final VoidCallback? onCambiar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 6, 8),
+      decoration: BoxDecoration(
+        color: context.surfaceVariantColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.outlineColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Este número no tiene cuenta todavía',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: context.textPrimaryColor,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Vas a crear una cuenta de conductor con el $phone.',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              color: context.textSecondaryColor,
+              height: 1.35,
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: onCambiar,
+              // Letra oscura del tema: el verde de marca sobre este fondo no
+              // llega al contraste mínimo.
+              style: TextButton.styleFrom(
+                foregroundColor: context.textPrimaryColor,
+                textStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+              child: const Text('¿Ya tienes cuenta o no es tu número? Iniciar sesión'),
             ),
           ),
         ],
