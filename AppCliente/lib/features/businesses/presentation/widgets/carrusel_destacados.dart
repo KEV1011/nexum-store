@@ -15,6 +15,8 @@
 // peor que no tener la fila, y además avisa de lo que de verdad hay que
 // arreglar (subir portadas desde el portal del negocio).
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nexum_client/app/theme/zipa_icon.dart';
@@ -24,7 +26,7 @@ import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 
-class CarruselDestacados extends StatelessWidget {
+class CarruselDestacados extends StatefulWidget {
   const CarruselDestacados({
     required this.comercios,
     required this.onAbrir,
@@ -36,6 +38,24 @@ class CarruselDestacados extends StatelessWidget {
 
   /// Más de ocho no los ve nadie, y cada uno es una imagen que se descarga.
   static const _maximo = 8;
+
+  /// Ancho de una tarjeta y hueco entre tarjetas: de aquí sale cuánto avanza
+  /// el carrusel en cada paso, para que siempre se detenga con una tarjeta
+  /// alineada al borde y no a medias.
+  static const anchoTarjeta = 244.0;
+  static const hueco = 12.0;
+  static const paso = anchoTarjeta + hueco;
+  static const margenLateral = 16.0;
+
+  /// Cada cuánto avanza solo. Menos de tres segundos no deja leer el nombre y
+  /// el tiempo de entrega; más de cinco ya no se percibe como movimiento.
+  static const intervalo = Duration(seconds: 4);
+
+  /// Tras tocar o arrastrar, cuánto se espera antes de volver a moverse.
+  /// Quien está mirando una tarjeta no quiere que se la quiten de debajo del
+  /// dedo, y si volviera a arrancar en cuanto lo levanta se sentiría como que
+  /// la app le pelea.
+  static const pausaTrasTocar = Duration(seconds: 7);
 
   static bool _tieneFoto(BusinessEntity b) =>
       b.imageUrl != null && b.imageUrl!.isNotEmpty;
@@ -53,39 +73,256 @@ class CarruselDestacados extends StatelessWidget {
     return todos.where((b) => _tieneFoto(b) && b.isOpen).take(_maximo).toList();
   }
 
+  /// A dónde va el siguiente paso automático, o `null` si no hay a dónde.
+  ///
+  /// Se avanza UNA tarjeta desde la que está más a la vista (no desde el
+  /// desplazamiento crudo): si el dedo dejó el carrusel a media tarjeta, el
+  /// paso siguiente lo vuelve a alinear en vez de arrastrar el desfase para
+  /// siempre. Al llegar al final se vuelve al principio, porque un carrusel
+  /// que se queda quieto en el último parece que se trabó.
+  static double? siguienteDesplazamiento({
+    required double actual,
+    required double maximo,
+  }) {
+    if (maximo <= 0) return null; // todo cabe: no hay nada que mostrar
+    if (actual >= maximo - 1) return 0;
+    final indice = (actual / paso).round();
+    final destino = (indice + 1) * paso;
+    return destino > maximo ? maximo : destino;
+  }
+
+  /// Qué tarjeta marca el indicador. La última no siempre llega a alinearse al
+  /// borde (el final de la lista lo impide), así que estar al final cuenta
+  /// como estar en ella.
+  static int indiceVisible({
+    required double actual,
+    required double maximo,
+    required int total,
+  }) {
+    if (total <= 0) return 0;
+    if (maximo > 0 && actual >= maximo - 1) return total - 1;
+    return (actual / paso).round().clamp(0, total - 1);
+  }
+
+  /// Si las tarjetas no caben en el ancho, el carrusel se mueve; si caben
+  /// (una o dos tarjetas en una tableta), moverlo no enseña nada nuevo.
+  static bool desborda({required int total, required double anchoVisible}) {
+    if (total <= 1) return false;
+    final contenido =
+        margenLateral * 2 + total * anchoTarjeta + (total - 1) * hueco;
+    return contenido > anchoVisible + 0.5;
+  }
+
+  @override
+  State<CarruselDestacados> createState() => _CarruselDestacadosState();
+}
+
+class _CarruselDestacadosState extends State<CarruselDestacados> {
+  final _control = ScrollController();
+  Timer? _reloj;
+
+  /// La espera tras un toque. Es un reloj y no una hora guardada a propósito:
+  /// así, al terminar, el carrusel arranca su ciclo desde cero (un paso entero
+  /// después) en vez de moverse en cuanto se cumpla el plazo, que podría ser
+  /// medio segundo después de que el dedo se fue.
+  Timer? _pausa;
+
+  /// El dedo está encima: mientras tanto no se mueve nada.
+  bool _tocando = false;
+
+  /// Lo que se leyó en el último build. El reloj no puede leer el `context`
+  /// por su cuenta, así que el build deja aquí si tiene sentido moverse.
+  bool _puedeMoverse = false;
+
+  int _indice = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _control.addListener(_alDesplazar);
+  }
+
+  @override
+  void dispose() {
+    _reloj?.cancel();
+    _pausa?.cancel();
+    _control
+      ..removeListener(_alDesplazar)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _alDesplazar() {
+    if (!_control.hasClients) return;
+    final p = _control.position;
+    final i = CarruselDestacados.indiceVisible(
+      actual: p.pixels,
+      maximo: p.maxScrollExtent,
+      total: CarruselDestacados.seleccion(widget.comercios).length,
+    );
+    if (i != _indice) setState(() => _indice = i);
+  }
+
+  /// Enciende o apaga el reloj según lo que diga el build. Se llama en cada
+  /// build, pero solo crea un reloj cuando no lo hay.
+  void _sincronizarReloj(bool moverse) {
+    _puedeMoverse = moverse;
+    if (moverse && _reloj == null && _pausa == null) {
+      _reloj = Timer.periodic(CarruselDestacados.intervalo, (_) => _avanzar());
+    } else if (!moverse && _reloj != null) {
+      _reloj!.cancel();
+      _reloj = null;
+    }
+  }
+
+  void _avanzar() {
+    if (!mounted || !_puedeMoverse || _tocando) return;
+    if (!_control.hasClients) return;
+    // Con la app en segundo plano no se anima nada: nadie lo ve y al volver
+    // el carrusel estaría en cualquier sitio.
+    final estado = WidgetsBinding.instance.lifecycleState;
+    if (estado != null && estado != AppLifecycleState.resumed) return;
+    final p = _control.position;
+    // Si el usuario lo está moviendo (inercia de un arrastre), se respeta.
+    if (p.isScrollingNotifier.value) return;
+    final destino = CarruselDestacados.siguienteDesplazamiento(
+      actual: p.pixels,
+      maximo: p.maxScrollExtent,
+    );
+    if (destino == null) return;
+    final volviendo = destino < p.pixels;
+    _control.animateTo(
+      destino,
+      // Volver al principio recorre varias tarjetas: más despacio, para que
+      // se lea como «vuelve a empezar» y no como un salto.
+      duration: Duration(milliseconds: volviendo ? 900 : 600),
+      curve: volviendo ? Curves.easeInOutCubic : Curves.easeOutCubic,
+    );
+  }
+
+  void _alTocar() {
+    _tocando = true;
+    _pausa?.cancel();
+    _pausa = null;
+    _reloj?.cancel();
+    _reloj = null;
+  }
+
+  void _alSoltar() {
+    _tocando = false;
+    _pausa?.cancel();
+    _pausa = Timer(CarruselDestacados.pausaTrasTocar, () {
+      _pausa = null;
+      if (mounted) _sincronizarReloj(_puedeMoverse);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final destacados = seleccion(comercios);
-    if (destacados.isEmpty) return const SizedBox.shrink();
+    final destacados = CarruselDestacados.seleccion(widget.comercios);
+    if (destacados.isEmpty) {
+      _sincronizarReloj(false);
+      return const SizedBox.shrink();
+    }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Text(
-            'Para pedir ya',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-              color: context.zTexto,
+    // Quien pidió reducir el movimiento en su teléfono no ve nada moverse
+    // solo: el carrusel sigue ahí y se desliza con el dedo.
+    final sinMovimiento =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    // Tapado por otra pantalla (el detalle del local, el carrito) o en una
+    // pestaña de fondo: moverse ahí es gastar batería en algo que nadie ve.
+    final aLaVista = (ModalRoute.of(context)?.isCurrent ?? true) &&
+        TickerMode.of(context);
+
+    return LayoutBuilder(
+      builder: (context, restricciones) {
+        final seMueve = CarruselDestacados.desborda(
+          total: destacados.length,
+          anchoVisible: restricciones.maxWidth,
+        );
+        _sincronizarReloj(seMueve && !sinMovimiento && aLaVista);
+        final indice = _indice.clamp(0, destacados.length - 1);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                'Para pedir ya',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: context.zTexto,
+                ),
+              ),
             ),
-          ),
-        ),
-        SizedBox(
-          height: 206,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: destacados.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (_, i) => _TarjetaDestacado(
-              comercio: destacados[i],
-              onTap: () => onAbrir(destacados[i]),
+            SizedBox(
+              height: 206,
+              // Listener y no GestureDetector: no compite con el arrastre del
+              // propio carrusel ni con el toque de cada tarjeta, solo se entera.
+              child: Listener(
+                onPointerDown: (_) => _alTocar(),
+                onPointerUp: (_) => _alSoltar(),
+                onPointerCancel: (_) => _alSoltar(),
+                child: ListView.separated(
+                  controller: _control,
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: CarruselDestacados.margenLateral,
+                  ),
+                  itemCount: destacados.length,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(width: CarruselDestacados.hueco),
+                  itemBuilder: (_, i) => _TarjetaDestacado(
+                    comercio: destacados[i],
+                    onTap: () => widget.onAbrir(destacados[i]),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ],
+            if (seMueve) ...[
+              const SizedBox(height: 4),
+              _Indicador(total: destacados.length, activo: indice),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Puntos bajo el carrusel: dicen que hay más tarjetas de las que se ven y en
+/// cuál va. Sin ellos, un carrusel que se mueve solo se lee como un anuncio.
+class _Indicador extends StatelessWidget {
+  const _Indicador({required this.total, required this.activo});
+
+  final int total;
+  final int activo;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < total; i++)
+            AnimatedContainer(
+              key: ValueKey('punto-$i'),
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              height: 6,
+              width: i == activo ? 18 : 6,
+              decoration: BoxDecoration(
+                // El verde de marca aquí es decoración, no letra: no le aplica
+                // la regla de contraste del texto.
+                color: i == activo ? ZipaTokens.marca : context.zBorde,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -121,7 +358,7 @@ class _TarjetaDestacadoState extends State<_TarjetaDestacado> {
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOut,
         child: SizedBox(
-          width: 244,
+          width: CarruselDestacados.anchoTarjeta,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
