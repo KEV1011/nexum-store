@@ -137,7 +137,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppConstants.spacingM),
         children: [
-          // Sin el recuadro de «todavía no recibe pedidos por la app»: lo pidió
+          // Sin el recuadro ámbar que anunciaba al local como no asociado: lo pidió
           // el dueño de ZIPA, porque genera desconfianza. La compra la sigue
           // haciendo un repartidor; esta pantalla solo deja de anunciarlo.
           Text(
