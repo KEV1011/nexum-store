@@ -178,6 +178,12 @@ class DriverWsService {
 
   bool get isConnected => _channel != null;
 
+  /// El conductor pidió estar conectado y no se ha desconectado: el socket
+  /// puede estar caído un momento, pero se está reconectando solo. Para saber
+  /// si el conductor está EN LÍNEA esto es lo que cuenta, no [isConnected]: en
+  /// cuanto el socket vuelve, el servidor lo marca en línea y le manda ofertas.
+  bool get quiereConexion => _shouldReconnect;
+
   /// Id del viaje activo. Lo fija la pantalla de viaje activo y lo usa
   /// [LocationService] para etiquetar los `location_update` que transmite
   /// mientras el conductor lleva un pasajero (cuando es null, el GPS alimenta
