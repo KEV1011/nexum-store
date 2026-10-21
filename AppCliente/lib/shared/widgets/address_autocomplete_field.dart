@@ -65,6 +65,9 @@ class _AddressAutocompleteFieldState
   // Evita re-disparar la búsqueda cuando el texto cambia por una selección.
   String _lastSelectedText = '';
 
+  /// De dónde salió el punto que la pantalla tiene ahora, si tiene uno.
+  OrigenPunto _origen = OrigenPunto.ninguno;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -73,7 +76,20 @@ class _AddressAutocompleteFieldState
 
   void _onChanged(String value) {
     if (value == _lastSelectedText) return;
-    widget.onManualEdit?.call();
+    if (puntoSobreviveEdicion(
+      origen: _origen,
+      elegido: _lastSelectedText,
+      escrito: value,
+    )) {
+      // El punto se queda: la persona está COMPLETANDO la dirección (casa,
+      // apto, barrio) o corrigiendo el texto que puso Google. Antes cualquier
+      // tecla borraba el punto, así que solo se podía guardar la dirección
+      // que «quería la app»: escribir la propia costaba la ubicación.
+    } else {
+      if (_origen != OrigenPunto.ninguno) setState(() {});
+      _origen = OrigenPunto.ninguno;
+      widget.onManualEdit?.call();
+    }
     _debounce?.cancel();
     if (value.trim().length < 3) {
       if (_suggestions.isNotEmpty) setState(() => _suggestions = const []);
@@ -100,10 +116,19 @@ class _AddressAutocompleteFieldState
     if (!mounted) return;
     setState(() => _resolving = false);
 
-    final text = details?.address ?? suggestion.description;
+    // El texto que queda es el que la persona TOCÓ en la lista, no el que
+    // Google devuelve al resolverlo: ese segundo a veces es otro (la calle
+    // más cercana, «Pje. la Curia #6») y la dirección «cambiaba sola».
+    final tocado = suggestion.description.trim();
+    final text = tocado.isNotEmpty ? tocado : (details?.address ?? '');
     _lastSelectedText = text;
     widget.controller.text = text;
-    if (details != null) widget.onPlaceSelected?.call(details);
+    if (details != null) {
+      setState(() => _origen = OrigenPunto.sugerencia);
+      widget.onPlaceSelected?.call(
+        PlaceDetails(address: text, lat: details.lat, lng: details.lng),
+      );
+    }
   }
 
   Future<void> _elegirEnMapa() async {
@@ -121,7 +146,10 @@ class _AddressAutocompleteFieldState
     widget.onPlaceSelected?.call(
       PlaceDetails(address: picked.address, lat: picked.lat, lng: picked.lng),
     );
-    setState(() => _suggestions = const []);
+    setState(() {
+      _suggestions = const [];
+      _origen = OrigenPunto.mapa;
+    });
   }
 
   /// Iconos del extremo derecho: el que aporte la pantalla y, siempre, el del
@@ -154,6 +182,11 @@ class _AddressAutocompleteFieldState
           decoration: InputDecoration(
             labelText: widget.label,
             hintText: widget.hint,
+            // Que se vea que el punto sigue marcado aunque se edite el texto:
+            // sin esto, quien completa «apto 201» no sabe si perdió el pin.
+            helperText: _origen == OrigenPunto.mapa
+                ? 'Punto marcado en el mapa. Puedes completar la dirección.'
+                : null,
             prefixIcon: const Icon(Icons.location_on_outlined),
             suffixIcon: _resolving
                 ? const Padding(
@@ -226,3 +259,31 @@ class _AddressAutocompleteFieldState
     );
   }
 }
+
+/// De dónde salió el punto de una dirección.
+enum OrigenPunto { ninguno, mapa, sugerencia }
+
+/// ¿El punto elegido sigue valiendo después de que la persona edite el texto?
+///
+/// * **Marcado en el MAPA**: sí, mientras el campo no quede vacío. El pin es
+///   la verdad y el texto solo lo describe; en Pamplona Google devuelve la
+///   calle más cercana («Pje. la Curia #6») y la persona TIENE que poder
+///   reemplazarla por su dirección real sin perder dónde marcó.
+/// * **Elegido de la LISTA**: el punto salió de un texto, así que vale mientras
+///   se esté completando ese texto (empieza igual) y no si se escribió otra
+///   dirección encima.
+/// * Campo vacío: nunca. Quien borra todo empieza otra dirección.
+bool puntoSobreviveEdicion({
+  required OrigenPunto origen,
+  required String elegido,
+  required String escrito,
+}) {
+  final nuevo = escrito.trim();
+  if (nuevo.isEmpty) return false;
+  if (origen == OrigenPunto.mapa) return true;
+  if (origen != OrigenPunto.sugerencia) return false;
+  final base = elegido.trim().toLowerCase();
+  final prefijo = base.length < 8 ? base : base.substring(0, 8);
+  return prefijo.isNotEmpty && nuevo.toLowerCase().startsWith(prefijo);
+}
+

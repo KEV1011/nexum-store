@@ -68,9 +68,30 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
   final _map = MapController();
   Timer? _debounce;
   LatLng _centro = _fallback;
-  String _direccion = '';
   bool _resolviendo = false;
   bool _ubicando = false;
+
+  /// El texto de la dirección. EDITABLE: Google propone la calle más cercana
+  /// al pin, que en un pueblo a menudo no es la de la persona («Pje. la Curia
+  /// #6»). Antes solo se podía aceptar o salir; ahora se corrige aquí mismo y
+  /// el pin no se mueve.
+  final _texto = TextEditingController();
+
+  /// La persona escribió su propia dirección: desde ahí, mover el mapa ya no
+  /// se la pisa con la que propone Google.
+  bool _editado = false;
+
+  /// Cada consulta lleva su número y solo la ÚLTIMA escribe. Mover el mapa
+  /// dos veces seguidas lanza dos consultas, y si la primera responde después
+  /// dejaba en pantalla la dirección del punto ANTERIOR — con las coordenadas
+  /// del nuevo. Es una de las formas en que salía «la dirección que quería la
+  /// app».
+  int _consulta = 0;
+
+  /// Hay un movimiento cuya dirección todavía no se resolvió (el respiro de
+  /// 600 ms o la consulta en vuelo). Confirmar en ese momento guardaba el
+  /// texto del punto viejo con las coordenadas del nuevo.
+  bool _pendiente = false;
 
   /// Dónde está el usuario, para pintarlo. Null mientras no se sepa — y ahí no
   /// se dibuja nada: un punto azul en el centro de Pamplona cuando el GPS no
@@ -89,6 +110,7 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _texto.dispose();
     super.dispose();
   }
 
@@ -96,6 +118,7 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
   /// eventos y no vamos a preguntarle a Google en cada píxel.
   void _onMapMoved(MapCamera cam, bool _) {
     _centro = cam.center;
+    _pendiente = true;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 600), () {
       unawaited(_resolverDireccion());
@@ -103,15 +126,35 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
   }
 
   Future<void> _resolverDireccion() async {
+    final n = ++_consulta;
     setState(() => _resolviendo = true);
     final texto = await ref
         .read(geoServiceProvider)
         .reverseGeocode(_centro.latitude, _centro.longitude);
-    if (!mounted) return;
+    if (!mounted || n != _consulta) return;
     setState(() {
-      _direccion = texto ?? '';
+      // Lo que escribió la persona manda: la propuesta de Google solo llena el
+      // campo mientras no lo haya tocado.
+      if (!_editado) _texto.text = texto ?? '';
       _resolviendo = false;
+      _pendiente = false;
     });
+  }
+
+  Future<void> _confirmar() async {
+    _debounce?.cancel();
+    // Si el mapa se movió y su dirección no ha llegado, se espera a la del
+    // punto donde quedó el pin — no se guarda la del anterior.
+    if (_pendiente && !_editado) await _resolverDireccion();
+    if (!mounted) return;
+    final texto = _texto.text.trim();
+    Navigator.of(context).pop(
+      PickedPlace(
+        address: texto.isEmpty ? 'Punto en el mapa' : texto,
+        lat: _centro.latitude,
+        lng: _centro.longitude,
+      ),
+    );
   }
 
   Future<void> _irAMiUbicacion({bool silencioso = false}) async {
@@ -242,7 +285,7 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Dirección seleccionada',
+                    'Dirección (puedes corregirla)',
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 11,
@@ -252,17 +295,23 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    _resolviendo
-                        ? 'Buscando dirección…'
-                        : (_direccion.isEmpty ? 'Punto marcado en el mapa' : _direccion),
+                  TextField(
+                    controller: _texto,
+                    minLines: 1,
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    textCapitalization: TextCapitalization.sentences,
+                    onChanged: (_) => _editado = true,
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                       color: context.textPrimaryColor,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: _resolviendo
+                          ? 'Buscando dirección…'
+                          : 'Calle, número, barrio',
+                      isDense: true,
                     ),
                   ),
                   const SizedBox(height: AppConstants.spacingM),
@@ -270,15 +319,7 @@ class _MapLocationPickerState extends ConsumerState<MapLocationPicker> {
                     width: double.infinity,
                     height: AppConstants.minTouchTarget + 6,
                     child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(
-                        PickedPlace(
-                          address: _direccion.isEmpty
-                              ? 'Punto en el mapa'
-                              : _direccion,
-                          lat: _centro.latitude,
-                          lng: _centro.longitude,
-                        ),
-                      ),
+                      onPressed: () => unawaited(_confirmar()),
                       child: const Text('Confirmar esta dirección'),
                     ),
                   ),
