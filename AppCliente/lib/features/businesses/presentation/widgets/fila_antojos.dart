@@ -141,15 +141,21 @@ class _TarjetaAntojoState extends State<TarjetaAntojo> {
                   errorBuilder: (_, __, ___) =>
                       const SizedBox(width: 56, height: 56),
                 ),
-                Text(
-                  widget.antojo.nombre,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: elegido ? FontWeight.w800 : FontWeight.w600,
-                    color: context.zTexto,
+                // Se ENCOGE para caber en vez de cortarse: «Hamburgue…» salía
+                // así en el teléfono (la captura del usuario) y también
+                // «Salchipapas» o «Panadería» rozan los 80 px. Un nombre
+                // cortado obliga a adivinar; uno un pelo más chico, no.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    widget.antojo.nombre,
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: elegido ? FontWeight.w800 : FontWeight.w600,
+                      color: context.zTexto,
+                    ),
                   ),
                 ),
               ],

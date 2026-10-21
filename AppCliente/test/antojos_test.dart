@@ -3,8 +3,11 @@
 
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nexum_client/features/businesses/domain/antojos.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/'
+    'fila_antojos.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 
@@ -236,5 +239,32 @@ void main() {
       final claves = kAntojos.map((a) => a.clave).toList();
       expect(claves.toSet().length, claves.length);
     });
+  });
+
+  testWidgets('ningún nombre de antojo se corta con «…»', (tester) async {
+    // La captura del usuario: «Hamburgue…». La tarjeta mide 88 y el nombre
+    // se encoge para caber en vez de cortarse.
+    for (final a in kAntojos) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                height: 108,
+                child: TarjetaAntojo(antojo: a, elegido: true, onTap: () {}),
+              ),
+            ),
+          ),
+        ),
+      );
+      final texto = tester.widget<Text>(find.text(a.nombre));
+      expect(texto.overflow, isNot(TextOverflow.ellipsis), reason: a.nombre);
+      expect(
+        find.ancestor(of: find.text(a.nombre), matching: find.byType(FittedBox)),
+        findsOneWidget,
+        reason: a.nombre,
+      );
+      expect(tester.takeException(), isNull, reason: a.nombre);
+    }
   });
 }
