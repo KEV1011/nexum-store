@@ -23,6 +23,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// como nació esta fuga.
 const clavesDeCuenta = <String>[
   'nexum_trip_history_v1', // viajes hechos: pasajeros, direcciones y ganancias
+  // Fotos y firmas de entrega esperando a subir: son de servicios de ESTA
+  // cuenta y con otra sesión el servidor las rechazaría igual.
+  'nexum_pruebas_pendientes_v1',
 ];
 
 /// Claves del TELÉFONO: sobreviven al cambio de cuenta a propósito.

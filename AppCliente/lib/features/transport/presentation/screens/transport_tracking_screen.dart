@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:nexum_client/core/utils/rumbo_vehiculo.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
@@ -25,7 +26,6 @@ import 'package:nexum_client/shared/services/transport_ws_service.dart';
 import 'package:nexum_client/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_client/shared/widgets/map_pin.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
-import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 import 'package:nexum_client/shared/widgets/custody_pin_card.dart';
 import 'package:nexum_client/shared/widgets/driver_info_card.dart';
 import 'package:nexum_client/app/theme/contraste.dart';
@@ -712,6 +712,7 @@ class _TripMapState extends ConsumerState<_TripMap>
   // última posición conocida para calcularlo entre actualizaciones de GPS.
   LatLng? _prevDriver;
   double _heading = 0;
+  final RumboEstable _rumbo = RumboEstable();
 
   /// Posición ANIMADA del vehículo (interpolada entre GPS). null = aún sin GPS.
   LatLng? get _displayDriver {
@@ -781,11 +782,13 @@ class _TripMapState extends ConsumerState<_TripMap>
       final cur = LatLng(r.driverLat!, r.driverLng!);
       if (_animTo == null) {
         _animTo = cur; // primer fix: coloca sin animar
+        _rumbo.mover(cur);
       } else if (cur != _animTo) {
         // Nueva posición GPS → desliza desde donde se ve ahora hasta la nueva.
         _animFrom = _displayDriver ?? _animTo;
         _animTo = cur;
-        _heading = bearingBetween(_animFrom!, cur);
+        // Solo gira si avanzó: parado, el GPS deriva y lo hacía dar vueltas.
+        _heading = _rumbo.mover(cur);
         _move.forward(from: 0);
       }
       _prevDriver = cur;

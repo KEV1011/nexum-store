@@ -11,6 +11,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:nexum_driver/app/app.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/observability/crash_reporting.dart';
+import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 
 /// Despierta el backend apenas abre la app. Render (plan free) duerme tras
@@ -40,6 +41,10 @@ Future<void> _arrancar() async {
   await initializeDateFormatting('es_CO', null);
 
   unawaited(_warmUpBackend());
+
+  // Pruebas de entrega que no subieron la última vez (sin señal): se
+  // reintentan en segundo plano. Sin esperar: no puede frenar el arranque.
+  unawaited(colaPruebas.iniciar().catchError((Object _) {}));
 
   if (!kIsWeb) {
     try {

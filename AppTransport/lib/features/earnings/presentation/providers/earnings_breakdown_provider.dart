@@ -116,3 +116,17 @@ final earningsBreakdownProvider = Provider<EarningsBreakdown>((ref) {
   final trips = ref.watch(tripHistoryProvider);
   return _aggregate(trips);
 });
+
+/// Lo ganado HOY: el único sitio de donde lo leen el inicio, el perfil y el
+/// resumen del viaje.
+///
+/// Antes esas pantallas leían un contador EN MEMORIA (`driverStatusProvider`)
+/// que la app sumaba con su propia estimación al terminar cada viaje, mientras
+/// Mis ganancias leía el historial del servidor. Eran dos contabilidades: el
+/// contador nacía en cero en cada arranque, sumaba aunque el servidor no
+/// hubiera liquidado nada, y se separaba del historial al primer viaje
+/// nocturno. Ahora las cuatro pantallas leen lo MISMO —lo que el servidor
+/// liquidó—, que se recarga al cerrar cada servicio.
+final gananciasDeHoyProvider = Provider<EarningsBucket>((ref) {
+  return ref.watch(earningsBreakdownProvider).days.first;
+});

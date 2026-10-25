@@ -10,8 +10,8 @@ import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/picked_image.dart';
+import 'package:nexum_driver/features/earnings/presentation/providers/earnings_breakdown_provider.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/passenger_rating_sheet.dart';
-import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
 import 'package:nexum_driver/features/trip_history/presentation/providers/trip_history_provider.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/siguiente_viaje_provider.dart';
@@ -102,7 +102,8 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final driverStatus = ref.watch(driverStatusProvider);
+    // Del historial del servidor (se refresca al abrir esta pantalla).
+    final hoy = ref.watch(gananciasDeHoyProvider);
     // Viaje encadenado que ya aceptó mientras terminaba este.
     final siguiente = ref.watch(siguienteViajeProvider);
     // Montos: los del backend si ya llegó la liquidación; si no, la estimación.
@@ -275,7 +276,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
               ],
 
               // ── Sesión de hoy ────────────────────────────────────────────
-              if (driverStatus.dailyTrips > 0)
+              if (hoy.trips > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppConstants.spacingM,
@@ -295,7 +296,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                       _SessionStat(
                         icon: Icons.two_wheeler_rounded,
                         label: 'Viajes hoy',
-                        value: driverStatus.dailyTrips.toString(),
+                        value: hoy.trips.toString(),
                       ),
                       Container(
                         width: 1,
@@ -306,7 +307,7 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                         icon: Icons.payments_outlined,
                         label: 'Ganancias hoy',
                         value: CurrencyFormatter.format(
-                          driverStatus.dailyEarnings,
+                          hoy.netEarnings,
                         ),
                       ),
                     ],

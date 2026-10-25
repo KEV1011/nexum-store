@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nexum_client/core/utils/rumbo_vehiculo.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/shared/widgets/driver_info_card.dart';
@@ -8,7 +9,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:nexum_client/core/services/geo_service.dart';
-import 'package:nexum_client/shared/widgets/vehicle_marker.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/features/intercity/domain/entities/intercity_entity.dart';
@@ -1015,8 +1015,8 @@ class _LiveTripMapState extends ConsumerState<_LiveTripMap>
     with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
 
-  LatLng? _prevDriver;
   double _heading = 0;
+  final RumboEstable _rumbo = RumboEstable();
 
   /// Ruta REAL por carretera entre las dos ciudades (Routes API vía proxy);
   /// null = fallback a la línea recta.
@@ -1052,10 +1052,10 @@ class _LiveTripMapState extends ConsumerState<_LiveTripMap>
     final r = widget.request;
     if (r.driverLat != null && r.driverLng != null) {
       final cur = LatLng(r.driverLat!, r.driverLng!);
-      if (_prevDriver != null && cur != _prevDriver) {
-        setState(() => _heading = bearingBetween(_prevDriver!, cur));
-      }
-      _prevDriver = cur;
+      // Solo gira si avanzó de verdad (ver `rumbo_vehiculo.dart`).
+      final antes = _rumbo.rumbo;
+      final ahora = _rumbo.mover(cur);
+      if (ahora != antes) setState(() => _heading = ahora);
     }
   }
 
