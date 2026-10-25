@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'package:nexum_driver/core/utils/rumbo_vehiculo.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
@@ -42,7 +43,6 @@ import 'package:nexum_driver/shared/widgets/custody_pin_dialog.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
 import 'package:nexum_driver/shared/widgets/map_pin.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_glyph.dart';
-import 'package:nexum_driver/shared/widgets/vehicle_marker.dart';
 
 class ActiveTripScreen extends ConsumerStatefulWidget {
   const ActiveTripScreen({this.tripExtra, super.key});
@@ -82,6 +82,18 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
 
   // Rumbo actual del vehículo (grados) para orientar el marcador.
   double _heading = 0;
+
+  /// Rumbo que solo cambia cuando el carro avanza (ver `rumbo_vehiculo.dart`).
+  final RumboEstable _rumbo = RumboEstable();
+
+  /// Si [_waypoints] es la ruta REAL por las calles. Sin llave de Google la
+  /// ruta es una esquina en L de mentira, y pegar el carro a eso lo dibujaría
+  /// por una calle por la que no va.
+  bool _rutaReal = false;
+
+  /// Dónde se DIBUJA el carro: pegado a la vía si va por la ruta real. Null =
+  /// donde dice el GPS. Solo dibujo: al servidor va siempre el GPS.
+  LatLng? _posEnMapa;
 
   /// Minutos que faltan según el GPS. Null = todavía sin posición real.
   int? _etaMin;
@@ -343,6 +355,8 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     _routeStart = _driverPos;
     _waypoints = _generateWaypoints(_driverPos, target);
     _waypointIndex = 0;
+    _rutaReal = false;
+    _posEnMapa = null;
 
     // Ruta REAL por las calles (Routes API vía el proxy del backend): si el
     // servidor tiene GOOGLE_MAPS_API_KEY, reemplaza la esquina en L simulada.
@@ -372,6 +386,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         _routeStart = desde;
         _waypoints = points;
         _waypointIndex = 0;
+        _rutaReal = true;
       });
     });
   }
@@ -416,7 +431,14 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       return;
     }
     setState(() {
-      if (nueva != anterior) _heading = bearingBetween(anterior, nueva);
+      final pegado = _rutaReal ? pegarARuta(nueva, _waypoints) : null;
+      _posEnMapa = pegado?.punto;
+      if (pegado != null) {
+        _rumbo.fijar(pegado.rumbo, nueva);
+        _heading = pegado.rumbo;
+      } else {
+        _heading = _rumbo.mover(nueva);
+      }
       _driverPos = nueva;
       _waypointIndex = _indiceMasCercano(nueva);
     });
@@ -788,7 +810,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       // se voltea según el rumbo. Fallback al tipo de servicio si el perfil
       // aún no cargó.
       Marker(
-        point: _driverPos,
+        point: _posEnMapa ?? _driverPos,
         width: VehicleGlyph.markerWidth,
         height: VehicleGlyph.markerHeight,
         child: VehicleGlyph(

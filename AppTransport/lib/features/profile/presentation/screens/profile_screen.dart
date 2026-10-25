@@ -13,6 +13,7 @@ import 'package:nexum_driver/core/domain/service_type.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/safe_back.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
+import 'package:nexum_driver/features/earnings/presentation/providers/earnings_breakdown_provider.dart';
 import 'package:nexum_driver/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_driver/features/driver_status/domain/entities/driver_status_entity.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/driver_status_provider.dart';
@@ -110,7 +111,7 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Session + performance stats ────────────────────────────────
-            _buildStatsCard(theme, driverStatus, profile),
+            _buildStatsCard(theme, driverStatus, profile, ref.watch(gananciasDeHoyProvider)),
             const SizedBox(height: AppConstants.spacingM),
 
             // ── Vehicle ────────────────────────────────────────────────────
@@ -472,9 +473,11 @@ class ProfileScreen extends ConsumerWidget {
     ThemeData theme,
     DriverStatusEntity driverStatus,
     EditableProfile profile,
+    EarningsBucket hoy,
   ) {
-    final todayTrips = driverStatus.dailyTrips;
-    final todayEarnings = driverStatus.dailyEarnings;
+    // Del historial del servidor, igual que Mis ganancias.
+    final todayTrips = hoy.trips;
+    final todayEarnings = hoy.netEarnings;
     final onlineMinutes = driverStatus.timeOnline.inMinutes;
     final onlineLabel = onlineMinutes >= 60
         ? '${onlineMinutes ~/ 60}h ${onlineMinutes % 60}m'

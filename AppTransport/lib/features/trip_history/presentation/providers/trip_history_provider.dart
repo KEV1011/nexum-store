@@ -83,10 +83,8 @@ class TripHistoryNotifier extends StateNotifier<List<TripModel>> {
         grossFare: (j['grossFare'] as num?)?.toDouble() ?? 0,
         netEarning: (j['netEarning'] as num?)?.toDouble() ?? 0,
         commission: (j['commission'] as num?)?.toDouble() ?? 0,
-        startedAt:
-            DateTime.tryParse(j['startedAt'] as String? ?? '') ?? DateTime.now(),
-        finishedAt: DateTime.tryParse(j['finishedAt'] as String? ?? '') ??
-            DateTime.now(),
+        startedAt: fechaDelServidor(j['startedAt']),
+        finishedAt: fechaDelServidor(j['finishedAt']),
         rating: (j['rating'] as num?)?.toDouble(),
       );
 

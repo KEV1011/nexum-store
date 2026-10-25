@@ -6,6 +6,19 @@ import 'package:nexum_driver/shared/models/location_model.dart';
 ///   [grossFare]   = fare charged to the passenger
 ///   [commission]  = grossFare × 15 % (platform fee)
 ///   [netEarning]  = grossFare − commission  (what the driver receives)
+/// Una fecha que manda el SERVIDOR, en la hora del teléfono.
+///
+/// El backend manda ISO en UTC (`…Z`) y `DateTime.tryParse` devuelve entonces
+/// una fecha UTC. Comparar su día con el día local —que es lo que hace el
+/// desglose de ganancias— corre todo viaje cerrado después de las 7 de la
+/// noche en Colombia (UTC−5) al día SIGUIENTE: el conductor veía «$4.250 ·
+/// 1 viaje» en el inicio y «$0 hoy» en Mis ganancias. Sin fecha legible se
+/// usa ahora, como antes.
+DateTime fechaDelServidor(Object? v) {
+  final f = v is String ? DateTime.tryParse(v) : null;
+  return (f ?? DateTime.now()).toLocal();
+}
+
 class TripModel {
   const TripModel({
     required this.id,
@@ -48,8 +61,8 @@ class TripModel {
         grossFare: (json['gross_fare'] as num).toDouble(),
         netEarning: (json['net_earning'] as num).toDouble(),
         commission: (json['commission'] as num).toDouble(),
-        startedAt: DateTime.parse(json['started_at'] as String),
-        finishedAt: DateTime.parse(json['finished_at'] as String),
+        startedAt: DateTime.parse(json['started_at'] as String).toLocal(),
+        finishedAt: DateTime.parse(json['finished_at'] as String).toLocal(),
         rating: json['rating'] != null
             ? (json['rating'] as num).toDouble()
             : null,
@@ -61,7 +74,7 @@ class TripModel {
         pickupPhotoPath: json['pickup_photo_path'] as String?,
         pickupOrderRef: json['pickup_order_ref'] as String?,
         pickedUpAt: json['picked_up_at'] != null
-            ? DateTime.parse(json['picked_up_at'] as String)
+            ? DateTime.parse(json['picked_up_at'] as String).toLocal()
             : null,
       );
 

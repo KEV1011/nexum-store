@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:nexum_client/features/businesses/domain/seleccion_opciones.dart';
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
@@ -95,18 +96,13 @@ class _ProductOptionsSheetState extends State<_ProductOptionsSheet> {
 
   void _toggle(OptionGroupEntity g, ProductOptionEntity o) {
     setState(() {
-      final set = _selected.putIfAbsent(g.id, () => <String>{});
-      if (g.isSingle) {
-        set
-          ..clear()
-          ..add(o.id);
-      } else {
-        if (set.contains(o.id)) {
-          set.remove(o.id);
-        } else if (set.length < g.maxSelect) {
-          set.add(o.id);
-        }
-      }
+      _selected[g.id] = alternarOpcion(
+        _selected[g.id] ?? const <String>{},
+        id: o.id,
+        unica: g.isSingle,
+        obligatoria: g.required,
+        maximo: g.maxSelect,
+      );
     });
   }
 
@@ -461,7 +457,10 @@ class _GroupSection extends StatelessWidget {
         for (final o in group.options)
           _OptionRow(
             option: o,
-            isSingle: group.isSingle,
+            isSingle: pareceRadio(
+              unica: group.isSingle,
+              obligatoria: group.required,
+            ),
             isSelected: selected.contains(o.id),
             onTap: o.isAvailable ? () => onTap(o) : null,
           ),

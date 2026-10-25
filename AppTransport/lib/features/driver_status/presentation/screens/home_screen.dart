@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:nexum_driver/core/utils/rumbo_vehiculo.dart';
 import 'package:nexum_driver/shared/widgets/nota_del_pasajero.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -26,6 +27,7 @@ import 'package:nexum_driver/core/ubicacion/ubicacion_gate.dart';
 import 'package:nexum_driver/core/utils/currency_formatter.dart';
 import 'package:nexum_driver/core/utils/date_formatter.dart';
 import 'package:nexum_driver/core/widgets/app_snackbar.dart';
+import 'package:nexum_driver/features/earnings/presentation/providers/earnings_breakdown_provider.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/reservas/presentation/widgets/reservas_panel_card.dart';
 import 'package:nexum_driver/features/driver_status/presentation/providers/demand_zones_provider.dart';
@@ -161,6 +163,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// GPS; con el teléfono quieto llega en cero o negativo, y entonces se
   /// conserva el último válido en vez de dar un volantazo al norte.
   double _miRumbo = 0;
+  final RumboEstable _rumbo = RumboEstable();
 
   /// Se centra el mapa en el conductor una sola vez, con el primer fix: seguir
   /// moviendo la cámara después le quitaría el mapa de las manos mientras mira
@@ -175,13 +178,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final ultima = LocationService().lastPosition;
     if (ultima != null) {
       _miPosicion = LatLng(ultima.latitude, ultima.longitude);
-      if (ultima.heading > 0) _miRumbo = ultima.heading;
+      final g = rumboDelGps(heading: ultima.heading, velocidadMs: ultima.speed);
+      if (g != null) _rumbo.fijar(g, _miPosicion!);
+      _miRumbo = _rumbo.rumbo;
     }
     _posSub = LocationService().positionStream.listen((pos) {
       if (!mounted) return;
       setState(() {
-        _miPosicion = LatLng(pos.latitude, pos.longitude);
-        if (pos.heading > 0) _miRumbo = pos.heading;
+        final aqui = LatLng(pos.latitude, pos.longitude);
+        _miPosicion = aqui;
+        // El heading del teléfono solo en movimiento; parado, el rumbo lo da
+        // el avance real (y si no avanzó, se queda el que traía).
+        final g = rumboDelGps(heading: pos.heading, velocidadMs: pos.speed);
+        if (g != null) {
+          _rumbo.fijar(g, aqui);
+        } else {
+          _rumbo.mover(aqui);
+        }
+        _miRumbo = _rumbo.rumbo;
       });
       if (!_yaCentrado) {
         _yaCentrado = true;
@@ -795,8 +809,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildTopBar(ServiceType serviceType) {
+    // Lo liquidado por el SERVIDOR hoy, igual que Mis ganancias.
     final earnings = ref.watch(
-      driverStatusProvider.select((s) => s.dailyEarnings),
+      gananciasDeHoyProvider.select((b) => b.netEarnings),
     );
     return Padding(
       padding: const EdgeInsets.all(AppConstants.spacingM),
@@ -854,6 +869,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ScrollController scrollController,
   ) {
     final driverStatus = ref.watch(driverStatusProvider);
+    final hoy = ref.watch(gananciasDeHoyProvider);
 
     return Container(
       decoration: const BoxDecoration(
@@ -943,7 +959,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   fontSize: 16,
                 ),
               ),
-              if (driverStatus.dailyTrips >= _kDailyTripGoal)
+              if (hoy.trips >= _kDailyTripGoal)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -982,14 +998,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '${driverStatus.dailyTrips}/$_kDailyTripGoal viajes hoy',
+                '${hoy.trips}/$_kDailyTripGoal viajes hoy',
                 style: const TextStyle(
                   color: _panelSubText,
                   fontSize: 12,
                 ),
               ),
               Text(
-                '${((driverStatus.dailyTrips / _kDailyTripGoal) * 100).round().clamp(0, 100)}%',
+                '${((hoy.trips / _kDailyTripGoal) * 100).round().clamp(0, 100)}%',
                 style: const TextStyle(
                   color: AppColors.primary,
                   fontSize: 12,
@@ -1002,12 +1018,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: (driverStatus.dailyTrips / _kDailyTripGoal)
+              value: (hoy.trips / _kDailyTripGoal)
                   .clamp(0.0, 1.0),
               minHeight: 6,
               backgroundColor: _panelHandle,
               valueColor: AlwaysStoppedAnimation<Color>(
-                driverStatus.dailyTrips >= _kDailyTripGoal
+                hoy.trips >= _kDailyTripGoal
                     ? AppColors.success
                     : AppColors.primary,
               ),
@@ -1061,14 +1077,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(width: AppConstants.spacingM),
               _StatCard(
                 label: 'Ganancias',
-                value: CurrencyFormatter.format(driverStatus.dailyEarnings),
+                value: CurrencyFormatter.format(hoy.netEarnings),
                 icon: Icons.payments_outlined,
                 highlight: true,
               ),
               const SizedBox(width: AppConstants.spacingM),
               _StatCard(
                 label: 'Viajes',
-                value: driverStatus.dailyTrips.toString(),
+                value: hoy.trips.toString(),
                 icon: Icons.route_rounded,
               ),
             ],

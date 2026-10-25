@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'package:nexum_driver/core/utils/rumbo_vehiculo.dart';
 import 'package:nexum_driver/shared/widgets/vehicle_top_down.dart';
 
 /// Tipo de vehículo para el marcador del mapa.
@@ -168,8 +169,9 @@ class VehicleGlyph extends StatelessWidget {
             errorBuilder: (_, __, ___) => _dibujado,
           );
 
-    return Transform.rotate(
-      angle: radianesDeRumbo(headingDegrees),
+    return _GiroSuave(
+      grados: headingDegrees,
+      animar: animate,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -186,6 +188,50 @@ class VehicleGlyph extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Gira al rumbo por el lado CORTO y con una transición breve.
+///
+/// Antes era un `Transform.rotate` directo: cada lectura del GPS cambiaba el
+/// ángulo de golpe, y el vehículo se veía rígido, saltando de una orientación a
+/// otra. Animar a secas tampoco basta: de 350° a 10° una animación lineal da
+/// la vuelta entera por el otro lado. Por eso se guarda el ángulo «continuo»
+/// (sin acotar a 0–360) y se lleva al equivalente más cercano.
+class _GiroSuave extends StatefulWidget {
+  const _GiroSuave({
+    required this.grados,
+    required this.animar,
+    required this.child,
+  });
+
+  final double grados;
+  final bool animar;
+  final Widget child;
+
+  @override
+  State<_GiroSuave> createState() => _GiroSuaveState();
+}
+
+class _GiroSuaveState extends State<_GiroSuave> {
+  late double _continuo = widget.grados;
+
+  @override
+  void didUpdateWidget(covariant _GiroSuave oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.grados != widget.grados) {
+      _continuo = rumboContinuo(_continuo, widget.grados);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedRotation(
+        turns: _continuo / 360,
+        duration: widget.animar
+            ? const Duration(milliseconds: 400)
+            : Duration.zero,
+        curve: Curves.easeOut,
+        child: widget.child,
+      );
 }
 
 /// Silueta blanca difuminada detrás del vehículo, para separarlo del mapa.
