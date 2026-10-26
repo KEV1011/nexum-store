@@ -12,6 +12,7 @@
  *   DATABASE_URL=postgresql://... npx tsx e2e/metricas-negocio.ts
  */
 import { prisma } from '../src/lib/prisma';
+import { exigirBaseLocal, limpiarParaCifrasGlobales } from './_base-de-pruebas';
 
 let fallos = 0;
 function comprobar(nombre: string, ok: boolean, detalle = ''): void {
@@ -45,8 +46,12 @@ async function main(): Promise<void> {
 
   // Se parte de una base limpia: estas cifras son globales, así que cualquier
   // viaje previo las contaminaría y la prueba diría cosas que no son.
-  await prisma.trip.deleteMany({});
-  await prisma.user.deleteMany({});
+  //
+  // O sea que esto BORRA SIN FILTRO. Contra la base equivocada se lleva por
+  // delante todos los viajes y todos los usuarios, así que primero se
+  // comprueba contra cuál se está corriendo.
+  exigirBaseLocal('TODOS los viajes, usuarios y conductores');
+  await limpiarParaCifrasGlobales(prisma as never);
 
   const conductor = await prisma.driver.create({
     data: { phone: tel('39'), name: `${marca}-con`, isVerified: true },

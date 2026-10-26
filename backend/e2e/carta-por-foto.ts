@@ -314,6 +314,43 @@ async function main() {
       check(directo.lineas.length === 2, 'dos platos', directo.lineas.length);
       check(directo.lineas.every((l) => l.precio! > 0), 'los dos con precio');
     }
+
+    console.log('\n[8] Leer cartas en bucle se corta, y solo para ese negocio');
+    {
+      // Google Vision se factura POR IMAGEN y la única credencial de esta ruta
+      // es el enlace del negocio, que se pega en WhatsApp. Sin tope, un token
+      // filtrado bastaba para leer cartas hasta vaciar la cuenta.
+      let corto = 0;
+      let mensaje = '';
+      for (let i = 0; i < 45 && corto === 0; i++) {
+        const r = await subirCarta(negocio.token);
+        if (r.status === 429) { corto = i; mensaje = r.json.error ?? ''; }
+      }
+      check(corto > 0, 'el bucle acaba cortado con 429', corto);
+      check(
+        /excel|archivo/i.test(mensaje),
+        'y le dice al dueño por dónde seguir sin esperar',
+        mensaje,
+      );
+
+      // LA CONTRAPRUEBA, que es la que de verdad vale: con un contador global
+      // esto también cortaría, y un negocio dejaría sin leer su carta a todos
+      // los demás.
+      const vecino = await prisma.business.create({
+        data: {
+          name: `${marca} Vecino`,
+          ownerName: 'Dueño vecino',
+          phone: `+5730082${sufijo()}`,
+          address: 'Calle 6 # 4-20',
+          category: 'RESTAURANT',
+          token: `tok-${marca}-vecino`,
+        },
+      });
+      const r = await subirCarta(vecino.token);
+      check(r.status === 200, 'el negocio de al lado sigue pudiendo leer la suya', r.status);
+      await prisma.product.deleteMany({ where: { businessId: vecino.id } });
+      await prisma.business.delete({ where: { id: vecino.id } });
+    }
   } finally {
     matar(servidor);
   }

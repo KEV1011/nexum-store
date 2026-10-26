@@ -89,14 +89,29 @@ export function revisorDisponible(): boolean {
 //
 // Cada revisión es una llamada facturada con una imagen dentro. Un dueño que
 // corrige su carta hace unas cuantas; un bucle de un navegador roto haría
-// cientos. En memoria a propósito, como los demás límites del backend: un
-// redeploy lo reinicia, y eso está bien para un tope de cordura.
+// cientos. Lo usan los DOS proveedores que se facturan desde la pantalla de la
+// carta —Vision al leer la foto, Anthropic al revisarla—, cada uno con su
+// clave: con un solo bote, el dueño que sube diez cartas y las corrige se
+// quedaría sin poder hacer ninguna de las dos cosas.
+//
+// EN MEMORIA A PROPÓSITO, y lo que eso implica, escrito para que nadie tenga
+// que deducirlo: es un tope de CORDURA contra un bucle, no un control de
+// gasto. Un redeploy lo reinicia (quien estuviera en bucle gana otros 30) y
+// cada instancia cuenta la suya, así que el tope real es 30 × instancias.
+// Hoy `render.yaml` declara un único servicio `starter` sin réplicas, así que
+// son 30; el día que se escale, esto deja de ser un tope sin que nadie se
+// entere, porque no falla: solo deja pasar más.
+//
+// Qué lo haría insuficiente, en orden: escalar a más de una instancia, o que
+// el gasto del proveedor empiece a doler de verdad. Entonces esto se persiste
+// (una fila por negocio y ventana, no un servicio nuevo) — antes no vale la
+// pena pagar una escritura en cada lectura de carta.
 
 const VENTANA_MS = 60 * 60 * 1000;
 const TOPE_POR_VENTANA = 30;
 const _usos = new Map<string, number[]>();
 
-/** Devuelve false si el negocio ya gastó su cupo de la última hora. */
+/** Devuelve false si la clave ya gastó su cupo de la última hora. */
 export function reservarUsoIA(clave: string, ahora = Date.now()): boolean {
   const vivos = (_usos.get(clave) ?? []).filter((t) => ahora - t < VENTANA_MS);
   if (vivos.length >= TOPE_POR_VENTANA) {

@@ -38,7 +38,15 @@ export type SafetyAlertKind =
   | 'stall'
   | 'deviation'
   /** Conductor sin señal mientras lleva un servicio en curso (posible robo). */
-  | 'offline';
+  | 'offline'
+  /**
+   * Alguien apretó el botón de pánico. La levanta `recordEmergencyEvent`, no
+   * el heartbeat: hasta ahora el SOS escribía su fila en `emergency_events` —
+   * que solo mira el admin, y a mano— y la Torre de Control no se enteraba,
+   * así que la flota veía detenciones y desvíos de su conductor pero NO la
+   * emergencia de verdad.
+   */
+  | 'sos';
 
 export interface SafetyAlert {
   /** cuid de la fila persistida; `mem-N` mientras solo vive en el anillo. */

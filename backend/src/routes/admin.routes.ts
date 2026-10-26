@@ -2235,7 +2235,7 @@ function setOperator(id, action, habilitacionOk) {
     .catch((e) => showMsg(e.message, true));
 }
 
-var ALERT_LABEL = { geofence: '📍 Llegando', stall: '⏸ Detención', deviation: '↪ Desvío', offline: '🚨 SIN SEÑAL' };
+var ALERT_LABEL = { geofence: '📍 Llegando', stall: '⏸ Detención', deviation: '↪ Desvío', offline: '🚨 SIN SEÑAL', sos: '🆘 BOTÓN DE PÁNICO' };
 // Lo que contestó el pasajero al «¿Todo bien?». Solo se le pregunta en
 // detenciones y desvíos de viajes urbanos; en lo demás no aplica.
 function respuestaPasajero(a) {
@@ -2248,7 +2248,7 @@ function loadAlerts() {
   api('/admin/alerts').then((rows) => {
     const tb = document.getElementById('alerts-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin alertas de ruta. 🎉</td></tr>'; return; }
-    tb.innerHTML = rows.map((a) => '<tr' + (a.passengerResponse === 'ayuda' ? ' style="background:#fef2f2"' : '') + '><td>' + when(a.at) + '</td><td>' + (ALERT_LABEL[a.kind] || a.kind) +
+    tb.innerHTML = rows.map((a) => '<tr' + (a.passengerResponse === 'ayuda' || a.kind === 'sos' ? ' style="background:#fef2f2"' : '') + '><td>' + when(a.at) + '</td><td>' + (ALERT_LABEL[a.kind] || a.kind) +
       '</td><td>' + esc(a.driverName) + '</td><td>' + esc(a.serviceKind) + ' · ' + esc(a.serviceId.slice(0, 8)) +
       '</td><td>' + esc(a.detail) + '</td><td>' + respuestaPasajero(a) + '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));

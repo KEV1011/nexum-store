@@ -13,7 +13,7 @@ import { momento } from './fechas'
 interface SafetyAlert {
   id: string
   at: string
-  kind: 'geofence' | 'stall' | 'deviation' | 'offline'
+  kind: 'geofence' | 'stall' | 'deviation' | 'offline' | 'sos'
   driverName: string
   serviceKind: string
   serviceId: string
@@ -36,6 +36,9 @@ const KIND_META: Record<SafetyAlert['kind'], { label: string; cls: string }> = {
   deviation: { label: '↪ Desvío de ruta', cls: 'bg-red-50 text-red-700 border-red-200' },
   // La más grave: el conductor lleva mercancía y dejó de dar señal.
   offline: { label: '🚨 Sin señal con carga', cls: 'bg-red-100 text-red-800 border-red-300 font-bold' },
+  // Alguien apretó el botón de pánico durante un viaje de esta flota. Antes
+  // esto solo quedaba en `emergency_events`, que no mira nadie en vivo.
+  sos: { label: '🆘 Botón de pánico', cls: 'bg-red-100 text-red-800 border-red-300 font-bold' },
 }
 
 const SERVICE_LABEL: Record<string, string> = {
@@ -110,7 +113,7 @@ export default function AlertsPanel({ api }: { api: OperatorApi }) {
             return (
               <div
                 key={a.id}
-                className={`border rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 ${a.passengerResponse === 'ayuda' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}
+                className={`border rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 ${a.passengerResponse === 'ayuda' || a.kind === 'sos' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}
               >
                 <span className={`text-[11px] font-bold border px-2 py-0.5 rounded-full ${meta.cls}`}>{meta.label}</span>
                 <span className="text-sm font-semibold text-slate-800">{a.driverName}</span>

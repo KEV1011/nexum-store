@@ -288,6 +288,14 @@ async function main(): Promise<void> {
   const servidor = await arrancarServidor();
   const registros = (servidor as ChildProcess & { registros: string[] }).registros;
 
+  // El conductor que siembra esta prueba se queda ONLINE con GPS fresco, y el
+  // despacho ofrece de a uno: la corrida SIGUIENTE —`tarifa-taxi`, sin ir más
+  // lejos— le manda sus viajes a este fantasma y falla por algo que no tiene
+  // roto. Se apaga en el `finally`, pase lo que pase, para no dejarle el
+  // problema al de atrás (que es justo por lo que esta prueba tiene que
+  // apagar conductores ajenos al empezar).
+  let conductorSembrado: string | null = null;
+
   try {
     // ── 0. Diagnóstico ────────────────────────────────────────────────────
     console.log('0. /health lo declara');
@@ -511,6 +519,7 @@ async function main(): Promise<void> {
     const conductor = await prisma.driver.create({
       data: { phone: telColombiano(), name: 'Taxista E2E', status: 'ONLINE', isVerified: true, acceptsTrips: true },
     });
+    conductorSembrado = conductor.id;
     await prisma.vehicle.create({
       data: {
         driverId: conductor.id, type: 'TAXI', isActive: true, brand: 'Prueba', model: 'X',
@@ -783,6 +792,12 @@ async function main(): Promise<void> {
     if (fallos > 0) {
       console.log('\n─── registros del servidor (cola) ───');
       console.log(registros.join('').split('\n').slice(-40).join('\n'));
+    }
+    if (conductorSembrado) {
+      await prisma.driver.updateMany({
+        where: { id: conductorSembrado },
+        data: { status: 'OFFLINE' },
+      }).catch(() => { /* la limpieza no puede tumbar el informe */ });
     }
     try {
       if (servidor.pid) process.kill(-servidor.pid, 'SIGKILL');

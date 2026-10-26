@@ -211,6 +211,46 @@ async function main(): Promise<void> {
     const fila = await prisma.safetyAlertLog.findUnique({ where: { id: alerta.id } });
     check(fila?.passengerResponse === 'ayuda' && fila.respondedAt != null, 'la alerta dice «pidió ayuda»', fila?.passengerResponse);
 
+    // ── 5b. El botón de pánico llega a la Torre de Control ───────────────────
+    //
+    // Antes el SOS solo escribía en `emergency_events`, que se mira a mano:
+    // la tabla que la flota refresca cada 15 s no lo veía NUNCA.
+    console.log('\n[5b] El botón de pánico llega a la Torre de Control');
+    const alertasSos = () => prisma.safetyAlertLog.findMany({
+      where: { kind: 'sos', serviceId: viaje.id },
+    });
+    const esperarSos = async (): Promise<number> => {
+      // `_pushAlert` persiste sin `await` para no frenar el SOS.
+      for (let i = 0; i < 20; i++) {
+        const n = (await alertasSos()).length;
+        if (n > 0) return n;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return 0;
+    };
+
+    // LA CONTRAPRUEBA PRIMERO: compartir el viaje con un familiar pasa por la
+    // misma ruta. Si eso levantara una alerta, el panel se llenaría de falsas
+    // emergencias hasta que nadie lo mire.
+    const compartir = await pedir('POST', '/safety/sos', {
+      token: tokCliente,
+      body: { tripId: viaje.id, lat: 7.3754, lng: -72.6486, type: 'SHARE' },
+    });
+    check(compartir.status === 201, 'compartir el viaje se registra', compartir.status);
+    await new Promise((r) => setTimeout(r, 400));
+    check((await alertasSos()).length === 0, 'y NO levanta una emergencia');
+
+    const panico = await pedir('POST', '/safety/sos', {
+      token: tokCliente,
+      body: { tripId: viaje.id, lat: 7.3754, lng: -72.6486, type: 'PANIC' },
+    });
+    check(panico.status === 201, 'el botón de pánico responde', panico.status);
+    check((await esperarSos()) === 1, 'y levanta UNA alerta en la Torre de Control');
+    const sos = (await alertasSos())[0];
+    check(sos?.driverId === conductor.id, 'colgada del conductor del viaje', sos?.driverId);
+    check(/PASAJERO/.test(sos?.detail ?? ''), 'dice quién la apretó', sos?.detail);
+    limpiar.push(() => prisma.safetyAlertLog.deleteMany({ where: { kind: 'sos', serviceId: viaje.id } }));
+
     // Termina: la vista pública deja de dar posición aunque sea fresca.
     await prisma.driver.update({ where: { id: conductor.id }, data: { lastSeenAt: new Date() } });
     await pedir('POST', `/driver/trips/${viaje.id}/status`, { token: tokConductor, body: { status: 'completed' } });

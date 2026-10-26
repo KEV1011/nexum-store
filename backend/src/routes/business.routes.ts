@@ -849,7 +849,25 @@ router.post(
     try {
       // Se resuelve el negocio ANTES de gastar una llamada al proveedor: un
       // token inválido no debe costar una lectura facturada.
-      await getBusinessService().getBusinessByToken(token);
+      const negocio = await getBusinessService().getBusinessByToken(token);
+
+      // Google Vision se factura POR IMAGEN y la única credencial de esta ruta
+      // es el enlace del negocio, que se pega en WhatsApp: un token filtrado
+      // bastaba para leer cartas en bucle a nuestra cuenta. La revisión con IA
+      // —la otra llamada facturada de esta pantalla— ya tenía este tope y a
+      // esta se le olvidó.
+      //
+      // Cupo APARTE del de la IA (misma función, otra clave): leer la carta y
+      // revisarla son dos proveedores distintos, y con un solo bote un dueño
+      // que sube diez cartas y las corrige se quedaría sin poder hacer ninguna
+      // de las dos cosas.
+      if (!reservarUsoIA(`carta-foto:${negocio.id}`)) {
+        res.status(429).json({
+          success: false,
+          error: 'Ya leíste muchas cartas en la última hora. Vuelve en un rato, o carga los productos con el archivo de Excel.',
+        });
+        return;
+      }
 
       const lectura = await leerTextoDeCarta({
         bytes: req.file.buffer,

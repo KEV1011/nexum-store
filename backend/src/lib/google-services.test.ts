@@ -300,4 +300,57 @@ describe('preparar-google-services.sh', () => {
       });
     }
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Lo que se GUARDA de cada build.
+  //
+  // El 25/10/2026 la cuota de artefactos se agotó y los dos APK dejaron de
+  // subirse: compilaban y se firmaban bien, y el único error era
+  // «Artifact storage quota has been hit». Durante ese rato no hubo NINGUNA
+  // forma de hacerle llegar una versión a un probador.
+  //
+  // Lo que lo causó es aritmética, no un fallo: cuatro archivos pesados por
+  // commit (APK + AAB × 2 apps) guardados treinta días. Esta comprobación no
+  // vigila el número exacto —eso es una decisión que puede cambiar— sino las
+  // dos reglas que lo volverían a llenar: una retención larga del APK, y un
+  // AAB que se sube siempre en vez de solo al publicar.
+  describe('lo que se guarda no vuelve a llenar la cuota', () => {
+    const RETENCION_MAX_APK = 14;
+    const ficheros = ['build-apk.yml', 'build-apk-cliente.yml'] as const;
+
+    /** El bloque de un paso del workflow, de su `- name:` al siguiente. */
+    function paso(yml: string, nombre: string): string {
+      const pasos = yml.split(/^ {6}- name: /m).slice(1);
+      const encontrado = pasos.find((p) => p.startsWith(nombre));
+      if (!encontrado) throw new Error(`No existe el paso «${nombre}»`);
+      return encontrado;
+    }
+
+    const retencion = (bloque: string): number => {
+      const m = /^\s*retention-days:\s*(\d+)/m.exec(bloque);
+      if (!m) throw new Error('El paso no declara retention-days');
+      return Number(m[1]);
+    };
+
+    for (const fichero of ficheros) {
+      it(`${fichero}: el APK se guarda poco tiempo`, () => {
+        const yml = readFileSync(join(RAIZ, '.github', 'workflows', fichero), 'utf8');
+        expect(retencion(paso(yml, 'Upload APK'))).toBeLessThanOrEqual(RETENCION_MAX_APK);
+      });
+
+      it(`${fichero}: el AAB solo se sube al publicar`, () => {
+        const yml = readFileSync(join(RAIZ, '.github', 'workflows', fichero), 'utf8');
+        // Sin la condición volvería a subirse en cada commit, que es la mitad
+        // de lo que llenó la cuota — y un AAB pesa más que su APK.
+        expect(paso(yml, 'Upload AAB')).toMatch(/^\s*if:\s*\$\{\{\s*inputs\.publicar\s*\}\}/m);
+      });
+
+      it(`${fichero}: existe la casilla que lo pide`, () => {
+        const yml = readFileSync(join(RAIZ, '.github', 'workflows', fichero), 'utf8');
+        // Si la condición se queda sin su entrada, el AAB no se puede subir
+        // NUNCA y la publicación en Play se bloquea sin que nadie sepa por qué.
+        expect(yml).toMatch(/workflow_dispatch:[\s\S]*?inputs:[\s\S]*?publicar:/);
+      });
+    }
+  });
 });
