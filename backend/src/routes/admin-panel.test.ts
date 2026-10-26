@@ -909,3 +909,71 @@ describe('el panel por plaza', () => {
   });
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// La tabla de alertas de ruta, con el botón de pánico dentro.
+//
+// El SOS escribía solo en `emergency_events` —que se mira a mano— y la tabla
+// que la flota y el admin sí refrescan no lo veía nunca. Ahora entra como una
+// alerta más, y eso significa que el panel tiene que saber pintarla: un `kind`
+// sin etiqueta sale como su slug crudo, y una emergencia pintada igual que un
+// «llegando a destino» se pierde entre las demás.
+describe('el panel pintando el botón de pánico', () => {
+  interface ElementoFalso { style: { display: string }; innerHTML: string; value: string }
+  const almacen = () => ({ getItem: () => null, setItem: () => {}, removeItem: () => {} });
+
+  function montar(alertas: unknown[]) {
+    const el: Record<string, ElementoFalso> = {
+      'alerts-body': { style: { display: '' }, innerHTML: '', value: '' },
+    };
+    const documentoFalso = {
+      getElementById: (id: string) => el[id] ?? null,
+      querySelectorAll: () => [] as unknown[],
+    };
+    const fetchFalso = () => Promise.resolve({
+      ok: true, status: 200,
+      json: () => Promise.resolve({ success: true, data: alertas }),
+    });
+    const crear = new Function(
+      'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
+      `${PANEL_JS}\n; return { loadAlerts };`,
+    ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
+    const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
+    return { fn, el };
+  }
+
+  const esperar = () => new Promise((r) => setImmediate(r));
+
+  const sos = {
+    id: 'al1', at: '2026-10-26T01:00:00.000Z', kind: 'sos',
+    driverId: 'd1', driverName: 'Nelson Prada', operatorId: null,
+    serviceKind: 'trip', serviceId: 'trip-abcdef12',
+    detail: 'El PASAJERO apretó el botón de pánico · https://maps.google.com/?q=7.37,-72.64',
+    passengerResponse: null,
+  };
+
+  it('la nombra en palabras, no con el slug', async () => {
+    const { fn, el } = montar([sos]);
+    fn['loadAlerts']!();
+    await esperar();
+    expect(el['alerts-body']!.innerHTML).toContain('BOTÓN DE PÁNICO');
+    expect(el['alerts-body']!.innerHTML).not.toContain('>sos<');
+  });
+
+  it('la pinta en rojo aunque nadie haya contestado el «¿Todo bien?»', async () => {
+    // El resaltado colgaba solo de `passengerResponse === 'ayuda'`, y un SOS no
+    // tiene respuesta: la fila más grave de la tabla salía en blanco.
+    const { fn, el } = montar([sos]);
+    fn['loadAlerts']!();
+    await esperar();
+    expect(el['alerts-body']!.innerHTML).toContain('#fef2f2');
+  });
+
+  it('una detención normal sigue sin resaltarse', async () => {
+    const { fn, el } = montar([{ ...sos, kind: 'stall', detail: 'Quieto 12 min' }]);
+    fn['loadAlerts']!();
+    await esperar();
+    expect(el['alerts-body']!.innerHTML).toContain('Detención');
+    expect(el['alerts-body']!.innerHTML).not.toContain('#fef2f2');
+  });
+});

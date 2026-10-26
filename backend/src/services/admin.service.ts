@@ -293,13 +293,24 @@ export async function getMetricasNegocio(
   const rango = Math.min(Math.max(Math.trunc(dias) || 30, 1), 90);
   const finMs = Date.now();
   const desdeMs = finMs - (rango - 1) * 24 * 60 * 60 * 1000;
-  const desdeCorte = new Date(desdeMs);
-  desdeCorte.setUTCHours(0, 0, 0, 0);
-  // La medianoche local es la medianoche UTC desplazada.
-  const desde = new Date(desdeCorte.getTime() - HORAS_UTC_COLOMBIA * 60 * 60 * 1000);
 
   const diaLocal = (d: Date): string =>
     new Date(d.getTime() + HORAS_UTC_COLOMBIA * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  // El primer día de la ventana, en días de COLOMBIA, que es con lo que se
+  // cierra abajo (`hastaDia`).
+  //
+  // Antes se truncaba el instante a medianoche UTC y luego se corría cinco
+  // horas. Entre las 7 p. m. y la medianoche de aquí, el día UTC ya es el
+  // siguiente y el de Colombia todavía no: el principio de la ventana se iba
+  // un día hacia adelante mientras el final se quedaba, y el gráfico salía
+  // con 29 barras en vez de 30. De día cuadraba, así que no se veía nunca —
+  // y una barra de menos en un extremo no la nota nadie, solo desplaza la
+  // comparación contra el período anterior.
+  const primerDia = diaLocal(new Date(desdeMs));
+  const desde = new Date(
+    Date.parse(`${primerDia}T00:00:00.000Z`) - HORAS_UTC_COLOMBIA * 60 * 60 * 1000,
+  );
 
   const semana = 7 * 24 * 60 * 60 * 1000;
   const iniSemanaActual = new Date(finMs - semana);

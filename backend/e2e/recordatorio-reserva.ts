@@ -58,6 +58,17 @@ const dejarSalirLosPush = (): Promise<void> =>
   new Promise((r) => setTimeout(r, 300));
 
 const sufijo = `${Date.now()}`.slice(-7);
+
+/**
+ * Deshacer lo sembrado. Se guarda aquí, fuera de `main`, porque la limpieza
+ * estaba al FINAL del camino feliz: en cuanto una comprobación reventaba, el
+ * conductor de esta prueba se quedaba ONLINE con GPS fresco y la corrida
+ * siguiente —`tarifa-taxi`, por ejemplo— le ofrecía sus viajes a un fantasma
+ * y fallaba por algo que no tenía roto. Es la trampa que ya está anotada en
+ * el repositorio, y la causa es siempre la misma: limpiar donde el error no
+ * pasa.
+ */
+let deshacer: (() => Promise<void>) | null = null;
 let n = 0;
 const tel = (): string => `+57350${sufijo}${(n++).toString()}`.slice(0, 13);
 
@@ -107,6 +118,18 @@ async function main(): Promise<void> {
       fcmToken: `tk-con-${sufijo}`,
     },
   });
+
+  // Desde aquí hay un conductor ONLINE en la base: se registra cómo quitarlo
+  // ANTES de sembrar nada más. Los viajes se buscan por su `requestRef`, que
+  // lleva el sufijo de esta corrida, así que no hace falta ir anotando ids ni
+  // acordarse de añadir el siguiente.
+  deshacer = async () => {
+    await prisma.trip.deleteMany({ where: { requestRef: { startsWith: `RES-${sufijo}-` } } });
+    await prisma.vehicle.deleteMany({ where: { driverId: conductor.id } });
+    await prisma.driver.deleteMany({ where: { id: conductor.id } });
+    await prisma.user.deleteMany({ where: { id: pasajero.id } });
+  };
+
   await prisma.vehicle.create({
     data: {
       driverId: conductor.id,
@@ -255,22 +278,24 @@ async function main(): Promise<void> {
     avisos.slice(antesPasada),
   );
 
-  // Limpieza: los viajes de esta corrida, para no contaminar las siguientes.
-  await prisma.trip.deleteMany({
-    where: { id: { in: [dentro, simultanea, huerfana, lejana, pasada] } },
-  });
-  await prisma.vehicle.deleteMany({ where: { driverId: conductor.id } });
-  await prisma.driver.delete({ where: { id: conductor.id } });
-  await prisma.user.delete({ where: { id: pasajero.id } });
-
+  await limpiar();
   await prisma.$disconnect();
   logOriginal(`\n${'─'.repeat(60)}`);
   logOriginal(`Comprobaciones: ${ok} en verde, ${fallos} en rojo`);
   if (fallos > 0) process.exit(1);
 }
 
+/** Idempotente y silenciosa: la limpieza no puede tapar el error de verdad. */
+async function limpiar(): Promise<void> {
+  const f = deshacer;
+  deshacer = null;
+  if (!f) return;
+  try { await f(); } catch (e) { logOriginal('(no se pudo limpiar del todo)', e); }
+}
+
 main().catch(async (e) => {
   logOriginal(e);
+  await limpiar();
   await prisma.$disconnect();
   process.exit(1);
 });

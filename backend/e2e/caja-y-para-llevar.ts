@@ -257,10 +257,18 @@ async function main(): Promise<void> {
       await rescatarDespacho();
       await new Promise((r2) => setTimeout(r2, 1500));
 
+      // Se mira SOLO este pedido. El barrido recorre toda la base y rescatar
+      // los pedidos de otras pruebas es su trabajo: exigir cero ofertas en
+      // total hacía que esta comprobación midiera lo limpia que estaba la
+      // base y no lo que dice medir — y fallaba al correr la tanda entera.
+      const suyas = ofertas.filter(
+        (o) => o['type'] === 'order_request'
+          && (o['order'] as { id?: string } | undefined)?.id === enMesa.id,
+      );
       check(
-        !ofertas.some((o) => o['type'] === 'order_request'),
+        suyas.length === 0,
         'el rescate NO ofrece el pedido de mesa a ningún repartidor',
-        ofertas.map((o) => o['type']),
+        suyas.length,
       );
       const tras = await prisma.order.findUnique({
         where: { id: enMesa.id }, select: { driverId: true, status: true },

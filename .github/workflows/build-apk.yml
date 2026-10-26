@@ -14,6 +14,11 @@ on:
       - 'AppTransport/**'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:   # Permite ejecución manual desde GitHub UI
+    inputs:
+      publicar:
+        description: 'Subir también el AAB (solo al publicar en Play)'
+        type: boolean
+        default: false
 
 jobs:
   # ── Puerta ────────────────────────────────────────────────────────────────
@@ -280,14 +285,30 @@ jobs:
           rm -f "$RUNNER_TEMP/fb-sa.json"
 
       # ── 9. Upload artifacts ──────────────────────────────────────────────────
+      #
+      # LA CUOTA DE ARTEFACTOS SE AGOTÓ Y DEJÓ DE HABER APK (25/10/2026). El
+      # build compilaba y firmaba bien; lo que fallaba era esto, con
+      # «Failed to CreateArtifact: Artifact storage quota has been hit» —
+      # 392 artefactos vivos, 19,1 GB. Con APK + AAB por app y 30 días de
+      # retención, cada commit dejaba cuatro archivos pesados un mes entero.
+      #
+      # Siete días: un probador que recibe un build el viernes todavía puede
+      # instalarlo el viernes siguiente, y el que importa es el ÚLTIMO.
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
           name: zipa-conductor-apk-build${{ github.run_number }}
           path: AppTransport/build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 30
+          retention-days: 7
 
+      # El AAB solo sirve para subirlo a Play, y eso pasa cada varias semanas:
+      # guardarlo en cada commit era pagar almacenamiento por un archivo que
+      # nadie bajaba. Se SIGUE CONSTRUYENDO arriba a propósito —así un fallo
+      # propio del empaquetado de Play se ve el mismo día y no el de la
+      # publicación—, pero se sube solo cuando se pide a mano con la casilla
+      # «publicar» del botón «Run workflow».
       - name: Upload AAB (Play Store)
+        if: ${{ inputs.publicar }}
         uses: actions/upload-artifact@v7
         with:
           name: zipa-conductor-aab-build${{ github.run_number }}
@@ -300,6 +321,11 @@ jobs:
           echo "✅ Build complete!"
           ls -lh AppTransport/build/app/outputs/flutter-apk/ 2>/dev/null || true
           ls -lh AppTransport/build/app/outputs/bundle/release/ 2>/dev/null || true
+          # Quien venga a buscar el AAB y no lo encuentre tiene que leer POR QUÉ
+          # y cómo pedirlo, o lo dará por roto.
+          if [ "${{ inputs.publicar }}" != "true" ]; then
+            echo "El AAB se construyó pero NO se subió (ahorra cuota de artefactos). Para bajarlo: Actions → este workflow → Run workflow → marca «publicar»." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # Un APK sin Firebase funciona en todo MENOS en avisos, y no se nota:
       # la app arranca, el conductor entra, trabaja, y simplemente no le suena

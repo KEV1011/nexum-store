@@ -12,6 +12,7 @@
  *   DATABASE_URL=postgresql://... npx tsx e2e/plaza-admin.ts
  */
 import { prisma } from '../src/lib/prisma';
+import { exigirBaseLocal, limpiarParaCifrasGlobales } from './_base-de-pruebas';
 
 let fallos = 0;
 function comprobar(nombre: string, ok: boolean, detalle = ''): void {
@@ -49,8 +50,11 @@ async function main(): Promise<void> {
 
   // Base limpia: estas cifras son globales y cualquier viaje previo las
   // contaminaría, diciendo cosas que no son.
-  await prisma.trip.deleteMany({});
-  await prisma.user.deleteMany({});
+  //
+  // O sea que esto BORRA SIN FILTRO: contra la base equivocada se lleva por
+  // delante todos los viajes y todos los usuarios.
+  exigirBaseLocal('TODOS los viajes, usuarios y conductores');
+  await limpiarParaCifrasGlobales(prisma as never);
 
   console.log('\n═══ El punto decide la plaza, y lejos de todo no decide nada ═══');
   {

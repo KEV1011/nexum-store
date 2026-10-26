@@ -18,6 +18,7 @@
  *   DATABASE_URL=postgresql://... npx tsx e2e/legal-contacto.ts
  */
 import { prisma } from '../src/lib/prisma';
+import { exigirBaseLocal } from './_base-de-pruebas';
 
 let fallos = 0;
 function comprobar(nombre: string, ok: boolean, detalle = ''): void {
@@ -40,6 +41,10 @@ async function main(): Promise<void> {
 
   // Base limpia de documentos: este E2E crea versiones y hay que poder
   // repetirlo. Los consentimientos apuntan a versiones por texto, no por FK.
+  //
+  // Borra TODOS los documentos legales, incluida la política vigente: contra
+  // producción dejaría la plataforma sin términos publicados.
+  exigirBaseLocal('TODOS los documentos legales, incluida la política vigente');
   await prisma.legalDocument.deleteMany({ where: { version: { startsWith: 'e2e-' } } });
   await prisma.legalDocument.updateMany({ data: { active: false } });
   await prisma.legalDocument.deleteMany({});

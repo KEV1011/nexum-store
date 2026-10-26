@@ -45,6 +45,12 @@ async function main(): Promise<void> {
     where: { slug: 'pamplona' }, update: { lat: P.lat, lng: P.lng, isActive: true },
     create: { slug: 'pamplona', name: 'Pamplona', department: 'Norte de Santander', lat: P.lat, lng: P.lng, isActive: true },
   });
+  // Los conductores ONLINE que dejó otra corrida compiten por esta oferta: el
+  // despacho ofrece de a UNO y espera quince segundos, así que la oferta se
+  // iba al fantasma y aquí se contaban cero. Es la trampa ya anotada en el
+  // repositorio, y por eso `whatsapp-enlace` hace exactamente esto mismo.
+  await prisma.driver.updateMany({ where: { status: 'ONLINE' }, data: { status: 'OFFLINE' } });
+
   const m = `e2elisto-${Date.now()}`;
   const negocio = await prisma.business.create({
     data: {
@@ -62,6 +68,29 @@ async function main(): Promise<void> {
       isVerified: true, status: 'ONLINE', acceptsOrders: true,
     },
   });
+  // Y no se le deja el mismo problema al siguiente: este script no limpiaba
+  // NADA y salía por `process.exit`, así que su repartidor se quedaba ONLINE
+  // para siempre en cuanto una comprobación fallaba.
+  //
+  // De la hoja a la raíz: las líneas y la bitácora del pedido, y lo que el
+  // cierre del pedido le dejó colgando al repartidor (su liquidación). Un
+  // borrado en el orden equivocado aborta en la PRIMERA tabla y no llega
+  // nunca al conductor, que es justo lo que hay que quitar de en medio.
+  deshacer = async () => {
+    const pedidos = await prisma.order.findMany({
+      where: { businessId: negocio.id }, select: { id: true },
+    });
+    const ids = pedidos.map((o) => o.id);
+    await prisma.orderLine.deleteMany({ where: { orderId: { in: ids } } });
+    await prisma.orderEvent.deleteMany({ where: { orderId: { in: ids } } });
+    await prisma.order.deleteMany({ where: { businessId: negocio.id } });
+    await prisma.product.deleteMany({ where: { businessId: negocio.id } });
+    await prisma.business.deleteMany({ where: { id: negocio.id } });
+    await prisma.driverEarning.deleteMany({ where: { driverId: repartidor.id } });
+    await prisma.driver.deleteMany({ where: { id: repartidor.id } });
+    await prisma.user.deleteMany({ where: { id: cliente.id } });
+  };
+
   const latir = () => matching.updateDriverGeo(repartidor.id, P.lat + 0.003, P.lng + 0.003);
   await latir();
 
@@ -139,8 +168,24 @@ async function main(): Promise<void> {
     && Math.abs((d5?.lat ?? 0) - P.lat) < 1e-6);
 
   matching.cancelSearchRetry(`order:${p3}`);
+  await limpiar();
   console.log(fallos === 0 ? '\nTODO EN VERDE' : `\n${fallos} FALLO(S)`);
   process.exit(fallos === 0 ? 0 : 1);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+/** Lo sembrado, deshecho. Se registra en cuanto existe, no al final. */
+let deshacer: (() => Promise<void>) | null = null;
+
+/** Idempotente y silenciosa: la limpieza no puede tapar el error de verdad. */
+async function limpiar(): Promise<void> {
+  const f = deshacer;
+  deshacer = null;
+  if (!f) return;
+  try { await f(); } catch (e) { console.error('(no se pudo limpiar del todo)', e); }
+}
+
+main().catch(async (e) => {
+  console.error(e);
+  await limpiar();
+  process.exit(1);
+});

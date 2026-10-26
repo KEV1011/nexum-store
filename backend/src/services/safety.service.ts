@@ -4,6 +4,7 @@ import { JWT_SECRET, PORTAL_BASE_URL } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import { maskPhone } from './safe-contact.service';
 import { sendSms, isSmsSenderConfigured } from './sms.service';
+import { _pushAlert } from './safety-alerts.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Safety service — SOS panic events, trusted contacts, and trip sharing.
@@ -135,6 +136,8 @@ export async function recordEmergencyEvent(params: {
     console.error(`[SOS] evento ${event.id}: el contacto NO fue avisado (${estado})`);
   }
 
+  await _avisarALaTorre({ role, tripId, lat, lng, type });
+
   return {
     eventId: event.id,
     createdAt: event.createdAt.toISOString(),
@@ -142,6 +145,56 @@ export async function recordEmergencyEvent(params: {
     trustedContactStatus: estado,
     emergencyNumber: '123',
   };
+}
+
+/**
+ * Levanta el SOS en la Torre de Control, que es la pantalla que la flota mira
+ * y refresca sola cada 15 s.
+ *
+ * POR QUÉ HACÍA FALTA. El botón de pánico escribía su fila en
+ * `emergency_events`, que solo ve el admin y solo si entra a mirar. La tabla
+ * de alertas —la que el portal `/empresa` sondea y pinta en rojo— se alimenta
+ * de `safety_alerts`, y ahí no entraba nada: la flota veía que su conductor se
+ * había detenido o desviado, pero no veía la emergencia.
+ *
+ * TRES COSAS QUE NO HACE, cada una a propósito:
+ *  - Solo PANIC. Compartir el viaje con un familiar pasa por aquí con
+ *    `type: 'SHARE'`, y pintarlo como emergencia llenaría el panel de falsas
+ *    alarmas hasta que nadie lo mire.
+ *  - Solo con viaje. Sin `tripId` no hay conductor ni flota a quién avisar, y
+ *    ese caso ya lo cubre la pestaña SOS del panel admin.
+ *  - No avisa al CONDUCTOR. Si el pasajero aprieta el botón, el conductor es
+ *    justo la persona a la que no se le avisa.
+ *
+ * Nunca lanza: un SOS no se puede caer porque falle una consulta de adorno.
+ */
+async function _avisarALaTorre(p: {
+  role: SafetyRole;
+  tripId?: string;
+  lat: number;
+  lng: number;
+  type: EmergencyType;
+}): Promise<void> {
+  if (p.type !== 'PANIC' || !p.tripId) return;
+  try {
+    const trip = await prisma.trip.findUnique({
+      where: { id: p.tripId },
+      select: { driverId: true, operatorId: true, driver: { select: { name: true } } },
+    });
+    if (!trip?.driverId) return;
+    const quien = p.role === 'client' ? 'El PASAJERO' : 'El CONDUCTOR';
+    _pushAlert({
+      kind: 'sos',
+      driverId: trip.driverId,
+      driverName: trip.driver?.name ?? 'Conductor',
+      operatorId: trip.operatorId,
+      serviceKind: 'trip',
+      serviceId: p.tripId,
+      detail: `${quien} apretó el botón de pánico · https://maps.google.com/?q=${p.lat},${p.lng}`,
+    });
+  } catch (e) {
+    console.error('[SOS] no se pudo levantar la alerta en la Torre de Control:', e);
+  }
 }
 
 /**
