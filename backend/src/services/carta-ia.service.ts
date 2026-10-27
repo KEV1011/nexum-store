@@ -112,9 +112,9 @@ const TOPE_POR_VENTANA = 30;
 const _usos = new Map<string, number[]>();
 
 /** Devuelve false si la clave ya gastó su cupo de la última hora. */
-export function reservarUsoIA(clave: string, ahora = Date.now()): boolean {
+export function reservarUsoIA(clave: string, ahora = Date.now(), tope = TOPE_POR_VENTANA): boolean {
   const vivos = (_usos.get(clave) ?? []).filter((t) => ahora - t < VENTANA_MS);
-  if (vivos.length >= TOPE_POR_VENTANA) {
+  if (vivos.length >= tope) {
     _usos.set(clave, vivos);
     return false;
   }
@@ -195,6 +195,14 @@ const CUERPO_AGENTE = `QUÉ ES CADA COSA EN UNA CARTA DE AQUÍ
 - cantidades y medidas: «x6», «x 12», «(3)», «600 ml», «500 g», «1.5 L» dicen cuántas trae o cuánto mide; no son el precio ni se borran del nombre.
 - ingrediente o plato: en «Empanada de pollo», «Arroz con pollo» o «Ajiaco con pollo» el pollo es un ingrediente y el plato es la empanada, el arroz o el ajiaco. En «Pollo asado», «1/2 pollo broaster» o «Alitas BBQ» el plato ES el pollo. Usa esto para decidir la sección y para separar ingredientes, nunca para cambiar el nombre.
 
+FORMAS DE CARTA QUE CONFUNDEN AL LECTOR (ejemplos reales)
+- Etiqueta de lado: una palabra escrita en vertical en el borde («SHOTS», «MICHELADAS») es el TÍTULO de la sección que acompaña, no un plato.
+- Precio de toda la sección: una lista de nombres sin precio («Tequila», «Aguardiente», «Ron»…) y al pie «BAJOS $8.000 / ALTOS $10.000» o «Todos a $8.000». Ese renglón no es un plato: es el precio de cada uno de los de su sección (con dos precios, cada uno viene en esos dos tamaños). Usa precio_de_seccion sobre esa fila.
+- Nombre y precio en el mismo renglón, con el precio alineado a la derecha, y los ingredientes debajo en letra pequeña, a veces separados con rayas y partidos en dos renglones («Mango biche - sal - limón - zumo» / «de naranja - tajín - chamoy»). Todo eso es la descripción de ESE plato.
+- Una nota al cliente entre paréntesis («(No olvides sumar esta michelada a tu soda o cerveza preferida)») no es un plato ni sus ingredientes.
+- Dos platos pegados en una fila porque iban en el mismo renglón de la carta («Gaseosa 3.500 Jugo 5.000» leído como una fila «Gaseosa Jugo» sin precio): usa partir_fila.
+- El mismo plato escrito en varias filas, una por tamaño («Picada pequeña 39.000», «Picada grande 80.000»), o una fila con varios precios bajo un encabezado de tamaños: usa agrupar_tamanos.
+
 CÓMO CORREGIR (una acción por corrección, usando el número de "linea" de la fila)
 - rol: la fila es de otro tipo (plato | adicional | guarnicion | acompanamiento).
 - descripcion_de: la fila SIN precio son los ingredientes de otro plato; di cuál en "lineaDestino".
@@ -203,7 +211,10 @@ CÓMO CORREGIR (una acción por corrección, usando el número de "linea" de la 
 - seccion: la fila quedó en la sección equivocada; usa una sección que exista en la carta.
 - es_titulo: la fila sin precio es en realidad un título de sección.
 - quitar: la fila sin precio es ruido.
-- nombre: el lector —o quien escribió la carta— cambió letras («Hamburgesa» → «Hamburguesa», «Arepa rellana» → «Arepa rellena»). Solo erratas, nunca un nombre distinto: un nombre de fantasía («La Bestia», «Pechugón») se respeta.
+- nombre: el lector —o quien escribió la carta— cambió letras («Hamburgesa» → «Hamburguesa», «Arepa rellana» → «Arepa rellena»). Solo erratas, nunca un nombre distinto: un nombre de fantasía («La Bestia», «Pechugón») se respeta. Una palabra de verdad no es errata aunque se parezca a otra: «cereza» no es «cerveza», «salteada» no es «malteada».
+- precio_de_seccion: la fila es el precio de toda una sección (ver arriba); en "seccion" la sección a la que se aplica si no es la de la fila. Los precios los toma ZIPA de la carta impresa; no los escribas.
+- agrupar_tamanos: en "lineas" las filas que son el mismo plato (o solo la fila con varios precios), en "tamanos" cómo se llama cada tamaño en el mismo orden (o en el orden de los precios impresos), y en "nombre" el nombre del plato sin el tamaño. Usa solo palabras escritas en la carta.
+- partir_fila: la fila sin precio son varios platos pegados; en "partes" cada plato con su "nombre" y su "precio", tal como están en el MISMO renglón impreso.
 
 REGLAS QUE NO SE ROMPEN
 - No inventes precios: solo números que se vean impresos en la carta.
@@ -239,7 +250,10 @@ const HERRAMIENTA_CARTA = {
             linea: { type: 'integer' },
             accion: {
               type: 'string',
-              enum: ['rol', 'descripcion_de', 'separar_ingredientes', 'precio', 'seccion', 'es_titulo', 'quitar', 'nombre'],
+              enum: [
+                'rol', 'descripcion_de', 'separar_ingredientes', 'precio', 'seccion', 'es_titulo', 'quitar', 'nombre',
+                'precio_de_seccion', 'agrupar_tamanos', 'partir_fila',
+              ],
             },
             rol: { type: 'string', enum: ['plato', 'adicional', 'guarnicion', 'acompanamiento'] },
             lineaDestino: { type: 'integer' },
@@ -247,6 +261,17 @@ const HERRAMIENTA_CARTA = {
             descripcion: { type: 'string' },
             precio: { type: 'integer' },
             seccion: { type: 'string' },
+            lineas: { type: 'array', items: { type: 'number' }, maxItems: 6 },
+            tamanos: { type: 'array', items: { type: 'string' }, maxItems: 6 },
+            partes: {
+              type: 'array',
+              maxItems: 4,
+              items: {
+                type: 'object',
+                properties: { nombre: { type: 'string' }, precio: { type: 'integer' } },
+                required: ['nombre', 'precio'],
+              },
+            },
             confianza: { type: 'string', enum: ['alta', 'media', 'baja'] },
             motivo: { type: 'string' },
           },

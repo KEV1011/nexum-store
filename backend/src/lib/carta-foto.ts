@@ -234,7 +234,7 @@ export function traeTelefono(linea: string): boolean {
  * Borrarlos cambiaba el producto — y nadie lo habría notado hasta que alguien
  * pidiera una empanada.
  */
-function nombreDeLinea(linea: string): string {
+export function nombreDeLinea(linea: string): string {
   let sinPrecio = '';
   let desde = 0;
   for (const n of numerosDeLinea(linea)) {

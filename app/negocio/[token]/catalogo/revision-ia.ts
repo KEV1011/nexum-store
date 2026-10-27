@@ -38,6 +38,19 @@ export interface CambioFila {
 
 export type ConfianzaIA = 'alta' | 'media' | 'baja'
 
+/** Un plato con tamaños que propone la IA (misma forma que `variantes` de la lectura). */
+export interface VarianteIA {
+  nombre: string
+  descripcion?: string
+  seccion: string
+  precioBase: number
+  grupo: string
+  opciones: Array<{ nombre: string; precio: number; precioDelta: number }>
+  lineas: number[]
+  faltanNombres: boolean
+  rol?: 'plato' | 'acompanamiento'
+}
+
 export interface CambioIA {
   id: string
   accion: string
@@ -46,6 +59,8 @@ export interface CambioIA {
   titulo: string
   motivo: string
   filas: CambioFila[]
+  /** Grupos de tamaños que el cambio suma a la vista previa (y quita al deshacer). */
+  variantes?: VarianteIA[]
 }
 
 /** Lo mínimo que este módulo necesita de una fila de la vista previa. */

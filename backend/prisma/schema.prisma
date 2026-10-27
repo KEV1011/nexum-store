@@ -540,9 +540,35 @@ model Business {
   cashSessions   CashSession[]
   payouts        Payout[]
   partnerCredits PartnerCredit[]
+  cartaReportes  CartaReporte[]
 
   @@index([category])
   @@map("businesses")
+}
+
+/// Una carta que el dueño marcó como «se leyó mal».
+///
+/// Guarda lo necesario para reproducir la lectura sin el teléfono del dueño:
+/// la foto, la respuesta del OCR (compactada: palabras con su rectángulo y su
+/// confianza) y lo que salió. El admin la descarga y la vuelve una prueba —así
+/// cada carta rara que aparece en producción deja de romperse para siempre.
+model CartaReporte {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// La foto que subió el dueño. Null si no se pudo guardar.
+  photoUrl   String?
+  /// La respuesta del OCR, compactada. Null si la lectura ya no estaba en memoria.
+  ocrRaw     Json?
+  /// Lo que leyó el lector: filas, secciones y notas.
+  lectura    Json?
+  /// Lo que dice el dueño que salió mal, con sus palabras.
+  comentario String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([businessId])
+  @@map("carta_reportes")
 }
 
 /// Qué vende el comercio.

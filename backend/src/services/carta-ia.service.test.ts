@@ -10,6 +10,7 @@ import {
   type EntradaRevisor,
 } from './carta-ia.service';
 import type { Traer } from './carta-ocr.service';
+import { ACCIONES_IA } from '../lib/carta-ia';
 
 const ENTRADA: EntradaRevisor = {
   imagen: { bytes: Buffer.from('foto'), mimetype: 'image/jpeg' },
@@ -114,7 +115,11 @@ describe('la pregunta al modelo', () => {
   it('sin contexto, la carta sigue preguntándose como siempre', () => {
     const cuerpo = cuerpoDePeticion(ENTRADA) as { system: string; tools: Array<{ input_schema: { properties: { correcciones: { items: { properties: { accion: { enum: string[] } } } } } } }> };
     expect(cuerpo.system).toMatch(/subió la FOTO/);
-    expect(cuerpo.tools[0]!.input_schema.properties.correcciones.items.properties.accion.enum).toHaveLength(8);
+    // La herramienta ofrece EXACTAMENTE las acciones que las guardas saben
+    // validar: una que el modelo pueda pedir y `carta-ia` no conozca se
+    // perdería en silencio, y una que conozca y no se ofrezca no se usaría.
+    expect([...cuerpo.tools[0]!.input_schema.properties.correcciones.items.properties.accion.enum].sort())
+      .toEqual([...ACCIONES_IA].sort());
   });
 
   it('la instrucción del dueño viaja como lo que es', () => {

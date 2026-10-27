@@ -20,6 +20,7 @@ import {
   type RolCarta,
 } from '../../../roles-carta'
 import { RevisionIA } from './RevisionIA'
+import { ReportarCarta } from './ReportarCarta'
 
 
 interface LineaCarta {
@@ -85,6 +86,8 @@ interface VarEditable extends VarianteEditable {
   /** El dueño quiere agruparlos. Si no, sus filas vuelven a la tabla. */
   aceptada: boolean
   rol: 'plato' | 'acompanamiento'
+  /** El cambio de la IA que lo propuso: deshacerlo lo quita. */
+  origenIA?: string
 }
 
 /**
@@ -142,6 +145,9 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   const [textoCrudo, setTextoCrudo] = useState('')
   const [revisorIA, setRevisorIA] = useState(false)
   const [lectura, setLectura] = useState(0)
+  // El código de esta lectura en el servidor: con él, «Se leyó mal» manda la
+  // respuesta del lector tal cual, para volverla una prueba.
+  const [lecturaId, setLecturaId] = useState<string | null>(null)
 
   async function leerFoto(file: File) {
     setError(null)
@@ -163,6 +169,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           notas?: Array<{ seccion: string; texto: string }>
           ignoradas?: RenglonIgnorado[]
           textoCrudo?: string
+          lecturaId?: string
           revisorIA?: boolean
         }
         error?: string
@@ -179,6 +186,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
         return
       }
       setSecciones(json.data.secciones ?? [])
+      reemplazadas.current = {}
       setVariantes(
         (json.data.variantes ?? []).map((v, i) => ({
           id: i,
@@ -217,6 +225,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
       setIgnoradas(json.data.ignoradas ?? [])
       setArchivo(file)
       setTextoCrudo(json.data.textoCrudo ?? '')
+      setLecturaId(json.data.lecturaId ?? null)
       setRevisorIA(json.data.revisorIA === true)
       setLectura((n) => n + 1)
     } catch {
@@ -283,6 +292,47 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
         : [...actual, seccion]
       return { ...prev, [grupo]: siguiente }
     })
+  }
+
+  // Los grupos que reemplazó un cambio de la IA, para devolverlos al deshacer.
+  // En refs y no solo en estado: la revisión aplica varios cambios seguidos en
+  // el mismo instante, y cada uno tiene que ver lo que dejó el anterior.
+  const reemplazadas = useRef<Record<string, VarEditable[]>>({})
+  const variantesRef = useRef(variantes)
+  variantesRef.current = variantes
+
+  // La IA propone grupos de tamaños (el precio de una sección, el mismo plato
+  // en varias filas). Entran como los de la lectura; uno que ya agrupaba esas
+  // filas se aparta —una fila no puede estar en dos grupos— y vuelve si el
+  // dueño deshace el cambio.
+  function variantesDeIA(id: string, lista: VarianteSugerida[] | null) {
+    const prev = variantesRef.current
+    let siguientes: VarEditable[]
+    if (lista === null) {
+      siguientes = [...prev.filter((v) => v.origenIA !== id), ...(reemplazadas.current[id] ?? [])]
+      delete reemplazadas.current[id]
+    } else {
+      const lineas = new Set(lista.flatMap((v) => v.lineas))
+      const apartadas = prev.filter((v) => v.lineas.some((l) => lineas.has(l)))
+      reemplazadas.current[id] = apartadas
+      let siguiente = prev.reduce((m, v) => Math.max(m, v.id), -1) + 1
+      const nuevas: VarEditable[] = lista.map((v) => ({
+        id: siguiente++,
+        nombre: v.nombre,
+        descripcion: v.descripcion ?? '',
+        seccion: v.seccion,
+        grupo: v.grupo,
+        opciones: v.opciones.map((o) => ({ nombre: o.nombre, precio: String(o.precio) })),
+        lineas: v.lineas,
+        faltanNombres: v.faltanNombres,
+        aceptada: !v.faltanNombres,
+        rol: v.rol ?? 'plato',
+        origenIA: id,
+      }))
+      siguientes = [...prev.filter((v) => !apartadas.includes(v)), ...nuevas]
+    }
+    variantesRef.current = siguientes
+    setVariantes(siguientes)
   }
 
   function editarVariante(id: number, cambio: Partial<VarEditable>) {
@@ -486,6 +536,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
               filas={filas}
               setFilas={(fn) => setFilas((prev) => fn(prev ?? []))}
               excluir={agrupadas}
+              onVariantes={variantesDeIA}
               archivo={archivo}
               secciones={secciones}
               textoCrudo={textoCrudo}
@@ -875,6 +926,8 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
               })}
             </div>
           )}
+
+          <ReportarCarta token={token} archivo={archivo} lecturaId={lecturaId} />
 
           {ignoradas.length > 0 && (
             <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">

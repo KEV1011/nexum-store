@@ -22,6 +22,7 @@
 // servidor, que es donde alguien puede arreglarlo.
 
 import { palabrasDeRespuestaVision, type PalabraOcr } from '../lib/carta-geometria';
+import { compactarRespuestaVision } from '../lib/carta-reporte';
 
 export type ProveedorCarta = 'none' | 'fake' | 'google-vision' | 'azure-read';
 
@@ -40,6 +41,12 @@ export interface TextoDeCarta {
    * pistas del texto, que es como funcionaba antes.
    */
   palabras?: PalabraOcr[];
+  /**
+   * La respuesta del proveedor, compactada (`compactarRespuestaVision`): lo
+   * que hace falta para reproducir la lectura si el dueño dice que salió mal.
+   * Ausente con proveedores que no la tienen.
+   */
+  crudo?: unknown;
 }
 
 /** La foto tal como llegó: el contenido, no una ruta a ninguna parte. */
@@ -279,6 +286,7 @@ export function textoDeRespuestaVision(cuerpo: unknown): TextoDeCarta {
     disponible: true,
     texto: primera.fullTextAnnotation?.text ?? '',
     ...(palabras.length > 0 && { palabras }),
+    crudo: compactarRespuestaVision(cuerpo),
   };
 }
 

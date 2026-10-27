@@ -611,6 +611,37 @@ describe('el panel pintando la comisión', () => {
     expect(html).not.toContain('undefined');
   });
 
+  it('las cartas mal leídas se listan con su foto y su prueba descargable', async () => {
+    const { fn, el } = montar(
+      {
+        '/admin/carta-reportes': [
+          {
+            id: 'cr1', businessId: 'b1', negocio: 'Bar La Esquina', photoUrl: '/uploads/carta.jpg',
+            tieneOcr: true, filas: 12, comentario: 'Los shots salieron sin precio', createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'cr2', businessId: 'b1', negocio: 'Bar La Esquina', photoUrl: null,
+            tieneOcr: false, filas: 0, comentario: null, createdAt: new Date().toISOString(),
+          },
+        ],
+        '/admin/businesses/ubicacion-dudosa': [],
+        '/admin/municipalities': [],
+        '/admin/businesses': [negocio],
+      },
+      ['businesses-body', 'biz-q', 'ubicacion-body', 'carta-reportes-body'],
+    );
+    fn['loadBusinesses']!();
+    await esperar();
+    const html = el['carta-reportes-body']!.innerHTML;
+    expect(html).toContain('Bar La Esquina');
+    expect(html).toContain('Los shots salieron sin precio');
+    expect(html).toContain('href="/uploads/carta.jpg"');
+    expect(html).toContain('sin respuesta del lector');
+    expect(html).toContain('onclick="descargarPruebaCarta(this.dataset.id)"');
+    expect(html).toContain('data-id="cr1"');
+    expect(html).not.toContain('undefined');
+  });
+
   it('los incumplimientos separan «no apareció» de «papeles vencidos»', () => {
     // La columna existe para que un humano decida, no para bloquear: seis por
     // papeles vencidos es un trámite, seis por no aparecer es dejar tirada a
