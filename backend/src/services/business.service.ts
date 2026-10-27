@@ -36,7 +36,6 @@ import { sugerenciaDeCodigo, type SugerenciaDeCodigo } from '../lib/sugerencia-c
 import { reporteDeVentas, ventanaColombiana, type ReporteVentas } from '../lib/reporte-ventas';
 import { promedioReputacion } from '../lib/reputacion';
 import { limpiarTextoDeCarta, nombreDeProducto } from '../lib/texto-carta';
-import { separarDescripcion } from '../lib/nombre-y-descripcion';
 import { esElMismoNegocio } from '../lib/negocio-duplicado';
 import { seDespacha } from '../lib/modo-pedido';
 import {
@@ -1965,73 +1964,4 @@ export async function getSalesReportForBusiness(
     rango.gte,
     rango.lte,
   );
-}
-
-// ── Arreglar los nombres que ya están cargados con los ingredientes dentro ──
-//
-// `separarDescripcion` arregla lo que entra por la foto DE AHORA EN ADELANTE,
-// pero los catálogos que ya se subieron tienen el plato y sus ingredientes en
-// el mismo campo. Un `UPDATE` masivo está descartado: son nombres de platos de
-// un negocio real y la regla, por buena que sea, se puede equivocar en un
-// renglón raro. Así que esto PROPONE y el dueño confirma, igual que la vista
-// previa obligatoria del CSV.
-
-export interface PropuestaNombre {
-  productId: string;
-  antes: string;
-  nombre: string;
-  descripcion: string;
-}
-
-/** Los productos cuyo nombre se puede partir, sin tocar nada. */
-export async function proponerSeparacionDeNombres(
-  businessId: string,
-): Promise<PropuestaNombre[]> {
-  const products = await prisma.product.findMany({
-    where: { businessId },
-    select: { id: true, name: true, description: true },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-  });
-
-  const propuestas: PropuestaNombre[] = [];
-  for (const p of products) {
-    const r = separarDescripcion(p.name);
-    if (!r.descripcion) continue;
-    // Una descripción que el dueño ya escribió MANDA: machacarla perdería lo
-    // que él redactó a mano para quedarnos con lo que dedujo una regla.
-    if ((p.description ?? '').trim()) continue;
-    propuestas.push({
-      productId: p.id,
-      antes: p.name,
-      nombre: r.nombre,
-      descripcion: r.descripcion,
-    });
-  }
-  return propuestas;
-}
-
-/**
- * Aplica solo los productos que el dueño confirmó.
- *
- * Se vuelve a calcular la separación en el servidor en vez de escribir lo que
- * mande el portal: así el nombre nuevo sale siempre de la misma regla y nadie
- * puede colar un nombre arbitrario por esta puerta.
- */
-export async function aplicarSeparacionDeNombres(
-  businessId: string,
-  productIds: string[],
-): Promise<{ aplicados: number }> {
-  const propuestas = await proponerSeparacionDeNombres(businessId);
-  const pedidos = new Set(productIds);
-  const aplicables = propuestas.filter((p) => pedidos.has(p.productId));
-
-  for (const p of aplicables) {
-    // El `businessId` en el `where` es la comprobación de pertenencia: un id
-    // de otro negocio no escribe ninguna fila en vez de lanzar a medias.
-    await prisma.product.updateMany({
-      where: { id: p.productId, businessId },
-      data: { name: p.nombre, description: p.descripcion },
-    });
-  }
-  return { aplicados: aplicables.length };
 }

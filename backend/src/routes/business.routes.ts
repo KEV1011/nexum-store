@@ -21,8 +21,6 @@ import {
   deleteProductPhoto,
   setProductOptions,
   aplicarRolesDeCarta,
-  proponerSeparacionDeNombres,
-  aplicarSeparacionDeNombres,
   getBusinessSettings,
   updateBusinessSettings,
   getBusinessStats,
@@ -71,6 +69,7 @@ import {
   sanearRol,
 } from '../lib/carta-rol';
 import { limpiarTextoDeCarta } from '../lib/texto-carta';
+import { aplicarRevisionCatalogo, revisarCatalogoDelNegocio } from '../services/revision-catalogo.service';
 import { saneaGrupo } from '../lib/texto-opciones';
 import { reporteACsv } from '../lib/reporte-ventas';
 import { altoDelCuerpo, esTituloPorTamano, lineasDeLaFoto } from '../lib/carta-geometria';
@@ -1622,22 +1621,24 @@ router.get('/:token/giros', async (req: Request, res: Response): Promise<void> =
   }
 });
 
-// GET  /business/:token/products/separar-nombres   → qué se partiría
-// POST /business/:token/products/separar-nombres   { productIds: [...] }
+// POST /business/:token/products/revisar-catalogo        { ia?: boolean }
+// POST /business/:token/products/revisar-catalogo/aplicar { cambios: [...] }
 //
-// Los catálogos que se subieron antes de que el lector supiera separar tienen
-// el plato y sus ingredientes en el mismo campo («Hamburguesa Camarón
-// (Croqueta de carne, cebolla…)»). Esto lo arregla, pero PROPONIENDO: son
-// nombres de platos de un negocio real y la regla puede equivocarse en un
-// renglón raro, así que el dueño ve antes y después y marca cuáles aplica.
-router.get(
-  '/:token/products/separar-nombres',
+// «Revisar mi catálogo»: lo que el negocio YA tiene publicado, con las reglas
+// del lector (erratas, ingredientes dentro del nombre, mayúsculas, secciones
+// repetidas) y, si la cuenta la tiene, la IA encima. Revisar NO escribe: el
+// dueño ve el antes y el después y marca qué guardar. El precio no se toca
+// nunca; lo que no cuadra sale como aviso. Reemplaza a `separar-nombres`,
+// que solo hacía la parte de los ingredientes.
+router.post(
+  '/:token/products/revisar-catalogo',
   async (req: Request, res: Response): Promise<void> => {
     const { token } = req.params as { token: string };
+    const conIA = (req.body as { ia?: unknown } | undefined)?.ia !== false;
     try {
       const business = await getBusinessService().getBusinessByToken(token);
-      const propuestas = await proponerSeparacionDeNombres(business.id);
-      res.json({ success: true, data: { propuestas } });
+      const data = await revisarCatalogoDelNegocio(business.id, { conIA });
+      res.json({ success: true, data });
     } catch (err) {
       res.status(404).json({
         success: false,
@@ -1648,25 +1649,26 @@ router.get(
 );
 
 router.post(
-  '/:token/products/separar-nombres',
+  '/:token/products/revisar-catalogo/aplicar',
   async (req: Request, res: Response): Promise<void> => {
     const { token } = req.params as { token: string };
-    const { productIds } = req.body as { productIds?: unknown };
-    const ids = Array.isArray(productIds)
-      ? productIds.filter((x): x is string => typeof x === 'string')
-      : [];
-    if (ids.length === 0) {
-      res.status(400).json({ success: false, error: 'No marcaste ningún plato.' });
+    let businessId: string;
+    try {
+      businessId = (await getBusinessService().getBusinessByToken(token)).id;
+    } catch (err) {
+      res.status(404).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Negocio no encontrado',
+      });
       return;
     }
     try {
-      const business = await getBusinessService().getBusinessByToken(token);
-      const r = await aplicarSeparacionDeNombres(business.id, ids);
-      res.json({ success: true, data: r });
+      const data = await aplicarRevisionCatalogo(businessId, (req.body as { cambios?: unknown })?.cambios);
+      res.json({ success: true, data });
     } catch (err) {
       res.status(400).json({
         success: false,
-        error: err instanceof Error ? err.message : 'No pudimos separar los nombres',
+        error: err instanceof Error ? err.message : 'No pudimos guardar los cambios',
       });
     }
   },

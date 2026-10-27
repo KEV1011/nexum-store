@@ -3,7 +3,7 @@
 import { use, useState, useEffect, useCallback, useRef } from 'react'
 import { BarcodeScanner } from './BarcodeScanner'
 import { CartaFoto } from './CartaFoto'
-import SepararNombres from './SepararNombres'
+import RevisarCatalogo from './RevisarCatalogo'
 import { CsvImport } from './CsvImport'
 import { PortalTabs } from '../PortalTabs'
 import Link from 'next/link'
@@ -1519,15 +1519,19 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
             {perfil.cartaPorFoto && (
               <CartaFoto token={token} onImported={() => void load()} />
             )}
-            {/* Para el catálogo que YA está cargado con los ingredientes
-                dentro del nombre. Solo tiene sentido donde hay platos con
-                receta, que es el mismo público de la carta por foto. */}
-            {perfil.cartaPorFoto && products.length > 0 && (
-              <SepararNombres token={token} onAplicado={() => void load()} />
-            )}
             {perfil.csvMasivo && (
               <CsvImport token={token} onImported={() => void load()} />
             )}
+          </div>
+        )}
+
+        {/* El catálogo que YA está cargado: erratas, ingredientes dentro del
+            nombre, mayúsculas, secciones repetidas y precios que no cuadran.
+            Va para todo tipo de negocio: una sección escrita de dos formas o
+            un precio con un cero de más le pasan igual a una tienda. */}
+        {!loading && products.length > 0 && (
+          <div className="mt-4 mb-4">
+            <RevisarCatalogo token={token} onAplicado={() => void load()} />
           </div>
         )}
 
