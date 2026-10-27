@@ -94,6 +94,29 @@ describe('la pregunta al modelo', () => {
     expect(contenido.map((x) => x.type)).toEqual(['text']);
   });
 
+  it('el catálogo publicado va sin foto, sin texto del OCR y solo con 4 acciones', () => {
+    const { imagen: _sinFoto, ...sinFoto } = ENTRADA;
+    void _sinFoto;
+    const cuerpo = cuerpoDePeticion({ ...sinFoto, contexto: 'catalogo', textoCrudo: '' }) as {
+      system: string;
+      tools: Array<{ input_schema: { properties: { correcciones: { items: { properties: { accion: { enum: string[] } } } } } } }>;
+      messages: Array<{ content: Array<{ type: string; text?: string }> }>;
+    };
+    expect(cuerpo.system).toMatch(/CATÁLOGO que un comercio ya tiene publicado/);
+    expect(cuerpo.system).not.toMatch(/subió la FOTO/);
+    expect(cuerpo.tools[0]!.input_schema.properties.correcciones.items.properties.accion.enum)
+      .toEqual(['rol', 'separar_ingredientes', 'seccion', 'nombre']);
+    const texto = cuerpo.messages[0]!.content.map((c) => c.text ?? '').join('');
+    expect(texto).toContain('PRODUCTOS DEL CATÁLOGO');
+    expect(texto).not.toContain('OCR');
+  });
+
+  it('sin contexto, la carta sigue preguntándose como siempre', () => {
+    const cuerpo = cuerpoDePeticion(ENTRADA) as { system: string; tools: Array<{ input_schema: { properties: { correcciones: { items: { properties: { accion: { enum: string[] } } } } } } }> };
+    expect(cuerpo.system).toMatch(/subió la FOTO/);
+    expect(cuerpo.tools[0]!.input_schema.properties.correcciones.items.properties.accion.enum).toHaveLength(8);
+  });
+
   it('la instrucción del dueño viaja como lo que es', () => {
     const cuerpo = cuerpoDePeticion({ ...ENTRADA, instruccion: 'la gaseosa es bebida' });
     expect(JSON.stringify(cuerpo)).toContain('EL DUEÑO DICE QUE ESTO ESTÁ MAL');
