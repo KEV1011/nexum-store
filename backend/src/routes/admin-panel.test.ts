@@ -590,6 +590,27 @@ describe('el panel pintando la comisión', () => {
     expect(html).toContain("setBusiness('b1', 'deactivate')");
   });
 
+  it('la ubicación dudosa dice qué pasa y enlaza a fijar el punto', async () => {
+    const { fn, el } = montar(
+      {
+        '/admin/businesses/ubicacion-dudosa': [{
+          id: 'b2', name: 'Asadero Lejano', address: 'Calle 5 # 3-40', citySlug: 'pamplona',
+          lat: 4.6, lng: -74.08, claimed: false, token: 'tok2', motivo: 'lejos-de-su-ciudad',
+        }],
+        '/admin/municipalities': [{ slug: 'pamplona', name: 'Pamplona' }],
+        '/admin/businesses': [negocio],
+      },
+      ['businesses-body', 'biz-q', 'ubicacion-body'],
+    );
+    fn['loadBusinesses']!();
+    await esperar();
+    const html = el['ubicacion-body']!.innerHTML;
+    expect(html).toContain('Asadero Lejano');
+    expect(html).toContain('El punto está lejos de su ciudad');
+    expect(html).toContain('/negocio/tok2/ajustes');
+    expect(html).not.toContain('undefined');
+  });
+
   it('los incumplimientos separan «no apareció» de «papeles vencidos»', () => {
     // La columna existe para que un humano decida, no para bloquear: seis por
     // papeles vencidos es un trámite, seis por no aparecer es dejar tirada a

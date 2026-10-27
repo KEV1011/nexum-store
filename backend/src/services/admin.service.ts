@@ -14,6 +14,7 @@ import { motivoDeDiagnostico, type TipoDiagnostico } from '../lib/diagnostico-de
 
 export type { TipoDiagnostico };
 import { getOrderOfferInfo } from './order-offer.service';
+import { INTERCITY_CITY_COORDS } from '../config/constants';
 import { sendPushToClient } from './push.service';
 import { cancelClientOrder, cancelClientTrip } from './client.service';
 import { cancelClientErrand } from './errand.service';
@@ -725,6 +726,55 @@ export async function diagnosePedido(refOId: string): Promise<{
 }
 
 /**
+ * El diagnóstico de UN mandado (incluidas las compras en un comercio no
+ * reclamado o sin pago): ancla donde lo anclaría el despacho —su punto de
+ * recogida, o el centro de Pamplona si no tiene— y dice en qué plaza cae ese
+ * punto. Es la pregunta que había que responder con el reporte «el pedido a un
+ * local sin pago nunca le llega a nadie»: el local estaba guardado en otra
+ * ciudad.
+ */
+export async function diagnoseMandado(refOId: string): Promise<{
+  mandado: {
+    id: string; ref: string; status: string; hasDriver: boolean;
+    sinPunto: boolean; plaza: string | null; plazaNombre: string | null;
+    pickupAddress: string;
+  };
+  lat: number;
+  lng: number;
+  drivers: MatchingDiagRow[];
+} | null> {
+  const ref = refOId.trim().replace(/^#/, '');
+  const e = await prisma.errand.findFirst({
+    where: { OR: [{ id: ref }, { requestRef: { equals: ref, mode: 'insensitive' } }] },
+    select: {
+      id: true, requestRef: true, status: true, driverId: true,
+      pickupLat: true, pickupLng: true, pickupAddress: true,
+    },
+  });
+  if (!e) return null;
+  const sinPunto = e.pickupLat == null || e.pickupLng == null;
+  const lat = e.pickupLat ?? INTERCITY_CITY_COORDS.pamplona.lat;
+  const lng = e.pickupLng ?? INTERCITY_CITY_COORDS.pamplona.lng;
+  const { plazaDeCoordenadas, nombreMunicipioSync } = await import('./municipality.service');
+  const plaza = await plazaDeCoordenadas(lat, lng);
+  return {
+    mandado: {
+      id: e.id,
+      ref: e.requestRef,
+      status: e.status,
+      hasDriver: e.driverId != null,
+      sinPunto,
+      plaza,
+      plazaNombre: nombreMunicipioSync(plaza),
+      pickupAddress: e.pickupAddress,
+    },
+    lat,
+    lng,
+    drivers: await diagnoseMatching(lat, lng, 'errand'),
+  };
+}
+
+/**
  * Marca/desmarca un conductor como verificado directamente (atajo de piloto para
  * habilitarlo en el matching sin pasar por la aprobación documento a documento).
  */
@@ -1054,7 +1104,7 @@ export async function abrirFichaDeComercio(dto: {
   category: string;
   phone?: string;
   city?: string;
-}): Promise<{ id: string; token: string; portalPath: string }> {
+}): Promise<{ id: string; token: string; portalPath: string; ubicada: boolean }> {
   const nombre = dto.name?.trim();
   const direccion = dto.address?.trim();
   if (!nombre || nombre.length < 2) throw new Error('Falta el nombre del comercio.');
@@ -1064,11 +1114,12 @@ export async function abrirFichaDeComercio(dto: {
   const categoria = categoriaDesdeEspanol(dto.category);
   if (!categoria) throw new Error(`Categoría desconocida: ${dto.category}`);
 
-  const { geocodeAddress } = await import('./geo.service');
-  const punto = await geocodeAddress(direccion, dto.city).catch(() => null);
-
-  const { plazaDeCoordenadas } = await import('./municipality.service');
-  const plaza = punto ? await plazaDeCoordenadas(punto.lat, punto.lng) : null;
+  // CON la ciudad: sin ella, «Calle 5 # 3-40, Colombia» lo resolvía Google en
+  // cualquier ciudad del país, la ficha quedaba a cientos de kilómetros y sus
+  // compras no encontraban repartidor nunca. Un punto lejos de la ciudad
+  // declarada no se guarda (`lib/ubicacion-comercio.ts`).
+  const { ubicarComercio } = await import('./ubicacion-comercio.service');
+  const ubicacion = await ubicarComercio(direccion, dto.city);
 
   const b = await prisma.business.create({
     data: {
@@ -1076,8 +1127,9 @@ export async function abrirFichaDeComercio(dto: {
       address: direccion,
       category: categoria,
       ...(dto.phone?.trim() ? { phone: dto.phone.trim() } : {}),
-      ...(punto ? { lat: punto.lat, lng: punto.lng } : {}),
-      ...(plaza ? { citySlug: plaza } : {}),
+      lat: ubicacion.lat,
+      lng: ubicacion.lng,
+      citySlug: ubicacion.citySlug,
       claimed: false,
       // No se le promete ningún tiempo de entrega: lo dice el repartidor
       // cuando llega al local y ve la fila (`declararEtaDeMandado`).
@@ -1085,7 +1137,13 @@ export async function abrirFichaDeComercio(dto: {
     },
     select: { id: true, token: true },
   });
-  return { id: b.id, token: b.token, portalPath: `/negocio/${b.token}` };
+  return {
+    id: b.id,
+    token: b.token,
+    portalPath: `/negocio/${b.token}`,
+    // Sin punto, el panel lo dice: hay que fijarlo en el mapa del portal.
+    ubicada: ubicacion.lat != null,
+  };
 }
 
 /**

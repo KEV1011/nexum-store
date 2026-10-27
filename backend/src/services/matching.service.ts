@@ -6,7 +6,7 @@ import { seDespacha } from '../lib/modo-pedido';
 import { stopsFromDb } from '../lib/trip-stops';
 import { TripRequestDTO } from '../types';
 import { sendPushToDriver, sendPushToClient } from '../services/push.service';
-import { getErrandOfferInfo } from './errand.service';
+import { avisarEstadoMandado, getErrandOfferInfo } from './errand.service';
 import { getOrderOfferInfo } from './order-offer.service';
 import { evaluateGeoJump } from './fraud.service';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
@@ -949,6 +949,8 @@ async function _notifyErrandNoDriver(errandId: string): Promise<void> {
   if (marca.count === 0) return;
 
   console.log(`[Matching] Sin conductor para el mandado ${errandId} tras agotar los reintentos`);
+  // Al que tiene la pantalla abierta también: el push lo ve quien la cerró.
+  void avisarEstadoMandado(errandId);
   void sendPushToClient(e.userId, {
     title: 'No encontramos quien haga tu mandado',
     body: `Nadie disponible por ahora para ${e.requestRef}. Puedes cancelarlo o intentar más tarde.`,

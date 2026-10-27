@@ -83,8 +83,9 @@ import {
   getActiveClientErrand,
   getClientErrandById,
   cancelClientErrand,
+  reabrirBusquedaMandado,
 } from '../services/errand.service';
-import { startErrandMatchingCycle, getNearbyDriverPositions } from '../services/matching.service';
+import { startErrandMatchingCycle, getNearbyDriverPositions, cancelSearchRetry } from '../services/matching.service';
 import {
   requestIntercityBooking,
   confirmIntercityBooking,
@@ -971,10 +972,9 @@ router.post(
       });
 
       // El despacho se ancla al LOCAL, no al centro del pueblo: el repartidor
-      // que tiene que ir a comprar ahí es el que esté cerca de ahí.
-      const lat = r.pickup?.lat ?? INTERCITY_CITY_COORDS.pamplona.lat;
-      const lng = r.pickup?.lng ?? INTERCITY_CITY_COORDS.pamplona.lng;
-      void startErrandMatchingCycle(r.errand.id, lat, lng);
+      // que tiene que ir a comprar ahí es el que esté cerca de ahí. Si el
+      // punto del local no es de fiar, a su ciudad (`anclaDeCompra`).
+      void startErrandMatchingCycle(r.errand.id, r.ancla.lat, r.ancla.lng);
     } catch (err) {
       res.status(err instanceof CompraError ? 400 : 500).json({
         success: false,
@@ -1021,6 +1021,23 @@ router.get('/errands/:id', clientAuthMiddleware, async (req, res) => {
   const errand = await getClientErrandById(req.clientId!, req.params['id']!);
   if (!errand) { res.status(404).json({ success: false, error: 'Errand not found' }); return; }
   res.json({ success: true, data: errand });
+});
+
+// POST /client/errands/:id/reintentar — volver a buscar repartidor después de
+// que la búsqueda se rindió. Sin esto, la única salida era cancelar.
+router.post('/errands/:id/reintentar', clientAuthMiddleware, async (req, res) => {
+  const id = req.params['id']!;
+  const donde = await reabrirBusquedaMandado(req.clientId!, id);
+  if (!donde) {
+    res.status(409).json({
+      success: false,
+      error: 'Ese mandado ya no se puede reintentar: ya tiene repartidor, se canceló o seguimos buscando.',
+    });
+    return;
+  }
+  cancelSearchRetry(`errand:${id}`);
+  res.json({ success: true, data: { reintentando: true } });
+  void startErrandMatchingCycle(id, donde.lat, donde.lng, 0);
 });
 
 router.post('/errands/:id/cancel', clientAuthMiddleware, async (req, res) => {

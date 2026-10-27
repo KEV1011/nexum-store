@@ -83,6 +83,9 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
       actualPurchaseCost:
           (dto['actualPurchaseCost'] as num?)?.toDouble() ??
           current.actualPurchaseCost,
+      // Cada actualización trae el estado completo: si no viene la marca, la
+      // búsqueda está viva (o el mandado ya tiene quién lo haga).
+      sinRepartidor: dto['sinRepartidor'] == true,
     );
 
     if (status == ErrandStatus.delivered) {
@@ -106,17 +109,58 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
     }
   }
 
-  ErrandStatus? _mapStatus(String? raw) => switch (raw) {
-        'searching' => ErrandStatus.searching,
-        'accepted' => ErrandStatus.accepted,
-        'shopping' => ErrandStatus.shopping,
-        'on_the_way' => ErrandStatus.onTheWay,
-        'delivered' => ErrandStatus.delivered,
-        'cancelled' => ErrandStatus.cancelled,
-        _ => null,
-      };
+  ErrandStatus? _mapStatus(String? raw) => estadoDeMandado(raw);
 
   // ── Public API ───────────────────────────────────────────────────────────────
+
+  /// Empieza a seguir un mandado que creó el SERVIDOR (la compra en un
+  /// comercio que todavía no es cliente). Devuelve false si no se pudo leer.
+  ///
+  /// Sin esto, la pantalla de seguimiento se abría sin mandado activo,
+  /// rebotaba al inicio y el cliente nunca veía su compra: ni quién la tomó,
+  /// ni el PIN para recibirla, ni la forma de cancelarla.
+  Future<bool> seguirMandado(String errandId) async {
+    try {
+      final res =
+          await _dio.get<Map<String, dynamic>>('/client/errands/$errandId');
+      final data = res.data?['data'] as Map<String, dynamic>?;
+      if (data == null || !mounted) return false;
+      _clearTimers();
+      _activeServerId = errandId;
+      state = state.copyWith(active: ErrandEntity.fromServer(data));
+      final wsOk = await _wsService.connect();
+      if (wsOk) {
+        _wsService.subscribeErrand(errandId);
+      } else {
+        _startPolling(errandId);
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Vuelve a buscar quién haga el mandado después de que la búsqueda se
+  /// agotó. Devuelve null si el servidor la reabrió, o el motivo si no.
+  Future<String?> reintentarBusqueda() async {
+    final serverId = _activeServerId;
+    final current = state.active;
+    if (serverId == null || current == null) return null;
+    try {
+      await _dio.post<void>('/client/errands/$serverId/reintentar');
+      if (mounted && state.active?.id == current.id) {
+        state = state.copyWith(active: current.copyWith(sinRepartidor: false));
+      }
+      return null;
+    } catch (e) {
+      return e is DioException
+          ? (e.response?.data is Map
+                  ? (e.response!.data as Map)['error'] as String?
+                  : null) ??
+              'No pudimos volver a buscar. Revisa tu conexión.'
+          : 'No pudimos volver a buscar. Inténtalo de nuevo.';
+    }
+  }
 
   /// [pickupLat]/[pickupLng] vienen de la dirección que el cliente eligió en
   /// la lista o en el mapa. Mandan sobre el GPS del teléfono: la recogida

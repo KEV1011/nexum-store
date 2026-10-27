@@ -66,6 +66,30 @@ class ErrandStatusScreen extends ConsumerWidget {
             _StatusHeader(errand: errand),
             const SizedBox(height: 18),
 
+            // ── Nadie lo tomó ────────────────────────────────────────────────
+            // La búsqueda se agotó. El mandado sigue abierto —puede llegar
+            // alguien—, pero la pantalla ya no puede decir «buscando» como si
+            // nada: el cliente decide si vuelve a intentar o cancela.
+            if (errand.sinRepartidor &&
+                errand.status == ErrandStatus.searching) ...[
+              _SinRepartidorCard(
+                onReintentar: () async {
+                  final error = await ref
+                      .read(errandProvider.notifier)
+                      .reintentarBusqueda();
+                  if (!context.mounted) return;
+                  if (error != null) {
+                    AppSnackbar.showError(context, error);
+                  } else {
+                    AppSnackbar.showSuccess(
+                        context, 'Volvimos a buscar quién lo haga.');
+                  }
+                },
+                onCancelar: () => _confirmCancel(context, ref),
+              ),
+              const SizedBox(height: 18),
+            ],
+
             // ── Línea de progreso ────────────────────────────────────────────
             _ProgressTimeline(status: errand.status),
             const SizedBox(height: 18),
@@ -286,7 +310,8 @@ class _StatusHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = errand.status;
-    final isSearching = status == ErrandStatus.searching;
+    final sinNadie = errand.sinRepartidor && status == ErrandStatus.searching;
+    final isSearching = status == ErrandStatus.searching && !sinNadie;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -322,7 +347,7 @@ class _StatusHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  status.label,
+                  sinNadie ? 'Nadie lo ha tomado todavía' : status.label,
                   style: TextStyle(
                     color: status.color,
                     fontWeight: FontWeight.w800,
@@ -331,7 +356,9 @@ class _StatusHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  status.description,
+                  sinNadie
+                      ? 'No encontramos un repartidor disponible cerca.'
+                      : status.description,
                   style: TextStyle(
                     color: context.textSecondaryColor,
                     fontSize: 12,
@@ -339,6 +366,74 @@ class _StatusHeader extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── La búsqueda se agotó ──────────────────────────────────────────────────────
+
+class _SinRepartidorCard extends StatefulWidget {
+  const _SinRepartidorCard({
+    required this.onReintentar,
+    required this.onCancelar,
+  });
+
+  final Future<void> Function() onReintentar;
+  final VoidCallback onCancelar;
+
+  @override
+  State<_SinRepartidorCard> createState() => _SinRepartidorCardState();
+}
+
+class _SinRepartidorCardState extends State<_SinRepartidorCard> {
+  bool _enviando = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Tu mandado sigue abierto y te avisamos si alguien lo toma. '
+            'Puedes volver a buscar ahora o cancelarlo sin costo.',
+            style: TextStyle(color: context.textSecondaryColor, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton(
+              onPressed: _enviando
+                  ? null
+                  : () async {
+                      setState(() => _enviando = true);
+                      await widget.onReintentar();
+                      if (mounted) setState(() => _enviando = false);
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: colorDeTextoSobre(AppColors.primary),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: Text(_enviando ? 'Buscando…' : 'Volver a buscar'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _enviando ? null : widget.onCancelar,
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Cancelar mandado'),
           ),
         ],
       ),

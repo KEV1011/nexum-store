@@ -161,7 +161,40 @@ class ErrandEntity {
     this.rating,
     this.deliveryPin,
     this.driverCard,
+    this.sinRepartidor = false,
   });
+
+  /// El mandado tal como lo devuelve el servidor (`GET /client/errands/:id`).
+  ///
+  /// Existe para la compra en un comercio que todavía no es cliente: ese
+  /// mandado lo crea el servidor, no esta app, y antes la pantalla de
+  /// seguimiento se abría sin él, rebotaba al inicio y el cliente nunca veía
+  /// su pedido. Lo que no venga se queda en su valor neutro: no se inventa.
+  factory ErrandEntity.fromServer(Map<String, dynamic> j) {
+    final cat = j['category'] as String? ?? 'other';
+    return ErrandEntity(
+      id: j['id'] as String,
+      category: ErrandCategory.values.firstWhere(
+        (c) => c.name == cat,
+        orElse: () => ErrandCategory.other,
+      ),
+      description: j['description'] as String? ?? '',
+      pickupAddress: j['pickupAddress'] as String? ?? '',
+      dropoffAddress: j['dropoffAddress'] as String? ?? '',
+      serviceFee: (j['serviceFee'] as num?)?.toDouble() ?? 0,
+      purchaseBudget: (j['purchaseBudget'] as num?)?.toDouble(),
+      status: estadoDeMandado(j['status'] as String?) ?? ErrandStatus.searching,
+      createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '')?.toLocal() ?? DateTime.now(),
+      notes: j['notes'] as String?,
+      messengerName: j['driverName'] as String?,
+      messengerPhone: j['driverPhone'] as String?,
+      messengerRating: (j['driverRating'] as num?)?.toDouble(),
+      actualPurchaseCost: (j['actualPurchaseCost'] as num?)?.toDouble(),
+      deliveryPin: j['deliveryPin'] as String?,
+      driverCard: DriverCardInfo.fromJson(j),
+      sinRepartidor: j['sinRepartidor'] == true,
+    );
+  }
 
   final String id;
   final ErrandCategory category;
@@ -198,6 +231,10 @@ class ErrandEntity {
   /// Null mientras el mandado no tiene quién lo haga.
   final DriverCardInfo? driverCard;
 
+  /// La búsqueda se agotó y nadie lo tomó: la pantalla deja de decir
+  /// «buscando» y ofrece volver a buscar o cancelar.
+  final bool sinRepartidor;
+
   bool get hasMessenger => messengerName != null;
   bool get isActive => status.isActive;
   bool get isRated => rating != null;
@@ -227,6 +264,7 @@ class ErrandEntity {
     int? rating,
     String? deliveryPin,
     DriverCardInfo? driverCard,
+    bool? sinRepartidor,
   }) =>
       ErrandEntity(
         id: id ?? this.id,
@@ -246,5 +284,17 @@ class ErrandEntity {
         rating: rating ?? this.rating,
         deliveryPin: deliveryPin ?? this.deliveryPin,
         driverCard: driverCard ?? this.driverCard,
+        sinRepartidor: sinRepartidor ?? this.sinRepartidor,
       );
 }
+
+/// El estado del mandado según el servidor, o null si no se reconoce.
+ErrandStatus? estadoDeMandado(String? raw) => switch (raw) {
+      'searching' => ErrandStatus.searching,
+      'accepted' => ErrandStatus.accepted,
+      'shopping' => ErrandStatus.shopping,
+      'on_the_way' => ErrandStatus.onTheWay,
+      'delivered' => ErrandStatus.delivered,
+      'cancelled' => ErrandStatus.cancelled,
+      _ => null,
+    };
