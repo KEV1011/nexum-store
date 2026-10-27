@@ -97,3 +97,26 @@ describe('lo que el dueño escribió no se pisa', () => {
     expect(x.filas.some((f) => f.linea === 3)).toBe(true);
   });
 });
+
+describe('partir una fila: la nueva entra en su sitio y deshacer la quita', () => {
+  const texto = 'BEBIDAS\nGaseosa 3.500 Jugo 5.000\nLimonada 4.000';
+  const pantallaBebidas = (): FilaDePantalla[] => [
+    { id: 0, linea: 5, nombre: 'Gaseosa Jugo', precio: '', descripcion: '', seccion: 'Bebidas', rol: 'plato', aviso: 'Sin precio' },
+    { id: 1, linea: 6, nombre: 'Limonada', precio: '4000', descripcion: '', seccion: 'Bebidas', rol: 'plato' },
+  ];
+  const ctxB: ContextoRevision = { textoCrudo: texto, secciones: ['Bebidas'], modo: 'instruccion', instruccion: 'separa la gaseosa y el jugo' };
+
+  it('portal y servidor quedan iguales, y vuelve a como estaba', () => {
+    const r = revisarFilas(pantallaBebidas().map(filaParaRevisar), [{
+      linea: 5, accion: 'partir_fila', confianza: 'alta', motivo: 'Dos platos.',
+      partes: [{ nombre: 'Gaseosa', precio: 3500 }, { nombre: 'Jugo', precio: 5000 }],
+    }], ctxB);
+    expect(r.aplicadas).toHaveLength(1);
+    const x = aplicarCambio(pantallaBebidas(), r.aplicadas[0]!);
+    expect(x.ok).toBe(true);
+    expect(comoRevisable(x.filas)).toEqual(r.filas);
+    const y = deshacerCambio(x.filas, r.aplicadas[0]!);
+    expect(y.ok).toBe(true);
+    expect(comoRevisable(y.filas)).toEqual(pantallaBebidas().map(filaParaRevisar));
+  });
+});

@@ -11,6 +11,7 @@ import {
   filaParaRevisar,
   type CambioIA,
   type FilaDePantalla,
+  type VarianteIA,
 } from './revision-ia'
 
 type EstadoCambio = 'aplicado' | 'deshecho' | 'pendiente' | 'ignorado' | 'choca'
@@ -70,8 +71,15 @@ export function RevisionIA<T extends FilaDePantalla>({
   textoCrudo,
   lectura,
   excluir,
+  onVariantes,
 }: {
   token: string
+  /**
+   * Un cambio aplicado que trae grupos de tamaños (`variantes`) los suma a la
+   * vista previa; deshacerlo los quita (`null`). Las filas no cambian: el grupo
+   * las esconde, como cualquier grupo de tamaños.
+   */
+  onVariantes?: (id: string, variantes: VarianteIA[] | null) => void
   /**
    * TODAS las filas de la vista previa. Si se pasaran solo las visibles, al
    * aplicar un cambio se perderían las que están agrupadas en tamaños.
@@ -105,7 +113,10 @@ export function RevisionIA<T extends FilaDePantalla>({
     const nuevas: Entrada[] = []
     for (const cambio of lista) {
       const r = aplicarCambio(actuales, cambio)
-      if (r.ok) actuales = r.filas
+      if (r.ok) {
+        actuales = r.filas
+        if (cambio.variantes?.length) onVariantes?.(cambio.id, cambio.variantes)
+      }
       nuevas.push({ cambio, estado: r.ok ? 'aplicado' : 'choca', origen })
     }
     setFilas(() => actuales)
@@ -206,6 +217,9 @@ export function RevisionIA<T extends FilaDePantalla>({
     if (r.ok) {
       setFilas(() => r.filas)
       filasRef.current = r.filas
+      if (e.cambio.variantes?.length) {
+        onVariantes?.(e.cambio.id, accion === 'aplicar' ? e.cambio.variantes : null)
+      }
     }
     const estado: EstadoCambio = !r.ok ? 'choca' : accion === 'aplicar' ? 'aplicado' : 'deshecho'
     setEntradas((prev) => prev.map((x, j) => (j === i ? { ...x, estado } : x)))

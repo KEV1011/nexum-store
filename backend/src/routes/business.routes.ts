@@ -60,6 +60,9 @@ import {
 } from '../types';
 import { authLimiter } from '../middleware/rate-limit.middleware';
 import { cartaUpload, documentUpload, fileToUrl } from '../lib/upload';
+import { randomBytes } from 'crypto';
+import { guardarLectura, lecturaDe } from '../lib/carta-reporte';
+import { crearReporteCarta } from '../services/carta-reporte.service';
 import { mejorLectura, parsearCarta, parsearCartaMedida, filasACsv } from '../lib/carta-foto';
 import { GRUPO_TAMANO, motivoParaNoAgrupar, sugerirVariantes } from '../lib/carta-variantes';
 import {
@@ -891,9 +894,18 @@ router.post(
       const carta = medidas.length > 0
         ? mejorLectura(parsearCartaMedida(medidas, altoDelCuerpo(medidas), esTituloPorTamano), porTexto)
         : porTexto;
+      // Por si el dueño dice que salió mal: la respuesta del OCR se queda un
+      // rato en memoria, y el reporte la recoge con este código.
+      const lecturaId = randomBytes(12).toString('hex');
+      guardarLectura(lecturaId, {
+        businessId: negocio.id,
+        crudo: lectura.crudo ?? null,
+        lectura: { lineas: carta.lineas, secciones: carta.secciones, notas: carta.notas, ignoradas: carta.ignoradas },
+      });
       res.status(200).json({
         success: true,
         data: {
+          lecturaId,
           lineas: carta.lineas,
           secciones: carta.secciones,
           // Platos que parecen el mismo en varios tamaños. Es una SUGERENCIA
@@ -915,6 +927,51 @@ router.post(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo leer la carta';
+      const notFound = message.includes('not found') || message.includes('no encontrado');
+      res.status(notFound ? 404 : 400).json({ success: false, error: message });
+    }
+  },
+);
+
+// POST /business/:token/products/carta-reporte (multipart 'file' + lecturaId + comentario)
+//
+// «Se leyó mal»: guarda la foto, la respuesta del OCR de esa lectura y lo que
+// salió, para que el admin la descargue y la vuelva una prueba. No toca el
+// catálogo. Tope de 10 por hora y negocio: es para avisar, no para subir fotos.
+router.post(
+  '/:token/products/carta-reporte',
+  (req: Request, res: Response, next) => {
+    documentUpload.single('file')(req, res, (err) => {
+      if (err) {
+        res.status(400).json({ success: false, error: err.message });
+        return;
+      }
+      next();
+    });
+  },
+  async (req: Request, res: Response): Promise<void> => {
+    const { token } = req.params as { token: string };
+    try {
+      const negocio = await getBusinessService().getBusinessByToken(token);
+      if (!reservarUsoIA(`carta-reporte:${negocio.id}`, Date.now(), 10)) {
+        res.status(429).json({ success: false, error: 'Ya nos mandaste varias cartas en la última hora. Gracias: las estamos revisando.' });
+        return;
+      }
+      const cuerpo = req.body as Record<string, unknown>;
+      const lecturaId = typeof cuerpo['lecturaId'] === 'string' ? cuerpo['lecturaId'] : '';
+      const comentario = typeof cuerpo['comentario'] === 'string' ? cuerpo['comentario'] : '';
+      const guardada = lecturaId ? lecturaDe(lecturaId, negocio.id) : null;
+      const foto = req.file && req.file.mimetype.startsWith('image/') ? fileToUrl(req.file) : null;
+      const r = await crearReporteCarta({
+        businessId: negocio.id,
+        photoUrl: foto,
+        ocrRaw: guardada?.crudo ?? null,
+        lectura: guardada?.lectura ?? null,
+        comentario,
+      });
+      res.status(201).json({ success: true, data: { id: r.id, conOcr: r.conOcr } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo guardar el reporte';
       const notFound = message.includes('not found') || message.includes('no encontrado');
       res.status(notFound ? 404 : 400).json({ success: false, error: message });
     }

@@ -40,7 +40,14 @@
 // la tocó entre medias— no la pisa.
 
 import { ROLES_CARTA, type RolCarta } from './carta-rol';
-import { PRECIO_MAX, PRECIO_MIN, preciosDeLinea, tituloDeSeccion } from './carta-foto';
+import {
+  bloqueDePrecios,
+  nombreDeLinea,
+  PRECIO_MAX,
+  PRECIO_MIN,
+  preciosDeLinea,
+  tituloDeSeccion,
+} from './carta-foto';
 
 export const ACCIONES_IA = [
   'rol',
@@ -51,7 +58,16 @@ export const ACCIONES_IA = [
   'es_titulo',
   'quitar',
   'nombre',
+  'precio_de_seccion',
+  'agrupar_tamanos',
+  'partir_fila',
 ] as const;
+
+/**
+ * Las acciones que escriben PRECIOS en varias filas o crean filas nuevas.
+ * Nunca se aplican solas, ni con confianza alta: el dueño las ve y acepta.
+ */
+const SOLO_CON_PERMISO: ReadonlySet<AccionIA> = new Set(['precio_de_seccion', 'agrupar_tamanos', 'partir_fila']);
 export type AccionIA = (typeof ACCIONES_IA)[number];
 
 export type ConfianzaIA = 'alta' | 'media' | 'baja';
@@ -67,9 +83,28 @@ export interface CorreccionIA {
   descripcion?: string;
   precio?: number;
   seccion?: string;
+  /** Para `agrupar_tamanos`: las filas que son el mismo plato. */
+  lineas?: number[];
+  /** Para `agrupar_tamanos`: cómo se llama cada tamaño, en el orden de `lineas` o de los precios. */
+  tamanos?: string[];
+  /** Para `partir_fila`: los platos que venían pegados en la fila. */
+  partes?: Array<{ nombre: string; precio: number }>;
   confianza: ConfianzaIA;
   /** Por qué, dicho al dueño. Lo escribe la IA; se recorta. */
   motivo: string;
+}
+
+/** Un plato en varios tamaños, con la misma forma que `sugerirVariantes`. */
+export interface VarianteIA {
+  nombre: string;
+  descripcion?: string;
+  seccion: string;
+  precioBase: number;
+  grupo: string;
+  opciones: Array<{ nombre: string; precio: number; precioDelta: number }>;
+  lineas: number[];
+  faltanNombres: boolean;
+  rol?: 'plato' | 'acompanamiento';
 }
 
 /** Una fila de la vista previa, en la forma que entiende el revisor. */
@@ -99,6 +134,12 @@ export interface CambioIA {
   titulo: string;
   motivo: string;
   filas: CambioFila[];
+  /**
+   * Platos con tamaños que el cambio propone (`agrupar_tamanos`,
+   * `precio_de_seccion` con varios precios). El portal los suma a sus grupos
+   * de tamaños al aplicar y los quita al deshacer.
+   */
+  variantes?: VarianteIA[];
 }
 
 export interface Descarte {
@@ -159,6 +200,16 @@ function entero(v: unknown): number | undefined {
 }
 
 /**
+ * Un número de línea. Admite UN decimal: al partir una fila en dos, la nueva
+ * se numera justo después de la original («12.1») para que salga en su sitio.
+ */
+function numeroDeLinea(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 10) / 10 : undefined;
+  if (typeof v === 'string' && /^\s*\d+(?:\.\d)?\s*$/.test(v)) return Number(v);
+  return entero(v);
+}
+
+/**
  * Lee la salida de la IA. Lo que no tenga la forma esperada se cae sin tumbar
  * lo demás: una corrección mal escrita no puede costar las otras setenta.
  */
@@ -169,7 +220,7 @@ export function sanearCorrecciones(crudo: unknown): CorreccionIA[] {
   for (const item of lista) {
     if (out.length >= MAX_CORRECCIONES) break;
     const c = (item ?? {}) as Record<string, unknown>;
-    const linea = entero(c['linea']);
+    const linea = numeroDeLinea(c['linea']);
     const accion = c['accion'];
     if (linea === undefined || typeof accion !== 'string') continue;
     if (!(ACCIONES_IA as readonly string[]).includes(accion)) continue;
@@ -178,11 +229,25 @@ export function sanearCorrecciones(crudo: unknown): CorreccionIA[] {
     const rol = typeof c['rol'] === 'string' && (ROLES_CARTA as readonly string[]).includes(c['rol'])
       ? (c['rol'] as RolCarta)
       : undefined;
-    const lineaDestino = entero(c['lineaDestino']);
+    const lineaDestino = numeroDeLinea(c['lineaDestino']);
     const nombre = texto(c['nombre'], 120);
     const descripcion = texto(c['descripcion'], DESCRIPCION_MAX);
     const precio = entero(c['precio']);
     const seccion = texto(c['seccion'], SECCION_MAX);
+    const lineas = Array.isArray(c['lineas'])
+      ? c['lineas'].map(numeroDeLinea).filter((x): x is number => x !== undefined).slice(0, 6)
+      : undefined;
+    const tamanos = Array.isArray(c['tamanos'])
+      ? c['tamanos'].map((t) => texto(t, 30) ?? '').slice(0, 6)
+      : undefined;
+    const partes = Array.isArray(c['partes'])
+      ? c['partes'].slice(0, 4).flatMap((x) => {
+        const o = (x ?? {}) as Record<string, unknown>;
+        const n = texto(o['nombre'], 120);
+        const p = entero(o['precio']);
+        return n && p !== undefined ? [{ nombre: n, precio: p }] : [];
+      })
+      : undefined;
     out.push({
       linea,
       accion: accion as AccionIA,
@@ -194,6 +259,9 @@ export function sanearCorrecciones(crudo: unknown): CorreccionIA[] {
       ...(descripcion && { descripcion }),
       ...(precio !== undefined && { precio }),
       ...(seccion && { seccion }),
+      ...(lineas && lineas.length > 0 && { lineas }),
+      ...(tamanos && tamanos.length > 0 && { tamanos }),
+      ...(partes && partes.length > 0 && { partes }),
     });
   }
   return out;
@@ -214,7 +282,7 @@ export function sanearFilas(crudo: unknown): FilaRevisable[] {
   for (const item of crudo) {
     if (out.length >= MAX_FILAS) break;
     const f = (item ?? {}) as Record<string, unknown>;
-    const linea = entero(f['linea']);
+    const linea = numeroDeLinea(f['linea']);
     if (linea === undefined || vistas.has(linea)) continue;
     const nombre = typeof f['nombre'] === 'string' ? f['nombre'].trim().slice(0, 200) : '';
     const precio = f['precio'] === null || f['precio'] === undefined || f['precio'] === ''
@@ -315,6 +383,131 @@ function precioDeUnaLineaConVarios(nombre: string, precio: number, textoCrudo: s
   });
 }
 
+/**
+ * El renglón IMPRESO que es el precio de toda una sección y que el lector
+ * dejó como fila («BAJOS / ALTOS» con dos precios, «Todos a» con uno). Se
+ * busca por el nombre de la fila, y los precios salen de la carta, no de la IA.
+ */
+function bloqueImpreso(fila: FilaRevisable, ctx: ContextoRevision): { etiquetas: string[]; precios: number[] } | null {
+  const n = normalizar(fila.nombre);
+  if (!n) return null;
+  for (const renglon of ctx.textoCrudo.split('\n')) {
+    const b = bloqueDePrecios(renglon.trim());
+    if (!b || normalizar(nombreDeLinea(renglon.trim())) !== n) continue;
+    if (fila.precio !== null && !(b.precios.length === 1 && b.precios[0] === fila.precio)) continue;
+    return b;
+  }
+  return null;
+}
+
+/** Los precios del renglón impreso que nombra este plato y trae varios. */
+function preciosImpresosDe(nombre: string, ctx: ContextoRevision): number[] | null {
+  const n = normalizar(nombre);
+  if (n.length < 3) return null;
+  for (const renglon of ctx.textoCrudo.split('\n')) {
+    if (!` ${normalizar(renglon)} `.includes(` ${n} `)) continue;
+    const precios = preciosDeLinea(renglon);
+    if (precios.length > 1) return precios;
+  }
+  return null;
+}
+
+/** Las filas sin precio de una sección, que pueden recibir su precio. */
+function sinPrecioDe(seccion: string, filas: FilaRevisable[], excepto: number): FilaRevisable[] {
+  const s = normalizar(seccion);
+  return filas.filter((f) => f.linea !== excepto && normalizar(f.seccion) === s
+    && f.precio === null && f.rol === 'plato' && f.nombre.trim() !== '');
+}
+
+/** Un plato con sus tamaños, con la forma que entiende el portal. */
+function variante(
+  nombre: string,
+  seccion: string,
+  tamanos: string[],
+  precios: number[],
+  lineas: number[],
+  descripcion?: string,
+  rol?: RolCarta,
+): VarianteIA {
+  const base = Math.min(...precios);
+  return {
+    nombre,
+    ...(descripcion ? { descripcion } : {}),
+    seccion,
+    precioBase: base,
+    grupo: 'Tamaño',
+    opciones: tamanos.map((t, i) => {
+      const n = tituloDeSeccion(t);
+      return { nombre: n.charAt(0).toUpperCase() + n.slice(1), precio: precios[i]!, precioDelta: precios[i]! - base };
+    }),
+    lineas,
+    faltanNombres: tamanos.some((t) => !t.trim()),
+    ...(rol === 'acompanamiento' ? { rol: 'acompanamiento' as const } : {}),
+  };
+}
+
+/**
+ * Lo que propone `agrupar_tamanos`, ya comprobado, o el motivo para no
+ * aceptarlo. Dos formas:
+ *
+ *   · VARIAS filas que son el mismo plato («Picada pequeña 39.000», «Picada
+ *     grande 80.000»): cada tamaño tiene que estar escrito en SU fila y el
+ *     nombre del plato en todas; los precios son los de las filas.
+ *   · UNA fila con varios precios impresos («Hawaiana 12.000 22.000 32.000»):
+ *     los precios salen de la carta y cada nombre de tamaño tiene que estar
+ *     impreso en ella (el encabezado de la tabla).
+ */
+function grupoDeTamanos(c: CorreccionIA, filas: FilaRevisable[], ctx: ContextoRevision): VarianteIA | string {
+  const tamanos = (c.tamanos ?? []).map((t) => t.trim());
+  if (tamanos.some((t) => !t)) return 'falta el nombre de algún tamaño';
+  if (new Set(tamanos.map(normalizar)).size !== tamanos.length) return 'dos tamaños se llaman igual';
+  const lineas = c.lineas && c.lineas.length > 0 ? c.lineas : [c.linea];
+  if (new Set(lineas).size !== lineas.length) return 'una fila repetida';
+  const suyas = lineas.map((l) => filas.find((f) => f.linea === l));
+  if (suyas.some((f) => !f)) return 'alguna fila ya no existe';
+  const grupo = suyas as FilaRevisable[];
+
+  if (grupo.length === 1) {
+    const fila = grupo[0]!;
+    if (fila.precio !== null) return 'la fila tiene un solo precio: no hay tamaños que agrupar';
+    const precios = preciosImpresosDe(fila.nombre, ctx);
+    if (!precios) return 'la carta no trae varios precios para ese plato';
+    if (tamanos.length !== precios.length) return 'no hay un nombre por cada precio';
+    const impreso = ` ${normalizar(ctx.textoCrudo)} `;
+    if (tamanos.some((t) => !impreso.includes(` ${normalizar(t)} `))) return 'ese tamaño no está escrito en la carta';
+    return variante(fila.nombre, fila.seccion, tamanos, precios, [fila.linea], fila.descripcion, fila.rol);
+  }
+
+  if (grupo.length > 6) return 'son demasiados tamaños';
+  if (tamanos.length !== grupo.length) return 'no hay un nombre por cada fila';
+  if (new Set(grupo.map((f) => normalizar(f.seccion))).size > 1) return 'las filas están en secciones distintas';
+  if (grupo.some((f) => f.precio === null)) return 'a alguna fila le falta el precio';
+  if (new Set(grupo.map((f) => f.precio)).size === 1) return 'todas cuestan lo mismo: no son tamaños';
+  for (let i = 0; i < grupo.length; i++) {
+    const deLaFila = new Set(palabras(grupo[i]!.nombre));
+    if (!palabras(tamanos[i]!).every((w) => deLaFila.has(w))) return 'el tamaño no está escrito en su fila';
+  }
+  const nombre = (c.nombre ?? '').trim();
+  const base = palabras(nombre).filter((w) => !ENLACES.has(w));
+  if (base.length === 0) return 'falta el nombre del plato';
+  if (!grupo.every((f) => {
+    const deLaFila = new Set(palabras(f.nombre));
+    return base.every((w) => deLaFila.has(w));
+  })) return 'el nombre del plato no está en todas las filas';
+  const rol = grupo.every((f) => f.rol === 'acompanamiento') ? 'acompanamiento' : 'plato';
+  return variante(
+    nombre, grupo[0]!.seccion, tamanos, grupo.map((f) => f.precio!), lineas,
+    grupo.find((f) => f.descripcion)?.descripcion, rol,
+  );
+}
+
+/** El número de línea libre para una fila nueva, justo después de `linea`. */
+function lineaNueva(linea: number, filas: FilaRevisable[], k: number): number {
+  let n = Math.round((linea + k / 10) * 10) / 10;
+  while (filas.some((f) => f.linea === n)) n = Math.round((n + 0.1) * 10) / 10;
+  return n;
+}
+
 function seccionPermitida(seccion: string, filas: FilaRevisable[], ctx: ContextoRevision): boolean {
   const n = normalizar(seccion);
   if (!n) return false;
@@ -412,14 +605,56 @@ export function motivoParaDescartar(
     case 'quitar':
       if (fila.precio !== null) return 'la fila tiene precio: no se quita un plato';
       return null;
+
+    case 'precio_de_seccion': {
+      const b = bloqueImpreso(fila, ctx);
+      if (!b) return 'esa fila no es el precio de una sección impreso en la carta';
+      const seccion = c.seccion ?? fila.seccion;
+      if (c.seccion && !seccionPermitida(c.seccion, filas, ctx)) return 'esa sección no aparece en la carta';
+      if (sinPrecioDe(seccion, filas, fila.linea).length === 0) return 'esa sección no tiene platos sin precio';
+      if (b.precios.length > 1 && b.etiquetas.length !== b.precios.length) return 'los precios no dicen de qué tamaño son';
+      return null;
+    }
+
+    case 'agrupar_tamanos': {
+      const g = grupoDeTamanos(c, filas, ctx);
+      return typeof g === 'string' ? g : null;
+    }
+
+    case 'partir_fila': {
+      const partes = c.partes ?? [];
+      if (partes.length < 2) return 'una fila se parte en al menos dos platos';
+      if (fila.precio !== null) return 'la fila ya tiene un precio: es un plato';
+      if (new Set(partes.map((p) => normalizar(p.nombre))).size !== partes.length) return 'dos platos se llaman igual';
+      const habia = new Set(palabras(`${fila.nombre} ${fila.descripcion}`));
+      for (const p of partes) {
+        if (p.precio < PRECIO_MIN || p.precio > PRECIO_MAX) return 'precio fuera de rango';
+        const inventadas = palabras(p.nombre).filter((w) => !habia.has(w) && !ENLACES.has(w));
+        if (inventadas.length > 0) return `añade palabras que la carta no tenía (${inventadas.slice(0, 3).join(', ')})`;
+      }
+      // Los precios salen del MISMO renglón impreso que los nombres: así no se
+      // le puede poner a un plato el precio de otro renglón de la carta.
+      const renglon = ctx.textoCrudo.split('\n').find((r) => {
+        const precios = preciosDeLinea(r);
+        const n = ` ${normalizar(r)} `;
+        return partes.every((p) => precios.includes(p.precio) && n.includes(` ${palabras(p.nombre)[0] ?? ''} `));
+      });
+      if (!renglon) return 'esos platos y precios no están juntos en un renglón de la carta';
+      return null;
+    }
   }
 }
 
 /** Aplica una corrección YA validada. Devuelve las filas nuevas y lo que tocó. */
-function aplicar(filas: FilaRevisable[], c: CorreccionIA): { filas: FilaRevisable[]; cambios: CambioFila[] } {
+function aplicar(
+  filas: FilaRevisable[],
+  c: CorreccionIA,
+  ctx: ContextoRevision,
+): { filas: FilaRevisable[]; cambios: CambioFila[]; variantes: VarianteIA[] } {
   const i = filas.findIndex((f) => f.linea === c.linea);
   const fila = filas[i]!;
   const cambios: CambioFila[] = [];
+  const variantes: VarianteIA[] = [];
   let nuevas = filas.slice();
   const reemplazar = (idx: number, despues: FilaRevisable) => {
     cambios.push({ linea: nuevas[idx]!.linea, antes: nuevas[idx]!, despues });
@@ -458,8 +693,42 @@ function aplicar(filas: FilaRevisable[], c: CorreccionIA): { filas: FilaRevisabl
       cambios.push({ linea: fila.linea, antes: fila, despues: null });
       nuevas = nuevas.filter((f) => f.linea !== fila.linea);
       break;
+    case 'precio_de_seccion': {
+      const b = bloqueImpreso(fila, ctx)!;
+      const seccion = c.seccion ?? fila.seccion;
+      const metas = sinPrecioDe(seccion, nuevas, fila.linea);
+      if (b.precios.length === 1) {
+        for (const m of metas) reemplazar(nuevas.indexOf(m), { ...m, precio: b.precios[0]! });
+      } else {
+        for (const m of metas) {
+          variantes.push(variante(m.nombre, m.seccion, b.etiquetas, b.precios, [m.linea], m.descripcion, m.rol));
+        }
+      }
+      cambios.push({ linea: fila.linea, antes: fila, despues: null });
+      nuevas = nuevas.filter((f) => f.linea !== fila.linea);
+      break;
+    }
+    case 'agrupar_tamanos':
+      variantes.push(grupoDeTamanos(c, nuevas, ctx) as VarianteIA);
+      break;
+    case 'partir_fila': {
+      const [primera, ...resto] = c.partes!;
+      reemplazar(i, { ...fila, nombre: primera!.nombre, precio: primera!.precio });
+      resto.forEach((p, k) => {
+        const linea = lineaNueva(fila.linea, nuevas, k + 1);
+        const nueva: FilaRevisable = { linea, nombre: p.nombre, precio: p.precio, descripcion: '', seccion: fila.seccion, rol: fila.rol };
+        cambios.push({ linea, antes: null, despues: nueva });
+        const despues = nuevas.findIndex((f) => f.linea > linea);
+        nuevas = despues < 0 ? [...nuevas, nueva] : [...nuevas.slice(0, despues), nueva, ...nuevas.slice(despues)];
+      });
+      break;
+    }
   }
-  return { filas: nuevas, cambios: cambios.filter((x) => !x.antes || !x.despues || !igual(x.antes, x.despues)) };
+  return {
+    filas: nuevas,
+    cambios: cambios.filter((x) => !x.antes || !x.despues || !igual(x.antes, x.despues)),
+    variantes,
+  };
 }
 
 /** Qué cambia, en palabras del portal. */
@@ -478,6 +747,12 @@ function tituloDeCambio(c: CorreccionIA, filas: FilaRevisable[]): string {
     }
     case 'es_titulo': return `${n} es el título de una sección, no un plato`;
     case 'quitar': return `${n} no es un producto: se quita`;
+    case 'precio_de_seccion':
+      return `${n} es el precio de toda la sección «${c.seccion ?? fila.seccion}»: se lo ponemos a sus platos`;
+    case 'agrupar_tamanos':
+      return `«${c.lineas && c.lineas.length > 1 ? c.nombre : fila.nombre}» en tamaños: ${(c.tamanos ?? []).join(', ')}`;
+    case 'partir_fila':
+      return `${n} son ${c.partes!.length} platos: ${c.partes!.map((p) => `«${p.nombre}» $${p.precio.toLocaleString('es-CO')}`).join(' y ')}`;
   }
 }
 
@@ -487,6 +762,7 @@ function tituloDeCambio(c: CorreccionIA, filas: FilaRevisable[]): string {
  */
 export function seAplicaSola(c: CorreccionIA, antes: FilaRevisable, ctx: ContextoRevision): boolean {
   if (ctx.modo === 'instruccion') return true;
+  if (SOLO_CON_PERMISO.has(c.accion)) return false;
   if (c.confianza !== 'alta') return false;
   if (c.accion === 'precio' && antes.precio !== null) return false;
   return true;
@@ -512,6 +788,10 @@ export function revisarFilas(
   const pendientes: CorreccionIA[] = [];
   const descartadas: Descarte[] = [];
   const vistas = new Set<string>();
+  // Una fila no puede quedar en dos grupos de tamaños a la vez.
+  const enGrupo = new Set<number>();
+  const chocaConGrupo = (v: VarianteIA[]) => v.some((x) => x.lineas.some((l) => enGrupo.has(l)));
+  const apuntarGrupo = (v: VarianteIA[]) => v.forEach((x) => x.lineas.forEach((l) => enGrupo.add(l)));
 
   for (const c of correcciones.slice(0, MAX_CORRECCIONES)) {
     const clave = `${c.linea}:${c.accion}`;
@@ -531,13 +811,19 @@ export function revisarFilas(
       continue;
     }
     const titulo = tituloDeCambio(c, trabajo);
-    const r = aplicar(trabajo, c);
-    if (r.cambios.length === 0) continue;
+    const r = aplicar(trabajo, c, ctx);
+    if (r.cambios.length === 0 && r.variantes.length === 0) continue;
+    if (chocaConGrupo(r.variantes)) {
+      descartadas.push({ linea: c.linea, accion: c.accion, razon: 'esa fila ya está en otro grupo de tamaños' });
+      continue;
+    }
+    apuntarGrupo(r.variantes);
     trabajo = r.filas;
     aplicadas.push({
       id: `ia-${aplicadas.length + 1}-${c.accion}-${c.linea}`,
       accion: c.accion, linea: c.linea, confianza: c.confianza,
       titulo, motivo: c.motivo, filas: r.cambios,
+      ...(r.variantes.length > 0 && { variantes: r.variantes }),
     });
   }
 
@@ -550,12 +836,18 @@ export function revisarFilas(
       continue;
     }
     const titulo = tituloDeCambio(c, trabajo);
-    const r = aplicar(trabajo, c);
-    if (r.cambios.length === 0) continue;
+    const r = aplicar(trabajo, c, ctx);
+    if (r.cambios.length === 0 && r.variantes.length === 0) continue;
+    if (chocaConGrupo(r.variantes)) {
+      descartadas.push({ linea: c.linea, accion: c.accion, razon: 'esa fila ya está en otro grupo de tamaños' });
+      continue;
+    }
+    apuntarGrupo(r.variantes);
     sugerencias.push({
       id: `ia-s${sugerencias.length + 1}-${c.accion}-${c.linea}`,
       accion: c.accion, linea: c.linea, confianza: c.confianza,
       titulo, motivo: c.motivo, filas: r.cambios,
+      ...(r.variantes.length > 0 && { variantes: r.variantes }),
     });
   }
 

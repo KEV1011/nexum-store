@@ -1,4 +1,5 @@
 import { listarComerciosMalUbicados } from '../services/ubicacion-comercio.service';
+import { listarReportesCarta, reporteCartaCompleto } from '../services/carta-reporte.service';
 import { Router, Request, Response, NextFunction } from 'express';
 import { esTipoAtascado } from '../lib/servicio-atascado';
 import { DocumentStatus, PayoutStatus } from '@prisma/client';
@@ -656,6 +657,42 @@ router.get('/businesses/ubicacion-dudosa', async (_req: Request, res: Response):
   }
 });
 
+// GET /admin/carta-reportes — cartas que un dueño marcó como «se leyó mal».
+// GET /admin/carta-reportes/:id/prueba.json — la carta lista para volverla una
+// prueba: la respuesta del OCR (la misma forma que lee `palabrasDeRespuestaVision`),
+// lo que salió y lo que dijo el dueño.
+router.get('/carta-reportes', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listarReportesCarta() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+router.get('/carta-reportes/:id/prueba.json', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const r = await reporteCartaCompleto(String(req.params['id']));
+    if (!r) {
+      res.status(404).json({ success: false, error: 'Ese reporte no existe.' });
+      return;
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="carta-${r.id}.json"`);
+    res.json({
+      success: true,
+      data: {
+        negocio: r.business.name,
+        fecha: r.createdAt.toISOString(),
+        foto: r.photoUrl,
+        comentario: r.comentario,
+        respuestaOcr: r.ocrRaw,
+        lectura: r.lectura,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
 router.post('/businesses/listado', async (req: Request, res: Response): Promise<void> => {
   const b = req.body as Record<string, unknown>;
   try {
@@ -1187,6 +1224,16 @@ const PANEL_HTML = `<!DOCTYPE html>
         </p>
         <table><thead><tr><th>Negocio</th><th>Ciudad</th><th>Qué pasa</th><th>Acción</th></tr></thead>
         <tbody id="ubicacion-body"><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody></table>
+      </div>
+
+      <div style="margin-top:22px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">
+        <h3 style="margin:0 0 6px;font-size:.95rem">Cartas que se leyeron mal</h3>
+        <p style="font-size:.78rem;color:#64748b;margin:0 0 10px">
+          Lo que un dueño marcó con «Se leyó mal» al subir su carta. «Descargar prueba» trae la
+          respuesta del lector tal cual, para volverla una prueba y que esa carta no se vuelva a romper.
+        </p>
+        <table><thead><tr><th>Negocio</th><th>Fecha</th><th>Qué dice el dueño</th><th>Acción</th></tr></thead>
+        <tbody id="carta-reportes-body"><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody></table>
       </div>
     </section>
 
@@ -2037,6 +2084,29 @@ function loadUbicacionDudosa() {
       '<td><a class="btn-sm" style="background:#e0f2f1;color:#00695c;text-decoration:none" href="' + PORTAL_URL + '/negocio/' + esc(b.token) + '/ajustes" target="_blank" rel="noopener">Fijar en el mapa</a></td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
+function loadCartaReportes() {
+  const tb = document.getElementById('carta-reportes-body');
+  if (!tb) return;
+  api('/admin/carta-reportes').then((rows) => {
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Ningún dueño ha reportado una carta mal leída.</td></tr>'; return; }
+    tb.innerHTML = rows.map((r) => '<tr><td><strong>' + esc(r.negocio) + '</strong><div style="font-size:.72rem;color:#777">' + esc(String(r.filas)) + ' filas leídas' + (r.tieneOcr ? '' : ' · sin respuesta del lector') + '</div></td>' +
+      '<td>' + esc(new Date(r.createdAt).toLocaleString('es-CO')) + '</td>' +
+      '<td>' + esc(r.comentario || '—') + '</td>' +
+      '<td>' + (r.photoUrl ? '<a class="btn-sm" style="background:#e0f2f1;color:#00695c;text-decoration:none" href="' + esc(r.photoUrl) + '" target="_blank" rel="noopener">Ver foto</a> ' : '') +
+      '<button class="btn-sm" data-id="' + esc(r.id) + '" onclick="descargarPruebaCarta(this.dataset.id)">Descargar prueba</button></td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+function descargarPruebaCarta(id) {
+  api('/admin/carta-reportes/' + encodeURIComponent(id) + '/prueba.json').then((data) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'carta-' + id + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }).catch((e) => showMsg(e.message, true));
+}
 function cargarCiudadesFicha() {
   const sel = document.getElementById('ficha-ciudad');
   if (!sel || sel.dataset.listo) return;
@@ -2049,6 +2119,7 @@ function cargarCiudadesFicha() {
 
 function loadBusinesses() {
   loadUbicacionDudosa();
+  loadCartaReportes();
   cargarCiudadesFicha();
   var q = (document.getElementById('biz-q') || {}).value || '';
   api('/admin/businesses' + (q ? '?q=' + encodeURIComponent(q) : '')).then((rows) => {

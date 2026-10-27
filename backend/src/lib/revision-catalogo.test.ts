@@ -38,8 +38,26 @@ describe('el nombre del plato', () => {
     expect(pr!.razones.join(' | ')).toMatch(/ingredientes estaban dentro del nombre/);
     expect(pr!.razones.join(' | ')).toMatch(/mayúsculas/);
     expect(pr!.razones.join(' | ')).toMatch(/«Hamburgesa» por «Hamburguesa»/);
-    expect(pr!.marcada).toBe(true);
+    // Con una errata dentro, el grupo nace SIN MARCAR: antes nacía marcado,
+    // y una palabra de verdad a una letra de otra («cereza» → «cerveza») se
+    // aplicaba con un «Aplicar» distraído. Lo demás del grupo se ve igual.
+    expect(pr!.marcada).toBe(false);
     expect(pr!.origen).toEqual(['reglas']);
+  });
+
+  it('sin errata, lo seguro sí nace marcado', () => {
+    const r = revisarCatalogo([prod({ name: 'HAMBURGUESA SENCILLA (carne, queso, tocineta)' })]);
+    expect(r.propuestas[0]!.marcada).toBe(true);
+  });
+
+  it('la errata sola nace sin marcar, y una palabra de verdad no se toca', () => {
+    const r = revisarCatalogo([
+      prod({ name: 'Hamburgesa doble' }),
+      prod({ name: 'Michelada de cereza', description: 'Cereza macerada, maracuyá salteada' }),
+    ]);
+    expect(r.propuestas).toHaveLength(1);
+    expect(r.propuestas[0]!.despues.name).toBe('Hamburguesa doble');
+    expect(r.propuestas[0]!.marcada).toBe(false);
   });
 
   it('la descripción que escribió el dueño manda: no separa', () => {
