@@ -8,6 +8,7 @@ import { LocationPicker } from './LocationPicker'
 import { DestinosEnvio, type Destino } from './DestinosEnvio'
 import { MesasManager } from './MesasManager'
 import { ClaveNegocio } from './ClaveNegocio'
+import { InstalarApp } from '../InstalarApp'
 import { CONTENEDOR } from '../../../ui'
 import { HorarioEditor, type Franja } from './HorarioEditor'
 import {
@@ -521,6 +522,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
               <DestinosEnvio token={token} citySlug={citySlug} inicial={shipsTo} />
               <MesasManager token={token} />
               <ClaveNegocio token={token} />
+              <InstalarApp token={token} />
               <HorarioEditor franjas={settings.hours} onChange={(hours) => set({ hours })} />
               <button
                 onClick={() => void patch({
